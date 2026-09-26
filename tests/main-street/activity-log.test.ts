@@ -20,7 +20,7 @@ import {
   deserializeMainStreetState,
   type MainStreetState,
   type LogEntry,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   endTurnHeadless,
@@ -32,18 +32,18 @@ import {
   checkEndConditions,
   describeEventEffects,
   classifyEffect,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   purchaseBusiness,
   purchaseEvent,
   purchaseUpgrade,
   playEventFromHand,
   refreshMarket,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   WIN_THRESHOLD,
   type BusinessCard,
@@ -51,7 +51,7 @@ import {
   type UpgradeCard,
   type CommunitySpaceCard,
   type StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   sellFromHand,
   sellFromTableau,
@@ -61,7 +61,7 @@ import {
   applyStaffOngoingCosts,
   applyCommunitySpaceOngoingCosts,
   applyBusinessOngoingCosts,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 

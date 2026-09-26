@@ -1,0 +1,114 @@
+##################################
+# Node.js
+##################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+##################################
+# Build Output
+##################################
+dist/
+dist-electron/
+build/
+release/
+*.js.map
+*.tsbuildinfo
+
+##################################
+# Vite
+##################################
+.vite/
+*.local
+
+##################################
+# TypeScript
+##################################
+*.tsbuildinfo
+
+##################################
+# IDE / Editor Files
+##################################
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+##################################
+# OS Files
+##################################
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+##################################
+# Environment / Secrets
+##################################
+.env
+.env.local
+.env.*.local
+
+##################################
+# Test / Coverage
+##################################
+coverage/
+test-results/
+
+##################################
+# Runtime Data (transcripts, screenshots, etc.)
+##################################
+# Temporary runtime artifacts used by tests and local runs - do not commit
+tmp/
+data/
+results/
+
+# Per-test visual regression / Playwright screenshot artifacts
+# These are generated during tests and should not be committed.
+tests/**/__screenshots__/
+
+# Local debug artifacts
+artifacts/
+debug-page.png
+debug-playwright.cjs
+debug-playwright.js
+tui-debug.log
+
+##################################
+Worklog Specific Ignores
+##################################
+
+# Ignore Worklog directory by default
+.worklog/
+
+# Keep defaults and plugins tracked
+!.worklog/config.defaults.yaml
+!.worklog/plugins/
+!.worklog/plugins/**
+
+# opencode temporary files
+.opencode/tmp/
+
+### End of Worklog Specific Ignores
+
+# herdr server runtime flag (created/removed by the herdr server process;
+# keep it out of git status so release/hygiene gates see a clean tree)
+.herdr-downtime-disabled
+# Ignore local pi settings but track project-level agent skills
+.pi/*
+!.pi/skills/
+!.pi/skills/**
+!.pi/test-config.json
+# Track the local skill-extension contract (project-level agent tooling that
+# must be committed and testable, e.g. the test-skill `--type` profile map).
+!.pi/skills_extensions/
+!.pi/skills_extensions/**
+.implement_state.json
+
+# Symlinked dependency tree (local sibling dev)
+node_modules

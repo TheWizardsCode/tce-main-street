@@ -20,11 +20,11 @@ import {
   serializeMainStreetState,
   setIncidentBalanceLimits,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   replenishIncidentDeck,
-} from '../../example-games/main-street/MainStreetMarket';
-import { resolveIncident, resolveEventChoice } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetMarket';
+import { resolveIncident, resolveEventChoice } from '../../src/MainStreetEngine';
 import {
   type EventCard,
   type IncidentPolarity,
@@ -36,7 +36,7 @@ import {
   createIncidentBalanceFromQueue,
   findConstrainedIncidentIndex,
   recordIncidentDraw,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { shuffleArray } from '@card-system';
 
 // ── Helpers ─────────────────────────────────────────────────

@@ -6,9 +6,9 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import type { PlayerAction } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import type { PlayerAction } from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   scoreAction,
@@ -17,14 +17,14 @@ import {
   RandomStrategy,
   GreedyStrategy,
   MainStreetAiPlayer,
-} from '../../example-games/main-street/MainStreetAiStrategy';
-import type { BusinessCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
-import { GRID_SIZE } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetAiStrategy';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
+import { GRID_SIZE } from '../../src/MainStreetCards';
 import {
   canPurchaseBusiness,
   canPurchaseUpgrade,
   canPurchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -481,7 +481,7 @@ describe('scoreAction', () => {
       reputationDelta: 1,
       effect: 'test effect',
       target: 'All',
-    } as unknown as import('../../example-games/main-street/MainStreetCards').EventCard);
+    } as unknown as import('../../src/MainStreetCards').EventCard);
 
     // Taking an event to hand spends the day's one action
     // (CG-0MTFWBNL30043ZBM), so the AI judges the eventual play value

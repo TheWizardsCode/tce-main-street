@@ -23,12 +23,12 @@ import { describe, it, expect } from 'vitest';
 
 import {
   setupMainStreetGame,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
-} from '../../example-games/main-street/MainStreetEngine';
-import type { BusinessCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetEngine';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createBusinessDeck, createCommunitySpaceDeck, createEventDeck, createUpgradeDeck, createStaffDeck } from '../../example-games/main-street/MainStreetCards';
-import { TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
+import { createBusinessDeck, createCommunitySpaceDeck, createEventDeck, createUpgradeDeck, createStaffDeck } from '../../src/MainStreetCards';
+import { TIER_DEFINITIONS } from '../../src/MainStreetTiers';
 import { createSeededRng } from '@core-engine';
 
 function allTemplateIds(): Set<string> {

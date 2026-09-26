@@ -18,7 +18,7 @@ import {
   DIFFICULTY_PRESETS,
   DIFFICULTY_NAMES,
   getPreset,
-} from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetDifficulty';
 
 import type {
   DifficultyConfig,
@@ -32,7 +32,7 @@ import {
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 import {
   STARTING_COINS,
@@ -42,20 +42,20 @@ import {
   createIncidentBalanceState,
   DEFAULT_INCIDENT_REPEAT_SPACING,
   DEFAULT_INCIDENT_MAX_STREAK,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
-import { DEFAULT_CHALLENGES_PER_RUN } from '../../example-games/main-street/MainStreetChallenges';
+import { DEFAULT_CHALLENGES_PER_RUN } from '../../src/MainStreetChallenges';
 
 import {
   computeScore,
   checkEndConditions,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 import {
   computeSynergyBonus,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

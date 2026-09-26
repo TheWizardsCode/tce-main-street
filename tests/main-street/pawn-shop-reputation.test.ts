@@ -23,19 +23,19 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   getBusinessTemplates,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   applyIncome,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   buildCardTooltipInfo,
   type SynergyFormatConfig,
-} from '../../example-games/main-street/MainStreetFormatting';
-import { generateBusinessCardSvg } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+} from '../../src/MainStreetFormatting';
+import { generateBusinessCardSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 // ── Helpers ─────────────────────────────────────────────────
 

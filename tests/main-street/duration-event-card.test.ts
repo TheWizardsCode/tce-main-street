@@ -11,7 +11,7 @@ import {
   type DurationEventCard,
   isDurationEventCard,
   type EventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 describe('DurationEventCard', () => {
   describe('isDurationEventCard type guard', () => {

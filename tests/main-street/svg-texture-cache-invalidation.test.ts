@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { MainStreetSvgTextureManager } from '../../example-games/main-street/scenes/MainStreetSvgTextureManager';
+import { MainStreetSvgTextureManager } from '../../src/scenes/MainStreetSvgTextureManager';
 
 function setDevicePixelRatio(value: number): void {
   const globalAny = globalThis as any;

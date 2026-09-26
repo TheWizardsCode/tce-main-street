@@ -18,26 +18,26 @@ import {
   setupMainStreetGame,
   serializeMainStreetState,
   deserializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   endTurnHeadless,
   executeWeekStart,
   executeAction,
   buyAndPlaceBusiness,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   refillMarket,
   playBusinessFromHand,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import {
   moveToHandCommand,
   playBusinessFromHandCommand,
   buyAndPlaceBusinessCommand,
-} from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetCommands';
 import {
   getStaffCardTemplates,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

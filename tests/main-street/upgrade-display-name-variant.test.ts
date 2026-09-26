@@ -16,8 +16,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { MainStreetSvgTextureManager } from '../../example-games/main-street/scenes/MainStreetSvgTextureManager';
-import { replaceCardTitleInSvg } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+import { MainStreetSvgTextureManager } from '../../src/scenes/MainStreetSvgTextureManager';
+import { replaceCardTitleInSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 // ── Helpers ─────────────────────────────────────────────────
 

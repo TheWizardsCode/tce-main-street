@@ -20,7 +20,7 @@ import {
   getEventTemplates,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

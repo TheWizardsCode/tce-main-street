@@ -17,8 +17,8 @@ import {
 } from './mainStreetLayoutGeometry';
 import { parseScreenLayoutDocument } from '@ui/screen-layout-schema';
 import { anchorPoint } from '@ui/screen-layout';
-import mainStreetLayoutJson from '../../../example-games/main-street/layouts/main-street.layout.json';
-import { BASE_HUD_Y } from '../../../example-games/main-street/scenes/MainStreetConstants';
+import mainStreetLayoutJson from '../../../src/layouts/main-street.layout.json';
+import { BASE_HUD_Y } from '../../../src/scenes/MainStreetConstants';
 
 const VIEWPORT = { width: 1280, height: 720 };
 

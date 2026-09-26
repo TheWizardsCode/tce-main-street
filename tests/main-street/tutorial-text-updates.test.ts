@@ -19,16 +19,16 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { UNIFIED_TUTORIAL_STEPS, resolveTutorialStepText } from '../../example-games/main-street/TutorialFlow';
-import { TUTORIAL_EN_BUNDLE } from '../../example-games/main-street/i18n/tutorial-en';
+import { UNIFIED_TUTORIAL_STEPS, resolveTutorialStepText } from '../../src/TutorialFlow';
+import { TUTORIAL_EN_BUNDLE } from '../../src/i18n/tutorial-en';
 import { resetI18n, registerLocale, t, formatCurrency } from '@core-engine/I18n';
 import {
   getCsvRows,
   getBaseTypeId,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
-} from '../../example-games/main-street/MainStreetCards';
-import cardDataRaw from '../../example-games/main-street/card-data.csv?raw';
+} from '../../src/MainStreetCards';
+import cardDataRaw from '../../src/card-data.csv?raw';
 
 /**
  * Count sentences in a string by splitting on sentence-ending punctuation

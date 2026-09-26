@@ -16,17 +16,17 @@ import {
   runCompetitiveMonteCarlo,
   runCompetitiveSeed,
   toCompetitiveCsv,
-} from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetMonteCarlo';
 
 import {
   runMonteCarlo,
   runAllCombinations,
-} from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetMonteCarlo';
 
 import {
   CompetitiveGreedyStrategy,
   GreedyStrategy,
-} from '../../example-games/main-street/MainStreetAiStrategy';
+} from '../../src/MainStreetAiStrategy';
 
 // ── Helpers ───────────────────────────────────────────────────
 

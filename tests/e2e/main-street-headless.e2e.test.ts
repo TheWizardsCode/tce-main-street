@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { validateTranscriptFile } from '../../scripts/validate-transcript';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+import { validateTranscriptFile } from '@core-scripts/validate-transcript';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
@@ -10,13 +10,13 @@ import {
   computeScore,
   type PlayerAction,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   getAffordableBusinessCards,
   getAffordableUpgradeCards,
   getEmptySlots,
   canPurchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 const OUT_DIR = path.join('tmp', 'test-e2e-main-street');
 fs.mkdirSync(OUT_DIR, { recursive: true });

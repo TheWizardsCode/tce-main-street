@@ -14,15 +14,15 @@ import {
   type ChallengeCategory,
   type ActiveChallenge,
   type Challenge,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
-import type { BusinessCard, SynergyType } from '../../example-games/main-street/MainStreetCards';
-import { CHALLENGE_BONUS_POINTS, GRID_SIZE } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard, SynergyType } from '../../src/MainStreetCards';
+import { CHALLENGE_BONUS_POINTS, GRID_SIZE } from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
 import type {
   ChallengeDefinition,

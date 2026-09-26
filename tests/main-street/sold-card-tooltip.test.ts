@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Scene directory holding the renderer and its per-concern helper modules. */
 const SCENES_DIR = resolve(
   __dirname,
-  '../../example-games/main-street/scenes',
+  '../../src/scenes',
 );
 
 /**

@@ -24,19 +24,19 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeAction,
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
-import type { PlayerAction } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
+import type { PlayerAction } from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   GreedyStrategy,
   scoreAction,
-} from '../../example-games/main-street/MainStreetAiStrategy';
-import type { BusinessCard, EventCard } from '../../example-games/main-street/MainStreetCards';
-import { chooseDemoGreedyActions } from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetAiStrategy';
+import type { BusinessCard, EventCard } from '../../src/MainStreetCards';
+import { chooseDemoGreedyActions } from '../../src/MainStreetMonteCarlo';
 
 // ── Fixtures ────────────────────────────────────────────────
 

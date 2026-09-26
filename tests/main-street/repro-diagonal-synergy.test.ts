@@ -21,11 +21,11 @@ import {
   neighbors,
   computeSynergyBonus,
   computeSynergyPairs,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { createBusinessDeck } from '../../example-games/main-street/MainStreetCards';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
-import { placeFromHand } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { createBusinessDeck } from '../../src/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import { placeFromHand } from '../../src/MainStreetEngine';
 
 function findCard(name: string): BusinessCard {
   const deck = createBusinessDeck(1);

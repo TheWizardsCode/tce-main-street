@@ -22,32 +22,32 @@ import {
   setupMainStreetGame,
   serializeMainStreetState,
   deserializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   endTurnHeadless,
   resolveIncident,
   playHeldEvent,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   applyIncome,
   computeBusinessIncome,
   syncCardCurrentIncome,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { refreshMarket, refreshMarketCost } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetAdjacency';
+import { refreshMarket, refreshMarketCost } from '../../src/MainStreetMarket';
 import {
   createStaffDeck,
   type StaffCard,
   type BusinessCard,
   type EventCard,
   REFRESH_MARKET_COST,
-} from '../../example-games/main-street/MainStreetCards';
-import { NEGOTIATOR_REFRESH_DISCOUNT } from '../../example-games/main-street/MainStreetStaffBuffs';
-import { getSkill } from '../../example-games/main-street/MainStreetStaffSkills';
+} from '../../src/MainStreetCards';
+import { NEGOTIATOR_REFRESH_DISCOUNT } from '../../src/MainStreetStaffBuffs';
+import { getSkill } from '../../src/MainStreetStaffSkills';
 import {
   computeStaffSalaryCost,
   getEmployedSpecializationSkills,
-} from '../../example-games/main-street/MainStreetStaffBuffs';
+} from '../../src/MainStreetStaffBuffs';
 
 // ── Helpers ─────────────────────────────────────────────────
 

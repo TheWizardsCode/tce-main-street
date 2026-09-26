@@ -20,13 +20,13 @@ import {
   setupMainStreetGame,
   refillSingleRowMarket,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type EventCard,
   MARKET_TOTAL_SLOTS,
   MARKET_BUSINESS_MIN,
   MARKET_EVENT_MAX,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

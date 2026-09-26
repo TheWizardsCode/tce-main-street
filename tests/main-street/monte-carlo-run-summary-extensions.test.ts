@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { runMonteCarlo } from '../../example-games/main-street/MainStreetMonteCarlo';
+import { runMonteCarlo } from '../../src/MainStreetMonteCarlo';
 
 describe('MonteCarloRunSummary — cardsOwned (E-1)', () => {
   it('includes cardsOwned field typed as string array', () => {

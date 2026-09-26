@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateBusinessCardSvg, replaceCardTitleInSvg } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
-import type { BusinessCard, CommunitySpaceCard } from '../../example-games/main-street/MainStreetCards';
+import { generateBusinessCardSvg, replaceCardTitleInSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
+import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 
 // ---------------------------------------------------------------------------
 // Helpers

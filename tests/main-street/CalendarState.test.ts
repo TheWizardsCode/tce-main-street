@@ -6,9 +6,9 @@ import {
   rollStartWeek,
   serializeMainStreetState,
   setupMainStreetGame,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine/SeededRng';
-import { processEndOfTurn, executeWeekStart, resolveEventChoice, finishDeferredEndOfTurn } from '../../example-games/main-street/MainStreetEngine';
+import { processEndOfTurn, executeWeekStart, resolveEventChoice, finishDeferredEndOfTurn } from '../../src/MainStreetEngine';
 
 describe('CalendarState (CG-0MTT0K9RX0004QTE / F2)', () => {
   describe('ALLOWED_START_WEEKS', () => {

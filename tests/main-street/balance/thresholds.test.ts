@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   GUARDRAIL_THRESHOLDS,
   evaluateGuardrails,
-} from '../../../example-games/main-street/scripts/balance/guards/thresholds';
+} from '../../../src/scripts/balance/guards/thresholds';
 
 describe('GUARDRAIL_THRESHOLDS', () => {
   it('defines thresholds for winRate_greedy_medium (critical)', () => {

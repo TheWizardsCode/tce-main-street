@@ -19,25 +19,25 @@ import {
   setupMainStreetGame,
   syncResourceBankToLedger,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   endTurnHeadless,
   computeScore,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   buyAndPlaceBusinessCommand,
   moveToHandCommand,
-} from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetCommands';
 import {
   CHALLENGE_TEMPLATES,
   type ActiveChallenge,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 import {
   GRID_SIZE,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
-import { performUndo } from '../../example-games/main-street/scenes/MainStreetTurnControllerTurnFlow';
+} from '../../src/MainStreetCards';
+import { performUndo } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 // ── Helpers ─────────────────────────────────────────────────

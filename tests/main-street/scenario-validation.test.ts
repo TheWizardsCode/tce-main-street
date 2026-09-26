@@ -13,13 +13,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { UNIFIED_TUTORIAL_STEPS } from '../../example-games/main-street/TutorialFlow';
+import { UNIFIED_TUTORIAL_STEPS } from '../../src/TutorialFlow';
 import {
   STANDARD_TUTORIAL_SCENARIO,
   ensureTutorialMarketForUpcomingSteps,
-} from '../../example-games/main-street/TutorialScenario';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import type { TutorialControllerState } from '../../example-games/main-street/TutorialFlow';
+} from '../../src/TutorialScenario';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import type { TutorialControllerState } from '../../src/TutorialFlow';
 
 /**
  * Strips the copy/serial suffix from a card ID to obtain the base template ID.

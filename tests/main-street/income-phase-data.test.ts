@@ -11,12 +11,12 @@ import { describe, it, expect } from 'vitest';
 import {
   applyIncome,
   type IncomeResult,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import {
   createBusinessDeck,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { createActiveEffect } from '@core-engine/ActiveEffect';
 
 // ── Helpers ───────────────────────────────────────────────────────

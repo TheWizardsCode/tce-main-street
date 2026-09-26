@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { runAllCombinations } from '../../example-games/main-street/MainStreetMonteCarlo';
+import { runAllCombinations } from '../../src/MainStreetMonteCarlo';
 
 interface DifficultyBaseline {
   difficulty: 'Easy' | 'Medium' | 'Hard';

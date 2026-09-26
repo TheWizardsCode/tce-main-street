@@ -26,8 +26,8 @@ import {
   markSceneInvalid,
   markSceneValid,
 } from '@core-engine/SvgHelpers';
-import { generateBusinessCardSvg } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import { generateBusinessCardSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 /** Card SVG layout: 140×80 with a 64×64 art zone at (8, 8). */
 const SVG_W = 140;

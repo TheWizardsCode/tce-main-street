@@ -19,23 +19,23 @@ import {
   recalculateCard,
   updateNeighborsOnPlacement,
   updateNeighborsOnSale,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   serializeMainStreetState,
   deserializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   GRID_SIZE,
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
   executeAction,
   processEndOfTurn,
-} from '../../example-games/main-street/MainStreetEngine';
-import { sellBusiness } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetEngine';
+import { sellBusiness } from '../../src/MainStreetMarket';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
     name: 'Test Biz',
     cost: 3,
     baseIncome: 200,
-    synergyTypes: ['Food'] as readonly import('../../example-games/main-street/MainStreetCards').SynergyType[],
+    synergyTypes: ['Food'] as readonly import('../../src/MainStreetCards').SynergyType[],
     maxLevel: 1,
     description: 'A test business',
     level: 0,

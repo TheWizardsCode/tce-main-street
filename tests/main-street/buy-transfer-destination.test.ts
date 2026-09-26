@@ -15,10 +15,10 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
-import { canPurchaseEvent } from '../../example-games/main-street/MainStreetMarket';
-import { createBusinessDeck, createEventDeck } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
+import { canPurchaseEvent } from '../../src/MainStreetMarket';
+import { createBusinessDeck, createEventDeck } from '../../src/MainStreetCards';
 import { HandView } from '@ui/HandView';
 
 // ── Minimal Phaser mock (for real HandView instances) ──────

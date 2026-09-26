@@ -21,23 +21,23 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   createBusinessDeck,
   type BusinessCard,
   getBusinessTemplates,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   applyBusinessOngoingCosts,
   processEndOfTurn,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   generateBusinessCardSvg,
   generateCardSvgFromCsvRow,
-} from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+} from '../../src/scenes/MainStreetCardSvgGenerator';
 import {
   buildCardTooltipInfo,
-} from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetFormatting';
 
 // ── Helpers ─────────────────────────────────────────────────
 

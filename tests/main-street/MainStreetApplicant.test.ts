@@ -36,18 +36,18 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart, processEndOfTurn } from '../../example-games/main-street/MainStreetEngine';
-import { createStaffDeck, type BusinessCard } from '../../example-games/main-street/MainStreetCards';
-import { computeStaffSalaryCost } from '../../example-games/main-street/MainStreetStaffBuffs';
-import { deserializeSkillIds } from '../../example-games/main-street/MainStreetStaffSkills';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { executeWeekStart, processEndOfTurn } from '../../src/MainStreetEngine';
+import { createStaffDeck, type BusinessCard } from '../../src/MainStreetCards';
+import { computeStaffSalaryCost } from '../../src/MainStreetStaffBuffs';
+import { deserializeSkillIds } from '../../src/MainStreetStaffSkills';
 
 // ── Engine resolution helpers ───────────────────────────────
 
 /** Lazily resolves an engine export (undefined when not yet implemented). */
 function engineExport<T>(name: string): T | undefined {
   try {
-    const eng: Record<string, unknown> = require('../../example-games/main-street/MainStreetEngine');
+    const eng: Record<string, unknown> = require('../../src/MainStreetEngine');
     return eng[name] as T | undefined;
   } catch {
     return undefined;

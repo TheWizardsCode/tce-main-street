@@ -23,13 +23,13 @@ import {
   resolveDescription,
   turnLabel,
   SYNERGY_RATE_TOKEN,
-} from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetFormatting';
 import {
   EASY_PRESET,
   MEDIUM_PRESET,
   HARD_PRESET,
-} from '../../example-games/main-street/MainStreetDifficulty';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetDifficulty';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 const EASY = EASY_PRESET;
 const MEDIUM = MEDIUM_PRESET;

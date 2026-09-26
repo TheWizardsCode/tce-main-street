@@ -16,19 +16,19 @@ import {
   createUpgradeDeck,
   synergyColor,
   CARD_TEMPLATE_NAMES,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   TIER_DEFINITIONS,
-} from '../../example-games/main-street/MainStreetTiers';
+} from '../../src/MainStreetTiers';
 import {
   computeBusinessIncome,
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   GRID_SIZE,
-} from '../../example-games/main-street/MainStreetCards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 
 // ── Helpers ─────────────────────────────────────────────────
 

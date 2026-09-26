@@ -10,8 +10,8 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { formatEmployedStaffSummary } from '../../example-games/main-street/MainStreetFormatting';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+import { formatEmployedStaffSummary } from '../../src/MainStreetFormatting';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 
 /** An employed staff fixture with a known name/types/description. */
 function member(name: string, types?: string[]): StaffCard {

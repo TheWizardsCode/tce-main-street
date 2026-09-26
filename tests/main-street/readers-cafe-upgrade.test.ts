@@ -13,7 +13,7 @@ import {
   createUpgradeDeck,
   createBusinessDeck,
   CARD_TEMPLATE_NAMES,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // Single-copy deck for template validation
 const singleUpgDeck = createUpgradeDeck(1);

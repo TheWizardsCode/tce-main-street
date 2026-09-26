@@ -19,8 +19,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { TUTORIAL_STATE_STORAGE_KEY } from '../../example-games/main-street/TutorialState';
-import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../example-games/main-street/MainStreetPrefs';
+import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
 
 const GAME_W = 1280;
 const GAME_H = 720;
@@ -73,7 +73,7 @@ async function bootGame(): Promise<Phaser.Game> {
   document.body.appendChild(container);
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
   const game = createMainStreetGame({
     type: Phaser.CANVAS,

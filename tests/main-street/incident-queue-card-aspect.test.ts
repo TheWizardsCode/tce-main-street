@@ -13,8 +13,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BASE_QUEUE_CARD_W,
   BASE_QUEUE_CARD_H,
-} from '../../example-games/main-street/scenes/MainStreetConstants';
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+} from '../../src/scenes/MainStreetConstants';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 
 describe('Incident queue card aspect ratio', () => {
   it('BASE_QUEUE_CARD_W is 120', () => {

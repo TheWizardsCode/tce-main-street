@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAIN_STREET_TF_SFX_MAPPING } from '../../example-games/main-street/sfx-tf-mapping';
+import { MAIN_STREET_TF_SFX_MAPPING } from '../../src/sfx-tf-mapping';
 
 describe('Main Street tf SFX mapping', () => {
   it('maps transfer-family logical keys to dedicated tf factories', () => {

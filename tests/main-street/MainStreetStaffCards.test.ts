@@ -21,13 +21,13 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   processEndOfTurn,
   executeAction,
-} from '../../example-games/main-street/MainStreetEngine';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetEngine';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 
 // ── Feature Detection ───────────────────────────────────────
 
@@ -37,7 +37,7 @@ import { createStaffDeck, type StaffCard } from '../../example-games/main-street
 let STAFF_FEATURE_AVAILABLE = false;
 (async () => {
   try {
-    const cards = await import('../../example-games/main-street/MainStreetCards');
+    const cards = await import('../../src/MainStreetCards');
     STAFF_FEATURE_AVAILABLE = typeof (cards as any).STAFF_CARD_TEMPLATES !== 'undefined'
       || typeof (cards as any).createStaffDeck === 'function';
   } catch {
@@ -51,9 +51,9 @@ let STAFF_FEATURE_AVAILABLE = false;
  */
 async function hasStaffPurchaseAPI(): Promise<boolean> {
   try {
-    const engine = await import('../../example-games/main-street/MainStreetEngine');
+    const engine = await import('../../src/MainStreetEngine');
     if (typeof (engine as any).purchaseStaffCard === 'function') return true;
-    const market = await import('../../example-games/main-street/MainStreetMarket');
+    const market = await import('../../src/MainStreetMarket');
     if (typeof (market as any).purchaseStaffCard === 'function') return true;
   } catch {
     // ignore
@@ -66,9 +66,9 @@ async function hasStaffPurchaseAPI(): Promise<boolean> {
  */
 async function hasLayoffAPI(): Promise<boolean> {
   try {
-    const engine = await import('../../example-games/main-street/MainStreetEngine');
+    const engine = await import('../../src/MainStreetEngine');
     if (typeof (engine as any).layoffStaffCard === 'function') return true;
-    const market = await import('../../example-games/main-street/MainStreetMarket');
+    const market = await import('../../src/MainStreetMarket');
     if (typeof (market as any).layoffStaffCard === 'function') return true;
   } catch {
     // ignore
@@ -151,7 +151,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
     it.runIf(STAFF_FEATURE_AVAILABLE)(
       'should have staff card templates with required fields',
       async () => {
-        const cards = await import('../../example-games/main-street/MainStreetCards');
+        const cards = await import('../../src/MainStreetCards');
         const templates = (cards as any).STAFF_CARD_TEMPLATES ?? [];
 
         expect(templates.length).toBeGreaterThanOrEqual(3);
@@ -177,7 +177,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
     it.runIf(STAFF_FEATURE_AVAILABLE)(
       'should have staff cards with family: staff',
       async () => {
-        const cards = await import('../../example-games/main-street/MainStreetCards');
+        const cards = await import('../../src/MainStreetCards');
         const templates = (cards as any).STAFF_CARD_TEMPLATES ?? [];
 
         for (const tpl of templates) {
@@ -189,7 +189,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
     it.runIf(STAFF_FEATURE_AVAILABLE)(
       'should have at least three tiers of staff cards',
       async () => {
-        const cards = await import('../../example-games/main-street/MainStreetCards');
+        const cards = await import('../../src/MainStreetCards');
         const templates = (cards as any).STAFF_CARD_TEMPLATES ?? [];
 
         const slots = templates.map((t: any) => t.handSlotsAdded);
@@ -213,7 +213,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const purchaseAPI = await hasStaffPurchaseAPI();
         if (!purchaseAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).purchaseStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -237,7 +237,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const purchaseAPI = await hasStaffPurchaseAPI();
         if (!purchaseAPI) return;
 
-        const engineModule = await import('../../example-games/main-street/MainStreetEngine');
+        const engineModule = await import('../../src/MainStreetEngine');
         const fn = (engineModule as any).purchaseStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -260,7 +260,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const purchaseAPI = await hasStaffPurchaseAPI();
         if (!purchaseAPI) return;
 
-        const engineModule = await import('../../example-games/main-street/MainStreetEngine');
+        const engineModule = await import('../../src/MainStreetEngine');
         const fn = (engineModule as any).purchaseStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -307,7 +307,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const purchaseAPI = await hasStaffPurchaseAPI();
         if (!purchaseAPI) return;
 
-        const engineModule = await import('../../example-games/main-street/MainStreetEngine');
+        const engineModule = await import('../../src/MainStreetEngine');
         const fn = (engineModule as any).purchaseStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -401,7 +401,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -440,7 +440,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -471,7 +471,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -494,7 +494,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -520,7 +520,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -621,7 +621,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const layoffAPI = await hasLayoffAPI();
         if (!layoffAPI) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const fn = (engine as any).layoffStaffCard;
         if (typeof fn !== 'function') return;
 
@@ -643,7 +643,7 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
         const purchaseAPI = await hasStaffPurchaseAPI();
         if (!purchaseAPI) return;
 
-        const engineModule = await import('../../example-games/main-street/MainStreetEngine');
+        const engineModule = await import('../../src/MainStreetEngine');
         const fn = (engineModule as any).purchaseStaffCard;
         if (typeof fn !== 'function') return;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { TIER_DEFINITIONS } from '../../src/MainStreetTiers';
 
 const tier1Ids = new Set(TIER_DEFINITIONS['tier-1'].newCardIds);
 

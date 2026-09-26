@@ -13,7 +13,7 @@ import {
   BrowserStatsStorageAdapter,
   type MainStreetStatsV1,
   type StatsStorageAdapter,
-} from '../../example-games/main-street/StatsDomain';
+} from '../../src/StatsDomain';
 
 // ── In-memory storage adapter for tests ─────────────────────
 

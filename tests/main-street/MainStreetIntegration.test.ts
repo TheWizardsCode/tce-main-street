@@ -16,27 +16,27 @@ import {
   deserializeMainStreetState,
   type MainStreetState,
   type MainStreetSerializedState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type BusinessCard,
   MARKET_TOTAL_SLOTS,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   executeWeekStart,
   processEndOfTurn,
   endTurnHeadless,
   applyStaffOngoingCosts,
   layoffStaffCard,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   purchaseBusiness,
   moveToHand,
   purchaseStaffCard,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 // ── Helpers ─────────────────────────────────────────────────
 

@@ -8,12 +8,12 @@
  * @module
  */
 import { describe, it, expect } from 'vitest';
-import { createBusinessDeck } from '../../example-games/main-street/MainStreetCards';
+import { createBusinessDeck } from '../../src/MainStreetCards';
 import {
   buildCardTooltipInfo,
   type CardTooltipInfoOptions,
-} from '../../example-games/main-street/MainStreetFormatting';
-import { MEDIUM_PRESET } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetFormatting';
+import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
 
 // ── Helpers ──────────────────────────────────────────────────
 

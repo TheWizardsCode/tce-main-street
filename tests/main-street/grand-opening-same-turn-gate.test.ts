@@ -13,17 +13,17 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 import {
   canPlayEvent,
   playEventFromHand,
   purchaseBusiness,
   playBusinessFromHand,
   moveToHand,
-} from '../../example-games/main-street/MainStreetMarket';
-import { executeAction, buyAndPlaceBusiness } from '../../example-games/main-street/MainStreetEngine';
-import type { EventCard, BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetMarket';
+import { executeAction, buyAndPlaceBusiness } from '../../src/MainStreetEngine';
+import type { EventCard, BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ──────────────────────────────────────────────────────
 

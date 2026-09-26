@@ -8,8 +8,8 @@ import {
   computeCardUsageDiversity,
   computeTurnByTurnSnapshots,
   computeTrapCardPrevalence,
-} from '../../../example-games/main-street/scripts/balance/engine/global-metrics';
-import type { MonteCarloRunSummary } from '../../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../../src/scripts/balance/engine/global-metrics';
+import type { MonteCarloRunSummary } from '../../../src/MainStreetMonteCarlo';
 
 /**
  * Helper to create a MonteCarloRunSummary with optional extended fields.

@@ -29,21 +29,21 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type EventCard,
   getEventTemplates,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
   getBaseTypeId,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   processEndOfTurn,
   resolveIncident,
   resolveEventChoice,
   finishDeferredEndOfTurn,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Synthetic CSV: a 3-step cycle + a 2-step escalation chain ──
 

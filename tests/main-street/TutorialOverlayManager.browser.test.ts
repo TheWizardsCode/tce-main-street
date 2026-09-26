@@ -20,7 +20,7 @@ import { waitForScene } from '@core-tests/helpers/waitForScene';
 import {
   UNIFIED_TUTORIAL_STEPS,
   type TutorialHighlightZone,
-} from '../../example-games/main-street/TutorialFlow';
+} from '../../src/TutorialFlow';
 
 /**
  * Bootstrap a Main Street game and return the scene.
@@ -34,7 +34,7 @@ async function bootGame(): Promise<{
   document.body.appendChild(container);
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForScene(game, 'MainStreetScene');

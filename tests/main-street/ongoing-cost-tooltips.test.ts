@@ -17,12 +17,12 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCardTooltipInfo,
   type CardTooltipInfoOptions,
-} from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetFormatting';
 import {
   buildScoreTooltip,
   HUD_TOOLTIP_I18N_KEYS,
   HUD_TOOLTIP_STRINGS,
-} from '../../example-games/main-street/scenes/MainStreetHudTooltips';
+} from '../../src/scenes/MainStreetHudTooltips';
 
 import {
   createBusinessDeck,
@@ -31,9 +31,9 @@ import {
   type StaffCard,
   type CommunitySpaceCard,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MEDIUM_PRESET } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
 
 // ── Helpers ──────────────────────────────────────────────────
 

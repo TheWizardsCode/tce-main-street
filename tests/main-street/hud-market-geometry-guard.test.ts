@@ -16,12 +16,12 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 import { computeMainStreetLayoutGeometry } from './helpers/mainStreetLayoutGeometry';
 
 const MARKET_RENDERER_PATH = resolve(
   __dirname,
-  '../../example-games/main-street/scenes/MainStreetRendererMarket.ts',
+  '../../src/scenes/MainStreetRendererMarket.ts',
 );
 
 describe('geometry single source of truth', () => {

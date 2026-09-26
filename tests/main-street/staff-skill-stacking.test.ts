@@ -21,7 +21,7 @@ import { createSeededRng } from '@core-engine/SeededRng';
 import {
   assignSkillsToApplicants,
   getSkill,
-} from '../../example-games/main-street/MainStreetStaffSkills';
+} from '../../src/MainStreetStaffSkills';
 import {
   computePerBusinessSkillBuffs,
   computeStreetOngoingCostReductionPct,
@@ -29,8 +29,8 @@ import {
   computeStaffSalaryCost,
   computeEntertainmentSynergyRangeBoost,
   computeAdjacencyCoinBonus,
-} from '../../example-games/main-street/MainStreetStaffBuffs';
-import type { BusinessBuffProfile } from '../../example-games/main-street/MainStreetStaffBuffs';
+} from '../../src/MainStreetStaffBuffs';
+import type { BusinessBuffProfile } from '../../src/MainStreetStaffBuffs';
 
 // ── Helpers ─────────────────────────────────────────────────
 

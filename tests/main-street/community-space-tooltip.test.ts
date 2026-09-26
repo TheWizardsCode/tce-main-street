@@ -20,11 +20,11 @@ import {
   createUpgradeDeck,
   type CommunitySpaceCard,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   resolveDescription,
-} from '../../example-games/main-street/MainStreetFormatting';
-import { MEDIUM_PRESET } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetFormatting';
+import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
 
 // ── Deck Data ────────────────────────────────────────────────
 

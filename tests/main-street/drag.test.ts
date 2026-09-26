@@ -18,12 +18,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
-import { UNIFIED_TUTORIAL_STEPS } from '../../example-games/main-street/TutorialFlow';
-import { DRAG_TRANSFER_DURATION_MIN_MS, DRAG_TRANSFER_DURATION_MAX_MS } from '../../example-games/main-street/scenes/MainStreetConstants';
+import { UNIFIED_TUTORIAL_STEPS } from '../../src/TutorialFlow';
+import { DRAG_TRANSFER_DURATION_MIN_MS, DRAG_TRANSFER_DURATION_MAX_MS } from '../../src/scenes/MainStreetConstants';
 
 // ── Mocks ──────────────────────────────────────────────────
 

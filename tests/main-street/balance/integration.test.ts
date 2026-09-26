@@ -8,14 +8,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { MonteCarloRunSummary } from '../../../example-games/main-street/MainStreetMonteCarlo';
+import type { MonteCarloRunSummary } from '../../../src/MainStreetMonteCarlo';
 
-import { median, iqr, gini, hhi, confidenceInterval } from '../../../example-games/main-street/scripts/balance/engine/statistics';
-import { computePickRate, computeWinRateDelta, computeCostToIncomeRatio, computeSurvivalRate } from '../../../example-games/main-street/scripts/balance/engine/card-metrics';
-import { computeWinRateByStrategyDifficulty, computeScoreDistribution, computeLossModeDecomposition } from '../../../example-games/main-street/scripts/balance/engine/global-metrics';
-import { compareMetrics } from '../../../example-games/main-street/scripts/balance/engine/comparison';
-import { captureBaseline, validateBaseline } from '../../../example-games/main-street/scripts/balance/engine/baseline';
-import { evaluateGuardrails } from '../../../example-games/main-street/scripts/balance/guards/thresholds';
+import { median, iqr, gini, hhi, confidenceInterval } from '../../../src/scripts/balance/engine/statistics';
+import { computePickRate, computeWinRateDelta, computeCostToIncomeRatio, computeSurvivalRate } from '../../../src/scripts/balance/engine/card-metrics';
+import { computeWinRateByStrategyDifficulty, computeScoreDistribution, computeLossModeDecomposition } from '../../../src/scripts/balance/engine/global-metrics';
+import { compareMetrics } from '../../../src/scripts/balance/engine/comparison';
+import { captureBaseline, validateBaseline } from '../../../src/scripts/balance/engine/baseline';
+import { evaluateGuardrails } from '../../../src/scripts/balance/guards/thresholds';
 
 /**
  * Build a synthetic Phase 1-extended run summary.

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import invalidAnchor from '../../example-games/main-street/tests/fixtures/layouts/main-street.invalid-anchor.layout.json';
-import invalidCoordinate from '../../example-games/main-street/tests/fixtures/layouts/main-street.invalid-coordinate.layout.json';
-import invalidMissingZone from '../../example-games/main-street/tests/fixtures/layouts/main-street.invalid-missing-zone.layout.json';
-import invalidOverflow from '../../example-games/main-street/tests/fixtures/layouts/main-street.invalid-overflow.layout.json';
-import validMainStreetLayout from '../../example-games/main-street/tests/fixtures/layouts/main-street.valid.layout.json';
-import canonicalMainStreetLayout from '../../example-games/main-street/layouts/main-street.layout.json';
+import invalidAnchor from '../../src/tests/fixtures/layouts/main-street.invalid-anchor.layout.json';
+import invalidCoordinate from '../../src/tests/fixtures/layouts/main-street.invalid-coordinate.layout.json';
+import invalidMissingZone from '../../src/tests/fixtures/layouts/main-street.invalid-missing-zone.layout.json';
+import invalidOverflow from '../../src/tests/fixtures/layouts/main-street.invalid-overflow.layout.json';
+import validMainStreetLayout from '../../src/tests/fixtures/layouts/main-street.valid.layout.json';
+import canonicalMainStreetLayout from '../../src/layouts/main-street.layout.json';
 import {
   parseScreenLayoutDocument,
   validateScreenLayoutDocument,

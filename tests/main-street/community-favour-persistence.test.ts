@@ -10,13 +10,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart, executeAction } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState, type MainStreetState } from '../../src/MainStreetState';
+import { executeWeekStart, executeAction } from '../../src/MainStreetEngine';
 import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
   recordMainStreetEvent,
-} from '../../example-games/main-street/MainStreetTranscript';
+} from '../../src/MainStreetTranscript';
 
 function createLocalStorageMock(): Storage {
   const data = new Map<string, string>();
@@ -83,7 +83,7 @@ describe('favourUsedThisTurn persistence', () => {
 
   it('checkpoint save/load through the MainStreetSaveLoad adapter preserves the flag', async () => {
     const { SaveLoadStore } = await import('@core-engine');
-    const { createMainStreetCheckpointManager } = await import('../../example-games/main-street/MainStreetSaveLoad');
+    const { createMainStreetCheckpointManager } = await import('../../src/MainStreetSaveLoad');
     const store = new SaveLoadStore();
     const mgr = createMainStreetCheckpointManager(store);
     const state = createMarketState('cf-save-load');

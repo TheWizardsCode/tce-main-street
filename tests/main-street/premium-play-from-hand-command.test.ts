@@ -16,12 +16,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 import {
   moveToHandCommand,
   playBusinessFromHandCommand,
-} from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetCommands';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 /** Fresh MarketPhase state with a full action budget. */

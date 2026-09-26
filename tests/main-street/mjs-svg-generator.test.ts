@@ -14,13 +14,13 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { generateCardSvgFromCsvRow } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+import { generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
 // @ts-ignore: no declaration file for .mjs script — intentional
 import {
   generateCardSvg as generateCardSvgMjs,
   regenerateCardSvgs,
   // @ts-ignore: no declaration file for .mjs script — intentional
-} from '../../example-games/main-street/scripts/generate-main-street-card-svgs.mjs';
+} from '../../src/scripts/generate-main-street-card-svgs.mjs';
 
 // ---------------------------------------------------------------------------
 // MJS generator — staff card baked cost text (AC-4: fix for previous regression)

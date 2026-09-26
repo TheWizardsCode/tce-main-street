@@ -15,9 +15,9 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   setStreetGridLattice,
-} from '../../example-games/main-street/MainStreetState';
-import { worldSlotCount } from '../../example-games/main-street/MainStreetAdjacency';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetState';
+import { worldSlotCount } from '../../src/MainStreetAdjacency';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 function businessFixture(id: string): BusinessCard {
   return {

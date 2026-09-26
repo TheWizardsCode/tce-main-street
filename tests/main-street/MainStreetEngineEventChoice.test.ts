@@ -19,25 +19,25 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   processEndOfTurn,
   resolveIncident,
   resolveEventChoice,
   finishDeferredEndOfTurn,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   type EventCard,
   getEventTemplates,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
   getBaseTypeId,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
-} from '../../example-games/main-street/MainStreetTranscript';
+} from '../../src/MainStreetTranscript';
 
 // ── Synthetic CSV (choice + escalation templates) ───────────
 

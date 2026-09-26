@@ -6,8 +6,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
-import { MAIN_STREET_TF_SFX_MAPPING } from '../../example-games/main-street/sfx-tf-mapping';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
+import { MAIN_STREET_TF_SFX_MAPPING } from '../../src/sfx-tf-mapping';
 import type { SoundManager } from '@core-engine/SoundManager';
 
 // ── Mock scene setup ────────────────────────────────────────

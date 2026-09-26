@@ -6,7 +6,7 @@ import {
   createBusinessDeck,
   createEventDeck,
   createUpgradeDeck,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
 
 interface BaselineCatalog {

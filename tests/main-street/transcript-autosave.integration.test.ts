@@ -21,22 +21,22 @@ import { SaveLoadStore } from '@core-engine';
 import {
   setupMainStreetGame,
   serializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
   endTurnHeadless,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   MainStreetTranscriptRecorder,
   finalizeMainStreetTranscript,
   setMainStreetRecorder,
   recordMainStreetEvent,
-} from '../../example-games/main-street/MainStreetTranscript';
+} from '../../src/MainStreetTranscript';
 import {
   saveTurnStartCheckpoint,
   loadTurnStartCheckpoint,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 
 // ── Test helpers ────────────────────────────────────────────
 

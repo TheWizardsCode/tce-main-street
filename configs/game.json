@@ -1,0 +1,11 @@
+{
+  "$comment": "Single-game preset for tce-main-street (F4 / CG-0MTRO72W5003ECAK). Gym is core-owned and always present; exactly one game is selected.",
+  "games": [
+    {
+      "id": "main-street",
+      "path": ".",
+      "scenePath": "src/scenes/MainStreetScene.ts",
+      "adapterPath": "src/scripts/adapters/MainStreetReplayAdapter.ts"
+    }
+  ]
+}

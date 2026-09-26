@@ -18,23 +18,23 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   createCommunitySpaceDeck,
   createBusinessDeck,
   createUpgradeDeck,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   applyCommunitySpaceOngoingCosts,
   processEndOfTurn,
-} from '../../example-games/main-street/MainStreetEngine';
-import { purchaseUpgrade } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetEngine';
+import { purchaseUpgrade } from '../../src/MainStreetMarket';
 import {
   computeSynergyBonus,
   computeSynergyRepBonus,
   computeSynergyPairs,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
 // ── Helpers ─────────────────────────────────────────────────
 

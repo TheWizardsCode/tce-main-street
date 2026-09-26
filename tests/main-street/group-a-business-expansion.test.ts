@@ -31,9 +31,9 @@ import {
   CARD_TEMPLATE_NAMES,
   type BusinessCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { validateCsvRows } from '@balance-cards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
 
 // ── Design contract (from epic CG-0MSQE2NLX003ADIY, Group A) ──────────

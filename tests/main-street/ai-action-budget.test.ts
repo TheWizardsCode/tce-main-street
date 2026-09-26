@@ -16,20 +16,20 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   endTurnHeadless,
   executeWeekStart,
   executeAction,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   RandomStrategy,
   GreedyStrategy,
   MainStreetAiPlayer,
-} from '../../example-games/main-street/MainStreetAiStrategy';
-import { hireStaffCard } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetAiStrategy';
+import { hireStaffCard } from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 

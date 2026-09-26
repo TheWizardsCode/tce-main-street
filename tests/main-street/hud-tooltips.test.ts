@@ -22,22 +22,22 @@ import {
   HUD_TOOLTIP_STRINGS,
   HUD_ARIA_STRINGS,
   HUD_ARIA_LABELS,
-} from '../../example-games/main-street/scenes/MainStreetHudTooltips';
+} from '../../src/scenes/MainStreetHudTooltips';
 import { t, setLocale, registerLocale, resetI18n } from '@core-engine/I18n';
 
 import {
   setupMainStreetGame,
   type MainStreetCampaignProgress,
-} from '../../example-games/main-street/MainStreetState';
-import { getStaffCardTemplates } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetState';
+import { getStaffCardTemplates } from '../../src/MainStreetCards';
 
 import {
   reputationCoinMultiplier,
-} from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetDifficulty';
 
-import { ORDERED_TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
-import { computeIncome } from '../../example-games/main-street/MainStreetAdjacency';
-import { computeScore } from '../../example-games/main-street/MainStreetEngine';
+import { ORDERED_TIER_DEFINITIONS } from '../../src/MainStreetTiers';
+import { computeIncome } from '../../src/MainStreetAdjacency';
+import { computeScore } from '../../src/MainStreetEngine';
 
 // ── Unit tests: i18n key consistency ─────────────────────────
 

@@ -46,12 +46,12 @@ vi.mock('@ui', () => {
 });
 
 import { createOverlayButton, dismissOverlay } from '@ui';
-import { MainStreetOverlayContent } from '../../example-games/main-street/scenes/MainStreetOverlayContent';
-import { performUndo } from '../../example-games/main-street/scenes/MainStreetTurnControllerTurnFlow';
+import { MainStreetOverlayContent } from '../../src/scenes/MainStreetOverlayContent';
+import { performUndo } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import {
   UNDO_CHALLENGE_I18N_KEYS,
   UNDO_CHALLENGE_EN_STRINGS,
-} from '../../example-games/main-street/i18n/undo-challenge-en';
+} from '../../src/i18n/undo-challenge-en';
 import { t } from '@core-engine/I18n';
 import { UndoRedoManager, type Command } from '@core-engine/UndoRedoManager';
 

@@ -31,8 +31,8 @@ import {
   getBusinessTemplates,
   getCommunitySpaceTemplates,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
-import { TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
+} from '../../src/MainStreetCards';
+import { TIER_DEFINITIONS } from '../../src/MainStreetTiers';
 
 const SYNERGY_TYPES: SynergyType[] = [
   'Food',

@@ -24,13 +24,13 @@ import {
   validateScreenLayoutDocument,
 } from '@ui/screen-layout-schema';
 
-import baseLayout from '../../example-games/main-street/layouts/main-street.layout.json';
-import tutorialLayout from '../../example-games/main-street/layouts/main-street-tutorial.layout.json';
+import baseLayout from '../../src/layouts/main-street.layout.json';
+import tutorialLayout from '../../src/layouts/main-street-tutorial.layout.json';
 import {
   BASE_MARKET_CARD_H,
   BASE_MARKET_ROW_GAP,
-} from '../../example-games/main-street/scenes/MainStreetConstants';
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+} from '../../src/scenes/MainStreetConstants';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 import { computeMainStreetLayoutGeometry } from './helpers/mainStreetLayoutGeometry';
 
 const VIEWPORT: LayoutViewport = { width: 1280, height: 720 };

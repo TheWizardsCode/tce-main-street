@@ -17,22 +17,22 @@ import {
   setupMainStreetGame,
   syncResourceBankToLedger,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeAction,
   executeWeekStart,
   executeFullTurn,
   endTurnHeadless,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   CHALLENGE_TEMPLATES,
   type ActiveChallenge,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 import {
   GRID_SIZE,
   type BusinessCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

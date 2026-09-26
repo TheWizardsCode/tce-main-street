@@ -17,13 +17,13 @@ import {
   setupMainStreetGame,
   createCompetitiveState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   checkEndConditions,
   computeScore,
   processEndOfTurn,
   resolvePendingEventChoice,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 

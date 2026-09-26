@@ -22,15 +22,15 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { executeAction, executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import type { PlayerAction } from '../../example-games/main-street/MainStreetEngine';
-import { enumerateLegalActions, GreedyStrategy } from '../../example-games/main-street/MainStreetAiStrategy';
-import type { BusinessCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetState';
+import { executeAction, executeWeekStart } from '../../src/MainStreetEngine';
+import type { PlayerAction } from '../../src/MainStreetEngine';
+import { enumerateLegalActions, GreedyStrategy } from '../../src/MainStreetAiStrategy';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 import {
   chooseDemoGreedyActions,
   runMonteCarlo,
-} from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetMonteCarlo';
 
 // ── Fixtures ────────────────────────────────────────────────
 

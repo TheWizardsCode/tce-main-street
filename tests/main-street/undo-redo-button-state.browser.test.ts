@@ -26,8 +26,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { getBusinessTemplates, type BusinessCard } from '../../example-games/main-street/MainStreetCards';
-import type { MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { getBusinessTemplates, type BusinessCard } from '../../src/MainStreetCards';
+import type { MainStreetState } from '../../src/MainStreetState';
 
 /** Alpha used by `refreshUndoRedoButtons` for an available action. */
 const ENABLED = 1.0;
@@ -95,7 +95,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForScene(game, 'MainStreetScene');
 
@@ -146,7 +146,7 @@ function expectButtons(scene: SceneLike, undoEnabled: boolean, redoEnabled: bool
 async function ensureMarketPhase(scene: SceneLike): Promise<void> {
   const state = scene.state;
   if (state.phase === 'WeekStart') {
-    const { executeWeekStart } = await import('../../example-games/main-street/MainStreetEngine');
+    const { executeWeekStart } = await import('../../src/MainStreetEngine');
     executeWeekStart(state);
   }
   state.resourceBank.coins = 2000;

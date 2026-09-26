@@ -31,18 +31,18 @@ import {
   deserializeMainStreetState,
   type MainStreetState,
   type MainStreetSerializedState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   GRID_SIZE,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
   processEndOfTurn,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   canPurchaseBusiness,
   purchaseBusiness,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 // ── Feature Detection ───────────────────────────────────────
 
@@ -53,7 +53,7 @@ const HAND_FEATURE_AVAILABLE = 'hand' in (setupMainStreetGame() as any);
 let PURCHASE_TO_HAND_AVAILABLE = false;
 (async () => {
   try {
-    const market = await import('../../example-games/main-street/MainStreetMarket');
+    const market = await import('../../src/MainStreetMarket');
     PURCHASE_TO_HAND_AVAILABLE =
       typeof (market as any).purchaseBusinessToHand === 'function' ||
       typeof (market as any).buyBusinessToHand === 'function';
@@ -172,7 +172,7 @@ describe('MainStreet Hand State', () => {
         );
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const fn = (market as any).purchaseBusinessToHand ?? (market as any).buyBusinessToHand;
         if (typeof fn !== 'function') return;
 
@@ -192,7 +192,7 @@ describe('MainStreet Hand State', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const purchaseFn = (market as any).purchaseBusinessToHand ?? (market as any).buyBusinessToHand;
         const canAddFn = (market as any).canAddToHand;
         if (typeof purchaseFn !== 'function' || typeof canAddFn !== 'function') return;
@@ -281,7 +281,7 @@ describe('MainStreet Hand State', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const fn = (market as any).purchaseBusinessToHand ?? (market as any).buyBusinessToHand;
         if (typeof fn !== 'function') return;
 
@@ -417,7 +417,7 @@ describe('MainStreet Hand State', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const fn = (market as any).purchaseBusinessToHand ?? (market as any).buyBusinessToHand;
         if (typeof fn !== 'function') return;
 
@@ -445,7 +445,7 @@ describe('MainStreet Hand State', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const fn = (market as any).purchaseBusinessToHand ?? (market as any).buyBusinessToHand;
         if (typeof fn !== 'function') return;
 

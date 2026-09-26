@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 
 let game: Phaser.Game | null = null;
 
@@ -64,7 +64,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;

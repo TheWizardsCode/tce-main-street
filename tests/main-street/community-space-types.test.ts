@@ -33,7 +33,7 @@ import {
   type BusinessCard,
   type AnyCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Constants ───────────────────────────────────────────
 

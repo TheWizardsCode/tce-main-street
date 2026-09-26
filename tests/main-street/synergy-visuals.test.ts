@@ -10,16 +10,16 @@ import { describe, it, expect } from 'vitest';
 
 import {
   computeSynergyPairs,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   GRID_SIZE,
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   synergyLineEndpoints,
   type SynergyLineLayout,
-} from '../../example-games/main-street/scenes/synergyLineEndpoints';
+} from '../../src/scenes/synergyLineEndpoints';
 
 // ── Helpers ─────────────────────────────────────────────────
 

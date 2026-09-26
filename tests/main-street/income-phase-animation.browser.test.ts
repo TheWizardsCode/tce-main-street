@@ -12,14 +12,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { getBusinessTemplates } from '../../example-games/main-street/MainStreetCards';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
-import type { SlotPhaseBreakdown } from '../../example-games/main-street/MainStreetAdjacency';
-import type { IncomePhaseKey } from '../../example-games/main-street/scenes/MainStreetAnimator';
+import { getBusinessTemplates } from '../../src/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import type { SlotPhaseBreakdown } from '../../src/MainStreetAdjacency';
+import type { IncomePhaseKey } from '../../src/scenes/MainStreetAnimator';
 import {
   COIN_GRID_FULL_KEY,
   COIN_GRID_HALF_KEY,
-} from '../../example-games/main-street/coin-grid';
+} from '../../src/coin-grid';
 
 async function bootGame(): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -28,7 +28,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS, parent: 'game-container' });
   await waitForScene(game, 'MainStreetScene');
   return game;

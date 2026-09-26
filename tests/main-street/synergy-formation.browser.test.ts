@@ -25,9 +25,9 @@ import {
   getBusinessTemplates,
   type BusinessCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
-import { synergyLineEndpoints } from '../../example-games/main-street/scenes/synergyLineEndpoints';
-import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../example-games/main-street/MainStreetPrefs';
+} from '../../src/MainStreetCards';
+import { synergyLineEndpoints } from '../../src/scenes/synergyLineEndpoints';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
 
 // ── Boot helpers (mirrors MainStreetScene.browser.test.ts) ──
 
@@ -39,7 +39,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

@@ -6,8 +6,8 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { recalculateCard } from '../../example-games/main-street/MainStreetAdjacency';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { recalculateCard } from '../../src/MainStreetAdjacency';
 import {
   computeScore,
   updateScore,
@@ -24,7 +24,7 @@ import {
   endTurnHeadless,
   executeFullTurn,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   MAX_TURNS,
   STARTING_COINS,
@@ -33,10 +33,10 @@ import {
   type BusinessCard,
   type EventCard,
   type DurationEventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   CHALLENGE_TEMPLATES,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ describe('MainStreetEngine', () => {
       // upgrade at all (CG-0MSTOATDT009BRX2), so pick the first upgrade from
       // the row OR the deck whose target exists in the business deck — the
       // test must not depend on the seeded draw.
-      type UpgradeCardT = import('../../example-games/main-street/MainStreetCards').UpgradeCard;
+      type UpgradeCardT = import('../../src/MainStreetCards').UpgradeCard;
       const rowUpgrades = state.market.cards.filter(
         c => c.family === 'upgrade',
       ) as UpgradeCardT[];

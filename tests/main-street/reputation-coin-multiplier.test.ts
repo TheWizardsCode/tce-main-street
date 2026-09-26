@@ -23,29 +23,29 @@ import { describe, it, expect } from 'vitest';
 import {
   reputationCoinMultiplier,
   applyReputationMultiplier,
-} from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetDifficulty';
 
 import {
   EASY_PRESET,
   MEDIUM_PRESET,
   HARD_PRESET,
   type GameConfig,
-} from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetDifficulty';
 
 import {
   setupMainStreetGame,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 import {
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
 import {
   resolveEvent,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
-import type { BusinessCard, EventCard } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard, EventCard } from '../../src/MainStreetCards';
 
 // ── Helper: pick only the fields reputationCoinMultiplier needs ──────
 type MultiplierConfig = Pick<GameConfig, 'reputationCoinDivisor' | 'maxReputationCoinMultiplier'>;

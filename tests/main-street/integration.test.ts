@@ -10,8 +10,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import type { MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import type { MainStreetState } from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
@@ -21,21 +21,21 @@ import {
   resolveIncident,
   type PlayerAction,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
-import { updateNeighborsOnPlacement } from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetEngine';
+import { updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
 import {
   getAffordableBusinessCards,
   getEmptySlots,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   CHALLENGE_BONUS_POINTS,
   createBusinessDeck,
   type EventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   DEFAULT_CHALLENGES_PER_RUN,
   CHALLENGE_TEMPLATES,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 
 // ── Helpers ─────────────────────────────────────────────────
 

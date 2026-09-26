@@ -17,8 +17,8 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { recalculateCard, applyIncome } from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetState';
+import { recalculateCard, applyIncome } from '../../src/MainStreetAdjacency';
 import {
   processEndOfTurn,
   resolveIncident,
@@ -29,8 +29,8 @@ import {
   finishDeferredTurnClosing,
   endTurnHeadless,
   updateScore,
-} from '../../example-games/main-street/MainStreetEngine';
-import type { BusinessCard, EventCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetEngine';
+import type { BusinessCard, EventCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

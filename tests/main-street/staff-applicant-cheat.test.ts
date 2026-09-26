@@ -17,13 +17,13 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   resolveStaffApplicant,
   computeApplicantChance,
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
-import { createStaffDeck, type BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetEngine';
+import { createStaffDeck, type BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

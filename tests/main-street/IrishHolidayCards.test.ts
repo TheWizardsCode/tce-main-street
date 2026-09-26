@@ -16,8 +16,8 @@ import {
   type EventCard,
   isCardAvailableInWeek,
   getEventTemplates,
-} from '../../example-games/main-street/MainStreetCards';
-import { weekLabel } from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetCards';
+import { weekLabel } from '../../src/MainStreetFormatting';
 
 // ── Fixtures ────────────────────────────────────────────────
 

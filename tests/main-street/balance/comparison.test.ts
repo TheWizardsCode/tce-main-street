@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { compareMetrics } from '../../../example-games/main-street/scripts/balance/engine/comparison';
-import type { GuardrailThreshold } from '../../../example-games/main-street/scripts/balance/guards/thresholds';
+import { compareMetrics } from '../../../src/scripts/balance/engine/comparison';
+import type { GuardrailThreshold } from '../../../src/scripts/balance/guards/thresholds';
 
 // ========================================================================
 // Comparison Engine

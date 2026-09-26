@@ -31,14 +31,14 @@ import {
   deserializeMainStreetState,
   type MainStreetSerializedState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
-import { worldSlotCount } from '../../example-games/main-street/MainStreetAdjacency';
-import { buyBusinessCommand } from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetState';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import { worldSlotCount } from '../../src/MainStreetAdjacency';
+import { buyBusinessCommand } from '../../src/MainStreetCommands';
 import {
   createMainStreetCheckpointManager,
   MAIN_STREET_SAVE_SCHEMA_VERSION,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 
 function createLocalStorageMock(): Storage {
   const data = new Map<string, string>();

@@ -7,9 +7,9 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeAction } from '../../example-games/main-street/MainStreetEngine';
-import { type BusinessCard, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { executeAction } from '../../src/MainStreetEngine';
+import { type BusinessCard, type StaffCard } from '../../src/MainStreetCards';
 
 // ── Helpers ────────────────────────────────────────────────────────
 

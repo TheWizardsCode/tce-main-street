@@ -19,12 +19,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   endTurnHeadless,
   executeAction,
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   GreedyStrategy,
@@ -35,12 +35,12 @@ import {
   aiPlanningHorizon,
   BANKING_DIFFICULTY_PROFILES,
   MainStreetAiPlayer,
-} from '../../example-games/main-street/MainStreetAiStrategy';
+} from '../../src/MainStreetAiStrategy';
 import {
   ALL_STRATEGIES,
   runMonteCarlo,
-} from '../../example-games/main-street/MainStreetMonteCarlo';
-import type { BusinessCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetMonteCarlo';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

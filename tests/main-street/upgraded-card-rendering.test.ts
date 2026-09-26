@@ -13,10 +13,10 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
 import {
   buildUpgradeOverlaySpec,
-} from '../../example-games/main-street/scenes/UpgradeOverlaySpec';
+} from '../../src/scenes/UpgradeOverlaySpec';
 
 // ── Helpers ─────────────────────────────────────────────────
 

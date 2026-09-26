@@ -22,7 +22,7 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import {
   type EventCard,
@@ -30,13 +30,13 @@ import {
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
   getBaseTypeId,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   processEndOfTurn,
   finishDeferredEndOfTurn,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
-import { resolveEventChoiceCommand } from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetEngine';
+import { resolveEventChoiceCommand } from '../../src/MainStreetCommands';
 
 // ── Synthetic CSV (choice + escalation templates) ──────────
 

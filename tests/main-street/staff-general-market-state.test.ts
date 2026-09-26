@@ -35,17 +35,17 @@ import {
   deserializeMainStreetState,
   refillSingleRowMarket,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   MARKET_TOTAL_SLOTS,
   MARKET_STAFF_MAX,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   refreshMarket,
   cycleMarketCards,
   moveToHand,
-} from '../../example-games/main-street/MainStreetMarket';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetMarket';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 function countStaffInRow(state: MainStreetState): number {
   return state.market.cards.filter(c => c.family === 'staff').length;

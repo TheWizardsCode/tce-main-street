@@ -29,7 +29,7 @@ import {
   SYNERGY_TYPES,
   UNSYNERGISED_GROUP_KEY,
   type CardIndexEntry,
-} from '../../example-games/main-street/gym/GymCardIndex';
+} from '../../src/gym/GymCardIndex';
 import {
   getBusinessTemplates,
   getCommunitySpaceTemplates,
@@ -40,7 +40,7 @@ import {
   type BusinessCard,
   type CardFamily,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

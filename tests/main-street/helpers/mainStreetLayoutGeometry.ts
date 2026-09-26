@@ -15,8 +15,8 @@
  * @see AC2 (HUD strip aligned to market box), AC3 (favour buttons in HUD strip)
  */
 
-import { computeMainStreetLayoutWithSll } from '../../../example-games/main-street/scenes/MainStreetLayoutAdapter';
-import { BASE_MARKET_CARD_H, BASE_MARKET_ROW_GAP, HUD_BAR_HEIGHT_PX } from '../../../example-games/main-street/scenes/MainStreetConstants';
+import { computeMainStreetLayoutWithSll } from '../../../src/scenes/MainStreetLayoutAdapter';
+import { BASE_MARKET_CARD_H, BASE_MARKET_ROW_GAP, HUD_BAR_HEIGHT_PX } from '../../../src/scenes/MainStreetConstants';
 
 // ── Types ───────────────────────────────────────────────────────
 

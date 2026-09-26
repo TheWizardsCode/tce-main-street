@@ -36,14 +36,14 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   GRID_SIZE,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Feature Detection ───────────────────────────────────────
 
@@ -54,7 +54,7 @@ const HAND_FEATURE_AVAILABLE = 'hand' in (setupMainStreetGame() as any);
 let PLACE_SELL_API_AVAILABLE = false;
 (async () => {
   try {
-    const engine = await import('../../example-games/main-street/MainStreetEngine');
+    const engine = await import('../../src/MainStreetEngine');
     PLACE_SELL_API_AVAILABLE =
       typeof (engine as any).placeFromHand === 'function' &&
       typeof (engine as any).sellFromHand === 'function' &&
@@ -68,7 +68,7 @@ let PLACE_SELL_API_AVAILABLE = false;
 let PLACE_SELL_LEGALITY_AVAILABLE = false;
 (async () => {
   try {
-    const engine = await import('../../example-games/main-street/MainStreetEngine');
+    const engine = await import('../../src/MainStreetEngine');
     PLACE_SELL_LEGALITY_AVAILABLE =
       typeof (engine as any).canPlaceFromHand === 'function' &&
       typeof (engine as any).canSellFromHand === 'function' &&
@@ -82,7 +82,7 @@ let PLACE_SELL_LEGALITY_AVAILABLE = false;
 let CONSTANTS_AVAILABLE = false;
 (async () => {
   try {
-    const cards = await import('../../example-games/main-street/MainStreetCards');
+    const cards = await import('../../src/MainStreetCards');
     CONSTANTS_AVAILABLE =
       typeof (cards as any).PLACE_COST_RATIO === 'number' &&
       typeof (cards as any).SELL_VALUE_RATIO === 'number';
@@ -91,7 +91,7 @@ let CONSTANTS_AVAILABLE = false;
   }
   if (!CONSTANTS_AVAILABLE) {
     try {
-      const engine = await import('../../example-games/main-street/MainStreetEngine');
+      const engine = await import('../../src/MainStreetEngine');
       CONSTANTS_AVAILABLE =
         typeof (engine as any).PLACE_COST_RATIO === 'number' &&
         typeof (engine as any).SELL_VALUE_RATIO === 'number';
@@ -184,7 +184,7 @@ describe('MainStreet Place/Sell System', () => {
 
         const coinsBefore = state.resourceBank.coins;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).placeFromHand(state, handIndex, slot);
 
         // Coins deduct the card's listed cost at placement (cost-at-play)
@@ -213,7 +213,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const coinsBefore = state.resourceBank.coins;
 
@@ -237,7 +237,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place from empty hand should throw or return error
         expect(() => {
@@ -265,7 +265,7 @@ describe('MainStreet Place/Sell System', () => {
           state.streetGrid[0] = existingCard as any;
         }
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place hand card into occupied slot should throw
         expect(() => {
@@ -293,7 +293,7 @@ describe('MainStreet Place/Sell System', () => {
         const coinsBefore = state.resourceBank.coins;
         const expectedValue = Math.floor(card.cost * EXPECTED_SELL_VALUE_RATIO);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).sellFromHand(state, handIndex);
 
         // Coins credited by 75% of purchase value
@@ -318,7 +318,7 @@ describe('MainStreet Place/Sell System', () => {
 
         const discardBefore = getDiscardPile(state).length;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).sellFromHand(state, handIndex);
 
         // Card added to discard pile
@@ -334,7 +334,7 @@ describe('MainStreet Place/Sell System', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         expect(() => {
           (engine as any).sellFromHand(state, 0);
@@ -351,7 +351,7 @@ describe('MainStreet Place/Sell System', () => {
         addCardToHand(state, { id: 'test-card', cost: 6 });
         const invalidIndex = getHand(state).length + 5;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         expect(() => {
           (engine as any).sellFromHand(state, invalidIndex);
@@ -378,7 +378,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place the card on tableau first
         (engine as any).placeFromHand(state, handIndex, slot);
@@ -412,7 +412,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place then sell
         (engine as any).placeFromHand(state, handIndex, slot);
@@ -434,7 +434,7 @@ describe('MainStreet Place/Sell System', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         expect(() => {
           (engine as any).sellFromTableau(state, 0);
@@ -448,7 +448,7 @@ describe('MainStreet Place/Sell System', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         expect(() => {
           (engine as any).sellFromTableau(state, GRID_SIZE + 5);
@@ -472,7 +472,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Legality check should return blocked
         const result = (engine as any).canPlaceFromHand(state, handIndex, slot);
@@ -501,7 +501,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canPlaceFromHand(state, handIndex, slot);
         expect(result.legal).toBe(true);
@@ -522,7 +522,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Placement with 0 coins must fail (the card costs 10 at play)
         expect(() => {
@@ -547,7 +547,7 @@ describe('MainStreet Place/Sell System', () => {
 
         addCardToHand(state, { id: 'test-card', cost: 6 });
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canSellFromHand(state, 5);
         expect(result.legal).toBe(false);
@@ -563,7 +563,7 @@ describe('MainStreet Place/Sell System', () => {
 
         addCardToHand(state, { id: 'test-card', cost: 6 });
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canSellFromHand(state, 0);
         expect(result.legal).toBe(true);
@@ -576,7 +576,7 @@ describe('MainStreet Place/Sell System', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canSellFromTableau(state, GRID_SIZE + 5);
         expect(result.legal).toBe(false);
@@ -590,7 +590,7 @@ describe('MainStreet Place/Sell System', () => {
         const state = createTestState();
         executeWeekStart(state);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canSellFromTableau(state, 0);
         expect(result.legal).toBe(false);
@@ -610,7 +610,7 @@ describe('MainStreet Place/Sell System', () => {
         // Occupy slot 0 directly
         state.streetGrid[0] = card as any;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         const result = (engine as any).canSellFromTableau(state, 0);
         expect(result.legal).toBe(true);
@@ -635,7 +635,7 @@ describe('MainStreet Place/Sell System', () => {
         const coinsBefore = state.resourceBank.coins;
         const gridBefore = [...state.streetGrid];
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         (engine as any).canPlaceFromHand(state, handIndex, slot);
         (engine as any).canSellFromHand(state, handIndex);
@@ -664,7 +664,7 @@ describe('MainStreet Place/Sell System', () => {
         addCardToHand(state, { ...card });
         const handIndex = getHand(state).length - 1;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).sellFromHand(state, handIndex);
 
         const discard = getDiscardPile(state);
@@ -687,7 +687,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place then sell from tableau
         (engine as any).placeFromHand(state, handIndex, slot);
@@ -715,7 +715,7 @@ describe('MainStreet Place/Sell System', () => {
         addCardToHand(state, { ...firstCard });
         addCardToHand(state, { ...secondCard });
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         (engine as any).sellFromHand(state, 0);
         (engine as any).sellFromHand(state, 0); // index 0 again because first was removed
@@ -748,12 +748,12 @@ describe('MainStreet Place/Sell System', () => {
 
         // Set up transcript recorder
         const { MainStreetTranscriptRecorder, setMainStreetRecorder, recordMainStreetEvent } =
-          await import('../../example-games/main-street/MainStreetTranscript');
+          await import('../../src/MainStreetTranscript');
 
         const recorder = new MainStreetTranscriptRecorder({ seed: state.seed });
         setMainStreetRecorder(recorder);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Execute placement
         (engine as any).placeFromHand(state, handIndex, slot);
@@ -789,12 +789,12 @@ describe('MainStreet Place/Sell System', () => {
         const handIndex = getHand(state).length - 1;
 
         const { MainStreetTranscriptRecorder, setMainStreetRecorder, recordMainStreetEvent } =
-          await import('../../example-games/main-street/MainStreetTranscript');
+          await import('../../src/MainStreetTranscript');
 
         const recorder = new MainStreetTranscriptRecorder({ seed: state.seed });
         setMainStreetRecorder(recorder);
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         (engine as any).sellFromHand(state, handIndex);
 
@@ -828,13 +828,13 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place first
         (engine as any).placeFromHand(state, handIndex, slot);
 
         const { MainStreetTranscriptRecorder, setMainStreetRecorder, recordMainStreetEvent } =
-          await import('../../example-games/main-street/MainStreetTranscript');
+          await import('../../src/MainStreetTranscript');
 
         const recorder = new MainStreetTranscriptRecorder({ seed: state.seed });
         setMainStreetRecorder(recorder);
@@ -876,7 +876,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).placeFromHand(state, handIndex, slot);
 
         // Hand should now be empty
@@ -898,7 +898,7 @@ describe('MainStreet Place/Sell System', () => {
         addCardToHand(state, { ...cards[0] });
         addCardToHand(state, { ...cards[1] });
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         // Place the first card (index 0)
         const slot = findEmptySlot(state);
@@ -924,7 +924,7 @@ describe('MainStreet Place/Sell System', () => {
 
         addCardToHand(state, { ...card });
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         (engine as any).sellFromHand(state, 0);
 
         expect(getHand(state)).toHaveLength(0);
@@ -945,7 +945,7 @@ describe('MainStreet Place/Sell System', () => {
         const slot = findEmptySlot(state);
         if (slot < 0) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         (engine as any).placeFromHand(state, handIndex, slot);
         expect(state.streetGrid[slot]).not.toBeNull();
@@ -989,7 +989,7 @@ describe('MainStreet Place/Sell System', () => {
       const slot = findEmptySlot(state);
       if (slot < 0) return;
 
-      const engine = await import('../../example-games/main-street/MainStreetEngine');
+      const engine = await import('../../src/MainStreetEngine');
       expect(() => (engine as any).placeFromHand(state, 0, slot)).toThrow(/cannot be placed/);
       // The event must remain in hand and the slot must stay empty
       expect(state.hand).toHaveLength(1);
@@ -1012,7 +1012,7 @@ describe('MainStreet Place/Sell System', () => {
         cost: 0,
       }];
 
-      const engine = await import('../../example-games/main-street/MainStreetEngine');
+      const engine = await import('../../src/MainStreetEngine');
       expect(() => (engine as any).sellFromHand(state, 0)).toThrow(/Event cards cannot be sold/);
       expect(state.hand).toHaveLength(1);
     });
@@ -1035,7 +1035,7 @@ describe('MainStreet Place/Sell System', () => {
       const slot = findEmptySlot(state);
       if (slot < 0) return;
 
-      const engine = await import('../../example-games/main-street/MainStreetEngine');
+      const engine = await import('../../src/MainStreetEngine');
       const placeCheck = (engine as any).canPlaceFromHand(state, 0, slot);
       expect(placeCheck.legal).toBe(false);
       expect(placeCheck.reason).toContain('Event cards cannot be placed');

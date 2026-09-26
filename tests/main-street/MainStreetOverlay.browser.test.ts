@@ -15,7 +15,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
-import type { TurnResult } from '../../example-games/main-street/MainStreetEngine';
+import type { TurnResult } from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ async function bootGame(): Promise<Phaser.Game> {
   document.body.appendChild(container);
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForCondition(() => {

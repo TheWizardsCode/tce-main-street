@@ -15,7 +15,7 @@ import {
   BrowserLocalStorageAdapter,
   type MainStreetTutorialStateV1,
   type TutorialStorageAdapter,
-} from '../../example-games/main-street/TutorialState';
+} from '../../src/TutorialState';
 
 // ── In-memory storage adapter for tests ─────────────────────
 

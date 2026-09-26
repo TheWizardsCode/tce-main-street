@@ -17,7 +17,7 @@ describe('terminology guard', () => {
   it(
     'passes with no forbidden day-as-turn tokens',
     () => {
-      const res = spawnSync('bash', ['scripts/check-terminology-guards.sh'], {
+      const res = spawnSync('bash', ['core/scripts/check-terminology-guards.sh'], {
         cwd: PROJECT_ROOT,
         encoding: 'utf-8',
         timeout: 60_000,

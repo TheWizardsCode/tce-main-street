@@ -14,13 +14,13 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { resolveIncident } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetState';
+import { resolveIncident } from '../../src/MainStreetEngine';
 import {
   type EventCard,
   createIncidentBalanceState,
   findConstrainedIncidentIndex,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

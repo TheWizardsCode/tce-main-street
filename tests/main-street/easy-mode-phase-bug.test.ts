@@ -13,14 +13,14 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   processEndOfTurn,
   executeAction,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
-import type { DifficultyName } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetEngine';
+import type { DifficultyName } from '../../src/MainStreetDifficulty';
 
 // ── Helpers ─────────────────────────────────────────────────
 

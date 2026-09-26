@@ -22,7 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   MARKET_TOTAL_SLOTS,
   MARKET_BUSINESS_MIN,
@@ -33,7 +33,7 @@ import {
   createStaffDeck,
   createEventDeck,
   createBusinessDeck,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   canRefreshMarket,
   refreshMarket,
@@ -47,8 +47,8 @@ import {
   purchaseBusiness,
   canPurchaseBusiness,
   purchaseStaffCard,
-} from '../../example-games/main-street/MainStreetMarket';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetMarket';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 function createTestState(seed = 'single-row-market-test'): MainStreetState {
   return setupMainStreetGame({ seed });

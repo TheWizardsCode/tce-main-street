@@ -24,7 +24,7 @@ import {
   toWorldPosition,
   worldIndexToPosition,
   worldSlotCount,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   MAX_ZOOM_LEVEL,
   MIN_ZOOM_LEVEL,
@@ -38,16 +38,16 @@ import {
   streetViewportRect,
   visibleLocalRect,
   zoomScale,
-} from '../../example-games/main-street/MainStreetMapView';
+} from '../../src/MainStreetMapView';
 import {
   setStreetGridLattice,
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { playBusinessFromHand } from '../../example-games/main-street/MainStreetMarket';
-import type { BusinessCard, CommunitySpaceCard } from '../../example-games/main-street/MainStreetCards';
-import type { SceneLayout } from '../../example-games/main-street/scenes/MainStreetConstants';
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+} from '../../src/MainStreetState';
+import { playBusinessFromHand } from '../../src/MainStreetMarket';
+import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
+import type { SceneLayout } from '../../src/scenes/MainStreetConstants';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 
 const layout: SceneLayout = computeMainStreetLayoutWithSll();
 

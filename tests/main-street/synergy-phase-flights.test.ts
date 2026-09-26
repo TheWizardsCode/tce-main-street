@@ -37,13 +37,13 @@ vi.mock('@ui', () => ({
 import {
   attributeSynergyShares,
   synergyPhaseFlights,
-} from '../../example-games/main-street/scenes/MainStreetAnimatorUtils';
-import { flyCoinsAlongLine } from '../../example-games/main-street/scenes/MainStreetAnimatorIncome';
+} from '../../src/scenes/MainStreetAnimatorUtils';
+import { flyCoinsAlongLine } from '../../src/scenes/MainStreetAnimatorIncome';
 import type {
   IncomePhaseSlot,
   MainStreetAnimatorContext,
-} from '../../example-games/main-street/scenes/MainStreetAnimatorContext';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/scenes/MainStreetAnimatorContext';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Fixtures ──────────────────────────────────────────────────────
 

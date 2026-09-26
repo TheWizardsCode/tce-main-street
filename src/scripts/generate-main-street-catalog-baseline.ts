@@ -29,7 +29,7 @@ for (const cardId of tier1Ids) {
 const baselineTotal = Object.values(counts).reduce((a, b) => a + b, 0);
 
 const baseline = {
-  source: 'Tier 1 baseline from example-games/main-street/MainStreetTiers.ts',
+  source: 'Tier 1 baseline from src/MainStreetTiers.ts',
   capturedAt: new Date().toISOString(),
   perTier: {
     tier1: {

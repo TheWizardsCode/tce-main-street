@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   canPurchaseBusiness,
   canPurchaseUpgrade,
@@ -30,8 +30,8 @@ import {
   getEmptySlots,
   getAffordableBusinessCards,
   type RefreshResult,
-} from '../../example-games/main-street/MainStreetMarket';
-import { executeWeekStart, endTurnHeadless, executeAction } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetMarket';
+import { executeWeekStart, endTurnHeadless, executeAction } from '../../src/MainStreetEngine';
 import {
   GRID_SIZE,
   MARKET_TOTAL_SLOTS,
@@ -39,7 +39,7 @@ import {
   REFRESH_MARKET_COST,
   type UpgradeCard,
   type EventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

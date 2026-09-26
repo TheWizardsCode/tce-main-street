@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runMonteCarlo } from '../../example-games/main-street/MainStreetMonteCarlo';
+import { runMonteCarlo } from '../../src/MainStreetMonteCarlo';
 
 // Work item: CG-0MMJ8S8ME1LYX4DJ
 // Configurable via env vars:

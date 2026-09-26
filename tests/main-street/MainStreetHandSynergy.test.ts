@@ -18,12 +18,12 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetAdjacency';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

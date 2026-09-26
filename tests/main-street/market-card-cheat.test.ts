@@ -18,12 +18,12 @@ import { resolve } from 'node:path';
 import {
   filterEntries,
   type CardEntry,
-} from '../../example-games/main-street/debug/MarketCardCheatOverlay';
-import { cheatReplaceMarketCard } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/debug/MarketCardCheatOverlay';
+import { cheatReplaceMarketCard } from '../../src/MainStreetMarket';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   MARKET_TOTAL_SLOTS,
   getBusinessTemplates,
@@ -31,9 +31,9 @@ import {
   getEventTemplates,
   getUpgradeTemplates,
   getStaffCardTemplates,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { isDevMode } from '@ui/debug/DebugToolsRegistry';
-import { createMarketCardCheatTool } from '../../example-games/main-street/debug/MarketCardCheatOverlay';
+import { createMarketCardCheatTool } from '../../src/debug/MarketCardCheatOverlay';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ describe('Market Card Cheat entry', () => {
 
   it('MainStreetScene gates the cheat behind import.meta.env.DEV (tree-shake guard)', () => {
     const src = readFileSync(
-      resolve(__dirname, '../../example-games/main-street/scenes/MainStreetScene.ts'),
+      resolve(__dirname, '../../src/scenes/MainStreetScene.ts'),
       'utf-8',
     );
     expect(src).toContain('import.meta.env.DEV');
@@ -275,9 +275,9 @@ describe('cheatReplaceMarketCard', () => {
 
   it('does not corrupt save/load and subsequent refill still works', async () => {
     const { serializeMainStreetState, deserializeMainStreetState } = await import(
-      '../../example-games/main-street/MainStreetState'
+      '../../src/MainStreetState'
     );
-    const { refillMarket } = await import('../../example-games/main-street/MainStreetMarket');
+    const { refillMarket } = await import('../../src/MainStreetMarket');
     const state = freshState('save-cheat');
     const template: any = { id: 'biz-save', name: 'Save Biz', family: 'business', cost: 1, baseIncome: 1 };
     cheatReplaceMarketCard(state, template, 'business', () => 0);

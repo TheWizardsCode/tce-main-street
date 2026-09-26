@@ -5,7 +5,7 @@
  * live in `TutorialOfferModal.browser.test.ts`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { TutorialStorageAdapter } from '../../example-games/main-street/TutorialState';
+import type { TutorialStorageAdapter } from '../../src/TutorialState';
 import {
   loadTutorialState,
   saveTutorialState,
@@ -13,7 +13,7 @@ import {
   shouldShowTutorialOffer,
   bridgeLegacyTutorialSeen,
   TUTORIAL_STATE_STORAGE_KEY,
-} from '../../example-games/main-street/TutorialState';
+} from '../../src/TutorialState';
 
 // ── Helpers ──────────────────────────────────────────────────
 

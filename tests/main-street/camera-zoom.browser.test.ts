@@ -21,11 +21,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { TUTORIAL_STATE_STORAGE_KEY } from '../../example-games/main-street/TutorialState';
-import { canPurchaseBusiness, getEmptySlots } from '../../example-games/main-street/MainStreetMarket';
-import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../example-games/main-street/MainStreetPrefs';
-import { streetViewportRect, visibleLocalRect } from '../../example-games/main-street/MainStreetMapView';
-import { ROAD_COLOUR } from '../../example-games/main-street/scenes/MainStreetConstants';
+import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
+import { canPurchaseBusiness, getEmptySlots } from '../../src/MainStreetMarket';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
+import { streetViewportRect, visibleLocalRect } from '../../src/MainStreetMapView';
+import { ROAD_COLOUR } from '../../src/scenes/MainStreetConstants';
 
 const GAME_W = 1280;
 const GAME_H = 720;
@@ -65,7 +65,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({
     type: Phaser.CANVAS,
     parent: 'game-container',

@@ -29,7 +29,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { getCsvRows } from '../../example-games/main-street/MainStreetCards';
+import { getCsvRows } from '../../src/MainStreetCards';
 
 // ── Text parsing helpers ─────────────────────────────────────
 

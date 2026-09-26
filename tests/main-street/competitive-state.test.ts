@@ -18,9 +18,9 @@ import {
   createCompetitiveState,
   type OwnerTaggedSlot,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { GRID_SIZE } from '../../example-games/main-street/MainStreetCards';
-import type { DifficultyName } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetState';
+import { GRID_SIZE } from '../../src/MainStreetCards';
+import type { DifficultyName } from '../../src/MainStreetDifficulty';
 
 // ── Helpers ─────────────────────────────────────────────────
 

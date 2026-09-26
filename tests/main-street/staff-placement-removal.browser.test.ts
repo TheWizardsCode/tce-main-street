@@ -25,14 +25,14 @@ import Phaser from 'phaser';
 import { UndoRedoManager } from '@core-engine';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { createStaffDeck, type BusinessCard, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+import { createStaffDeck, type BusinessCard, type StaffCard } from '../../src/MainStreetCards';
 import {
   canPlaceStaffOnBusiness,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   placeStaffOnBusinessCommand,
   layoffStaffCommand,
-} from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetCommands';
 
 async function bootGame(options: { width?: number; height?: number } = {}): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -42,7 +42,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

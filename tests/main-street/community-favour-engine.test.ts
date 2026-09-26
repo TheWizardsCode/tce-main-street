@@ -11,10 +11,10 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeAction, executeWeekStart, type PlayerAction } from '../../example-games/main-street/MainStreetEngine';
-import { getPreset, DIFFICULTY_PRESETS, type DifficultyName } from '../../example-games/main-street/MainStreetDifficulty';
-import { serializeMainStreetState, deserializeMainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { executeAction, executeWeekStart, type PlayerAction } from '../../src/MainStreetEngine';
+import { getPreset, DIFFICULTY_PRESETS, type DifficultyName } from '../../src/MainStreetDifficulty';
+import { serializeMainStreetState, deserializeMainStreetState } from '../../src/MainStreetState';
 
 // ── Helpers ─────────────────────────────────────────────────
 

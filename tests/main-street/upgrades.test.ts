@@ -12,14 +12,14 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { createUpgradeDeck, createCommunitySpaceDeck } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { createUpgradeDeck, createCommunitySpaceDeck } from '../../src/MainStreetCards';
 import {
   canPurchaseUpgrade,
   purchaseUpgrade,
   getUpgradeBranchesForBusiness,
-} from '../../example-games/main-street/MainStreetMarket';
-import type { BusinessCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetMarket';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

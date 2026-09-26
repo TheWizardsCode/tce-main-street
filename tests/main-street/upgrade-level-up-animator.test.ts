@@ -32,7 +32,7 @@ vi.mock('@ui', () => ({
   moveGameObject,
 }));
 
-import { MainStreetAnimator } from '../../example-games/main-street/scenes/MainStreetAnimator';
+import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
 
 // ── Mock scene helpers ──────────────────────────────────────
 

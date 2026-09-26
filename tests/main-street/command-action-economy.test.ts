@@ -12,8 +12,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import {
   buyBusinessCommand,
@@ -26,8 +26,8 @@ import {
   refreshMarketCommand,
   sellBusinessCommand,
   discardFromHandCommand,
-} from '../../example-games/main-street/MainStreetCommands';
-import { refreshMarketCost } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetCommands';
+import { refreshMarketCost } from '../../src/MainStreetMarket';
 
 /** Fresh MarketPhase state with a full action budget. */
 function setupMarketState(seed = 'command-action-economy-test'): ReturnType<typeof setupMainStreetGame> {

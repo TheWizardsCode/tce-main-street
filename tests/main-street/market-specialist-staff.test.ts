@@ -26,18 +26,18 @@ import {
   setupMainStreetGame,
   refillSingleRowMarket,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   createStaffDeck,
   getAllowedBusinessTypesForStaff,
   type StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   canPurchaseStaff,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   hireStaffCard,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 /** The business-specialist staff added by child 1. */
 const SPECIALIST_IDS = ['staff-florist', 'staff-baker', 'staff-chef', 'staff-mechanic'];

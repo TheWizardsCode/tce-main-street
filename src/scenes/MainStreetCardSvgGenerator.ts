@@ -13,12 +13,12 @@
  * See CG-0MTORJ5FS006B0UN for the full hand-overlap and stacking analysis.
  *
  * Art (CG-0MTORJ5FS006B0UN producer review): the 64×64 zone is filled with
- * the card's art (`example-games/main-street/sprites/<Name>_1024_x_1024.png`,
+ * the card's art (`src/sprites/<Name>_1024_x_1024.png`,
  * mapped by `scripts/generate-main-street-card-art.mjs`) embedded as an inline
  * base64 `data:` URI — required because the SVG itself is rasterised from a
  * data: URI, where external image references do not resolve. Cards without
  * dedicated art use the `Fallback` sprite; see
- * `example-games/main-street/MainStreetCardArt.ts` for the name→art resolver.
+ * `src/MainStreetCardArt.ts` for the name→art resolver.
  *
  * CG-0MUCM36EQ008YP4R: the embedded bitmap is 256×256 WebP. The 64×64 zone is
  * a layout dimension in SVG user units, not the render resolution — Phaser

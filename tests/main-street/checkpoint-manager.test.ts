@@ -13,19 +13,19 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SaveLoadStore, CheckpointManager } from '@core-engine';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 
 import {
   executeWeekStart,
   executeAction,
   processEndOfTurn,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   saveTurnStartCheckpoint,
   loadTurnStartCheckpoint,
   createMainStreetCheckpointManager,
   clearTurnStartCheckpoint,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 
 function createLocalStorageMock(): Storage {
   const data = new Map<string, string>();

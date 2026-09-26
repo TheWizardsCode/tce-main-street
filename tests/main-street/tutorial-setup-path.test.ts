@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createTutorialScenario, STANDARD_TUTORIAL_SCENARIO } from '../../example-games/main-street/TutorialScenario';
+import { createTutorialScenario, STANDARD_TUTORIAL_SCENARIO } from '../../src/TutorialScenario';
 import {
   TUTORIAL_SEED,
   createDefaultTutorialState,
@@ -37,7 +37,7 @@ import {
   bridgeLegacyTutorialSeen,
   type MainStreetTutorialStateV1,
   type TutorialStorageAdapter,
-} from '../../example-games/main-street/TutorialState';
+} from '../../src/TutorialState';
 import {
   createTutorialControllerState,
   startTutorial,
@@ -46,8 +46,8 @@ import {
   exitTutorial,
   UNIFIED_TUTORIAL_STEPS,
   UNIFIED_TUTORIAL_STEP_COUNT,
-} from '../../example-games/main-street/TutorialFlow';
-import { MARKET_TOTAL_SLOTS } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/TutorialFlow';
+import { MARKET_TOTAL_SLOTS } from '../../src/MainStreetCards';
 
 // ── Helpers ───────────────────────────────────────────────────
 

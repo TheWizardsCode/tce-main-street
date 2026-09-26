@@ -14,9 +14,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildCardTooltipInfo } from '../../example-games/main-street/MainStreetFormatting';
-import { MEDIUM_PRESET } from '../../example-games/main-street/MainStreetDifficulty';
-import { getEventTemplates } from '../../example-games/main-street/MainStreetCards';
+import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
+import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
+import { getEventTemplates } from '../../src/MainStreetCards';
 
 const events = getEventTemplates();
 const byId = new Map(events.map(event => [event.id, event]));

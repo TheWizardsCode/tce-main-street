@@ -26,7 +26,7 @@ import {
   getUpgradeTemplates,
   type BusinessCard,
   type UpgradeCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Boot helpers (mirrors MainStreetScene.browser.test.ts) ──
 
@@ -38,7 +38,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

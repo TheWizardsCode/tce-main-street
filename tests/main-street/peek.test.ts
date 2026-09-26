@@ -17,16 +17,16 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   endTurnHeadless,
   executeAction,
   peekIncidentDeck,
-} from '../../example-games/main-street/MainStreetEngine';
-import { createStaffDeck, getCsvRows } from '../../example-games/main-street/MainStreetCards';
-import { enumerateLegalActions } from '../../example-games/main-street/MainStreetAiStrategy';
-import { peekIncidentDeckCommand } from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetEngine';
+import { createStaffDeck, getCsvRows } from '../../src/MainStreetCards';
+import { enumerateLegalActions } from '../../src/MainStreetAiStrategy';
+import { peekIncidentDeckCommand } from '../../src/MainStreetCommands';
 
 // ── Helpers ─────────────────────────────────────────────────
 

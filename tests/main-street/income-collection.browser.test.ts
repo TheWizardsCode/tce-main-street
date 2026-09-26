@@ -27,9 +27,9 @@ import { waitForScene } from '@core-tests/helpers/waitForScene';
 import {
   getBusinessTemplates,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
-import { UNIFIED_TUTORIAL_STEPS } from '../../example-games/main-street/TutorialFlow';
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
+} from '../../src/MainStreetCards';
+import { UNIFIED_TUTORIAL_STEPS } from '../../src/TutorialFlow';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
 
 /**
  * Waits until the street container stops being re-rendered (boot-time SVG
@@ -69,7 +69,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;
@@ -96,7 +96,7 @@ async function makeIncidentsNone(game: Phaser.Game): Promise<void> {
 async function makeIncidentsNonChoiceImpl(game: Phaser.Game): Promise<void> {
   const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
   const state = scene.state as { incidentDeck: Array<{ id: string }> };
-  const templates = (await import('../../example-games/main-street/MainStreetCards')).getEventTemplates();
+  const templates = (await import('../../src/MainStreetCards')).getEventTemplates();
   const safeIds = ['evt-award', 'evt-good-press', 'evt-graffiti-art', 'evt-street-cleaning'];
   const picked = templates.filter((t) => safeIds.includes(t.id));
   state.incidentDeck.length = 0;

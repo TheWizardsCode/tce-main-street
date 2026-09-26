@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
@@ -22,13 +22,13 @@ import {
   computeScore,
   type PlayerAction,
   type TurnResult,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   getAffordableBusinessCards,
   getAffordableUpgradeCards,
   getEmptySlots,
   canPurchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 // ── Canonical smoke seeds ─────────────────────────────────────
 

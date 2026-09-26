@@ -18,14 +18,14 @@ import {
   deserializeMainStreetState,
   type MainStreetState,
   type MainStreetSerializedState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   resolveIncident, resolveEventChoice,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   INCIDENT_QUEUE_SIZE,
   type EventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

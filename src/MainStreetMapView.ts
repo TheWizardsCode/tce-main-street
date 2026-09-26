@@ -31,7 +31,7 @@
  * `setStreetPlayableLattice()` (see the viewport-rendering / save-load slices
  * of the same epic).
  *
- * @module example-games/main-street/MainStreetMapView
+ * @module src/MainStreetMapView
  */
 
 import type { SceneLayout } from './scenes/MainStreetConstants';

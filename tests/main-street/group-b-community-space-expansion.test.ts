@@ -32,10 +32,10 @@ import {
   CARD_TEMPLATE_NAMES,
   type CommunitySpaceCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { validateCsvRows } from '@balance-cards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { applyCommunitySpaceOngoingCosts } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { applyCommunitySpaceOngoingCosts } from '../../src/MainStreetEngine';
 import { createSeededRng } from '@core-engine';
 
 // ── Design contract (from epic CG-0MSQE2NLX003ADIY, Group B) ──────────

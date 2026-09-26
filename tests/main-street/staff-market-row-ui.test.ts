@@ -13,7 +13,7 @@
  *   AC3  Staff tooltips show hire-relevant info (name, cost, +hand slots,
  *        ongoing cost, abilities).
  *   AC6  No orphaned `staffCardMarket` references remain in the UI layer
- *        (`example-games/main-street/scenes/` + shared `src/`).
+ *        (`src/scenes/` + shared `src/`).
  *
  * (AC1 rendering layout parity and AC5 tutorial loading are covered by the
  * browser suite: MainStreetScene.browser.test.ts and the tutorial E2E.)
@@ -25,14 +25,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
-import { buildCardTooltipInfo } from '../../example-games/main-street/MainStreetFormatting';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
+import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
-import { setupMainStreetGame as setupWithConfig } from '../../example-games/main-street/MainStreetState';
-import type { SynergyFormatConfig } from '../../example-games/main-street/MainStreetFormatting';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
+import { setupMainStreetGame as setupWithConfig } from '../../src/MainStreetState';
+import type { SynergyFormatConfig } from '../../src/MainStreetFormatting';
 
 // ── Mocks (mirrors illegal-afford-feedback.test.ts) ───────────
 
@@ -274,9 +274,9 @@ describe('AC3: staff tooltips show hire-relevant info', () => {
 
 describe('AC6: no orphaned staffCardMarket references in the UI layer', () => {
   const scannedRoots: Array<{ label: string; dir: string }> = [
-    { label: 'scenes', dir: 'example-games/main-street/scenes' },
-    { label: 'shared-ui', dir: 'src/ui' },
-    { label: 'core-engine', dir: 'src/core-engine' },
+    { label: 'scenes', dir: 'src/scenes' },
+    { label: 'shared-ui', dir: 'core/src/ui' },
+    { label: 'core-engine', dir: 'core/src/core-engine' },
   ];
 
   function collectTsFiles(dir: string, out: string[]): void {
@@ -301,7 +301,7 @@ describe('AC6: no orphaned staffCardMarket references in the UI layer', () => {
   it('the main-street scene/controller files never reached (sanity: files were scanned)', () => {
     // Guard against a refactor that moves the UI out of scenes/ — the sweep
     // above must keep covering the actual market surface.
-    const marker = join('example-games/main-street/scenes', 'MainStreetRenderer.ts');
+    const marker = join('src/scenes', 'MainStreetRenderer.ts');
     expect(statSync(marker).isFile()).toBe(true);
   });
 });

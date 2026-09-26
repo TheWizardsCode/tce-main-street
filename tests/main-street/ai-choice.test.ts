@@ -29,21 +29,21 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import type { EventCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetState';
+import type { EventCard } from '../../src/MainStreetCards';
 import {
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
-} from '../../example-games/main-street/MainStreetCards';
-import { processEndOfTurn } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetCards';
+import { processEndOfTurn } from '../../src/MainStreetEngine';
 import {
   decideEventChoice,
   resolveAiEventChoice,
-} from '../../example-games/main-street/MainStreetAiStrategy';
+} from '../../src/MainStreetAiStrategy';
 import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
-} from '../../example-games/main-street/MainStreetTranscript';
+} from '../../src/MainStreetTranscript';
 
 // ── Synthetic chain templates (registry for Hard lookups) ──
 

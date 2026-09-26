@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 // ── Boot helpers (mirrors peek.browser.test.ts) ──
 
@@ -29,7 +29,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

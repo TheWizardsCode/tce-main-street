@@ -60,12 +60,12 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, appendTurnNetRow, resolveIncident } from '../../example-games/main-street/MainStreetEngine';
-import { applyIncome, updateNeighborsOnPlacement } from '../../example-games/main-street/MainStreetAdjacency';
-import { applyReputationMultiplier, reputationCoinMultiplier } from '../../example-games/main-street/MainStreetDifficulty';
-import { buildCoinsTooltip } from '../../example-games/main-street/scenes/MainStreetHudTooltips';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, appendTurnNetRow, resolveIncident } from '../../src/MainStreetEngine';
+import { applyIncome, updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
+import { applyReputationMultiplier, reputationCoinMultiplier } from '../../src/MainStreetDifficulty';
+import { buildCoinsTooltip } from '../../src/scenes/MainStreetHudTooltips';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ───────────────────────────────────────────────────────
 

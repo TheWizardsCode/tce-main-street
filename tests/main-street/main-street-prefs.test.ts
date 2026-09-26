@@ -12,8 +12,8 @@ import {
   isBuyAndPlacePremiumDialogDismissed,
   setBuyAndPlacePremiumDialogDismissed,
   PREMIUM_DIALOG_DISMISSED_KEY,
-} from '../../example-games/main-street/MainStreetPrefs';
-import type { StorageLike } from '../../example-games/main-street/MainStreetPrefs';
+} from '../../src/MainStreetPrefs';
+import type { StorageLike } from '../../src/MainStreetPrefs';
 
 function createMockStorage(): StorageLike {
   const map = new Map<string, string>();

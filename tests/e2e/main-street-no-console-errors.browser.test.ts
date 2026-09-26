@@ -46,7 +46,7 @@ async function bootMainStreetGame(): Promise<Phaser.Game> {
   createContainer();
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
 
   const newGame = createMainStreetGame({

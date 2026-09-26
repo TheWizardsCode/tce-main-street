@@ -16,7 +16,7 @@
  * Pure TypeScript (no Phaser, no scene dependency) so the geometry is
  * unit-testable headless in `tests/main-street/synergy-visuals.test.ts`.
  *
- * @module example-games/main-street/scenes/synergyLineEndpoints
+ * @module src/scenes/synergyLineEndpoints
  */
 
 /**

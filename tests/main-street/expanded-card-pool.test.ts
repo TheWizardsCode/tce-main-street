@@ -21,11 +21,11 @@ import {
   synergyColor,
   type BusinessCard,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
-import { getPreset } from '../../example-games/main-street/MainStreetDifficulty';
-import { computeSynergyBonus, computeBusinessIncome } from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { GRID_SIZE } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
+import { getPreset } from '../../src/MainStreetDifficulty';
+import { computeSynergyBonus, computeBusinessIncome } from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { GRID_SIZE } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

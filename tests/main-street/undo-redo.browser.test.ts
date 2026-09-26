@@ -18,7 +18,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
-import type { MainStreetState } from '../../example-games/main-street/MainStreetState';
+import type { MainStreetState } from '../../src/MainStreetState';
 
 // ── Boot helpers (mirrors MainStreetScene.browser.test.ts) ──
 
@@ -68,7 +68,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForCondition(
     () => {
@@ -147,7 +147,7 @@ describe('MainStreet undo/redo feedback', () => {
     const state = s.state as MainStreetState;
     if (state.market.cards.length === 0) {
       state.phase = 'WeekStart';
-      const { executeWeekStart } = await import('../../example-games/main-street/MainStreetEngine');
+      const { executeWeekStart } = await import('../../src/MainStreetEngine');
       executeWeekStart(state);
     }
 
@@ -171,7 +171,7 @@ describe('MainStreet undo/redo feedback', () => {
 
     // Execute a real purchase through the scene's own undo manager (the same
     // path the turn controller uses for clicks).
-    const { buyBusinessCommand } = await import('../../example-games/main-street/MainStreetCommands');
+    const { buyBusinessCommand } = await import('../../src/MainStreetCommands');
     const cmd = buyBusinessCommand(state, affordable!.id, emptySlot);
     s.undoManager.execute(cmd);
 

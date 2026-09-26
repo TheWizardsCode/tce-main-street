@@ -43,8 +43,8 @@ const gridRegistry = vi.hoisted(() => ({
   addLog: [] as Array<{ handleIndex: number; count: number }>,
 }));
 
-vi.mock('../../example-games/main-street/coin-grid', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../example-games/main-street/coin-grid')>();
+vi.mock('../../src/coin-grid', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/coin-grid')>();
   return {
     ...actual,
     createCoinGrid: vi.fn(() => {
@@ -82,9 +82,9 @@ vi.mock('../../example-games/main-street/coin-grid', async (importOriginal) => {
   };
 });
 
-import { MainStreetAnimator } from '../../example-games/main-street/scenes/MainStreetAnimator';
-import type { SlotPhaseBreakdown } from '../../example-games/main-street/MainStreetAdjacency';
-import type { IncomePhaseKey } from '../../example-games/main-street/scenes/MainStreetAnimator';
+import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
+import type { SlotPhaseBreakdown } from '../../src/MainStreetAdjacency';
+import type { IncomePhaseKey } from '../../src/scenes/MainStreetAnimator';
 
 interface ScheduledCall {
   delay: number;

@@ -24,15 +24,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   GRID_SIZE,
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ const SOLD_SLOTS_FEATURE = 'soldSlots' in (setupMainStreetGame() as any);
 let SELL_API_AVAILABLE = false;
 (async () => {
   try {
-    const engine = await import('../../example-games/main-street/MainStreetEngine');
+    const engine = await import('../../src/MainStreetEngine');
     SELL_API_AVAILABLE =
       typeof (engine as any).canSellBusiness === 'function' &&
       typeof (engine as any).executeSell === 'function';
@@ -60,7 +60,7 @@ let SELL_API_AVAILABLE = false;
 let SELL_MARKET_AVAILABLE = false;
 (async () => {
   try {
-    const market = await import('../../example-games/main-street/MainStreetMarket');
+    const market = await import('../../src/MainStreetMarket');
     SELL_MARKET_AVAILABLE = typeof (market as any).sellBusiness === 'function';
   } catch {
     // not implemented yet
@@ -71,7 +71,7 @@ let SELL_MARKET_AVAILABLE = false;
 let SELL_COMMAND_AVAILABLE = false;
 (async () => {
   try {
-    const cmds = await import('../../example-games/main-street/MainStreetCommands');
+    const cmds = await import('../../src/MainStreetCommands');
     SELL_COMMAND_AVAILABLE = typeof (cmds as any).sellBusinessCommand === 'function';
   } catch {
     // not implemented yet
@@ -150,7 +150,7 @@ describe('MainStreet Sell Cards', () => {
     });
 
     it.runIf(SOLD_SLOTS_FEATURE)('should serialize and deserialize soldSlots', async () => {
-      const mod = await import('../../example-games/main-street/MainStreetState');
+      const mod = await import('../../src/MainStreetState');
       const serializeMainStreetState = (mod as any).serializeMainStreetState;
       const deserializeMainStreetState = (mod as any).deserializeMainStreetState;
 
@@ -175,7 +175,7 @@ describe('MainStreet Sell Cards', () => {
         const card = placeCardOnGrid(state, 0);
         if (!card) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const result = (engine as any).canSellBusiness(state, 0);
         expect(result.legal).toBe(true);
       },
@@ -184,7 +184,7 @@ describe('MainStreet Sell Cards', () => {
     it.runIf(SELL_API_AVAILABLE)(
       'should reject selling from an empty slot',
       async () => {
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const result = (engine as any).canSellBusiness(state, 0);
         expect(result.legal).toBe(false);
         expect(result.reason).toBeTruthy();
@@ -200,7 +200,7 @@ describe('MainStreet Sell Cards', () => {
         // Force phase to not be MarketPhase
         state.phase = 'IncomePhase';
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const result = (engine as any).canSellBusiness(state, 0);
         expect(result.legal).toBe(false);
         expect(result.reason).toContain('MarketPhase');
@@ -213,7 +213,7 @@ describe('MainStreet Sell Cards', () => {
         const card = placeCardOnGrid(state, 0);
         if (!card) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const result = (engine as any).canSellBusiness(state, 0, true); // isPlacingMode = true
         expect(result.legal).toBe(false);
         expect(result.reason).toContain('placement');
@@ -229,7 +229,7 @@ describe('MainStreet Sell Cards', () => {
         // Mark as sold
         (state as any).soldSlots[0] = true;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const result = (engine as any).canSellBusiness(state, 0);
         expect(result.legal).toBe(false);
         expect(result.reason).toContain('already');
@@ -254,7 +254,7 @@ describe('MainStreet Sell Cards', () => {
         const coinsBefore = state.resourceBank.coins;
         const expectedRefund = Math.ceil(card.cost * SELL_REFUND_RATIO);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         expect(state.resourceBank.coins).toBe(coinsBefore + expectedRefund);
@@ -278,7 +278,7 @@ describe('MainStreet Sell Cards', () => {
         // We need the upgrade costs to be looked up somewhere. For this test,
         // we'll check the function correctly uses the upgrade costs.
         // The sellBusiness function needs to be told or look up upgrade costs.
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
 
         if (typeof (market as any).UPGRADE_COST_MAP !== 'undefined') {
           // If there's a global upgrade cost map
@@ -310,7 +310,7 @@ describe('MainStreet Sell Cards', () => {
         const coinsBefore = state.resourceBank.coins;
         const expectedRefund = Math.ceil(csCard.cost * SELL_REFUND_RATIO);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         expect(state.resourceBank.coins).toBe(coinsBefore + expectedRefund);
@@ -341,7 +341,7 @@ describe('MainStreet Sell Cards', () => {
         const coinsBefore = state.resourceBank.coins;
         const expectedRefund = Math.ceil(oddCost * SELL_REFUND_RATIO); // 7 * 1.5 = 10.5, ceil = 11
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         expect(state.resourceBank.coins).toBe(coinsBefore + expectedRefund);
@@ -359,7 +359,7 @@ describe('MainStreet Sell Cards', () => {
         const card = placeCardOnGrid(state, 0);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         // Card should still be on the grid
@@ -374,7 +374,7 @@ describe('MainStreet Sell Cards', () => {
         const card = placeCardOnGrid(state, 0);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         // Slot should be marked as sold
@@ -399,7 +399,7 @@ describe('MainStreet Sell Cards', () => {
         state.market.cards.splice(marketIdx, 1);
         state.streetGrid[1] = { ...card2 } as BusinessCard;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         // Only slot 0 should be marked as sold
@@ -419,10 +419,10 @@ describe('MainStreet Sell Cards', () => {
         if (!card) return;
 
         const { computeIncome } =
-          await import('../../example-games/main-street/MainStreetAdjacency');
+          await import('../../src/MainStreetAdjacency');
 
         // Sell the card
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
 
         // Income should now be 0 since the card is sold
@@ -458,7 +458,7 @@ describe('MainStreet Sell Cards', () => {
 
         // Compute synergy before sale
         const { computeSynergyBonus } =
-          await import('../../example-games/main-street/MainStreetAdjacency');
+          await import('../../src/MainStreetAdjacency');
         const synergyBefore = computeSynergyBonus(
           state.streetGrid,
           1,
@@ -467,7 +467,7 @@ describe('MainStreet Sell Cards', () => {
         );
 
         // Sell the first card
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).sellBusiness(state, 0);
         const soldSlots: boolean[] = (state as any).soldSlots;
 
@@ -491,7 +491,7 @@ describe('MainStreet Sell Cards', () => {
         if (!card) return;
 
         const { computeReputationPerTurn } =
-          await import('../../example-games/main-street/MainStreetAdjacency');
+          await import('../../src/MainStreetAdjacency');
 
         // Force the card to have reputation value for the test
         (state.streetGrid[0] as any).reputationPerTurn = 1;
@@ -523,7 +523,7 @@ describe('MainStreet Sell Cards', () => {
         const coinsBefore = state.resourceBank.coins;
 
         // Execute sell command
-        const cmds = await import('../../example-games/main-street/MainStreetCommands');
+        const cmds = await import('../../src/MainStreetCommands');
         const cmd = (cmds as any).sellBusinessCommand(state, 0);
 
         // Verify command was created
@@ -555,7 +555,7 @@ describe('MainStreet Sell Cards', () => {
         const card = placeCardOnGrid(state, 0);
         if (!card) return;
 
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
         const coinsBefore = state.resourceBank.coins;
 
         (engine as any).executeSell(state, 0);
@@ -569,7 +569,7 @@ describe('MainStreet Sell Cards', () => {
     it.runIf(SELL_API_AVAILABLE)(
       'should throw when selling an empty slot via engine action',
       async () => {
-        const engine = await import('../../example-games/main-street/MainStreetEngine');
+        const engine = await import('../../src/MainStreetEngine');
 
         expect(() => {
           (engine as any).executeSell(state, 0);
@@ -594,7 +594,7 @@ describe('MainStreet Sell Cards', () => {
     it.runIf(SOLD_SLOTS_FEATURE)(
       'should serialise soldSlots in save/load cycle',
       async () => {
-        const mod = await import('../../example-games/main-street/MainStreetState');
+        const mod = await import('../../src/MainStreetState');
         const serializeMainStreetState = (mod as any).serializeMainStreetState;
         const deserializeMainStreetState = (mod as any).deserializeMainStreetState;
 
@@ -634,7 +634,7 @@ describe('MainStreet Sell Cards', () => {
         const coinsBefore = state.resourceBank.coins;
         const expectedRefund = Math.ceil((cardCost + totalUpgradeCost) * SELL_REFUND_RATIO);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         try {
           (market as any).sellBusiness(state, 0);
           expect(state.resourceBank.coins).toBe(coinsBefore + expectedRefund);

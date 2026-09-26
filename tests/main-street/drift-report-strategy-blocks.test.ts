@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 
-import { selectBaselineBlock, currentCommitSha, currentCommitShaFull } from '../../example-games/main-street/scripts/balance/baseline-blocks';
-import type { MonteBaseline } from '../../example-games/main-street/scripts/balance/baseline-blocks';
+import { selectBaselineBlock, currentCommitSha, currentCommitShaFull } from '../../src/scripts/balance/baseline-blocks';
+import type { MonteBaseline } from '../../src/scripts/balance/baseline-blocks';
 
 /**
  * Baseline-block selection for the Monte Carlo drift tooling

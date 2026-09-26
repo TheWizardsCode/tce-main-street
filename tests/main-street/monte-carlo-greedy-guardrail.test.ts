@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runAllCombinations } from '../../example-games/main-street/MainStreetMonteCarlo';
+import { runAllCombinations } from '../../src/MainStreetMonteCarlo';
 
 /**
  * Per-difficulty design-intent guardrails (CG-0MSRKN325004ELH2).

@@ -219,7 +219,7 @@ export function buildCsvRows(tsContent: string): string[] {
 
 const scriptName = 'generate-card-csv.ts';
 if (process.argv[1]?.endsWith(scriptName)) {
-  const tsPath = process.argv[2] || resolve(process.cwd(), 'example-games/main-street/MainStreetCards.ts');
+  const tsPath = process.argv[2] || resolve(process.cwd(), 'src/MainStreetCards.ts');
   const ts = readFileSync(tsPath, 'utf8');
 
   const rows = buildCsvRows(ts);
@@ -231,7 +231,7 @@ if (process.argv[1]?.endsWith(scriptName)) {
   console.log(`Parsed ${extractArrayObjects(ts, 'STAFF_CARD_TEMPLATES').length} staff templates`);
 
   const csv = [COLS.join(','), ...rows].join('\n') + '\n';
-  const outPath = resolve(process.cwd(), 'example-games/main-street/card-data.csv');
+  const outPath = resolve(process.cwd(), 'src/card-data.csv');
   writeFileSync(outPath, csv, 'utf8');
   console.log(`Wrote ${outPath} (${rows.length} data rows)`);
 }

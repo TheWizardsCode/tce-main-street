@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildCsvRows, COLS } from '../../example-games/main-street/scripts/generate-card-csv';
+import { buildCsvRows, COLS } from '../../src/scripts/generate-card-csv';
 
 // ---------------------------------------------------------------------------
 // CSV helpers (test-only; production parsing uses src/core-engine/CsvLoader)
@@ -73,7 +73,7 @@ function parseLine(line: string): string[] {
 
 const CARD_CSV_PATH = resolve(
   __dirname,
-  '../../example-games/main-street/card-data.csv',
+  '../../src/card-data.csv',
 );
 
 // Representative template content covering all five card families.

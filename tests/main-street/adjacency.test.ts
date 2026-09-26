@@ -19,13 +19,13 @@ import {
   computeIncome,
   applyIncome,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import {
   GRID_SIZE,
   SYNERGY_BONUS_PER_NEIGHBOR,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
   return {

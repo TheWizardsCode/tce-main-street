@@ -20,24 +20,24 @@ import {
   setupMainStreetGame,
   serializeMainStreetState,
   deserializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
   endTurnHeadless,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   getStaffCardTemplates,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   moveEventToHandCommand,
   playEventCommand,
-} from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetCommands';
 import {
   canPlayEvent,
   canPurchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 // ── Helpers ─────────────────────────────────────────────────

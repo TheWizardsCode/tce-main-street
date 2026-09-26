@@ -10,9 +10,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 

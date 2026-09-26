@@ -5,7 +5,7 @@ import {
   gini,
   hhi,
   confidenceInterval,
-} from '../../../example-games/main-street/scripts/balance/engine/statistics';
+} from '../../../src/scripts/balance/engine/statistics';
 
 describe('median', () => {
   it('returns NaN for empty array', () => {

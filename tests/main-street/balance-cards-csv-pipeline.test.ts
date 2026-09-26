@@ -27,7 +27,7 @@ import {
   validateRow,
 } from '@balance-cards';
 
-const CSV_PATH = resolve(process.cwd(), 'example-games/main-street/card-data.csv');
+const CSV_PATH = resolve(process.cwd(), 'src/card-data.csv');
 
 describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
   it('reads the real 30-column card-data.csv without a column-count crash', () => {

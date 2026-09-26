@@ -16,8 +16,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { setupMainStreetGame, refillSingleRowMarket } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
+import { setupMainStreetGame, refillSingleRowMarket } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 
 // ── Helpers ─────────────────────────────────────────────────
 

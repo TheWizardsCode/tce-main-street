@@ -9,11 +9,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import { mainStreetStateSerializer } from '../../example-games/main-street/MainStreetSaveLoad';
-import { computeCsvChecksum } from '../../example-games/main-street/CsvChecksum';
-import { generateCardSvgFromCsvRow } from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import { mainStreetStateSerializer } from '../../src/MainStreetSaveLoad';
+import { computeCsvChecksum } from '../../src/CsvChecksum';
+import { generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 // ---------------------------------------------------------------------------
 // Tests for AC1: CSV checksum computation stability

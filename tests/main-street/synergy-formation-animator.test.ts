@@ -33,10 +33,10 @@ vi.mock('@ui', () => ({
   moveGameObject,
 }));
 
-import { MainStreetAnimator } from '../../example-games/main-street/scenes/MainStreetAnimator';
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
-import { synergyLineEndpoints } from '../../example-games/main-street/scenes/synergyLineEndpoints';
-import { diffNewSynergyPairs, type SynergyPair } from '../../example-games/main-street/MainStreetAdjacency';
+import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
+import { synergyLineEndpoints } from '../../src/scenes/synergyLineEndpoints';
+import { diffNewSynergyPairs, type SynergyPair } from '../../src/MainStreetAdjacency';
 
 // ── Mock scene helpers ──────────────────────────────────────
 

@@ -41,14 +41,14 @@ import { page } from '@vitest/browser/context';
 import {
   UNIFIED_TUTORIAL_STEPS,
   type TutorialHighlightZone,
-} from '../../example-games/main-street/TutorialFlow';
-import { STANDARD_TUTORIAL_SCENARIO } from '../../example-games/main-street/TutorialScenario';
-import { MARKET_TOTAL_SLOTS } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/TutorialFlow';
+import { STANDARD_TUTORIAL_SCENARIO } from '../../src/TutorialScenario';
+import { MARKET_TOTAL_SLOTS } from '../../src/MainStreetCards';
 import {
   CHALLENGE_LINE_H,
   CHALLENGE_PAD,
   CHALLENGE_TITLE_H,
-} from '../../example-games/main-street/scenes/MainStreetConstants';
+} from '../../src/scenes/MainStreetConstants';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ async function bootGame(): Promise<void> {
   document.body.appendChild(container);
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
   game = createMainStreetGame({ type: Phaser.CANVAS, parent: 'game-container', width: 1280, height: 720 });
   await waitForScene(game, 'MainStreetScene');

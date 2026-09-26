@@ -15,17 +15,17 @@ import {
   setupMainStreetGame,
   syncResourceBankToLedger,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import { buyAndPlaceBusinessCommand } from '../../example-games/main-street/MainStreetCommands';
+} from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import { buyAndPlaceBusinessCommand } from '../../src/MainStreetCommands';
 import {
   CHALLENGE_TEMPLATES,
   type ActiveChallenge,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 import {
   GRID_SIZE,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 // ── Helpers ─────────────────────────────────────────────────

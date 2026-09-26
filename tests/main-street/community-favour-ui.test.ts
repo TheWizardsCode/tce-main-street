@@ -10,8 +10,8 @@ import { describe, it, expect } from 'vitest';
 
 import { parseScreenLayoutDocument } from '@ui/screen-layout-schema';
 import { anchorPoint } from '@ui/screen-layout';
-import layoutJson from '../../example-games/main-street/layouts/main-street.layout.json';
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+import layoutJson from '../../src/layouts/main-street.layout.json';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 
 // ── AC1: SLL zones exist and are valid ──────────────────────
 

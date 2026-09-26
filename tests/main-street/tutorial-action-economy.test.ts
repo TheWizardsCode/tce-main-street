@@ -31,7 +31,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { UNIFIED_TUTORIAL_STEPS } from '../../example-games/main-street/TutorialFlow';
+import { UNIFIED_TUTORIAL_STEPS } from '../../src/TutorialFlow';
 
 /**
  * Action types that consume one daily action when executed through

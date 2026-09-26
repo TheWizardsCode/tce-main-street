@@ -32,8 +32,8 @@ vi.mock('@ui', () => ({
   moveGameObject,
 }));
 
-import { MainStreetAnimator } from '../../example-games/main-street/scenes/MainStreetAnimator';
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
+import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
 
 // ── Mock scene helpers ──────────────────────────────────────
 

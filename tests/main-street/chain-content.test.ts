@@ -21,7 +21,7 @@ import {
   type EventCard,
   isDurationEventCard,
   getEventTemplates,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 type Card = EventCard & { id: string };
 

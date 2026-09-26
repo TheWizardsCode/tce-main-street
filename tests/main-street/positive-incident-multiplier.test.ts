@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createEventDeck } from '../../example-games/main-street/MainStreetCards';
+import { createEventDeck } from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
 
 describe('Positive Incident Multiplier', () => {

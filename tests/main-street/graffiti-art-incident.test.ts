@@ -29,10 +29,10 @@ import {
   CARD_TEMPLATE_NAMES,
   incidentPolarity,
   isDurationEventCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { validateCsvRows } from '@balance-cards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { resolveEvent } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { resolveEvent } from '../../src/MainStreetEngine';
 import { createSeededRng } from '@core-engine';
 
 // ── Design contract ───────────────────────────────────────────────────

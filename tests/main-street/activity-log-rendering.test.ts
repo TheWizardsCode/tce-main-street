@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { LOG_TITLE_H, LOG_LINE_H, LOG_COLORS } from '../../example-games/main-street/scenes/MainStreetConstants';
+import { LOG_TITLE_H, LOG_LINE_H, LOG_COLORS } from '../../src/scenes/MainStreetConstants';
 
 // ── Test helper: simulate the log rendering logic ───────────
 

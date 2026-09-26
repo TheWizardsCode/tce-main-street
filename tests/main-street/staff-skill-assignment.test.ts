@@ -28,7 +28,7 @@ import {
   STAFF_SKILL_CATALOG,
   type SkillCategory,
   type SpecializationSkill,
-} from '../../example-games/main-street/MainStreetStaffSkills';
+} from '../../src/MainStreetStaffSkills';
 
 // ── Helpers ─────────────────────────────────────────────────
 

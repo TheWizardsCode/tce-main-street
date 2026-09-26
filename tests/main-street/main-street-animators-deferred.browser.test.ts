@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
-import { recalculateCard } from '../../example-games/main-street/MainStreetAdjacency';
+import { recalculateCard } from '../../src/MainStreetAdjacency';
 
 let game: Phaser.Game | null = null;
 
@@ -23,7 +23,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const g = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForCondition(
     () => {

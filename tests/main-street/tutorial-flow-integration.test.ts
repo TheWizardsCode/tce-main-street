@@ -5,7 +5,7 @@ import {
   getCurrentStep,
   isRequiredAction,
   completeCurrentStep,
-} from '../../example-games/main-street/TutorialFlow';
+} from '../../src/TutorialFlow';
 
 describe('Tutorial Flow Integration - Business Selection', () => {
   it('T3 (select-business) should be active after T1-T2 confirms', () => {

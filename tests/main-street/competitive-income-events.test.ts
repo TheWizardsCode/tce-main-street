@@ -23,19 +23,19 @@ import {
   setupMainStreetGame,
   createCompetitiveState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import type { BusinessCard, CommunitySpaceCard, EventCard, DurationEventCard, StaffCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetState';
+import type { BusinessCard, CommunitySpaceCard, EventCard, DurationEventCard, StaffCard } from '../../src/MainStreetCards';
 import {
   applyCompetitiveIncome,
   updateNeighborsOnPlacement,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   applyCompetitiveOngoingCosts,
   applyCompetitiveEventEffects,
   executeCompetitiveTurn,
   executeFullTurn,
   resolveCompetitivePendingChoice,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Helpers ───────────────────────────────────────────────────────
 

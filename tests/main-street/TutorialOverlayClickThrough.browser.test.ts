@@ -67,7 +67,7 @@ import {
   waitForOverlayVisible,
   clickOverlayButtonByText,
 } from './helpers/main-street-tutorial-e2e';
-import { resolveMarketCardAnchor } from '../../example-games/main-street/scenes/MainStreetTutorialHints';
+import { resolveMarketCardAnchor } from '../../src/scenes/MainStreetTutorialHints';
 
 /**
  * Contention-safe caps for boot-path waits and hooks (CG-0MTG4EAVR005JB3W).

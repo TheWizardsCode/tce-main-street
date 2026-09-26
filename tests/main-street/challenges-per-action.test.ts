@@ -14,11 +14,11 @@ import {
   CHALLENGE_TEMPLATES,
   evaluateChallenges,
   type ActiveChallenge,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 // ── Helpers ─────────────────────────────────────────────
 

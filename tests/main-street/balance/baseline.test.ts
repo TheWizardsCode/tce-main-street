@@ -3,8 +3,8 @@ import {
   captureBaseline,
   loadBaseline,
   validateBaseline,
-} from '../../../example-games/main-street/scripts/balance/engine/baseline';
-import type { MonteCarloMetrics, MonteCarloRunSummary } from '../../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../../src/scripts/balance/engine/baseline';
+import type { MonteCarloMetrics, MonteCarloRunSummary } from '../../../src/MainStreetMonteCarlo';
 
 describe('validateBaseline', () => {
   it('accepts well-formed baseline object', () => {

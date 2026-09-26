@@ -31,13 +31,13 @@ import {
   type DurationEventCard,
   type IncidentPolarity,
   type SynergyType,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { validateCsvRows } from '@balance-cards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { resolveIncident, endTurnHeadless, executeWeekStart, resolveEvent } from '../../example-games/main-street/MainStreetEngine';
-import { applyIncome, recalculateCard } from '../../example-games/main-street/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { resolveIncident, endTurnHeadless, executeWeekStart, resolveEvent } from '../../src/MainStreetEngine';
+import { applyIncome, recalculateCard } from '../../src/MainStreetAdjacency';
 import { createSeededRng } from '@core-engine';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Design contract (from epic CG-0MSQE2NLX003ADIY, Group D) ──────────
 

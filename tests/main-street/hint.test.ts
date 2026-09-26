@@ -12,19 +12,19 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import type { PlayerAction, BuyBusinessAction } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import type { PlayerAction, BuyBusinessAction } from '../../src/MainStreetEngine';
 import {
   generateHint,
   buildRationale,
-} from '../../example-games/main-street/MainStreetHint';
+} from '../../src/MainStreetHint';
 import {
   enumerateAndScoreActions,
   GreedyStrategy,
-} from '../../example-games/main-street/MainStreetAiStrategy';
-import type { BusinessCard, UpgradeCard, EventCard } from '../../example-games/main-street/MainStreetCards';
-import { createBusinessDeck } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetAiStrategy';
+import type { BusinessCard, UpgradeCard, EventCard } from '../../src/MainStreetCards';
+import { createBusinessDeck } from '../../src/MainStreetCards';
 
 // ── Helpers ──────────────────────────────────────────────────
 

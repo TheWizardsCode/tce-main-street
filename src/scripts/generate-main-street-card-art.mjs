@@ -3,9 +3,9 @@
 /**
  * Main Street Card Art Map Generator
  *
- * Builds `example-games/main-street/card-art-map.json` from the committed
+ * Builds `src/card-art-map.json` from the committed
  * high-resolution card sprites
- * (`example-games/main-street/sprites/<Name>_1024_x_1024.png`).
+ * (`src/sprites/<Name>_1024_x_1024.png`).
  * The map is consumed by both the runtime TS generator
  * (`MainStreetCardArt.ts`) and the static SVG generator
  * (`scripts/generate-main-street-card-svgs.mjs`).
@@ -34,10 +34,10 @@
  * remain the source of truth.
  *
  * Inputs:
- *   example-games/main-street/sprites/<Name>_1024_x_1024.png
+ *   src/sprites/<Name>_1024_x_1024.png
  *
  * Outputs:
- *   example-games/main-street/card-art-map.json
+ *   src/card-art-map.json
  *
  * Usage:
  *   node scripts/generate-main-street-card-art.mjs

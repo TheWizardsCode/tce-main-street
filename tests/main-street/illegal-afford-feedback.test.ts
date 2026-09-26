@@ -24,8 +24,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 

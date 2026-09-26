@@ -20,15 +20,15 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   getSkill,
   BASELINE_SKILL_ID,
   deserializeSkillIds,
-} from '../../example-games/main-street/MainStreetStaffSkills';
-import { executeWeekStart, endTurnHeadless, hireStaffCard } from '../../example-games/main-street/MainStreetEngine';
-import { refreshMarket } from '../../example-games/main-street/MainStreetMarket';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetStaffSkills';
+import { executeWeekStart, endTurnHeadless, hireStaffCard } from '../../src/MainStreetEngine';
+import { refreshMarket } from '../../src/MainStreetMarket';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

@@ -8,9 +8,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { resolveEvent } from '../../example-games/main-street/MainStreetEngine';
-import type { DurationEventCard } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { resolveEvent } from '../../src/MainStreetEngine';
+import type { DurationEventCard } from '../../src/MainStreetCards';
 
 /**
  * Creates a sample DurationEventCard for testing.

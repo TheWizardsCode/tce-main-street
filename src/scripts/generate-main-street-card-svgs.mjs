@@ -321,12 +321,12 @@ ${iconMarkup}
  * Can be called programmatically or used as a CLI (when run directly).
  *
  * @param {object} [options]
- * @param {string} [options.csvPath] - Path to card-data.csv (default: 'example-games/main-street/card-data.csv')
+ * @param {string} [options.csvPath] - Path to card-data.csv (default: 'src/card-data.csv')
  * @param {string} [options.outputDir] - Output directory for SVGs (default: 'public/assets/games/main-street/svg/cards')
  * @returns {{ checksum: string, count: number }} The CSV checksum and number of SVGs generated.
  */
 export function regenerateCardSvgs(options = {}) {
-  const csvPath = path.resolve(options.csvPath || 'example-games/main-street/card-data.csv');
+  const csvPath = path.resolve(options.csvPath || 'src/card-data.csv');
   const outDir = path.resolve(options.outputDir || 'public/assets/games/main-street/svg/cards');
 
   // Read and parse CSV

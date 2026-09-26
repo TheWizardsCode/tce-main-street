@@ -19,12 +19,12 @@ import {
   setupMainStreetGame,
   type MainStreetState,
   type MainStreetCampaignProgress,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   TIER_DEFINITIONS,
   ORDERED_TIER_DEFINITIONS,
   deriveUnlockedCardIds,
-} from '../../example-games/main-street/MainStreetTiers';
+} from '../../src/MainStreetTiers';
 import {
   createDefaultCampaignProgress,
   mainStreetCampaignSerializer,
@@ -32,16 +32,16 @@ import {
   saveCampaignProgress,
   loadCampaignProgress,
   MAIN_STREET_CAMPAIGN_SCHEMA_VERSION,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 import {
   createBusinessDeck,
   createCommunitySpaceDeck,
   createEventDeck,
   createUpgradeDeck,
   createStaffDeck,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
-import { CHALLENGE_TEMPLATES } from '../../example-games/main-street/MainStreetChallenges';
+import { CHALLENGE_TEMPLATES } from '../../src/MainStreetChallenges';
 
 // ── Test Helpers ────────────────────────────────────────────
 

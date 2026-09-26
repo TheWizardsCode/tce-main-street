@@ -18,22 +18,22 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type BusinessCard,
   type CommunitySpaceCard,
   MARKET_TOTAL_SLOTS,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
   processEndOfTurn,
   endTurnHeadless,
   executeAction,
   cycleMarketCards,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   refillMarket,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 // ── Feature Detection ───────────────────────────────────────
 

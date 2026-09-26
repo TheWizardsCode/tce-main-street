@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 import { computeMainStreetLayoutGeometry } from './helpers/mainStreetLayoutGeometry';
 
 describe('action counter geometry (CG-0MUFAITX70081W41)', () => {

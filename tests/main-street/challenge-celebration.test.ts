@@ -8,19 +8,19 @@ import { describe, it, expect } from 'vitest';
 
 import {
   CHALLENGE_TEMPLATES,
-} from '../../example-games/main-street/MainStreetChallenges';
+} from '../../src/MainStreetChallenges';
 
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 import {
   endTurnHeadless,
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
-import { type BusinessCard, GRID_SIZE } from '../../example-games/main-street/MainStreetCards';
+import { type BusinessCard, GRID_SIZE } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -166,14 +166,14 @@ describe('Challenge Celebration Integration', () => {
 
   describe('SFX_KEYS.CELEBRATE', () => {
     it('should have the celebration SFX key exported from MainStreetConstants', async () => {
-      const { SFX_KEYS } = await import('../../example-games/main-street/scenes/MainStreetConstants');
+      const { SFX_KEYS } = await import('../../src/scenes/MainStreetConstants');
       expect(SFX_KEYS.CELEBRATE).toBe('sfx-challenge-complete');
     });
   });
 
   describe('sfx-tf-mapping', () => {
     it('should include a mapping for sfx-challenge-complete', async () => {
-      const { MAIN_STREET_TF_SFX_MAPPING } = await import('../../example-games/main-street/sfx-tf-mapping');
+      const { MAIN_STREET_TF_SFX_MAPPING } = await import('../../src/sfx-tf-mapping');
       expect(MAIN_STREET_TF_SFX_MAPPING['sfx-challenge-complete']).toBeDefined();
       expect(typeof MAIN_STREET_TF_SFX_MAPPING['sfx-challenge-complete']).toBe('string');
     });

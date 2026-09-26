@@ -27,8 +27,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { TUTORIAL_STATE_STORAGE_KEY } from '../../example-games/main-street/TutorialState';
-import { canPurchaseBusiness, getEmptySlots } from '../../example-games/main-street/MainStreetMarket';
+import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
+import { canPurchaseBusiness, getEmptySlots } from '../../src/MainStreetMarket';
 
 const GAME_W = 1280;
 const GAME_H = 720;
@@ -79,7 +79,7 @@ async function bootGame(): Promise<Phaser.Game> {
   document.body.appendChild(container);
 
   const { createMainStreetGame } = await import(
-    '../../example-games/main-street/createMainStreetGame'
+    '../../src/createMainStreetGame'
   );
   const game = createMainStreetGame({
     type: Phaser.CANVAS,

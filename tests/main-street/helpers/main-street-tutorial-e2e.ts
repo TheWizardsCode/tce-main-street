@@ -13,8 +13,8 @@
 import Phaser from 'phaser';
 import { page } from '@vitest/browser/context';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { advanceTutorialStep, getCurrentStep, UNIFIED_TUTORIAL_STEPS } from '../../../example-games/main-street/TutorialFlow';
-import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../../example-games/main-street/MainStreetPrefs';
+import { advanceTutorialStep, getCurrentStep, UNIFIED_TUTORIAL_STEPS } from '../../../src/TutorialFlow';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../../src/MainStreetPrefs';
 
 // ── Constants ────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ async function attemptBoot(cycleNumber: number, attempt: number): Promise<Phaser
   url.searchParams.set('tutorial', '1');
   window.history.replaceState({}, '', url.toString());
   const { createMainStreetGame } = await import(
-    '../../../example-games/main-street/createMainStreetGame'
+    '../../../src/createMainStreetGame'
   );
   const game = createMainStreetGame({ type: Phaser.CANVAS, parent: 'game-container', width: 1280, height: 720 });
   lastErrorBootGame = game;

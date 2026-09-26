@@ -18,7 +18,7 @@ import {
   DRAG_TRANSFER_MS_PER_PX,
   DRAG_TRANSFER_DURATION_MIN_MS,
   DRAG_TRANSFER_DURATION_MAX_MS,
-} from '../../example-games/main-street/scenes/MainStreetConstants';
+} from '../../src/scenes/MainStreetConstants';
 
 describe('computeDragTransferDuration', () => {
   it('is proportional to the distance travelled (k ms per px)', () => {

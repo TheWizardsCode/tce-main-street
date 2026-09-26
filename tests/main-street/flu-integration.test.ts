@@ -11,15 +11,15 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState, type MainStreetState } from '../../src/MainStreetState';
 import {
   endTurnHeadless,
   executeWeekStart,
   resolveIncident,
-} from '../../example-games/main-street/MainStreetEngine';
-import { runMonteCarlo } from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetEngine';
+import { runMonteCarlo } from '../../src/MainStreetMonteCarlo';
 import { createActiveEffect } from '@core-engine/ActiveEffect';
-import type { EventCard, BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import type { EventCard, BusinessCard } from '../../src/MainStreetCards';
 
 /**
  * Creates a minimal BusinessCard for test grid placement.

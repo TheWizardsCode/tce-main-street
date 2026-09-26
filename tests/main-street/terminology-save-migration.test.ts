@@ -16,14 +16,14 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   setupMainStreetGame,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   MAIN_STREET_SAVE_SCHEMA_VERSION,
   MAIN_STREET_CAMPAIGN_SCHEMA_VERSION,
   mainStreetStateSerializer,
   mainStreetCampaignSerializer,
   createDefaultCampaignProgress,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 
 /**
  * Build a pre-change (v1) serialized state by taking a current state and

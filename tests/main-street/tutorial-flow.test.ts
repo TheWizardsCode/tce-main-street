@@ -6,10 +6,10 @@ import {
   exitTutorial, completeCurrentStep, isOnStep, getCurrentStep,
   isRequiredAction, shouldAllowAction,
   resolveTutorialStepText, isSynergyAdjacentPlacement,
-} from '../../example-games/main-street/TutorialFlow';
-import type { BusinessCard, CommunitySpaceCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/TutorialFlow';
+import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { resetI18n, registerLocale } from '@core-engine/I18n';
-import { TUTORIAL_EN_BUNDLE } from '../../example-games/main-street/i18n/tutorial-en';
+import { TUTORIAL_EN_BUNDLE } from '../../src/i18n/tutorial-en';
 
 function findStep(id: string) { const s = UNIFIED_TUTORIAL_STEPS.find((s) => s.id === id); if (!s) throw new Error(`Step ${id} not found`); return s; }
 

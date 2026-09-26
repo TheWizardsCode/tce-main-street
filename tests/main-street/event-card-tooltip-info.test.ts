@@ -14,9 +14,9 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCardTooltipInfo,
   type CardTooltipInfoOptions,
-} from '../../example-games/main-street/MainStreetFormatting';
-import { MEDIUM_PRESET } from '../../example-games/main-street/MainStreetDifficulty';
-import type { EventCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetFormatting';
+import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
+import type { EventCard } from '../../src/MainStreetCards';
 
 // ── Helpers ──────────────────────────────────────────────────
 

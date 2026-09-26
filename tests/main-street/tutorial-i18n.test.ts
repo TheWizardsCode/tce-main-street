@@ -15,13 +15,13 @@ import {
   UNIFIED_TUTORIAL_STEPS,
   resolveTutorialStepText,
   tutorialKey,
-} from '../../example-games/main-street/TutorialFlow';
+} from '../../src/TutorialFlow';
 import {
   TUTORIAL_EN_BUNDLE,
   TUTORIAL_I18N_KEY_PREFIX,
-} from '../../example-games/main-street/i18n/tutorial-en';
+} from '../../src/i18n/tutorial-en';
 import { resetI18n, registerLocale, setLocale, t, getLocale, formatCurrency } from '@core-engine/I18n';
-import { getCsvRows, getBaseTypeId } from '../../example-games/main-street/MainStreetCards';
+import { getCsvRows, getBaseTypeId } from '../../src/MainStreetCards';
 
 describe('Tutorial i18n: English bundle registration', () => {
   beforeEach(() => {

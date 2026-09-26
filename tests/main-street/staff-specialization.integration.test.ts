@@ -17,23 +17,23 @@ import {
   setupMainStreetGame,
   serializeMainStreetState,
   deserializeMainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   processEndOfTurn,
   hireStaffCard,
   peekIncidentDeck,
-} from '../../example-games/main-street/MainStreetEngine';
-import { applyIncome, syncCardCurrentIncome } from '../../example-games/main-street/MainStreetAdjacency';
-import { buildCardTooltipInfo } from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetEngine';
+import { applyIncome, syncCardCurrentIncome } from '../../src/MainStreetAdjacency';
+import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
 import {
   getSkill,
   BASELINE_SKILL_ID,
   deserializeSkillIds,
-} from '../../example-games/main-street/MainStreetStaffSkills';
-import { getEmployedSpecializationSkills } from '../../example-games/main-street/MainStreetStaffBuffs';
-import { createStaffDeck } from '../../example-games/main-street/MainStreetCards';
-import type { StaffCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetStaffSkills';
+import { getEmployedSpecializationSkills } from '../../src/MainStreetStaffBuffs';
+import { createStaffDeck } from '../../src/MainStreetCards';
+import type { StaffCard } from '../../src/MainStreetCards';
 
 describe('D1: staff specialization end-to-end integration', () => {
   it('game-start roster is deterministic AND drives buffed income after a hire', () => {

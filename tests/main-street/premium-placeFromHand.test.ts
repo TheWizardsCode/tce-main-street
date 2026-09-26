@@ -14,17 +14,17 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   createCommunitySpaceDeck,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
   placeFromHand,
   canPlaceFromHand,
-} from '../../example-games/main-street/MainStreetEngine';
-import { playBusinessFromHand } from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetEngine';
+import { playBusinessFromHand } from '../../src/MainStreetMarket';
 
 // ── Helpers ─────────────────────────────────────────────────
 

@@ -29,21 +29,21 @@ import {
   type StaffCard,
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   setupMainStreetGame,
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   getEmployedStaffCountAt,
   getEmployedStaffForBusiness,
   hireStaffApplicant,
   letGoStaffMember,
   layoffStaffCard,
-} from '../../example-games/main-street/MainStreetEngine';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 // ── Fixtures ────────────────────────────────────────────────
 

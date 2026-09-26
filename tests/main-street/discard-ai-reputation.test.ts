@@ -12,9 +12,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { scoreAction } from '../../example-games/main-street/MainStreetAiStrategy';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { scoreAction } from '../../src/MainStreetAiStrategy';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Helpers ────────────────────────────────────────────────────
 

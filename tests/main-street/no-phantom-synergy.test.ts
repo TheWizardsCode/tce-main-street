@@ -22,9 +22,9 @@ import {
   applyIncome,
   computeSynergyPairs,
   recalculateCard,
-} from '../../example-games/main-street/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import type { BusinessCard, CommunitySpaceCard } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetAdjacency';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 
 // ── Helpers ───────────────────────────────────────────────────────
 

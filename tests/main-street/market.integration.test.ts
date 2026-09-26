@@ -11,25 +11,25 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
 import {
   refillMarket,
   getAffordableBusinessCards,
   getEmptySlots,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   executeWeekStart,
   endTurnHeadless,
   executeAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   MARKET_TOTAL_SLOTS,
   createBusinessDeck,
   createEventDeck,
   createUpgradeDeck,
-} from '../../example-games/main-street/MainStreetCards';
-import { getPreset } from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetCards';
+import { getPreset } from '../../src/MainStreetDifficulty';
 
 // ── Helpers ─────────────────────────────────────────────────
 

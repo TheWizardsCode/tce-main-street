@@ -10,12 +10,12 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart, executeAction } from '../../example-games/main-street/MainStreetEngine';
-import { discardFromHand } from '../../example-games/main-street/MainStreetMarketHand';
-import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard } from '../../example-games/main-street/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart, executeAction } from '../../src/MainStreetEngine';
+import { discardFromHand } from '../../src/MainStreetMarketHand';
+import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard } from '../../src/MainStreetCards';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
-import { discardFromHandCommand } from '../../example-games/main-street/MainStreetCommands';
+import { discardFromHandCommand } from '../../src/MainStreetCommands';
 
 // ── Helpers ────────────────────────────────────────────────────
 

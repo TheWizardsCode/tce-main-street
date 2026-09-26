@@ -7,7 +7,7 @@ import {
   createBusinessDeck,
   createEventDeck,
   createUpgradeDeck,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
 
 function templateIdsFromCatalog(): string[] {
@@ -20,7 +20,7 @@ function templateIdsFromCatalog(): string[] {
 
 describe('Main Street SVG card generation coverage', () => {
   it('generator produces SVG files for all card template IDs', () => {
-    execSync('node example-games/main-street/scripts/generate-main-street-card-svgs.mjs', { stdio: 'inherit' });
+    execSync('node src/scripts/generate-main-street-card-svgs.mjs', { stdio: 'inherit' });
 
     const catalogTemplateIds = templateIdsFromCatalog();
     const svgDir = resolve(process.cwd(), 'public/assets/games/main-street/svg/cards');

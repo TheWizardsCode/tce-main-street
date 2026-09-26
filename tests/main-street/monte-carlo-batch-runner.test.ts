@@ -22,7 +22,7 @@ import {
   runAllCombinations,
   ALL_STRATEGIES,
   ALL_DIFFICULTIES,
-} from '../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../src/MainStreetMonteCarlo';
 
 describe('runAllCombinations (E-2)', () => {
   // Use small seed sets for fast tests

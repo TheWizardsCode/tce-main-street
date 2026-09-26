@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { COINS_PER_ICON, iconsForAmount, packCoins } from '../../example-games/main-street/coin-grid';
+import { COINS_PER_ICON, iconsForAmount, packCoins } from '../../src/coin-grid';
 
 vi.mock('phaser', () => ({ default: {} }));
 const { popTextOrIcon, moveGameObject } = vi.hoisted(() => ({
@@ -17,8 +17,8 @@ const { popTextOrIcon, moveGameObject } = vi.hoisted(() => ({
   moveGameObject: vi.fn(() => ({})),
 }));
 vi.mock('@ui', () => ({ FONT_FAMILY: 'sans-serif', popTextOrIcon, moveGameObject }));
-import { MainStreetAnimator } from '../../example-games/main-street/scenes/MainStreetAnimator';
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
+import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
 
 describe('iconsForAmount (CG-0MTK2JHXD004KNQI)', () => {
   it('exposes the divisor', () => { expect(COINS_PER_ICON).toBe(100); });

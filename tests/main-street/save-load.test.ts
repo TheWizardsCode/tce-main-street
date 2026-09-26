@@ -1,20 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SaveLoadStore } from '@core-engine';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import type { MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import type { MainStreetState } from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
   endTurnHeadless,
   computeScore,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   getAffordableBusinessCards,
   getAffordableUpgradeCards,
   getEmptySlots,
   canPurchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   createDefaultCampaignProgress,
   loadCampaignProgress,
@@ -22,7 +22,7 @@ import {
   mainStreetStateSerializer,
   saveCampaignProgress,
   saveTurnStartCheckpoint,
-} from '../../example-games/main-street/MainStreetSaveLoad';
+} from '../../src/MainStreetSaveLoad';
 
 function createLocalStorageMock(): Storage {
   const data = new Map<string, string>();

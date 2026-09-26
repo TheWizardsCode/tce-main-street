@@ -22,8 +22,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createStaffDeck,
   getStaffCardTemplates,
-} from '../../example-games/main-street/MainStreetCards';
-import { TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
+} from '../../src/MainStreetCards';
+import { TIER_DEFINITIONS } from '../../src/MainStreetTiers';
 
 /** Family of a card ID by its prefix (mirrors CreateTemplatesFromCsvRow). */
 function familyOf(cardId: string): string {

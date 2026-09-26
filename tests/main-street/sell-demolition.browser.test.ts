@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { getBusinessTemplates, type BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import { getBusinessTemplates, type BusinessCard } from '../../src/MainStreetCards';
 
 // ── Boot helpers (mirrors MainStreetScene.browser.test.ts) ──
 
@@ -31,7 +31,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;
@@ -140,7 +140,7 @@ describe('MainStreet sell demolition animation', () => {
     expect(calls[0].cardId).toBe(biz.id);
 
     // Refund = 1.5× cost + synergy components (CG-0MT5XO7DI0066QCT).
-    const { computeSellRefund } = await import('../../example-games/main-street/MainStreetMarket');
+    const { computeSellRefund } = await import('../../src/MainStreetMarket');
     const breakdown = computeSellRefund(scene.state as never, biz as never, 0);
     expect(calls[0].refund).toBe(breakdown.totalRefund);
 

@@ -26,13 +26,13 @@ import {
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 import {
   purchaseBusiness,
   purchaseUpgrade,
   purchaseEvent,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 
 import {
   executeWeekStart,
@@ -40,17 +40,17 @@ import {
   resolveEvent,
   playHeldEvent,
   computeScore,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 import {
   applyIncome,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
 import {
   applyReputationMultiplier,
-} from '../../example-games/main-street/MainStreetDifficulty';
+} from '../../src/MainStreetDifficulty';
 
-import type { EventCard, UpgradeCard } from '../../example-games/main-street/MainStreetCards';
+import type { EventCard, UpgradeCard } from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 

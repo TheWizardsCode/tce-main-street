@@ -177,7 +177,7 @@ describe('I18n (HUD tooltip integration)', () => {
   beforeEach(async () => {
     resetI18n();
     // Dynamic import triggers registerLocale('en', enBundle) side-effect
-    const mod = await import('../../example-games/main-street/scenes/MainStreetHudTooltips');
+    const mod = await import('../../src/scenes/MainStreetHudTooltips');
     HUD_TOOLTIP_I18N_KEYS = mod.HUD_TOOLTIP_I18N_KEYS as Record<string, string>;
     HUD_ARIA_I18N_KEYS = mod.HUD_ARIA_I18N_KEYS as Record<string, string>;
     HUD_TOOLTIP_STRINGS = mod.HUD_TOOLTIP_STRINGS as Record<string, string>;
@@ -222,7 +222,7 @@ describe('I18n (HUD tooltip integration)', () => {
   });
 
   it('HUD_ARIA_LABELS resolves through i18n', async () => {
-    const { HUD_ARIA_LABELS } = await import('../../example-games/main-street/scenes/MainStreetHudTooltips');
+    const { HUD_ARIA_LABELS } = await import('../../src/scenes/MainStreetHudTooltips');
     expect(HUD_ARIA_LABELS.coins).toBe('Coins status — hover for expected income breakdown');
     expect(HUD_ARIA_LABELS.rep).toBe('Reputation status — hover for multiplier details');
     expect(HUD_ARIA_LABELS.score).toBe('Score status — hover for next tier threshold');
@@ -235,7 +235,7 @@ describe('I18n (HUD tooltip integration)', () => {
     setLocale('de');
 
     // HUD_ARIA_LABELS uses getters, so they resolve dynamically via t()
-    const { HUD_ARIA_LABELS } = await import('../../example-games/main-street/scenes/MainStreetHudTooltips');
+    const { HUD_ARIA_LABELS } = await import('../../src/scenes/MainStreetHudTooltips');
     expect(HUD_ARIA_LABELS.coins).toBe('Münzen — für Einkommensaufschlüsselung bewegen');
     // Non-overridden keys fall back to en
     expect(HUD_ARIA_LABELS.rep).toBe('Reputation status — hover for multiplier details');

@@ -4,7 +4,7 @@
  * Uses the SLL layout JSON as the single source of truth for zone positioning.
  * Card dimensions, gaps, and other non-positioning values come from shared constants.
  *
- * @module example-games/main-street/scenes/MainStreetLayoutAdapter
+ * @module src/scenes/MainStreetLayoutAdapter
  */
 
 import {

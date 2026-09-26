@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createStaffDeck, type BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import { createStaffDeck, type BusinessCard } from '../../src/MainStreetCards';
 import {
   computePerBusinessSkillBuffs,
   computeStreetOngoingCostReductionPct,
@@ -31,11 +31,11 @@ import {
   getEmployedSpecializationSkills,
   getEmployedSpecializationSkillsForBusiness,
   type BusinessBuffProfile,
-} from '../../example-games/main-street/MainStreetStaffBuffs';
-import { getSkill, BASELINE_SKILL_ID } from '../../example-games/main-street/MainStreetStaffSkills';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import { applyIncome, syncCardCurrentIncome, computeBusinessIncome } from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetStaffBuffs';
+import { getSkill, BASELINE_SKILL_ID } from '../../src/MainStreetStaffSkills';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import { applyIncome, syncCardCurrentIncome, computeBusinessIncome } from '../../src/MainStreetAdjacency';
 
 // ── Helpers ─────────────────────────────────────────────────
 

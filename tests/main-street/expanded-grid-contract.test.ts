@@ -33,7 +33,7 @@ import {
   computeIncome,
   computeReputationPerTurn,
   type GridDims,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
 // ── Constants ───────────────────────────────────────────────
 

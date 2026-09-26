@@ -21,17 +21,17 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   resolveStaffApplicant,
   computeApplicantChance,
   hireStaffApplicant,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   createStaffDeck,
   type BusinessCard,
   type StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 /** Builds a staff card from a template id (fresh copy). */
 function staffOf(...prefixes: string[]): StaffCard[] {

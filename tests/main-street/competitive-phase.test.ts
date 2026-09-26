@@ -12,7 +12,7 @@ import {
   createCompetitiveState,
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   getActivePlayerId,
   setActivePlayerId,
@@ -25,7 +25,7 @@ import {
   updateCompetitiveScores,
   processEndOfTurn,
   executeWeekStart,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 
 // ── Helpers ─────────────────────────────────────────────────
 

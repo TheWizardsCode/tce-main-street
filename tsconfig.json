@@ -1,0 +1,83 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@core-engine": [
+        "./core/src/core-engine"
+      ],
+      "@core-engine/*": [
+        "./core/src/core-engine/*"
+      ],
+      "@card-system": [
+        "./core/src/card-system"
+      ],
+      "@card-system/*": [
+        "./core/src/card-system/*"
+      ],
+      "@rule-engine": [
+        "./core/src/rule-engine"
+      ],
+      "@rule-engine/*": [
+        "./core/src/rule-engine/*"
+      ],
+      "@ui": [
+        "./core/src/ui"
+      ],
+      "@ui/*": [
+        "./core/src/ui/*"
+      ],
+      "@ai": [
+        "./core/src/ai"
+      ],
+      "@ai/*": [
+        "./core/src/ai/*"
+      ],
+      "@balance-cards": [
+        "./core/src/balance-cards"
+      ],
+      "@balance-cards/*": [
+        "./core/src/balance-cards/*"
+      ],
+      "@core-scripts/*": [
+        "./core/scripts/*"
+      ],
+      "@core-tests/*": [
+        "./core/tests/*"
+      ],
+      "@core-gym": [
+        "./core/example-games/gym"
+      ],
+      "@core-gym/*": [
+        "./core/example-games/gym/*"
+      ]
+    }
+  },
+  "include": [
+    "main.ts",
+    "env.d.ts",
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/**/*.browser.test.ts"
+  ]
+}

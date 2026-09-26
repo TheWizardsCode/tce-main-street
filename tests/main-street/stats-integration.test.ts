@@ -3,7 +3,7 @@ import {
   MAIN_STREET_STATS_STORAGE_KEY,
   MAIN_STREET_STATS_SCHEMA_VERSION,
   type StatsStorageAdapter,
-} from '../../example-games/main-street/StatsDomain';
+} from '../../src/StatsDomain';
 
 // ── In-memory storage for tests ─────────────────────────────
 
@@ -46,7 +46,7 @@ function createLifecycleManager(
         loadStats,
         saveStats,
         updateStatsAfterRun,
-      } = await import('../../example-games/main-street/StatsDomain');
+      } = await import('../../src/StatsDomain');
 
       const current = loadStats(storage);
       const updated = updateStatsAfterRun(current, gameResult === 'win', finalScore);

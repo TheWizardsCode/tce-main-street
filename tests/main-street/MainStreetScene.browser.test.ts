@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { executeWeekStart, endTurnHeadless } from '../../example-games/main-street/MainStreetEngine';
-import { getEventTemplates } from '../../example-games/main-street/MainStreetCards';
-import { canPurchaseBusiness, canPurchaseEvent, getEmptySlots } from '../../example-games/main-street/MainStreetMarket';
-import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../example-games/main-street/MainStreetPrefs';
+import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
+import { getEventTemplates } from '../../src/MainStreetCards';
+import { canPurchaseBusiness, canPurchaseEvent, getEmptySlots } from '../../src/MainStreetMarket';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
 
 async function bootGame(options: { width?: number; height?: number } = {}): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -15,7 +15,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

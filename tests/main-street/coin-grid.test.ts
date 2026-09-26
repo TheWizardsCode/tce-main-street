@@ -12,7 +12,7 @@ import {
   packCoins,
   roundHalf,
   splitCoins,
-} from '../../example-games/main-street/coin-grid';
+} from '../../src/coin-grid';
 
 describe('roundHalf', () => {
   it('rounds whole amounts unchanged (integer economy)', () => {

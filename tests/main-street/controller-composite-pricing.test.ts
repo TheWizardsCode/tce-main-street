@@ -18,10 +18,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
-import { MainStreetTurnController } from '../../example-games/main-street/scenes/MainStreetTurnController';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 /** Business card factory (matches action-economy test convention). */

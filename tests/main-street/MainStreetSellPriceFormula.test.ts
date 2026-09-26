@@ -17,20 +17,20 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   sellBusiness,
   computeSellRefund,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   computeSynergyBonus,
   syncCardCurrentIncome,
   syncCardCurrentRepPerTurn,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 
 function createTestState(seed: string = 'sell-price-test'): MainStreetState {
   const state = setupMainStreetGame({ seed });

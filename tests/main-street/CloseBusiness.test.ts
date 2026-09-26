@@ -37,16 +37,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   GRID_SIZE,
   type BusinessCard,
   type CommunitySpaceCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   executeWeekStart,
   canPlaceFromHand,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 
 // ── Feature Detection ───────────────────────────────────────
@@ -59,7 +59,7 @@ import { UndoRedoManager } from '@core-engine/UndoRedoManager';
  */
 async function probeCloseMarketAvailability(): Promise<boolean> {
   try {
-    const market = await import('../../example-games/main-street/MainStreetMarket');
+    const market = await import('../../src/MainStreetMarket');
     return (
       typeof (market as any).closeBusiness === 'function' &&
       typeof (market as any).canCloseBusiness === 'function'
@@ -73,7 +73,7 @@ const CLOSE_MARKET_AVAILABLE = await probeCloseMarketAvailability();
 /** True once closeBusinessCommand exists in the commands module. */
 async function probeCloseCommandAvailability(): Promise<boolean> {
   try {
-    const cmds = await import('../../example-games/main-street/MainStreetCommands');
+    const cmds = await import('../../src/MainStreetCommands');
     return typeof (cmds as any).closeBusinessCommand === 'function';
   } catch {
     return false; // not implemented yet
@@ -84,7 +84,7 @@ const CLOSE_COMMAND_AVAILABLE = await probeCloseCommandAvailability();
 /** True once the AI action enumerator is present (unchanged-shape guard). */
 async function probeAiEnumAvailability(): Promise<boolean> {
   try {
-    const ai = await import('../../example-games/main-street/MainStreetAiStrategy');
+    const ai = await import('../../src/MainStreetAiStrategy');
     return typeof (ai as any).enumerateLegalActions === 'function';
   } catch {
     return false; // not implemented yet
@@ -174,7 +174,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, firstEmptySlot(state));
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, state.streetGrid.indexOf(card));
         expect(result.legal).toBe(true);
       },
@@ -187,7 +187,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot, 'community-space');
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot);
         expect(result.legal).toBe(true);
       },
@@ -196,7 +196,7 @@ describe('MainStreet Close Business', () => {
     it.runIf(CLOSE_MARKET_AVAILABLE)(
       'should reject closing an empty slot',
       async () => {
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, 0);
         expect(result.legal).toBe(false);
         expect(result.reason).toBeTruthy();
@@ -212,7 +212,7 @@ describe('MainStreet Close Business', () => {
 
         state.soldSlots[slot] = true;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot);
         expect(result.legal).toBe(false);
         expect(result.reason).toContain('sold');
@@ -228,7 +228,7 @@ describe('MainStreet Close Business', () => {
 
         state.phase = 'IncomePhase';
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot);
         expect(result.legal).toBe(false);
         expect(result.reason.toLowerCase()).toContain('marketphase');
@@ -242,7 +242,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot, true); // isPlacingMode = true
         expect(result.legal).toBe(false);
         expect(result.reason.toLowerCase()).toContain('placement');
@@ -258,7 +258,7 @@ describe('MainStreet Close Business', () => {
 
         state.actionsRemaining = 0;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot);
         expect(result.legal).toBe(false);
         expect(result.reason.toLowerCase()).toContain('action');
@@ -276,7 +276,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(state.streetGrid[slot]).toBeNull();
@@ -291,7 +291,7 @@ describe('MainStreet Close Business', () => {
         if (!card) return;
 
         const discardBefore = state.discardPile.length;
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(state.discardPile).toHaveLength(discardBefore + 1);
@@ -306,7 +306,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(isSlotSold(state, slot)).toBe(false);
@@ -320,7 +320,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         // Hold an affordable card in hand and verify the freed slot accepts it.
@@ -341,7 +341,7 @@ describe('MainStreet Close Business', () => {
         if (!card) return;
 
         const logBefore = state.activityLog.length;
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(state.activityLog).toHaveLength(logBefore + 1);
@@ -357,7 +357,7 @@ describe('MainStreet Close Business', () => {
         if (!card) return;
 
         const coinsBefore = state.resourceBank.coins;
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(state.resourceBank.coins).toBe(coinsBefore);
@@ -371,7 +371,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot, 'community-space');
         if (!card) return;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, slot);
 
         expect(state.streetGrid[slot]).toBeNull();
@@ -397,7 +397,7 @@ describe('MainStreet Close Business', () => {
 
         // Sync cached income/reputation for both placed cards.
         const { updateNeighborsOnPlacement } =
-          await import('../../example-games/main-street/MainStreetAdjacency');
+          await import('../../src/MainStreetAdjacency');
         updateNeighborsOnPlacement(state, 0);
         updateNeighborsOnPlacement(state, 1);
 
@@ -405,7 +405,7 @@ describe('MainStreet Close Business', () => {
         // Sanity: with the shared-synergy neighbor present, income > bare base.
         expect(incomeBefore).toBeGreaterThan(bareBase);
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         (market as any).closeBusiness(state, 0);
 
         const incomeAfter = (state.streetGrid[1] as BusinessCard).currentIncome as number;
@@ -425,7 +425,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const cmds = await import('../../example-games/main-street/MainStreetCommands');
+        const cmds = await import('../../src/MainStreetCommands');
         const cmd = (cmds as any).closeBusinessCommand(state, slot);
         expect(cmd).toBeDefined();
 
@@ -448,7 +448,7 @@ describe('MainStreet Close Business', () => {
         state.bankedActions = 2;
         state.actionsRemaining = 3;
 
-        const cmds = await import('../../example-games/main-street/MainStreetCommands');
+        const cmds = await import('../../src/MainStreetCommands');
         const cmd = (cmds as any).closeBusinessCommand(state, slot);
         cmd.execute();
 
@@ -465,7 +465,7 @@ describe('MainStreet Close Business', () => {
         if (!card) return;
 
         const coinsBefore = state.resourceBank.coins;
-        const cmds = await import('../../example-games/main-street/MainStreetCommands');
+        const cmds = await import('../../src/MainStreetCommands');
         const cmd = (cmds as any).closeBusinessCommand(state, slot);
         cmd.execute();
 
@@ -488,7 +488,7 @@ describe('MainStreet Close Business', () => {
         const logBefore = state.activityLog.length;
         const coinsBefore = state.resourceBank.coins;
 
-        const cmds = await import('../../example-games/main-street/MainStreetCommands');
+        const cmds = await import('../../src/MainStreetCommands');
         const cmd = (cmds as any).closeBusinessCommand(state, slot);
         const mgr = new UndoRedoManager();
 
@@ -531,7 +531,7 @@ describe('MainStreet Close Business', () => {
 
         state.soldSlots[slot] = true;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         const result = (market as any).canCloseBusiness(state, slot);
         expect(result.legal).toBe(false);
       },
@@ -546,7 +546,7 @@ describe('MainStreet Close Business', () => {
 
         state.soldSlots[slot] = true;
 
-        const market = await import('../../example-games/main-street/MainStreetMarket');
+        const market = await import('../../src/MainStreetMarket');
         expect(() => (market as any).closeBusiness(state, slot)).toThrow();
         // Guard fails closed: slot unchanged, no discard, no coins.
         expect(state.streetGrid[slot]).not.toBeNull();
@@ -565,7 +565,7 @@ describe('MainStreet Close Business', () => {
         const card = placeCardOnGrid(state, slot);
         if (!card) return;
 
-        const ai = await import('../../example-games/main-street/MainStreetAiStrategy');
+        const ai = await import('../../src/MainStreetAiStrategy');
         const actions = (ai as any).enumerateLegalActions(state) as Array<{ type: string }>;
         // Close is a player-initiated street-management action (like street
         // sell); the AI must not enumerate it — no action type mentions close.

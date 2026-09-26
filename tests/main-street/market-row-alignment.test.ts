@@ -16,8 +16,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
-import { MARKET_TOTAL_SLOTS } from '../../example-games/main-street/MainStreetCards';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
+import { MARKET_TOTAL_SLOTS } from '../../src/MainStreetCards';
 
 describe('Single-row market alignment', () => {
   const layout = computeMainStreetLayoutWithSll();

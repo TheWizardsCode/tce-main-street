@@ -18,7 +18,7 @@ import {
   createCompetitiveState,
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
 import {
   enumerateCompetitiveLegalActions,
@@ -32,7 +32,7 @@ import {
   bindCompetitiveSeat,
   restoreCompetitiveSeat,
   CompetitiveGreedyStrategy,
-} from '../../example-games/main-street/MainStreetAiStrategy';
+} from '../../src/MainStreetAiStrategy';
 import {
   executeWeekStart,
   executeCompetitiveWeekStart,
@@ -40,13 +40,13 @@ import {
   executeAction,
   updateCompetitiveScores,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import type {
   BusinessCard,
   UpgradeCard,
   EventCard,
   StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Fixtures ─────────────────────────────────────────────────
 

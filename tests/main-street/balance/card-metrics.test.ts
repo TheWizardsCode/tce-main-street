@@ -7,8 +7,8 @@ import {
   computeUpgradeAdoption,
   computeEventImpactScore,
   computeSurvivalRate,
-} from '../../../example-games/main-street/scripts/balance/engine/card-metrics';
-import type { MonteCarloRunSummary } from '../../../example-games/main-street/MainStreetMonteCarlo';
+} from '../../../src/scripts/balance/engine/card-metrics';
+import type { MonteCarloRunSummary } from '../../../src/MainStreetMonteCarlo';
 
 /**
  * Helper to create a basic MonteCarloRunSummary with Phase 1 extensions.

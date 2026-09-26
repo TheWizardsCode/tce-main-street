@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { createStaffDeck } from '../../example-games/main-street/MainStreetCards';
+import { createStaffDeck } from '../../src/MainStreetCards';
 
 async function bootGame(options: { width?: number; height?: number } = {}): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -29,7 +29,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;

@@ -16,14 +16,14 @@ import {
   createTutorialScenario,
   STANDARD_TUTORIAL_SCENARIO,
   ensureTutorialMarketForUpcomingSteps,
-} from '../../example-games/main-street/TutorialScenario';
+} from '../../src/TutorialScenario';
 import {
   MARKET_TOTAL_SLOTS,
-} from '../../example-games/main-street/MainStreetCards';
-import type { BusinessCard, EventCard } from '../../example-games/main-street/MainStreetCards';
-import { getPreset } from '../../example-games/main-street/MainStreetDifficulty';
-import { TIER_DEFINITIONS } from '../../example-games/main-street/MainStreetTiers';
-import { UNIFIED_TUTORIAL_STEPS } from '../../example-games/main-street/TutorialFlow';
+} from '../../src/MainStreetCards';
+import type { BusinessCard, EventCard } from '../../src/MainStreetCards';
+import { getPreset } from '../../src/MainStreetDifficulty';
+import { TIER_DEFINITIONS } from '../../src/MainStreetTiers';
+import { UNIFIED_TUTORIAL_STEPS } from '../../src/TutorialFlow';
 
 // ── Helpers ───────────────────────────────────────────────────
 

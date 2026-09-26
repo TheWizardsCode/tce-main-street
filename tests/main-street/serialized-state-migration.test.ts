@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { serializeMainStreetState, deserializeMainStreetState, setupMainStreetGame, type MainStreetState, type MainStreetSerializedState } from '../../example-games/main-street/MainStreetState';
+import { serializeMainStreetState, deserializeMainStreetState, setupMainStreetGame, type MainStreetState, type MainStreetSerializedState } from '../../src/MainStreetState';
 
 // ── Helpers ─────────────────────────────────────────────────
 

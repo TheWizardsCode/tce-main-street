@@ -3,9 +3,9 @@
  * (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R).
  *
  * The 64×64 left-art graphic zone on every card face embeds a base64 bitmap
- * `data:` URI from `example-games/main-street/card-art-map.json` (generated
+ * `data:` URI from `src/card-art-map.json` (generated
  * by `scripts/generate-main-street-card-art.mjs` from the 1024×1024 sprites in
- * `example-games/main-street/sprites/`). These tests verify the resolver, the
+ * `src/sprites/`). These tests verify the resolver, the
  * spelling-variant aliases, the fallback behaviour, the embedded bitmap
  * resolution/format, and that both the runtime and static SVG generators
  * actually embed the art.
@@ -27,24 +27,24 @@ import {
   CARD_ART_RESOLUTION,
   CARD_ART_FORMAT,
   cardArtSpriteCount,
-} from '../../example-games/main-street/MainStreetCardArt';
+} from '../../src/MainStreetCardArt';
 import {
   generateBusinessCardSvg,
   generateCardSvgFromCsvRow,
   generateEventCardSvg,
   generateUpgradeCardSvg,
   generateStaffCardSvg,
-} from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+} from '../../src/scenes/MainStreetCardSvgGenerator';
 import type {
   BusinessCard,
   EventCard,
   StaffCard,
   UpgradeCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 // @ts-ignore: no declaration file for .mjs script — intentional
-import { generateCardSvg } from '../../example-games/main-street/scripts/generate-main-street-card-svgs.mjs';
+import { generateCardSvg } from '../../src/scripts/generate-main-street-card-svgs.mjs';
 
-const SPRITES_DIR = path.resolve('example-games/main-street/sprites');
+const SPRITES_DIR = path.resolve('src/sprites');
 const ART_DATA_URI = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/;
 const EMBEDDED_IMAGE = /<image [^>]*href="data:image\/webp;base64,/;
 

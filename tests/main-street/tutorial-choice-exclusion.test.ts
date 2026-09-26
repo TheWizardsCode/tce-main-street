@@ -20,11 +20,11 @@ import { describe, it, expect } from 'vitest';
 import {
   createTutorialScenario,
   STANDARD_TUTORIAL_SCENARIO,
-} from '../../example-games/main-street/TutorialScenario';
+} from '../../src/TutorialScenario';
 import {
   getEventTemplates,
   resetTemplatesToDefault,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 afterEach(() => {
   resetTemplatesToDefault();

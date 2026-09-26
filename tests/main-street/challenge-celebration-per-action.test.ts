@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   celebrateChallengeIds,
   type ChallengeCelebrationScene,
-} from '../../example-games/main-street/scenes/MainStreetChallengeCelebration';
+} from '../../src/scenes/MainStreetChallengeCelebration';
 
 // ── Mock scene ──────────────────────────────────────────────
 

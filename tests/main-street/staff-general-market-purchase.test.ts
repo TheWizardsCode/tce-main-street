@@ -28,25 +28,25 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   executeWeekStart,
   executeAction,
   hireStaffCard,
   layoffStaffCard,
   type PlayerAction,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   canPurchaseStaff,
   purchaseStaffCard,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   enumerateLegalActions,
   enumerateAndScoreActions,
   GreedyStrategy,
   MainStreetAiPlayer,
-} from '../../example-games/main-street/MainStreetAiStrategy';
-import { createStaffDeck } from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetAiStrategy';
+import { createStaffDeck } from '../../src/MainStreetCards';
 
 /** Seeded state with the day started (MarketPhase). */
 function startState(seed = 'staff-purchase'): MainStreetState {

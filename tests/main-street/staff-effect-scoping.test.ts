@@ -20,22 +20,22 @@ import { describe, it, expect } from 'vitest';
 import {
   setupMainStreetGame,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   applyIncome,
   syncCardCurrentIncome,
-} from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetAdjacency';
 import {
   createStaffDeck,
   type StaffCard,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   getEmployedSpecializationSkills,
   computeStaffSalaryCost,
   computeRefreshCostDiscount,
-} from '../../example-games/main-street/MainStreetStaffBuffs';
-import { getSkill } from '../../example-games/main-street/MainStreetStaffSkills';
+} from '../../src/MainStreetStaffBuffs';
+import { getSkill } from '../../src/MainStreetStaffSkills';
 
 // ── Fixtures ────────────────────────────────────────────────
 

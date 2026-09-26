@@ -23,7 +23,7 @@ import {
 
 // ── Default paths ─────────────────────────────────────────────────────
 
-const DEFAULT_INPUT = resolve(process.cwd(), 'example-games/main-street/card-data.csv');
+const DEFAULT_INPUT = resolve(process.cwd(), 'src/card-data.csv');
 const DEFAULT_OUTPUT = DEFAULT_INPUT;
 
 // ── Argument parsing ──────────────────────────────────────────────────

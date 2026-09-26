@@ -25,7 +25,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import { createStaffDeck, getBusinessTemplates, type BusinessCard, type StaffCard } from '../../example-games/main-street/MainStreetCards';
+import { createStaffDeck, getBusinessTemplates, type BusinessCard, type StaffCard } from '../../src/MainStreetCards';
 
 // ── Boot helpers (mirrors sell-demolition.browser.test.ts) ──
 
@@ -37,7 +37,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForScene(game, 'MainStreetScene');
   return game;

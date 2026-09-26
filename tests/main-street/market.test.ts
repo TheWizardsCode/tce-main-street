@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   canPurchaseBusiness,
   canPurchaseUpgrade,
@@ -17,7 +17,7 @@ import {
   replenishIncidentDeck,
   getAffordableBusinessCards,
   getEmptySlots,
-} from '../../example-games/main-street/MainStreetMarket';
+} from '../../src/MainStreetMarket';
 import {
   GRID_SIZE,
   MARKET_TOTAL_SLOTS,
@@ -28,7 +28,7 @@ import {
   MARKET_STAFF_MAX,
   type BusinessCard,
   type UpgradeCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -300,7 +300,7 @@ describe('MainStreetMarket', () => {
       state.resourceBank.coins = 5000;
       // Find an Investment-trigger event in investments row
       const investmentEvent = state.market.cards.find(
-        c => c.family === 'event' && (c as import('../../example-games/main-street/MainStreetCards').EventCard).trigger === 'Investment',
+        c => c.family === 'event' && (c as import('../../src/MainStreetCards').EventCard).trigger === 'Investment',
       );
       if (investmentEvent) {
         const result = canPurchaseEvent(state, investmentEvent.id);
@@ -344,7 +344,7 @@ describe('MainStreetMarket', () => {
         { family: 'event', id: 'held-evt', name: 'Held Event', trigger: 'Investment', effect: 'test', target: 'All', coinDelta: 0, reputationDelta: 0, cost: 0 } as any,
       ];
       const investmentEvent = state.market.cards.find(
-        c => c.family === 'event' && (c as import('../../example-games/main-street/MainStreetCards').EventCard).trigger === 'Investment',
+        c => c.family === 'event' && (c as import('../../src/MainStreetCards').EventCard).trigger === 'Investment',
       );
       if (investmentEvent) {
         state.resourceBank.coins = 5000;

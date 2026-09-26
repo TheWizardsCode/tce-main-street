@@ -16,7 +16,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS, parent: 'game-container' });
   await waitForScene(game, 'MainStreetScene');
   return game;
@@ -71,7 +71,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     // Content container should be positioned at LOG_TITLE_H + 2 (2px gap below title)
@@ -85,7 +85,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     const longText = 'This is a very long activity log entry that should word-wrap across multiple lines due to its length exceeding the content width';
@@ -124,7 +124,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H, LOG_LINE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     const longText = 'This is a very long activity log entry that should word-wrap across multiple lines due to its length exceeding the content width';
@@ -193,7 +193,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     // Simulate being at the bottom
@@ -327,7 +327,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(15);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     // Clear existing entries to have a clean starting state
@@ -413,7 +413,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(5);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     // Simulate being at the bottom of the log
@@ -448,7 +448,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
 
     // ── Phase 1: Few entries that fit ──
@@ -546,7 +546,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
     const visibleH = Math.max(1, scene.layout.logH - LOG_TITLE_H - 4);
 
@@ -638,7 +638,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     await waitFrames(10);
 
     const { LOG_TITLE_H } = await import(
-      '../../example-games/main-street/scenes/MainStreetConstants'
+      '../../src/scenes/MainStreetConstants'
     );
     const visibleH = Math.max(1, scene.layout.logH - LOG_TITLE_H - 4);
 

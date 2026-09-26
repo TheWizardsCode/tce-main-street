@@ -12,7 +12,7 @@ import {
   serializeMainStreetState,
   deserializeMainStreetState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 
 import {
   GRID_SIZE,
@@ -23,10 +23,10 @@ import {
   createCommunitySpaceDeck,
   createEventDeck,
   createUpgradeDeck,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { createSeededRng } from '@core-engine';
 
-import { DEFAULT_CHALLENGES_PER_RUN } from '../../example-games/main-street/MainStreetChallenges';
+import { DEFAULT_CHALLENGES_PER_RUN } from '../../src/MainStreetChallenges';
 
 // ── Template Counts (M1 + M2 + M3 + Community Spaces) ──────
 // Business:  5 (M1) + 12 (M2) - 1 (Park moved to community-space) = 16 templates

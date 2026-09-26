@@ -28,13 +28,13 @@ import {
   CARD_TIER_MAP,
   REFRESH_MARKET_COST,
   type StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { validateCsvRows } from '@balance-cards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { applyIncome, recalculateCard } from '../../example-games/main-street/MainStreetAdjacency';
-import { canRefreshMarket, refreshMarket, refreshMarketCost } from '../../example-games/main-street/MainStreetMarket';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { applyIncome, recalculateCard } from '../../src/MainStreetAdjacency';
+import { canRefreshMarket, refreshMarket, refreshMarketCost } from '../../src/MainStreetMarket';
 import { createSeededRng } from '@core-engine';
-import type { BusinessCard } from '../../example-games/main-street/MainStreetCards';
+import type { BusinessCard } from '../../src/MainStreetCards';
 
 // ── Design contract (from epic CG-0MSQE2NLX003ADIY, Group F) ──────────
 

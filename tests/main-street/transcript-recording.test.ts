@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame } from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
-import { buyBusinessCommand } from '../../example-games/main-street/MainStreetCommands';
+import { buyBusinessCommand } from '../../src/MainStreetCommands';
 import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
   recordMainStreetEvent,
-} from '../../example-games/main-street/MainStreetTranscript';
+} from '../../src/MainStreetTranscript';
 
 // Ensure recorder captures action -> undo -> redo when the UI flow records events.
 describe('Main Street transcript recording (action, undo, redo)', () => {

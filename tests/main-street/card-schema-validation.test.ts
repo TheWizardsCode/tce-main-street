@@ -6,8 +6,8 @@ import {
   createCommunitySpaceDeck,
   createEventDeck,
   createUpgradeDeck,
-} from '../../example-games/main-street/MainStreetCards';
-import { setupMainStreetGame } from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetCards';
+import { setupMainStreetGame } from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
 
 function uniqueTemplateIds(deckIds: string[]): string[] {

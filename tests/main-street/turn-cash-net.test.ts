@@ -21,18 +21,18 @@ import {
   createCompetitiveState,
   type MainStreetState,
   type LogEntry,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   executeWeekStart,
   processEndOfTurn,
   describeEventEffects,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   type BusinessCard,
   type StaffCard,
   type EventCard,
-} from '../../example-games/main-street/MainStreetCards';
-import { recalculateCard } from '../../example-games/main-street/MainStreetAdjacency';
+} from '../../src/MainStreetCards';
+import { recalculateCard } from '../../src/MainStreetAdjacency';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

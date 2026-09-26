@@ -19,25 +19,25 @@
 import { describe, it, expect } from 'vitest';
 import { UndoRedoManager } from '@core-engine';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
   createStaffDeck,
   type StaffCard,
   type BusinessCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   canPlaceStaffOnBusiness,
   placeStaffOnBusiness,
   removeStaffFromBusiness,
   layoffStaffCard,
   getEmployedStaffCountAt,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   placeStaffOnBusinessCommand,
   removeStaffFromBusinessCommand,
   layoffStaffCommand,
-} from '../../example-games/main-street/MainStreetCommands';
-import { executeWeekStart } from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetCommands';
+import { executeWeekStart } from '../../src/MainStreetEngine';
 
 // ── Fixtures ────────────────────────────────────────────────
 

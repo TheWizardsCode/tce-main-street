@@ -20,8 +20,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildUpgradeOverlaySpec } from '../../example-games/main-street/scenes/UpgradeOverlaySpec';
-import type { BusinessCard, CommunitySpaceCard } from '../../example-games/main-street/MainStreetCards';
+import { buildUpgradeOverlaySpec } from '../../src/scenes/UpgradeOverlaySpec';
+import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 
 // ── Test helpers ──────────────────────────────────────────────
 

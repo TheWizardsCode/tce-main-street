@@ -17,8 +17,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
-import type { TurnResult } from '../../example-games/main-street/MainStreetEngine';
-import { SFX_KEYS } from '../../example-games/main-street/scenes/MainStreetConstants';
+import type { TurnResult } from '../../src/MainStreetEngine';
+import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
 
 // ── Boot helpers (mirrors MainStreetOverlay.browser.test.ts) ──
 
@@ -29,7 +29,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForCondition(
     () => {

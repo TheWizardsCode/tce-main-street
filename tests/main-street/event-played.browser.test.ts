@@ -28,7 +28,7 @@ async function bootGame(options: { width?: number; height?: number } = {}): Prom
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame(options);
   await waitForScene(game, 'MainStreetScene');
   return game;
@@ -99,7 +99,7 @@ describe('MainStreet held-event play burst', () => {
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
 
     // Give the player a held event card and render it in the hand.
-    const { getEventTemplates } = await import('../../example-games/main-street/MainStreetCards');
+    const { getEventTemplates } = await import('../../src/MainStreetCards');
     const templates = getEventTemplates();
     const eventCard = templates[0];
     (scene.state as { hand: unknown[] }).hand.push({ ...eventCard });

@@ -12,15 +12,15 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../example-games/main-street/MainStreetState';
-import { executeWeekStart, executeAction } from '../../example-games/main-street/MainStreetEngine';
-import type { PlayerAction } from '../../example-games/main-street/MainStreetEngine';
+import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { executeWeekStart, executeAction } from '../../src/MainStreetEngine';
+import type { PlayerAction } from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   scoreAction,
   GreedyStrategy,
   MainStreetAiPlayer,
-} from '../../example-games/main-street/MainStreetAiStrategy';
+} from '../../src/MainStreetAiStrategy';
 import { createSeededRng } from '@core-engine/SeededRng';
 
 function createTestState(seed: string = 'cf-ai-test'): MainStreetState {

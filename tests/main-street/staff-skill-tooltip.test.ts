@@ -11,9 +11,9 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { buildCardTooltipInfo } from '../../example-games/main-street/MainStreetFormatting';
-import { createStaffDeck, type StaffCard } from '../../example-games/main-street/MainStreetCards';
-import { STAFF_SKILL_CHIP_COLORS } from '../../example-games/main-street/MainStreetStaffSkills';
+import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
+import { STAFF_SKILL_CHIP_COLORS } from '../../src/MainStreetStaffSkills';
 
 function staffWith(overrides: Partial<StaffCard>): StaffCard {
   const base = createStaffDeck(1).find(c => c.id.startsWith('staff-assistant'))!;

@@ -18,20 +18,20 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   buildCardTooltipInfo,
   type SynergyFormatConfig,
-} from '../../example-games/main-street/MainStreetFormatting';
+} from '../../src/MainStreetFormatting';
 import {
   generateBusinessCardSvg,
   generateEventCardSvg,
   generateUpgradeCardSvg,
   generateStaffCardSvg,
-} from '../../example-games/main-street/scenes/MainStreetCardSvgGenerator';
+} from '../../src/scenes/MainStreetCardSvgGenerator';
 import type {
   BusinessCard,
   CommunitySpaceCard,
   EventCard,
   UpgradeCard,
   StaffCard,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import { resetI18n, registerLocale, setLocale } from '@core-engine/I18n';
 
 // ---------------------------------------------------------------------------

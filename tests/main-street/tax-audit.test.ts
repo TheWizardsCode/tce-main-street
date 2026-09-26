@@ -26,25 +26,25 @@ import {
   setupMainStreetGame,
   createCompetitiveState,
   type MainStreetState,
-} from '../../example-games/main-street/MainStreetState';
+} from '../../src/MainStreetState';
 import {
   type EventCard,
   type StaffCard,
   getEventTemplates,
   getStaffCardTemplates,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   applyCompetitiveEventEffects,
   computeEventDeltas,
   projectEventCoinDelta,
   resolveEvent,
   resolveEventChoice,
-} from '../../example-games/main-street/MainStreetEngine';
+} from '../../src/MainStreetEngine';
 import {
   TAX_AUDIT_BASE_RATE,
   TAX_AUDIT_ACCOUNTANT_RATE,
   computeTaxAuditRate,
-} from '../../example-games/main-street/MainStreetStaffBuffs';
+} from '../../src/MainStreetStaffBuffs';
 
 // ── Fixtures & helpers ──────────────────────────────────────
 

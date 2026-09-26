@@ -17,7 +17,7 @@ import {
   SpecializationSkill,
   SpecializationSkillCategory,
   STACKED_SKILL_CATEGORIES,
-} from '../../example-games/main-street/MainStreetCards';
+} from '../../src/MainStreetCards';
 import {
   STAFF_SKILL_CATALOG,
   BASELINE_SKILL_ID,
@@ -26,7 +26,7 @@ import {
   deserializeSkillIds,
   assignSkillsToApplicants,
   type SkillCategory,
-} from '../../example-games/main-street/MainStreetStaffSkills';
+} from '../../src/MainStreetStaffSkills';
 import { createSeededRng } from '@core-engine/SeededRng';
 
 // ── AC1: type defined in MainStreetCards with full metadata ─

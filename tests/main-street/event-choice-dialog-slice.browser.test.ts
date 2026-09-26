@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import type { EventCard } from '../../example-games/main-street/MainStreetCards';
+import type { EventCard } from '../../src/MainStreetCards';
 
 // ── Boot helpers (mirrors incident-reveal.browser.test.ts) ──
 
@@ -33,7 +33,7 @@ async function bootGame(): Promise<Phaser.Game> {
   container.id = 'game-container';
   document.body.appendChild(container);
 
-  const { createMainStreetGame } = await import('../../example-games/main-street/createMainStreetGame');
+  const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForScene(game, 'MainStreetScene');
   return game;

@@ -28,10 +28,10 @@ import {
   roadBandY,
   visibleMapSlots,
   worldIndexToMapCenter,
-} from '../../example-games/main-street/MainStreetMapView';
-import { worldSlotCount } from '../../example-games/main-street/MainStreetAdjacency';
-import type { SceneLayout } from '../../example-games/main-street/scenes/MainStreetConstants';
-import { computeMainStreetLayoutWithSll } from '../../example-games/main-street/scenes/MainStreetLayoutAdapter';
+} from '../../src/MainStreetMapView';
+import { worldSlotCount } from '../../src/MainStreetAdjacency';
+import type { SceneLayout } from '../../src/scenes/MainStreetConstants';
+import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
 
 const layout: SceneLayout = computeMainStreetLayoutWithSll();
 
