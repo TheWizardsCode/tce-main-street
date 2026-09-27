@@ -298,7 +298,14 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     // Transcript recorder (optional) — attach global recorder so other modules
     // (AI, Monte Carlo runner) can emit events without direct wiring.
     try {
-      const initialSnapshot = { seed: s.state.seed ?? null, snapshotAtTurn: s.state.turn };
+      const initialSnapshot = {
+        seed: s.state.seed ?? null,
+        snapshotAtTurn: s.state.turn,
+        // Calendar anchor so transcript events can be stamped with week/year
+        // (CG-0MTT0K9RX0004QTE, Feature 6 AC4).
+        week: s.state.week ?? 1,
+        year: s.state.year ?? 1,
+      };
       const recorder = new MainStreetTranscriptRecorder(initialSnapshot);
       setMainStreetRecorder(recorder);
     } catch (_) {
@@ -529,9 +536,9 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
               // shuffling. This guarantees exactly which cards appear in
               // the market and incident deck, independent of deck
               // composition. The tutorial always uses Easy difficulty
-              // (10 starting coins after CG-0MSP26Q5N002EH8P re-tune, 5
+              // (1000 starting coins after CG-0MSP26Q5N002EH8P re-tune, 500
               // starting reputation); the scenario overrides the coin
-              // budget to 16 for the tutorial's fixed buy plan.
+              // budget to 1200 for the tutorial's fixed buy plan.
               //
               // The scenario system uses the STANDARD_TUTORIAL_SCENARIO
               // definition which references only Tier-1 cards, ensuring
@@ -541,7 +548,12 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
               // Re-initialize the transcript recorder with the new seed
               try {
                 const { MainStreetTranscriptRecorder, setMainStreetRecorder } = require('../MainStreetTranscript');
-                const initialSnapshot = { seed: s.state.seed, snapshotAtTurn: s.state.turn };
+                const initialSnapshot = {
+                  seed: s.state.seed,
+                  snapshotAtTurn: s.state.turn,
+                  week: s.state.week ?? 1,
+                  year: s.state.year ?? 1,
+                };
                 const recorder = new MainStreetTranscriptRecorder(initialSnapshot);
                 setMainStreetRecorder(recorder);
               } catch (_) { /* ignore */ }
