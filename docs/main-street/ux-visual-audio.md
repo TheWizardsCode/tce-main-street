@@ -323,7 +323,8 @@ void popTextOrIcon({
 - Trigger: `MainStreetTurnController.onUpgradeCardClick()` — the `afterTransfer`
   hook fires `animateLevelUp({ slotIndex: targetSlot, level })` only when the
   `buyUpgradeCommand` actually succeeded (upgraded flag), after the final
-  `refreshAll` (the newly-rendered level badge is visible underneath).
+  `refreshAll` (the newly-rendered level badge — top-left of the card — is
+  visible underneath).
 - Behavior (reduced-motion OFF):
   1. A small gold sparkle burst (six fixed-direction sparks, `0xffd700`)
      tweens outward and fades on the upgraded business card — deterministic
