@@ -280,6 +280,43 @@ void popTextOrIcon({
   immediately in replay/headless mode (`scene.replayMode`), never mutates
   state or transcript.
 - Reuse: `synergyColor` + `SoundManager` + `popTextOrIcon`; no new engine
+
+### Synergy link tooltip
+
+- Content builder: `buildSynergyLinkTooltipInfo(grid, fromIndex, toIndex,
+  sharedSynergy, config, soldSlots?, gridDims?)` in `MainStreetFormatting.ts`
+  — a pure, headless-testable helper (mirrors `synergyLineEndpoints.ts`). It
+  names the shared synergy type and, for EACH endpoint, states the per-turn
+  coin and/or reputation effect of that one link:
+  - **Coin** — the per-link marginal share
+    (`effectiveBase × effectiveSynergyCoinBonus × config.synergyBonusPerNeighbor`),
+    reusing `synergyCoinContributionPerNeighbor()` so the tooltip can never drift
+    from `computeSynergyBonus()`. The engine rounds the card's TOTAL across all
+    matching neighbours, so a per-link share is shown to at most one decimal and
+    is documented as an approximation.
+  - **Reputation** — synergy flows FROM the neighbour (`computeSynergyRepBonus`
+    sums the neighbour's `synergyRepBonus`), so each endpoint's rep line reflects
+    the other card's `synergyRepBonus`.
+  - **Sold endpoint** — earns nothing from the link but still anchors the
+    synergy for the other card (CG-0MT5XUE2200047IJ); its line says so.
+  - **Zero-synergy opt-out** (e.g. the Pawn Shop) — returns `''` (no tooltip).
+- Wiring: `MainStreetRenderer.drawSynergyLines()` adds one narrow (`12px`),
+  rotated, invisible `Phaser.GameObjects.Zone` per pair on top of the line,
+  parented into `streetContainer` so it is recreated/destroyed with the street
+  layer (no listener leak). The band spans only the clipped edge-to-edge
+  segment — the gap between the two cards — and is wired to
+  `s.tooltipManager.show(...)` on `pointerover` / `.hide()` on `pointerout`.
+- Guards: no band in `replayMode`, and no band when `s.tooltipManager` is
+  absent — matching the business-slot tooltip guards. The
+  `settingsPanel.showTooltips = false` toggle is enforced by `TooltipManager`
+  itself.
+- Interaction safety: the band is thin and confined to the gap between the two
+  slot rects, so slot hover tooltips, click-to-place, sell and upgrade
+  targeting keep working everywhere except immediately along the line. Reduced
+  motion is unaffected (the tooltip appears/hides immediately; no animation).
+- Reuse: `TooltipManager` (`@ui`) + the existing `synergyLineEndpoints`
+  geometry; no new engine API.
+
 ### Upgrade level-up burst
 
 - Helper: `MainStreetAnimator.animateLevelUp()`.

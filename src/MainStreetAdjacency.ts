@@ -32,6 +32,7 @@ export { worldWidth, worldHeight, worldSlotCount } from './MainStreetAdjacencyGe
 // ── Scoring ─────────────────────────────────────────────────
 export {
   computeSynergyBonus,
+  synergyCoinContributionPerNeighbor,
   computeSynergyRepBonus,
   computeBusinessIncome,
   computeSingleCardReputation,

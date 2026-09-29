@@ -4,6 +4,17 @@ Main Street now uses the shared **Screen Layout Language (SLL)** as its canonica
 
 The street is a 10-slot grid rendered as **2 rows × 5 columns**; synergy adjacency is **8-way (Chebyshev)** — orthogonally *and* diagonally adjacent slots count as neighbors (CG-0MSP1HCAS00785MP).
 
+## Synergy link tooltips
+
+Hover a persistent synergy line (drawn between adjacent synergistic businesses) to see what that link does:
+
+- **Shared type** — the synergy type the two cards have in common (the line's colour) plus both card names.
+- **Per-link effect** — for EACH endpoint, the per-turn coin and/or reputation that one link contributes under the active difficulty multiplier (`config.synergyBonusPerNeighbor`). The coin value is the per-link marginal share (`effectiveBase × synergyCoinBonus × multiplier`), shown to at most one decimal; the engine rounds the card's total across all neighbours, so a per-link share is an approximation.
+- **Reputation** flows from the neighbour (`synergyRepBonus`), so each endpoint's rep line reflects the other card's bonus.
+- **Sold endpoints** earn nothing from the link but still anchor the synergy for the other card; the tooltip says so.
+- **Opt-out cards** (e.g. the Pawn Shop) draw no line and show no tooltip.
+- **Replay mode** shows no tooltip; the Settings → Show tooltips toggle suppresses all tooltips (via `TooltipManager`).
+
 ## Upgrade cards: hand-first economy (CG-0MT3IYSRL001VVUP)
 
 Upgrade cards follow the business-card action economy — they are never a free second weekly action:

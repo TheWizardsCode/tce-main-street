@@ -38,6 +38,56 @@ export function effectiveSynergyRepBonus(card: BusinessCard | CommunitySpaceCard
 }
 
 /**
+ * Computes the per-neighbour (per-link) coin synergy contribution for a card,
+ * BEFORE the integer rounding applied to the card's total synergy.
+ *
+ * This is the marginal coin value that ONE matching, different-type neighbour
+ * adds to the card's synergy total:
+ *
+ *   effectiveBase × effectiveSynergyCoinBonus(card) × bonusPerNeighbor
+ *
+ * where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` — the
+ * exact base used by `computeSynergyBonus()`. Exposing it lets the synergy-link
+ * tooltip explain a single link without re-deriving (and drifting from) the
+ * synergy formula (see `buildSynergyLinkTooltipInfo` in MainStreetFormatting).
+ *
+ * Returns 0 for sold slots (a sold card earns no synergy itself) and for
+ * zero-synergy opt-out cards.
+ *
+ * @param grid              The street grid.
+ * @param index             The slot index of the card.
+ * @param bonusPerNeighbor  Global difficulty multiplier on coin synergy (defaults to 1).
+ * @param soldSlots         Array of sold slot flags.
+ * @param gridDims          Optional grid dimensions for expanded lattices.
+ * @returns The unrounded per-link coin contribution (may be fractional).
+ */
+export function synergyCoinContributionPerNeighbor(
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  index: number,
+  bonusPerNeighbor: number = 1,
+  soldSlots: boolean[] = [],
+  gridDims?: GridDims,
+): number {
+  // Source-slot guard: a sold card earns no synergy income itself
+  // (its neighbours, however, keep receiving synergy from it — CG-0MT5XUE2200047IJ).
+  if (soldSlots[index]) return 0;
+  const card = grid[index];
+  if (!card) return 0;
+
+  const rate = effectiveSynergyCoinBonus(card);
+  // A card with zero synergy coin opts out entirely.
+  if (rate === 0) return 0;
+
+  // Compute effective base (base income + income bonus, with same-type penalty)
+  let effectiveBase = card.baseIncome + card.incomeBonus;
+  if (hasAdjacentSameType(grid, index, soldSlots, gridDims)) {
+    effectiveBase = roundInt(effectiveBase * 0.6);
+  }
+
+  return effectiveBase * rate * bonusPerNeighbor;
+}
+
+/**
  * Computes the synergy coin bonus for a single business at a given slot.
  *
  * Uses a percentage-based formula:
@@ -108,14 +158,17 @@ export function computeSynergyBonus(
 
   if (matchingCount === 0) return 0;
 
-  // Compute effective base (base income + income bonus, with same-type penalty)
-  let effectiveBase = business.baseIncome + business.incomeBonus;
-  if (hasAdjacentSameType(grid, index, soldSlots, gridDims)) {
-    effectiveBase = roundInt(effectiveBase * 0.6);
-  }
-
-  // Percentage-based synergy → rounded to nearest integer (AC3)
-  return roundInt(effectiveBase * rate * bonusPerNeighbor * matchingCount);
+  // Percentage-based synergy → rounded to nearest integer (AC3). The
+  // per-neighbour share lives in `synergyCoinContributionPerNeighbor` so the
+  // tooltip and the engine can never drift apart.
+  const perNeighbor = synergyCoinContributionPerNeighbor(
+    grid,
+    index,
+    bonusPerNeighbor,
+    soldSlots,
+    gridDims,
+  );
+  return roundInt(perNeighbor * matchingCount);
 }
 
 /**
