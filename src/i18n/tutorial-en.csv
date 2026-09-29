@@ -61,3 +61,8 @@ tutorial.T25.title,Challenges
 tutorial.T25.body,Each game gives you challenges for bonus points. See them in the Challenge Tracker. Completing challenges unlocks new cards for future games!
 tutorial.T26.title,Tutorial Complete
 tutorial.T26.body,There are many more things to discover as you play, but you have the basics now. Let's play.
+tutorial.steamFollow.cta,Follow us on Steam
+tutorial.steamFollow.opened,Steam is opening in the background — follow us, then come back.
+tutorial.steamFollow.openedBrowser,Opening the Steam page in your browser. Steam rewards are only available in the desktop launcher.
+tutorial.steamFollow.unavailable,Steam isn't available right now — you can still enjoy every game in the launcher.
+tutorial.steamFollow.unlocked,Bonus game unlocked — enjoy!

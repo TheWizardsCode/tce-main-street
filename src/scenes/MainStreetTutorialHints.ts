@@ -242,9 +242,68 @@ export class MainStreetTutorialHints {
   private currentStep = 0;
   private visible = false;
   private readonly onComplete: (() => void) | null;
+  /** Status line of the Steam follow CTA, while that step is rendered. */
+  private pendingStatusEl: HTMLElement | null = null;
 
   constructor(private readonly scene: any, onComplete?: () => void) {
     this.onComplete = onComplete ?? null;
+  }
+
+  // ── Steam follow CTA (F5, CG-0MSMAJQQT004SDCC) ─────────────
+
+  /**
+   * Open the Steam store/community page and re-check the follow.
+   *
+   * Launcher mode: Steam opens the page in the client (already logged in) and
+   * the follow is verified via the preload bridge (F4 unlocks the bonus).
+   * Browser mode: there is no bridge, so the page opens on the web store and
+   * the copy makes clear no reward is granted here (intake AC5).
+   *
+   * Never throws: a missing bridge or a rejected call degrades to a status
+   * message and the tutorial stays completable.
+   */
+  private async handleSteamFollow(): Promise<void> {
+    const statusEl = this.pendingStatusEl;
+    const setStatus = (text: string): void => {
+      if (statusEl) statusEl.textContent = text;
+    };
+
+    try {
+      const bridge = (globalThis as any)?.window?.tce?.steamFollow as
+        | {
+            openStorePage?: () => Promise<boolean>;
+            claim?: () => Promise<{ unlocked?: boolean }>;
+            claimManually?: () => Promise<{ unlocked?: boolean }>;
+            supportsAutomaticFollowCheck?: () => Promise<boolean>;
+          }
+        | undefined;
+
+      if (!bridge) {
+        // Plain browser: open the public store page, no reward available.
+        const url = 'https://store.steampowered.com/';
+        try { (globalThis as any)?.window?.open?.(url, '_blank', 'noopener'); } catch (_) { /* ignore */ }
+        setStatus(t('tutorial.steamFollow.openedBrowser'));
+        return;
+      }
+
+      const opened = await bridge.openStorePage?.();
+      if (!opened) {
+        setStatus(t('tutorial.steamFollow.unavailable'));
+        return;
+      }
+      setStatus(t('tutorial.steamFollow.opened'));
+
+      // Re-check the follow on return. Automatic detection is used when the
+      // Steamworks binding supports it; otherwise fall back to a self-attest
+      // claim (F3 finding), so the reward is still reachable.
+      const supportsAuto = (await bridge.supportsAutomaticFollowCheck?.()) ?? false;
+      const result = supportsAuto
+        ? await bridge.claim?.()
+        : await bridge.claimManually?.();
+      if (result?.unlocked) setStatus(t('tutorial.steamFollow.unlocked'));
+    } catch (_) {
+      setStatus(t('tutorial.steamFollow.unavailable'));
+    }
   }
 
   /** True if the tutorial overlay is currently visible. */
@@ -607,6 +666,42 @@ export class MainStreetTutorialHints {
 
       const isLast = index === UNIFIED_TUTORIAL_STEP_COUNT - 1;
       const isActionStep = step.gate === 'action';
+
+      if (step.showSteamFollowCta) {
+        // ── Steam follow CTA (F5, CG-0MSMAJQQT004SDCC) ─────────
+        // Additive to the normal completion row below: the primary button
+        // opens the Steam store/community page (Steam client in the launcher,
+        // browser otherwise) and re-checks the follow; finishing the tutorial
+        // is never blocked on it (intake AC5).
+        const ctaGroup = document.createElement('div');
+        ctaGroup.style.display = 'flex';
+        ctaGroup.style.gap = '8px';
+        ctaGroup.style.flexWrap = 'wrap';
+        ctaGroup.style.marginBottom = '10px';
+
+        const ctaBtn = document.createElement('button');
+        ctaBtn.textContent = t('tutorial.steamFollow.cta');
+        ctaBtn.style.background = '#1b6a8a';
+        ctaBtn.style.color = '#eaf6ff';
+        ctaBtn.style.border = 'none';
+        ctaBtn.style.padding = '6px 10px';
+        ctaBtn.style.borderRadius = '6px';
+        ctaBtn.style.cursor = 'pointer';
+        ctaBtn.onclick = () => {
+          void this.handleSteamFollow();
+        };
+        ctaGroup.appendChild(ctaBtn);
+        container.appendChild(ctaGroup);
+
+        // Result feedback line, updated by handleSteamFollow().
+        const statusEl = document.createElement('div');
+        statusEl.style.marginBottom = '8px';
+        statusEl.style.color = '#88ccaa';
+        statusEl.style.fontSize = '12px';
+        statusEl.textContent = '';
+        container.appendChild(statusEl);
+        this.pendingStatusEl = statusEl;
+      }
 
       if (isActionStep) {
         // ── Action-gated row: Exit Tutorial (left) ────────────

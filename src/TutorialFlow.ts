@@ -194,9 +194,13 @@ export interface UnifiedTutorialStepDef {
    * next to the Bookshop for a Culture adjacency bonus.
    */
   synergyCardId?: string;
+  /**
+   * If true, the step's tooltip renders the Steam follow call-to-action
+   * (F5, CG-0MSMAJQQT004SDCC). Set on the final completion step only; the CTA
+   * is additive and never blocks finishing the tutorial.
+   */
+  showSteamFollowCta?: boolean;
 }
-
-// ── Unified Tutorial Script (T1-T26) ────────────────────────
 
 /**
  * The unified set of 26 tutorial steps, in sequential order.
@@ -487,6 +491,10 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     bodyKey: tutorialKey('T26', 'body'),
     highlightZone: 'completionModal',
     gate: 'confirm',
+    // F5 (CG-0MSMAJQQT004SDCC): the final completion step carries the Steam
+    // follow CTA. It never blocks finishing — the CTA is additive to the
+    // existing "Let's play!" action.
+    showSteamFollowCta: true,
   },
 ] as const;
 

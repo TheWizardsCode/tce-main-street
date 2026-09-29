@@ -3,7 +3,7 @@
  *
  * Validates the spreadsheet source of truth for tutorial copy:
  * - Header is `key,text`
- * - Every required key is present (62 total)
+ * - Every required key is present (67 total)
  * - No duplicate or orphan/unknown keys
  * - No value is empty
  * - Embedded commas and double quotes round-trip
@@ -34,6 +34,12 @@ const REQUIRED_KEYS = [
   // Banking hints (2)
   'tutorial.bankingHint.title',
   'tutorial.bankingHint.body',
+  // Steam follow CTA (5) — F5, CG-0MSMAJQQT004SDCC
+  'tutorial.steamFollow.cta',
+  'tutorial.steamFollow.opened',
+  'tutorial.steamFollow.openedBrowser',
+  'tutorial.steamFollow.unavailable',
+  'tutorial.steamFollow.unlocked',
   // Tutorial steps T1–T26 (52 = 26 × 2)
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].flatMap(n => [
     `tutorial.T${n}.title`,
@@ -50,9 +56,9 @@ describe('Tutorial CSV integrity', () => {
     expect(parts).toEqual(['key', 'text']);
   });
 
-  it('contains exactly 62 data rows (keys)', () => {
+  it('contains exactly 67 data rows (keys)', () => {
     const rows = parseCsv(rawCsv);
-    expect(rows.length).toBe(62);
+    expect(rows.length).toBe(67);
   });
 
   it('every required key is present', () => {
@@ -139,7 +145,7 @@ describe('Tutorial CSV integrity', () => {
     expect(t21!.text).toContain('{synergyCardName}');
   });
 
-  it('loader bundle has all 62 keys (CSV loads correctly)', () => {
-    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(62);
+  it('loader bundle has all 67 keys (CSV loads correctly)', () => {
+    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(67);
   });
 });
