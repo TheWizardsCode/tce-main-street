@@ -52,6 +52,13 @@ without a browser):
   card of the storyline is pending or queued, persisting through cycles, and
   cleared when the thread ends. The dialog appears instantly and the indicator
   is static text, so both are reduced-motion safe.
+- **Journal & choice clarity** — a **Journal** HUD action opens an overlay
+  listing past storyline choices and outcomes, most recent first, with an empty
+  state before any choice (`buildJournal`/`journalIsEmpty` in
+  [`src/MainStreetStorylineJournal.ts`](../../src/MainStreetStorylineJournal.ts)).
+  The choice dialog also shows explanatory option labels describing the
+  apply-vs-skip semantics without revealing the escalation card
+  (`choiceClarityLabels`).
 
 ---
 

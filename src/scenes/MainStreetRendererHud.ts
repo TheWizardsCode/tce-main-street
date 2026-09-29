@@ -457,6 +457,25 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.actionContainer.add(peekBtn);
       }
 
+      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the Hint/Peek
+      // cluster. Opens the journal overlay listing past storyline choices and
+      // outcomes. Always available (it shows an empty state before any choice).
+      let leftmostX = rightX - btnW - 12 - hintBtnW;
+      if (hasPeekStaff) leftmostX -= 12 + btnW;
+      const journalBtn = createActionButton(
+        s, leftmostX - 12 - btnW, by + 4, btnW, 'Journal',
+        () => s.showStorylineJournal(),
+        {
+          height: s.layout.actionButtonH,
+          fillColor: 0x2a2233,
+          fillAlpha: 0.8,
+          strokeColor: 0x8855aa,
+          textColor: '#cc99ff',
+          fontSize: '14px',
+        },
+      );
+      s.actionContainer.add(journalBtn);
+
     } else if (s.uiPhase === 'placing-from-hand') {
       const rightX = s.layout.gameW - 24;
       const by = s.layout.actionY;

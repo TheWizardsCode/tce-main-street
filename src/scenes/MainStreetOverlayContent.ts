@@ -8,6 +8,7 @@ import type { TurnResult } from '../MainStreetEngine';
 import { FONT_FAMILY, createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
+import { buildJournal, journalIsEmpty, journalTitle, choiceClarityLabels } from '../MainStreetStorylineJournal';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -787,7 +788,7 @@ export class MainStreetOverlayContent {
     if (s.replayMode) return; // headless/replay: never present UI
 
     const panelW = 500;
-    const panelH = 240;
+    const panelH = 300;
     const panelY = s.layout.gameH / 2 - panelH / 2;
 
     // Overlay background with semi-transparent backdrop (199 / 200 / 201).
@@ -844,6 +845,24 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(bodyText);
     s.overlayObjects.push(bodyText);
 
+    // Choice clarity (MS-0MUMP97LQ006PP1D AC3): explanatory labels describing
+    // the consequence semantics (apply vs skip). They deliberately never name
+    // the escalation card — the tension is preserved.
+    const clarity = choiceClarityLabels(event);
+    const acceptClarity = s.add.text(s.layout.gameW / 2, panelY + 158, clarity.accept, {
+      fontSize: '12px', color: '#99cc99', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(acceptClarity);
+    s.overlayObjects.push(acceptClarity);
+
+    const rejectClarity = s.add.text(s.layout.gameW / 2, panelY + 190, clarity.reject, {
+      fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(rejectClarity);
+    s.overlayObjects.push(rejectClarity);
+
     // Accept button — label carries the event name per AC14: "Service Workers
     // Strike (Accept)". Accepting is the safe path (no escalation).
     const acceptBtn = createOverlayButton(
@@ -876,5 +895,94 @@ export class MainStreetOverlayContent {
       onReject();
     });
     s.overlayObjects.push(rejectBtn);
+  }
+
+  /**
+   * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D).
+   *
+   * Lists past storyline choices and their outcomes (from the activity log's
+   * story-update lines), most recent first, with a sensible empty state before
+   * any choice has been made.
+   *
+   * Overlay pattern compliance: `createOverlayBackground` + `createOverlayButton`
+   * from @ui; ALL elements are parented into `s.hudContainer`; depths 199
+   * (backdrop) / 200 (box) / 201 (interactive). No animations (reduced-motion
+   * safe). Cleanup on dismissal resets `s.overlayObjects`.
+   *
+   * @param onClose Called after the overlay is dismissed.
+   */
+  public showStorylineJournalDialog(onClose?: () => void): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    const entries = buildJournal(s.state);
+    const empty = journalIsEmpty(s.state);
+    const maxRows = 10;
+    const rowH = 34;
+    const shown = entries.slice(0, maxRows);
+    const panelW = 560;
+    const panelH = Math.max(240, 150 + Math.max(1, shown.length) * rowH);
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    const titleText = s.add.text(s.layout.gameW / 2, panelY + 24, journalTitle(s.state), {
+      fontSize: '20px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    if (empty) {
+      // Empty state (AC2) — shown before any storyline choice is made.
+      const emptyText = s.add.text(
+        s.layout.gameW / 2, panelY + 100,
+        'No storyline choices yet.\nYour decisions will appear here as the story unfolds.',
+        { fontSize: '14px', color: '#bbaa88', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(emptyText);
+      s.overlayObjects.push(emptyText);
+    } else {
+      shown.forEach((entry, index) => {
+        const y = panelY + 64 + index * rowH;
+        const storyline = s.add.text(20, y, entry.storyline, {
+          fontSize: '13px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
+          wordWrap: { width: 180 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(storyline);
+        s.overlayObjects.push(storyline);
+
+        const outcome = s.add.text(210, y, `[Day ${entry.turn}] ${entry.outcome}`, {
+          fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+          wordWrap: { width: panelW - 240 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(outcome);
+        s.overlayObjects.push(outcome);
+      });
+      if (entries.length > maxRows) {
+        const moreText = s.add.text(
+          s.layout.gameW / 2, panelY + 64 + maxRows * rowH,
+          `…and ${entries.length - maxRows} earlier`, {
+            fontSize: '12px', fontStyle: 'italic', color: '#998877', fontFamily: FONT_FAMILY,
+          },
+        ).setOrigin(0.5, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(moreText);
+        s.overlayObjects.push(moreText);
+      }
+    }
+
+    const closeBtn = createOverlayButton(
+      s, s.layout.gameW / 2, panelY + panelH - 40, '[ Close ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(closeBtn);
+    closeBtn.on('pointerdown', () => {
+      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+      onClose?.();
+    });
+    s.overlayObjects.push(closeBtn);
   }
 }

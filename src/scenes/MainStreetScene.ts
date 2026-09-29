@@ -1284,6 +1284,17 @@ export class MainStreetScene extends CardGameScene {
     }
   }
 
+  /**
+   * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D): past storyline
+   * choices and outcomes, or a sensible empty state. Delegates to the overlay
+   * manager's showStorylineJournalDialog.
+   */
+  public showStorylineJournal(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showStorylineJournalDialog === 'function') {
+      (this.msOverlayManager as any).showStorylineJournalDialog();
+    }
+  }
+
   // ── Tutorial Flow (Milestone 5 action-gated) ────────────
   public confirmTutorialStep(...args: any[]): any {
     return (this.msLifecycleManager as any).confirmTutorialStep.apply(this.msLifecycleManager, args);
