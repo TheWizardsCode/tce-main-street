@@ -216,9 +216,17 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 
 ## Card Data CSV
 
+> **Storylines.** The dual-choice incident chain mechanic (`hasChoices`,
+> `acceptNextCardId`, `rejectNextCardId`, `storylineId`, `storylineTitle`) is
+> documented in full — model, lifecycle, AI policy, tooling and an authoring
+> walkthrough — in [docs/main-street/storylines.md](../docs/main-street/storylines.md).
+> Tooling: `npm run validate:storylines` (static validator),
+> `npm run storylines:graph` (graph/manifest export),
+> `npm run storylines:author` (safe authoring helper).
+
 All card template data is defined in a single CSV file:
 
-- **File:** `example-games/main-street/card-data.csv`
+- **File:** `src/card-data.csv`
 
 ### How it works
 
@@ -275,6 +283,11 @@ The first row is the header. Columns common to all card families:
 | `coinDelta` | number | Coin change when the event resolves |
 | `reputationDelta` | number | Reputation change when the event resolves |
 | `effect` | string | Human-readable effect description |
+| `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses for Accept/Reject (storyline choice). See [docs/main-street/storylines.md](../docs/main-street/storylines.md). |
+| `acceptNextCardId` | string | Card queued on **Accept** (option 0, applies the effect); empty ends the chain. |
+| `rejectNextCardId` | string | Card queued on **Reject** (option 1, skips the effect); empty ends the chain. |
+| `storylineId` | string | Storyline grouping key (e.g. `storyline-tax`). Descriptive metadata. |
+| `storylineTitle` | string | Storyline display name (e.g. `Tax Troubles`). |
 
 Duration events (e.g. Flu Outbreak) also use:
 

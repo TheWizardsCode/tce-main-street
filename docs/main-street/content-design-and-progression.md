@@ -64,6 +64,22 @@ Event cards are split into two trigger types:
 
 **Deck composition:** 5 event templates × 3 copies = 15 cards total (3 Investment, 12 Incident). At game start, the Investments market row draws 1 Investment event and the incident deck is built from the Incident-trigger events, constraint-ordered so repeat-spacing/streak limits hold across the draw sequence (CG-0MSTOATDP000JNHH).
 
+### 1.2a Storyline Choice Cards
+
+Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/main-street/storylines.md](./storylines.md)**.
+
+The shipped storylines are:
+
+| Storyline | Choice cards | Escalation |
+|-----------|--------------|------------|
+| Tax Troubles (`storyline-tax`) | Tax Audit, Error in Tax Return, Inquiry Commission | intentional cycle |
+| Public Health Crisis (`storyline-health`) | Flu Outbreak | Pandemic |
+| Economic Downturn (`storyline-economy`) | Economic Recession | Depression |
+| Labour Unrest (`storyline-labor`) | Service Workers Strike | General Strike |
+| Restaurant Renaissance (`storyline-restaurant`) | Popular Menu Item | Farm-to-Table Feature |
+
+Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export).
+
 ### 1.2b Community Space Cards
 
 Community-space cards are placed on the street grid like businesses but generate **reputation per turn** instead of income (some carry a small ongoing coin cost). They appear in the Development market row alongside businesses. *(Group B, CG-0MSQJ210I00491ZZ, grew this family from 2 to 8 cards.)*
