@@ -36,6 +36,23 @@ The shipped game defines five storylines:
 | `storyline-labor` | Labour Unrest | `evt-strike-service` (→ `evt-general-strike`) |
 | `storyline-restaurant` | Restaurant Renaissance | `evt-popular-menu` (→ `evt-farm-table`) |
 
+### Player agency
+
+Storylines are surfaced to the player through pure helpers in
+[`src/MainStreetStorylineUi.ts`](../../src/MainStreetStorylineUi.ts) (unit-tested
+without a browser):
+
+- **Named dialog** — the choice dialog title is the storyline name
+  (`choiceDialogTitle`, fallback: the card name) with the specific incident as
+  a subtitle (`choiceDialogSubtitle`).
+- **Outcome feedback** — resolving a choice writes a narrative “story update”
+  line to the activity log, tied to the storyline (`storyUpdateLine`).
+- **Continuity indicator** — a transient HUD label (`continuityIndicatorLabel`)
+  names the storylines currently in play (`getActiveStorylines`): active while a
+  card of the storyline is pending or queued, persisting through cycles, and
+  cleared when the thread ends. The dialog appears instantly and the indicator
+  is static text, so both are reduced-motion safe.
+
 ---
 
 ## 2. Data model and CSV columns

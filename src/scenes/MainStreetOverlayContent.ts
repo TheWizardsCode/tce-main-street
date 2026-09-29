@@ -7,6 +7,7 @@ import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import type { TurnResult } from '../MainStreetEngine';
 import { FONT_FAMILY, createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
+import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -804,8 +805,9 @@ export class MainStreetOverlayContent {
     );
     s.overlayObjects.push(...overlay.objects);
 
-    // Title: the event name (a decision is required).
-    const titleText = s.add.text(s.layout.gameW / 2, panelY + 28, event.name, {
+    // Title: the storyline name when available (fallback: the card name), so
+    // the player knows which arc they are in (MS-0MUMP96XH002SJ89 AC1).
+    const titleText = s.add.text(s.layout.gameW / 2, panelY + 22, choiceDialogTitle(event), {
       fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
       align: 'center',
       wordWrap: { width: panelW - 60 },
@@ -813,10 +815,22 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(titleText);
     s.overlayObjects.push(titleText);
 
+    // Subtitle: the specific incident within the storyline (omitted for legacy
+    // choice cards without a storyline).
+    const subtitle = choiceDialogSubtitle(event);
+    if (subtitle) {
+      const subtitleText = s.add.text(s.layout.gameW / 2, panelY + 50, subtitle, {
+        fontSize: '14px', fontStyle: 'italic', color: '#bbaa88', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: panelW - 60 },
+      }).setOrigin(0.5).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(subtitleText);
+      s.overlayObjects.push(subtitleText);
+    }
+
     // Body: what Accept does (the card's stated effect). No preview of the
     // escalation either way — rejecting keeps the consequence unknown.
     const bodyText = s.add.text(
-      s.layout.gameW / 2, panelY + 92,
+      s.layout.gameW / 2, panelY + 78,
       `An incident has occurred.\nAccept: ${event.effect}\nReject: refuse this consequence — a different event will replace it.`,
       {
         fontSize: '13px',

@@ -10,6 +10,7 @@
  */
 
 import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
+import { continuityIndicatorLabel } from '../MainStreetStorylineUi';
 import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { computeScore } from '../MainStreetEngine';
@@ -236,6 +237,19 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Community Favour buttons — inside the widened strip, between Coins and
     // Reputation (CG-0MUFAITED0088AGN).
     renderFavourButtons(s);
+
+    // Storyline continuity indicator (MS-0MUMP96XH002SJ89 AC3): a transient
+    // HUD label showing the storyline(s) currently in play. Rebuilt on every
+    // refresh (so it persists through cycles and disappears when the thread
+    // ends), positioned just above the strip's left edge.
+    const storylineLabel = continuityIndicatorLabel(s.state);
+    if (storylineLabel) {
+      const storylineText = markHudTransient(s.add.text(
+        hudLeft, hudY - HUD_BAR_HEIGHT_PX / 2 - 10, storylineLabel,
+        { fontSize: '12px', fontStyle: 'italic', color: '#ffcc88', fontFamily: FONT_FAMILY },
+      ).setOrigin(0, 1));
+      s.hudContainer.add(storylineText);
+    }
 
     // NOTE: the actions-remaining counter is intentionally NOT rendered in the
     // HUD strip. It lives in the action cluster above the End Turn button

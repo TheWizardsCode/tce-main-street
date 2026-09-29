@@ -33,6 +33,7 @@ import {
   eventHasStoryline,
   createPendingStorylineChoice,
 } from './MainStreetStoryline';
+import { storyUpdateLine } from './MainStreetStorylineUi';
 
 /**
  * Resolves the front Incident event from the face-down incident deck
@@ -230,6 +231,12 @@ export function resolveEventOption(
       event.acceptNextCardId ?? null,
       event.rejectNextCardId ?? null,
     );
+    // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): a concise narrative
+    // "story update" tied to the storyline, when the card belongs to one.
+    const update = storyUpdateLine(event, transcriptOption, coinChange, repChange);
+    if (update) {
+      addLog(state, update, classifyEffect(coinChange, repChange));
+    }
 
     markChoiceResolved(pending, transcriptOption);
     return { event, option: transcriptOption, coinChange, repChange, pushedCard };
@@ -264,6 +271,16 @@ export function resolveEventOption(
     event.acceptNextCardId ?? null,
     event.rejectNextCardId ?? null,
   );
+  // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): story update when applicable.
+  const fallbackUpdate = storyUpdateLine(
+    event,
+    appliesEffect ? 'accept' : 'reject',
+    coinChange,
+    repChange,
+  );
+  if (fallbackUpdate) {
+    addLog(state, fallbackUpdate, classifyEffect(coinChange, repChange));
+  }
   markChoiceResolved(pending, appliesEffect ? 'accept' : 'reject');
   return { event, option: appliesEffect ? 'accept' : 'reject', coinChange, repChange, pushedCard };
 }
