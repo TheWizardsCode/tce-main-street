@@ -144,6 +144,29 @@ export interface MainStreetAnimatorContext {
     at: number,
     flightMs?: number,
   ): void;
+  /**
+   * Flies coin visuals point-to-point without touching a business grid
+   * (CG-0MUA1UH3A008M4BS AC2 — unattached Upcoming coin deltas target the
+   * HUD coin counter).
+   */
+  flyCoinsToPoint(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void;
+  /**
+   * Flies reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS AC3 —
+   * reputation parity for Upcoming deltas, attached or HUD-bound).
+   */
+  flyRepPips(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void;
   applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void;
   collectIncomeGrids(slots: IncomePhaseSlot[], ctx: {
     reducedMotion: boolean;
@@ -279,4 +302,85 @@ export interface MainStreetAnimatorContext {
     reducedMotion?: boolean,
     onComplete?: () => void,
   ): void;
+}
+
+// ── Upcoming / event delta routing (CG-0MUA1UH3A008M4BS) ────────────────
+// Pure routing decision shared by the income animator and its unit tests.
+// Lives in the type hub so helper modules can depend on it without importing
+// each other (preserving the hub-and-spoke import graph).
+
+/** A resolved flow for one coin/reputation delta (origin → target + kind). */
+export interface DeltaFlowRoute {
+  /**
+   * Flow origin. For a gain the origin is the Upcoming source and the target
+   * is the actor; for a loss the origin is the actor and the target is the
+   * Upcoming source (matching the incident-reveal convention:
+   * `coinChange < 0` → resource → card; gain → card → resource).
+   */
+  from: { x: number; y: number };
+  /** Flow destination (see `from` for the sign convention). */
+  to: { x: number; y: number };
+  /**
+   * Whether the delta lands on / leaves a business card (`true`) or the HUD
+   * totals (`false`). Attached deltas target a business grid; unattached
+   * deltas target the HUD coin or reputation counter.
+   */
+  attached: boolean;
+  /** Resource kind: coins or reputation (reputation parity — AC3). */
+  kind: 'coin' | 'rep';
+  /** Signed delta (negative = loss). */
+  delta: number;
+}
+
+/** Geometry the routing helper needs; supplied by the caller (scene layout). */
+export interface DeltaFlowGeometry {
+  /** Upcoming-panel source point (coin/rep originate here for gains). */
+  upcomingSource: { x: number; y: number };
+  /** Business-attached target: the affected slot's centre. */
+  slotCenter: { x: number; y: number };
+  /** HUD coin counter position. */
+  hudCoin: { x: number; y: number };
+  /** HUD reputation counter position. */
+  hudRep: { x: number; y: number };
+}
+
+/**
+ * Resolves the flow route (origin, destination, attachment, kind) for an
+ * Upcoming/event coin or reputation delta (CG-0MUA1UH3A008M4BS AC1–AC3).
+ *
+ * Routing rules (documented in `docs/main-street/ux-visual-audio.md`):
+ * - **Attached** (`attachedSlotIndex` is a number): the flow animates between
+ *   the Upcoming source and the affected business card.
+ * - **Unattached** (`attachedSlotIndex` is `null`/`undefined`): the flow
+ *   animates between the Upcoming source and the HUD totals — the coin
+ *   counter for coin deltas, the reputation counter for reputation deltas —
+ *   and is never drawn via a business grid.
+ * - **Direction by sign** (reusing the incident-reveal convention): a gain
+ *   flows Upcoming → actor (lands on the card / HUD); a loss flows actor →
+ *   Upcoming (leaves the card / HUD).
+ *
+ * Pure and exported for unit testing (AC1/AC2/AC3 assertions on flight
+ * start/end points and direction).
+ */
+export function resolveDeltaFlow(
+  delta: { delta: number; kind?: 'coin' | 'rep'; attachedSlotIndex?: number | null },
+  geometry: DeltaFlowGeometry,
+): DeltaFlowRoute {
+  const kind: 'coin' | 'rep' = delta.kind === 'rep' ? 'rep' : 'coin';
+  const attached = typeof delta.attachedSlotIndex === 'number';
+  // The actor is the business card when attached, otherwise the HUD totals
+  // (coin counter for coins, reputation counter for reputation).
+  const actor = attached
+    ? geometry.slotCenter
+    : kind === 'coin'
+      ? geometry.hudCoin
+      : geometry.hudRep;
+  const isGain = delta.delta >= 0;
+  return {
+    from: isGain ? geometry.upcomingSource : actor,
+    to: isGain ? actor : geometry.upcomingSource,
+    attached,
+    kind,
+    delta: delta.delta,
+  };
 }

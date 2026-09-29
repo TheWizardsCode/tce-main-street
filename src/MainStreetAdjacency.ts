@@ -42,6 +42,7 @@ export {
   computeReputationPerTurn,
   applyIncome,
   applyCompetitiveIncome,
+  attachUpcomingDeltas,
 } from './MainStreetAdjacencyScoring';
 export type {
   SlotIncome,

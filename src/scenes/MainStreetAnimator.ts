@@ -15,7 +15,7 @@ import type { SlotIncome, SlotPhaseBreakdown, SynergyPair } from '../MainStreetA
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, SynergyPhaseFlight } from './MainStreetAnimatorContext';
 import { resetCoinStaggerForTurn, reduceCoinStaggerAfterCard, getCardDelay, getFlightDuration, getIconStagger, eventSourcePoint, synergyPhaseFlights, popSynergyText, findStreetCardContainer, localSlotCentre, getStreetSlotCenter, getMarketCardCenter, getHandCardCenter, creditedIncomeTotal } from './MainStreetAnimatorUtils';
-import { animateHudValueChanges, animateCelebration, animateIncomeCollection, animateIncomePhases, runIncomePhase, eventDeltaEffects, countOutCoins, revealInGrid, flyCoinsIn, flyCoinsAlongLine, flyCoinsOut, applyPendingDeltasOnce, collectIncomeGrids, showIncomePhaseLabel } from './MainStreetAnimatorIncome';
+import { animateHudValueChanges, animateCelebration, animateIncomeCollection, animateIncomePhases, runIncomePhase, eventDeltaEffects, countOutCoins, revealInGrid, flyCoinsIn, flyCoinsAlongLine, flyCoinsOut, flyCoinsToPoint, flyRepPips, applyPendingDeltasOnce, collectIncomeGrids, showIncomePhaseLabel } from './MainStreetAnimatorIncome';
 import { animateIncidentReveal, animateIncidentDeltaBubbles, animatePeekReveal } from './MainStreetAnimatorIncident';
 import { animateMarketDealIn, createTransferCardVisual, cleanupTransferAnimations, animateTransferFromMarket, animateApplicantWalkOn, animateApplicantWalkOff, animateApplicantWalkIn } from './MainStreetAnimatorMarket';
 import { animateSynergyFormation, animateWeekBanner, animateGameOver, animateUndoRedo, animateLevelUp, animateSell, animateClose, animateEventPlayed } from './MainStreetAnimatorBoard';
@@ -138,6 +138,26 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     flightMs?: number,
   ): void {
     flyCoinsOut(this, slot, amount, to, at, flightMs);
+  }
+
+  public flyCoinsToPoint(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void {
+    flyCoinsToPoint(this, from, to, amount, at, flightMs);
+  }
+
+  public flyRepPips(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void {
+    flyRepPips(this, from, to, amount, at, flightMs);
   }
 
   public applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void {

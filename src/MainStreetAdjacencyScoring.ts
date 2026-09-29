@@ -10,7 +10,7 @@
  * @module
  */
 
-import type { BusinessCard, CommunitySpaceCard, SynergyType } from './MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, EventCard, SynergyType } from './MainStreetCards';
 import { getBaseTypeId } from './MainStreetCards';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, syncResourceBankToLedger } from './MainStreetState';
@@ -823,6 +823,134 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
   return results;
 }
 
+/**
+ * Populates the income result's phase breakdown with the end-of-turn
+ * Upcoming-card (event/incident) coin and reputation deltas, tagged by
+ * attachment (CG-0MUA1UH3A008M4BS).
+ *
+ * **Presentational only.** The descriptors written to `SlotPhaseBreakdown`
+ * `upcomingDeltas` are consumed by the phased income animator to route each
+ * flow to the affected business card (attached) or the HUD totals
+ * (unattached); they are deliberately NOT summed into `creditedIncomeTotal`,
+ * so the phase-sum invariant and the deferred-mutation economy are unchanged
+ * (AC4). This function never mutates `state`.
+ *
+ * Attachment is derived from the source `EventCard.target` (Q2 = A):
+ * - `SpecificSynergy` / `RandomBusiness` → business-attached, attributed to
+ *   the affected slot(s) (each matching business for `SpecificSynergy`; the
+ *   first occupied business for `RandomBusiness`, which the current card data
+ *   does not use);
+ * - `All` → unattached, carried on the first producing slot with
+ *   `attachedSlotIndex: null` and routed to the HUD totals.
+ *
+ * Aggregate coin/reputation deltas are split across the affected slots with
+ * an integer-preserving split so the sum of the descriptors equals the delta
+ * applied by the engine.
+ *
+ * @param income    The income result whose phase breakdown is decorated (mutated).
+ * @param state     Current game state (read-only — used only to find target slots).
+ * @param event     The resolved Upcoming event/incident.
+ * @param coinDelta The engine-applied net coin delta (negative = loss).
+ * @param repDelta  The engine-applied net reputation delta (negative = loss).
+ */
+export function attachUpcomingDeltas(
+  income: IncomeResult | null,
+  state: MainStreetState,
+  event: EventCard,
+  coinDelta: number,
+  repDelta: number,
+): void {
+  const perSlot = income?.phaseBreakdown?.perSlotBreakdown;
+  if (!perSlot || perSlot.length === 0) return;
+  if (coinDelta === 0 && repDelta === 0) return;
+
+  const target = event.target ?? 'All';
+  const attached = target === 'SpecificSynergy' || target === 'RandomBusiness';
+  const bySlotIndex = new Map(perSlot.map((pd) => [pd.slotIndex, pd]));
+
+  /** Integer-preserving split of `total` across `count` recipients. */
+  const split = (total: number, count: number): number[] => {
+    if (count <= 0) return [];
+    const base = Math.trunc(total / count);
+    const remainder = total - base * count;
+    const sign = total < 0 ? -1 : 1;
+    return Array.from({ length: count }, (_, i) =>
+      base + (i < Math.abs(remainder) ? sign : 0),
+    );
+  };
+
+  const push = (
+    pd: SlotPhaseBreakdown,
+    attachedSlotIndex: number | null,
+    delta: number,
+    rep: number,
+  ): void => {
+    if (delta !== 0) {
+      pd.upcomingDeltas.push({
+        cardId: event.id,
+        name: event.name,
+        delta,
+        kind: 'coin',
+        attachedSlotIndex,
+      });
+    }
+    if (rep !== 0) {
+      pd.upcomingDeltas.push({
+        cardId: event.id,
+        name: event.name,
+        delta: rep,
+        kind: 'rep',
+        attachedSlotIndex,
+      });
+    }
+  };
+
+  if (!attached) {
+    // Unattached (`All`): a single HUD-bound descriptor. Hang it on the first
+    // producing slot; the animator routes it to the HUD totals regardless.
+    push(perSlot[0], null, coinDelta, repDelta);
+    return;
+  }
+
+  const grid = state.streetGrid ?? [];
+  const soldSlots = state.soldSlots ?? [];
+  let indices: number[];
+  if (target === 'SpecificSynergy') {
+    const synergy = event.targetSynergy;
+    indices = grid
+      .map((_card, i) => i)
+      .filter((i) => {
+        const card = grid[i];
+        return (
+          card !== null &&
+          card !== undefined &&
+          !soldSlots[i] &&
+          (card as BusinessCard | CommunitySpaceCard).synergyTypes.includes(
+            synergy as SynergyType,
+          )
+        );
+      });
+  } else {
+    const first = grid.findIndex((card, i) => card != null && !soldSlots[i]);
+    indices = first >= 0 ? [first] : [];
+  }
+
+  const eligible = indices.filter((i) => bySlotIndex.has(i));
+  if (eligible.length === 0) {
+    // No producing target slot (e.g. a targeted event against an empty
+    // board): fall back to a HUD-bound descriptor so the delta is still
+    // visible without inventing a business flow.
+    push(perSlot[0], null, coinDelta, repDelta);
+    return;
+  }
+
+  const coinParts = split(coinDelta, eligible.length);
+  const repParts = split(repDelta, eligible.length);
+  eligible.forEach((slotIndex, i) => {
+    push(bySlotIndex.get(slotIndex)!, slotIndex, coinParts[i], repParts[i]);
+  });
+}
+
 export interface SlotIncome {
   slotIndex: number;
   businessName: string;
@@ -843,6 +971,29 @@ export interface SlotEventDelta {
   name: string;
   /** The net coin delta contributed by this effect (negative = reduction). */
   delta: number;
+  /**
+   * Which resource this delta moves (CG-0MUA1UH3A008M4BS).
+   *
+   * `'coin'` (default) = coins; `'rep'` = reputation. Reputation parity is
+   * required by AC3 of CG-0MUA1UH3A008M4BS: reputation deltas follow the same
+   * attachment and direction rules as coin deltas. Optional for backward
+   * compatibility — an omitted `kind` is treated as `'coin'`.
+   */
+  kind?: 'coin' | 'rep';
+  /**
+   * Attachment metadata for the delta (CG-0MUA1UH3A008M4BS).
+   *
+   * The phase animator routes the delta's flow using this field:
+   * - a slot index = the delta is attached to that business (source
+   *   `EventCard.target` was `SpecificSynergy` / `RandomBusiness`), so the
+   *   flow targets that business's coin/reputation grid;
+   * - `null` / `undefined` = the delta is unattached (source
+   *   `EventCard.target` was `All`), so the flow targets the HUD totals.
+   *
+   * Optional for backward compatibility with existing constructions that
+   * omit it; an omitted value is treated as unattached (HUD).
+   */
+  attachedSlotIndex?: number | null;
 }
 
 /**
@@ -871,7 +1022,17 @@ export interface SlotPhaseBreakdown {
   repBonus: number;
   /** Per-event income-multiplier deltas (e.g. Flu Outbreak 0.8×). */
   eventDeltas: SlotEventDelta[];
-  /** Upcoming-card income deltas (placeholder — not yet wired). */
+  /**
+   * Upcoming-card deltas attached to THIS business slot. Populated for
+   * effects whose source `EventCard.target` is business-scoped
+   * (`SpecificSynergy` / `RandomBusiness`); the animator routes the flow to
+   * this slot's coin/reputation grid (gain lands on the card, loss leaves it)
+   * — CG-0MUA1UH3A008M4BS AC1.
+   *
+   * Presentation-only: these descriptors never affect the credited totals
+   * (`creditedIncomeTotal` excludes them), so the phase-sum invariant relied
+   * on by the deferred-mutation economy is preserved (AC4).
+   */
   upcomingDeltas: SlotEventDelta[];
 }
 

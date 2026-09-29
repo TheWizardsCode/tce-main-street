@@ -10,14 +10,39 @@ import { describe, it, expect } from 'vitest';
 
 import {
   applyIncome,
+  attachUpcomingDeltas,
   type IncomeResult,
 } from '../../src/MainStreetAdjacency';
 import { setupMainStreetGame } from '../../src/MainStreetState';
 import {
   createBusinessDeck,
   type BusinessCard,
+  type EventCard,
 } from '../../src/MainStreetCards';
 import { createActiveEffect } from '@core-engine/ActiveEffect';
+
+/** Minimal EventCard factory for routing tests. */
+function eventCard(overrides: Partial<EventCard> & Pick<EventCard, 'id' | 'name' | 'target'>): EventCard {
+  return {
+    family: 'event',
+    trigger: 'Incident',
+    cost: 0,
+    effect: 'test',
+    coinDelta: 0,
+    reputationDelta: 0,
+    ...overrides,
+  } as EventCard;
+}
+
+/** Mirrors the animator's credited-total rule (upcomingDeltas excluded). */
+function creditedIncomeTotalFor(result: IncomeResult): number {
+  let sum = 0;
+  for (const pd of result.phaseBreakdown.perSlotBreakdown) {
+    sum += pd.baseIncome + pd.synergyBonus + pd.repBonus;
+    for (const d of pd.eventDeltas ?? []) sum += d.delta;
+  }
+  return Math.round(Math.max(0, sum));
+}
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -197,14 +222,94 @@ describe('IncomeResult.phaseBreakdown (CG-0MT23O6W8003AXWJ)', () => {
     });
   });
 
-  describe('upcoming card deltas', () => {
-    it('upcomingDeltas is an empty array (no upcoming income effects yet)', () => {
+  describe('upcoming card deltas (CG-0MUA1UH3A008M4BS)', () => {
+    it('upcomingDeltas is an empty array when no Upcoming effect is attached', () => {
       const state = setupMainStreetGame({ seed: 'income-phase-data' });
       placeOnGrid(state, makeBiz({ baseIncome: 3 }));
       const result = applyIncome(state);
       const slot = result.phaseBreakdown.perSlotBreakdown[0];
       expect(slot.upcomingDeltas).toBeInstanceOf(Array);
       expect(slot.upcomingDeltas.length).toBe(0);
+    });
+
+    it('attachUpcomingDeltas attributes a business-attached delta to the matching slot and keeps creditedIncomeTotal unchanged', () => {
+      const state = setupMainStreetGame({ seed: 'upcoming-attach' });
+      const biz = makeBiz({ baseIncome: 3, id: 'biz-food', synergyTypes: ['Food'] });
+      placeOnGrid(state, biz);
+      const result = applyIncome(state);
+      const creditedBefore = creditedIncomeTotalFor(result);
+
+      attachUpcomingDeltas(
+        result,
+        state,
+        eventCard({ id: 'evt-rainy', name: 'Rainy Day', target: 'SpecificSynergy', targetSynergy: 'Food' }),
+        -200,
+        0,
+      );
+
+      const slot = result.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 0)!;
+      expect(slot.upcomingDeltas).toHaveLength(1);
+      expect(slot.upcomingDeltas[0]).toMatchObject({
+        cardId: 'evt-rainy',
+        delta: -200,
+        kind: 'coin',
+        attachedSlotIndex: 0,
+      });
+      // Presentational only: the credited total is unchanged (AC4).
+      expect(creditedIncomeTotalFor(result)).toBe(creditedBefore);
+    });
+
+    it('attachUpcomingDeltas carries unattached (All) deltas with attachedSlotIndex null and routes to no business grid', () => {
+      const state = setupMainStreetGame({ seed: 'upcoming-hud' });
+      placeOnGrid(state, makeBiz({ baseIncome: 3, id: 'biz-a' }));
+      const result = applyIncome(state);
+      const creditedBefore = creditedIncomeTotalFor(result);
+
+      attachUpcomingDeltas(
+        result,
+        state,
+        eventCard({ id: 'evt-tax', name: 'Tax Audit', target: 'All' }),
+        -450,
+        100,
+      );
+
+      const allDeltas = result.phaseBreakdown.perSlotBreakdown.flatMap((pd) => pd.upcomingDeltas);
+      expect(allDeltas).toHaveLength(2);
+      const coin = allDeltas.find((d) => d.kind === 'coin')!;
+      const rep = allDeltas.find((d) => d.kind === 'rep')!;
+      expect(coin).toMatchObject({ delta: -450, attachedSlotIndex: null });
+      expect(rep).toMatchObject({ delta: 100, attachedSlotIndex: null });
+      expect(creditedIncomeTotalFor(result)).toBe(creditedBefore);
+    });
+
+    it('attachUpcomingDeltas splits a targeted delta across matching slots with an integer-preserving sum', () => {
+      const state = setupMainStreetGame({ seed: 'upcoming-split' });
+      placeOnGrid(
+        state,
+        makeBiz({ baseIncome: 3, id: 'biz-food-1', synergyTypes: ['Food'] }),
+        makeBiz({ baseIncome: 3, id: 'biz-food-2', synergyTypes: ['Food'] }),
+        makeBiz({ baseIncome: 3, id: 'biz-culture', synergyTypes: ['Culture'] }),
+      );
+      const result = applyIncome(state);
+
+      attachUpcomingDeltas(
+        result,
+        state,
+        eventCard({ id: 'evt-inspection', name: 'Health Inspection', target: 'SpecificSynergy', targetSynergy: 'Food' }),
+        -200,
+        100,
+      );
+
+      const slot0 = result.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 0)!;
+      const slot1 = result.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 1)!;
+      const slot2 = result.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 2)!;
+      const sum = (pd: { upcomingDeltas: Array<{ delta: number }> }): number =>
+        pd.upcomingDeltas.reduce((acc, d) => acc + d.delta, 0);
+      expect(sum(slot0) + sum(slot1)).toBe(-100); // -200 coin + 100 rep
+      expect(sum(slot2)).toBe(0); // culture slot not targeted
+      // Every descriptor carries its owning slot index as the attachment.
+      expect(slot0.upcomingDeltas.every((d) => d.attachedSlotIndex === 0)).toBe(true);
+      expect(slot1.upcomingDeltas.every((d) => d.attachedSlotIndex === 1)).toBe(true);
     });
   });
 

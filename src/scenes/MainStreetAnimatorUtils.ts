@@ -276,7 +276,12 @@ export function creditedIncomeTotal(_animator: MainStreetAnimatorContext, phaseD
     for (const pd of phaseData) {
       sum += pd.baseIncome + pd.synergyBonus + pd.repBonus;
       for (const d of pd.eventDeltas ?? []) sum += d.delta;
-      for (const d of pd.upcomingDeltas ?? []) sum += d.delta;
+      // NOTE (CG-0MUA1UH3A008M4BS AC4): `upcomingDeltas` are deliberately NOT
+      // summed here. They are presentation-only descriptors of a delta that
+      // lands through the deferred-mutation economy (or the incident reveal),
+      // so adding them would double-count the credited total and break the
+      // phase-sum invariant (`slot.base + synergy + repBonus + eventDeltas`
+      // must equal the credited amount).
     }
     return Math.round(Math.max(0, sum));
   

@@ -17,6 +17,7 @@ import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { SFX_KEYS } from './MainStreetConstants';
 import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
+import { resolveDeltaFlow } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
 
 
@@ -456,18 +457,47 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
       }
       case 'upcoming': {
         if (ctx.reducedMotion) return;
-        const from = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
+        // "Upcoming" phase (CG-0MUA1UH3A008M4BS): routes each Upcoming-card
+        // coin AND reputation delta to the actor the effect is attached to —
+        // the affected business card when attached (source `EventCard.target`
+        // = `SpecificSynergy` / `RandomBusiness`), or the HUD totals when not
+        // (target = `All`) — in the direction that matches the sign (gain
+        // lands on the actor, loss leaves it). The Upcoming panel is the flow
+        // source. Presentation-only: never mutates state or the credited total.
+        const upcomingSource = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
+        const hudCoin = { x: s.layout.gameW * 0.25 + 70, y: s.layout.hudY };
+        const hudRep = { x: s.layout.gameW * 0.5, y: s.layout.hudY };
         let delayOffset = 0;
         for (let si = 0; si < numSlots; si++) {
           const slot = slots[si];
           for (const d of slot.pd.upcomingDeltas ?? []) {
-            if (iconsForAmount(Math.abs(roundHalf(d.delta))) === 0) continue;
             const amount = Math.abs(roundHalf(d.delta));
+            if (iconsForAmount(amount) === 0) continue;
             const flightMs = animator.getFlightDuration(numSlots, si);
-            if (d.delta > 0) {
-              animator.flyCoinsIn(slot, amount, from, delayOffset, flightMs);
+            const at = delayOffset;
+            const route = resolveDeltaFlow(d, {
+              upcomingSource,
+              slotCenter: animator.getStreetSlotCenter(slot.pd.slotIndex),
+              hudCoin,
+              hudRep,
+            });
+            if (route.kind === 'coin' && route.attached) {
+              // Business-attached coin delta: gain lands on the card's coin
+              // grid, loss leaves it (existing grid helpers also keep the
+              // on-card grid accumulation intact for collection).
+              if (d.delta > 0) {
+                animator.flyCoinsIn(slot, amount, upcomingSource, at, flightMs);
+              } else {
+                animator.flyCoinsOut(slot, amount, upcomingSource, at, flightMs);
+              }
+            } else if (route.kind === 'coin') {
+              // Unattached coin delta: Upcoming ↔ HUD coin counter, never a
+              // business grid (AC2).
+              animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs);
             } else {
-              animator.flyCoinsOut(slot, amount, from, delayOffset, flightMs);
+              // Reputation parity (AC3): attached → business card;
+              // unattached → HUD reputation counter.
+              animator.flyRepPips(route.from, route.to, amount, at, flightMs);
             }
           }
           const pauseMs = INCOME_CARD_FULL_PAUSE_MULTIPLIER * animator.currentCoinStagger;
@@ -668,6 +698,86 @@ export function flyCoinsOut(animator: MainStreetAnimatorContext,
             },
           });
           s.tweens.add({ targets: icon, alpha: 0, duration, delay: duration * 0.4 });
+        } catch { /* ignore */ }
+      });
+    }
+  
+}
+
+/**
+ * Flies `amount` coin visuals point-to-point WITHOUT touching any business
+ * coin grid (CG-0MUA1UH3A008M4BS AC2). Used for unattached Upcoming coin
+ * deltas, whose flow targets the HUD coin counter rather than a card. Each
+ * coin plays the shared `sfx-coin-pop` at launch, matching the grid flights.
+ */
+export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void {
+
+    const s = animator.scene;
+    const iconCount = iconsForAmount(amount);
+    if (iconCount === 0) return;
+    const duration = flightMs ?? INCOME_FLIGHT_MS;
+    for (let i = 0; i < iconCount; i++) {
+      s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
+        try {
+          const visual = s.add.circle(from.x, from.y, 6, 0xffcc44, 1).setDepth(3000);
+          moveGameObject({
+            scene: s,
+            target: visual,
+            destX: to.x,
+            destY: to.y,
+            duration,
+            ease: 'Quad.easeIn',
+            soundManager: s.soundManager,
+            sfx: { start: SFX_KEYS.COIN_POP, moveIntervalMs: 200 },
+            onComplete: () => {
+              try { visual.destroy(); } catch { /* ignore */ }
+            },
+          });
+        } catch { /* ignore */ }
+      });
+    }
+  
+}
+
+/**
+ * Flies `amount` reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS
+ * AC3, reputation parity). Used for Upcoming reputation deltas — attached
+ * (Upcoming ↔ business card) or unattached (Upcoming ↔ HUD reputation
+ * counter). Reputation pips are silent, matching the reputation income phase.
+ */
+export function flyRepPips(animator: MainStreetAnimatorContext,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void {
+
+    const s = animator.scene;
+    const iconCount = iconsForAmount(amount);
+    if (iconCount === 0) return;
+    const duration = flightMs ?? INCOME_FLIGHT_MS;
+    for (let i = 0; i < iconCount; i++) {
+      s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
+        try {
+          const visual = s.add.circle(from.x, from.y, 5, 0x88bbff, 1).setDepth(3000);
+          moveGameObject({
+            scene: s,
+            target: visual,
+            destX: to.x,
+            destY: to.y,
+            duration,
+            ease: 'Quad.easeIn',
+            onComplete: () => {
+              try { visual.destroy(); } catch { /* ignore */ }
+            },
+          });
         } catch { /* ignore */ }
       });
     }

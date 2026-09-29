@@ -103,6 +103,33 @@ void popTextOrIcon({
   - Reputation / event contributions fly in/out of the grids;
     events also light up their `Upcoming`-panel effect lines
     (`animateUpcomingEffectLine`).
+  - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
+    animates the end-of-turn Upcoming-card (incident/event) coin AND
+    reputation deltas, routing each flow to the actor the effect is attached
+    to (derived from the source `EventCard.target`):
+    - **Attached** (`SpecificSynergy` / `RandomBusiness`) — the flow runs
+      between the Upcoming source and the **affected business card**
+      (`upcomingDeltas[i].attachedSlotIndex` = that slot). A **gain** lands on
+      the card (Upcoming → card grid, `flyCoinsIn`/`flyRepPips`); a **loss**
+      leaves the card (card grid → Upcoming, `flyCoinsOut`/`flyRepPips`).
+    - **Unattached** (`All`) — the flow runs between the Upcoming source and
+      the **HUD totals** (`upcomingDeltas[i].attachedSlotIndex = null`): the
+      **coin counter** for coins (`flyCoinsToPoint`) and the **reputation
+      counter** for reputation (`flyRepPips`), never via any business grid.
+    - **Reputation parity** (AC3): reputation deltas follow exactly the same
+      attachment and direction rules as coin deltas; reputation pips are
+      routed point-to-point and are silent (matching the reputation phase).
+    - **Direction convention** (AC1/AC2, reusing the incident-reveal sign
+      rule): a gain flows Upcoming → actor; a loss flows actor → Upcoming.
+      The pure decision is `resolveDeltaFlow` in `MainStreetAnimatorContext.ts`;
+      the routing descriptors are populated by `attachUpcomingDeltas`
+      (`MainStreetAdjacencyScoring.ts`) from the resolved incident in
+      `processEndOfTurn`.
+    - **Presentational only** (AC4): the descriptors are additive and are
+      deliberately **excluded** from `creditedIncomeTotal`, so the income
+      phase-sum invariant (`base + synergy + repBonus + eventDeltas` = credited
+      total) and the deferred-mutation economy are unchanged; reduced-motion
+      and replay/headless modes keep their no-flight exemption.
   - Phase pace: `INCOME_PHASE_GAP_MS` (default 2200ms) between phases;
     collection lands at ≈11s — **this pacing is part of the feature's
     acceptance criteria and MUST NOT be shortened** (the turn controller

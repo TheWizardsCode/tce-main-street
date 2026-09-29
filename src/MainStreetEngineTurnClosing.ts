@@ -15,7 +15,7 @@ import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
-import { applyIncome } from './MainStreetAdjacency';
+import { applyIncome, attachUpcomingDeltas } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
 import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex, getEventTemplates, getBaseTypeId } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
@@ -344,6 +344,18 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   const incidentRepChange = deferred
     ? incidentDeltasOut!.repChange
     : state.resourceBank.reputation - repBeforeIncident;
+
+  // Upcoming-card flow metadata (CG-0MUA1UH3A008M4BS): decorate the income
+  // phase breakdown with the incident's coin/reputation deltas, tagged by
+  // attachment (source `EventCard.target`), so the phased `upcoming` animation
+  // can route each flow to the affected business card or the HUD totals.
+  // Presentational only — never changes `state`, the transcript, or the
+  // credited totals (`creditedIncomeTotal` excludes `upcomingDeltas`).
+  if (incident) {
+    try {
+      attachUpcomingDeltas(income, state, incident, incidentCoinChange, incidentRepChange);
+    } catch { /* presentation-only — never break the closing */ }
+  }
 
   if (deferred) {
     pendingCoinDelta =
