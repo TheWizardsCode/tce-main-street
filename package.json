@@ -11,6 +11,7 @@
     "preview": "vite preview --host",
     "balance-cards": "tsx src/scripts/run-balance-cards.ts",
     "validate:storylines": "vite-node src/scripts/validate-storylines-cli.ts",
+    "storylines:graph": "vite-node src/scripts/storyline-graph-cli.ts",
     "test": "vitest run --project unit",
     "test:smoke": "bash scripts/run-smoke-tests.sh",
     "test:dev": "bash scripts/run-dev-tests.sh",

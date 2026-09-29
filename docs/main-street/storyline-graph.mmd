@@ -1,0 +1,98 @@
+%%{ init: { "flowchart": { "curve": "basis" } } }%%
+flowchart TD
+  evt_art_sale("Art Sale<br/>evt-art-sale")
+  evt_award("Community Award<br/>evt-award")
+  evt_block_party("Block Party<br/>evt-block-party")
+  evt_book_fair("Book Fair<br/>evt-book-fair")
+  evt_bulk_purchase("Bulk Purchase<br/>evt-bulk-purchase")
+  evt_charity_drive("Charity Drive<br/>evt-charity-drive")
+  evt_christmas("Christmas<br/>evt-christmas")
+  evt_community_garden("Garden Party<br/>evt-community-garden")
+  evt_community_renovation("Community Renovation<br/>evt-community-renovation")
+  evt_construction("Road Construction<br/>evt-construction")
+  evt_cultural_grant("Cultural Grant<br/>evt-cultural-grant")
+  evt_depression("Depression<br/>evt-depression")
+  evt_easter("Easter<br/>evt-easter")
+  evt_farm_table("Farm-to-Table Feature<br/>evt-farm-table")
+  evt_farmers_market("Farmers Market Day<br/>evt-farmers-market")
+  evt_festival("Local Festival<br/>evt-festival")
+  evt_festival_season("Festival Season<br/>evt-festival-season")
+  evt_flu_outbreak{"Flu Outbreak<br/>evt-flu-outbreak"}
+  evt_food_critic("Food Critic Visit<br/>evt-food-critic")
+  evt_food_tasting("Food Tasting Tour<br/>evt-food-tasting")
+  evt_general_strike("General Strike<br/>evt-general-strike")
+  evt_good_press("Good Press<br/>evt-good-press")
+  evt_graffiti("Graffiti<br/>evt-graffiti")
+  evt_graffiti_art("Graffiti Art<br/>evt-graffiti-art")
+  evt_grand_opening("Grand Opening Sale<br/>evt-grand-opening")
+  evt_harvest_festival("Harvest Festival<br/>evt-harvest-festival")
+  evt_health_campaign("Health Campaign<br/>evt-health-campaign")
+  evt_health_carnival("Health Carnival<br/>evt-health-carnival")
+  evt_health_screening("Free Health Screening<br/>evt-health-screening")
+  evt_heatwave("Heatwave<br/>evt-heatwave")
+  evt_inspection("Health Inspection<br/>evt-inspection")
+  evt_labor_shortage("Labor Shortage<br/>evt-labor-shortage")
+  evt_library_reading("Children's Story Hour<br/>evt-library-reading")
+  evt_lughnasadh("Lughnasadh<br/>evt-lughnasadh")
+  evt_may_day("May Day / Bealtaine<br/>evt-may-day")
+  evt_movie_premiere("Movie Premiere<br/>evt-movie-premiere")
+  evt_neighborhood_watch("Neighborhood Watch<br/>evt-neighborhood-watch")
+  evt_noise_complaint("Noise Complaint<br/>evt-noise-complaint")
+  evt_pandemic("Pandemic<br/>evt-pandemic")
+  evt_parking_tickets("Parking Enforcement<br/>evt-parking-tickets")
+  evt_pest_infestation("Pest Infestation<br/>evt-pest-infestation")
+  evt_pipe_burst("Pipe Burst<br/>evt-pipe-burst")
+  evt_popular_menu{"Popular Menu Item<br/>evt-popular-menu"}
+  evt_power_outage("Power Outage<br/>evt-power-outage")
+  evt_power_surge("Power Surge<br/>evt-power-surge")
+  evt_protest("Protest<br/>evt-protest")
+  evt_rainy("Rainy Day<br/>evt-rainy")
+  evt_recession{"Economic Recession<br/>evt-recession"}
+  evt_samhain("Samhain / Halloween<br/>evt-samhain")
+  evt_service_week("Service Week<br/>evt-service-week")
+  evt_shoplifting("Shoplifting Spree<br/>evt-shoplifting")
+  evt_shopping_spree("Shopping Spree<br/>evt-shopping-spree")
+  evt_slow_season("Slow Season<br/>evt-slow-season")
+  evt_st_brigids("St Brigid's Day<br/>evt-st-brigids")
+  evt_st_patricks("St Patrick's Day<br/>evt-st-patricks")
+  evt_street_cleaning("Street Cleaning<br/>evt-street-cleaning")
+  evt_street_performer("Street Performer<br/>evt-street-performer")
+  evt_strike("Strike<br/>evt-strike")
+  evt_strike_service{"Service Workers Strike<br/>evt-strike-service"}
+  evt_summer_fest("Summer Fest<br/>evt-summer-fest")
+  evt_supply_chain("Supply Chain Delay<br/>evt-supply-chain")
+  evt_tax{"Tax Audit<br/>evt-tax"}
+  evt_tax_error{"Error in Tax Return<br/>evt-tax-error"}
+  evt_tax_inquiry{"Inquiry Commission<br/>evt-tax-inquiry"}
+  evt_tourist_bus("Tourist Bus<br/>evt-tourist-bus")
+  evt_tourist_season("Tourist Season<br/>evt-tourist-season")
+  evt_vandalism("Vandalism<br/>evt-vandalism")
+  evt_viral_review("Viral Review<br/>evt-viral-review")
+  evt_volunteer_day("Volunteer Day<br/>evt-volunteer-day")
+  evt_water_main("Water Main Break<br/>evt-water-main")
+  evt_wellness_fair("Wellness Fair<br/>evt-wellness-fair")
+
+  evt_flu_outbreak_Accept_end(["end"])
+  evt_flu_outbreak -->|Accept| evt_flu_outbreak_Accept_end
+  evt_flu_outbreak -->|Reject| evt_pandemic
+  evt_popular_menu_Accept_end(["end"])
+  evt_popular_menu -->|Accept| evt_popular_menu_Accept_end
+  evt_popular_menu -->|Reject| evt_farm_table
+  evt_recession_Accept_end(["end"])
+  evt_recession -->|Accept| evt_recession_Accept_end
+  evt_recession -->|Reject| evt_depression
+  evt_strike_service_Accept_end(["end"])
+  evt_strike_service -->|Accept| evt_strike_service_Accept_end
+  evt_strike_service -->|Reject| evt_general_strike
+  evt_tax_Accept_end(["end"])
+  evt_tax -->|Accept| evt_tax_Accept_end
+  evt_tax ==>|Reject| evt_tax_inquiry
+  evt_tax_error_Accept_end(["end"])
+  evt_tax_error -->|Accept| evt_tax_error_Accept_end
+  evt_tax_error ==>|Reject| evt_tax
+  evt_tax_inquiry ==>|Accept| evt_tax_error
+  evt_tax_inquiry_Reject_end(["end"])
+  evt_tax_inquiry -->|Reject| evt_tax_inquiry_Reject_end
+
+  %% Intentional cycle(s):
+  %% evt-tax -> evt-tax-error -> evt-tax-inquiry -> evt-tax
