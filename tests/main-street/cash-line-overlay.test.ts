@@ -21,7 +21,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { buildUpgradeOverlaySpec } from '../../src/scenes/UpgradeOverlaySpec';
-import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
+import { createCommunitySpaceDeck, type BusinessCard, type CommunitySpaceCard } from '../../src/MainStreetCards';
 
 // ── Test helpers ──────────────────────────────────────────────
 
@@ -251,6 +251,16 @@ describe('AC4: Ongoing cost included in overlay pipeline', () => {
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('-0.75');
+  });
+
+  it('Park card from card-data.csv shows its real 40/turn running cost (CG-0MU9NW9EP003B1AK)', () => {
+    const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
+    expect(park).toBeDefined();
+    expect(park.ongoingCost).toBe(40);
+
+    const spec = buildUpgradeOverlaySpec(park, WIDTH, HEIGHT);
+    expect(spec.cashLine).not.toBeNull();
+    expect(spec.cashLine!.text).toBe('-40');
   });
 });
 

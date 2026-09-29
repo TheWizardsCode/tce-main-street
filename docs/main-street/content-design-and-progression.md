@@ -69,7 +69,7 @@ Community-space cards are placed on the street grid like businesses but generate
 
 | Name | Cost (coins) | Ongoing/turn | Synergy | Tier | Rep/turn | Description |
 |------|--------------|--------------|---------|------|----------|-------------|
-| Park | 300 | 0 | Entertainment | 1 | 0 | Offers leisure space. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB.)* |
+| Park | 300 | 40 | Entertainment | 1 | 0 | Offers leisure space. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK.)* |
 | Playground | 400 | 0 | Entertainment | 3 | 5 | A safe place for kids to play. *(Group B.)* |
 | Community Garden | 500 | 10 | Food | 4 | 10 | A shared garden plot for the neighbourhood. *(Group B.)* |
 | Town Fountain | 500 | 0 | Culture | 5 | 10 | A gathering spot around the fountain. *(Group B.)* |

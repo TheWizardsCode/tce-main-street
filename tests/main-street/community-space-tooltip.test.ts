@@ -47,7 +47,7 @@ function resolvedDescription(card: CommunitySpaceCard | BusinessCard): string {
  * Builds the tooltip info string for a community space card, mimicking the
  * format used in MainStreetRenderer.drawMarketCard for business cards.
  * Includes an ongoing-cost line for cards with a per-turn running cost
- * (per CG-0MRXYGM9B006I3PE, e.g. Library -0.25/turn).
+ * (per CG-0MRXYGM9B006I3PE, e.g. Library -25/turn, Park -40/turn).
  */
 function buildCommunitySpaceTooltip(card: CommunitySpaceCard): string {
   const income = card.baseIncome + (card.incomeBonus || 0);
@@ -197,12 +197,13 @@ describe('Community space card tooltip content (AC2)', () => {
     expect(tooltip).toContain('Ongoing cost: -25/turn');
   });
 
-  it('Park tooltip has no ongoing-cost line', () => {
+  it('Park tooltip includes the 40 coins/turn ongoing-cost line', () => {
     const park = communitySpaceDeck.find(c => c.name === 'Park');
     expect(park).toBeDefined();
+    expect(park!.ongoingCost).toBe(40);
 
     const tooltip = buildCommunitySpaceTooltip(park!);
-    expect(tooltip).not.toContain('Ongoing cost:');
+    expect(tooltip).toContain('Ongoing cost: -40/turn');
   });
 
   it('tooltip distinguishes community space from business', () => {

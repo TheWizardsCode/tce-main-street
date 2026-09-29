@@ -194,7 +194,7 @@ alongside business cards.
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `cs-park` | Park | 300 | 0 | Entertainment | Park | Offers leisure space. Gains 50% of base income per adjacent Entertainment business or community space (scales with difficulty). | Reclassified from M1 Business; retagged Culture → Entertainment (CG-0MT3IPFSF005KEFB) so T1's spread is Culture 2 / Food 2 / Service 1 / Entertainment 1; cheapest community space. |
+| `cs-park` | Park | 300 | 0 | Entertainment | Park | Offers leisure space. Costs 40 coins per turn to run. Gains 50% of base income per adjacent Entertainment business or community space (scales with difficulty). | Reclassified from M1 Business; retagged Culture → Entertainment (CG-0MT3IPFSF005KEFB) so T1's spread is Culture 2 / Food 2 / Service 1 / Entertainment 1; cheapest community space. Running cost 40/turn (CG-0MU9NW9EP003B1AK) so Park-spam carries a real per-turn drain. |
 | `cs-library` | Library | 700 | 0 | Culture | Library | Quiet community space for reading and learning. Costs 25 coins/turn to run; +10 rep/turn. | Reputation asset: no income; small running cost for steady reputation. Full Culture synergy participation (Park model) — contributes to adjacent Culture businesses' synergy and receives rep synergy from rep-bonus neighbours (reversed by CG-0MSKS963N000ZSTU). |
 
 ### M3 Community Space Templates (6) — Group B expansion (CG-0MSQJ210I00491ZZ)

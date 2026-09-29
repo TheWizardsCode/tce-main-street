@@ -58,6 +58,7 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 | **Pawn Shop** | No synergy bonuses (contributes/receives none); negative reputation per turn (−10) trades reputation for a below-tier price (200) |
 | **Clinic** | reputationPerTurn = +20 factored into cost calculation (weight × 30) |
 | **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. |
+| **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam; its purchase cost stays 300 (tier-1 formula). The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. |
 
 ## Per-Family Strategy
 
