@@ -227,19 +227,19 @@ describe('Expanded Card Pool: Multi-Synergy Bridge Cards', () => {
     expect(gallery!.synergyTypes).toContain('Entertainment');
   });
 
-  it('Florist should bridge Commerce and Culture', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist');
+  it('Flower Shop should bridge Commerce and Culture', () => {
+    const florist = businessDeck.find(c => c.name === 'Flower Shop');
     expect(florist).toBeDefined();
     expect(florist!.synergyTypes).toContain('Commerce');
     expect(florist!.synergyTypes).toContain('Culture');
   });
 });
 
-// ── Florist Income rebalance (CG-0MT6EQSPW002E7RC) ─────────
+// ── Flower Shop Income rebalance (CG-0MT6EQSPW002E7RC) ─────────
 
-describe('Florist income rebalance (CG-0MT6EQSPW002E7RC)', () => {
+describe('Flower Shop income rebalance (CG-0MT6EQSPW002E7RC)', () => {
   it('locks the rebalanced template income at tier-5 parity (baseIncome 350, ongoing 125) (×100)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist');
+    const florist = businessDeck.find(c => c.name === 'Flower Shop');
     expect(florist).toBeDefined();
     expect(florist!.baseIncome).toBe(350); // ×100: 3.5 → 350
     expect(florist!.ongoingCost).toBe(125); // ×100: 1.25 → 125
@@ -248,7 +248,7 @@ describe('Florist income rebalance (CG-0MT6EQSPW002E7RC)', () => {
   });
 
   it('matches peer tier-5 net income (Cinema / Juice Bar)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist')!;
+    const florist = businessDeck.find(c => c.name === 'Flower Shop')!;
     const cinema = businessDeck.find(c => c.name === 'Cinema')!;
     const juiceBar = businessDeck.find(c => c.name === 'Juice Bar')!;
     expect(florist.baseIncome - florist.ongoingCost)
@@ -258,7 +258,7 @@ describe('Florist income rebalance (CG-0MT6EQSPW002E7RC)', () => {
   });
 
   it('computes positive solo income at runtime via computeBusinessIncome (AC1)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist')!;
+    const florist = businessDeck.find(c => c.name === 'Flower Shop')!;
     const grid: (BusinessCard | null)[] = new Array(GRID_SIZE).fill(null);
     grid[0] = florist;
     expect(computeBusinessIncome(grid, 0)).toBe(350); // ×100: 3.5 → 350

@@ -154,7 +154,7 @@ Bridge cards belong to two synergy types simultaneously, enabling cross-type adj
 | `biz-food-truck` | Food Truck | 400 | 290 (rep +5/turn, ongoing −100/turn) | Food + Entertainment | Food Truck | Street eats with flair. | Cheapest bridge card; low risk, low reward. |
 | `biz-gallery` | Art Gallery | 1400 | 940 (rep +25/turn, ongoing −350/turn) | Culture + Entertainment | Art Gallery | Showcases local artists. | Connects M1 Culture with new Entertainment. |
 | `biz-spa` | Day Spa | 1400 | 940 (rep +25/turn, ongoing −350/turn) | Service + Entertainment | Day Spa | Relaxation and pampering. | Premium bridge; high synergy potential across 2 new types. |
-| `biz-florist` | Florist | 500 | 350 (rep +10/turn, ongoing −125/turn) | Commerce + Culture | Florist | Arrangements for every occasion. | Commerce–Culture bridge at tier-5 income parity (CG-0MT6EQSPW002E7RC). |
+| `biz-florist` | Flower Shop | 500 | 350 (rep +10/turn, ongoing −125/turn) | Commerce + Culture | Flower Shop | Arrangements for every occasion. | Commerce–Culture bridge at tier-5 income parity (CG-0MT6EQSPW002E7RC). |
 
 ### M3 Business Templates (12) — Group A expansion (CG-0MSQJ1XIB0004QVN)
 
@@ -396,7 +396,7 @@ Each Upgrade targets a specific Business by name. Applying an upgrade increments
 | `upg-gourmet-truck` | Upgrade to Gourmet Truck | Food Truck | 300 | +150 | 0 | Food Truck -> Gourmet Truck. | Cheapest upgrade in the pool. |
 | `upg-museum` | Upgrade to Museum | Art Gallery | 700 | +200 | +1 | Art Gallery -> Museum. | Premium bridge upgrade. |
 | `upg-resort-spa` | Upgrade to Resort Spa | Day Spa | 900 | +350 | +1 | Day Spa -> Resort Spa. | Tied with IMAX for highest cost/power. |
-| `upg-garden-center` | Upgrade to Garden Center | Florist | 700 | +200 | +1 | Florist -> Garden Center. | Budget bridge upgrade with range. |
+| `upg-garden-center` | Upgrade to Garden Center | Flower Shop | 700 | +200 | +1 | Flower Shop -> Garden Center. | Budget bridge upgrade with range. |
 | `upg-medical-center` | Upgrade to Medical Center | Clinic | 300 | 0 | +1 | Clinic -> Medical Center. Provides +10 rep/turn. | Reputation bonus upgrade; no income. |
 | `upg-private-medical-center` | Upgrade to Private Medical Center | Private Clinic | 900 | +450 | +1 | Private Clinic -> Private Medical Center. | Income-focused upgrade; no range or reputation. |
 
@@ -445,13 +445,13 @@ The adjacency resolver (`MainStreetAdjacency.ts`) uses `some()` to check if any 
 | Synergy | Single-type | Bridge (shared) | Total |
 |---------|-------------|-----------------|-------|
 | Food | 4 (Bakery, Community Garden, Delicatessen, Diner) | 4 (Cafe, Food Truck, Juice Bar, Teahouse) | 8 |
-| Culture | 4 (Bookshop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Florist, Public Art, Teahouse, Yoga Studio) | 10 |
-| Commerce | 3 (Boutique, Pawn Shop, Toy Store) | 1 (Florist) | 4 |
+| Culture | 4 (Bookshop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Flower Shop, Public Art, Teahouse, Yoga Studio) | 10 |
+| Commerce | 3 (Boutique, Pawn Shop, Toy Store) | 1 (Flower Shop) | 4 |
 | Service | 6 (Barbershop, Community Shelter, Grand Hotel, Hardware Store, Laundromat, Tailor) | 2 (Day Spa, Physiotherapy) | 8 |
 | Entertainment | 5 (Arcade, Cinema, Music Store, Park, Playground) | 4 (Art Gallery, Day Spa, Food Truck, Public Art) | 9 |
 | Health | 6 (Clinic, Dentist, Gym, Health Kiosk, Pharmacy, Private Clinic) | 3 (Juice Bar, Physiotherapy, Yoga Studio) | 9 |
 
-Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Florist). Global totals are intentionally not balanced per type (Culture 10 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
+Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Flower Shop). Global totals are intentionally not balanced per type (Culture 10 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
 
 > **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** every tier's synergy-bearing cards (business + community-space) span ≥ 2 distinct types, and no type's assignment count within a tier exceeds 2× any other type's count in that tier (bridge cards count once per type they carry). Sparse tiers are stretched with retags/retiers rather than new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. Enforced by `tests/main-street/tier-synergy-balance.test.ts`.
 
@@ -540,7 +540,7 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-health-safety` | Health & Safety Inspector | 800 | 100 | — | 4 | −10% Health incidents | Keeps everything up to code. Reduces incident frequency by 10% for Health businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-pr` | PR Officer | 800 | 100 | — | 4 | +15 rep/turn | Manages the street image. +15 reputation per turn from all businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-financial` | Financial Advisor | 1000 | 125 | — | 5 | Upgrade −100 | Smart investments pay off. Reduces this business upgrade cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); per-business upgrade discount implemented (`upgradeCostDiscount`) — market, hand and drag paths (CG-0MTKMGL66004I0PC).* |
-| `staff-florist` | Florist | 400 | 75 | — | 2 | Commerce/Culture bonus | A specialist florist brings beauty and trade. +30 coins per turn from adjacent Commerce and Culture businesses. Serves Florist, Commerce, Culture. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
+| `staff-florist` | Florist | 400 | 75 | — | 2 | Commerce/Culture bonus | A specialist florist brings beauty and trade. +30 coins per turn from adjacent Commerce and Culture businesses. Serves Flower Shop, Commerce, Culture. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-baker` | Baker | 400 | 80 | — | 2 | Food bonus | A master baker keeps the neighbourhood well-fed. +25 coins per turn from adjacent Food businesses. Serves Bakery, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-chef` | Chef | 600 | 100 | — | 3 | +20% Food income | An experienced chef boosts nearby Food businesses with +20% income. Serves Cafe/Diner/Delicatessen, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-mechanic` | Mechanic | 500 | 90 | — | 3 | +30 coins Service | A skilled mechanic keeps Service businesses running smoothly. +30 coins per turn from a Service business. Serves Hardware Store, Service. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |

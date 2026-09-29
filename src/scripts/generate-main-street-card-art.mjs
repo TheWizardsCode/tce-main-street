@@ -27,9 +27,10 @@
  *    until the sprite arrives).
  * 3. **Staff** — each staff card is aliased to its name (e.g. "Chef") — the
  *    producer must supply `Chef_1024_x_1024.png`.
- * 4. **Business / community-space** — aliased by name; duplicates (Florist,
- *    Community Garden) share the same sprite, which is acceptable per the
- *    work item.
+ * 4. **Business / community-space** — aliased by name. The former duplicate
+ *    names were split on 2026-09-29 (`Florist` business → `Flower Shop`,
+ *    `Community Garden` event → `Garden Party`), so every unique card name now
+ *    has its own art target.
  *
  * CG-0MUCM36EQ008YP4R: the *embedded* bitmap is now 256×256, downscaled from
  * the 1024×1024 source art, instead of a 64×64 thumbnail. The 64×64 art zone

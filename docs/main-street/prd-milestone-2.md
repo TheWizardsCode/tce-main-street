@@ -188,7 +188,7 @@ The list below is retained as historical context for prior milestone discussions
 
 | Type | Remaining M2 Cards (added to Tier 1 pool) |
 |------|--------------------------------------------|
-| Business | Boutique, Barbershop, Cinema, Food Truck, Art Gallery, Florist, Clinic |
+| Business | Boutique, Barbershop, Cinema, Food Truck, Art Gallery, Flower Shop, Clinic |
 | Event | Power Outage, Shoplifting Spree, Noise Complaint, Pipe Burst, Food Critic Visit, Road Construction, Viral Review, Vandalism |
 | Upgrade | Home Improvement, Vintage Shop, Designer Store, Dry Cleaners, Salon, Gaming Lounge, IMAX Theater, Roastery, Gourmet Truck, Museum, Resort Spa, Garden Center, Medical Center, Fast Food, Drive-In Theater, Restaurant, Multiplex, Luxury Retreat, Wellness Center |
 

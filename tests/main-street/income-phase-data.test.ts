@@ -372,23 +372,23 @@ describe('IncomeResult.phaseBreakdown (CG-0MT23O6W8003AXWJ)', () => {
   });
 });
 
-// ── Florist end-of-turn income crediting (CG-0MT6EQSPW002E7RC) ──
+// ── Flower Shop end-of-turn income crediting (CG-0MT6EQSPW002E7RC) ──
 
-describe('Florist end-of-turn income crediting (CG-0MT6EQSPW002E7RC)', () => {
-  it('credits positive income for a solo Florist placement (AC2)', () => {
+describe('Flower Shop end-of-turn income crediting (CG-0MT6EQSPW002E7RC)', () => {
+  it('credits positive income for a solo Flower Shop placement (AC2)', () => {
     const state = setupMainStreetGame({ seed: 'florist-income' });
     // Pin the reputation coin multiplier to 1.0 so the credited amount is exact.
     state.resourceBank.reputation = 0;
 
-    const florist = createBusinessDeck(1).find(c => c.name === 'Florist')!;
+    const florist = createBusinessDeck(1).find(c => c.name === 'Flower Shop')!;
     expect(florist).toBeDefined();
 
     const coinsBefore = state.resourceBank.coins;
     placeOnGrid(state, florist);
     const result = applyIncome(state);
 
-    // IncomeResult includes the Florist slot with a positive total
-    const floristSlot = result.breakdown.find(s => s.businessName === 'Florist');
+    // IncomeResult includes the Flower Shop slot with a positive total
+    const floristSlot = result.breakdown.find(s => s.businessName === 'Flower Shop');
     expect(floristSlot).toBeDefined();
     expect(floristSlot!.total).toBeGreaterThan(0);
 
