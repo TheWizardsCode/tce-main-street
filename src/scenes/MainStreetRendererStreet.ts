@@ -831,7 +831,7 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
       container.add(border);
     }
 
-    // Level badge (top-right)
+    // Level badge (top-left)
     if (spec.levelBadge) {
       const lvlText = renderer.scene.add.text(
         spec.levelBadge.x,
@@ -844,7 +844,7 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
           fontFamily: FONT_FAMILY,
         },
       );
-      lvlText.setOrigin(1, 0);
+      lvlText.setOrigin(0, 0);
       container.add(lvlText);
     }
 

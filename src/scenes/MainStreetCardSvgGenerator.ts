@@ -200,7 +200,7 @@ export function replaceCardTitleInSvg(svgText: string, newTitle: string): string
  * CG-0MTORJ5FS006B0UN layout: 64×64 graphic at (8,8); title right of
  * graphic (x=80, left-anchored); income/rep in the right-hand column;
  * synergy icons below the graphic; cost at bottom-right; level badge
- * top-right when upgraded.
+ * top-left when upgraded.
  *
  * The SVG includes:
  * - 64×64 left-art graphic placeholder (synergy colour, bold glyph)
@@ -210,7 +210,7 @@ export function replaceCardTitleInSvg(svgText: string, newTitle: string): string
  * - Per-turn reputation in the right column (omitted when 0)
  * - Cost circle (bottom-right)
  * - Synergy icon(s) below the graphic (bottom-left)
- * - Level badge (top-right, when level > 0)
+ * - Level badge (top-left, when level > 0)
  *
  * @param card - The business or community-space card.
  * @param width - SVG width in pixels (default 140).
@@ -267,10 +267,10 @@ export function generateBusinessCardSvg(
       ? `<text x="${TEXT_MIN_X}" y="47" font-family="${FONT}" font-size="9" fill="#88bbff" font-weight="bold" text-anchor="start">${totalRep > 0 ? '+' : ''}${fmtRep(totalRep)}/turn</text>`
       : '';
 
-  // Level badge: top-right, only for upgraded cards
+  // Level badge: top-left, only for upgraded cards
   const levelBadge =
     isUpgraded
-      ? `<text x="${width - 8}" y="13" font-family="${FONT}" font-size="9" fill="#ffdd44" font-weight="bold" text-anchor="end">Lvl ${card.level}</text>`
+      ? `<text x="8" y="13" font-family="${FONT}" font-size="9" fill="#ffdd44" font-weight="bold" text-anchor="start">Lvl ${card.level}</text>`
       : '';
 
   // Synergy icons: bottom-left, below the graphic (do not overlap 64×64)
