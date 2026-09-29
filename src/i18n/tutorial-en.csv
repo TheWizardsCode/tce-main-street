@@ -1,0 +1,63 @@
+key,text
+tutorial.modal.title,Welcome to Main Street!
+tutorial.modal.body,Would you like a tour to learn the basics of Main Street?
+tutorial.modal.skipBtn,Skip
+tutorial.modal.startBtn,Start Tutorial
+tutorial.overlay.dismiss,Dismiss
+tutorial.overlay.next,Next >
+tutorial.overlay.exit,Exit Tutorial
+tutorial.overlay.startFullGame,Let's play!
+tutorial.bankingHint.title,Bank your spare action
+tutorial.bankingHint.body,"Any unused action banks up to 2 and carries into future weeks. Check the ""(1 banked)"" count in the action counter above."
+tutorial.T1.title,Welcome to Main Street
+tutorial.T1.body,Build the best Main Street! I'll guide your first few actions.
+tutorial.T2.title,The Market Row
+tutorial.T2.body,This row shows the cards on offer this week. Hover a card for more details.
+tutorial.T3.title,Buy the Laundromat
+tutorial.T3.body,"Click the **{cardName}** card to buy it — taking it is free now, but it uses this week's **one action**. You'll end the turn and place it next week for its listed **{cost}**."
+tutorial.T4.title,Your Hand
+tutorial.T4.body,Cards you take wait here in your hand. They earn nothing until placed. Place them next week — the listed price costs an action then, and it is far cheaper than rushing this week.
+tutorial.T5.title,Upcoming Incidents
+tutorial.T5.body,"Incidents hide in a face-down deck — you see only how many are left, not what is next. The top card is revealed and resolved at the end of each turn."
+tutorial.T6.title,End Turn
+tutorial.T6.body,End the week to collect income and start the next week. The card you took waits in your hand until next week.
+tutorial.T7.title,Place a Business
+tutorial.T7.body,"The card waited in your hand until next week. Click it in your hand, then click an empty slot on the street to place it and pay its listed **cost**. It starts earning income right away."
+tutorial.T8.title,End this turn
+tutorial.T8.body,End the week to collect income and start the next week. You'll have a fresh action next week for the Festival.
+tutorial.T9.title,More than Businesses
+tutorial.T9.body,"The market row can also hold upgrade cards, which improve businesses you own, and event cards, which boost your street when played."
+tutorial.T10.title,Buy the Local Festival
+tutorial.T10.body,"Click the **{cardName}** card to add it to your hand — it uses this week's action, and you pay **{cost}** when you play it. It waits in your hand for the right moment."
+tutorial.T11.title,End this turn
+tutorial.T11.body,"We can't start the festival now because we have no action points left. Besides, we need to maximize the impact it will have by opening cultural focused businesses first. End this turn for now."
+tutorial.T12.title,Move the Bookshop to hand
+tutorial.T12.body,"The **{cardName}** is a Culture business that makes your festival stronger. Move it to your hand for this week's **one action** — you'll place it next week at its listed **{cost}**, not a same-week premium."
+tutorial.T13.title,Costs and Reputation
+tutorial.T13.body,Some businesses cost coins to run but bring in customers. The **{cardName}** builds your reputation.
+tutorial.T14.title,End this turn
+tutorial.T14.body,End the week to collect income and start the next week. The card you took waits in your hand until next week.
+tutorial.T15.title,Community Favour
+tutorial.T15.body,"You can also turn reputation into coins: click the **2r → 3c** button in the action bar below — a FREE **Community Favour** exchange, once per turn."
+tutorial.T16.title,End this turn
+tutorial.T16.body,The **{cardName}** waits in your hand. End this turn to continue to next week.
+tutorial.T17.title,Place the Bookshop
+tutorial.T17.body,"Click the **{cardName}** in your hand, then click an empty slot on the street to place it at its listed **{cost}**. It starts earning income right away."
+tutorial.T18.title,End this turn
+tutorial.T18.body,End the week to collect income from your street and start the next week.
+tutorial.T19.title,Move the Library to hand
+tutorial.T19.body,"The **{cardName}** brings a Culture bonus when placed next to other Culture cards. Click it to move it to your hand — that's this week's **one action**."
+tutorial.T20.title,End this turn
+tutorial.T20.body,End the week to collect income and reach the Library's placement week.
+tutorial.T21.title,Build a Library
+tutorial.T21.body,"Click the **{cardName}** in your hand, then click a slot **next to {synergyCardName}** — orthogonally or diagonally — to place it at its listed cost and gain the Culture bonus."
+tutorial.T22.title,End this turn
+tutorial.T22.body,End this turn to collect income and reach the festival week.
+tutorial.T23.title,Triggering Events
+tutorial.T23.body,"Two Culture businesses on your street power the festival. Click the **{cardName}** in your hand to play it — it uses this week's action."
+tutorial.T24.title,Success and Failure
+tutorial.T24.body,"The bar shows your coins, reputation, score, and target. Hover each to see how it is calculated."
+tutorial.T25.title,Challenges
+tutorial.T25.body,Each game gives you challenges for bonus points. See them in the Challenge Tracker. Completing challenges unlocks new cards for future games!
+tutorial.T26.title,Tutorial Complete
+tutorial.T26.body,There are many more things to discover as you play, but you have the basics now. Let's play.
