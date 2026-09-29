@@ -40,8 +40,10 @@ try {
   // Art map missing — fall back to the synergy-coloured glyph placeholder.
 }
 
-/** Resolve a card name to its embedded art data URI (256×256 WebP, or null). */
-function resolveCardArtDataUri(cardName) {
+/** Resolve a card name to its embedded art data URI (256×256 WebP, or null).
+ *  Exported so tests can assert the runtime and static consumers agree
+ *  (CG-0MUBVL4H80061B1E AC7). */
+export function resolveCardArtDataUri(cardName) {
   const name = String(cardName == null ? '' : cardName).trim();
   const aliased = (CARD_ART_MAP.aliases && CARD_ART_MAP.aliases[name]) || name;
   return (CARD_ART_MAP.art && CARD_ART_MAP.art[aliased]) ||
