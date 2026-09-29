@@ -176,7 +176,8 @@ describe('MainStreetCardArt — name resolution', () => {
     expect(resolveCardArtName('Community Renovation')).toBe('Community Rennovation');
     expect(resolveCardArtName('Labor Shortage')).toBe('Labour Shortage');
     expect(resolveCardArtName('Neighborhood Watch')).toBe('Neighbourhood Watch');
-    expect(resolveCardArtName('Physiotherapy')).toBe('Physiotherapist');
+    // Physiotherapy alias removed — Physiotherapist now resolves via exact CSV→sprite match.
+    expect(resolveCardArtName('Physiotherapist')).toBe('Physiotherapist');
     expect(hasDedicatedCardArt('Community Renovation')).toBe(true);
   });
 });

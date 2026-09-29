@@ -55,7 +55,7 @@ const NEW_BUSINESS_CONTRACTS: NewBusinessContract[] = [
   // (income = old income + 2.4 × ongoing cost; tiered reputation per turn).
   { id: 'biz-juice-bar', name: 'Juice Bar', cost: 500, baseIncome: 350, synergyTypes: ['Food', 'Health'], tier: '5', reputationPerTurn: 8 },
   { id: 'biz-yoga-studio', name: 'Yoga Studio', cost: 800, baseIncome: 580, synergyTypes: ['Culture', 'Health'], tier: '9', reputationPerTurn: 12 },
-  { id: 'biz-physio', name: 'Physiotherapy', cost: 1000, baseIncome: 700, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 15 },
+  { id: 'biz-physio', name: 'Physiotherapist', cost: 1000, baseIncome: 700, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 15 },
   { id: 'biz-tailor', name: 'Tailor', cost: 500, baseIncome: 375, synergyTypes: ['Service'], tier: '6', reputationPerTurn: 8 },
   { id: 'biz-gym', name: 'Gym', cost: 800, baseIncome: 580, synergyTypes: ['Health'], tier: '9', reputationPerTurn: 12 },
   { id: 'biz-dentist', name: 'Dentist', cost: 1200, baseIncome: 870, synergyTypes: ['Health'], tier: '11', reputationPerTurn: 20 },

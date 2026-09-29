@@ -16,7 +16,7 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Hardware Store | 300 | 230 | Service | Hardware Store → Home Improvement | Supplies tools. Gains 50% of base income per adjacent Service business. *(Commerce→Service retag, CG-0MT3IPFSF005KEFB — tool supply is a Service, gives T2 a second type.)* |
 | Juice Bar | 500 | 350 | Food, Health | — | Fresh juices and smoothies. Bridges Food and Health synergies. *(Group A: first Health bridge.)* |
 | Yoga Studio | 800 | 580 | Culture, Health | — | Calm practice space for mind and body. Bridges Culture and Health synergies. *(Group A.)* |
-| Physiotherapy | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
+| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
 | Tailor | 500 | 375 | Service | — | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. *(Group A.)* |
 | Gym | 800 | 580 | Health | — | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
 | Dentist | 1200 | 870 | Health | — | Smiles for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |

@@ -116,7 +116,6 @@ export const CARD_ART_ALIASES = {
   'Community Renovation': 'Community Rennovation',
   'Labor Shortage': 'Labour Shortage',
   'Neighborhood Watch': 'Neighbourhood Watch',
-  'Physiotherapy': 'Physiotherapist',
   'Graffiti': 'Graffiti Art',
 };
 
@@ -260,7 +259,6 @@ const SPELLING_ALIASES = {
   'Community Renovation': 'Community Rennovation',
   'Labor Shortage': 'Labour Shortage',
   'Neighborhood Watch': 'Neighbourhood Watch',
-  'Physiotherapy': 'Physiotherapist',
   'Graffiti': 'Graffiti Art',
 };
 

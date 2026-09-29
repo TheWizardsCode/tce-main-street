@@ -47,7 +47,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 - Current total: `158` templates (`10.5x` baseline)
 - Business family grew from 18 to 30 with the Group A expansion (CG-0MSQJ1XIB0004QVN):
   12 new cards including the first Health bridge cards (Juice Bar, Yoga Studio,
-  Physiotherapy), mid-tier (T2/T3) singles, and the T5 Grand Hotel flagship.
+  Physiotherapist), mid-tier (T2/T3) singles, and the T5 Grand Hotel flagship.
   The producer-added Charity Shop (MS-0MUAYBAHW007RMSL) brings the family to 31.
 - Community Space grew from 2 to 8 with the Group B expansion (CG-0MSQJ210I00491ZZ):
   6 new reputation assets across five synergies (Playground, Community Garden,
@@ -167,7 +167,7 @@ Adds the first **Health bridge cards**, mid-tier (T2/T3) singles across every sy
 |----|------|------|--------|---------|------|----------|-------------|-----------|
 | `biz-juice-bar` | Juice Bar | 500 | 350 (rep +8/turn, ongoing −125/turn) | Food + Health | 3 | 8 | Fresh juices and smoothies. Bridges Food and Health synergies. | First Health bridge; connects the existing Food cluster to Health. |
 | `biz-yoga-studio` | Yoga Studio | 800 | 580 (rep +12/turn, ongoing −200/turn) | Culture + Health | 4 | 12 | Calm practice space for mind and body. Bridges Culture and Health synergies. | Culture–Health bridge; mid-tier wellness option. |
-| `biz-physio` | Physiotherapy | 1000 | 700 (rep +15/turn, ongoing −250/turn) | Health + Service | 4 | 15 | Recovery and rehabilitation care. Bridges Health and Service synergies. Provides +15 reputation per turn. | Health–Service bridge with a small reputation perk. |
+| `biz-physio` | Physiotherapist | 1000 | 700 (rep +15/turn, ongoing −250/turn) | Health + Service | 4 | 15 | Recovery and rehabilitation care. Bridges Health and Service synergies. Provides +15 reputation per turn. | Health–Service bridge with a small reputation perk. |
 
 #### Singles (mid-tier depth)
 
@@ -459,9 +459,9 @@ The adjacency resolver (`MainStreetAdjacency.ts`) uses `some()` to check if any 
 | Food | 4 (Bakery, Community Garden, Delicatessen, Diner) | 4 (Cafe, Food Truck, Juice Bar, Teahouse) | 8 |
 | Culture | 5 (Bookshop, Charity Shop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Flower Shop, Public Art, Teahouse, Yoga Studio) | 11 |
 | Commerce | 3 (Boutique, Pawn Shop, Toy Store) | 1 (Flower Shop) | 4 |
-| Service | 6 (Barbershop, Community Shelter, Grand Hotel, Hardware Store, Laundromat, Tailor) | 2 (Day Spa, Physiotherapy) | 8 |
+| Service | 6 (Barbershop, Community Shelter, Grand Hotel, Hardware Store, Laundromat, Tailor) | 2 (Day Spa, Physiotherapist) | 8 |
 | Entertainment | 5 (Arcade, Cinema, Music Store, Park, Playground) | 4 (Art Gallery, Day Spa, Food Truck, Public Art) | 9 |
-| Health | 6 (Clinic, Dentist, Gym, Health Kiosk, Pharmacy, Private Clinic) | 3 (Juice Bar, Physiotherapy, Yoga Studio) | 9 |
+| Health | 6 (Clinic, Dentist, Gym, Health Kiosk, Pharmacy, Private Clinic) | 3 (Juice Bar, Physiotherapist, Yoga Studio) | 9 |
 
 Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Flower Shop). Global totals are intentionally not balanced per type (Culture 11 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
 
