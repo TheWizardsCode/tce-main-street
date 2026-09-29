@@ -383,6 +383,13 @@ export function generateStaffCardSvg(
     const peek = (card as unknown as Record<string, unknown>).peekOncePerTurn as number;
     if (peek > 0) inner.push('  <text x="' + TEXT_MIN_X + '" y="59" font-family="' + FONT + '" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">peek 1/turn</text>');
   }
+  // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+  // Shares the third detail line with the peek ability — the current staff
+  // data set never has both on one card.
+  const upgDiscount = (card as unknown as Record<string, unknown>).upgradeCostDiscount as number | undefined;
+  if (upgDiscount && upgDiscount > 0) {
+    inner.push('  <text x="' + TEXT_MIN_X + '" y="59" font-family="' + FONT + '" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">upgrade -' + upgDiscount + '</text>');
+  }
   inner.push('  ' + costBadgeSvg(card.cost, width, height));
 
   return svgShell(card.id, card.name, '#555555', inner, width, height);
@@ -496,6 +503,12 @@ export function generateCardSvgFromCsvRow(
     }
     if (row.peekOncePerTurn && Number(row.peekOncePerTurn) > 0) {
       inner.push('  <text x="' + TEXT_MIN_X + '" y="59" font-family="' + FONT + '" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">peek 1/turn</text>');
+    }
+    // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+    // Shares the third detail line with peek; the current staff data set
+    // never has both abilities on one card.
+    if (row.upgradeCostDiscount && Number(row.upgradeCostDiscount) > 0) {
+      inner.push('  <text x="' + TEXT_MIN_X + '" y="59" font-family="' + FONT + '" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">upgrade -' + row.upgradeCostDiscount + '</text>');
     }
   }
 

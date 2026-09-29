@@ -42,13 +42,13 @@ import {
 // ── Synthetic CSV (choice + escalation templates) ───────────
 
 const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-test,Test Choice Event,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,-100,,,,,,,,,,,,,,,,true,evt-esc-audit,evt-esc-worse
-event,evt-esc-audit,Audit Escalation,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,
-event,evt-esc-worse,Worse Escalation,0,,,,,,,,,1,Incident,Lose 500 coins,All,,-500,0,,,,,,,,,,,,,,,,,,
-event,evt-plain-test,Plain Incident,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,,
-event,evt-dur-choice,Duration Choice,100,,,,,,,,,1,Incident,80% income for 5 turns,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,true,,evt-esc-dur
-event,evt-esc-dur,Duration Escalation,100,,,,,,,,,1,Incident,60% income for 6 turns,All,,0,0,6,income-multiplier,0.6,,,,,,,,,,,,,,,`;
+  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-choice-test,Test Choice Event,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,-100,,,,,,,,,,,,,,,,,true,evt-esc-audit,evt-esc-worse
+event,evt-esc-audit,Audit Escalation,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,,
+event,evt-esc-worse,Worse Escalation,0,,,,,,,,,1,Incident,Lose 500 coins,All,,-500,0,,,,,,,,,,,,,,,,,,,
+event,evt-plain-test,Plain Incident,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,,,
+event,evt-dur-choice,Duration Choice,100,,,,,,,,,1,Incident,80% income for 5 turns,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-esc-dur
+event,evt-esc-dur,Duration Escalation,100,,,,,,,,,1,Incident,60% income for 6 turns,All,,0,0,6,income-multiplier,0.6,,,,,,,,,,,,,,,,`;
 
 // ── Helpers ─────────────────────────────────────────────────
 

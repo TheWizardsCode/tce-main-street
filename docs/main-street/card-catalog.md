@@ -71,12 +71,16 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 - Staff grew from 3 to 7 with the Group F expansion (CG-0MSQJ7VL9009JHF4):
   Apprentice (budget) and Executive (+4 slots premium) cost points, plus two
   NEW ability mechanics — the Socialite's +10 rep/turn and the Accountant's
-  market-refresh discount of 1 (StaffCard optional ability fields).
+  market-refresh discount of 100 (StaffCard optional ability fields). The
+  Financial Advisor's per-business upgrade discount of 100 is implemented via
+  the `upgradeCostDiscount` field (CG-0MTKMGL66004I0PC); the IT Specialist and
+  Delivery Driver cost-reduction descriptions remain description-only (no
+  implementing data column or engine path — recorded as an explicit gap).
 - Non-baseline card IDs are tracked in `docs/main-street/expanded-card-manifest.json`
 
 ### Guidance: adding more cards safely
 
-1. Add rows to `example-games/main-street/card-data.csv` using the correct family column value (`business`, `event`, `upgrade`, `community-space`, or `staff`).
+1. Add rows to `src/card-data.csv` (the game repo root; post-extraction path) using the correct family column value (`business`, `event`, `upgrade`, `community-space`, or `staff`).
 2. Regenerate metadata artifacts:
    - `npx tsx scripts/generate-card-csv.ts` — regenerates `card-data.csv` from TS (only if editing TS directly; normally edit CSV)
    - `npx tsx scripts/generate-main-street-catalog-baseline.ts`
@@ -519,7 +523,7 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-assistant` | Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. | Original M2 staff. |
 | `staff-manager` | Manager | 700 | 250 | +2 | 3 | — | A skilled manager keeps things organised. | Mid-tier capacity. |
 | `staff-socialite` | Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds +1 hand slot and +10 reputation per turn. | **NEW** reputation ability *(Group F).* |
-| `staff-accountant` | Accountant | 800 | 150 | +1 | 6 | Refresh −1; Tax 25% | A meticulous accountant makes market refreshes cost 1 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J).* |
+| `staff-accountant` | Accountant | 800 | 150 | +1 | 6 | Refresh −100; Tax 25% | A meticulous accountant makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J); refresh discount rescaled ×100 (CG-0MTKMGL66004I0PC).* |
 | `staff-lookout` | Lookout | 1000 | 200 | +1 | 7 | Peek once/turn | A sharp-eyed lookout can peek at the top card of the incident deck once per turn. | **NEW** peek ability *(CG-0MSXOW6GN008ZSMN).* |
 | `staff-director` | Director | 1400 | 400 | +3 | 9 | — | An experienced director oversees your operations. | Premium capacity. |
 | `staff-executive` | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity at a high ongoing cost. | Premium slot capacity *(Group F).* |
@@ -527,15 +531,15 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-barista` | Barista | 300 | 50 | — | 2 | Food synergy | A skilled barista brings warmth to any business. Adjacent Food businesses gain +20 synergy coins. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-bookkeeper` | Bookkeeper | 300 | 50 | — | 2 | −20% ongoing | Keeps the books tight. Reduces this business ongoing cost by 20%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-customer-rep` | Customer Service Rep | 300 | 50 | — | 2 | Service synergy | Ensures every visitor leaves satisfied. Adjacent businesses gain +10 synergy reputation. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-delivery` | Delivery Driver | 300 | 50 | — | 2 | -50 purchase cost | Handles the logistics. Reduces business card purchase cost by 50 for this business. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
+| `staff-delivery` | Delivery Driver | 300 | 50 | — | 2 | -50 purchase cost | Handles the logistics. Reduces business card purchase cost by 50 for this business. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); description-only — effect not implemented (gap).* |
 | `staff-security` | Security Guard | 700 | 75 | — | 3 | −10% incident coins | Experienced guard watches over the street. Reduces all incident coin damage by 10%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-marketing` | Marketing Consultant | 700 | 100 | — | 3 | +10% rep sources | Expert at drawing crowds. Businesses gain +10% reputation from all sources. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-event-planner` | Event Planner | 700 | 75 | — | 3 | Entertainment synergy | Creates buzz and draws visitors. +100 synergy coin per turn from Entertainment businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-maintenance` | Maintenance Worker | 700 | 75 | — | 3 | -50 incident rep | Keeps everything running smoothly. Reduces incident reputation damage by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-it` | IT Specialist | 800 | 100 | — | 4 | Refresh −1 | Modernizes operations. Reduces this business refresh cost by 1. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
+| `staff-it` | IT Specialist | 800 | 100 | — | 4 | Refresh −100 | Modernizes operations. Reduces this business refresh cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); rescaled ×100 (CG-0MTKMGL66004I0PC); description-only — effect not implemented (gap).* |
 | `staff-health-safety` | Health & Safety Inspector | 800 | 100 | — | 4 | −10% Health incidents | Keeps everything up to code. Reduces incident frequency by 10% for Health businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-pr` | PR Officer | 800 | 100 | — | 4 | +15 rep/turn | Manages the street image. +15 reputation per turn from all businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-financial` | Financial Advisor | 1000 | 125 | — | 5 | Upgrade −1 | Smart investments pay off. Reduces this business upgrade cost by 1. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
+| `staff-financial` | Financial Advisor | 1000 | 125 | — | 5 | Upgrade −100 | Smart investments pay off. Reduces this business upgrade cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); per-business upgrade discount implemented (`upgradeCostDiscount`) — market, hand and drag paths (CG-0MTKMGL66004I0PC).* |
 | `staff-florist` | Florist | 400 | 75 | — | 2 | Commerce/Culture bonus | A specialist florist brings beauty and trade. +30 coins per turn from adjacent Commerce and Culture businesses. Serves Florist, Commerce, Culture. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-baker` | Baker | 400 | 80 | — | 2 | Food bonus | A master baker keeps the neighbourhood well-fed. +25 coins per turn from adjacent Food businesses. Serves Bakery, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-chef` | Chef | 600 | 100 | — | 3 | +20% Food income | An experienced chef boosts nearby Food businesses with +20% income. Serves Cafe/Diner/Delicatessen, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |

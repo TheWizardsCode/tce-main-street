@@ -51,7 +51,9 @@ incident mitigation. Cost-reduction and incident-mitigation skills stack freely.
 - **Cost reductions:** Cost Cutter applies to **all three** ongoing-cost families
   (staff/community-space/business) at end of turn; Operations Manager discounts **only its own
   member's** salary; Negotiator reduces `refreshMarketCost` in addition to legacy
-  `refreshCostDiscount` staff abilities (Group F).
+  `refreshCostDiscount` staff abilities (Group F); the Financial Advisor's
+  `upgradeCostDiscount` reduces the upgrade cost of its employing business only
+  (CG-0MTKMGL66004I0PC).
 - **Incidents:** damage reductions and theft immunity apply to Incident-trigger events only;
   Brand Ambassador multiplies *positive* reputation deltas from both incidents and investments.
   Risk Manager averts a turn's incident draw with 15% probability (deterministic — consumes one

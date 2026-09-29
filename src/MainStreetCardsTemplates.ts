@@ -257,6 +257,8 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       allowedBusinessTypes: (r.allowedBusinessTypes || '').split('|').filter(Boolean),
       reputationPerTurn: r.reputationPerTurn ? Number(r.reputationPerTurn) : undefined,
       refreshCostDiscount: r.refreshCostDiscount ? Number(r.refreshCostDiscount) : undefined,
+      // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+      upgradeCostDiscount: r.upgradeCostDiscount ? Number(r.upgradeCostDiscount) : undefined,
       taxAuditRate: r.taxAuditRate !== undefined && r.taxAuditRate !== '' ? Number(r.taxAuditRate) : undefined,
       actionsPerTurn: r.actionsPerTurn ? Number(r.actionsPerTurn) : undefined,
       peekOncePerTurn: r.peekOncePerTurn ? Number(r.peekOncePerTurn) > 0 : undefined,

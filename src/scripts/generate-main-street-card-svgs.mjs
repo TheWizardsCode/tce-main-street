@@ -194,9 +194,11 @@ function parseCardCsv(csvText) {
     const ongoingCost = card.ongoingCost ? Number(card.ongoingCost) : null;
     const handSlotsAdded = card.handSlotsAdded ? Number(card.handSlotsAdded) : null;
     const peekOncePerTurn = card.peekOncePerTurn ? Number(card.peekOncePerTurn) : null;
+    // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+    const upgradeCostDiscount = card.upgradeCostDiscount ? Number(card.upgradeCostDiscount) : null;
     const trigger = card.trigger || null;
 
-    templates.push({ id: card.id, name: card.name, cost, family, trigger, synergies, ongoingCost, handSlotsAdded, peekOncePerTurn });
+    templates.push({ id: card.id, name: card.name, cost, family, trigger, synergies, ongoingCost, handSlotsAdded, peekOncePerTurn, upgradeCostDiscount });
   }
 
   return templates;
@@ -285,6 +287,12 @@ export function generateCardSvg(t) {
   }
   if (t.family === 'staff' && t.peekOncePerTurn && t.peekOncePerTurn > 0) {
     staffLines.push(`  <text x="${TEXT_MIN_X}" y="59" font-family="${FONT}" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">peek 1/turn</text>`);
+  }
+  // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+  // Shares the third detail line with peek; the current staff data set never
+  // has both abilities on one card.
+  if (t.family === 'staff' && t.upgradeCostDiscount && t.upgradeCostDiscount > 0) {
+    staffLines.push(`  <text x="${TEXT_MIN_X}" y="59" font-family="${FONT}" font-size="9" fill="#ffcc66" font-weight="400" text-anchor="start">upgrade -${t.upgradeCostDiscount}</text>`);
   }
   // Prepend a line break so staff lines follow the title; empty for other families.
   const staffTexts = staffLines.length > 0 ? '\n' + staffLines.join('\n') : '';

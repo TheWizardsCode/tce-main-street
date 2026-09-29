@@ -226,6 +226,8 @@ export function buildCardTooltipInfo(
       const stRepInfo = formatPerTurnReputation(st.reputationPerTurn ?? 0);
       if (stRepInfo !== '') lines.push(`Reputation: ${stRepInfo}`);
       if ((st.refreshCostDiscount ?? 0) > 0) lines.push(`Refresh discount: -${st.refreshCostDiscount} per refresh`);
+      // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+      if ((st.upgradeCostDiscount ?? 0) > 0) lines.push(`Upgrade discount: -${st.upgradeCostDiscount} per upgrade (this business)`);
       if ((st.taxAuditRate ?? 0) > 0) lines.push(`Tax Audit: losses reduced to ${Math.round((st.taxAuditRate ?? 0) * 100)}%`);
       if ((st.actionsPerTurn ?? 0) > 0) lines.push(`Actions: +${st.actionsPerTurn}/week`);
       if (st.peekOncePerTurn) lines.push('Ability: peek the incident deck once per turn');

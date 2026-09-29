@@ -52,7 +52,7 @@ const NEW_STAFF_CONTRACTS: NewStaffContract[] = [
   { id: 'staff-apprentice', name: 'Apprentice', cost: 200, ongoingCost: 50, handSlotsAdded: 1 },
   { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 4 },
   { id: 'staff-socialite', name: 'Socialite', cost: 800, ongoingCost: 150, handSlotsAdded: 1, reputationPerTurn: 10 },
-  { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 1 },
+  { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 100 },
 ];
 
 function findStaff(deck: readonly StaffCard[], id: string): StaffCard | undefined {
@@ -185,7 +185,7 @@ describe('Group F: Socialite reputation ability (AC2)', () => {
 // ── AC2: Accountant refresh discount ──────────────────────────────────
 
 describe('Group F: Accountant refresh discount (AC2)', () => {
-  it('reduces the market refresh cost by 1', () => {
+  it('reduces the market refresh cost by 100 (×100 integer economy)', () => {
     const state = setupMainStreetGame({ seed: 'group-f-accountant' });
     state.phase = 'MarketPhase';
 
@@ -195,18 +195,18 @@ describe('Group F: Accountant refresh discount (AC2)', () => {
     const accountant = findStaff(createStaffDeck(1), 'staff-accountant')!;
     state.staffCards.push({ ...accountant });
 
-    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 1);
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 100);
   });
 
   it('allows a refresh and deducts only the discounted cost', () => {
     const state = setupMainStreetGame({ seed: 'group-f-accountant-deduct' });
     state.phase = 'MarketPhase';
-    state.resourceBank.coins = REFRESH_MARKET_COST - 1;
+    state.resourceBank.coins = REFRESH_MARKET_COST - 100;
 
     const accountant = findStaff(createStaffDeck(1), 'staff-accountant')!;
     state.staffCards.push({ ...accountant });
 
-    // 499 coins is exactly enough with the discount (base 500 - 1).
+    // 400 coins is exactly enough with the discount (base 500 - 100).
     expect(canRefreshMarket(state).legal).toBe(true);
 
     refreshMarket(state);

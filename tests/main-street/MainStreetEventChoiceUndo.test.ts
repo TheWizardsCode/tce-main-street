@@ -41,11 +41,11 @@ import { resolveEventChoiceCommand } from '../../src/MainStreetCommands';
 // ── Synthetic CSV (choice + escalation templates) ──────────
 
 const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-a,Choice A,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,true,evt-next-b,evt-worse
-event,evt-next-b,Next B,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,
-event,evt-worse,Worse Card,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,
-event,evt-dur-choice,Duration Choice,0,,,,,,,,,1,Incident,80% income 4 turns,All,,0,0,4,income-multiplier,0.8,,,,,,,,,,,,,true,,evt-next-b`;
+  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-choice-a,Choice A,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,true,evt-next-b,evt-worse
+event,evt-next-b,Next B,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,,
+event,evt-worse,Worse Card,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,,
+event,evt-dur-choice,Duration Choice,0,,,,,,,,,1,Incident,80% income 4 turns,All,,0,0,4,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-next-b`;
 
 // ── Helpers ─────────────────────────────────────────────────
 

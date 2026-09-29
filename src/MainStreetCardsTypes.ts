@@ -354,6 +354,16 @@ export interface StaffCard {
    */
   readonly refreshCostDiscount?: number;
   /**
+   * Optional flat coin discount applied to buying an upgrade for the
+   * business where this staff member is employed (e.g. the Financial
+   * Advisor's "upgrade costs 100 less" ability — CG-0MTKMGL66004I0PC).
+   * Scoped to the employing business (`employedAtSlot` / the business's
+   * `employedStaff` list); discounts from multiple staff at the same
+   * business stack additively and the effective upgrade cost is floored
+   * at 0. Absent for staff without the ability (backward compatible).
+   */
+  readonly upgradeCostDiscount?: number;
+  /**
    * Optional Tax Audit rate override, as a fraction of banked coins
    * (e.g. `0.25` for the Accountant's "tax losses reduced to 25%" ability).
    * When one or more employed staff define this, the lowest (most

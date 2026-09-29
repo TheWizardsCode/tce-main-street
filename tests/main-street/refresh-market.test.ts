@@ -170,13 +170,13 @@ describe('AC2: refreshMarket re-roll', () => {
     state.resourceBank.coins = 5000;
     purchaseStaffCard(state, accountant!.id);
 
-    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 1);
-    // 499 coins is enough with the discount (500 - 1), but not without.
-    state.resourceBank.coins = REFRESH_MARKET_COST - 1;
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 100);
+    // 400 coins is enough with the discount (500 - 100), but not without.
+    state.resourceBank.coins = REFRESH_MARKET_COST - 100;
     expect(canRefreshMarket(state).legal).toBe(true);
     const coinsBefore = state.resourceBank.coins;
     refreshMarket(state);
-    expect(state.resourceBank.coins).toBe(coinsBefore - (REFRESH_MARKET_COST - 1));
+    expect(state.resourceBank.coins).toBe(coinsBefore - (REFRESH_MARKET_COST - 100));
   });
 
   it('is unlimited per turn while affordable', () => {
