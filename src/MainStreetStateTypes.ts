@@ -429,8 +429,13 @@ export interface PendingApplicant {
 export interface PendingEventChoice {
   /** The choice event drawn from the incident deck (effect deferred). */
   event: EventCard;
-  /** The player's decision, once made; null while the dialog is showing. */
-  chosenOption: null | 'accept' | 'reject';
+  /**
+   * The chosen option label, once made; null while the dialog is showing.
+   * Legacy accept/reject choices store the lowercase `'accept'`/`'reject'`
+   * tokens for backward compatibility; generalised storylines store the
+   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   */
+  chosenOption: string | null;
   /** False while the dialog is pending; true after the choice is applied. */
   resolved: boolean;
 }

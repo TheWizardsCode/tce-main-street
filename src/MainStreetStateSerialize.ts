@@ -616,10 +616,10 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           targetSlotIndex: (saved as unknown as { pendingApplicant: { card: StaffCard; targetSlotIndex: number } }).pendingApplicant!.targetSlotIndex,
         }
       : null,
-    pendingEventChoice: (saved as unknown as { pendingEventChoice?: { event: EventCard; chosenOption: null | 'accept' | 'reject'; resolved: boolean } | null })?.pendingEventChoice
+    pendingEventChoice: (saved as unknown as { pendingEventChoice?: { event: EventCard; chosenOption: string | null; resolved: boolean } | null })?.pendingEventChoice
       ? {
-          event: structuredClone((saved as unknown as { pendingEventChoice: { event: EventCard; chosenOption: null | 'accept' | 'reject'; resolved: boolean } }).pendingEventChoice!.event),
-          chosenOption: (saved as unknown as { pendingEventChoice: { chosenOption: null | 'accept' | 'reject' } }).pendingEventChoice!.chosenOption,
+          event: structuredClone((saved as unknown as { pendingEventChoice: { event: EventCard; chosenOption: string | null; resolved: boolean } }).pendingEventChoice!.event),
+          chosenOption: (saved as unknown as { pendingEventChoice: { chosenOption: string | null } }).pendingEventChoice!.chosenOption,
           resolved: (saved as unknown as { pendingEventChoice: { resolved: boolean } }).pendingEventChoice!.resolved,
         }
       : null,

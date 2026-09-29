@@ -242,6 +242,17 @@ export interface EventCard {
    * deck (the event's effect is NOT applied). Null / absent ends the chain.
    */
   readonly rejectNextCardId?: string | null;
+  /**
+   * Optional storyline identifier — groups cards into a named story arc.
+   * Absent means the card is not part of a storyline (legacy behaviour).
+   * Cards sharing the same `storylineId` form one story arc.
+   */
+  readonly storylineId?: string | null;
+  /**
+   * Human-readable title for the storyline (displayed in journal/UI).
+   * Optional; defaults to the storylineId when absent.
+   */
+  readonly storylineTitle?: string | null;
 }
 
 /**
@@ -532,3 +543,37 @@ export const DEFAULT_INCIDENT_MAX_STREAK = 2;
  * this depth; beyond it the constraint degrades gracefully (uses all history).
  */
 export const MAX_TRACKED_INCIDENT_HISTORY = 10;
+
+// ── Generalised option model (extraction seam types) ─────────
+
+/**
+ * A single option within a storyline's ordered option list.
+ * The engine resolves options sequentially (in declaration order) until the
+ * player selects one.
+ */
+export interface StorylineOption {
+  /** Human-readable label for the option (e.g. "Accept", "Reject", "Investigate"). */
+  readonly label: string;
+  /** The card ID to push when this option is chosen. Null / absent ends the chain. */
+  readonly successorId: string | null | undefined;
+  /** Whether the event's intrinsic effect applies when this option is chosen. */
+  readonly effectPolicy: 'apply' | 'skip';
+}
+
+/**
+ * A compiled storyline definition extracted from a card's legacy
+ * hasChoices / acceptNextCardId / rejectNextCardId fields, or from
+ * explicit storyline metadata.
+ *
+ * Legacy compilation:
+ * - `hasChoices: false` → compiledOptions is empty (non-choice card).
+ * - `hasChoices: true` → two options:
+ *   1. label="Accept", successorId=acceptNextCardId, effectPolicy="apply"
+ *   2. label="Reject", successorId=rejectNextCardId, effectPolicy="skip"
+ */
+export interface CompiledStoryline {
+  /** The storyline identifier this definition belongs to. Null for non-storyline cards. */
+  readonly storylineId: string | null;
+  /** Ordered list of options; empty for non-choice cards. */
+  readonly compiledOptions: StorylineOption[];
+}

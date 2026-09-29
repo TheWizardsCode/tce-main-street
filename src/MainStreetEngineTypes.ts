@@ -233,8 +233,12 @@ export interface EndOfTurnOptions {
 export interface EventChoiceResolution {
   /** The event the decision was made about. */
   event: EventCard;
-  /** Which option the player chose. */
-  option: 'accept' | 'reject';
+  /**
+   * Which option the player chose. Legacy accept/reject resolutions use the
+   * lowercase `'accept'`/`'reject'` tokens; generalised storylines store the
+   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   */
+  option: string;
   /** Net coin delta applied by the chosen path (0 for reject / durations). */
   coinChange: number;
   /** Net reputation delta applied by the chosen path. */

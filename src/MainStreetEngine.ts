@@ -104,6 +104,7 @@ export {
   finishDeferredTurnClosing,
   processEndOfTurn,
   resolveEventChoice,
+  resolveEventOption,
   resolveIncident,
   resolvePendingEventChoice,
 } from './MainStreetEngineTurnClosing';
