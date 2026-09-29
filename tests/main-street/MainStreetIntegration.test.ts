@@ -133,7 +133,10 @@ describe('Multi-Use Card Economy Integration', () => {
     });
 
     it('should complete multiple turns with mixed tableau and hand purchases', () => {
-      const state = createTestState();
+      // Seed chosen so the loop actually takes cards to hand and to the
+      // tableau across 3 turns (the expanded business pool shifted the
+      // seeded market).
+      const state = createTestState('integration-test-6');
       // Coin cushion so buying the first affordable card never bankrupts the
       // player mid-test (the expanded pool shifted which card that is).
       state.resourceBank.coins = 50;
@@ -141,8 +144,8 @@ describe('Multi-Use Card Economy Integration', () => {
       for (let turn = 0; turn < 3 && state.gameResult === 'playing'; turn++) {
         executeWeekStart(state);
 
-        // Buy to hand if possible
-        const card = state.market.cards.find(c => c.cost <= state.resourceBank.coins);
+        // Buy to hand if possible (skip staff — hire those directly)
+        const card = state.market.cards.find(c => c.cost <= state.resourceBank.coins && c.family !== 'staff');
         if (card && state.hand.length < state.maxHandSize) {
           moveToHand(state, card.id);
         } else if (card) {
@@ -234,8 +237,8 @@ describe('Multi-Use Card Economy Integration', () => {
       for (let turn = 0; turn < 3 && state.gameResult === 'playing'; turn++) {
         executeWeekStart(state);
 
-        // Buy a card to stimulate cycling
-        const card = state.market.cards.find(c => c.cost <= state.resourceBank.coins);
+        // Buy a card to stimulate cycling (skip staff — hire those directly)
+        const card = state.market.cards.find(c => c.cost <= state.resourceBank.coins && c.family !== 'staff');
         if (card && state.hand.length < state.maxHandSize) {
           moveToHand(state, card.id);
         } else if (card) {

@@ -219,6 +219,7 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
     'Barista',
     'Bookkeeper',
     'Cafe',
+    'Charity Shop',
     'Chef',
     'Community Shelter',
     'Customer Service Rep',
@@ -261,9 +262,10 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
   ]);
 
   /** Baseline of art-less cards: may only shrink as the producer's art lands.
-   *  78 after the 2026-09-29 rename split the two duplicate names: the staff
-   *  `Florist` (bouquet) and the event `Garden Party` now need their own art. */
-  const BASELINE_UNRESOLVED_CARDS = 78;
+   *  79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL): the
+   *  new business ships without dedicated art and uses the generic fallback
+   *  until the producer supplies a 1024×1024 sprite. */
+  const BASELINE_UNRESOLVED_CARDS = 79;
 
   it('maps every unique card name in card-data.csv', () => {
     const names = uniqueCardNames();

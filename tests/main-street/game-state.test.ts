@@ -33,7 +33,7 @@ import { DEFAULT_CHALLENGES_PER_RUN } from '../../src/MainStreetChallenges';
 // Event:     5 (M1) + 12 (M2) + 18 (M3) + 1 (Evt Recession) = 36 templates  (actual array length: 37)
 // Upgrade:   3 (M1) + 14 (M2) + 4 branching + 4 level-2 + 1 (Community Hub) = 26 templates
 // Community: 2 (Park, Library) = 2 templates
-const BUSINESS_TEMPLATE_COUNT = 30;
+const BUSINESS_TEMPLATE_COUNT = 31; // + Charity Shop (MS-0MUAYBAHW007RMSL)
 const EVENT_TEMPLATE_COUNT = 71; // 56 + 8 story-chain + 7 Irish-holiday (CG-0MTT0K9RX0004QTE)
 const UPGRADE_TEMPLATE_COUNT = 39;
 const DEFAULT_BUSINESS_COPIES = 3;

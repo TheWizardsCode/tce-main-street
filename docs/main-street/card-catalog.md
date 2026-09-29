@@ -11,7 +11,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 
 | Family        | Templates | Copies each | Total cards |
 |---------------|-----------|-------------|-------------|
-| Business      | 30        | 3           | 90          |
+| Business      | 31        | 3           | 93          |
 | Event         | 71        | 3           | 213         |
 | Upgrade       | 39        | 2           | 78          |
 | Community Space | 8       | 3           | 24          |
@@ -27,7 +27,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 
 | Family        | Templates | Copies each | Total cards |
 |---------------|-----------|-------------|-------------|
-| Business      | 30        | 3           | 90          |
+| Business      | 31        | 3           | 93          |
 | Event         | 56        | 3           | 168         |
 | Upgrade       | 39        | 2           | 78          |
 | Community Space | 8       | 3           | 24          |
@@ -40,14 +40,15 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 | Snapshot | Business | Event | Upgrade | Community Space | Staff | Total templates |
 |---|---:|---:|---:|---:|---:|---:|
 | Tier 1 baseline (`docs/main-street/card-catalog-baseline.json`) | 4 | 4 | 4 | 2 | 1 | 15 |
-| Current catalog (`card-data.csv`) | 30 | 71 | 39 | 8 | 9 | 157 |
-| Net increase | +26 | +67 | +35 | +6 | +8 | +142 |
+| Current catalog (`card-data.csv`) | 31 | 71 | 39 | 8 | 9 | 158 |
+| Net increase | +27 | +67 | +35 | +6 | +8 | +143 |
 
 - 2x target from baseline: `>= 30` templates
-- Current total: `142` templates (`9.5x` baseline)
+- Current total: `158` templates (`10.5x` baseline)
 - Business family grew from 18 to 30 with the Group A expansion (CG-0MSQJ1XIB0004QVN):
   12 new cards including the first Health bridge cards (Juice Bar, Yoga Studio,
   Physiotherapy), mid-tier (T2/T3) singles, and the T5 Grand Hotel flagship.
+  The producer-added Charity Shop (MS-0MUAYBAHW007RMSL) brings the family to 31.
 - Community Space grew from 2 to 8 with the Group B expansion (CG-0MSQJ210I00491ZZ):
   6 new reputation assets across five synergies (Playground, Community Garden,
   Town Fountain, Health Kiosk, Community Shelter, Public Art), including the
@@ -186,6 +187,17 @@ Adds the first **Health bridge cards**, mid-tier (T2/T3) singles across every sy
 |----|------|------|--------|---------|------|----------|-------------|-----------|
 | `biz-hotel` | Grand Hotel | 1600 | 1210 (rep +30/turn, ongoing −400/turn) | Service | 5 | 30 | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business. Provides +30 reputation per turn. | T5 flagship; highest income in the pool. Cost exceeds the flagship band's 14 cap to reflect premium positioning (documented balance rationale). |
 | `biz-teahouse` | Teahouse | 700 | 495 (rep +10/turn, ongoing −175/turn) | Food + Culture | 3 | 10 | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. | Second Food–Culture bridge (alongside Cafe). |
+
+### Producer-Added Business Templates (1) — Charity Shop (MS-0MUAYBAHW007RMSL)
+
+A tier-2, standalone Culture business added by the producer: a low-cost,
+reputation-leaning Culture card that trades a modest income for a steady
+reputation trickle (1.5 gross income + 0.15 reputation per turn at the design
+scale).
+
+| ID | Name | Cost | Income | Synergy | Tier | Rep/turn | Description | Rationale |
+|----|------|------|--------|---------|------|----------|-------------|-----------|
+| `biz-charity-shop` | Charity Shop | 300 | 150 (rep +15/turn, ongoing −75/turn) | Culture | 2 | 15 | Sells donated goods. Provides +15 reputation per turn. Gains 50% of base income per adjacent Culture business (scales with difficulty). | Early reputation-leaning Culture single. The producer-specified cost of 300 is a deliberate manual override of the balance curve — see `balancing-methodology.md` § Special Cases. |
 
 ---
 
@@ -445,15 +457,15 @@ The adjacency resolver (`MainStreetAdjacency.ts`) uses `some()` to check if any 
 | Synergy | Single-type | Bridge (shared) | Total |
 |---------|-------------|-----------------|-------|
 | Food | 4 (Bakery, Community Garden, Delicatessen, Diner) | 4 (Cafe, Food Truck, Juice Bar, Teahouse) | 8 |
-| Culture | 4 (Bookshop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Flower Shop, Public Art, Teahouse, Yoga Studio) | 10 |
+| Culture | 5 (Bookshop, Charity Shop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Flower Shop, Public Art, Teahouse, Yoga Studio) | 11 |
 | Commerce | 3 (Boutique, Pawn Shop, Toy Store) | 1 (Flower Shop) | 4 |
 | Service | 6 (Barbershop, Community Shelter, Grand Hotel, Hardware Store, Laundromat, Tailor) | 2 (Day Spa, Physiotherapy) | 8 |
 | Entertainment | 5 (Arcade, Cinema, Music Store, Park, Playground) | 4 (Art Gallery, Day Spa, Food Truck, Public Art) | 9 |
 | Health | 6 (Clinic, Dentist, Gym, Health Kiosk, Pharmacy, Private Clinic) | 3 (Juice Bar, Physiotherapy, Yoga Studio) | 9 |
 
-Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Flower Shop). Global totals are intentionally not balanced per type (Culture 10 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
+Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Flower Shop). Global totals are intentionally not balanced per type (Culture 11 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
 
-> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** every tier's synergy-bearing cards (business + community-space) span ≥ 2 distinct types, and no type's assignment count within a tier exceeds 2× any other type's count in that tier (bridge cards count once per type they carry). Sparse tiers are stretched with retags/retiers rather than new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. Enforced by `tests/main-street/tier-synergy-balance.test.ts`.
+> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** every tier's synergy-bearing cards (business + community-space) span ≥ 2 distinct types, and no type's assignment count within a tier exceeds 2× any other type's count in that tier (bridge cards count once per type they carry). Sparse tiers are stretched with retags/retiers rather than new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. The producer-added Charity Shop later adds T2 Culture (MS-0MUAYBAHW007RMSL), giving Commerce 2 / Service 1 / Culture 1. Enforced by `tests/main-street/tier-synergy-balance.test.ts`.
 
 ### Branching & Multi-Level Upgrades
 

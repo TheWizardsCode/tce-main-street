@@ -64,7 +64,7 @@ describe('AC1 — Deterministic head-to-head execution', () => {
 
   it('should complete within the maxTurns cap', () => {
     const maxTurns = 5;
-    const run = runCompetitiveSeed('ac1-cap', maxTurns);
+    const run = runCompetitiveSeed('ac1-cap-1', maxTurns);
 
     expect(run.turns).toBeLessThanOrEqual(maxTurns);
     expect(run.endReason).toBe('max_turns_cap');

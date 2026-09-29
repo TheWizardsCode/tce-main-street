@@ -4,7 +4,8 @@
  * Validates the 12 new business cards added by the "Main Street: design 50+
  * new cards of varying types" epic (CG-0MSQE2NLX003ADIY), Group A:
  *
- * - Template count grows from 18 to 30 business cards (AC1).
+ * - Template count grows from 18 to 31 business cards (AC1; the 31st is the
+ *   producer-added Charity Shop, MS-0MUAYBAHW007RMSL).
  * - Every new card matches its design contract (name, cost, income, synergy,
  *   tier, reputation per turn).
  * - Every new card appears in `CARD_TIER_MAP` at the contracted tier (AC2)
@@ -73,9 +74,9 @@ function byId(templates: readonly { id: string }[], id: string): BusinessCard | 
 // ── AC1: Template count ───────────────────────────────────────────────
 
 describe('Group A business expansion: template count (AC1)', () => {
-  it('grows the business family from 18 to exactly 30 templates', () => {
+  it('grows the business family from 18 to exactly 31 templates', () => {
     const templates = getBusinessTemplates();
-    expect(templates.length).toBe(30);
+    expect(templates.length).toBe(31);
   });
 
   it('adds exactly the 12 contracted card IDs (no more, no fewer)', () => {
@@ -187,8 +188,8 @@ describe('Group A business expansion: Health bridges', () => {
 // ── Deck generation & market integration ──────────────────────────────
 
 describe('Group A business expansion: deck generation', () => {
-  it('builds a 90-card business deck at the default 3 copies', () => {
-    expect(createBusinessDeck(3)).toHaveLength(90);
+  it('builds a 93-card business deck at the default 3 copies', () => {
+    expect(createBusinessDeck(3)).toHaveLength(93);
   });
 
   it('includes every new card in a 1-copy (template) deck', () => {

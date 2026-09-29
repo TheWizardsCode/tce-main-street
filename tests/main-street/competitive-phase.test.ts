@@ -102,7 +102,7 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
   });
 
   it('shared closing with N=3 alternates P0->P1->P2 then closing', () => {
-    const s = comp('ac1-n3', 3);
+    const s = comp('ac1-n3-1', 3);
     executeCompetitiveWeekStart(s);
     expect(getActivePlayerId(s)).toBe(0);
     endCompetitiveMarketTurn(s);

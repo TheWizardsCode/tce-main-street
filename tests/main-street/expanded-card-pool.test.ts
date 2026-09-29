@@ -58,8 +58,8 @@ const upgradeDeck = createUpgradeDeck(1);
 // ── Template Completeness ───────────────────────────────────
 
 describe('Expanded Card Pool: Template Completeness', () => {
-  it('should have exactly 30 business templates', () => {
-    expect(businessDeck).toHaveLength(30);
+  it('should have exactly 31 business templates', () => {
+    expect(businessDeck).toHaveLength(31);
   });
 
   it('should have exactly 71 event templates', () => {
@@ -504,8 +504,8 @@ describe('Expanded Card Pool: Event Card Fields', () => {
 // ── Deck Building ───────────────────────────────────────────
 
 describe('Expanded Card Pool: Deck Building', () => {
-  it('business deck with 3 copies should have 90 cards', () => {
-    expect(createBusinessDeck(3)).toHaveLength(90);
+  it('business deck with 3 copies should have 93 cards', () => {
+    expect(createBusinessDeck(3)).toHaveLength(93);
   });
 
     it('event deck with 3 copies should have 213 cards', () => {
