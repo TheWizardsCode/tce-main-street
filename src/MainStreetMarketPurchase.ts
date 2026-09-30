@@ -19,7 +19,7 @@ import { resolveEvent } from './MainStreetEngine';
 import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
 import { canAddToHand, validateHandIndex } from './MainStreetMarketHand';
-import { computeUpgradeCostDiscount } from './MainStreetStaffBuffs';
+import { computeUpgradeCostDiscount, computePurchaseCostDiscount } from './MainStreetStaffBuffs';
 
 /**
  * Effective coin cost of an upgrade at a specific business, after the
@@ -101,9 +101,13 @@ export function canPurchaseBusiness(
     };
   }
 
-  // Check coins
-  if (state.resourceBank.coins < card.cost) {
-    return { legal: false, reason: `Not enough coins. Need ${card.cost}, have ${state.resourceBank.coins}.` };
+  // Check coins against the effective (discounted) cost.
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
+  // discount applied to the base listed cost.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
+  const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+  if (state.resourceBank.coins < effectiveCost) {
+    return { legal: false, reason: `Not enough coins. Need ${effectiveCost}, have ${state.resourceBank.coins}.` };
   }
 
   // Validate slot index
@@ -332,8 +336,13 @@ export function purchaseBusiness(
   const marketIndex = state.market.cards.findIndex(c => c.id === cardId);
   const card = state.market.cards[marketIndex];
 
-  // Deduct cost
-  state.resourceBank.coins -= card.cost;
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
+  // discount applied to the base listed cost.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
+  const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+
+  // Deduct effective (discounted) cost
+  state.resourceBank.coins -= effectiveCost;
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -352,9 +361,9 @@ export function purchaseBusiness(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${card.cost}, ${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0));
+  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0));
 
-  return { card, cost: card.cost, refilled };
+  return { card, cost: effectiveCost, refilled };
 }
 
 /**

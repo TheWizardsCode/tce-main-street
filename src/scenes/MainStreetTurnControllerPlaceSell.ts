@@ -12,6 +12,7 @@ import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { UpgradeCard } from '../MainStreetCards';
 import { buyBusinessCommand, playBusinessFromHandCommand, playUpgradeFromHandCommand } from '../MainStreetCommands';
 import { canSellBusiness, computeSellRefund } from '../MainStreetMarket';
+import { computeBusinessPurchasePremium } from '../MainStreetStaffBuffs';
 import { isEligibleUpgradeTarget } from '../MainStreetMarketUtils';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep, isSynergyAdjacentPlacement, resolveTutorialCardParams } from '../TutorialFlow';
@@ -112,8 +113,11 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         // placement consumes it at listed cost. Held cards (plan-ahead) always
         // consume an action at listed cost.
         const premiumApplies = s.pendingHandJustMoved && s.state.actionsRemaining <= 0;
+        // Effective premium after the street-wide Delivery Driver purchase
+        // discount (CG-0MUMCVH3N007KT1M); the engine recomputes the same
+        // value, so the pre-gate and the charge always agree.
         const premiumCost = premiumApplies
-          ? Math.ceil(handCard.cost * 1.5 * 2) / 2
+          ? computeBusinessPurchasePremium(s.state, handCard.cost)
           : undefined;
 
         // Shared post-place cleanup (success, failure, or dialog cancel).

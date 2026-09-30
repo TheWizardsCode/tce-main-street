@@ -36,8 +36,9 @@ const CSV_PATH = resolve(process.cwd(), 'src/card-data.csv');
 describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
   it('reads the real card-data.csv without a column-count crash', () => {
     const rows = readCsvFile(CSV_PATH);
-    // Header has 43 columns, including refreshCostDiscount (Group F) and
-    // upgradeCostDiscount (Financial Advisor, CG-0MTKMGL66004I0PC).
+    // Header has 44 columns, including refreshCostDiscount (Group F),
+    // upgradeCostDiscount (Financial Advisor, CG-0MTKMGL66004I0PC) and
+    // purchaseCostDiscount (Delivery Driver, CG-0MUMCVH3N007KT1M).
     expect(rows.length).toBeGreaterThan(100);
   });
 
@@ -48,6 +49,15 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
       CSV_COLUMNS.indexOf('peekOncePerTurn') + 1,
     );
     expect(NUMERIC_COLUMNS).toContain('upgradeCostDiscount');
+  });
+
+  it('declares purchaseCostDiscount immediately after upgradeCostDiscount and treats it as numeric', () => {
+    // Schema contract: the new column is inserted immediately after
+    // upgradeCostDiscount, before art_notes (CG-0MUMCVH3N007KT1M).
+    expect(CSV_COLUMNS.indexOf('purchaseCostDiscount')).toBe(
+      CSV_COLUMNS.indexOf('upgradeCostDiscount') + 1,
+    );
+    expect(NUMERIC_COLUMNS).toContain('purchaseCostDiscount');
   });
 
   it('validates all real CSV rows (refreshCostDiscount is numeric)', () => {
@@ -69,6 +79,13 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(advisor?.upgradeCostDiscount).toBe('100');
   });
 
+  it('parses purchaseCostDiscount into the Delivery Driver row', () => {
+    const rows = readCsvFile(CSV_PATH);
+    const delivery = rows.find(r => r.id === 'staff-delivery');
+    expect(delivery).toBeDefined();
+    expect(delivery?.purchaseCostDiscount).toBe('50');
+  });
+
   it('runs the full balancing pass on the real CSV', () => {
     const rows = readCsvFile(CSV_PATH);
     const result = runBalancingPass(rows);
@@ -78,9 +95,11 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(accountant?.refreshCostDiscount).toBe('100');
     const advisor = result.rows.find(r => r.id === 'staff-financial');
     expect(advisor?.upgradeCostDiscount).toBe('100');
+    const delivery = result.rows.find(r => r.id === 'staff-delivery');
+    expect(delivery?.purchaseCostDiscount).toBe('50');
   });
 
-  it('round-trips the balanced CSV with all 43 columns intact', () => {
+  it('round-trips the balanced CSV with all 44 columns intact', () => {
     const rows = readCsvFile(CSV_PATH);
     const result = runBalancingPass(rows);
     const reparsed = parseCsv(toCsvString(result.rows));
@@ -89,6 +108,8 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(accountant?.refreshCostDiscount).toBe('100');
     const advisor = reparsed.find(r => r.id === 'staff-financial');
     expect(advisor?.upgradeCostDiscount).toBe('100');
+    const delivery = reparsed.find(r => r.id === 'staff-delivery');
+    expect(delivery?.purchaseCostDiscount).toBe('50');
   });
 
   it('treats refreshCostDiscount as numeric in row validation', () => {

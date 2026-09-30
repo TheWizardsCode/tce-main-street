@@ -375,6 +375,15 @@ export interface StaffCard {
    */
   readonly upgradeCostDiscount?: number;
   /**
+   * Optional flat coin discount applied to business-card purchase cost,
+   * summed street-wide across all hired staff (e.g. the Delivery Driver's
+   * "reduces business card purchase cost by 50" ability —
+   * CG-0MUMCVH3N007KT1M). Street-wide: every hired staff member's
+   * `purchaseCostDiscount` is summed, clamped at 0. Absent for staff
+   * without the ability (backward compatible).
+   */
+  readonly purchaseCostDiscount?: number;
+  /**
    * Optional Tax Audit rate override, as a fraction of banked coins
    * (e.g. `0.25` for the Accountant's "tax losses reduced to 25%" ability).
    * When one or more employed staff define this, the lowest (most

@@ -13,7 +13,7 @@ import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
-import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
+import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
 import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
@@ -729,8 +729,15 @@ export function buyAndPlaceBusiness(
     throw new Error(`Slot ${slotIndex} is already occupied.`);
   }
 
-  const premiumCost = Math.ceil(card.cost * 1.5 * 2) / 2;
-  const price = priceOverride ?? premiumCost;
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): discount the
+  // base cost first, then apply the +50% premium (discount-first rule,
+  // CG-0MTKMGL66004I0PC). When a `priceOverride` is supplied for GM parity it
+  // is the LISTED price, so the street-wide purchase discount still applies
+  // (the override replaces the premium, not the discount).
+  const premiumCost = computeBusinessPurchasePremium(state, card.cost);
+  const price = priceOverride !== undefined
+    ? computeEffectiveBusinessPurchaseCost(state, priceOverride)
+    : premiumCost;
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to buy-and-place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
   }

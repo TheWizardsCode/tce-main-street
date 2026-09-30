@@ -322,6 +322,60 @@ export function computeRefreshCostDiscount(skills: readonly SpecializationSkill[
 }
 
 /**
+ * Flat coin discount on business-card purchases, summed street-wide across
+ * every hired staff member (e.g. the Delivery Driver's "purchase costs 50
+ * less" ability — CG-0MUMCVH3N007KT1M).
+ *
+ * Summates the `purchaseCostDiscount` field of every card in `state.staffCards`
+ * and floors at 0 — the same aggregation and clamp semantics as the
+ * `refreshMarketCost` staff discount path.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state Current game state.
+ * @returns Non-negative flat coin discount for a business-card purchase.
+ */
+export function computePurchaseCostDiscount(state: MainStreetState): number {
+  const total = (state.staffCards ?? []).reduce(
+    (sum, card) => sum + (card.purchaseCostDiscount ?? 0),
+    0,
+  );
+  return Math.max(0, total);
+}
+
+/**
+ * Effective base coin cost of acquiring/placing a business or
+ * community-space card, after the street-wide `purchaseCostDiscount`
+ * (CG-0MUMCVH3N007KT1M). The result is floored at 0. This is the single
+ * shared source of truth for the click (`purchaseBusiness`), drag
+ * (`buyAndPlaceBusiness`) and deferred from-hand (`playBusinessFromHand`)
+ * acquisition paths, including the UI affordability pre-gates.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function computeEffectiveBusinessPurchaseCost(
+  state: MainStreetState,
+  listedCost: number,
+): number {
+  return Math.max(0, listedCost - computePurchaseCostDiscount(state));
+}
+
+/**
+ * Effective +50% drag/composite premium on a business or community-space
+ * card, after the street-wide `purchaseCostDiscount` (CG-0MUMCVH3N007KT1M).
+ * Per the discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is
+ * applied to the base cost BEFORE the premium.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function computeBusinessPurchasePremium(
+  state: MainStreetState,
+  listedCost: number,
+): number {
+  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost) * 1.5 * 2) / 2;
+}
+
+/**
  * Flat coin discount applied to buying an upgrade for the business at
  * `slotIndex`, summing the `upgradeCostDiscount` of every staff member
  * employed there (e.g. the Financial Advisor's "upgrade costs 100 less"

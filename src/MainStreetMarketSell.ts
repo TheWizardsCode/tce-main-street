@@ -57,14 +57,26 @@ export function computeSellRefund(
     effectiveBase = roundInt(effectiveBase * 0.6);
   }
 
-  // Synergy income component: the portion of currentIncome above effectiveBase
-  const synergyIncomeComponent = Math.max(0, (card.currentIncome ?? 0) - effectiveBase);
+  // Synergy income component: the portion of currentIncome above effectiveBase.
+  // Undefined cached income means the card has not been (re)calculated — treat
+  // as no synergy contribution rather than deriving one from a zero baseline.
+  const synergyIncomeComponent =
+    card.currentIncome === undefined
+      ? 0
+      : Math.max(0, card.currentIncome - effectiveBase);
 
-  // Synergy reputation component: the portion above base rep + upgrade bonus
-  const synergyRepComponent = Math.max(
-    0,
-    (card.currentReputationPerTurn ?? 0) - (card.reputationPerTurn ?? 0) - card.reputationBonus,
-  );
+  // Synergy reputation component: the portion above base rep + upgrade bonus.
+  // As with income, an undefined cached value contributes no synergy — this
+  // matters for cards whose base `reputationPerTurn` is negative (e.g. the
+  // Pawn Shop, -10): `(undefined ?? 0) - (-10)` would otherwise fabricate a
+  // +10 "synergy" refund for an uncalculated card.
+  const synergyRepComponent =
+    card.currentReputationPerTurn === undefined
+      ? 0
+      : Math.max(
+          0,
+          card.currentReputationPerTurn - (card.reputationPerTurn ?? 0) - card.reputationBonus,
+        );
 
   const totalRefund = baseRefund + synergyIncomeComponent + synergyRepComponent;
 

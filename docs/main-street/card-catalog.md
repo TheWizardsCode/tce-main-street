@@ -74,9 +74,10 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   NEW ability mechanics — the Socialite's +10 rep/turn and the Accountant's
   market-refresh discount of 100 (StaffCard optional ability fields). The
   Financial Advisor's per-business upgrade discount of 100 is implemented via
-  the `upgradeCostDiscount` field (CG-0MTKMGL66004I0PC); the IT Specialist and
-  Delivery Driver cost-reduction descriptions remain description-only (no
-  implementing data column or engine path — recorded as an explicit gap).
+  the `upgradeCostDiscount` field (CG-0MTKMGL66004I0PC); the IT Specialist
+  (`refreshCostDiscount = 100`) and Delivery Driver (`purchaseCostDiscount = 50`)
+  cost-reduction descriptions are now data-backed and fully implemented
+  (CG-0MUMCVH3N007KT1M).
 - Non-baseline card IDs are tracked in `docs/main-street/expanded-card-manifest.json`
 
 ### Guidance: adding more cards safely
@@ -543,12 +544,12 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-barista` | Barista | 300 | 50 | — | 2 | Food synergy | A skilled barista brings warmth to any business. Adjacent Food businesses gain +20 synergy coins. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-bookkeeper` | Bookkeeper | 300 | 50 | — | 2 | −20% ongoing | Keeps the books tight. Reduces this business ongoing cost by 20%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-customer-rep` | Customer Service Rep | 300 | 50 | — | 2 | Service synergy | Ensures every visitor leaves satisfied. Adjacent businesses gain +10 synergy reputation. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-delivery` | Delivery Driver | 300 | 50 | — | 2 | -50 purchase cost | Handles the logistics. Reduces business card purchase cost by 50 for this business. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); description-only — effect not implemented (gap).* |
+| `staff-delivery` | Delivery Driver | 300 | 50 | — | 2 | -50 purchase cost | Handles the logistics. Reduces business card purchase cost by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); street-wide purchase discount implemented (`purchaseCostDiscount = 50`) across all acquisition paths (click, drag, deferred play-from-hand) — CG-0MUMCVH3N007KT1M. |
 | `staff-security` | Security Guard | 700 | 75 | — | 3 | −10% incident coins | Experienced guard watches over the street. Reduces all incident coin damage by 10%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-marketing` | Marketing Consultant | 700 | 100 | — | 3 | +10% rep sources | Expert at drawing crowds. Businesses gain +10% reputation from all sources. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-event-planner` | Event Planner | 700 | 75 | — | 3 | Entertainment synergy | Creates buzz and draws visitors. +100 synergy coin per turn from Entertainment businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-maintenance` | Maintenance Worker | 700 | 75 | — | 3 | -50 incident rep | Keeps everything running smoothly. Reduces incident reputation damage by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-it` | IT Specialist | 800 | 100 | — | 4 | Refresh −100 | Modernizes operations. Reduces this business refresh cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); rescaled ×100 (CG-0MTKMGL66004I0PC); description-only — effect not implemented (gap).* |
+| `staff-it` | IT Specialist | 800 | 100 | — | 4 | Refresh −100 | Modernizes operations. Reduces market refresh cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); rescaled ×100 (CG-0MTKMGL66004I0PC); street-wide refresh discount implemented (`refreshCostDiscount = 100`), stacks with Accountant and Negotiator — CG-0MUMCVH3N007KT1M. |
 | `staff-health-safety` | Health & Safety Inspector | 800 | 100 | — | 4 | −10% Health incidents | Keeps everything up to code. Reduces incident frequency by 10% for Health businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-pr` | PR Officer | 800 | 100 | — | 4 | +15 rep/turn | Manages the street image. +15 reputation per turn from all businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-financial` | Financial Advisor | 1000 | 125 | — | 5 | Upgrade −100 | Smart investments pay off. Reduces this business upgrade cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); per-business upgrade discount implemented (`upgradeCostDiscount`) — market, hand and drag paths (CG-0MTKMGL66004I0PC).* |

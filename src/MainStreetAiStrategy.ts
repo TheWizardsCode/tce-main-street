@@ -20,6 +20,7 @@ import type { AiStrategyBase } from '@ai';
 import { AiPlayer as AiPlayerBase, pickRandom, pickBest } from '@ai';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
+import { computePurchaseCostDiscount } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
 import {
   executeWeekStart,
@@ -148,7 +149,7 @@ export const BANKING_DIFFICULTY_PROFILES: Record<DifficultyName, BankingDifficul
 const PIPELINE_TARGET_WEIGHT = 0.5;
 
 /** A candidate banking target: a valuable card the AI cannot yet afford. */
-interface BankTarget {
+export interface BankTarget {
   /** Net expected value of owning the card (income * horizon - cost). */
   score: number;
   /** The card's cost (> current coins by construction). */
@@ -183,7 +184,7 @@ function bestPlacementSynergy(
  * or in the market row (AC3(a)). Returns `null` when every visible card is
  * affordable or has no positive value.
  */
-function bestVisibleBankTarget(
+export function bestVisibleBankTarget(
   state: MainStreetState,
   coins: number,
   horizon: number,
@@ -197,12 +198,16 @@ function bestVisibleBankTarget(
   };
 
   // Hand: business / community-space cards whose play-from-hand cost exceeds coins
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): the AI uses
+  // the effective (discounted) cost for affordability checks.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
   for (const card of hand) {
     const c = card as BusinessCard & { cost: number; family: string };
     if (c.family !== 'business' && c.family !== 'community-space') continue;
-    if (c.cost <= coins) continue; // already affordable — not a banking target
+    const effectiveCost = Math.max(0, c.cost - purchaseDiscount);
+    if (effectiveCost <= coins) continue; // already affordable — not a banking target
     const synergy = bestPlacementSynergy(state, c);
-    consider((c.baseIncome + synergy) * horizon - c.cost, c.cost);
+    consider((c.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
   }
 
   // Hand: upgrade cards whose effective cost exceeds coins
@@ -225,11 +230,12 @@ function bestVisibleBankTarget(
   // Market: business / community-space cards that are unaffordable and placeable
   for (const card of state.market.cards) {
     if (card.family !== 'business' && card.family !== 'community-space') continue;
-    if (card.cost <= coins) continue;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) continue;
     if (emptyCount === 0) continue;
     const biz = card as BusinessCard;
     const synergy = bestPlacementSynergy(state, biz);
-    consider((biz.baseIncome + synergy) * horizon - biz.cost, biz.cost);
+    consider((biz.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
   }
 
   // Market: upgrade cards that are unaffordable. Even without an immediate
@@ -273,6 +279,9 @@ function bestPipelineBankTarget(
   if (depth <= 0) return null;
 
   const emptyCount = state.streetGrid.filter(s => s === null).length;
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): the AI uses
+  // the effective (discounted) cost for affordability checks.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
   let best: BankTarget | null = null;
 
   const consider = (score: number, cost: number, weight: number): void => {
@@ -291,17 +300,19 @@ function bestPipelineBankTarget(
   };
 
   eachTopCard(state.decks?.business, (card, weight) => {
-    if (card.cost <= coins) return;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) return;
     if (emptyCount === 0) return;
     const synergy = bestPlacementSynergy(state, card);
-    consider((card.baseIncome + synergy) * horizon - card.cost, card.cost, weight);
+    consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost, weight);
   });
 
   eachTopCard(state.decks?.communitySpace, (card, weight) => {
-    if (card.cost <= coins) return;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) return;
     if (emptyCount === 0) return;
     const synergy = bestPlacementSynergy(state, card);
-    consider((card.baseIncome + synergy) * horizon - card.cost, card.cost, weight);
+    consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost, weight);
   });
 
   eachTopCard(state.decks?.upgrade, (card, weight) => {

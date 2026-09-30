@@ -25,7 +25,7 @@ import { getCsvRows } from '../../src/MainStreetCards';
 interface StaffCostTextContract {
   id: string;
   /** Data column the description must agree with, or null for description-only cards. */
-  column: 'refreshCostDiscount' | 'upgradeCostDiscount' | null;
+  column: 'refreshCostDiscount' | 'upgradeCostDiscount' | 'purchaseCostDiscount' | null;
   /** Captures the amount stated in the description. */
   descriptionPattern: RegExp;
   /** The ×100-scale amount the description must state. */
@@ -52,17 +52,15 @@ const STAFF_COST_TEXT_CONTRACTS: readonly StaffCostTextContract[] = [
   },
   {
     id: 'staff-it',
-    column: null,
+    column: 'refreshCostDiscount',
     descriptionPattern: /refresh\s+cost\s+by\s+(\d+)/i,
     expectedAmount: 100,
-    note: UNIMPLEMENTED_NOTE,
   },
   {
     id: 'staff-delivery',
-    column: null,
+    column: 'purchaseCostDiscount',
     descriptionPattern: /purchase\s+cost\s+by\s+(\d+)/i,
     expectedAmount: 50,
-    note: UNIMPLEMENTED_NOTE,
   },
 ];
 
