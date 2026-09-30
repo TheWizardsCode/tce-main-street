@@ -54,6 +54,23 @@ export type {
   CardMetricSummary,
 } from './global-metrics';
 
+export {
+  KNOWN_STORYLINE_IDS,
+  computeStorylineFireFrequency,
+  computeChainDepthStats,
+  computeCycleStats,
+  computeChoiceWinRateDelta,
+} from './storyline-metrics';
+export type {
+  StorylineFireStat,
+  StorylineFireFrequencyResult,
+  StorylineChainDepthStat,
+  ChainDepthStatsResult,
+  StorylineCycleStat,
+  CycleStatsResult,
+  ChoiceWinRateDeltaResult,
+} from './storyline-metrics';
+
 export { compareMetrics } from './comparison';
 export type {
   ComparisonEntry,
