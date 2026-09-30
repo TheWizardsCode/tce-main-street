@@ -533,11 +533,11 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 |----|------|------|--------------|--------|------|---------|-------------|-----------|
 | `staff-apprentice` | Apprentice | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot with a small ongoing cost. | Budget entry point *(Group F).* |
 | `staff-assistant` | Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. | Original M2 staff. |
-| `staff-manager` | Manager | 700 | 250 | +2 | 3 | — | A skilled manager keeps things organised. | Mid-tier capacity. |
+| `staff-manager` | Manager | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. | Mid-tier action economy, traded against one hand slot *(MS-0MTQ7S5EJ008MWD0).* |
 | `staff-socialite` | Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds +1 hand slot and +10 reputation per turn. | **NEW** reputation ability *(Group F).* |
 | `staff-accountant` | Accountant | 800 | 150 | +1 | 6 | Refresh −100; Tax 25% | A meticulous accountant makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J); refresh discount rescaled ×100 (CG-0MTKMGL66004I0PC).* |
 | `staff-lookout` | Lookout | 1000 | 200 | +1 | 7 | Peek once/turn | A sharp-eyed lookout can peek at the top card of the incident deck once per turn. | **NEW** peek ability *(CG-0MSXOW6GN008ZSMN).* |
-| `staff-director` | Director | 1400 | 400 | +3 | 9 | — | An experienced director oversees your operations. | Premium capacity. |
+| `staff-director` | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. | Premium action economy + capacity *(MS-0MTQ7S5EJ008MWD0).* |
 | `staff-executive` | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity at a high ongoing cost. | Premium slot capacity *(Group F).* |
 | `staff-general-manager` | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | A seasoned leader grants **+1 action per week** while employed (2 actions instead of 1). | **NEW** action-economy ability *(CG-0MSTOF1N5005PK2R).* |
 | `staff-barista` | Barista | 300 | 50 | — | 2 | Food synergy | A skilled barista brings warmth to any business. Adjacent Food businesses gain +20 synergy coins. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |

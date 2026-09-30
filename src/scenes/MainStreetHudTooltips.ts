@@ -118,7 +118,7 @@ export const HUD_TOOLTIP_STRINGS = {
   actionFreeOpsLabel: 'No action: re-roll market, sell, end turn. Discard costs reputation (its coin cost), not an action',
   actionBankedLabel: 'Banked actions',
   actionBankingExplain: "1 action per turn, with up to two turns' unused actions banked — every action you take spends 1 from the bank (down to 0), so banked actions are a finite reserve, not a permanent bonus",
-  actionBankingGmNote: '+1 action per turn from General Manager (staff actions are used first, never banked)',
+  actionBankingGmNote: '+1 action per week from action-granting staff (staff actions are used first, never banked)',
   favourCoinsToRepTitle: 'Community Favour — Coins → Reputation',
   favourCoinsToRepRate: 'Spend {cost} coins to gain {gain} reputation.',
   favourRepToCoinsTitle: 'Community Favour — Reputation → Coins',
@@ -359,13 +359,14 @@ export function buildScoreTooltip(
  *
  * Explains the daily action budget: what spends an action, what is free,
  * and the banking mechanic (unused base actions carry over, capped at 2).
- * When a General Manager is employed (+actionsPerTurn), appends the GM note
+ * When action-granting staff are employed (`actionsPerTurn`, e.g. the
+ * Manager, Director or General Manager), appends the staff action note
  * (staff actions are consumed first and never bank). (CG-0MT3IOPZB005LNAR)
  */
 export function buildActionTooltip(state: MainStreetState): string {
   const remaining = state.actionsRemaining;
   const banked = state.bankedActions ?? 0;
-  const gmBonus = (state.staffCards ?? []).reduce((sum, card) => sum + (card.actionsPerTurn ?? 0), 0);
+  const staffActionBonus = (state.staffCards ?? []).reduce((sum, card) => sum + (card.actionsPerTurn ?? 0), 0);
   const lines = [
     t(HUD_TOOLTIP_I18N_KEYS.actionTitle),
     `${t(HUD_TOOLTIP_I18N_KEYS.actionRemainingLabel)}: ${remaining}`,
@@ -376,7 +377,7 @@ export function buildActionTooltip(state: MainStreetState): string {
     '',
     t(HUD_TOOLTIP_I18N_KEYS.actionBankingExplain),
   ];
-  if (gmBonus > 0) {
+  if (staffActionBonus > 0) {
     lines.push(t(HUD_TOOLTIP_I18N_KEYS.actionBankingGmNote));
   }
   return lines.join('\n');

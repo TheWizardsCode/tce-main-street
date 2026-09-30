@@ -243,7 +243,7 @@ Default presets impose **no turn limit** (CG-0MSLXJCHH001DLIO): a player who kee
 
 ### 6.0 Action Economy (weekly action budget)
 
-Each week (MarketPhase) the player has **exactly one action** — two while a **General Manager** is employed (CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting staff member** employed — the **Manager**, **Director** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
 
 **Week-start composition.** At WeekStart the weekly budget is:
 
@@ -252,7 +252,7 @@ Each week (MarketPhase) the player has **exactly one action** — two while a **
 ```
 
 - The **base action banks**: any unused base action at end of week is banked, up to a **bank cap of 2**.
-- **Staff actions never bank.** Staff-derived actions (e.g. the General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle GM week banks exactly 1 (the base), not 2.
+- **Staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
 - Spending during the week draws down the combined budget (base + staff + banked share one counter).
 - **Banked is consumed 1-per-action.** Every action-type operation decrements the banked reserve by 1 (floor 0) alongside the weekly counter (CG-0MTCP7F9S009HARC) — banked actions are spent as the player acts, so a banked week grants only its carried-over actions, never an endless reserve. Premium same-week placements (which replace the action with a +50% coin charge) do **not** consume the bank.
 - **No expiry:** banked actions persist indefinitely across weeks until spent. They reset to 0 only on a new game.

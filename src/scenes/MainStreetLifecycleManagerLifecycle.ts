@@ -447,9 +447,10 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
           'their real-world windows (e.g. Harvest Festival in autumn).\n' +
           'Market Actions: buy businesses, upgrades, or events; place businesses\n' +
           'on the street grid to earn future income.\n' +
-          'You get 1 action per week (2 with a General Manager). Taking a card\n' +
-          'to hand costs 1 action, as does playing or placing it from hand —\n' +
-          'but a same-week move + play/place pair costs 1 action total.\n' +
+          'You get 1 action per week, plus 1 per action-granting staff\n' +
+          '(Manager, Director, General Manager). Taking a card to hand costs\n' +
+          '1 action, as does playing or placing it from hand — but a same-week\n' +
+          'move + play/place pair costs 1 action total.\n' +
           'Card costs are paid when a card is placed or played, not when taken\n' +
           'to hand.\n' +
           'End Turn: resolves income, incidents, and advances to the next week.',

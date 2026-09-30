@@ -128,11 +128,11 @@ Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG
 |------|------|--------------|--------|------|---------|-------------|
 | Apprentice | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot. *(Group F.)* |
 | Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. |
-| Manager | 700 | 250 | +2 | 3 | — | A skilled manager keeps things organised. |
+| Manager | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. |
 | Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds hand capacity and reputation. *(Group F.)* |
 | Accountant | 800 | 150 | +1 | 6 | refresh −100; tax 25% | Makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J; ×100 rescale CG-0MTKMGL66004I0PC.)* |
 | Lookout | 1000 | 200 | +1 | 7 | peek once/turn | Peek at the top incident-deck card once per turn. *(CG-0MSXOW6GN008ZSMN.)* |
-| Director | 1400 | 400 | +3 | 9 | — | An experienced director oversees your operations. |
+| Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
 | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity. *(Group F.)* |
 | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
 

@@ -73,10 +73,10 @@ const HELP_SECTIONS = [
       'Day Start: market refreshes and income is calculated.\n' +
       'Market Actions: buy businesses, upgrades, or events; place businesses\n' +
       'on the street grid to earn future income.\n' +
-      'You get 1 action per day (2 with a General Manager). Taking a card to\n' +
-      'hand costs 1 action, as does playing or placing it from hand — but a\n' +
-      'same-week move + play/place pair costs 1 action total.\n' +
-      'Card costs are paid when a card is placed or played, not when taken to hand.\n' +
+      'You get 1 action per day, plus 1 per action-granting staff (Manager,\n' +
+      'Director, General Manager). Taking a card to hand costs 1 action, as\n' +
+      'does playing/placing from hand — but a same-week move + play/place pair costs 1 action total.\n' +
+      'Card costs are paid when placed or played, not when taken to hand.\n' +
       'End Turn: resolves income, incidents, and advances to the next week.',
   },
   {
@@ -167,11 +167,15 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(body).toContain('end turn');
   });
 
-  it('"Turn Flow" documents the daily action economy (business and event moves/plays)', () => {
+  it('"Turn Flow" documents the weekly action economy (business and event moves/plays)', () => {
     const body = HELP_SECTIONS.find((s) => s.heading === 'Turn Flow')!.body.toLowerCase();
-    // One action per day (two with a General Manager); take-to-hand and
-    // play/place each cost 1 action, with a 1-action same-week composite.
+    // One action per day, plus one per action-granting staff (Manager,
+    // Director, General Manager); take-to-hand and play/place each cost 1
+    // action, with a 1-action same-week composite.
     expect(body).toContain('general manager');
+    expect(body).toContain('manager');
+    expect(body).toContain('director');
+    expect(body).toContain('action-granting staff');
     expect(body).toContain('taking a card to');
     expect(body).toContain('hand costs 1 action');
     expect(body).toContain('same-week move + play/place pair costs 1 action total');

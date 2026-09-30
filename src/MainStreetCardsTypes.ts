@@ -385,7 +385,8 @@ export interface StaffCard {
   readonly taxAuditRate?: number;
   /**
    * Optional additional actions granted per turn.
-   * (e.g. the General Manager's +1 action per day — CG-0MSTOF1N5005PK2R).
+   * (e.g. the Manager, Director and General Manager each grant +1 action
+   * per week — CG-0MSTOF1N5005PK2R, MS-0MTQ7S5EJ008MWD0).
    */
   readonly actionsPerTurn?: number;
   /**

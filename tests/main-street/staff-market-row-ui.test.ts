@@ -258,6 +258,23 @@ describe('AC3: staff tooltips show hire-relevant info', () => {
     expect(info).toContain('Actions: +1/week');
   });
 
+  it('renders the action line for the Manager and Director (MS-0MTQ7S5EJ008MWD0)', () => {
+    const state = setupWithConfig({ seed: 'ms-staff-tooltip-manager' });
+    const config = state.config as unknown as SynergyFormatConfig;
+
+    const manager = createStaffDeck(1).find(c => c.id.startsWith('staff-manager'))!;
+    const managerInfo = buildCardTooltipInfo(manager, config);
+    expect(managerInfo).toContain('Staff: Manager');
+    expect(managerInfo).toContain('Hand slots: +1');
+    expect(managerInfo).toContain('Actions: +1/week');
+
+    const director = createStaffDeck(1).find(c => c.id.startsWith('staff-director'))!;
+    const directorInfo = buildCardTooltipInfo(director, config);
+    expect(directorInfo).toContain('Staff: Director');
+    expect(directorInfo).toContain('Hand slots: +3');
+    expect(directorInfo).toContain('Actions: +1/week');
+  });
+
   it('includes the peek ability line for peek-capable staff', () => {
     const state = setupWithConfig({ seed: 'ms-staff-tooltip-peek' });
     const config = state.config as unknown as SynergyFormatConfig;

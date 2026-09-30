@@ -194,9 +194,10 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
 
         const slots = templates.map((t: any) => t.handSlotsAdded);
         expect(slots).toContain(1);
-        expect(slots).toContain(2);
-        // Exactly 3 tiers — +1, +2, +3
+        // The capacity ladder is now +1 / +3 / +4: the Manager trades its
+        // second hand slot for an extra action per week (MS-0MTQ7S5EJ008MWD0).
         expect(slots).toContain(3);
+        expect(slots).toContain(4);
       },
     );
   });
