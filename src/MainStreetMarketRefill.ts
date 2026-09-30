@@ -204,7 +204,10 @@ export function cheatReplaceMarketCard(
   const slotIndex = Math.floor((rng?.() ?? Math.random()) * slots);
   const displaced = state.market.cards[slotIndex] ?? null;
   const baseId = (template as any).id ?? family;
-  const newCard: AnyCard = { ...(template as any), id: `${baseId}--cheat-${cheatNonce++}` } as AnyCard;
+  // Templates intentionally omit `family` (it is inferred from the source
+  // array), so set it explicitly to match the chosen family — the renderer
+  // and affordability checks both route on this field (MS-0MUO7FS95000OLN9).
+  const newCard: AnyCard = { ...(template as any), id: `${baseId}--cheat-${cheatNonce++}`, family } as AnyCard;
   if (family === 'business' || family === 'community-space') {
     (newCard as any).level = 0;
     (newCard as any).incomeBonus = 0;

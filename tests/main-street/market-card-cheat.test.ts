@@ -5,6 +5,8 @@
  *  - Picker filtering/grouping: type filter, text search (case-insensitive substring), composition (type ∩ text), clear
  *  - Cheat replacement: random slot selection, displaced → correct discard, unique id, valid-state invariants, empty market
  *  - Business card reset on injection
+ *  - Family field set on injection for all 5 families + affordability summary
+ *    integration (MS-0MUO7FS95000OLN9)
  *  - Dev-mode gating and entry metadata (label/description)
  *  - Dev-only registration gate (cheats absent from the production tool list)
  *
@@ -20,7 +22,11 @@ import {
 import {
   buildMainStreetDebugTools,
 } from '../../src/debug/MainStreetDebugTools';
-import { cheatReplaceMarketCard } from '../../src/MainStreetMarket';
+import {
+  cheatReplaceMarketCard,
+  getAffordableBusinessCards,
+  getAffordableUpgradeCards,
+} from '../../src/MainStreetMarket';
 import {
   setupMainStreetGame,
   type MainStreetState,
@@ -272,6 +278,49 @@ describe('cheatReplaceMarketCard', () => {
     expect(injected.reputationBonus).toBe(0);
     expect(injected.appliedUpgrades).toEqual([]);
     expect(injected.totalUpgradeCost).toBe(0);
+  });
+
+  it('sets the family field on cheat-injected cards for every family (MS-0MUO7FS95000OLN9)', () => {
+    const families = ['business', 'community-space', 'event', 'upgrade', 'staff'];
+    for (const family of families) {
+      const state = freshState(`family-${family}`);
+      // Templates intentionally omit `family` (it is inferred from the source
+      // array), so the cheat must set it explicitly.
+      const template: any = { id: `tpl-${family}`, name: `Tpl ${family}`, cost: 0 };
+      cheatReplaceMarketCard(state, template, family, () => 0);
+      const injected: any = state.market.cards[0];
+      expect(injected.family).toBe(family);
+      expect(injected.id).toMatch(new RegExp(`^tpl-${family}--cheat-\\d+$`));
+    }
+  });
+
+  it('cheat-injected business card is affordable and included in the Can buy summary (AC2)', () => {
+    const state = freshState('afford-business');
+    state.resourceBank.coins = 10;
+    const template: any = { id: 'biz-afford', name: 'Affordable Biz', cost: 3, baseIncome: 1 };
+    cheatReplaceMarketCard(state, template, 'business', () => 0);
+    const injected: any = state.market.cards[0];
+    expect(getAffordableBusinessCards(state).map((c) => c.id)).toContain(injected.id);
+  });
+
+  it('cheat-injected community-space card counts as an affordable business (AC2)', () => {
+    const state = freshState('afford-community');
+    state.resourceBank.coins = 10;
+    const template: any = { id: 'cs-afford', name: 'Affordable Park', cost: 3, baseIncome: 1, ongoingCost: 0 };
+    cheatReplaceMarketCard(state, template, 'community-space', () => 0);
+    const injected: any = state.market.cards[0];
+    expect(getAffordableBusinessCards(state).map((c) => c.id)).toContain(injected.id);
+  });
+
+  it('cheat-injected upgrade card is included in the Can buy summary when a valid target exists (AC2)', () => {
+    const state = freshState('afford-upgrade');
+    state.resourceBank.coins = 10;
+    // getAffordableUpgradeCards requires a street-grid target with level < maxLevel.
+    state.streetGrid[0] = { id: 'target-biz', name: 'Target Biz', level: 0, maxLevel: 3 } as any;
+    const template: any = { id: 'upg-afford', name: 'Affordable Upgrade', cost: 2, targetBusiness: 'Target Biz' };
+    cheatReplaceMarketCard(state, template, 'upgrade', () => 0);
+    const injected: any = state.market.cards[0];
+    expect(getAffordableUpgradeCards(state).map((c) => c.id)).toContain(injected.id);
   });
 
   it('does not corrupt save/load and subsequent refill still works', async () => {
