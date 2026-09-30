@@ -46,7 +46,11 @@ import {
   type StaffCard,
 } from '../../src/MainStreetCards';
 import { executeWeekStart } from '../../src/MainStreetEngine';
-import { bestVisibleBankTarget } from '../../src/MainStreetAiStrategy';
+import {
+  bestVisibleBankTarget,
+  enumerateLegalActions,
+  scoreAction,
+} from '../../src/MainStreetAiStrategy';
 
 // ── Fixtures ──────────────────────────────────────────────────
 
@@ -486,6 +490,44 @@ describe('AI affordability parity', () => {
     // Affordable at the discounted price → not a banking target.
     const bankTarget = bestVisibleBankTarget(state, state.resourceBank.coins, 60);
     expect(bankTarget).toBeNull();
+  });
+
+  it('enumerates a discounted-only play-business-from-hand action', () => {
+    const state = setupMainStreetGame({ seed: 'ai-pc-enumerate' });
+    executeWeekStart(state);
+    state.phase = 'MarketPhase';
+    state.actionsRemaining = 1;
+    state.market.cards = [];
+    state.staffCards.push(makeDeliveryDriver());
+
+    const biz = makeBiz({ id: 'biz-ai-enum', cost: 300, baseIncome: 200 });
+    state.hand = [biz];
+    // Exactly enough for the discounted cost (250), but not the listed (300).
+    state.resourceBank.coins = 300 - DELIVERY_PURCHASE_DISCOUNT;
+
+    const actions = enumerateLegalActions(state);
+
+    expect(actions.some(a => a.type === 'play-business-from-hand')).toBe(true);
+  });
+
+  it('scores a business purchase using the discounted cost', () => {
+    const slotIndex = 0;
+    const scoreWith = (withDriver: boolean): number => {
+      const state = setupMainStreetGame({ seed: 'ai-pc-score' });
+      executeWeekStart(state);
+      state.phase = 'MarketPhase';
+      state.actionsRemaining = 1;
+      state.market.cards = [];
+      if (withDriver) state.staffCards.push(makeDeliveryDriver());
+      const biz = makeBiz({ id: 'biz-ai-score', cost: 300, baseIncome: 200 });
+      state.market.cards.push(biz);
+      state.resourceBank.coins = 1000;
+      return scoreAction(state, { type: 'buy-business', cardId: biz.id, slotIndex });
+    };
+
+    // The AI values the purchase at the discounted cost, so the score is
+    // exactly the discount higher than without the Driver.
+    expect(scoreWith(true) - scoreWith(false)).toBe(DELIVERY_PURCHASE_DISCOUNT);
   });
 });
 

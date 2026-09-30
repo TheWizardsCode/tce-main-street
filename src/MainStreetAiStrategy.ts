@@ -20,7 +20,7 @@ import type { AiStrategyBase } from '@ai';
 import { AiPlayer as AiPlayerBase, pickRandom, pickBest } from '@ai';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
-import { computePurchaseCostDiscount } from './MainStreetStaffBuffs';
+import { computePurchaseCostDiscount, computeEffectiveBusinessPurchaseCost } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
 import {
   executeWeekStart,
@@ -568,7 +568,9 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   // ── play-*-from-hand (cost-at-play) ───────────────────────
   hand.forEach((card, handIndex) => {
     if (card.family === 'business' || card.family === 'community-space') {
-      if (state.resourceBank.coins < card.cost) return;
+      // Delivery Driver purchase discount (CG-0MUMCVH3N007KT1M): gate on the
+      // effective cost so a discounted-but-not-listed price is still offered.
+      if (state.resourceBank.coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) return;
       for (const slotIndex of emptySlots) {
         actions.push({ type: 'play-business-from-hand', handIndex, slotIndex });
       }
@@ -636,7 +638,16 @@ function getCheapestMarketCost(state: MainStreetState): number {
   let cheapest = Infinity;
   for (const card of marketCards) {
     if (typeof card !== 'object' || card === null) continue;
-    const cost = (card as { cost?: number }).cost;
+    let cost = (card as { cost?: number }).cost;
+    // Business/community-space purchases benefit from the street-wide
+    // Delivery Driver discount (CG-0MUMCVH3N007KT1M), so a stalled-turn check
+    // must compare against the effective price.
+    if (
+      (card.family === 'business' || card.family === 'community-space') &&
+      typeof cost === 'number'
+    ) {
+      cost = computeEffectiveBusinessPurchaseCost(state, cost);
+    }
     if (typeof cost === 'number' && cost >= 0 && cost < cheapest) cheapest = cost;
   }
   return cheapest;
@@ -1196,7 +1207,7 @@ function scoreBusinessAction(
   );
 
   const horizon = aiPlanningHorizon(state);
-  return (card.baseIncome + projectedSynergyBonus) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 /**
@@ -1247,7 +1258,7 @@ function scorePlayBusinessFromHandAction(
     state.config.synergyBonusPerNeighbor,
   );
   const horizon = aiPlanningHorizon(state);
-  return (card.baseIncome + projectedSynergyBonus) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 /**
@@ -1640,7 +1651,7 @@ export function enumerateCompetitiveLegalActions(
   // ── buy-business (direct buy-and-place) ───────────────────
   for (const card of state.market.cards) {
     if (card.family !== 'business' && card.family !== 'community-space') continue;
-    if (coins < card.cost) continue;
+    if (coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) continue;
     for (const slotIndex of emptySlots) {
       actions.push({ type: 'buy-business', cardId: card.id, slotIndex });
     }
@@ -1681,7 +1692,7 @@ export function enumerateCompetitiveLegalActions(
   // ── play-*-from-hand (cost-at-play) ───────────────────────
   hand.forEach((card, handIndex) => {
     if (card.family === 'business' || card.family === 'community-space') {
-      if (coins < card.cost) return;
+      if (coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) return;
       for (const slotIndex of emptySlots) {
         actions.push({ type: 'play-business-from-hand', handIndex, slotIndex });
       }
@@ -1878,7 +1889,7 @@ function competitiveBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 function competitiveMarketEventScore(
@@ -1909,7 +1920,7 @@ function competitiveHandBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 function competitiveHandUpgradeScore(
