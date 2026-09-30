@@ -1,6 +1,6 @@
 # Main Street: Card Catalog
 
-> **Source of truth:** `example-games/main-street/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
+> **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
 > **Last updated:** Annual calendar — week-gated seasonal/holiday events (CG-0MTT0K9RX0004QTE)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.

@@ -45,7 +45,7 @@ income choreography** instead of a single fly-to-HUD burst:
   geometry — over `INCOME_FLIGHT_MS` (600ms) with a 60ms per-line stagger
   (`INCOME_FLIGHT_STAGGER_MS`). Each stream carries the receiver's
   per-neighbour share (split so shares sum exactly) and lands in its coin grid.
-- **On-card coin grids** (`createCoinGrid`, `example-games/main-street/coin-grid.ts`)
+- **On-card coin grids** (`createCoinGrid`, `src/coin-grid.ts`)
   render each producing slot's contribution left-aligned on the card
   (starting at the card's left inset and growing rightwards), filling
   progressively; phase contributions fly in/out; the
@@ -145,13 +145,13 @@ compatibility.
 
 ## Layout files and adapter
 
-- Canonical layout JSON: `example-games/main-street/layouts/main-street.layout.json`
-- Tutorial layout JSON: `example-games/main-street/layouts/main-street-tutorial.layout.json`
+- Canonical layout JSON: `src/layouts/main-street.layout.json`
+- Tutorial layout JSON: `src/layouts/main-street-tutorial.layout.json`
   - Defines 7 bounding-box zones for tutorial highlight areas (HUD, market, street, etc.)
   - Uses optional `w`/`h` dimensions on `NormalizedRect` for zone extents
   - Composed with the base layout via `composeResolvedLayouts()` in the tutorial system
-- Scene adapter: `example-games/main-street/scenes/MainStreetLayoutAdapter.ts`
-- Renderer entrypoint: `example-games/main-street/scenes/MainStreetRenderer.ts`
+- Scene adapter: `src/scenes/MainStreetLayoutAdapter.ts`
+- Renderer entrypoint: `src/scenes/MainStreetRenderer.ts`
 
 `MainStreetRenderer.computeLayout()` computes legacy layout metrics first, then applies SLL zone overrides through `computeMainStreetLayoutWithSll(...)`.
 
