@@ -4,6 +4,36 @@
 
 This document captures the current implementation-level guidance for Main Street UI feedback polish in Milestone 4.
 
+## Player hand layout
+
+Main Street renders the player hand with the core engine's single `HandView`
+(`MainStreetRendererStreet.ts`), anchored on `handCenterX` and declaring the
+hand's capacity up front with `maxSlots: state.maxHandSize`.
+
+- **Capacity-stable slots (CG-0MUAYBB4E007LWEQ).** Because `maxSlots` is set,
+  the card row is placed into the *same fixed capacity template* the empty hand
+  renders rather than being re-centred on the current card count. Adding or
+  drawing a card therefore fills the next empty slot to the **right** without
+  re-laying the row — every already-placed card and every ghost outline slot
+  keeps its exact position and rotation, up to capacity. `setMaxSlots()` (driven
+  by `refreshPlayerHand()` from `state.maxHandSize`, e.g. after hiring a staff
+  card) is the only mutation that may move existing cards.
+- **Left-anchored partial hand.** A partially-filled hand sits left-anchored in
+  the capacity row (cards fill left-to-right) instead of being centred on the
+  current card count. Click / drag / hand-to-street transfer paths that use the
+  hand centre (`handCenterX`) or hide the transfer source
+  (`hiddenTransferSourceCardIds`) must therefore read the card's actual
+  `HandView` position rather than assuming a symmetric centred row; the
+  capacity template guarantees that position is stable across adds.
+- **Ghost outlines.** `showPositionOutlines: true` renders one ghost slot per
+  `maxSlots`; the outlines are purely visual, so toggling them never moves a
+  card. Occupied slots ghost their card exactly (same centre and rotation);
+  extra capacity slots continue the same row to the right, below every card.
+- See the core `docs/DEVELOPER.md` § *Hand capacity outlines* for the full
+  `HandView` semantics and browser coverage in
+  `tests/main-street/hand-outlines.browser.test.ts` (including the
+  slot/card-position stability assertion).
+
 ## Event Feedback Animations
 
 ### Card transfer feedback (market -> destination)
