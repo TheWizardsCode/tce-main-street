@@ -82,21 +82,30 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
   });
 
   describe('AC3: reputation parity', () => {
-    it('attached reputation gain lands on the business card', () => {
+    // Regression for the producer's rejection of the first attempt
+    // (2026-09-29): "Reputation from events in the upcoming pile still flows
+    // from HUD to card when it should go card to hud (increasing
+    // reputation)." Reputation has no on-card grid, so a gain must flow from
+    // the actor (business card / Upcoming panel) TO the HUD reputation
+    // counter, matching the incident-reveal convention.
+    it('attached reputation gain flows from the business card to the HUD reputation counter (card → HUD)', () => {
       const route = resolveDeltaFlow({ delta: 100, kind: 'rep', attachedSlotIndex: 3 }, geometry);
       expect(route.kind).toBe('rep');
       expect(route.attached).toBe(true);
-      expect(route.from).toEqual(UPCOMING);
+      expect(route.from).toEqual(SLOT);
+      expect(route.to).toEqual(HUD_REP);
+      // Never routed to the business card as a gain destination (the original
+      // bug: an increase was drawn as HUD → card).
+      expect(route.to).not.toEqual(SLOT);
+    });
+
+    it('attached reputation loss flows from the HUD reputation counter to the business card (HUD → card)', () => {
+      const route = resolveDeltaFlow({ delta: -100, kind: 'rep', attachedSlotIndex: 3 }, geometry);
+      expect(route.from).toEqual(HUD_REP);
       expect(route.to).toEqual(SLOT);
     });
 
-    it('attached reputation loss leaves the business card', () => {
-      const route = resolveDeltaFlow({ delta: -100, kind: 'rep', attachedSlotIndex: 3 }, geometry);
-      expect(route.from).toEqual(SLOT);
-      expect(route.to).toEqual(UPCOMING);
-    });
-
-    it('unattached reputation gain lands on the HUD reputation counter', () => {
+    it('unattached reputation gain flows from the Upcoming panel to the HUD reputation counter (card → HUD)', () => {
       const route = resolveDeltaFlow({ delta: 100, kind: 'rep', attachedSlotIndex: null }, geometry);
       expect(route.attached).toBe(false);
       expect(route.kind).toBe('rep');
@@ -105,7 +114,7 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
       expect(route.to).not.toEqual(HUD_COIN);
     });
 
-    it('unattached reputation loss leaves the HUD reputation counter', () => {
+    it('unattached reputation loss flows from the HUD reputation counter to the Upcoming panel (HUD → card)', () => {
       const route = resolveDeltaFlow({ delta: -100, kind: 'rep', attachedSlotIndex: null }, geometry);
       expect(route.from).toEqual(HUD_REP);
       expect(route.to).toEqual(UPCOMING);
@@ -113,8 +122,10 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
 
     it('covers the full {gain, loss} × {attached, unattached} matrix for reputation', () => {
       const cases: Array<{ delta: number; attachedSlotIndex: number | null; expectFrom: object; expectTo: object }> = [
-        { delta: 100, attachedSlotIndex: 1, expectFrom: UPCOMING, expectTo: SLOT },
-        { delta: -100, attachedSlotIndex: 1, expectFrom: SLOT, expectTo: UPCOMING },
+        // Attached: gain card → HUD; loss HUD → card.
+        { delta: 100, attachedSlotIndex: 1, expectFrom: SLOT, expectTo: HUD_REP },
+        { delta: -100, attachedSlotIndex: 1, expectFrom: HUD_REP, expectTo: SLOT },
+        // Unattached: gain Upcoming → HUD; loss HUD → Upcoming.
         { delta: 100, attachedSlotIndex: null, expectFrom: UPCOMING, expectTo: HUD_REP },
         { delta: -100, attachedSlotIndex: null, expectFrom: HUD_REP, expectTo: UPCOMING },
       ];
@@ -122,6 +133,17 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
         const route = resolveDeltaFlow({ delta: c.delta, kind: 'rep', attachedSlotIndex: c.attachedSlotIndex }, geometry);
         expect(route.from).toEqual(c.expectFrom);
         expect(route.to).toEqual(c.expectTo);
+      }
+    });
+
+    it('never routes an increasing reputation from the HUD into a business card (producer rejection regression)', () => {
+      // The exact failure the producer saw: a positive reputation delta drawn
+      // as HUD → card. Assert the HUD is the *destination* for gains, for
+      // both attached and unattached deltas.
+      for (const attachedSlotIndex of [0, 2, null] as const) {
+        const route = resolveDeltaFlow({ delta: 250, kind: 'rep', attachedSlotIndex }, geometry);
+        expect(route.to).toEqual(HUD_REP);
+        expect(route.from).not.toEqual(HUD_REP);
       }
     });
   });

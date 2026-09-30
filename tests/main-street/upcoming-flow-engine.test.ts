@@ -105,6 +105,35 @@ describe('processEndOfTurn — Upcoming delta population (CG-0MUA1UH3A008M4BS)',
     expect(slot1.upcomingDeltas).toHaveLength(0);
   });
 
+  it('AC3: a business-attached reputation gain is carried with the matching slot and kind `rep`', () => {
+    const state = readyWithIncident(
+      'upcoming-engine-attached-rep',
+      makeIncident({
+        id: 'evt-award',
+        name: 'Civic Award',
+        target: 'SpecificSynergy',
+        targetSynergy: 'Food',
+        coinDelta: 0,
+        reputationDelta: 100,
+      }),
+    );
+    state.streetGrid[0] = makeBiz('biz-cafe', 'Cafe', ['Food']);
+    state.streetGrid[1] = makeBiz('biz-gallery', 'Gallery', ['Culture']);
+
+    const result = processEndOfTurn(state);
+    const slot0 = result.income!.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 0)!;
+    const slot1 = result.income!.phaseBreakdown.perSlotBreakdown.find((pd) => pd.slotIndex === 1)!;
+
+    expect(slot0.upcomingDeltas).toHaveLength(1);
+    expect(slot0.upcomingDeltas[0]).toMatchObject({
+      cardId: 'evt-award',
+      delta: 100,
+      kind: 'rep',
+      attachedSlotIndex: 0,
+    });
+    expect(slot1.upcomingDeltas).toHaveLength(0);
+  });
+
   it('AC4: the populated upcoming deltas never change the engine-applied coin/reputation totals', () => {
     const state = setupMainStreetGame({ seed: 'upcoming-engine-invariant' });
     executeWeekStart(state);

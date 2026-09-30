@@ -251,29 +251,33 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
     expect(lastMove()).toEqual({ destX: UPCOMING.x, destY: UPCOMING.y });
   });
 
-  it('AC3: attached reputation gain lands on the business card', () => {
+  it('AC3: attached reputation gain flows from the business card to the HUD reputation counter', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot([{ cardId: 'e', name: 'Award', delta: 100, kind: 'rep', attachedSlotIndex: 0 }]);
 
     runUpcoming(animator, scene, scheduled, slot);
 
-    expect(circles[0]).toMatchObject({ x: UPCOMING.x, y: UPCOMING.y, radius: 5, color: 0x88bbff });
-    expect(lastMove()).toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
+    // Regression for the producer rejection (2026-09-29): an increasing
+    // reputation originates at the business card and lands on the HUD
+    // reputation counter — never HUD → card.
+    expect(circles[0]).toMatchObject({ x: SLOT_CENTER.x, y: SLOT_CENTER.y, radius: 5, color: 0x88bbff });
+    expect(lastMove()).toEqual({ destX: HUD_REP.x, destY: HUD_REP.y });
+    expect(lastMove()).not.toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
   });
 
-  it('AC3: attached reputation loss leaves the business card', () => {
+  it('AC3: attached reputation loss flows from the HUD reputation counter to the business card', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot([{ cardId: 'e', name: 'Inspection', delta: -100, kind: 'rep', attachedSlotIndex: 0 }]);
 
     runUpcoming(animator, scene, scheduled, slot);
 
-    expect(circles[0]).toMatchObject({ x: SLOT_CENTER.x, y: SLOT_CENTER.y });
-    expect(lastMove()).toEqual({ destX: UPCOMING.x, destY: UPCOMING.y });
+    expect(circles[0]).toMatchObject({ x: HUD_REP.x, y: HUD_REP.y });
+    expect(lastMove()).toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
   });
 
-  it('AC3: unattached reputation gain lands on the HUD reputation counter', () => {
+  it('AC3: unattached reputation gain flows from the Upcoming panel to the HUD reputation counter', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot([{ cardId: 'e', name: 'Good Press', delta: 100, kind: 'rep', attachedSlotIndex: null }]);
@@ -285,7 +289,7 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
     expect(lastMove()).not.toEqual({ destX: HUD_COIN.x, destY: HUD_COIN.y });
   });
 
-  it('AC3: unattached reputation loss leaves the HUD reputation counter', () => {
+  it('AC3: unattached reputation loss flows from the HUD reputation counter to the Upcoming panel', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot([{ cardId: 'e', name: 'Vandalism', delta: -100, kind: 'rep', attachedSlotIndex: null }]);
@@ -294,6 +298,22 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
 
     expect(circles[0]).toMatchObject({ x: HUD_REP.x, y: HUD_REP.y });
     expect(lastMove()).toEqual({ destX: UPCOMING.x, destY: UPCOMING.y });
+  });
+
+  it('AC3 regression: an increasing reputation never lands on a business card', () => {
+    // The exact failure the producer reported: a positive reputation delta
+    // drawn as HUD → card. For both attached and unattached gains the HUD
+    // reputation counter must be the flight *destination*.
+    for (const attachedSlotIndex of [0, 3, null] as const) {
+      const { scene, scheduled } = createMockScene();
+      const animator = new MainStreetAnimator(scene);
+      const slot = makeSlot([{ cardId: 'e', name: 'Good Press', delta: 100, kind: 'rep', attachedSlotIndex }]);
+
+      runUpcoming(animator, scene, scheduled, slot);
+
+      expect(lastMove()).toEqual({ destX: HUD_REP.x, destY: HUD_REP.y });
+      expect(lastMove()).not.toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
+    }
   });
 
   it('AC4: the phase never mutates game state', () => {

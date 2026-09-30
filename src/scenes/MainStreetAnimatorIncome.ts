@@ -461,9 +461,12 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
         // coin AND reputation delta to the actor the effect is attached to —
         // the affected business card when attached (source `EventCard.target`
         // = `SpecificSynergy` / `RandomBusiness`), or the HUD totals when not
-        // (target = `All`) — in the direction that matches the sign (gain
-        // lands on the actor, loss leaves it). The Upcoming panel is the flow
-        // source. Presentation-only: never mutates state or the credited total.
+        // (target = `All`). Coins accumulate in the actor (gain lands on the
+        // card grid / HUD coin counter; loss leaves it). Reputation has no
+        // on-card grid, so the actor is the *origin* of a gain and the HUD
+        // reputation counter is its destination (incident convention), the
+        // reverse for a loss. `resolveDeltaFlow` owns the split. Presentation-
+        // only: never mutates state or the credited total.
         const upcomingSource = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
         const hudCoin = { x: s.layout.gameW * 0.25 + 70, y: s.layout.hudY };
         const hudRep = { x: s.layout.gameW * 0.5, y: s.layout.hudY };

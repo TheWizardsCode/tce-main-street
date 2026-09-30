@@ -107,21 +107,33 @@ void popTextOrIcon({
     animates the end-of-turn Upcoming-card (incident/event) coin AND
     reputation deltas, routing each flow to the actor the effect is attached
     to (derived from the source `EventCard.target`):
-    - **Attached** (`SpecificSynergy` / `RandomBusiness`) — the flow runs
-      between the Upcoming source and the **affected business card**
+    - **Coins (attached)** (`SpecificSynergy` / `RandomBusiness`) — the flow
+      runs between the Upcoming source and the **affected business coin grid**
       (`upcomingDeltas[i].attachedSlotIndex` = that slot). A **gain** lands on
-      the card (Upcoming → card grid, `flyCoinsIn`/`flyRepPips`); a **loss**
-      leaves the card (card grid → Upcoming, `flyCoinsOut`/`flyRepPips`).
-    - **Unattached** (`All`) — the flow runs between the Upcoming source and
-      the **HUD totals** (`upcomingDeltas[i].attachedSlotIndex = null`): the
-      **coin counter** for coins (`flyCoinsToPoint`) and the **reputation
-      counter** for reputation (`flyRepPips`), never via any business grid.
-    - **Reputation parity** (AC3): reputation deltas follow exactly the same
-      attachment and direction rules as coin deltas; reputation pips are
-      routed point-to-point and are silent (matching the reputation phase).
+      the grid (Upcoming → card grid, `flyCoinsIn`); a **loss** leaves it
+      (card grid → Upcoming, `flyCoinsOut`). The collection phase then flies
+      the accumulated grid coins to the HUD as usual.
+    - **Coins (unattached)** (`All`) — the flow runs between the Upcoming
+      source and the **HUD coin counter** (`flyCoinsToPoint`), never via any
+      business grid: a gain Upcoming → HUD, a loss HUD → Upcoming.
+    - **Reputation (no on-card grid)** — reputation has no business grid, so
+      the affected business card (attached) or the Upcoming panel (unattached)
+      is the **actor** and the **HUD reputation counter** is the resource
+      (`flyRepPips`, silent — matching the reputation income phase). Direction
+      follows the incident-reveal convention (CG-0MU41XVNV002N2D9): a **gain
+      flows actor → HUD reputation counter** (`card → resource`); a **loss
+      flows HUD reputation counter → actor** (`resource → card`). This is the
+      correction required by the producer's rejection of the first attempt
+      (2026-09-29): an *increasing* reputation must never be drawn as HUD →
+      card.
+    - **Reputation parity** (AC3): reputation follows the same attachment rule
+      as coins (attached → the business card is the actor; unattached → the
+      Upcoming panel is the actor) and the same sign rule (`gain = card →
+      resource`, `loss = resource → card`).
     - **Direction convention** (AC1/AC2, reusing the incident-reveal sign
-      rule): a gain flows Upcoming → actor; a loss flows actor → Upcoming.
-      The pure decision is `resolveDeltaFlow` in `MainStreetAnimatorContext.ts`;
+      rule): coin gains land on the actor and coin losses leave it; reputation
+      gains originate at the actor and reputation losses return to it. The
+      pure decision is `resolveDeltaFlow` in `MainStreetAnimatorContext.ts`;
       the routing descriptors are populated by `attachUpcomingDeltas`
       (`MainStreetAdjacencyScoring.ts`) from the resolved incident in
       `processEndOfTurn`.

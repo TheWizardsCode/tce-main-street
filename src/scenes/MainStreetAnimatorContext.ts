@@ -312,10 +312,13 @@ export interface MainStreetAnimatorContext {
 /** A resolved flow for one coin/reputation delta (origin → target + kind). */
 export interface DeltaFlowRoute {
   /**
-   * Flow origin. For a gain the origin is the Upcoming source and the target
-   * is the actor; for a loss the origin is the actor and the target is the
-   * Upcoming source (matching the incident-reveal convention:
-   * `coinChange < 0` → resource → card; gain → card → resource).
+   * Flow origin. Coins: a gain originates at the Upcoming source and lands on
+   * the actor (business grid / HUD coin counter); a loss originates at the
+   * actor and returns to the Upcoming source. Reputation: a gain originates
+   * at the actor (business card / Upcoming panel) and lands on the HUD
+   * reputation counter; a loss originates at the HUD counter and returns to
+   * the actor — matching the incident-reveal convention
+   * (CG-0MU41XVNV002N2D9): gain → card → resource; loss → resource → card.
    */
   from: { x: number; y: number };
   /** Flow destination (see `from` for the sign convention). */
@@ -349,15 +352,20 @@ export interface DeltaFlowGeometry {
  * Upcoming/event coin or reputation delta (CG-0MUA1UH3A008M4BS AC1–AC3).
  *
  * Routing rules (documented in `docs/main-street/ux-visual-audio.md`):
- * - **Attached** (`attachedSlotIndex` is a number): the flow animates between
- *   the Upcoming source and the affected business card.
- * - **Unattached** (`attachedSlotIndex` is `null`/`undefined`): the flow
- *   animates between the Upcoming source and the HUD totals — the coin
- *   counter for coin deltas, the reputation counter for reputation deltas —
- *   and is never drawn via a business grid.
- * - **Direction by sign** (reusing the incident-reveal convention): a gain
- *   flows Upcoming → actor (lands on the card / HUD); a loss flows actor →
- *   Upcoming (leaves the card / HUD).
+ * - **Coin deltas** accumulate in the actor: the affected business coin grid
+ *   when **attached** (`attachedSlotIndex` is a number), otherwise the HUD
+ *   coin counter. A gain lands on the actor (Upcoming → actor); a loss
+ *   leaves the actor (actor → Upcoming). The collection phase later flies
+ *   the accumulated grid coins to the HUD.
+ * - **Reputation deltas** have no on-card grid, so the actor (the affected
+ *   business card when attached, otherwise the Upcoming panel) is the
+ *   *source* of a gain and the *destination* of a loss, with the HUD
+ *   reputation counter always the other endpoint. This matches the
+ *   incident-reveal convention (CG-0MU41XVNV002N2D9) and was the correction
+ *   required by the producer's rejection of the first attempt: an increasing
+ *   reputation flows **card → HUD**, never HUD → card.
+ * - **Direction by sign** is therefore: coins gain → land on the actor;
+ *   reputation gain → the actor is the origin (card → HUD).
  *
  * Pure and exported for unit testing (AC1/AC2/AC3 assertions on flight
  * start/end points and direction).
@@ -368,14 +376,33 @@ export function resolveDeltaFlow(
 ): DeltaFlowRoute {
   const kind: 'coin' | 'rep' = delta.kind === 'rep' ? 'rep' : 'coin';
   const attached = typeof delta.attachedSlotIndex === 'number';
-  // The actor is the business card when attached, otherwise the HUD totals
-  // (coin counter for coins, reputation counter for reputation).
-  const actor = attached
-    ? geometry.slotCenter
-    : kind === 'coin'
-      ? geometry.hudCoin
-      : geometry.hudRep;
   const isGain = delta.delta >= 0;
+
+  if (kind === 'rep') {
+    // Reputation has no on-card grid, so the affected business card (when
+    // attached) or the Upcoming panel (when unattached) is the **actor** and
+    // the HUD reputation counter is the **resource**. Direction follows the
+    // incident-reveal convention (CG-0MU41XVNV002N2D9):
+    //   gain = actor → HUD reputation counter (card → resource)
+    //   loss = HUD reputation counter → actor (resource → card)
+    // The producer's rejection of the first attempt (2026-09-29) was precisely
+    // this: an *increasing* reputation must flow from the business/Upcoming
+    // actor TO the HUD, never the reverse.
+    const actor = attached ? geometry.slotCenter : geometry.upcomingSource;
+    return {
+      from: isGain ? actor : geometry.hudRep,
+      to: isGain ? geometry.hudRep : actor,
+      attached,
+      kind,
+      delta: delta.delta,
+    };
+  }
+
+  // Coins: the actor is the business coin grid when attached, otherwise the
+  // HUD coin counter. A gain lands on the actor (Upcoming → actor); a loss
+  // leaves the actor (actor → Upcoming). Attached gains accumulate in the
+  // on-card grid, which the collection phase later flies to the HUD.
+  const actor = attached ? geometry.slotCenter : geometry.hudCoin;
   return {
     from: isGain ? geometry.upcomingSource : actor,
     to: isGain ? actor : geometry.upcomingSource,
