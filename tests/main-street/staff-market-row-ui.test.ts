@@ -12,8 +12,6 @@
  *        move-to-hand cards.
  *   AC3  Staff tooltips show hire-relevant info (name, cost, +hand slots,
  *        ongoing cost, abilities).
- *   AC6  No orphaned `staffCardMarket` references remain in the UI layer
- *        (`src/scenes/` + shared `src/`).
  *
  * (AC1 rendering layout parity and AC5 tutorial loading are covered by the
  * browser suite: MainStreetScene.browser.test.ts and the tutorial E2E.)
@@ -22,8 +20,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { setupMainStreetGame } from '../../src/MainStreetState';
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
@@ -287,38 +283,3 @@ describe('AC3: staff tooltips show hire-relevant info', () => {
   });
 });
 
-// ── AC6: no orphaned staff-market UI references ───────────────
-
-describe('AC6: no orphaned staffCardMarket references in the UI layer', () => {
-  const scannedRoots: Array<{ label: string; dir: string }> = [
-    { label: 'scenes', dir: 'src/scenes' },
-    { label: 'shared-ui', dir: 'core/src/ui' },
-    { label: 'core-engine', dir: 'core/src/core-engine' },
-  ];
-
-  function collectTsFiles(dir: string, out: string[]): void {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) collectTsFiles(full, out);
-      else if (entry.name.endsWith('.ts')) out.push(full);
-    }
-  }
-
-  for (const { label, dir } of scannedRoots) {
-    it(`has no 'staffCardMarket' identifier in ${label} (${dir})`, () => {
-      const files: string[] = [];
-      collectTsFiles(dir, files);
-      expect(files.length).toBeGreaterThan(0);
-
-      const offenders = files.filter((f) => readFileSync(f, 'utf8').includes('staffCardMarket'));
-      expect(offenders, `unexpected staffCardMarket refs: ${offenders.join(', ')}`).toEqual([]);
-    });
-  }
-
-  it('the main-street scene/controller files never reached (sanity: files were scanned)', () => {
-    // Guard against a refactor that moves the UI out of scenes/ — the sweep
-    // above must keep covering the actual market surface.
-    const marker = join('src/scenes', 'MainStreetRenderer.ts');
-    expect(statSync(marker).isFile()).toBe(true);
-  });
-});

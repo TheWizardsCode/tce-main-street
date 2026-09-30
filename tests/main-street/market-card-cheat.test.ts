@@ -6,19 +6,20 @@
  *  - Cheat replacement: random slot selection, displaced → correct discard, unique id, valid-state invariants, empty market
  *  - Business card reset on injection
  *  - Dev-mode gating and entry metadata (label/description)
- *  - Production tree-shake guard (source gated behind import.meta.env.DEV)
+ *  - Dev-only registration gate (cheats absent from the production tool list)
  *
  * @module
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 import {
   filterEntries,
   type CardEntry,
 } from '../../src/debug/MarketCardCheatOverlay';
+import {
+  buildMainStreetDebugTools,
+} from '../../src/debug/MainStreetDebugTools';
 import { cheatReplaceMarketCard } from '../../src/MainStreetMarket';
 import {
   setupMainStreetGame,
@@ -133,13 +134,13 @@ describe('Market Card Cheat entry', () => {
     expect(typeof isDevMode()).toBe('boolean');
   });
 
-  it('MainStreetScene gates the cheat behind import.meta.env.DEV (tree-shake guard)', () => {
-    const src = readFileSync(
-      resolve(__dirname, '../../src/scenes/MainStreetScene.ts'),
-      'utf-8',
-    );
-    expect(src).toContain('import.meta.env.DEV');
-    expect(src).toContain('createMarketCardCheatTool');
+  it('registers the cheat only in the dev-mode tool list (production gate)', () => {
+    const cheatLabel = createMarketCardCheatTool().label;
+    const productionLabels = buildMainStreetDebugTools(false).map((t) => t.label);
+    expect(productionLabels).not.toContain(cheatLabel);
+
+    const devLabels = buildMainStreetDebugTools(true).map((t) => t.label);
+    expect(devLabels).toContain(cheatLabel);
   });
 
   it('MARKET_TOTAL_SLOTS is 3', () => {

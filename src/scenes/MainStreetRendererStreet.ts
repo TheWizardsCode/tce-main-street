@@ -14,7 +14,7 @@ import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
-import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSynergyRate } from '../MainStreetFormatting';
+import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
@@ -768,7 +768,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
       tooltipZone.setName(`ms-business-slot-zone-${_index}`);
       tooltipZone.on('pointerover', () => {
         if (isSold) {
-          const info = `Sold: ${biz.name}\nThis card no longer produces income, but still provides synergy to adjacent businesses.`;
+          const info = formatSoldCardTooltip(biz);
           s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
           return;
         }

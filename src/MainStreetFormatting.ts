@@ -468,3 +468,24 @@ export function turnLabel(config: Pick<GameConfig, 'maxTurns'>, turn: number): s
 export function weekLabel(week: number, year: number): string {
   return `Week ${week} · Year ${year}`;
 }
+
+/**
+ * The synergy-anchor line shown for a sold business/community-space card
+ * (CG-0MTFS4PP40064GHE). A sold card earns no income of its own but remains
+ * a synergy anchor for adjacent businesses, so the copy must never claim
+ * that synergy stops.
+ */
+export const SOLD_CARD_TOOLTIP_SYNERGY_LINE =
+  'This card no longer produces income, but still provides synergy to adjacent businesses.';
+
+/**
+ * Builds the tooltip shown when hovering a sold business/community-space
+ * slot (CG-0MTFS4PP40064GHE). Phaser-free so the sold-card copy can be
+ * asserted directly by tests rather than by grepping the renderer source.
+ *
+ * @param card  The sold card (only its `name` is read).
+ * @returns The multi-line sold-card tooltip string.
+ */
+export function formatSoldCardTooltip(card: Pick<AnyCard, 'name'>): string {
+  return `Sold: ${card.name}\n${SOLD_CARD_TOOLTIP_SYNERGY_LINE}`;
+}

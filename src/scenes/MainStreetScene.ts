@@ -38,12 +38,7 @@ import {
   zoomInLevel,
   zoomOutLevel,
 } from '../MainStreetMapView';
-import { createMarketCardCheatTool } from '../debug/MarketCardCheatOverlay';
-import { createStaffApplicantCheatTool } from '../debug/StaffApplicantCheatOverlay';
-import { createSessionExportTool } from '@ui/debug/SessionExportTool';
-import { createStateInspectorTool } from '@ui/debug/StateInspectorOverlay';
-import { createGameEventLogTool } from '@ui/debug/GameEventLogOverlay';
-import { createAiDecisionViewerTool } from '@ui/debug/AiDecisionOverlay';
+import { buildMainStreetDebugTools } from '../debug/MainStreetDebugTools';
 
 type UIPhase =
   | 'idle'               // Waiting for WeekStart
@@ -79,14 +74,7 @@ export class MainStreetScene extends CardGameScene {
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, [
-        createSessionExportTool(),
-        createStateInspectorTool(),
-        createGameEventLogTool(),
-        createAiDecisionViewerTool(),
-        createMarketCardCheatTool(),
-        createStaffApplicantCheatTool(),
-      ], vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true), vetoToggle);
       return;
     }
     super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
