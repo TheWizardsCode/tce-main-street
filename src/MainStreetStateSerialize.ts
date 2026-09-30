@@ -25,6 +25,7 @@ import {
   createIncidentBalanceFromQueue,
 } from './MainStreetCards';
 import { CHALLENGE_TEMPLATES } from './MainStreetChallenges';
+import { attachMainStreetAchievements } from './MainStreetAchievements';
 import type { StreetCameraState } from './MainStreetMapView';
 import type {
   MainStreetState,
@@ -638,6 +639,11 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
       card.employedStaff = (state.staffCards ?? []).filter(m => m.employedAtSlot === i);
     }
   }
+
+  // Restore the persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). The
+  // system is a runtime service and is never serialized; re-attach a fresh
+  // one so loaded games keep unlocking achievements.
+  attachMainStreetAchievements(state);
 
   return state;
 }

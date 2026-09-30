@@ -340,11 +340,16 @@ export function selectChallenges(
  * with a Main Street-specific completion callback that:
  * - Pushes the challenge ID to `state.challengesCompleted`
  * - Adds an activity log entry
+ * - Forwards the challenge to `state.achievementSystem` (if attached) so the
+ *   mapped persistent Steam achievement is unlocked (F7, CG-0MUNC7FK5001T5CP).
+ *   The engine `AchievementSystem` is idempotent, so a completion fires at
+ *   most one unlock per achievement per session, and the launcher persists
+ *   unlocks across runs.
  *
  * Once a challenge is marked complete it stays complete (no revocation).
  *
  * @param activeChallenges  The active challenges to evaluate.
- * @param state             Current game state (mutated in-place: challengesCompleted, activityLog).
+ * @param state             Current game state (mutated in-place: challengesCompleted, activityLog, achievementSystem).
  * @returns Array of challenge IDs that were newly completed this call.
  */
 export function evaluateChallenges(
@@ -361,6 +366,9 @@ export function evaluateChallenges(
         text: `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`,
         type: 'gain',
       });
+      // Persistent achievement bridge (F7). The engine tolerates a throwing
+      // or absent sink, so this never affects gameplay.
+      s.achievementSystem?.onChallengeCompleted(challenge.id);
     },
   );
 }

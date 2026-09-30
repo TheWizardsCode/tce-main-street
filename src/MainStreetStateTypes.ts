@@ -14,6 +14,7 @@
 
 import type { StreetCameraState } from './MainStreetMapView';
 import type { ActiveEffect } from '@core-engine';
+import type { AchievementSystem } from '@core-engine/AchievementSystem';
 import type { EconomyLedger } from '@rule-engine/EconomyLedger';
 import type {
   BusinessCard,
@@ -408,6 +409,15 @@ export interface MainStreetState {
    * serialized (transient presentation state).
    */
   _newlyCompletedThisAction?: string[];
+  /**
+   * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
+   * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
+   * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
+   * achievement exactly once per run. The system is a runtime service (it
+   * holds an `AchievementSink`), so it is never serialized — save/load
+   * re-attaches a fresh system with the launcher-provided persistence.
+   */
+  achievementSystem?: AchievementSystem | null;
 }
 
 /**

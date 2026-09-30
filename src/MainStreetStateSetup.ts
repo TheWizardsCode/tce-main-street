@@ -38,6 +38,7 @@ import {
   type IncidentBalanceState,
 } from './MainStreetCards';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
+import { attachMainStreetAchievements } from './MainStreetAchievements';
 import { assignStaffApplicantSkills } from './MainStreetStaffSkills';
 import { getPreset } from './MainStreetDifficulty';
 import type {
@@ -466,6 +467,11 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     challenge: ch,
     completed: false,
   }));
+
+  // Attach the persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). The
+  // sink resolves to the IPC client inside the Electron launcher and to a
+  // no-op sink in the browser/headless, so this never changes gameplay.
+  attachMainStreetAchievements(state);
 
   return state;
 }
