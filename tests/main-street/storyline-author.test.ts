@@ -250,7 +250,12 @@ describe('AC2 — self-validating, no partial write', () => {
 
 // ── AC1 + AC2: CLI end-to-end ───────────────────────────────
 
-describe('AC1/AC2 — authoring CLI via vite-node (fixture file)', () => {
+// Each test spawns a cold `vite-node` CLI subprocess (1–3 s each, sometimes
+// slower under the 4-worker full-suite load). The 15 s global test timeout is
+// too tight for these subprocess integration tests and produced spurious
+// timeouts (MS-0MUPKEWEC005U2XV), so this suite gets a longer budget. The
+// spawnSync call still hard-kills the child at 180 s.
+describe('AC1/AC2 — authoring CLI via vite-node (fixture file)', { timeout: 60_000 }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tce-author-cli-'));
 
   function writeFixture(name: string): string {
