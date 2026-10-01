@@ -285,7 +285,7 @@ describe('MainStreetState', () => {
     });
 
     it('should select different activeChallenges for different seeds (statistical)', () => {
-      // With 12 templates choosing 3, different seeds should usually produce different sets.
+      // With 13 templates choosing 3, different seeds should usually produce different sets.
       // Test across several seed pairs to guard against false negatives.
       let diffCount = 0;
       const pairs = [['cA', 'cB'], ['cC', 'cD'], ['cE', 'cF'], ['cG', 'cH']];

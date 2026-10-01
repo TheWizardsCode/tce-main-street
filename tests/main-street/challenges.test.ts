@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 import {
   CHALLENGE_TEMPLATES,
   DEFAULT_CHALLENGES_PER_RUN,
+  SERIAL_SELLER_TARGET,
+  formatChallengeProgress,
   selectChallenges,
   evaluateChallenges,
   type ChallengeCategory,
@@ -86,8 +88,8 @@ function placeBusinesses(
 
 describe('MainStreetChallenges', () => {
   describe('CHALLENGE_TEMPLATES', () => {
-    it('should have 12 challenge templates', () => {
-      expect(CHALLENGE_TEMPLATES).toHaveLength(12);
+    it('should have 13 challenge templates', () => {
+      expect(CHALLENGE_TEMPLATES).toHaveLength(13);
     });
 
     it('should have unique IDs', () => {
@@ -102,7 +104,7 @@ describe('MainStreetChallenges', () => {
       }
     });
 
-    it('should cover all 5 categories with at least 2 each', () => {
+    it('should cover all 5 original categories with at least 2 each', () => {
       const categories: ChallengeCategory[] = [
         'synergy', 'placement', 'resource', 'upgrade', 'cross-cutting',
       ];
@@ -110,6 +112,15 @@ describe('MainStreetChallenges', () => {
         const count = CHALLENGE_TEMPLATES.filter(c => c.category === cat).length;
         expect(count, `Category '${cat}' should have >= 2 templates`).toBeGreaterThanOrEqual(2);
       }
+    });
+
+    it('should include the Serial Seller economic challenge', () => {
+      const serialSeller = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller');
+      expect(serialSeller, 'ch-serial-seller must exist').toBeDefined();
+      expect(serialSeller!.title).toBe('Serial Seller');
+      expect(serialSeller!.description).toBe('Sell 3 or more businesses in a single game.');
+      expect(serialSeller!.category).toBe('economic');
+      expect(serialSeller!.rewardPoints).toBe(CHALLENGE_BONUS_POINTS);
     });
 
     it('should have evaluator functions for all templates', () => {
@@ -439,6 +450,46 @@ describe('MainStreetChallenges', () => {
       });
     });
 
+    describe('Serial Seller', () => {
+      const ch = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller')!;
+
+      it('should return false on an empty grid', () => {
+        const state = createEmptyState();
+        expect(ch.evaluator(state)).toBe(false);
+      });
+
+      it('should return false with 1 sold business', () => {
+        const state = createEmptyState();
+        state.soldSlots[0] = true;
+        expect(ch.evaluator(state)).toBe(false);
+      });
+
+      it('should return false with 2 sold businesses', () => {
+        const state = createEmptyState();
+        state.soldSlots[0] = true;
+        state.soldSlots[4] = true;
+        expect(ch.evaluator(state)).toBe(false);
+      });
+
+      it('should return true with 3 sold businesses', () => {
+        const state = createEmptyState();
+        state.soldSlots[0] = true;
+        state.soldSlots[4] = true;
+        state.soldSlots[9] = true;
+        expect(ch.evaluator(state)).toBe(true);
+      });
+
+      it('should ignore empty (unsold) slots when counting', () => {
+        const state = createEmptyState();
+        // Grid positions deliberately left empty — only the sold flags count.
+        state.soldSlots[2] = true;
+        state.soldSlots[3] = true;
+        expect(ch.evaluator(state)).toBe(false);
+        state.soldSlots[7] = true;
+        expect(ch.evaluator(state)).toBe(true);
+      });
+    });
+
     describe('Entertainment Strip', () => {
       const ch = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-entertainment-strip')!;
 
@@ -460,6 +511,56 @@ describe('MainStreetChallenges', () => {
         ]);
         expect(ch.evaluator(state)).toBe(false);
       });
+    });
+  });
+
+  // ── Progress Metadata Tests ─────────────────────────────────
+
+  describe('challenge progress metadata', () => {
+    it('exposes progress on Serial Seller and reports 0/3 on an empty grid', () => {
+      const ch = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller')!;
+      expect(ch.progress, 'Serial Seller must be progress-capable').toBeDefined();
+      expect(ch.progress!(createEmptyState())).toEqual({
+        current: 0,
+        target: SERIAL_SELLER_TARGET,
+      });
+    });
+
+    it('tracks the sold count live', () => {
+      const ch = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller')!;
+      const state = createEmptyState();
+      state.soldSlots[0] = true;
+      expect(ch.progress!(state).current).toBe(1);
+      state.soldSlots[5] = true;
+      expect(ch.progress!(state).current).toBe(2);
+      state.soldSlots[8] = true;
+      expect(ch.progress!(state)).toEqual({ current: 3, target: SERIAL_SELLER_TARGET });
+    });
+
+    it('has no progress provider on the other 12 challenges (HUD renders them unchanged)', () => {
+      const others = CHALLENGE_TEMPLATES.filter(c => c.id !== 'ch-serial-seller');
+      expect(others).toHaveLength(12);
+      for (const ch of others) {
+        expect(ch.progress, `'${ch.id}' should not declare progress`).toBeUndefined();
+      }
+    });
+
+    it('formatChallengeProgress renders <current>/<target> for progress challenges', () => {
+      const serialSeller = CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller')!;
+      const state = createEmptyState();
+      expect(formatChallengeProgress(serialSeller, state)).toBe('0/3');
+      state.soldSlots[0] = true;
+      state.soldSlots[4] = true;
+      expect(formatChallengeProgress(serialSeller, state)).toBe('2/3');
+      state.soldSlots[9] = true;
+      expect(formatChallengeProgress(serialSeller, state)).toBe('3/3');
+    });
+
+    it('formatChallengeProgress returns null for progress-less challenges', () => {
+      const state = createEmptyState();
+      for (const ch of CHALLENGE_TEMPLATES.filter(c => c.id !== 'ch-serial-seller')) {
+        expect(formatChallengeProgress(ch, state), `'${ch.id}' should render no progress`).toBeNull();
+      }
     });
   });
 
@@ -511,7 +612,7 @@ describe('MainStreetChallenges', () => {
       // At least one challenge should differ
       const ids1 = sel1.map(c => c.id).sort();
       const ids2 = sel2.map(c => c.id).sort();
-      // They may coincidentally be the same, but with 12 templates
+      // They may coincidentally be the same, but with 13 templates
       // and 3 selected, it's astronomically unlikely with different seeds
       expect(ids1.join(',') !== ids2.join(',') || true).toBe(true);
     });
@@ -527,6 +628,17 @@ describe('MainStreetChallenges', () => {
       }
       // Every template should be selected at least once
       expect(seenIds.size).toBe(CHALLENGE_TEMPLATES.length);
+    });
+
+    it('should include the Serial Seller challenge in selections across seeds', () => {
+      const selectedIds = new Set<string>();
+      for (let seed = 1; seed <= 100; seed++) {
+        const rng = createSeededRng(seed);
+        for (const ch of selectChallenges(CHALLENGE_TEMPLATES, 3, rng)) {
+          selectedIds.add(ch.id);
+        }
+      }
+      expect(selectedIds.has('ch-serial-seller')).toBe(true);
     });
 
     it('should not mutate the original templates array', () => {

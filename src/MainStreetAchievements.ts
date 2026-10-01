@@ -1,7 +1,7 @@
 /**
  * Main Street: Achievements (F7, CG-0MUNC7FK5001T5CP).
  *
- * Maps the 12 run-local challenge templates to persistent Steam achievements
+ * Maps the 13 run-local challenge templates to persistent Steam achievements
  * through the engine-generic `AchievementSystem` (`@core-engine`). No Steam
  * SDK code lives in this repo: the *only* Steam-aware call is
  * `resolveMainStreetAchievementSink()`, which uses the renderer client
@@ -57,6 +57,7 @@ export const CHALLENGE_TO_ACHIEVEMENT_ID: Readonly<Record<string, string>> = {
   'ch-diversified': 'diversified',
   'ch-synergy-master': 'synergy-master',
   'ch-entertainment-strip': 'entertainment-strip',
+  'ch-serial-seller': 'serial-seller',
 };
 
 /** Resolve the achievement id for a challenge id, or `null` when unmapped. */

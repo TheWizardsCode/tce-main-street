@@ -13,6 +13,7 @@ import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
 import { continuityIndicatorLabel } from '../MainStreetStorylineUi';
 import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
+import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
 import { buildCardTooltipInfo, turnLabel, weekLabel } from '../MainStreetFormatting';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
@@ -333,6 +334,26 @@ export function refreshChallengeTracker(renderer: MainStreetRendererContext): vo
         },
       ).setOrigin(0, 0);
       s.challengeContainer.add(challengeText);
+
+      // Live progress (MS-0MUI7ZJK8003HY9J): progress-capable challenges show
+      // `<current>/<target>` right-aligned against the description column. It
+      // is right-aligned at the description start (minus a small gutter) so it
+      // never overlaps the description and changes nothing for the challenges
+      // that carry no progress provider.
+      const progressLabel = formatChallengeProgress(ac.challenge, s.state);
+      if (progressLabel) {
+        const progressText = s.add.text(
+          challengeW * 0.42 - 6, yOff,
+          progressLabel,
+          {
+            fontSize: '10px',
+            fontStyle: 'bold',
+            color,
+            fontFamily: FONT_FAMILY,
+          },
+        ).setOrigin(1, 0);
+        s.challengeContainer.add(progressText);
+      }
 
       // Description (right portion of the row)
       const descText = s.add.text(

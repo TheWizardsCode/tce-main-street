@@ -113,6 +113,13 @@ describe('Main Street achievement mapping', () => {
   it('resolves an unknown challenge id to null', () => {
     expect(achievementIdForChallenge('ch-not-real')).toBeNull();
   });
+
+  it('maps the Serial Seller challenge to the serial-seller achievement', () => {
+    expect(achievementIdForChallenge('ch-serial-seller')).toBe('serial-seller');
+    const def = MAIN_STREET_ACHIEVEMENT_DEFINITIONS.find((d) => d.id === 'serial-seller');
+    expect(def, 'serial-seller achievement definition must exist').toBeDefined();
+    expect(def!.title).toBe('Serial Seller');
+  });
 });
 
 // ── Launcher manifest drift guard ───────────────────────────

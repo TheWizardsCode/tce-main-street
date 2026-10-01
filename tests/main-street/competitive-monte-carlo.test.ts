@@ -64,7 +64,10 @@ describe('AC1 — Deterministic head-to-head execution', () => {
 
   it('should complete within the maxTurns cap', () => {
     const maxTurns = 5;
-    const run = runCompetitiveSeed('ac1-cap-1', maxTurns);
+    // 'ac1-cap-1' ended via reputation collapse under the 13-template pool
+    // (MS-0MUI7ZJK8003HY9J added ch-serial-seller, shifting the seeded RNG
+    // stream). 'ac1-cap-3' still exercises cap termination.
+    const run = runCompetitiveSeed('ac1-cap-3', maxTurns);
 
     expect(run.turns).toBeLessThanOrEqual(maxTurns);
     expect(run.endReason).toBe('max_turns_cap');
