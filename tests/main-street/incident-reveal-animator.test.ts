@@ -74,6 +74,8 @@ interface MockContainer {
   type?: string;
   x?: number;
   y?: number;
+  radius?: number;
+  color?: number;
   scaleX?: number;
   scaleY?: number;
   visible?: boolean;
@@ -181,9 +183,9 @@ function createMockScene(overrides: Record<string, unknown> = {}) {
         };
         return text;
       }),
-      circle: vi.fn((_x: number, _y: number, _r: number, _color: number, _alpha: number) => {
+      circle: vi.fn((x: number, y: number, r: number, color: number, _alpha: number) => {
         const circle: MockContainer = {
-          type: 'Circle', scaleX: 1, scaleY: 1,
+          type: 'Circle', x, y, radius: r, color, scaleX: 1, scaleY: 1,
           setDepth: vi.fn().mockReturnThis(),
           setVisible: vi.fn().mockReturnThis(),
           destroy: vi.fn(),
@@ -446,7 +448,7 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
     vi.clearAllMocks();
   });
 
-  it('launches coin-loss bubbles from HUD to card when coinChange < 0', () => {
+  it('launches coin-loss bubbles from the HUD coin counter to the card centre when coinChange < 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -466,14 +468,15 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
     const coinBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(coinBubbles.length).toBeGreaterThan(0);
 
-    // Bubbles travel via moveGameObject; loss travels HUD → card.
-    expect(moveGameObject).toHaveBeenCalled();
+    // Loss: starts at the HUD coin counter (390, 50), lands on the card
+    // centre (640, 360).
+    expect(coinBubbles[0]).toMatchObject({ x: 390, y: 50 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
     expect(first.destY).toBe(360);
   });
 
-  it('launches coin-gain bubbles from card to HUD when coinChange > 0', () => {
+  it('launches coin-gain bubbles from the card centre to the HUD coin counter when coinChange > 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -490,12 +493,17 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const coinBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(coinBubbles.length).toBeGreaterThan(0);
-    // Gain travels card → HUD.
+    // Gain: starts at the card centre (640, 360) and lands on the HUD coin
+    // counter (390, 50). BOTH axes follow the sign — the earlier bug moved
+    // only X, so the bubble still travelled from the HUD's vertical band to
+    // the card's and read as HUD → card.
+    expect(coinBubbles[0]).toMatchObject({ x: 640, y: 360 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(390);
+    expect(first.destY).toBe(50);
   });
 
-  it('launches reputation-loss bubbles from HUD to card when repChange < 0', () => {
+  it('launches reputation-loss bubbles from the HUD reputation counter to the card centre when repChange < 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -512,12 +520,14 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const repBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(repBubbles.length).toBeGreaterThan(0);
-    // Loss travels HUD rep counter → card.
+    // Loss: HUD reputation counter (640, 50) → card centre (640, 360).
+    expect(repBubbles[0]).toMatchObject({ x: 640, y: 50 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
+    expect(first.destY).toBe(360);
   });
 
-  it('launches reputation-gain bubbles from card to HUD when repChange > 0', () => {
+  it('launches reputation-gain bubbles from the card centre to the HUD reputation counter when repChange > 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -534,9 +544,14 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const repBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(repBubbles.length).toBeGreaterThan(0);
-    // Gain travels card → HUD rep counter.
+    // Gain: card centre (640, 360) → HUD reputation counter (640, 50). The two
+    // endpoints share an X, so only Y distinguishes the direction — the exact
+    // reason the producer's Farm-to-Table (+coin/+rep) gain still read as
+    // HUD → card (CG-0MUA1UH3A008M4BS rework 3).
+    expect(repBubbles[0]).toMatchObject({ x: 640, y: 360 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
+    expect(first.destY).toBe(50);
   });
 
   it('launches no bubbles when both deltas are zero', () => {

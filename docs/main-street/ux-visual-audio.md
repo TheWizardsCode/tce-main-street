@@ -246,10 +246,14 @@ void popTextOrIcon({
   3. The card back hinges open (`scaleX → 0`) to reveal the incident face.
   4. The face stays visible for **1920ms** (`INCIDENT_REVEAL_HOLD_MS`) so the player can read the
      incident. During the hold, resource-delta bubbles animate between the
-     HUD score bar and the card: coin loss travels HUD → card, coin gain
-     card → HUD (gold, `SFX_KEYS.COIN_POP`); reputation loss/gain does the
-     same for the blue reputation pips (silent). No bubbles when a delta
-     is zero.
+     HUD score bar and the card: a **gain** starts at the card centre and
+     lands on the HUD counter (`card → HUD`); a **loss** starts at the HUD
+     counter and lands on the card (`HUD → card`). This applies to both the
+     gold coin bubbles (`SFX_KEYS.COIN_POP`) and the silent blue reputation
+     pips, and **both coordinate axes follow the sign** (CG-0MUA1UH3A008M4BS
+     rework 3 — an earlier version moved only X, so a gain still travelled
+     from the HUD's vertical band to the card and read as HUD → card). No
+     bubbles when a delta is zero.
   5. The container returns to the Upcoming card centre and is destroyed;
      the reveal's `onComplete` then chains the week start.
 - **Blocking timing (CG-0MTW18KFK000MM3I):** the reveal now **gates** the turn

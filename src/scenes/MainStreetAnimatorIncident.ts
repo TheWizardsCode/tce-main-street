@@ -164,19 +164,25 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
     const { coinChange, repChange, cardCenter, hudCoinX, hudRepX, hudY } = params;
     const flightMs = INCIDENT_BUBBLE_FLIGHT_MS;
 
-    // Coin bubbles.
+    // Coin bubbles. Direction follows the incident convention
+    // (CG-0MU41XVNV002N2D9): a gain flows card → HUD, a loss HUD → card.
+    // BOTH X and Y must follow the sign: setting only X (with the start Y
+    // pinned to `hudY` and the destination Y pinned to the card centre) made
+    // a gain start in the HUD's vertical band and land on the card, so it
+    // still read as HUD → card (CG-0MUA1UH3A008M4BS rework 3).
     if (coinChange !== 0) {
       const iconCount = Math.min(Math.abs(coinChange), 5); // cap at 5 bubbles
+      const coinGain = coinChange > 0;
+      const coinFrom = coinGain ? cardCenter : { x: hudCoinX, y: hudY };
+      const coinTo = coinGain ? { x: hudCoinX, y: hudY } : cardCenter;
       for (let i = 0; i < iconCount; i++) {
         s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
-          const fromX = coinChange < 0 ? hudCoinX : cardCenter.x;
-          const toX = coinChange < 0 ? cardCenter.x : hudCoinX;
-          const bubble = s.add.circle(fromX, hudY, 5, 0xffcc44, 1).setDepth(3000);
+          const bubble = s.add.circle(coinFrom.x, coinFrom.y, 5, 0xffcc44, 1).setDepth(3000);
           moveGameObject({
             scene: s,
             target: bubble,
-            destX: toX,
-            destY: cardCenter.y,
+            destX: coinTo.x,
+            destY: coinTo.y,
             duration: flightMs,
             ease: 'Quad.easeIn',
             soundManager: s.soundManager,
@@ -189,19 +195,20 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
       }
     }
 
-    // Reputation bubbles.
+    // Reputation bubbles (same sign rule; silent blue pips).
     if (repChange !== 0) {
       const iconCount = Math.min(Math.abs(repChange), 5); // cap at 5 bubbles
+      const repGain = repChange > 0;
+      const repFrom = repGain ? cardCenter : { x: hudRepX, y: hudY };
+      const repTo = repGain ? { x: hudRepX, y: hudY } : cardCenter;
       for (let i = 0; i < iconCount; i++) {
         s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
-          const fromX = repChange < 0 ? hudRepX : cardCenter.x;
-          const toX = repChange < 0 ? cardCenter.x : hudRepX;
-          const bubble = s.add.circle(fromX, hudY, 4, 0x88bbff, 1).setDepth(3000);
+          const bubble = s.add.circle(repFrom.x, repFrom.y, 4, 0x88bbff, 1).setDepth(3000);
           moveGameObject({
             scene: s,
             target: bubble,
-            destX: toX,
-            destY: cardCenter.y,
+            destX: repTo.x,
+            destY: repTo.y,
             duration: flightMs,
             ease: 'Quad.easeIn',
             onComplete: () => {

@@ -211,6 +211,12 @@ export interface MainStreetAnimatorContext {
      */
     pendingDeltas?: PendingEndOfTurnDeltas;
   }): void;
+  /**
+   * Animates the resource-delta bubbles between the board-centre incident card
+   * and the HUD counters during the reveal hold. Gain = card → HUD, loss =
+   * HUD → card, for coins and reputation alike; both coordinate axes follow
+   * the sign (CG-0MUA1UH3A008M4BS).
+   */
   animateIncidentDeltaBubbles(params: {
     coinChange: number;
     repChange: number;
