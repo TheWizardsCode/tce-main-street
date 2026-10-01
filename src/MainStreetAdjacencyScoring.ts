@@ -883,10 +883,11 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
  *
  * **Presentational only.** The descriptors written to `SlotPhaseBreakdown`
  * `upcomingDeltas` are consumed by the phased income animator to route each
- * flow to the affected business card (attached) or the HUD totals
- * (unattached); they are deliberately NOT summed into `creditedIncomeTotal`,
- * so the phase-sum invariant and the deferred-mutation economy are unchanged
- * (AC4). This function never mutates `state`.
+ * flow between the actor (the affected business card when attached, otherwise
+ * the Upcoming panel) and the HUD resource; they are deliberately NOT summed
+ * into `creditedIncomeTotal`, so the phase-sum invariant and the
+ * deferred-mutation economy are unchanged (AC4). This function never mutates
+ * `state`.
  *
  * Attachment is derived from the source `EventCard.target` (Q2 = A):
  * - `SpecificSynergy` / `RandomBusiness` → business-attached, attributed to
@@ -1039,9 +1040,13 @@ export interface SlotEventDelta {
    * The phase animator routes the delta's flow using this field:
    * - a slot index = the delta is attached to that business (source
    *   `EventCard.target` was `SpecificSynergy` / `RandomBusiness`), so the
-   *   flow targets that business's coin/reputation grid;
+   *   affected business card is the flow's **actor**;
    * - `null` / `undefined` = the delta is unattached (source
-   *   `EventCard.target` was `All`), so the flow targets the HUD totals.
+   *   `EventCard.target` was `All`), so the Upcoming panel is the actor.
+   *
+   * The direction is then uniform for coins and reputation: a gain flows
+   * actor → HUD resource; a loss flows HUD resource → actor (producer manual
+   * review 2026-10-01).
    *
    * Optional for backward compatibility with existing constructions that
    * omit it; an omitted value is treated as unattached (HUD).
@@ -1078,9 +1083,9 @@ export interface SlotPhaseBreakdown {
   /**
    * Upcoming-card deltas attached to THIS business slot. Populated for
    * effects whose source `EventCard.target` is business-scoped
-   * (`SpecificSynergy` / `RandomBusiness`); the animator routes the flow to
-   * this slot's coin/reputation grid (gain lands on the card, loss leaves it)
-   * — CG-0MUA1UH3A008M4BS AC1.
+   * (`SpecificSynergy` / `RandomBusiness`); the business card is the flow's
+   * actor — a gain flows from the card to the HUD resource, a loss from the
+   * HUD resource to the card — CG-0MUA1UH3A008M4BS AC1.
    *
    * Presentation-only: these descriptors never affect the credited totals
    * (`creditedIncomeTotal` excludes them), so the phase-sum invariant relied

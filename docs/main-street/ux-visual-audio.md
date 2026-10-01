@@ -135,38 +135,30 @@ void popTextOrIcon({
     (`animateUpcomingEffectLine`).
   - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
     animates the end-of-turn Upcoming-card (incident/event) coin AND
-    reputation deltas, routing each flow to the actor the effect is attached
-    to (derived from the source `EventCard.target`):
-    - **Coins (attached)** (`SpecificSynergy` / `RandomBusiness`) — the flow
-      runs between the Upcoming source and the **affected business coin grid**
-      (`upcomingDeltas[i].attachedSlotIndex` = that slot). A **gain** lands on
-      the grid (Upcoming → card grid, `flyCoinsIn`); a **loss** leaves it
-      (card grid → Upcoming, `flyCoinsOut`). The collection phase then flies
-      the accumulated grid coins to the HUD as usual.
-    - **Coins (unattached)** (`All`) — the flow runs between the Upcoming
-      source and the **HUD coin counter** (`flyCoinsToPoint`), never via any
-      business grid: a gain Upcoming → HUD, a loss HUD → Upcoming.
-    - **Reputation (no on-card grid)** — reputation has no business grid, so
-      the affected business card (attached) or the Upcoming panel (unattached)
-      is the **actor** and the **HUD reputation counter** is the resource
-      (`flyRepPips`, silent — matching the reputation income phase). Direction
-      follows the incident-reveal convention (CG-0MU41XVNV002N2D9): a **gain
-      flows actor → HUD reputation counter** (`card → resource`); a **loss
-      flows HUD reputation counter → actor** (`resource → card`). This is the
-      correction required by the producer's rejection of the first attempt
-      (2026-09-29): an *increasing* reputation must never be drawn as HUD →
-      card.
-    - **Reputation parity** (AC3): reputation follows the same attachment rule
-      as coins (attached → the business card is the actor; unattached → the
-      Upcoming panel is the actor) and the same sign rule (`gain = card →
-      resource`, `loss = resource → card`).
-    - **Direction convention** (AC1/AC2, reusing the incident-reveal sign
-      rule): coin gains land on the actor and coin losses leave it; reputation
-      gains originate at the actor and reputation losses return to it. The
-      pure decision is `resolveDeltaFlow` in `MainStreetAnimatorContext.ts`;
-      the routing descriptors are populated by `attachUpcomingDeltas`
+    reputation deltas using **one uniform sign rule** for both resources
+    (incident-reveal convention, CG-0MU41XVNV002N2D9, as clarified by the
+    producer's manual review 2026-10-01): a card that **gives** coins or
+    reputation flows **card → HUD**; one that **costs** flows **HUD → card**.
+    - **Actor** (derived from the source `EventCard.target`) — the affected
+      **business card** when the effect is attached (`SpecificSynergy` /
+      `RandomBusiness`, i.e. `upcomingDeltas[i].attachedSlotIndex` is a
+      number), otherwise the **Upcoming panel** (`target = All`).
+    - **Coins** — every coin delta flies point-to-point between the actor and
+      the **HUD coin counter** (`flyCoinsToPoint`), never via a business coin
+      grid: a **gain** actor → HUD, a **loss** HUD → actor. (The on-card coin
+      grid is reserved for credited income and is drained by the collection
+      phase; Upcoming deltas never accumulate in it.)
+    - **Reputation** — same actor and same direction rule, flying silent
+      reputation pips between the actor and the **HUD reputation counter**
+      (`flyRepPips`, matching the reputation income phase).
+    - **Direction convention** (AC1/AC2/AC3): `gain = actor → HUD resource`,
+      `loss = HUD resource → actor`. The pure decision is `resolveDeltaFlow`
+      in `MainStreetAnimatorContext.ts`; the routing descriptors (with
+      `kind` and `attachedSlotIndex`) are populated by `attachUpcomingDeltas`
       (`MainStreetAdjacencyScoring.ts`) from the resolved incident in
-      `processEndOfTurn`.
+      `processEndOfTurn`. This supersedes the earlier coin-accumulation rule
+      (attached gains landing on the card grid) and the reputation-only
+      correction of the first rework.
     - **Presentational only** (AC4): the descriptors are additive and are
       deliberately **excluded** from `creditedIncomeTotal`, so the income
       phase-sum invariant (`base + synergy + repBonus + eventDeltas` = credited

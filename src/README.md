@@ -50,6 +50,13 @@ income choreography** instead of a single fly-to-HUD burst:
   (starting at the card's left inset and growing rightwards), filling
   progressively; phase contributions fly in/out; the
   collection finale lands a `+total` pop at the HUD coins counter.
+- **Upcoming routing (CG-0MUA1UH3A008M4BS):** the `upcoming` phase animates
+  the end-of-turn Upcoming-card (incident/event) coin AND reputation deltas
+  with one uniform sign rule — a card that gives flows **actor → HUD**, one
+  that costs flows **HUD → actor** — where the actor is the affected business
+  card when the effect is attached (`SpecificSynergy` / `RandomBusiness`),
+  otherwise the Upcoming panel. Upcoming deltas never touch a business coin
+  grid (it is reserved for credited income).
 - **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between phases — collection at
   ≈11s. The turn controller defers the week start (250ms poll, 16s cap)
   until the show completes, so gameplay timing is unchanged; the street

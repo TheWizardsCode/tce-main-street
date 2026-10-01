@@ -5,7 +5,7 @@
  * a mocked Phaser scene and asserts the observable flight endpoints the ACs
  * call for:
  *
- *  - AC1 business-attached: gain lands on the business card, loss leaves it.
+ *  - AC1 business-attached: gain flows card → HUD coin; loss HUD coin → card.
  *  - AC2 unattached (`target = All`): routes to/from the HUD coin counter and
  *    never touches a business grid.
  *  - AC3 reputation parity: reputation deltas follow the same rules.
@@ -200,32 +200,35 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
     vi.clearAllMocks();
   });
 
-  it('AC1: attached coin gain lands on the business card grid (Upcoming → grid)', () => {
+  it('AC1: attached coin gain flows from the business card to the HUD coin counter (card → HUD)', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot([{ cardId: 'e', name: 'Festival', delta: 100, kind: 'coin', attachedSlotIndex: 0 }]);
 
     runUpcoming(animator, scene, scheduled, slot);
 
-    expect(circles[0]).toMatchObject({ x: UPCOMING.x, y: UPCOMING.y });
-    expect(lastMove()).toEqual({ destX: GRID_X, destY: GRID_Y });
+    // Producer manual review (2026-10-01): "If the card gives coins … they
+    // should flow from the card to the HUD." The actor is the affected
+    // business card; the destination is always the HUD coin counter (never
+    // the on-card grid, which the collection phase later drains separately).
+    expect(circles[0]).toMatchObject({ x: SLOT_CENTER.x, y: SLOT_CENTER.y });
+    expect(lastMove()).toEqual({ destX: HUD_COIN.x, destY: HUD_COIN.y });
+    expect(lastMove()).not.toEqual({ destX: GRID_X, destY: GRID_Y });
   });
 
-  it('AC1: attached coin loss leaves the business card grid (grid → Upcoming)', () => {
+  it('AC1: attached coin loss flows from the HUD coin counter to the business card (HUD → card)', () => {
     const { scene, scheduled, circles } = createMockScene();
     const animator = new MainStreetAnimator(scene);
-    const slot = makeSlot(
-      [{ cardId: 'e', name: 'Pipe Burst', delta: -100, kind: 'coin', attachedSlotIndex: 0 }],
-      { withIcons: true },
-    );
+    const slot = makeSlot([{ cardId: 'e', name: 'Pipe Burst', delta: -100, kind: 'coin', attachedSlotIndex: 0 }]);
+    const gridRemove = (slot.handle.container as unknown as { remove: ReturnType<typeof vi.fn> }).remove;
 
     runUpcoming(animator, scene, scheduled, slot);
 
-    // flyCoinsOut uses the existing grid icon (no new circle) and flies it to
-    // the Upcoming source.
-    expect(circles).toHaveLength(0);
-    expect(lastMove()).toEqual({ destX: UPCOMING.x, destY: UPCOMING.y });
-    void circles;
+    expect(circles[0]).toMatchObject({ x: HUD_COIN.x, y: HUD_COIN.y });
+    expect(lastMove()).toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
+    // The business grid is never touched by an Upcoming delta (the loss no
+    // longer drains coins from the on-card grid).
+    expect(gridRemove).not.toHaveBeenCalled();
   });
 
   it('AC2: unattached coin gain lands on the HUD coin counter and never the grid', () => {
@@ -249,6 +252,25 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
 
     expect(circles[0]).toMatchObject({ x: HUD_COIN.x, y: HUD_COIN.y });
     expect(lastMove()).toEqual({ destX: UPCOMING.x, destY: UPCOMING.y });
+  });
+
+  it('AC1/AC2: coin direction is uniform across {gain, loss} × {attached, unattached} (producer rejection regression)', () => {
+    const cases: Array<{ delta: number; attachedSlotIndex: number | null; from: object; to: object }> = [
+      { delta: 100, attachedSlotIndex: 0, from: SLOT_CENTER, to: HUD_COIN },
+      { delta: -100, attachedSlotIndex: 0, from: HUD_COIN, to: SLOT_CENTER },
+      { delta: 100, attachedSlotIndex: null, from: UPCOMING, to: HUD_COIN },
+      { delta: -100, attachedSlotIndex: null, from: HUD_COIN, to: UPCOMING },
+    ];
+    for (const c of cases) {
+      const { scene, scheduled, circles } = createMockScene();
+      const animator = new MainStreetAnimator(scene);
+      const slot = makeSlot([{ cardId: 'e', name: 'Festival', delta: c.delta, kind: 'coin', attachedSlotIndex: c.attachedSlotIndex }]);
+
+      runUpcoming(animator, scene, scheduled, slot);
+
+      expect(circles[0]).toMatchObject({ x: (c.from as { x: number }).x, y: (c.from as { y: number }).y });
+      expect(lastMove()).toEqual({ destX: (c.to as { x: number }).x, destY: (c.to as { y: number }).y });
+    }
   });
 
   it('AC3: attached reputation gain flows from the business card to the HUD reputation counter', () => {

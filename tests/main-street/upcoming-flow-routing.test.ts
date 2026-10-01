@@ -2,10 +2,13 @@
  * Main Street: Upcoming coin/reputation flow routing (CG-0MUA1UH3A008M4BS).
  *
  * Verifies the routing decision for Upcoming-card coin and reputation deltas
- * (AC1–AC3): business-attached effects flow between the Upcoming source and
- * the affected business card; unattached (`target = All`) effects flow to the
- * HUD totals; direction follows the sign (gain lands on the actor, loss leaves
- * it); reputation follows the same rules as coins.
+ * (AC1–AC3): business-attached effects use the affected business card as the
+ * actor; unattached (`target = All`) effects use the Upcoming panel as the
+ * actor; direction follows the incident-reveal sign rule uniformly for coins
+ * and reputation — **gain = actor → HUD resource**, **loss = HUD resource →
+ * actor** (producer manual review 2026-10-01: a card that gives coins or
+ * reputation flows from the card to the HUD; one that costs flows from the HUD
+ * to the card).
  *
  * `resolveDeltaFlow` is pure, so these are fast unit assertions on flight
  * start/end points and direction — the AC1/AC2/AC3 verification.
@@ -32,27 +35,34 @@ const geometry: DeltaFlowGeometry = {
 
 describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', () => {
   describe('AC1: business-attached routing (source target = SpecificSynergy / RandomBusiness)', () => {
-    it('gain lands on the affected business card (Upcoming → card)', () => {
+    // Producer manual review (2026-10-01): "If the card gives coins or
+    // reputation then they should flow from the card to the HUD. If they cost
+    // coins or reputation then it flows from the HUD to the card." For an
+    // attached effect the actor is the affected business card.
+    it('coin gain flows from the affected business card to the HUD coin counter (card → HUD)', () => {
       const route = resolveDeltaFlow({ delta: 300, attachedSlotIndex: 2 }, geometry);
       expect(route.attached).toBe(true);
       expect(route.kind).toBe('coin');
-      expect(route.from).toEqual(UPCOMING);
+      expect(route.from).toEqual(SLOT);
+      expect(route.to).toEqual(HUD_COIN);
+      // Never accumulated on the business grid (the original bug).
+      expect(route.to).not.toEqual(SLOT);
+    });
+
+    it('coin loss flows from the HUD coin counter to the affected business card (HUD → card)', () => {
+      const route = resolveDeltaFlow({ delta: -300, attachedSlotIndex: 2 }, geometry);
+      expect(route.attached).toBe(true);
+      expect(route.from).toEqual(HUD_COIN);
       expect(route.to).toEqual(SLOT);
     });
 
-    it('loss leaves the affected business card (card → Upcoming)', () => {
-      const route = resolveDeltaFlow({ delta: -300, attachedSlotIndex: 2 }, geometry);
-      expect(route.attached).toBe(true);
-      expect(route.from).toEqual(SLOT);
-      expect(route.to).toEqual(UPCOMING);
-    });
-
-    it('routes through the business grid even when no grid target is supplied by the caller (slot 0 is still attached)', () => {
+    it('uses the business card as the actor even when no grid target is supplied by the caller (slot 0 is still attached)', () => {
       // attachedSlotIndex 0 is a valid business attachment (not falsy-coerced
       // to unattached).
       const route = resolveDeltaFlow({ delta: 100, attachedSlotIndex: 0 }, geometry);
       expect(route.attached).toBe(true);
-      expect(route.to).toEqual(SLOT);
+      expect(route.from).toEqual(SLOT);
+      expect(route.to).toEqual(HUD_COIN);
     });
   });
 
@@ -78,6 +88,32 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
       const route = resolveDeltaFlow({ delta: 200 }, geometry);
       expect(route.attached).toBe(false);
       expect(route.to).toEqual(HUD_COIN);
+    });
+
+    it('covers the full {gain, loss} × {attached, unattached} matrix for coins', () => {
+      const cases: Array<{ delta: number; attachedSlotIndex: number | null; expectFrom: object; expectTo: object }> = [
+        // Attached: gain card → HUD coin; loss HUD coin → card.
+        { delta: 100, attachedSlotIndex: 1, expectFrom: SLOT, expectTo: HUD_COIN },
+        { delta: -100, attachedSlotIndex: 1, expectFrom: HUD_COIN, expectTo: SLOT },
+        // Unattached: gain Upcoming → HUD coin; loss HUD coin → Upcoming.
+        { delta: 100, attachedSlotIndex: null, expectFrom: UPCOMING, expectTo: HUD_COIN },
+        { delta: -100, attachedSlotIndex: null, expectFrom: HUD_COIN, expectTo: UPCOMING },
+      ];
+      for (const c of cases) {
+        const route = resolveDeltaFlow({ delta: c.delta, kind: 'coin', attachedSlotIndex: c.attachedSlotIndex }, geometry);
+        expect(route.from).toEqual(c.expectFrom);
+        expect(route.to).toEqual(c.expectTo);
+      }
+    });
+
+    it('never accumulates an attached coin gain on the business grid (producer rejection regression)', () => {
+      // The exact failure the producer reported: a positive coin delta drawn
+      // as Upcoming → business grid. The gain must flow card → HUD coin.
+      for (const attachedSlotIndex of [0, 2, null] as const) {
+        const route = resolveDeltaFlow({ delta: 250, kind: 'coin', attachedSlotIndex }, geometry);
+        expect(route.to).toEqual(HUD_COIN);
+        expect(route.to).not.toEqual(SLOT);
+      }
     });
   });
 
@@ -148,9 +184,13 @@ describe('resolveDeltaFlow — Upcoming delta routing (CG-0MUA1UH3A008M4BS)', ()
     });
   });
 
-  it('a zero delta is treated as a (no-op) gain and never targets the business card when unattached', () => {
-    const route = resolveDeltaFlow({ delta: 0, attachedSlotIndex: null }, geometry);
-    expect(route.from).toEqual(UPCOMING);
-    expect(route.to).toEqual(HUD_COIN);
+  it('a zero delta is treated as a (no-op) gain and never targets a business card', () => {
+    const unattached = resolveDeltaFlow({ delta: 0, attachedSlotIndex: null }, geometry);
+    expect(unattached.from).toEqual(UPCOMING);
+    expect(unattached.to).toEqual(HUD_COIN);
+
+    const attached = resolveDeltaFlow({ delta: 0, attachedSlotIndex: 3 }, geometry);
+    expect(attached.from).toEqual(SLOT);
+    expect(attached.to).toEqual(HUD_COIN);
   });
 });

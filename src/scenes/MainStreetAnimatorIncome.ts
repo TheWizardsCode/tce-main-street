@@ -458,15 +458,17 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
       case 'upcoming': {
         if (ctx.reducedMotion) return;
         // "Upcoming" phase (CG-0MUA1UH3A008M4BS): routes each Upcoming-card
-        // coin AND reputation delta to the actor the effect is attached to —
-        // the affected business card when attached (source `EventCard.target`
-        // = `SpecificSynergy` / `RandomBusiness`), or the HUD totals when not
-        // (target = `All`). Coins accumulate in the actor (gain lands on the
-        // card grid / HUD coin counter; loss leaves it). Reputation has no
-        // on-card grid, so the actor is the *origin* of a gain and the HUD
-        // reputation counter is its destination (incident convention), the
-        // reverse for a loss. `resolveDeltaFlow` owns the split. Presentation-
-        // only: never mutates state or the credited total.
+        // coin AND reputation delta using one uniform sign rule — a gain flows
+        // from the actor to the HUD resource, a loss flows from the HUD
+        // resource to the actor (incident-reveal convention,
+        // CG-0MU41XVNV002N2D9). The actor is the affected business card when
+        // attached (source `EventCard.target` = `SpecificSynergy` /
+        // `RandomBusiness`), otherwise the Upcoming panel. Producer manual
+        // review (2026-10-01): the flow must go card → HUD for a gain and
+        // HUD → card for a loss, for both coins and reputation. No Upcoming
+        // delta touches a business coin grid — the grid is reserved for
+        // credited income. Presentation-only: never mutates state or the
+        // credited total.
         const upcomingSource = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
         const hudCoin = { x: s.layout.gameW * 0.25 + 70, y: s.layout.hudY };
         const hudRep = { x: s.layout.gameW * 0.5, y: s.layout.hudY };
@@ -484,22 +486,14 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
               hudCoin,
               hudRep,
             });
-            if (route.kind === 'coin' && route.attached) {
-              // Business-attached coin delta: gain lands on the card's coin
-              // grid, loss leaves it (existing grid helpers also keep the
-              // on-card grid accumulation intact for collection).
-              if (d.delta > 0) {
-                animator.flyCoinsIn(slot, amount, upcomingSource, at, flightMs);
-              } else {
-                animator.flyCoinsOut(slot, amount, upcomingSource, at, flightMs);
-              }
-            } else if (route.kind === 'coin') {
-              // Unattached coin delta: Upcoming ↔ HUD coin counter, never a
-              // business grid (AC2).
+            if (route.kind === 'coin') {
+              // Attached (business card ↔ HUD coin counter) and unattached
+              // (Upcoming panel ↔ HUD coin counter) coin deltas both fly
+              // point-to-point without touching a business grid.
               animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs);
             } else {
-              // Reputation parity (AC3): attached → business card;
-              // unattached → HUD reputation counter.
+              // Reputation parity (AC3): same attachment + direction rule,
+              // flying reputation pips instead of coins.
               animator.flyRepPips(route.from, route.to, amount, at, flightMs);
             }
           }
@@ -709,9 +703,11 @@ export function flyCoinsOut(animator: MainStreetAnimatorContext,
 
 /**
  * Flies `amount` coin visuals point-to-point WITHOUT touching any business
- * coin grid (CG-0MUA1UH3A008M4BS AC2). Used for unattached Upcoming coin
- * deltas, whose flow targets the HUD coin counter rather than a card. Each
- * coin plays the shared `sfx-coin-pop` at launch, matching the grid flights.
+ * coin grid (CG-0MUA1UH3A008M4BS). Used for all Upcoming coin deltas: a gain
+ * flows from the actor (business card when attached, otherwise the Upcoming
+ * panel) to the HUD coin counter; a loss flows HUD coin counter → actor
+ * (producer manual review 2026-10-01). Each coin plays the shared
+ * `sfx-coin-pop` at launch, matching the grid flights.
  */
 export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
     from: { x: number; y: number },
@@ -750,9 +746,11 @@ export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
 
 /**
  * Flies `amount` reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS
- * AC3, reputation parity). Used for Upcoming reputation deltas — attached
- * (Upcoming ↔ business card) or unattached (Upcoming ↔ HUD reputation
- * counter). Reputation pips are silent, matching the reputation income phase.
+ * AC3, reputation parity). Used for Upcoming reputation deltas with the same
+ * attachment and direction rule as coins: a gain flows from the actor
+ * (business card when attached, otherwise the Upcoming panel) to the HUD
+ * reputation counter; a loss flows HUD counter → actor. Reputation pips are
+ * silent, matching the reputation income phase.
  */
 export function flyRepPips(animator: MainStreetAnimatorContext,
     from: { x: number; y: number },
