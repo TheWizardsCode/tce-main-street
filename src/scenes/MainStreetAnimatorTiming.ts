@@ -54,5 +54,31 @@ export const INCOME_CARD_FULL_PAUSE_MULTIPLIER = 5;
 /** Stagger reduction factor after each card (20% reduction = ×0.8). */
 export const INCOME_CARD_STAGGER_REDUCTION = 0.8;
 
+// ── Incident reveal timing (MS-0MUO7CPH3003TXFI) ────────────────────
+// These constants govern the end-of-turn incident reveal animation:
+// a card flips face-up at board centre, holds for the player to read,
+// then returns to the Upcoming queue.
+
+/** Flight duration for a resource-delta bubble (coin / reputation).
+ * This value is the same as INCOME_FLIGHT_MS; kept separate here for
+ * readability of the derivation formula below. */
+export const INCIDENT_BUBBLE_FLIGHT_MS = 600;
+/** Stagger between successive delta bubbles (ms). */
+export const INCIDENT_BUBBLE_STAGGER_MS = 80;
+/** Hold duration for the incident reveal hold.
+ *
+ * Derived from the delta-bubble animation window so the hold always
+ * exceeds the longest possible bubble sequence:
+ *   hold = flight + stagger × (maxBubbles − 1)
+ *        = 600 + 80 × 4
+ *        = 920  ms
+ * + 1000 ms safety buffer = 1920 ms.
+ *
+ * This ensures the hold is never shorter than the bubble animation
+ * (5 bubbles × 80 ms stagger + 600 ms flight = 920 ms) and leaves a
+ * comfortable 1 s margin for the player to read the incident.
+ */
+export const INCIDENT_REVEAL_HOLD_MS = 1920;
+
 /** Phase keys for the phased income animation (base → … → collect). */
 

@@ -402,7 +402,7 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
 
     // Incident reveal presentation (CG-0MTW18KFK000MM3I): the resolved
     // incident card flies from the Upcoming panel to board centre, flips
-    // face-up and stays visible for 4 seconds so the player can read the
+    // face-up and stays visible for INCIDENT_REVEAL_HOLD_MS so the player can read the
     // incident before the turn advances. The reveal **blocks** the day
     // start until the hold completes (then the normal advance applies).
     //
@@ -411,7 +411,7 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // starting the incident reveal.
     //
     // Tutorial exemption: the tutorial keeps its window-safe step pacing,
-    // so the reveal (and its 4-second hold) is skipped — the same
+    // so the reveal (and its hold) is skipped — the same
     // precedent as the phased income show and the day banner being
     // skipped during the tutorial.
     //
@@ -605,7 +605,7 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
       // Visual consequence for resource deltas (accepted effect), mirroring
       // the standard incident reveal. Reject applies nothing (deltas 0) — the
       // instruction text above is the only feedback. The reveal blocks the
-      // day start until its 4-second hold completes (CG-0MTW18KFK000MM3I).
+      // day start until its hold completes (CG-0MTW18KFK000MM3I).
       const present = (): void => tcCtx.finishTurnPresentation(finalResult, false);
       if (coinChange !== 0 || repChange !== 0) {
         try {

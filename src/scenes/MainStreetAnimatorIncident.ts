@@ -11,6 +11,11 @@
 import { moveGameObject } from '@ui';
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { CARD_BACK_TEMPLATE, SFX_KEYS } from './MainStreetConstants';
+import {
+  INCIDENT_BUBBLE_FLIGHT_MS,
+  INCIDENT_BUBBLE_STAGGER_MS,
+  INCIDENT_REVEAL_HOLD_MS,
+} from './MainStreetAnimatorTiming';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { MainStreetAnimatorContext } from './MainStreetAnimatorContext';
 
@@ -80,12 +85,13 @@ export function animateIncidentReveal(animator: MainStreetAnimatorContext, param
 
     if (reducedMotion) {
       // Reduced motion: the card appears instantly face-up at board centre —
-      // no flight, no hinge flip, no bubble travel — but the 4-second hold
-      // is preserved so the player still has time to read the incident.
+      // no flight, no hinge flip, no bubble travel — but the hold
+      // (INCIDENT_REVEAL_HOLD_MS) is preserved so the player still has time to
+      // read the incident.
       back.setVisible(false);
       container.setPosition(s.layout.gameW / 2, s.layout.gameH / 2);
       s.incidentRevealActive = true;
-      s.time.delayedCall(4000, () => {
+      s.time.delayedCall(INCIDENT_REVEAL_HOLD_MS, () => {
         cleanup();
       });
       return;
@@ -113,7 +119,7 @@ export function animateIncidentReveal(animator: MainStreetAnimatorContext, param
           ease: 'Cubic.easeIn',
           onComplete: () => {
             back.setVisible(false);
-            // 4. Delta bubbles during the 4-second hold.
+            // 4. Delta bubbles during the hold.
             animator.animateIncidentDeltaBubbles({
               coinChange: params.coinChange,
               repChange: params.repChange,
@@ -122,8 +128,8 @@ export function animateIncidentReveal(animator: MainStreetAnimatorContext, param
               hudRepX: s.layout.gameW * 0.5,
               hudY: s.layout.hudY,
             });
-            // 4s hold, then return to queue.
-            s.time.delayedCall(4000, () => {
+            // Hold, then return to queue.
+            s.time.delayedCall(INCIDENT_REVEAL_HOLD_MS, () => {
               // Return animation: scale down slightly, move back.
               s.tweens.add({
                 targets: container,
@@ -156,13 +162,13 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
     if (s.settingsPanel?.reducedMotion === true) return;
 
     const { coinChange, repChange, cardCenter, hudCoinX, hudRepX, hudY } = params;
-    const flightMs = 600;
+    const flightMs = INCIDENT_BUBBLE_FLIGHT_MS;
 
     // Coin bubbles.
     if (coinChange !== 0) {
       const iconCount = Math.min(Math.abs(coinChange), 5); // cap at 5 bubbles
       for (let i = 0; i < iconCount; i++) {
-        s.time.delayedCall(i * 80, () => {
+        s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
           const fromX = coinChange < 0 ? hudCoinX : cardCenter.x;
           const toX = coinChange < 0 ? cardCenter.x : hudCoinX;
           const bubble = s.add.circle(fromX, hudY, 5, 0xffcc44, 1).setDepth(3000);
@@ -187,7 +193,7 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
     if (repChange !== 0) {
       const iconCount = Math.min(Math.abs(repChange), 5); // cap at 5 bubbles
       for (let i = 0; i < iconCount; i++) {
-        s.time.delayedCall(i * 80, () => {
+        s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
           const fromX = repChange < 0 ? hudRepX : cardCenter.x;
           const toX = repChange < 0 ? cardCenter.x : hudRepX;
           const bubble = s.add.circle(fromX, hudY, 4, 0x88bbff, 1).setDepth(3000);

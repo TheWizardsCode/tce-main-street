@@ -238,7 +238,7 @@ void popTextOrIcon({
 - Headless/replay exemption: returns immediately in replay/headless mode
   (`replayMode`) — presentation-only, never mutates game state or the
   transcript, and never blocks the turn flow.
-### Incident reveal (flip + 4-second hold + delta bubbles)
+### Incident reveal (flip + ~1920ms hold + delta bubbles)
 
 - Helper: `MainStreetAnimator.animateIncidentReveal()`.
 - Trigger: `MainStreetTurnController.endTurn()` when `TurnResult.incident` is
@@ -252,7 +252,7 @@ void popTextOrIcon({
      (`MainStreetRenderer.getFrontIncidentCardCenter()`).
   2. The container flies to the board centre (~550ms).
   3. The card back hinges open (`scaleX → 0`) to reveal the incident face.
-  4. The face stays visible for **4 seconds** so the player can read the
+  4. The face stays visible for **1920ms** (`INCIDENT_REVEAL_HOLD_MS`) so the player can read the
      incident. During the hold, resource-delta bubbles animate between the
      HUD score bar and the card: coin loss travels HUD → card, coin gain
      card → HUD (gold, `SFX_KEYS.COIN_POP`); reputation loss/gain does the
@@ -262,15 +262,15 @@ void popTextOrIcon({
      the reveal's `onComplete` then chains the week start.
 - **Blocking timing (CG-0MTW18KFK000MM3I):** the reveal now **gates** the turn
   advance — `finishTurnPresentation` defers `startTurnPhase()` until the
-  reveal's `onComplete` fires (flight + 550ms flip + 4000ms hold + 400ms
+  reveal's `onComplete` fires (flight + 550ms flip + 1920ms hold + 400ms
   return, then the existing income-show deferral or the ~800ms schedule).
   With no incident the reveal is skipped entirely and the ~800ms advance is
   unchanged (no delay, no animation).
 - Accessibility (reduced motion): the flight, hinge flip and bubble travel
   are skipped — the card appears instantly face-up at board centre — but the
-  4-second hold, cleanup and `onComplete` are **preserved** so the player
+  1920ms hold, cleanup and `onComplete` are **preserved** so the player
   still has time to read the incident (producer-confirmed silent hold).
-- Tutorial exemption: the reveal (and its 4-second hold) is skipped while the
+- Tutorial exemption: the reveal (and its hold) is skipped while the
   tutorial is active, preserving the tutorial's window-safe step pacing —
   the same precedent as the phased income show and the week banner being
   skipped during the tutorial.
