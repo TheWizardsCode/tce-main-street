@@ -31,18 +31,18 @@ let cheatNonce = 0;
  * slots are drawn (mirrors the legacy day-start refill; the tutorial relies
  * on this to keep scenario-placed cards alive across the day boundary).
  * Callers wanting a full re-draw discard/clear the row first:
- * `refreshMarket` (re-roll) and `cycleMarketCards` (end-of-day cycle) do.
+ * `refreshMarket` (research) and `cycleMarketCards` (end-of-day cycle) do.
  */
 export function refillMarket(state: MainStreetState): void {
   refillSingleRowMarket(state);
 }
 
 /**
- * Checks whether the player can re-roll the single-row market.
+ * Checks whether the player can research (refresh) the single-row market.
  */
 export function canRefreshMarket(state: MainStreetState): LegalityResult {
   if (state.phase !== 'MarketPhase') {
-    return { legal: false, reason: 'Re-rolling the market is only allowed during MarketPhase.' };
+    return { legal: false, reason: 'Researching the market is only allowed during MarketPhase.' };
   }
   const cost = refreshMarketCost(state);
   if (state.resourceBank.coins < cost) {
@@ -52,7 +52,7 @@ export function canRefreshMarket(state: MainStreetState): LegalityResult {
 }
 
 /**
- * Effective cost to re-roll the single-row market, after staff discounts
+ * Effective cost to research (refresh) the single-row market, after staff discounts
  * (e.g. the Accountant's "refresh costs 1 less" ability — Group F,
  * CG-0MSQJ7VL9009JHF4 / CG-0MSTOATDT009BRX2). Discounts are summed across
  * hired staff and the result is clamped at 0 (never negative).
@@ -68,7 +68,7 @@ export function refreshMarketCost(state: MainStreetState): number {
 }
 
 /**
- * Re-rolls the single-row market: charges the player, discards all
+ * Researches (refreshes) the single-row market: charges the player, discards all
  * currently-visible (unmoved/unpurchased) cards to their respective discard
  * piles, and refills the whole line to full composition. Unlimited per turn
  * while affordable (same cadence as the legacy per-row refreshes).
@@ -107,7 +107,7 @@ export function refreshMarket(state: MainStreetState): RefreshResult {
     const name = (c as any).name ?? c.id;
     return `${c.id}${name ? ` (${name})` : ''}`;
   });
-  addLog(state, `Re-rolled market (-€${cost}): replaced ${replacedStrings.join(', ')} (${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLog(state, `Researched market (-€${cost}): replaced ${replacedStrings.join(', ')} (${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
 
   return { replaced: removed, cost };
 }

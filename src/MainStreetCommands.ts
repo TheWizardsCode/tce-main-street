@@ -538,7 +538,7 @@ export function hireStaffCardCommand(
   );
 }
 
-/** Command: Re-roll the single-row market (free) */
+/** Command: Research (refresh) the single-row market (free) */
 export function refreshMarketCommand(state: MainStreetState) {
   return toCommand(
     state,

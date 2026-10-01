@@ -153,10 +153,10 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(body).toContain(String(CFG.winThreshold));
   });
 
-  it('"Tools" mentions hint, undo, and refresh market', () => {
+  it('"Tools" mentions hint, undo, and research', () => {
     const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Tools')!));
     expect(body).toContain('hint');
     expect(body).toContain('undo');
-    expect(body).toContain('refresh market');
+    expect(body).toContain('research');
   });
 });

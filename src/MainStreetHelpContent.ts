@@ -135,7 +135,7 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
       body:
         'Hint: get a suggested move (once per turn).\n' +
         'Undo / Redo: step back or forward through market actions.\n' +
-        'Refresh Market: re-roll the market row for coins (5, less with the Accountant).\n' +
+        'Research: research the market row for coins (5, less with the Accountant).\n' +
         'Keyboard shortcuts: End Turn key configurable in Settings.',
     },
   ];
