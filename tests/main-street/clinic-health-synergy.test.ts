@@ -144,10 +144,10 @@ describe('Private Clinic (biz-private-clinic)', () => {
     expect(card).toBeDefined();
   });
 
-  it('should have cost 1400, baseIncome 1090, Health synergy (×100)', () => {
-    // ×100: 14 → 1400, 10.9 → 1090
+  it('should have cost 1400, baseIncome 559, Health synergy (×100)', () => {
+    // ×100: 14 → 1400, 5.59 → 559 (5-turn payback rebalance, MS-0MUQUBJFL0076RT6)
     expect(card!.cost).toBe(1400);
-    expect(card!.baseIncome).toBe(1090);
+    expect(card!.baseIncome).toBe(559);
     expect(card!.synergyTypes).toEqual(['Health']);
   });
 
@@ -201,10 +201,10 @@ describe('Pharmacy (biz-pharmacy)', () => {
     expect(card).toBeDefined();
   });
 
-  it('should have cost 700, baseIncome 520, Health synergy (×100)', () => {
-    // ×100: 7 → 700, 5.2 → 520
+  it('should have cost 700, baseIncome 315, Health synergy (×100)', () => {
+    // ×100: 7 → 700, 3.15 → 315 (5-turn payback rebalance, MS-0MUQUBJFL0076RT6)
     expect(card!.cost).toBe(700);
-    expect(card!.baseIncome).toBe(520);
+    expect(card!.baseIncome).toBe(315);
     expect(card!.synergyTypes).toEqual(['Health']);
   });
 
@@ -260,13 +260,13 @@ describe('Reputation Per Turn (Income Phase)', () => {
   it('Private Clinic should generate income from baseIncome', () => {
     const grid = emptyGrid();
     grid[0] = { ...findBizTemplate('biz-private-clinic')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
-    expect(computeBusinessIncome(grid, 0)).toBe(1090); // ×100: 10.9 → 1090
+    expect(computeBusinessIncome(grid, 0)).toBe(559); // ×100: 5.59 → 559
   });
 
   it('Pharmacy should generate income from baseIncome', () => {
     const grid = emptyGrid();
     grid[0] = { ...findBizTemplate('biz-pharmacy')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
-    expect(computeBusinessIncome(grid, 0)).toBe(520); // ×100: 5.2 → 520
+    expect(computeBusinessIncome(grid, 0)).toBe(315); // ×100: 3.15 → 315
   });
 
   it('Clinic with Medical Center upgrade should still generate 0 coin income', () => {
@@ -280,10 +280,10 @@ describe('Reputation Per Turn (Income Phase)', () => {
     grid[0] = { ...findBizTemplate('biz-private-clinic')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
     grid[1] = { ...findBizTemplate('biz-pharmacy')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
     // Percentage-based formula (×100):
-    // Private Clinic: base=1090, synergyCoinBonus=0.5, N=1, synergy=545, total=1635
-    expect(computeBusinessIncome(grid, 0)).toBeCloseTo(1635, 5);
-    // Pharmacy: base=520, synergyCoinBonus=0.5, N=1, synergy=260, total=780
-    expect(computeBusinessIncome(grid, 1)).toBeCloseTo(780, 5);
+    // Private Clinic: base=559, synergyCoinBonus=0.5, N=1, synergy=280 (rounded), total=839
+    expect(computeBusinessIncome(grid, 0)).toBeCloseTo(839, 5);
+    // Pharmacy: base=315, synergyCoinBonus=0.5, N=1, synergy=158 (rounded), total=473
+    expect(computeBusinessIncome(grid, 1)).toBeCloseTo(473, 5);
   });
 
   it('Health synergy counts diagonal neighbors (8-way adjacency)', () => {
@@ -292,8 +292,8 @@ describe('Reputation Per Turn (Income Phase)', () => {
     grid[0] = { ...findBizTemplate('biz-private-clinic')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
     grid[6] = { ...findBizTemplate('biz-pharmacy')!, level: 0, incomeBonus: 0, synergyRangeBonus: 0 };
     // Same values as the orthogonal case (×100): diagonal Health neighbors synergize.
-    expect(computeBusinessIncome(grid, 0)).toBeCloseTo(1635, 5);
-    expect(computeBusinessIncome(grid, 6)).toBeCloseTo(780, 5);
+    expect(computeBusinessIncome(grid, 0)).toBeCloseTo(839, 5);
+    expect(computeBusinessIncome(grid, 6)).toBeCloseTo(473, 5);
   });
 
   it('applyIncome should add reputation from Clinic reputationPerTurn', () => {

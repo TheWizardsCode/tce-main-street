@@ -113,9 +113,9 @@ describe('Library synergy participation (behavioral, Park model)', () => {
     state.streetGrid[1] = library;
 
     // The Library participates in synergy now, so it is counted toward N:
-    // Cafe earns 520 base income × 0.5 default rate × 1 neighbor = 260 coins
-    // (base income raised by CG-0MSVYPEZ90085SHE: 5.2 → 520).
-    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(260);
+    // Cafe earns 315 base income × 0.5 default rate × 1 neighbor = 158 coins
+    // (5-turn payback rebalance, MS-0MUQUBJFL0076RT6).
+    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(158);
   });
 
   it('should give a Bookshop 1.15 Culture synergy when placed adjacent', () => {
@@ -126,9 +126,9 @@ describe('Library synergy participation (behavioral, Park model)', () => {
     state.streetGrid[0] = bookshop;
     state.streetGrid[1] = library;
 
-    // 230 base income × 0.5 default rate × 1 neighbor = 115 coins/turn
-    // (base income raised by CG-0MSVYPEZ90085SHE: 2.3 → 230).
-    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(115);
+    // 161 base income × 0.5 default rate × 1 neighbor = 81 coins/turn
+    // (5-turn payback rebalance, MS-0MUQUBJFL0076RT6).
+    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(81);
   });
 
   it('should draw a Culture synergy line between a Bookshop and the Library', () => {
