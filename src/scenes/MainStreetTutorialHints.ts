@@ -77,6 +77,9 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  *     face-down deck stack + count, CG-0MSXOWLHU0099QF6; 0 active effects:
  *     22+8+87+8)
  *   - helpButton     (1000, 652, 104, 34) — to the left of End Turn
+ *   - actionCounter  (1028, 616, 240, 28)  — actions-remaining + banked count
+ *                                            text (right-aligned above action
+ *                                            row, CG-0MT3JK16W006A66P)
  * The challengePanel highlight is computed DYNAMICALLY from the live state in
  * `zoneToAnchor` (challengeY + panel height from activeChallenges) because the
  * rendered panel height varies with difficulty; the static base-layout zone

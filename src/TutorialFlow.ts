@@ -97,6 +97,7 @@ export type TutorialHighlightZone =
   | 'completionModal'
   | 'hand'             // hand area (Your Hand / Triggering Events)
   | 'actionButtons'    // Community Favour button band (relocated into the HUD strip, CG-0MUFAITED0088AGN)
+  | 'actionCounter'    // actions-remaining + banked count (right above action row, CG-0MT3JK16W006A66P)
   | 'laundromatCard'   // card-level: Laundromat on the market row (T3)
   | 'festivalCard';    // card-level: Local Festival on the market row (T9)
 
@@ -505,7 +506,7 @@ export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
   id: 'BANKING',
   titleKey: bankingHintKey('title'),
   bodyKey: bankingHintKey('body'),
-  highlightZone: 'hud',
+  highlightZone: 'actionCounter',
   gate: 'confirm',
 };
 
