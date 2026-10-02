@@ -27,15 +27,6 @@ import { computePayback } from '../../src/scripts/balance/engine/card-metrics';
 // ── Helpers ─────────────────────────────────────────────────
 
 /**
- * Parse a numeric CSV column value to a number.
- * Empty strings return 0 (the default for missing numeric columns).
- */
-function csvNum(value: string | undefined, fallback = 0): number {
-  if (value === undefined || value === '') return fallback;
-  return parseFloat(value);
-}
-
-/**
  * All income-generating business templates from the current CSV.
  */
 function incomeBusinesses(): {
@@ -60,13 +51,6 @@ function incomeBusinesses(): {
         netIncome,
       };
     });
-}
-
-/**
- * All CSV rows for business cards (for exception identification).
- */
-function csvBusinessRows(): Record<string, string>[] {
-  return getCsvRows().filter(r => r.family === 'business');
 }
 
 /**
@@ -182,7 +166,6 @@ describe('Cost-graded payback (AC b)', () => {
     // Verify monotonicity: cheap < mid < mid-high < flagship
     const bands = ['cheap', 'mid', 'mid-high', 'flagship'] as const;
     let prevMean = -Infinity;
-    let monotone = true;
     for (const band of bands) {
       if (bucketMeans[band] !== undefined) {
         expect(bucketMeans[band], `${band} bucket mean`).toBeGreaterThan(prevMean);

@@ -27,28 +27,15 @@ const MAX_TURNS = 60;
 
 /** Tuned target win-rate bands per difficulty (design intent). */
 const WIN_RATE_BANDS: Record<'Easy' | 'Medium' | 'Hard', { min: number; max: number }> = {
-  // CG-0MTH5CC4H003Q4B3 re-baseline: Investment events cost one daily action
-  // and the AI scores the take by net play value — measured 85.5%.
-  Easy: { min: 0.55, max: 1.0 },
-  // CG-0MSRKN325004ELH2 revision: 30–60% → 45–75% (measured 62% on the
-  // canonical 200-seed profile; see docs/main-street/balance-guardrail-
-  // recommendations.md). Matches the shared thresholds.ts band.
-  // CG-0MSTOATDQ005XDET: Community Favour re-baseline measured 62% again
-  // (monte-carlo-baseline.json difficultyMatrix) — mid-band.
-  // CG-0MTC31LN3000UHDY re-baseline: hand-held business cards no longer
-  // incur ongoing costs, so the greedy AI (which uses move-to-hand to lock
-  // in market cards) keeps its liquidity and wins far more often — measured
-  // 89.5% on the canonical 200-seed set. Max widened to 0.95; the win-rate
-  // ladder (Easy ≥ Medium ≥ Hard) remains the primary balance gate.
-  // CG-0MTH5CC4H003Q4B3 re-baseline: Investment events now cost one daily
-  // action and the AI scores the take by net play value — measured 83.0%.
-  Medium: { min: 0.45, max: 0.95 },
-  // CG-0MTC31LN3000UHDY re-baseline: same driver as Medium — removing the
-  // hand-held ongoing cost roughly quintuples the greedy AI's Hard win rate
-  // (measured 65%). Max widened to 0.75 (Hard still the toughest preset).
-  // CG-0MTH5CC4H003Q4B3 re-baseline: Investment events now cost one daily
-  // action and the AI scores the take by net play value — measured 56.5%.
-  Hard: { min: 0.1, max: 0.75 },
+  // MS-0MUQ50I1Y000B6L3 (5-turn payback rebalance, producer decision Q3 = C):
+  // the tighter economy is the new design intent, so the bands are revised
+  // down to the measured after-state (canonical 200-seed / 60-turn greedy):
+  // Easy 0.62, Medium 0.325, Hard 0.11. Bands keep ~15-20 pt headroom while
+  // preserving the primary gate: a monotone-decreasing win-rate ladder
+  // Easy ≥ Medium ≥ Hard (asserted explicitly below).
+  Easy: { min: 0.45, max: 0.95 },
+  Medium: { min: 0.20, max: 0.85 },
+  Hard: { min: 0.05, max: 0.60 },
 };
 
 describe('Main Street greedy AI per-difficulty design-intent guardrails', () => {
@@ -65,13 +52,19 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
     });
     expect(results).toHaveLength(3);
 
+    const byDifficulty: Record<string, number> = {};
     for (const combo of results) {
       const band = WIN_RATE_BANDS[combo.difficulty];
       expect(combo.metrics.runs).toBe(SEEDS.length);
-      // Design intent: a monotone-decreasing win-rate ladder across presets.
+      byDifficulty[combo.difficulty] = combo.metrics.winRate;
       expect(combo.metrics.winRate).toBeGreaterThanOrEqual(band.min);
       expect(combo.metrics.winRate).toBeLessThanOrEqual(band.max);
     }
+
+    // Primary balance gate (MS-0MUQ50I1Y000B6L3): harder presets must not be
+    // easier than softer presets. The ladder is Easy ≥ Medium ≥ Hard.
+    expect(byDifficulty['Easy']).toBeGreaterThanOrEqual(byDifficulty['Medium']);
+    expect(byDifficulty['Medium']).toBeGreaterThanOrEqual(byDifficulty['Hard']);
   }, 120_000);
 
   it('greedy Medium economy: net liquidity 0–1000 and median score 2000–20000', () => {
@@ -109,13 +102,12 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
     expect(medium.metrics.averageCoinsPerTurn).toBeLessThanOrEqual(1000);
 
     // PRD warning band for Greedy/Medium median score (PRD §3.3).
-    // CG-0MSTOATDT009BRX2 re-baseline: measured median 39.8 under cost-at-play
-    // (games end earlier/lower as payment is deferred); see
-    // monte-carlo-baseline.json difficultyMatrix.
-    // CG-0MSXOVQFL007G3VH re-baseline (face-down incident deck with
-    // balance-aware ordering): median rose to ~153 as balanced incidents keep
-    // games longer/higher; band widened to the measured range ± 30%.
-    expect(medium.metrics.medianScore).toBeGreaterThanOrEqual(2000);
+    // MS-0MUQ50I1Y000B6L3 (5-turn payback rebalance, Q3 = C): the tighter
+    // economy deflates scores; the median falls to ~7.9 display points (788 in
+    // the ×100 cent units reported here). Band revised to 200–20000 (2–200
+    // display) to reflect the new design intent while still catching a
+    // catastrophic score collapse.
+    expect(medium.metrics.medianScore).toBeGreaterThanOrEqual(200);
     expect(medium.metrics.medianScore).toBeLessThanOrEqual(20000);
   });
 });
