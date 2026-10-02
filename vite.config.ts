@@ -33,7 +33,9 @@ export default defineConfig(({ mode }) => ({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   // Electron loads the bundle over file://, so relative asset URLs are required.
-  base: mode === 'electron' ? './' : '/',
+  // Electron uses file:// → relative paths; production (GitHub Pages)
+  // uses the project path; dev uses root (localhost serves at /).
+  base: mode === 'electron' ? './' : mode === 'production' ? '/tce-main-street/' : '/',
   plugins: [
     // Reads ./configs/game.json and generates
     // 'virtual:game-registry' (Gym from the core + this one game).
