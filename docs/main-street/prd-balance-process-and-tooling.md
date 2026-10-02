@@ -888,8 +888,12 @@ mc-balance-002,greedy,medium,loss,bankruptcy,67,0,7,4,7,0
 ### 7.3 CI Pipeline (GitHub Actions — `.github/workflows/`)
 
 **Current capabilities:**
-- `pr-checks.yml`: Build-only gate on PRs (TypeScript compile + Vite bundle). Tests are run locally before every push (see `AGENTS.md` quality gates; build-only CI per CG-0MT022826006EM0D).
-- `deploy.yml`: Builds and deploys on push to main
+- `deploy.yml`: Builds and deploys to GitHub Pages on every push to `main`. It composes the `./core` submodule over HTTPS (no stored SSH secret), runs the quality gates (unit tests, then the production build), and only then configures/uploads/deploys the Pages artefact. See [`DEPLOYMENT.md`](../../DEPLOYMENT.md) for setup and verification.
+
+> There is currently **no** `pr-checks.yml`: pull requests are gated by the
+> repository's local pre-push quality gates (tests) rather than a build-only PR
+> workflow. This section previously described `pr-checks.yml` as if it existed;
+> it was corrected to match the checked-in workflows.
 
 **Integration:**
 1. Add `npm run balance-check` as a CI step after tests pass.
