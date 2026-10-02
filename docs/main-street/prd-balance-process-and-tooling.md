@@ -128,12 +128,12 @@ The following guardrails define normal operating ranges. Values outside these ra
 
 | Metric | Strategy | Difficulty | Guardrail Range | Severity |
 |--------|----------|------------|-----------------|----------|
-| Win rate | Greedy | Medium | 45–75% | Critical |
-| Win rate | Greedy | Easy | 60–90% | Warning |
-| Win rate | Greedy | Hard | 15–40% | Warning |
+| Win rate | Greedy | Medium | 20–85% | Critical |
+| Win rate | Greedy | Easy | 45–95% | Warning |
+| Win rate | Greedy | Hard | 5–60% | Warning |
 | Win rate | Random | Medium | 5–20% | Warning |
-| Avg coins per turn (net liquidity) | Greedy | Medium | 0–2 | Critical |
-| Median score | Greedy | Medium | 120–180 | Warning |
+| Avg coins per turn (net liquidity) | Greedy | Medium | 0–10 | Critical |
+| Median score | Greedy | Medium | 2–200 | Warning |
 | Avg turns | Greedy | Medium | 14–22 | Info |
 | Bankruptcy rate | Greedy | Medium | 40–70% of losses | Info |
 | Reputation collapse rate | Greedy | Medium | 20–40% of losses | Info |
@@ -149,6 +149,21 @@ The following guardrails define normal operating ranges. Values outside these ra
 > `tests/main-street/monte-carlo-greedy-guardrail.test.ts`; catch-breakage
 > **regression** guardrails (baseline drift, wide smoke band) live in
 > `monte-carlo-guardrails.test.ts` and `monte-carlo-balance.test.ts`.
+>
+> **Band revision (CG-0MTC31LN3000UHDY, CG-0MTH5CC4H003Q4B3):** hand-held
+> businesses no longer incur ongoing costs and Investment events cost one
+> daily action; measured greedy values rose (Medium 89.5%, Easy 98.5%, Hard
+> 65%), so the bands were widened to Medium **45–95**, Easy **60–100**, Hard
+> **15–75**, net liquidity **0–10**, median score **120–180**.
+>
+> **Band revision (MS-0MUQ50I1Y000B6L3, 2026-10-02, producer Q3 = C):** the
+> five-turn payback rebalance (net payback 2.1 → 4.87 turns) tightened the
+> economy; the producer accepted this as the new design intent. The bands were
+> re-centred on the measured after-state — Medium **20–85**, Easy **45–95**,
+> Hard **5–60**, median score **2–200** — while the **primary gate remains the
+> monotone win-rate ladder Easy ≥ Medium ≥ Hard** (0.62 ≥ 0.325 ≥ 0.11). Net
+> liquidity measured 2.40 (band 0–10, unchanged). See
+> [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
 
 ### 3.4 Decision Gate Definitions
 
@@ -230,22 +245,34 @@ Where:
 
 **Formula:**
 ```
-costToIncomeRatio = cardCost / baseIncomePerTurn
+grossCostToIncome = cardCost / baseIncomePerTurn
+netPayback         = cardCost / (baseIncomePerTurn − ongoingCostPerTurn)
 ```
 
-For cards with zero base income (e.g., Clinic), use the effective income including synergy bonuses from optimal placement, documented separately.
+The **net** payback is the balance-contract metric (MS-0MUQ50I1Y000B6L3): it accounts
+for the per-turn running cost, so it is the game's true break-even. The gross
+cost-to-income ratio is retained for transparency. Both are computed by
+`computePayback` in `src/scripts/balance/engine/card-metrics.ts` (the M3 companion to
+`computeCostToIncomeRatio`).
+
+For cards with zero base income (e.g., Clinic), net payback is `Infinity` (the card never
+pays back through income) — handled as a documented exception.
 
 **Data Sources:**
-- `cardCost` from `card-data.csv` (cost column)
-- `baseIncome` from `card-data.csv` (baseIncome column)
+- `cardCost`, `baseIncome`, and `ongoingCost` from `card-data.csv`
 
-**Interpretation:**
+**Interpretation (net payback, whole turns):**
 | Ratio | Meaning |
 |-------|---------|
 | < 3 | Fast payback — strong economic card |
-| 3–6 | Moderate payback |
+| 3–6 | Moderate payback (the designed band: cheap 3.5 → flagship 7.0) |
 | 7–12 | Slow payback — requires long game to be worthwhile |
 | > 12 | Very slow — likely only valuable for synergy or end-game scoring |
+
+**Contract.** After the five-turn payback rebalance the mean net payback across the 30
+income businesses is **4.87** turns, cost-graded (3.55 < 5.00 < 5.51 < 6.71 across cost
+bands), and enforced simulation-free by
+`tests/main-street/business-payback.test.ts` directly from `card-data.csv`.
 
 **This metric can be computed statically from `card-data.csv` alone** — no Monte Carlo run needed.
 
@@ -415,7 +442,7 @@ metrics: median, mean, Q1, Q3, IQR, skewness, min, max, standardDeviation
 - Wide IQR (> 80 points) suggests high variance — strategy quality or card draw luck dominates.
 - Narrow IQR (< 40 points) suggests deterministic gameplay — tuning matters more than luck.
 - Positive skew (tail to the right) means a few blowout wins; negative skew means frequent near-wins with occasional collapses.
-- Median score for Greedy/Medium should be 120–180 (enforced in `monte-carlo-greedy-guardrail.test.ts`).
+- Median score for Greedy/Medium should be 2–200 (enforced in `monte-carlo-greedy-guardrail.test.ts`; band revised by the MS-0MUQ50I1Y000B6L3 five-turn payback rebalance, measured 7.9 display).
 
 **Feasibility:** Already available from existing Monte Carlo output. Just need distribution computation.
 

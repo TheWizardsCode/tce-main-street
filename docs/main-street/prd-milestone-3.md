@@ -191,6 +191,8 @@ Deliver AI auto-play, a player-facing hint system, and undo/redo functionality f
 - [ ] AC-7.4: Output is available in both JSON and CSV formats.
 - [ ] AC-7.5: Greedy strategy win rate on Medium difficulty is within 30-60% (matching M2 balance targets).
 - [ ] AC-7.6: Greedy strategy median score on Medium difficulty is within 120-180.
+
+> **Superseded by later re-baselines** (CG-0MSRKN325004ELH2, CG-0MTC31LN3000UHDY, MS-0MUQ50I1Y000B6L3): the enforced greedy/Medium bands are now win rate 20-85% and median score 2-200 (PRD §3.3). AC-7.5/AC-7.6 are retained as the historical M3 acceptance values.
 - [ ] AC-7.7: Random strategy win rate is significantly lower than Greedy (validates strategy differentiation).
 
 ### US-8: Transcript Records AI, Hint, and Undo Events
@@ -523,12 +525,13 @@ The M2 Monte Carlo harness (`MainStreetMonteCarlo.ts`) runs 200 seeds x 25 turns
 - Win rate: 30-60% (market-greedy)
 - Median score: 120-180
 
-> **Superseded (CG-0MSRKN325004ELH2, 2026-08-13):** this milestone document's
-> balance targets are historical planning values. The current enforced guardrail
-> bands live in PRD §3.3 and
+> **Superseded (CG-0MSRKN325004ELH2, 2026-08-13; revised MS-0MUQ50I1Y000B6L3,
+> 2026-10-02):** this milestone document's balance targets are historical
+> planning values. The current enforced guardrail bands live in PRD §3.3 and
 > [balance-guardrail-recommendations.md](balance-guardrail-recommendations.md)
-> (greedy per difficulty: Easy 60-90%, Medium 45-75%, Hard 15-40%; net
-> liquidity 0–2; median score 120–180).
+> (greedy per difficulty after the five-turn payback rebalance:
+> Easy 45-95%, Medium 20-85%, Hard 5-60%; net liquidity 0–10; median score
+> 2–200).
 
 ### 6.2 M3 Extension
 
@@ -568,7 +571,7 @@ The following targets validate M2's economy across difficulty presets:
 | Difficulty | Strategy | Win Rate | Median Score | Avg Turns |
 |------------|----------|----------|-------------|-----------|
 | Easy | Greedy | 60-85% | 140-200 | 12-20 |
-| Medium | Greedy | 40-70% | 120-180 | 14-22 |
+| Medium | Greedy | 20-85% | 2-200 | 14-22 |
 | Hard | Greedy | 15-40% | 100-160 | 13-15 |
 | Medium | Random | 5-20% | 60-120 | 15-25 |
 

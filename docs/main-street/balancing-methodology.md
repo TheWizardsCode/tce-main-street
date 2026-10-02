@@ -147,6 +147,59 @@ This document consolidates all balancing methodology content previously scattere
 
 The origin documents now contain cross-references to this document.
 
+### Business payback rebalance (MS-0MUQ50I1Y000B6L3, 2026-10-02)
+
+Following the ongoing-cost re-baseline, businesses recovered their purchase cost in only
+**~2.1 turns** on average (net of running cost), so buildings became profitable almost
+immediately and runs snowballed. The producer requested a **~5-turn average** payback with
+a cost-graded spread, enforced by a deterministic contract test.
+
+**Model.** Net payback (the contract metric) is
+
+```
+net payback (turns) = cost ÷ (baseIncome − ongoingCost)
+```
+
+computed in whole display coins. Gross payback (`cost ÷ baseIncome`) is also reported for
+transparency. The balance metric lives in
+`src/scripts/balance/engine/card-metrics.ts` (`computePayback`, the M3 companion to
+`computeCostToIncomeRatio`) and is enforced by
+`tests/main-street/business-payback.test.ts` directly from `src/card-data.csv`
+(no simulation).
+
+**Income derivation.** `baseIncome = round(cost ÷ targetPayback + ongoingCost)`, with a
+cost-graded target so cheaper businesses pay back faster:
+
+| Cost band | Example cards | Target net payback |
+|---|---|---:|
+| ≤ 400 (cost 2–4) | Pawn Shop, Bakery, Laundromat, Arcade | 3.5 |
+| 500–700 (cost 5–7) | Barbershop, Cafe, Flower Shop, Teahouse | 5.0 |
+| 800–1000 (cost 8–10) | Yoga Studio, Gym, Physiotherapist | 5.5 |
+| 1200 (cost 12) | Dentist | 6.5 |
+| 1400 (cost 14) | Art Gallery, Day Spa, Private Clinic | 6.7 |
+| 1600 (cost 16) | Grand Hotel | 7.0 |
+
+**Rounding rule.** `card-data.csv` stores integer coin-cent units (×100). Incomes are
+rounded to the nearest integer cent unit, so paybacks land within ~0.02 turns of the target.
+
+**Measured after-state** (30 income businesses): mean net payback **4.87** turns; bucket
+means strictly increasing **3.55 < 5.00 < 5.51 < 6.71**; Spearman(cost, payback) **0.96**;
+all net incomes positive.
+
+**Documented exceptions** (excluded from the contract mean):
+
+| Card | Handling |
+|------|----------|
+| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+40 rep/turn), so payback is n/a. |
+| **Charity Shop** (`biz-charity-shop`) | Producer-set cost override (MS-0MUAYBAHW007RMSL); low-income reputation-leaning card, payback not representative. |
+| **0-cost incident events** | Not income businesses; excluded. |
+| **Community spaces** | 0 income by design; excluded. |
+
+The tighter economy is the accepted design intent (producer decision Q3 = C): difficulty
+presets are unchanged, the win-rate ladder `Easy ≥ Medium ≥ Hard` is preserved
+(0.62 ≥ 0.325 ≥ 0.11), and the guardrail bands were revised to the measured after-state. See
+[payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+
 ## 8-Way Adjacency Re-Tune (CG-0MSP1HCAS00785MP / CG-0MSP26Q5N002EH8P)
 
 The adjacency metric was changed from **Manhattan (orthogonal-only)** to **Chebyshev (8-way)**:
@@ -201,6 +254,7 @@ Guardrail tests (`monte-carlo-guardrails`, `monte-carlo-greedy-guardrail`,
 ## See Also
 
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that build on this balancing algorithm.
+- **[Five-Turn Payback Rebalance — Evidence](payback-rebalance-evidence.md)** — Before/after Monte Carlo evidence for the MS-0MUQ50I1Y000B6L3 payback rebalance.
 - **[Monte Carlo Sample Results](monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness used for balance validation.
 - **[Card Catalog](card-catalog.md)** — Complete card template reference with balance-relevant stats.
 - **[Playtest Scenarios](playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.

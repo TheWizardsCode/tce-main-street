@@ -200,7 +200,7 @@ Use these heuristics when evaluating card changes or rule adjustments:
 
 ### Score Distribution
 
-- **Median score (greedy/Medium):** 120-180 band (PRD §3.3); measured ~153.
+- **Median score (greedy/Medium):** 2-200 band (PRD §3.3; revised by the MS-0MUQ50I1Y000B6L3 five-turn payback rebalance); measured ~7.9 display.
 - **Fast wins** (turn <= 10): ~30% of wins -- indicates strong early draws.
 - **Late wins** (turn >= 15): ~15% of wins -- indicates tough early game.
 

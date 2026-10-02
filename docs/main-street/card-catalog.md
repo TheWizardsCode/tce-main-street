@@ -84,18 +84,22 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 
 Business cards are placed on the 10-slot street grid. Each generates base income plus synergy bonuses from adjacent businesses sharing a synergy type.
 
-> **Ongoing cost field (CG-0MSVYPEZ90085SHE):** Business cards gain an `ongoingCost` CSV column value (column 29; col 28 is `newDisplayName` — the intake brief's "column 28" was a miscount) that is deducted from coins every IncomePhase — whether the card is placed on the street grid **or held in hand** — alongside staff and community-space costs. Deductions are clamped at 0 coins and logged. Cards with an empty `ongoingCost` CSV value default to 0. The per-card values (balance guideline: **¼ purchase price, min 25**) are populated by the producer balance task; the engine deducts whatever value is on the card.
+> **Payback rebalance (MS-0MUQ50I1Y000B6L3):** business `baseIncome` is derived from a
+> cost-graded **net payback** target (`cost ÷ (baseIncome − ongoingCost)`), averaging
+> ~4.87 turns across the 30 income businesses (cheap ~3.5 → flagship ~7.0). See
+> [balancing-methodology.md](balancing-methodology.md) § Business payback rebalance and
+> [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
 
-> **Ongoing cost field (CG-0MSVYPEZ90085SHE):** Business cards gain an `ongoingCost` CSV column value (column 29; col 28 is `newDisplayName` — the intake brief's "column 28" was a miscount) that is deducted from coins every IncomePhase — whether the card is placed on the street grid **or held in hand** — alongside staff and community-space costs. Deductions are clamped at 0 coins and logged. Cards with an empty `ongoingCost` CSV value default to 0. Per-card values are populated in `card-data.csv` using the balance guideline **¼ purchase price, min 25** (e.g. Teahouse costs 7 → 175 coins/turn).
+> **Ongoing cost field (CG-0MSVYPEZ90085SHE):** Business cards carry an `ongoingCost` CSV column value (column 29; col 28 is `newDisplayName` — the intake brief's "column 28" was a miscount) that is deducted from coins every IncomePhase — whether the card is placed on the street grid **or held in hand** (hand-held cards incur no ongoing cost per CG-0MTC31LN3000UHDY) — alongside staff and community-space costs. Deductions are clamped at 0 coins and logged. Cards with an empty `ongoingCost` CSV value default to 0. Per-card values are populated in `card-data.csv` using the balance guideline **¼ purchase price, min 25** (e.g. Teahouse costs 7 → 175 coins/turn).
 
 ### M1 Business Templates (4)
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `biz-bakery` | Bakery | 300 | 230 (rep +5/turn, ongoing −75/turn) | Food | Bakery | Warm pastries. Gains 50% of base income per adjacent Food business (scales with difficulty). | Affordable Food starter. |
-| `biz-diner` | Diner | 300 | 230 (rep +5/turn, ongoing −75/turn) | Food | Diner | Quick meals. Gains 50% of base income per adjacent Food business (scales with difficulty). | Higher-cost, higher-income Food option. |
-| `biz-bookshop` | Bookshop | 300 | 230 (rep +5/turn, ongoing −75/turn) | Culture | Bookshop | Sells books. Gains 50% of base income per adjacent Culture business (scales with difficulty). | Mid-cost Culture business. |
-| `biz-hardware` | Hardware Store | 300 | 230 (rep +5/turn, ongoing −75/turn) | Service | Hardware Store | Supplies tools. Gains 50% of base income per adjacent Service business (scales with difficulty). | Retagged Commerce → Service (CG-0MT3IPFSF005KEFB): tool supply is a Service; gives T2 a second synergy type (Commerce 2 / Service 1). |
+| `biz-bakery` | Bakery | 300 | 161 (rep +5/turn, ongoing −75/turn) | Food | Bakery | Warm pastries. Gains 50% of base income per adjacent Food business (scales with difficulty). | Affordable Food starter. |
+| `biz-diner` | Diner | 300 | 161 (rep +5/turn, ongoing −75/turn) | Food | Diner | Quick meals. Gains 50% of base income per adjacent Food business (scales with difficulty). | Higher-cost, higher-income Food option. |
+| `biz-bookshop` | Bookshop | 300 | 161 (rep +5/turn, ongoing −75/turn) | Culture | Bookshop | Sells books. Gains 50% of base income per adjacent Culture business (scales with difficulty). | Mid-cost Culture business. |
+| `biz-hardware` | Hardware Store | 300 | 161 (rep +5/turn, ongoing −75/turn) | Service | Hardware Store | Supplies tools. Gains 50% of base income per adjacent Service business (scales with difficulty). | Retagged Commerce → Service (CG-0MT3IPFSF005KEFB): tool supply is a Service; gives T2 a second synergy type (Commerce 2 / Service 1). |
 
 Park has been reclassified as a **Community Space** card (see below).
 
@@ -105,30 +109,30 @@ Park has been reclassified as a **Community Space** card (see below).
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `biz-pawnshop` | Pawn Shop | 200 | 230 (rep −10/turn, ongoing −75/turn) | Commerce | Pawn Shop | Second-hand goods. Does not provide or receive synergy bonuses. | Budget Commerce option; drains reputation each turn. |
-| `biz-boutique` | Boutique | 300 | 230 (rep +5/turn, ongoing −75/turn) | Commerce | Boutique | Curated fashion. Gains 50% of base income per adjacent Commerce business (scales with difficulty). | Mid-tier Commerce; distinct flavour from Hardware Store. |
+| `biz-pawnshop` | Pawn Shop | 200 | 132 (rep −10/turn, ongoing −75/turn) | Commerce | Pawn Shop | Second-hand goods. Does not provide or receive synergy bonuses. | Budget Commerce option; drains reputation each turn. |
+| `biz-boutique` | Boutique | 300 | 161 (rep +5/turn, ongoing −75/turn) | Commerce | Boutique | Curated fashion. Gains 50% of base income per adjacent Commerce business (scales with difficulty). | Mid-tier Commerce; distinct flavour from Hardware Store. |
 
 #### Service (new synergy type)
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `biz-laundromat` | Laundromat | 400 | 290 (rep +5/turn, ongoing −100/turn) | Service | Laundromat | Self-serve laundry. Gains 50% of base income per adjacent Service business (scales with difficulty). | Budget Service entry point. |
-| `biz-barbershop` | Barbershop | 500 | 400 (rep +8/turn, ongoing −125/turn) | Service | Barbershop | Classic cuts. Gains 100% of base income per adjacent Service business (scales with difficulty). | Pairs with Laundromat for early Service cluster. |
+| `biz-laundromat` | Laundromat | 400 | 214 (rep +5/turn, ongoing −100/turn) | Service | Laundromat | Self-serve laundry. Gains 50% of base income per adjacent Service business (scales with difficulty). | Budget Service entry point. |
+| `biz-barbershop` | Barbershop | 500 | 225 (rep +8/turn, ongoing −125/turn) | Service | Barbershop | Classic cuts. Gains 100% of base income per adjacent Service business (scales with difficulty). | Pairs with Laundromat for early Service cluster. |
 
 #### Health (new synergy type)
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
 | `biz-clinic` | Clinic | 900 | 0 (rep +40/turn, ongoing −50/turn) | Health | Clinic | Walk-in medical care. Provides +40 rep/turn. | Non-profit community health provider; reputation instead of income. |
-| `biz-private-clinic` | Private Clinic | 1400 | 1090 (rep +25/turn, ongoing −350/turn) | Health | Private Clinic | Private medical practice. Gains 50% of base income per adjacent Health business (scales with difficulty). | For-profit counterpart to Clinic; income-focused. |
-| `biz-pharmacy` | Pharmacy | 700 | 520 (rep +10/turn, ongoing −175/turn) | Health | — | Provides essential medications. Gains 50% of base income per adjacent Health business (scales with difficulty). | Standalone Health card (no upgrade). |
+| `biz-private-clinic` | Private Clinic | 1400 | 559 (rep +25/turn, ongoing −350/turn) | Health | Private Clinic | Private medical practice. Gains 50% of base income per adjacent Health business (scales with difficulty). | For-profit counterpart to Clinic; income-focused. |
+| `biz-pharmacy` | Pharmacy | 700 | 315 (rep +10/turn, ongoing −175/turn) | Health | — | Provides essential medications. Gains 50% of base income per adjacent Health business (scales with difficulty). | Standalone Health card (no upgrade). |
 
 #### Entertainment (new synergy type)
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `biz-arcade` | Arcade | 400 | 290 (rep +5/turn, ongoing −100/turn) | Entertainment | Arcade | Retro fun for all ages. Gains 50% of base income per adjacent Entertainment business (scales with difficulty). | No longer a Service bridge (CG-0MT5VZJLS000B8KI): an arcade is a family entertainment venue, matching Cinema/Music Store's standard Entertainment template; T3 spans two types via the retiered Community Shelter. |
-| `biz-cinema` | Cinema | 500 | 350 (rep +8/turn, ongoing −125/turn) | Entertainment | Cinema | Latest films. Gains 50% of base income per adjacent Entertainment business (scales with difficulty). | Premium Entertainment; anchors the type. |
+| `biz-arcade` | Arcade | 400 | 214 (rep +5/turn, ongoing −100/turn) | Entertainment | Arcade | Retro fun for all ages. Gains 50% of base income per adjacent Entertainment business (scales with difficulty). | No longer a Service bridge (CG-0MT5VZJLS000B8KI): an arcade is a family entertainment venue, matching Cinema/Music Store's standard Entertainment template; T3 spans two types via the retiered Community Shelter. |
+| `biz-cinema` | Cinema | 500 | 225 (rep +8/turn, ongoing −125/turn) | Entertainment | Cinema | Latest films. Gains 50% of base income per adjacent Entertainment business (scales with difficulty). | Premium Entertainment; anchors the type. |
 
 #### Multi-Synergy Bridge Cards
 
@@ -136,11 +140,11 @@ Bridge cards belong to two synergy types simultaneously, enabling cross-type adj
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `biz-cafe` | Cafe | 700 | 520 (rep +10/turn, ongoing −175/turn) | Food + Culture | Cafe | Coffee and conversation. | Bridges the two most common M1 types. |
-| `biz-food-truck` | Food Truck | 400 | 290 (rep +5/turn, ongoing −100/turn) | Food + Entertainment | Food Truck | Street eats with flair. | Cheapest bridge card; low risk, low reward. |
-| `biz-gallery` | Art Gallery | 1400 | 940 (rep +25/turn, ongoing −350/turn) | Culture + Entertainment | Art Gallery | Showcases local artists. | Connects M1 Culture with new Entertainment. |
-| `biz-spa` | Day Spa | 1400 | 940 (rep +25/turn, ongoing −350/turn) | Service + Entertainment | Day Spa | Relaxation and pampering. | Premium bridge; high synergy potential across 2 new types. |
-| `biz-florist` | Flower Shop | 500 | 350 (rep +10/turn, ongoing −125/turn) | Commerce + Culture | Flower Shop | Arrangements for every occasion. | Commerce–Culture bridge at tier-5 income parity (CG-0MT6EQSPW002E7RC). |
+| `biz-cafe` | Cafe | 700 | 315 (rep +10/turn, ongoing −175/turn) | Food + Culture | Cafe | Coffee and conversation. | Bridges the two most common M1 types. |
+| `biz-food-truck` | Food Truck | 400 | 214 (rep +5/turn, ongoing −100/turn) | Food + Entertainment | Food Truck | Street eats with flair. | Cheapest bridge card; low risk, low reward. |
+| `biz-gallery` | Art Gallery | 1400 | 559 (rep +25/turn, ongoing −350/turn) | Culture + Entertainment | Art Gallery | Showcases local artists. | Connects M1 Culture with new Entertainment. |
+| `biz-spa` | Day Spa | 1400 | 559 (rep +25/turn, ongoing −350/turn) | Service + Entertainment | Day Spa | Relaxation and pampering. | Premium bridge; high synergy potential across 2 new types. |
+| `biz-florist` | Flower Shop | 500 | 225 (rep +10/turn, ongoing −125/turn) | Commerce + Culture | Flower Shop | Arrangements for every occasion. | Commerce–Culture bridge at tier-5 income parity (CG-0MT6EQSPW002E7RC). |
 
 ### M3 Business Templates (12) — Group A expansion (CG-0MSQJ1XIB0004QVN)
 
@@ -150,28 +154,28 @@ Adds the first **Health bridge cards**, mid-tier (T2/T3) singles across every sy
 
 | ID | Name | Cost | Income | Synergy | Tier | Rep/turn | Description | Rationale |
 |----|------|------|--------|---------|------|----------|-------------|-----------|
-| `biz-juice-bar` | Juice Bar | 500 | 350 (rep +8/turn, ongoing −125/turn) | Food + Health | 3 | 8 | Fresh juices and smoothies. Bridges Food and Health synergies. | First Health bridge; connects the existing Food cluster to Health. |
-| `biz-yoga-studio` | Yoga Studio | 800 | 580 (rep +12/turn, ongoing −200/turn) | Culture + Health | 4 | 12 | Calm practice space for mind and body. Bridges Culture and Health synergies. | Culture–Health bridge; mid-tier wellness option. |
-| `biz-physio` | Physiotherapist | 1000 | 700 (rep +15/turn, ongoing −250/turn) | Health + Service | 4 | 15 | Recovery and rehabilitation care. Bridges Health and Service synergies. Provides +15 reputation per turn. | Health–Service bridge with a small reputation perk. |
+| `biz-juice-bar` | Juice Bar | 500 | 225 (rep +8/turn, ongoing −125/turn) | Food + Health | 3 | 8 | Fresh juices and smoothies. Bridges Food and Health synergies. | First Health bridge; connects the existing Food cluster to Health. |
+| `biz-yoga-studio` | Yoga Studio | 800 | 345 (rep +12/turn, ongoing −200/turn) | Culture + Health | 4 | 12 | Calm practice space for mind and body. Bridges Culture and Health synergies. | Culture–Health bridge; mid-tier wellness option. |
+| `biz-physio` | Physiotherapist | 1000 | 432 (rep +15/turn, ongoing −250/turn) | Health + Service | 4 | 15 | Recovery and rehabilitation care. Bridges Health and Service synergies. Provides +15 reputation per turn. | Health–Service bridge with a small reputation perk. |
 
 #### Singles (mid-tier depth)
 
 | ID | Name | Cost | Income | Synergy | Tier | Rep/turn | Description | Rationale |
 |----|------|------|--------|---------|------|----------|-------------|-----------|
-| `biz-tailor` | Tailor | 500 | 375 (rep +8/turn, ongoing −125/turn) | Service | 2 | 8 | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. | Mid Service single; smooths T2. |
-| `biz-gym` | Gym | 800 | 580 (rep +12/turn, ongoing −200/turn) | Health | 5 | 12 | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. | Health single; T5 anchor (rebalanced from T3, CG-0MT2WU0CX005Z143). |
-| `biz-dentist` | Dentist | 1200 | 870 (rep +20/turn, ongoing −300/turn) | Health | 5 | 20 | Smiles for the whole street. Gains 50% of base income per adjacent Health business. | Premium Health single (rebalanced from T4). |
-| `biz-toy-store` | Toy Store | 500 | 375 (rep +8/turn, ongoing −125/turn) | Commerce | 3 | 8 | Toys and games for young shoppers. Gains 50% of base income per adjacent Commerce business. | Commerce depth at T3 (rebalanced from T2). |
-| `biz-music-store` | Music Store | 800 | 580 (rep +12/turn, ongoing −200/turn) | Entertainment | 5 | 12 | Records and instruments for every taste. Gains 50% of base income per adjacent Entertainment business. | Entertainment depth at T5 (rebalanced from T3). |
-| `biz-delicatessen` | Delicatessen | 500 | 375 (rep +8/turn, ongoing −125/turn) | Food | 2 | 8 | Fine meats and cheeses. Gains 50% of base income per adjacent Food business. | Food depth at T2. |
-| `biz-craft-shop` | Craft Shop | 500 | 375 (rep +8/turn, ongoing −125/turn) | Culture | 2 | 8 | Handmade goods by local makers. Gains 50% of base income per adjacent Culture business. | Culture single (only Bookshop existed before). |
+| `biz-tailor` | Tailor | 500 | 225 (rep +8/turn, ongoing −125/turn) | Service | 2 | 8 | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. | Mid Service single; smooths T2. |
+| `biz-gym` | Gym | 800 | 345 (rep +12/turn, ongoing −200/turn) | Health | 5 | 12 | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. | Health single; T5 anchor (rebalanced from T3, CG-0MT2WU0CX005Z143). |
+| `biz-dentist` | Dentist | 1200 | 485 (rep +20/turn, ongoing −300/turn) | Health | 5 | 20 | Smiles for the whole street. Gains 50% of base income per adjacent Health business. | Premium Health single (rebalanced from T4). |
+| `biz-toy-store` | Toy Store | 500 | 225 (rep +8/turn, ongoing −125/turn) | Commerce | 3 | 8 | Toys and games for young shoppers. Gains 50% of base income per adjacent Commerce business. | Commerce depth at T3 (rebalanced from T2). |
+| `biz-music-store` | Music Store | 800 | 345 (rep +12/turn, ongoing −200/turn) | Entertainment | 5 | 12 | Records and instruments for every taste. Gains 50% of base income per adjacent Entertainment business. | Entertainment depth at T5 (rebalanced from T3). |
+| `biz-delicatessen` | Delicatessen | 500 | 225 (rep +8/turn, ongoing −125/turn) | Food | 2 | 8 | Fine meats and cheeses. Gains 50% of base income per adjacent Food business. | Food depth at T2. |
+| `biz-craft-shop` | Craft Shop | 500 | 225 (rep +8/turn, ongoing −125/turn) | Culture | 2 | 8 | Handmade goods by local makers. Gains 50% of base income per adjacent Culture business. | Culture single (only Bookshop existed before). |
 
 #### Flagship
 
 | ID | Name | Cost | Income | Synergy | Tier | Rep/turn | Description | Rationale |
 |----|------|------|--------|---------|------|----------|-------------|-----------|
-| `biz-hotel` | Grand Hotel | 1600 | 1210 (rep +30/turn, ongoing −400/turn) | Service | 5 | 30 | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business. Provides +30 reputation per turn. | T5 flagship; highest income in the pool. Cost exceeds the flagship band's 14 cap to reflect premium positioning (documented balance rationale). |
-| `biz-teahouse` | Teahouse | 700 | 495 (rep +10/turn, ongoing −175/turn) | Food + Culture | 3 | 10 | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. | Second Food–Culture bridge (alongside Cafe). |
+| `biz-hotel` | Grand Hotel | 1600 | 629 (rep +30/turn, ongoing −400/turn) | Service | 5 | 30 | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business. Provides +30 reputation per turn. | T5 flagship; highest income in the pool. Cost exceeds the flagship band's 14 cap to reflect premium positioning (documented balance rationale). |
+| `biz-teahouse` | Teahouse | 700 | 315 (rep +10/turn, ongoing −175/turn) | Food + Culture | 3 | 10 | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. | Second Food–Culture bridge (alongside Cafe). |
 
 ### Producer-Added Business Templates (1) — Charity Shop (MS-0MUAYBAHW007RMSL)
 
