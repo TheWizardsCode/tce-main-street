@@ -1,0 +1,70 @@
+# Deploy the Main Street launcher to GitHub Pages on push to main.
+#
+# Quality gates (unit tests + production build) run before deploying, so a
+# failing test or build publishes nothing. The `./core` submodule is composed
+# over HTTPS: actions/checkout rewrites the git@github.com: submodule URL to
+# HTTPS when no `ssh-key` is supplied, so no SSH secret is needed for this
+# public repository.
+#
+# The build uses the repo's single-game preset (configs/game.json via the
+# plugin default) so the published launcher contains exactly Main Street plus
+# the core-owned Gym — never the all-games preset, and no sibling game
+# repository is composed.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+# Allow only one concurrent deployment; cancel in-flight runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Composes ./core. actions/checkout rewrites the SSH submodule URL
+          # (see .gitmodules) to HTTPS when no ssh-key is supplied, so the
+          # public core repo needs no stored credential.
+          submodules: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
