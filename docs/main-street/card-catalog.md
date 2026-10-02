@@ -19,22 +19,6 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 
 **Synergy types:** Food, Culture, Commerce, Service (M2), Entertainment (M2), Health (M2)
 
-This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
-
-Card templates are stored as rows in `card-data.csv` and parsed at build time by `MainStreetCards.ts`. To add cards, edit the CSV and regenerate metadata (see guidance below).
-
-**Deck sizes (default copies):**
-
-| Family        | Templates | Copies each | Total cards |
-|---------------|-----------|-------------|-------------|
-| Business      | 31        | 3           | 93          |
-| Event         | 56        | 3           | 168         |
-| Upgrade       | 39        | 2           | 78          |
-| Community Space | 8       | 3           | 24          |
-| Staff         | 9         | 3           | 27          |
-
-**Synergy types:** Food, Culture, Commerce, Service (M2), Entertainment (M2), Health (M2)
-
 ## Expansion summary (baseline vs current)
 
 | Snapshot | Business | Event | Upgrade | Community Space | Staff | Total templates |
