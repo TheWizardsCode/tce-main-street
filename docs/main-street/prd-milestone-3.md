@@ -14,6 +14,18 @@
 > the threshold-distance planning horizon (`aiPlanningHorizon`: floor 5 /
 > cap 25 / scorePace 8). See `docs/main-street/core-rules-and-mechanics.md`
 > for the current rules.
+>
+> **Scope extension (CG-0MT5X3GMA007EG30):** Competitive mode — an AI
+> opponent on the shared street — is a **deliberate scope extension beyond
+> M3**, shipped as an **engine-only** change. The M3 out-of-scope row for
+> "AI vs. player (competitive mode)" is therefore superseded: the engine
+> now supports N players on one owner-tagged street, alternating
+> MarketPhases within a shared day, per-owner income/event routing,
+> ownership-aware (and staff-free) competitive AI, and a head-to-head Monte
+> Carlo harness. **No competitive game-selector entry, scene, or UI chrome
+> exists yet** — rendering (owner-coloured street slots, shared-market phase
+> alternation affordance, SFX/animations) is deferred to a planning-created
+> child. Single-player remains the N=1 case and is behaviourally unchanged.
 
 ---
 
@@ -92,7 +104,7 @@ Deliver AI auto-play, a player-facing hint system, and undo/redo functionality f
 | Progressive hints (vague to specific) | Single-move highlight is sufficient for M3 | Future |
 | Multi-action hint sequences | Greedy evaluates one action at a time; chained suggestions deferred | Future |
 | Undo across turn boundaries | Undo stack clears at end-of-turn; cross-turn undo adds complexity | Future |
-| AI vs. player (competitive mode) | Main Street is single-player; AI is used for auto-play and hints only | N/A |
+| AI vs. player (competitive mode) | **Superseded** — engine-level competitive mode shipped as a deliberate scope extension (CG-0MT5X3GMA007EG30); rendering/scene deferred to a planning child | M3 extension (engine) |
 | Visual polish for hint/undo UI | Placeholder styling; polish deferred to M4 | M4 |
 
 ---
