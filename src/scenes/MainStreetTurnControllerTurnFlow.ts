@@ -310,6 +310,10 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // on-card coin grids (child 2); refresh everything EXCEPT the
     // street so those grids survive until collection completes, then
     // refresh fully once the choreography finishes.
+    // Defer log rendering until after startTurnPhase has displayed
+    // upcoming cards (MS-0MURBOD2E009SOM2). The deferred flag suppresses
+    // the log render; it is cleared in finalizeTurn after startTurnPhase.
+    s.logDeferredUntilPhaseComplete = true;
     if (s.incomeCollectionActive) {
       s.msRenderer.refreshAllExceptStreet();
     } else {
@@ -325,6 +329,14 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // Advance the day once the closing presentation is done: present
     // the banking hint (if any), then defer to the phased income show
     // (bounded) or the normal ~800ms schedule.
+    // Lift the log-render deferral and render every entry accumulated during
+    // closing (MS-0MURBOD2E009SOM2). Called after the upcoming/phase UI has
+    // been displayed — or, on game-over, before the overlay so the log never
+    // stays suppressed. Safe to call more than once.
+    const flushDeferredLog = (): void => {
+      s.logDeferredUntilPhaseComplete = false;
+      try { s.refreshLog(); } catch { /* presentation-only */ }
+    };
     const advanceTurn = (): void => {
       // ── Banking hint presentation (CG-0MT3JK16W006A66P) ─────
       // Non-blocking HUD-highlighting overlay, once per save. Fires
@@ -383,10 +395,16 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         s.previousCoins = null;
         s.previousReputation = null;
         s.incidentRevealActive = false;
+        // Defer log rendering until after startTurnPhase has displayed
+        // upcoming cards (MS-0MURBOD2E009SOM2).
+        s.logDeferredUntilPhaseComplete = true;
         // Render the final post-delta state under the upcoming overlay
         // (startTurnPhase refreshes internally for the continuing path).
         try { s.refreshAll(); } catch { /* presentation-only */ }
         if (finalResult.gameResult !== 'playing') {
+          // No upcoming phase — flush the accumulated log alongside the
+          // game-over overlay instead of leaving it suppressed.
+          flushDeferredLog();
           tcCtx.handleGameOver(finalResult);
           return;
         }
@@ -395,8 +413,14 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         // checkpoint always reflects a complete, applied turn).
         try { tcCtx.onSaveCheckpoint?.(); } catch (e) { /* ignore */ }
         tcCtx.startTurnPhase();
+        // Log entries accumulated during closing now render after the
+        // phase UI has been displayed (MS-0MURBOD2E009SOM2).
+        flushDeferredLog();
       } else {
         tcCtx.startTurnPhase();
+        // Clear deferral flag so accumulated log entries render after
+        // the phase UI (MS-0MURBOD2E009SOM2).
+        flushDeferredLog();
       }
     };
 

@@ -248,6 +248,11 @@ export class MainStreetScene extends CardGameScene {
    * `MainStreetRenderer.refreshLog` and `MainStreetInputManager.handleLogWheel`). */
   public logAutoScroll = true;
   public logPrevEntryCount = 0;
+  /** When true, `refreshLog` suppresses rendering of new entries so they
+   * only appear after the upcoming/phase UI has been displayed to the player.
+   * Cleared in `finalizeTurn` after `startTurnPhase` completes.
+   * (MS-0MURBOD2E009SOM2) */
+  public logDeferredUntilPhaseComplete = false;
   /** The index of the first entry displayed in the current log window (for windowed rendering). */
   public logRenderedStartIdx = 0;
 

@@ -652,6 +652,29 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     // Visible area inside the panel (below title bar, above bottom edge)
     const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - 4);
 
+    // ── Deferral gate (MS-0MURBOD2E009SOM2) ─────────────────────
+    // When logDeferredUntilPhaseComplete is true, suppress all rendering
+    // so log entries added during end-of-turn closing only appear AFTER
+    // the upcoming/phase UI updates have been displayed to the player.
+    // Do NOT update logPrevEntryCount while deferred — the next render
+    // after deferral is cleared must see a count change and re-render.
+    if (s.logDeferredUntilPhaseComplete) {
+      // Compute scroll bounds from existing content only (no re-render).
+      if (s.logTotalContentH <= visibleH) {
+        s.logMaxScroll = 0;
+        s.logScrollOffset = 0;
+      } else {
+        s.logMaxScroll = s.logTotalContentH - visibleH;
+        if (s.logAutoScroll) {
+          s.logScrollOffset = s.logMaxScroll;
+        } else {
+          s.logScrollOffset = Phaser.Math.Clamp(s.logScrollOffset, 0, s.logMaxScroll);
+        }
+      }
+      s.logContentContainer.setY(LOG_TITLE_H + 2 - s.logScrollOffset);
+      return;
+    }
+
     // ── Re-render only if the entry count changed ────────────────
     if (newCount !== s.logPrevEntryCount) {
       s.logPrevEntryCount = newCount;
