@@ -127,6 +127,22 @@ function safeClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/**
+ * Clones a pending choice for snapshotting, dropping the runtime-only
+ * `options` snapshot whose callback functions are not cloneable.  On restore
+ * the option list is recompiled from the registry against the restored
+ * draw-time state, so callback semantics (including `successorResolver`) are
+ * preserved across undo/redo.
+ */
+function clonePendingChoice(pending: any): any {
+  if (!pending) return null;
+  return {
+    event: safeClone(pending.event),
+    chosenOption: pending.chosenOption,
+    resolved: pending.resolved,
+  };
+}
+
 /** Helper to capture a shallow snapshot of mutable market-related fields. */
 function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
   return {
@@ -152,7 +168,7 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     staffCards: safeClone(state.staffCards ?? []),
     justMovedUpgradeCardId: (state as any).justMovedUpgradeCardId ?? null,
     justMovedEventCardId: (state as any).justMovedEventCardId ?? null,
-    pendingEventChoice: safeClone((state as any).pendingEventChoice ?? null),
+    pendingEventChoice: clonePendingChoice((state as any).pendingEventChoice ?? null),
     activeEffects: safeClone(state.activeEffects ?? []),
     // Challenge completion state — cloneable form only (never activeChallenges,
     // whose evaluator functions would be dropped by safeClone).

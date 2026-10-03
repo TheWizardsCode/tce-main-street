@@ -21,7 +21,7 @@ Key terms:
 |------|---------|
 | **Storyline id / title** | A stable grouping key (`storyline-tax`) and a display name (`Tax Troubles`). Descriptive metadata — it groups cards into an arc and drives the journal/HUD, but does **not** by itself make a card a choice. |
 | **Choice card** | An incident that pauses resolution and asks the player to pick an option. Marked by `hasChoices=true`, or by a registered option list. |
-| **Option** | `{ label, successorId, effectPolicy }`. `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it). `successorId` is the card queued next, or empty to end the chain. |
+| **Option** | `{ label, successorId, effectPolicy }` plus optional runtime callbacks `condition` / `successorResolver` (see §2.1). `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it). `successorId` is the card queued next, or empty to end the chain. |
 | **Successor / chain card** | The card pushed onto the incident deck when an option is chosen. |
 | **Cycle** | A chain that returns to an earlier card. Cycles are a **first-class shape** (see §6). |
 | **Pending choice** | `state.pendingEventChoice` — the drawn choice card awaiting a decision; the end-of-turn sequence is deferred until it resolves. |
@@ -103,6 +103,66 @@ Multi-way storylines (>2 options) can be declared programmatically via
 [`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts); explicit
 options take precedence over the legacy compilation. Authoring new options via
 CSV keeps to the two-way Accept/Reject shape today.
+
+### 2.1 Callback escape hatch
+
+Some narrative logic cannot be expressed with field/op/value predicates
+(derived values, card-history checks, compound predicates). Each
+`StorylineOption` therefore accepts two optional **runtime-only** callbacks:
+
+```ts
+interface StorylineOption {
+  // …label, successorId, effectPolicy…
+  readonly condition?: (state: MainStreetState) => boolean;
+  readonly successorResolver?: (state: MainStreetState) => string | null | undefined;
+}
+```
+
+- **`condition` — evaluated at draw time.** When the option list is compiled
+  (the player is presented with the choice), each option's `condition` is
+  called against the live state. Returning `false` omits the option from the
+  presented list; `true` (or no condition) keeps it. Once the list is
+  presented it is **frozen**: mutating state between draw and resolution does
+  not re-evaluate conditions.
+- **`successorResolver` — evaluated at resolution time.** When the chosen
+  option has a `successorResolver`, it is invoked as the option resolves (after
+  `effectPolicy` is applied) and its return value replaces `option.successorId`
+  as the pushed successor. Returning `null` or `undefined` ends the chain.
+  When absent, the declarative `successorId` is used unchanged.
+
+**Contract (read-only, pure).** Both callbacks are typed as pure functions
+over `MainStreetState`. They must not mutate state or perform side effects;
+mutating state inside a callback is undefined behaviour. The callback type is a
+thin abstraction over a state shape that a future core engine can match, so the
+game-agnostic seam is preserved — no Main Street internals are baked into the
+callback signature.
+
+**Not serialisable.** Callbacks are registered programmatically via
+`registerStorylineOptions`; they are never authored in CSV or the
+manifest/schema, and are invisible to the validator and graph export. A
+callback-equipped option with no `condition` behaves exactly like a legacy
+option (backward compatible).
+
+```ts
+import { registerStorylineOptions } from './MainStreetStoryline';
+
+registerStorylineOptions('evt-nationalise', [
+  {
+    label: 'Nationalise',
+    successorId: 'evt-nationalise-fallout',
+    effectPolicy: 'apply',
+    // Only offered when the player previously took the state-led path.
+    condition: (s) => s.resourceBank.coins > 1000 || s.turn > 12,
+    // Resolution depends on runtime state that cannot be captured declaratively.
+    successorResolver: (s) =>
+      s.resourceBank.reputation > 50 ? 'evt-nationalise-win' : null,
+  },
+  { label: 'Decline', successorId: null, effectPolicy: 'skip' },
+]);
+```
+
+The AI path needs no changes: `decideEventChoice` selects from the presented
+option list, which `condition` has already filtered at draw time.
 
 ---
 
@@ -315,9 +375,19 @@ point `resolveEventOption(state, optionIndex)`.
 
 - The option list is a **linear ordered sequence**; resolution selects one
   option by index. There is no branching graph traversal.
-- `compileStorylineFromEvent` is the sole compilation entry point.
-- `resolveStorylineOption` applies the effect policy and returns the successor
-  id; the **caller** pushes it.
+- `compileStorylineFromEvent` is the sole compilation entry point. It accepts
+  an optional `state` argument; when supplied, options whose `condition`
+  callback returns `false` are omitted from the compiled list (draw-time
+  filtering). `getStorylineOptions(event, state)` threads the same argument
+  through.
+- `resolveStorylineOption` applies the effect policy, then resolves the
+  successor — preferring `option.successorResolver(state)` when present and
+  falling back to `option.successorId`; the **caller** pushes it.
+- **Callback type contract:** `condition` / `successorResolver` are pure,
+  read-only functions over `MainStreetState`. They carry no Main Street
+  internals beyond the public state shape, so a future core engine can match
+  the signature. They are runtime-only — never serialised, never validated,
+  never exported to the graph.
 - The seam depends only on a state shape and a template registry supplied by the
   caller — no Main Street globals are baked in.
 - Portability caveat: `pushChainCard` currently uses the Main Street template
@@ -335,6 +405,7 @@ Each is captured as a work item:
 | Medium | Storyline coverage analytics in the Monte Carlo harness (firing frequency, chain depth, cycle counts, choice win-rate impact). | `MS-0MUNB4ZXQ0081EX7` |
 | Medium | Render the committed Mermaid graph to SVG in the docs build and link it here. | `MS-0MUNB54KU005084C` |
 | Low | Extend options with conditional/cost-gated effects (`StorylineOption` was designed to grow). | `MS-0MUNB58TK0025CB9` |
+| Low | Callback escape hatch: arbitrary `condition` / `successorResolver` callbacks on storyline options. | `MS-0MUPORT1Z000QX8N` |
 | Low | Visual storyline authoring editor backed by the manifest and the transactional author API. | `MS-0MUNB5D7K001GH19` |
 
 ---

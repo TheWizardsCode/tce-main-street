@@ -115,12 +115,30 @@ export function hasRegisteredStorylineOptions(eventId: string): boolean {
  * - Choice cards → two options:
  *   1. "Accept" (effectPolicy="apply", successorId=acceptNextCardId)
  *   2. "Reject" (effectPolicy="skip", successorId=rejectNextCardId)
+ *
+ * When `state` is provided, options whose `condition` callback returns
+ * `false` are omitted from the result (draw-time filtering).
  */
-export function compileStorylineFromEvent(event: EventCard): CompiledStoryline {
+export function compileStorylineFromEvent(
+  event: EventCard,
+  state?: MainStreetState,
+): CompiledStoryline {
   const storylineId = event.storylineId ?? null;
   const registered = storylineOptionRegistry.get(getBaseTypeId(event.id));
   if (registered) {
-    return { storylineId, compiledOptions: registered.map((o) => ({ ...o })) };
+    const options = registered.map((o) => ({ ...o }));
+    if (state) {
+      // Filter by condition at draw time: omit options whose condition
+      // callback returns false.  Options without a condition (or whose
+      // condition returns true) are included unchanged.
+      return {
+        storylineId,
+        compiledOptions: options.filter(
+          (o) => o.condition == null || o.condition(state),
+        ),
+      };
+    }
+    return { storylineId, compiledOptions: options };
   }
 
   if (!event.hasChoices) {
@@ -162,16 +180,27 @@ export function eventHasStoryline(event: EventCard): boolean {
 /**
  * Returns the ordered option list for an event (empty when non-choice).
  * Registry-aware; the generalised accessor used by callers and the engine.
+ *
+ * When `state` is provided, options whose `condition` callback returns
+ * `false` are omitted (draw-time filtering).
  */
-export function getStorylineOptions(event: EventCard): StorylineOption[] {
-  return compileStorylineFromEvent(event).compiledOptions;
+export function getStorylineOptions(
+  event: EventCard,
+  state?: MainStreetState,
+): StorylineOption[] {
+  return compileStorylineFromEvent(event, state).compiledOptions;
 }
 
 /**
  * Returns the number of options for a storyline event (0 for non-choice).
+ * When `state` is provided, options whose `condition` callback returns
+ * `false` are excluded from the count.
  */
-export function storylineOptionCount(event: EventCard): number {
-  return getStorylineOptions(event).length;
+export function storylineOptionCount(
+  event: EventCard,
+  state?: MainStreetState,
+): number {
+  return getStorylineOptions(event, state).length;
 }
 
 // ── Resolution: apply a storyline option ─────────────────────
@@ -191,6 +220,11 @@ export interface StorylineResolution {
 /**
  * Resolves a storyline option by applying its effect policy and pushing the
  * successor card.
+ *
+ * If the option has a `successorResolver` callback, it is invoked at
+ * resolution time to determine the pushed successor (replacing
+ * `option.successorId`).  A `null` / `undefined` return value ends the
+ * chain.
  *
  * @param state  Current game state (mutated by effect application).
  * @param event  The storyline event card.
@@ -213,8 +247,14 @@ export function resolveStorylineOption(
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
 
+  // Determine the successor ID: callback resolver takes priority.
+  const resolvedSuccessor =
+    option.successorResolver != null
+      ? option.successorResolver(state)
+      : option.successorId;
+
   // Push successor card if one exists.
-  const pushedCard = pushChainCard(state, option.successorId);
+  const pushedCard = pushChainCard(state, resolvedSuccessor);
 
   return { pushedCard, coinChange, repChange };
 }
@@ -225,20 +265,55 @@ export function resolveStorylineOption(
  * Creates a new pending storyline choice from a drawn event.
  * Called by `resolveIncident` when a storyline event is drawn.
  *
+ * When `state` is supplied, the compiled option list is filtered by each
+ * option's `condition` callback and **snapshotted** onto the pending choice
+ * (draw-time evaluation).  Resolution then reads the frozen snapshot, so
+ * mutating state between draw and resolution cannot change the presented
+ * options (AC3).  Omitting `state` retains the legacy behaviour of an
+ * unfrozen pending choice (used by callers/tests that only need the event).
+ *
  * @param event The drawn event card.
+ * @param state Optional current game state; when present, freezes the
+ *              condition-filtered option list onto the pending choice.
  * @returns The pending choice, or null if the event has no storyline.
  */
 export function createPendingStorylineChoice(
   event: EventCard,
+  state?: MainStreetState,
 ): PendingEventChoice | null {
   if (!eventHasStoryline(event)) {
     return null;
   }
-  return {
+  const pending: PendingEventChoice = {
     event,
     chosenOption: null,
     resolved: false,
   };
+  if (state) {
+    // Freeze the presented option list at draw time (AC3): condition
+    // callbacks are evaluated here and never again during resolution.
+    pending.options = getStorylineOptions(event, state);
+  }
+  return pending;
+}
+
+/**
+ * Returns the option list presented for a pending choice.
+ *
+ * Prefers the draw-time snapshot captured by
+ * {@link createPendingStorylineChoice} (which freezes callback conditions);
+ * falls back to recompiling when no snapshot exists (legacy pending choices
+ * or an unsupplied state) so behaviour remains backward compatible.
+ *
+ * @param pending The pending choice.
+ * @param state   Current game state, used only for the fallback recompile.
+ */
+export function getPendingStorylineOptions(
+  pending: PendingEventChoice,
+  state?: MainStreetState,
+): StorylineOption[] {
+  if (pending.options) return pending.options;
+  return getStorylineOptions(pending.event, state);
 }
 
 /**

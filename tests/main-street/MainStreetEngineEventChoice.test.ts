@@ -218,9 +218,10 @@ describe('resolveEventChoice — Accept path', () => {
   it('ends the chain cleanly when acceptNextCardId is absent', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
+    // Strip the accept path BEFORE the draw: the presented option list is
+    // frozen at draw time (AC3), so post-draw mutation would not be seen.
+    state.incidentDeck[0] = { ...state.incidentDeck[0], acceptNextCardId: undefined };
     processEndOfTurn(state); // pause — pendingEventChoice is now set
-    // Strip the accept path to simulate a chain end (no escalation).
-    state.pendingEventChoice!.event = { ...state.pendingEventChoice!.event, acceptNextCardId: undefined };
     const deckLen = state.incidentDeck.length;
 
     const res = resolveEventChoice(state, 'accept');
@@ -256,8 +257,10 @@ describe('resolveEventChoice — Reject path', () => {
   it('rejecting an event with no rejectNextCardId adds nothing to the deck', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
+    // Strip the reject path BEFORE the draw (the option list is frozen at
+    // draw time — see AC3 / createPendingStorylineChoice).
+    state.incidentDeck[0] = { ...state.incidentDeck[0], rejectNextCardId: undefined };
     processEndOfTurn(state); // pause — pendingEventChoice is now set
-    state.pendingEventChoice!.event = { ...state.pendingEventChoice!.event, rejectNextCardId: undefined };
     const deckLen = state.incidentDeck.length;
     const coinsBefore = coins(state);
 

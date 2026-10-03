@@ -24,6 +24,7 @@ import type {
   StaffCard,
   IncidentBalanceState,
 } from './MainStreetCards';
+import type { StorylineOption } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
 
@@ -448,6 +449,18 @@ export interface PendingEventChoice {
   chosenOption: string | null;
   /** False while the dialog is pending; true after the choice is applied. */
   resolved: boolean;
+  /**
+   * Runtime-only snapshot of the compiled option list, captured when the
+   * choice is drawn (`createPendingStorylineChoice`).  Callback `condition`s
+   * are evaluated once, at draw time, and the resulting list is frozen: the
+   * player selects from this snapshot at resolution time, so mutating state
+   * between draw and resolution cannot change the presented options.
+   *
+   * Never serialised (callbacks are functions) — a loaded save recompiles
+   * from the runtime registry instead.  Absent on legacy pending choices,
+   * where the engine falls back to recompiling.
+   */
+  options?: StorylineOption[];
 }
 
 export interface MainStreetSerializedState {

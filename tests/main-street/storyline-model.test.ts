@@ -21,6 +21,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 
 import {
   setupMainStreetGame,
+  serializeMainStreetState,
+  deserializeMainStreetState,
   type MainStreetState,
 } from '../../src/MainStreetState';
 import {
@@ -34,6 +36,8 @@ import {
   resolveEventChoice,
   resolveEventOption,
 } from '../../src/MainStreetEngine';
+import { resolveEventChoiceCommand } from '../../src/MainStreetCommands';
+import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import {
   compileStorylineFromEvent,
   eventHasStoryline,
@@ -44,6 +48,7 @@ import {
   hasRegisteredStorylineOptions,
   resolveStorylineOption,
   createPendingStorylineChoice,
+  getPendingStorylineOptions,
   pushChainCard,
 } from '../../src/MainStreetStoryline';
 import type { StorylineOption } from '../../src/MainStreetCardsTypes';
@@ -516,5 +521,491 @@ describe('AC3 — resolveStorylineOption applies effect policy correctly', () =>
     const res = resolveStorylineOption(state, event, { label: 'No', successorId: null, effectPolicy: 'skip' });
     expect(res.coinChange).toBe(0);
     expect(state.resourceBank.coins).toBe(before);
+  });
+});
+
+// ── AC1/AC3/AC5: Callback conditions (draw-time filtering) ──
+
+describe('AC1 — callback condition registration + draw-time filtering', () => {
+  /**
+   * Registers a three-option storyline and returns a state with the event
+   * queued as the next incident.  The condition callbacks are supplied by
+   * the caller so each test can exercise a distinct predicate.
+   */
+  function setupConditionState(
+    seed: string,
+    options: StorylineOption[],
+  ): MainStreetState {
+    const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-cond', name: 'Condition Choice', effect: 'Lose 60 coins', coinDelta: -60, hasChoices: true, storylineId: 'arc-cond', storylineTitle: 'Conditions' },
+      { id: 'evt-cond-a', name: 'Branch A', effect: 'Lose 10 coins', coinDelta: -10 },
+      { id: 'evt-cond-b', name: 'Branch B', effect: 'Gain 20 coins', coinDelta: 20 },
+    ]));
+    registerStorylineOptions('evt-cond', options);
+    const event = getEventTemplates().find((c) => c.id === 'evt-cond') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-cond-0' });
+    return state;
+  }
+
+  const CONDITION_OPTIONS: StorylineOption[] = [
+    {
+      label: 'Always',
+      successorId: 'evt-cond-a',
+      effectPolicy: 'apply',
+      condition: () => true,
+    },
+    {
+      label: 'Never',
+      successorId: 'evt-cond-b',
+      effectPolicy: 'skip',
+      condition: () => false,
+    },
+    {
+      label: 'RichOnly',
+      successorId: null,
+      effectPolicy: 'skip',
+      condition: (s) => s.resourceBank.coins > 1000,
+    },
+  ];
+
+  it('omits options whose condition returns false and keeps true/undefined', () => {
+    const state = setupConditionState('cond-filter', CONDITION_OPTIONS);
+    const event = state.incidentDeck[0];
+
+    // Default starting coins are below the RichOnly threshold, so only
+    // "Always" (true) is presented; "Never" (false) and "RichOnly"
+    // (derived-state false) are omitted.
+    const options = getStorylineOptions(event, state);
+    expect(options.map((o) => o.label)).toEqual(['Always']);
+    expect(storylineOptionCount(event, state)).toBe(1);
+  });
+
+  it('includes a derived-state option once the predicate is satisfied', () => {
+    const state = setupConditionState('cond-derived', CONDITION_OPTIONS);
+    state.resourceBank.coins = 5000; // above the RichOnly threshold
+    const event = state.incidentDeck[0];
+
+    const options = getStorylineOptions(event, state);
+    expect(options.map((o) => o.label)).toEqual(['Always', 'RichOnly']);
+    expect(storylineOptionCount(event, state)).toBe(2);
+  });
+
+  it('an option without a condition is always included (legacy behaviour)', () => {
+    const noConditions: StorylineOption[] = [
+      { label: 'PlainA', successorId: null, effectPolicy: 'skip' },
+      { label: 'PlainB', successorId: null, effectPolicy: 'skip' },
+    ];
+    const state = setupConditionState('cond-plain', noConditions);
+    const event = state.incidentDeck[0];
+
+    const options = getStorylineOptions(event, state);
+    expect(options.map((o) => o.label)).toEqual(['PlainA', 'PlainB']);
+    expect(storylineOptionCount(event, state)).toBe(2);
+  });
+
+  it('compilation without state does not evaluate conditions (inspection path)', () => {
+    const state = setupConditionState('cond-nostate', CONDITION_OPTIONS);
+    const event = state.incidentDeck[0];
+
+    // Without state, all registered options are returned (validation/graph).
+    const options = getStorylineOptions(event);
+    expect(options.map((o) => o.label)).toEqual(['Always', 'Never', 'RichOnly']);
+  });
+
+  it('the condition callback receives the live MainStreetState', () => {
+    let received: MainStreetState | null = null;
+    const spyOptions: StorylineOption[] = [
+      {
+        label: 'Spy',
+        successorId: null,
+        effectPolicy: 'skip',
+        condition: (s) => {
+          received = s;
+          return true;
+        },
+      },
+    ];
+    const state = setupConditionState('cond-spy', spyOptions);
+    const event = state.incidentDeck[0];
+
+    getStorylineOptions(event, state);
+    expect(received).toBe(state);
+    expect(received!.resourceBank).toBeDefined();
+    expect(received!.resourceBank.coins).toBeTypeOf('number');
+  });
+
+  it('does not mutate the stored registry entry when filtering', () => {
+    const state = setupConditionState('cond-nomutate', CONDITION_OPTIONS);
+    const event = state.incidentDeck[0];
+
+    getStorylineOptions(event, state);
+
+    // Re-registering the same array shape still returns all three options
+    // when inspected without state — proving filtering did not mutate the
+    // registry's stored list in place.
+    expect(getStorylineOptions(event).map((o) => o.label)).toEqual([
+      'Always',
+      'Never',
+      'RichOnly',
+    ]);
+  });
+
+  it('evaluates conditions at draw time, not resolution time', () => {
+    // The presented option list is frozen when the pending choice is drawn;
+    // mutating state after the draw (but before resolution) must not change
+    // the frozen list.
+    const state = setupConditionState('cond-drawtime', CONDITION_OPTIONS);
+    processEndOfTurn(state); // draw -> pending choice with the frozen list
+    const pending = state.pendingEventChoice!;
+    expect(pending.options?.map((o) => o.label)).toEqual(['Always']);
+
+    // Mutate state so RichOnly would now match — the frozen list is unchanged.
+    state.resourceBank.coins = 9999;
+    expect(pending.options?.map((o) => o.label)).toEqual(['Always']);
+    expect(getPendingStorylineOptions(pending, state).map((o) => o.label)).toEqual([
+      'Always',
+    ]);
+
+    // Resolution honours the frozen list: index 0 is still 'Always', and the
+    // engine does not recompile against the mutated state.
+    const res = resolveEventOption(state, 0);
+    expect(res.pushedCard?.id).toContain('evt-cond-a');
+  });
+
+  it('the successor resolver still sees post-draw state at resolution time', () => {
+    // Conditions freeze at draw time, but successorResolver is evaluated at
+    // resolution time — so it observes mutations made between draw and
+    // resolution (the player has already committed).
+    const state = setupMainStreetGame({ seed: 'cond-succ-resolve', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-frz', name: 'Frozen', effect: 'Lose 20 coins', coinDelta: -20 },
+      { id: 'evt-frz-low', name: 'Low', effect: 'Lose 10 coins', coinDelta: -10 },
+      { id: 'evt-frz-high', name: 'High', effect: 'Lose 15 coins', coinDelta: -15 },
+    ]));
+    registerStorylineOptions('evt-frz', [
+      {
+        label: 'Branch',
+        successorId: null,
+        effectPolicy: 'skip',
+        condition: () => true,
+        successorResolver: (s) => (s.resourceBank.coins > 1000 ? 'evt-frz-high' : 'evt-frz-low'),
+      },
+    ]);
+    const event = getEventTemplates().find((c) => c.id === 'evt-frz') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-frz-0' });
+    processEndOfTurn(state); // draw at low coins
+
+    // Mutate state between draw and resolution: the resolver must see the
+    // new balance and pick the high branch.
+    state.resourceBank.coins = 5000;
+    const res = resolveEventOption(state, 0);
+    expect(res.pushedCard?.id).toContain('evt-frz-high');
+  });
+});
+
+// ── AC2/AC3/AC5: Callback successors (resolution-time) ──────
+
+describe('AC2 — callback successorResolver invoked at resolution time', () => {
+  it('pushes the successor returned by the callback', () => {
+    const state = setupMainStreetGame({ seed: 'succ-basic', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ', name: 'Callback Successor', effect: 'Lose 20 coins', coinDelta: -20 },
+      { id: 'evt-succ-a', name: 'Dynamic A', effect: 'Lose 10 coins', coinDelta: -10 },
+      { id: 'evt-succ-b', name: 'Dynamic B', effect: 'Lose 15 coins', coinDelta: -15 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ', name: 'Callback Successor', trigger: 'Incident',
+      cost: 0, effect: 'Lose 20 coins', target: 'All', coinDelta: -20, reputationDelta: 0,
+    } as EventCard;
+
+    const res = resolveStorylineOption(state, event, {
+      label: 'Dynamic',
+      successorId: 'evt-succ-a', // fallback that must be ignored
+      effectPolicy: 'apply',
+      successorResolver: () => 'evt-succ-b',
+    });
+
+    expect(res.pushedCard?.id).toContain('evt-succ-b');
+    expect(state.incidentDeck.map((c) => c.id)).toContain(res.pushedCard!.id);
+  });
+
+  it('uses runtime state to choose the successor', () => {
+    const state = setupMainStreetGame({ seed: 'succ-state', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ2', name: 'State Successor', effect: 'Lose 20 coins', coinDelta: -20 },
+      { id: 'evt-succ2-rich', name: 'Rich Branch', effect: 'Lose 10 coins', coinDelta: -10 },
+      { id: 'evt-succ2-poor', name: 'Poor Branch', effect: 'Lose 15 coins', coinDelta: -15 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ2', name: 'State Successor', trigger: 'Incident',
+      cost: 0, effect: 'Lose 20 coins', target: 'All', coinDelta: -20, reputationDelta: 0,
+    } as EventCard;
+
+    state.resourceBank.coins = 5000;
+    const rich = resolveStorylineOption(state, event, {
+      label: 'State',
+      successorId: null,
+      effectPolicy: 'skip',
+      successorResolver: (s) => (s.resourceBank.coins > 1000 ? 'evt-succ2-rich' : 'evt-succ2-poor'),
+    });
+    expect(rich.pushedCard?.id).toContain('evt-succ2-rich');
+  });
+
+  it('a null return ends the chain (no card pushed)', () => {
+    const state = setupMainStreetGame({ seed: 'succ-null', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ3', name: 'Null Successor', effect: 'Lose 20 coins', coinDelta: -20 },
+      { id: 'evt-succ3-x', name: 'Unused', effect: 'Lose 10 coins', coinDelta: -10 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ3', name: 'Null Successor', trigger: 'Incident',
+      cost: 0, effect: 'Lose 20 coins', target: 'All', coinDelta: -20, reputationDelta: 0,
+    } as EventCard;
+
+    const deckBefore = state.incidentDeck.length;
+    const res = resolveStorylineOption(state, event, {
+      label: 'End',
+      successorId: 'evt-succ3-x',
+      effectPolicy: 'skip',
+      successorResolver: () => null,
+    });
+
+    expect(res.pushedCard).toBeNull();
+    expect(state.incidentDeck.length).toBe(deckBefore);
+  });
+
+  it('an undefined return ends the chain (no card pushed)', () => {
+    const state = setupMainStreetGame({ seed: 'succ-undef', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ4', name: 'Undef Successor', effect: 'Lose 20 coins', coinDelta: -20 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ4', name: 'Undef Successor', trigger: 'Incident',
+      cost: 0, effect: 'Lose 20 coins', target: 'All', coinDelta: -20, reputationDelta: 0,
+    } as EventCard;
+
+    const res = resolveStorylineOption(state, event, {
+      label: 'End',
+      successorId: 'evt-succ4',
+      effectPolicy: 'skip',
+      successorResolver: () => undefined,
+    });
+
+    expect(res.pushedCard).toBeNull();
+  });
+
+  it('falls back to option.successorId when no resolver is present', () => {
+    const state = setupMainStreetGame({ seed: 'succ-fallback', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ5', name: 'Fallback', effect: 'Lose 20 coins', coinDelta: -20 },
+      { id: 'evt-succ5-next', name: 'Static Next', effect: 'Lose 10 coins', coinDelta: -10 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ5', name: 'Fallback', trigger: 'Incident',
+      cost: 0, effect: 'Lose 20 coins', target: 'All', coinDelta: -20, reputationDelta: 0,
+    } as EventCard;
+
+    const res = resolveStorylineOption(state, event, {
+      label: 'Static',
+      successorId: 'evt-succ5-next',
+      effectPolicy: 'apply',
+    });
+
+    expect(res.pushedCard?.id).toContain('evt-succ5-next');
+  });
+
+  it('applies the effect policy before invoking the successor resolver', () => {
+    const state = setupMainStreetGame({ seed: 'succ-order', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-succ6', name: 'Order', effect: 'Lose 30 coins', coinDelta: -30 },
+    ]));
+    const event: EventCard = {
+      family: 'event', id: 'evt-succ6', name: 'Order', trigger: 'Incident',
+      cost: 0, effect: 'Lose 30 coins', target: 'All', coinDelta: -30, reputationDelta: 0,
+    } as EventCard;
+    const before = state.resourceBank.coins;
+    let coinsSeenByResolver = -1;
+
+    resolveStorylineOption(state, event, {
+      label: 'Order',
+      successorId: null,
+      effectPolicy: 'apply',
+      successorResolver: (s) => {
+        coinsSeenByResolver = s.resourceBank.coins;
+        return null;
+      },
+    });
+
+    // The effect (lose 30 coins) has already been applied when the resolver
+    // runs, so the resolver observes the post-effect balance.
+    expect(coinsSeenByResolver).toBe(before - 30);
+  });
+});
+
+// ── AC4/AC6: Legacy equivalence + AI compatibility ──────────
+
+describe('AC4 — declarative path remains default with callbacks present', () => {
+  it('options without callbacks behave identically to legacy compilation', () => {
+    const card = makeChoiceEvent();
+    const legacyOptions = getStorylineOptions(card);
+    // No callbacks means no filtering — the full compiled list is returned
+    // whether or not state is supplied.
+    expect(legacyOptions).toEqual([
+      { label: 'Accept', successorId: 'evt-model-next-a', effectPolicy: 'apply' },
+      { label: 'Reject', successorId: 'evt-model-next-b', effectPolicy: 'skip' },
+    ]);
+  });
+
+  it('a mixed option list keeps callback-free options regardless of state', () => {
+    const state = setupMainStreetGame({ seed: 'mixed-default', difficulty: 'Medium' });
+    const options: StorylineOption[] = [
+      { label: 'Plain', successorId: null, effectPolicy: 'skip' },
+      { label: 'Gated', successorId: null, effectPolicy: 'skip', condition: () => false },
+    ];
+    registerStorylineOptions('evt-mixed', options);
+    const event = { family: 'event', id: 'evt-mixed', name: 'x', trigger: 'Incident', cost: 0, effect: 'x', target: 'All', coinDelta: 0, reputationDelta: 0 } as EventCard;
+
+    const withState = getStorylineOptions(event, state);
+    expect(withState.map((o) => o.label)).toEqual(['Plain']);
+    const withoutState = getStorylineOptions(event);
+    expect(withoutState.map((o) => o.label)).toEqual(['Plain', 'Gated']);
+  });
+
+  it('resolveEventOption still resolves a callback-free option list unchanged', () => {
+    const state = setupMainStreetGame({ seed: 'mixed-resolve', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-mixed2', name: 'Mixed Resolve', effect: 'Lose 40 coins', coinDelta: -40, hasChoices: true, acceptNextCardId: 'evt-mixed2-next', storylineId: 'arc-mixed' },
+      { id: 'evt-mixed2-next', name: 'Mixed Next', effect: 'Lose 10 coins', coinDelta: -10 },
+    ]));
+    const event = getEventTemplates().find((c) => c.id === 'evt-mixed2') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-mixed2-0' });
+    processEndOfTurn(state);
+
+    const res = resolveEventOption(state, 0);
+    expect(res.coinChange).toBe(-40);
+    expect(res.pushedCard?.id).toContain('evt-mixed2-next');
+  });
+});
+
+describe('AC6 — AI decision path selects only from presented options', () => {
+  it('resolveEventChoice with filtered list picks the available option', () => {
+    const state = setupMainStreetGame({ seed: 'ai-callback', difficulty: 'Easy' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-ai-cb', name: 'AI Callback', effect: 'Lose 50 coins', coinDelta: -50, hasChoices: true, storylineId: 'arc-ai' },
+      { id: 'evt-ai-cb-a', name: 'AI Branch A', effect: 'Gain 100 coins', coinDelta: 100 },
+      { id: 'evt-ai-cb-b', name: 'AI Branch B', effect: 'Lose 200 coins', coinDelta: -200 },
+    ]));
+    registerStorylineOptions('evt-ai-cb', [
+      { label: 'Good', successorId: 'evt-ai-cb-a', effectPolicy: 'apply', condition: () => true },
+      { label: 'Bad', successorId: 'evt-ai-cb-b', effectPolicy: 'apply', condition: () => false },
+    ]);
+    const event = getEventTemplates().find((c) => c.id === 'evt-ai-cb') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-ai-cb-0' });
+    processEndOfTurn(state); // draws the card → pending choice
+
+    // AI returns 'accept' → resolveEventChoice → resolveEventOption(0).
+    // Only 'Good' is in the filtered list at index 0.
+    resolveEventChoice(state, 'accept');
+
+    // Branch A was pushed (the 'Good' branch).
+    const pushedId = state.incidentDeck[0].id;
+    expect(pushedId).toContain('evt-ai-cb-a');
+    expect(pushedId).not.toContain('evt-ai-cb-b');
+  });
+});
+
+// ── AC2/AC3: Callback semantics across save/load and undo ───
+
+describe('callback semantics survive save/load and undo', () => {
+  /** Registers a callback storyline and draws it as a pending choice. */
+  function setupCallbackPending(seed: string): MainStreetState {
+    const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(buildCsv([
+      { id: 'evt-persist', name: 'Persist Callback', effect: 'Lose 30 coins', coinDelta: -30, hasChoices: true, storylineId: 'arc-persist' },
+      { id: 'evt-persist-low', name: 'Low Branch', effect: 'Lose 10 coins', coinDelta: -10 },
+      { id: 'evt-persist-high', name: 'High Branch', effect: 'Lose 15 coins', coinDelta: -15 },
+    ]));
+    registerStorylineOptions('evt-persist', [
+      {
+        label: 'Branch',
+        successorId: 'evt-persist-low',
+        effectPolicy: 'skip',
+        condition: () => true,
+        successorResolver: (s) => (s.resourceBank.coins > 1000 ? 'evt-persist-high' : 'evt-persist-low'),
+      },
+    ]);
+    const event = getEventTemplates().find((c) => c.id === 'evt-persist') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-persist-0' });
+    processEndOfTurn(state);
+    return state;
+  }
+
+  it('serialisation drops the runtime-only option snapshot', () => {
+    const state = setupCallbackPending('persist-serialize');
+    expect(state.pendingEventChoice!.options).toHaveLength(1);
+
+    const saved = serializeMainStreetState(state);
+    // The serialised form never carries callbacks (they are functions).
+    expect(saved.pendingEventChoice).not.toBeNull();
+    expect((saved.pendingEventChoice as { options?: unknown }).options).toBeUndefined();
+  });
+
+  it('a loaded save recompiles the option list from the runtime registry', () => {
+    const state = setupCallbackPending('persist-reload');
+    const saved = serializeMainStreetState(state);
+    const loaded = deserializeMainStreetState(saved);
+
+    // The snapshot is gone after load…
+    expect(loaded.pendingEventChoice!.options).toBeUndefined();
+    // …but the registry still supplies the (callback-equipped) option list,
+    // so resolution works via the recompile fallback.
+    loaded.resourceBank.coins = 5000;
+    const res = resolveEventOption(loaded, 0);
+    expect(res.pushedCard?.id).toContain('evt-persist-high');
+  });
+
+  it('undo restores an unresolved callback choice that still resolves', () => {
+    const state = setupCallbackPending('persist-undo');
+    const coinsBefore = state.resourceBank.coins;
+    const deckBefore = state.incidentDeck.length;
+    const undo = new UndoRedoManager();
+
+    // effectPolicy 'skip' → no coin change; successorResolver picks the low
+    // branch at the default (draw-time) balance.
+    const cmd = resolveEventChoiceCommand(state, 'accept');
+    undo.execute(cmd);
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.incidentDeck.length).toBe(deckBefore + 1);
+    expect(state.incidentDeck[state.incidentDeck.length - 1].id).toContain('evt-persist-low');
+
+    // Undo restores the unresolved pending choice (snapshot stripped).
+    undo.undo();
+    expect(state.pendingEventChoice!.resolved).toBe(false);
+    expect(state.pendingEventChoice!.chosenOption).toBeNull();
+    expect(state.pendingEventChoice!.options).toBeUndefined();
+    expect(state.incidentDeck.length).toBe(deckBefore);
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+
+    // Redo re-applies the callback successor (recompiled from the registry).
+    undo.redo();
+    expect(state.pendingEventChoice!.resolved).toBe(true);
+    expect(state.incidentDeck[state.incidentDeck.length - 1].id).toContain('evt-persist-low');
   });
 });

@@ -9,6 +9,8 @@
  * @module
  */
 
+import type { MainStreetState } from './MainStreetState';
+
 // ── Synergy Types ───────────────────────────────────────────
 
 /** Synergy types used by Business cards for adjacency bonuses. */
@@ -568,6 +570,29 @@ export interface StorylineOption {
   readonly successorId: string | null | undefined;
   /** Whether the event's intrinsic effect applies when this option is chosen. */
   readonly effectPolicy: 'apply' | 'skip';
+  /**
+   * Optional runtime condition evaluated at draw time.
+   * If the callback returns `false` the option is omitted from the presented
+   * option list.  Evaluated once when the option list is compiled (at draw
+   * time), never at resolution.
+   *
+   * **Contract:** must be a pure function — no observable side effects.
+   * Mutating state inside a condition callback is undefined behaviour.
+   *
+   * @readonly
+   */
+  readonly condition?: (state: MainStreetState) => boolean;
+  /**
+   * Optional runtime successor resolver evaluated at resolution time.
+   * When present, the callback is invoked and its return value is used as
+   * the pushed successor card ID instead of `option.successorId`.
+   * Returns `null` or `undefined` to end the chain (no card pushed).
+   *
+   * **Contract:** must be a pure function — no observable side effects.
+   *
+   * @readonly
+   */
+  readonly successorResolver?: (state: MainStreetState) => string | null | undefined;
 }
 
 /**

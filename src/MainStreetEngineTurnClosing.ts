@@ -26,7 +26,7 @@ import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import {
-  getStorylineOptions,
+  getPendingStorylineOptions,
   resolveStorylineOption,
   markChoiceResolved,
   recordStorylineResolution,
@@ -100,7 +100,7 @@ export function resolveIncident(
   // game-agnostic extraction seam. A bare `storylineId` is descriptive
   // metadata only and does NOT intercept resolution.
   if (eventHasStoryline(event)) {
-    const pending = createPendingStorylineChoice(event);
+    const pending = createPendingStorylineChoice(event, state);
     if (pending) {
       state.pendingEventChoice = pending;
       addLog(state, `Incident: ${event.name} — a decision is required.`, 'neutral');
@@ -190,7 +190,10 @@ export function resolveEventOption(
     throw new Error(`Event choice for ${pending.event.name} is already resolved.`);
   }
   const event = pending.event;
-  const options = getStorylineOptions(event);
+  // Use the draw-time frozen option snapshot when present so callback
+  // conditions are never re-evaluated at resolution time (AC3); fall back
+  // to recompiling for legacy pending choices without a snapshot.
+  const options = getPendingStorylineOptions(pending, state);
   if (options.length > 0) {
     const option = options[optionIndex];
     if (!option) {
