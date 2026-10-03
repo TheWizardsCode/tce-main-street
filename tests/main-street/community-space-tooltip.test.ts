@@ -168,7 +168,8 @@ describe('Community space card tooltip content (AC2)', () => {
 
     // Must contain key information
     expect(tooltip).toContain('Community Space: Park');
-    expect(tooltip).toContain('Cost: 300');
+    // Cost re-priced 300 -> 150 by MS-0MUR9IN7L0004TO5.
+    expect(tooltip).toContain('Cost: 150');
     expect(tooltip).toContain('Income: +0');
     expect(tooltip).toContain('Synergy: Entertainment');
     expect(tooltip).toContain(resolvedDescription(park!));

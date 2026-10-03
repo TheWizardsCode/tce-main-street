@@ -199,8 +199,8 @@ alongside business cards.
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
-| `cs-park` | Park | 300 | 0 | Entertainment | Park | Offers leisure space. Costs 40 coins per turn to run. Gains 50% of base income per adjacent Entertainment business or community space (scales with difficulty). | Reclassified from M1 Business; retagged Culture → Entertainment (CG-0MT3IPFSF005KEFB) so T1's spread is Culture 2 / Food 2 / Service 1 / Entertainment 1; cheapest community space. Running cost 40/turn (CG-0MU9NW9EP003B1AK) so Park-spam carries a real per-turn drain. |
-| `cs-library` | Library | 700 | 0 | Culture | Library | Quiet community space for reading and learning. Costs 25 coins/turn to run; +10 rep/turn. | Reputation asset: no income; small running cost for steady reputation. Full Culture synergy participation (Park model) — contributes to adjacent Culture businesses' synergy and receives rep synergy from rep-bonus neighbours (reversed by CG-0MSKS963N000ZSTU). |
+| `cs-park` | Park | 150 | 0 | Entertainment | Park | Offers leisure space. Costs 40 coins per turn to run. Gains 50% of base income per adjacent Entertainment business or community space (scales with difficulty). | Reclassified from M1 Business; retagged Culture → Entertainment (CG-0MT3IPFSF005KEFB) so T1's spread is Culture 2 / Food 2 / Service 1 / Entertainment 1; cheapest community space. Running cost 40/turn (CG-0MU9NW9EP003B1AK) so Park-spam carries a real per-turn drain. Cost re-priced 300 → 150 (MS-0MUR9IN7L0004TO5) to reflect its zero reputation and negative net value. |
+| `cs-library` | Library | 400 | 0 | Culture | Library | Quiet community space for reading and learning. Costs 25 coins/turn to run; +10 rep/turn. | Reputation asset: no income; small running cost for steady reputation. Full Culture synergy participation (Park model) — contributes to adjacent Culture businesses' synergy and receives rep synergy from rep-bonus neighbours (reversed by CG-0MSKS963N000ZSTU). Cost re-priced 700 → 400 (MS-0MUR9IN7L0004TO5); was the most overpriced community space (net drain of 10/turn). |
 
 ### M3 Community Space Templates (6) — Group B expansion (CG-0MSQJ210I00491ZZ)
 
@@ -208,12 +208,12 @@ Adds reputation assets across five synergies, including the family's first bridg
 
 | ID | Name | Cost | Income | Ongoing | Synergy | Tier | Rep/turn | Description | Rationale |
 |----|------|------|--------|---------|---------|------|----------|-------------|-----------|
-| `cs-playground` | Playground | 400 | 0 | 0 | Entertainment | 2 | 5 | A safe place for kids to play. Provides +5 reputation per turn. | Cheap early reputation asset (rebalanced from T1). |
-| `cs-community-garden` | Community Garden | 500 | 0 | 10 | Food | 2 | 10 | A shared garden plot for the neighbourhood. Costs 10 coins/turn to run; +10 rep/turn. | Food reputation asset with a small running cost. |
-| `cs-fountain` | Town Fountain | 500 | 0 | 0 | Culture | 3 | 10 | A gathering spot around the fountain. Provides +10 reputation per turn. | Culture reputation asset (rebalanced from T2). |
-| `cs-health-kiosk` | Health Kiosk | 600 | 0 | 15 | Health | 3 | 15 | A walk-up health advice kiosk. Costs 15 coins/turn to run; +15 rep/turn. | Health reputation asset; deepens the Health family. |
-| `cs-shelter` | Community Shelter | 600 | 0 | 0 | Service | 3 | 15 | A warm shelter for those in need. Provides +15 reputation per turn. | Service reputation asset; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg. |
-| `cs-public-art` | Public Art | 800 | 0 | 25 | Culture + Entertainment | 5 | 20 | A vibrant public sculpture. Costs 25 coins/turn to run; +20 rep/turn. Bridges Culture and Entertainment community spaces. | Bridge community space; highest ongoing cost and rep yield (rebalanced from T4). |
+| `cs-playground` | Playground | 300 | 0 | 0 | Entertainment | 2 | 5 | A safe place for kids to play. Provides +5 reputation per turn. | Cheap early reputation asset (rebalanced from T1). Cost re-priced 400 → 300 (MS-0MUR9IN7L0004TO5). |
+| `cs-community-garden` | Community Garden | 350 | 0 | 10 | Food | 2 | 10 | A shared garden plot for the neighbourhood. Costs 10 coins/turn to run; +10 rep/turn. | Food reputation asset with a small running cost. Cost re-priced 500 → 350 (MS-0MUR9IN7L0004TO5). |
+| `cs-fountain` | Town Fountain | 350 | 0 | 0 | Culture | 3 | 10 | A gathering spot around the fountain. Provides +10 reputation per turn. | Culture reputation asset (rebalanced from T2). Cost re-priced 500 → 350 (MS-0MUR9IN7L0004TO5). |
+| `cs-health-kiosk` | Health Kiosk | 450 | 0 | 15 | Health | 3 | 15 | A walk-up health advice kiosk. Costs 15 coins/turn to run; +15 rep/turn. | Health reputation asset; deepens the Health family. Cost re-priced 600 → 450 (MS-0MUR9IN7L0004TO5). |
+| `cs-shelter` | Community Shelter | 400 | 0 | 0 | Service | 3 | 15 | A warm shelter for those in need. Provides +15 reputation per turn. | Service reputation asset; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg. Cost re-priced 600 → 400 (MS-0MUR9IN7L0004TO5). |
+| `cs-public-art` | Public Art | 600 | 0 | 25 | Culture + Entertainment | 5 | 20 | A vibrant public sculpture. Costs 25 coins/turn to run; +20 rep/turn. Bridges Culture and Entertainment community spaces. | Bridge community space; highest ongoing cost and rep yield (rebalanced from T4). Cost re-priced 800 → 600 (MS-0MUR9IN7L0004TO5). |
 
 ### M3 Upgrade Templates (12) — Group E expansion (CG-0MSQJ7SYD008U3EE)
 
@@ -291,12 +291,12 @@ Gives every synergy a mid-tier Investment option and introduces two new duration
 
 | ID | Name | Cost | Target | Coins/biz | Rep | Tier | Effect | Rationale |
 |----|------|------|--------|-----------|-----|------|--------|-----------|
-| `evt-health-carnival` | Health Carnival | 500 | Health | +200 | +100 | 3 | +200 coins to all Health businesses and +100 reputation. | Health counterpart to Local Festival. |
-| `evt-food-tasting` | Food Tasting Tour | 500 | Food | +200 | +100 | 3 | +200 coins to all Food businesses and +100 reputation. | Food boost. |
-| `evt-art-sale` | Art Sale | 500 | Culture | +200 | +100 | 3 | +200 coins to all Culture businesses and +100 reputation. | Culture boost. |
-| `evt-shopping-spree` | Shopping Spree | 700 | Commerce | +250 | 0 | 4 | +250 coins to all Commerce businesses. | Commerce boost. |
-| `evt-summer-fest` | Summer Fest | 700 | Entertainment | +200 | +100 | 4 | +200 coins to all Entertainment businesses and +100 reputation. | Entertainment boost. |
-| `evt-service-week` | Service Week | 700 | Service | +200 | +100 | 4 | +200 coins to all Service businesses and +100 reputation. | Service boost. |
+| `evt-health-carnival` | Health Carnival | 350 | Health | +200 | +100 | 3 | +200 coins to all Health businesses and +100 reputation. | Health counterpart to Local Festival. Re-priced 500 → 350 (MS-0MUR9IN7L0004TO5) to lift ROI 0.70× → 1.00×. |
+| `evt-food-tasting` | Food Tasting Tour | 350 | Food | +200 | +100 | 3 | +200 coins to all Food businesses and +100 reputation. | Food boost. Re-priced 500 → 350 (MS-0MUR9IN7L0004TO5) to lift ROI 0.70× → 1.00×. |
+| `evt-art-sale` | Art Sale | 350 | Culture | +200 | +100 | 3 | +200 coins to all Culture businesses and +100 reputation. | Culture boost. Re-priced 500 → 350 (MS-0MUR9IN7L0004TO5) to lift ROI 0.70× → 1.00×. |
+| `evt-shopping-spree` | Shopping Spree | 350 | Commerce | +250 | 0 | 4 | +250 coins to all Commerce businesses. | Commerce boost. Re-priced 700 → 350 (MS-0MUR9IN7L0004TO5) to lift ROI 0.36× → 0.71×. |
+| `evt-summer-fest` | Summer Fest | 400 | Entertainment | +200 | +100 | 4 | +200 coins to all Entertainment businesses and +100 reputation. | Entertainment boost. Re-priced 700 → 400 (MS-0MUR9IN7L0004TO5) to lift ROI 0.50× → 0.88×. |
+| `evt-service-week` | Service Week | 400 | Service | +200 | +100 | 4 | +200 coins to all Service businesses and +100 reputation. | Service boost. Re-priced 700 → 400 (MS-0MUR9IN7L0004TO5) to lift ROI 0.50× → 0.88×. |
 
 #### Duration Events (2) — new effect types
 
