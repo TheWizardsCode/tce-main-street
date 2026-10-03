@@ -422,8 +422,9 @@ Main Street Milestone 5 (CG-0MOY5TOJK008JFJM) adds a first-time player onboardin
 
 ### Help/Rules Panel
 
-- Updated to 6 PRD-required sections: How to Play, Card Types, Synergy and Placement, Turn Flow, Win/Loss Conditions, Tools.
-- Each section has <= 8 lines of concise English-only copy.
+- 7 sections: How to Play, Card Types, Synergy and Placement, Staff & Specialization Skills (post-PRD addition), Turn Flow, Win/Loss Conditions, Tools.
+- Line budgets: How to Play <= 11, Turn Flow <= 13, all others <= 8. (Post-PRD mechanics copy in How to Play and Turn Flow exceeds the default 8-line ceiling.)
+- Each section uses concise English-only copy (author-controlled, newline-delimited, non-empty lines).
 
 ### Game Selector Integration
 
