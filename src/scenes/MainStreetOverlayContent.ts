@@ -357,12 +357,12 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(infoText);
     s.overlayObjects.push(infoText);
 
-    // Sell refund highlight (Sell only — Close grants no coins)
-    const refundText = s.add.text(centerX, panelY + 186, `Sell refund: +€${refund}`, {
+    // Sale value highlight (Sell only — Close grants no coins)
+    const saleValueText = s.add.text(centerX, panelY + 186, `Sale value: +€${refund}`, {
       fontSize: '20px', fontStyle: 'bold', color: '#44ff44', fontFamily: FONT_FAMILY,
     }).setOrigin(0.5).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(refundText);
-    s.overlayObjects.push(refundText);
+    if (s.hudContainer) s.hudContainer.add(saleValueText);
+    s.overlayObjects.push(saleValueText);
 
     // Close cost line — makes the 1-action / no-coins cost explicit
     const closeCostText = s.add.text(

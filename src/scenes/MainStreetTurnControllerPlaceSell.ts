@@ -301,7 +301,6 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     const cardLabel = isCommunitySpace ? 'Community Space' : 'Business';
     const info = `${cardLabel}: ${card.name}\n` +
       `Purchase €${card.cost} · Upgrades €${(card as any).totalUpgradeCost ?? 0}\n` +
-      `Sell refund €${refund} (base €${breakdown.baseRefund})\n` +
       `Synergy: +€${breakdown.synergyIncomeComponent} income, +€${breakdown.synergyRepComponent} rep\n\n` +
       `Sell: free, card stays on the grid (inert).`;
 
