@@ -19,6 +19,7 @@ import { onBusinessCardClick, onEventCardClick, onRefreshMarketClick, onPeekClic
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
 import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
 import { animateMarketDealIn, animateMarketSwap, animateNewSynergyPairs } from './MainStreetTurnControllerAnimation';
+import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
 
 export type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -68,6 +69,7 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   }
 
   public onBusinessCardClick(card: BusinessCard): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onBusinessCardClick(this, card);
   }
 
@@ -84,6 +86,7 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   }
 
   public onDragDropBusiness(payload: DragDropPayload): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onDragDropBusiness(this, payload);
   }
 
@@ -96,6 +99,7 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   }
 
   public onDragDropUpgrade(payload: DragDropPayload): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onDragDropUpgrade(this, payload);
   }
 
@@ -112,22 +116,27 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   }
 
   public onSlotClick(slotIndex: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onSlotClick(this, slotIndex);
   }
 
   public onEventCardClick(card: EventCard): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onEventCardClick(this, card);
   }
 
   public onRefreshMarketClick(): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onRefreshMarketClick(this);
   }
 
   public onPeekClick(): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onPeekClick(this);
   }
 
   public onCommunityFavourClick(direction: 'coins-to-rep' | 'rep-to-coins'): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onCommunityFavourClick(this, direction);
   }
 
@@ -147,34 +156,42 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   }
 
   public onUpgradeCardClick(card: UpgradeCard): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onUpgradeCardClick(this, card);
   }
 
   public onHandUpgradeCardClick(index: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onHandUpgradeCardClick(this, index);
   }
 
   public applyHandUpgradeToSlot(handIndex: number, slotIndex: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     applyHandUpgradeToSlot(this, handIndex, slotIndex);
   }
 
   public onStaffCardClick(card: StaffCard): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onStaffCardClick(this, card);
   }
 
   public onHandBusinessCardClick(index: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onHandBusinessCardClick(this, index);
   }
 
   public onHandEventCardClick(index: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onHandEventCardClick(this, index);
   }
 
   public onDiscardHandCard(handIndex: number | null): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onDiscardHandCard(this, handIndex);
   }
 
   public onSellCard(slotIndex: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
     onSellCard(this, slotIndex);
   }
 }

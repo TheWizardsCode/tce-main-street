@@ -22,6 +22,11 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
+import {
+  endCompetitiveTurnDay,
+  isCompetitiveState,
+  startCompetitiveDay,
+} from './MainStreetTurnControllerCompetitive';
 
 export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarketRefill: boolean = false, suppressWeekBanner: boolean = false): void {
     // A new day begins: reset the per-turn celebrated-challenge set so this
@@ -30,7 +35,12 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
 
     const s = tcCtx.scene;
     // Execute WeekStart (optionally refills market, transitions to MarketPhase)
-    executeWeekStart(s.state, skipMarketRefill);
+    if (isCompetitiveState(s.state)) {
+      // Competitive shared day: per-seat action budgets + human seat binding.
+      startCompetitiveDay(s.state, skipMarketRefill);
+    } else {
+      executeWeekStart(s.state, skipMarketRefill);
+    }
     // Staff applicant walk-on (CG-0MSTOATDU006UGAX): if a pending applicant
     // arrived at WeekStart the player must resolve it (hire or decline).
     s.pendingApplicant = (s.state as any).pendingApplicant ?? null;
@@ -93,6 +103,13 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
 export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
 
     const s = tcCtx.scene;
+    // Competitive shared day: the human's End Turn closes their MarketPhase,
+    // then the AI seats are driven to the shared closing. Single-player keeps
+    // the legacy processEndOfTurn path below byte-for-byte.
+    if (isCompetitiveState(s.state)) {
+      endCompetitiveTurnDay(tcCtx);
+      return;
+    }
     // Tutorial gating: only allow end-turn if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('end-turn' as TutorialActionType);
     if (check && !check.allowed) {
