@@ -140,6 +140,17 @@ export function startCompetitiveDay(
   state: MainStreetState,
   skipMarketRefill: boolean = false,
 ): void {
+  // Mid-day resume (MS-0MUTU8JKV003UQFG): a loaded checkpoint can be armed in
+  // MarketPhase with an active seat. Re-running WeekStart would reset the
+  // per-seat budgets and `activePlayerId`; instead bind the saved active seat
+  // and leave the shared day intact.
+  const midDayResume =
+    state.phase === 'MarketPhase' && (state.players?.length ?? 0) > 1;
+  if (midDayResume) {
+    bindCompetitiveSeat(state, getActivePlayerId(state));
+    return;
+  }
+
   executeCompetitiveWeekStart(state, skipMarketRefill);
   if (state.players && state.players.length > 0) {
     bindCompetitiveSeat(state, 0);
@@ -368,6 +379,10 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
   if (state.gameResult !== 'playing') {
     tcCtx.handleGameOver(closing);
   } else {
+    // Competitive turn-boundary checkpoint (MS-0MUTU8JKV003UQFG): the closing
+    // has advanced the shared day to WeekStart, so persist here (the
+    // single-player path saves after processEndOfTurn).
+    try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
     tcCtx.startTurnPhase();
   }
 }
