@@ -23,7 +23,7 @@ import type { TutorialControllerState } from '../TutorialFlow';
 import { createTutorialScenario } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, loadTutorialState, saveTutorialState, updateTutorialStatus } from '../TutorialState';
 import { MAIN_STREET_TF_SFX_MAPPING } from '../sfx-tf-mapping';
-import { getMainStreetTfModule, loadMainStreetTfModule } from '../tf/mainStreetTfModule';
+import { getMainStreetTfModule, getMainStreetTfDiagnostics, loadMainStreetTfModule } from '../tf/mainStreetTfModule';
 import { MainStreetAnimator } from './MainStreetAnimator';
 import { BG_COLOR, SFX_KEYS } from './MainStreetConstants';
 import { MainStreetInputManager } from './MainStreetInputManager';
@@ -215,11 +215,24 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     });
 
     // Late async tf module load (runtime-generated module path) without restart.
+    // On success the real player is attached; on failure the loader has
+    // already warned, and we forward the retained diagnostics so the debug
+    // indicator reports why ToneForge is inactive
+    // (CG-0MUU9PP9V000UOC3, CG-0MUTX0J5L0063RHS).
     void loadMainStreetTfModule().then((loadedModule) => {
-      if (!loadedModule || !s.soundManager) return;
+      const diagnostics = getMainStreetTfDiagnostics();
+      if (!loadedModule) {
+        s.soundManager?.setSynthDiagnostics({
+          factoryCount: diagnostics.factoryCount,
+          lastLoadError: diagnostics.lastLoadError,
+        });
+        return;
+      }
+      if (!s.soundManager) return;
       s.soundManager.setSynthIntegration(
         createTfPlayer(loadedModule),
         MAIN_STREET_TF_SFX_MAPPING,
+        { factoryCount: diagnostics.factoryCount, lastLoadError: diagnostics.lastLoadError },
       );
     });
 
