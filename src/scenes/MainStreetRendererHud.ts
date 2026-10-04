@@ -27,6 +27,8 @@ import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { createActionButton, createSceneTitle } from '@ui/Renderer';
 import Phaser from 'phaser';
+import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { renderCompetitiveScoreboard } from './MainStreetRendererCompetitiveHud';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
@@ -257,6 +259,13 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // (CG-0MUFAITX70081W41) so the player sees the action budget next to the
     // control it gates. Its tooltip moves with it (see `refreshActionButtons`).
 
+    // Competitive scoreboard (MS-0MUTU8J9T0034OT7): render every seat's own
+    // wallet/score above the strip so the shared (bound-seat) readout is not
+    // the only view. Single-player is unchanged.
+    if ((s.state.players?.length ?? 0) > 1) {
+      renderCompetitiveScoreboard(renderer);
+    }
+
     // HUD tooltip zones (desktop: pointer hover, mobile: tap toggle)
     if (!s.replayMode) {
       attachHudTooltipZone(s, coinText, HUD_ARIA_LABELS.coins, () => buildCoinsTooltip(s.state));
@@ -409,7 +418,9 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
     // The applicant phase (CG-0MSTOATDU006UGAX) deliberately shares the
     // market action bar so End Turn stays reachable — ending the turn
     // auto-declines an unresolved applicant instead of stranding the player.
-    if (s.uiPhase === 'market' || s.uiPhase === 'applicant') {
+    // In competitive mode the market controls are hidden while an AI seat is
+    // active (input is gated in the controller too; MS-0MUTU8J9T0034OT7).
+    if ((s.uiPhase === 'market' || s.uiPhase === 'applicant') && canHumanSeatAct(s.state)) {
       const rightX = s.layout.gameW - 24;
       const by = s.layout.actionY;
 
