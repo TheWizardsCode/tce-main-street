@@ -152,6 +152,9 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     // Reset
     s.uiPhase = 'idle';
     s.pendingBusinessCard = null;
+    // Reset new-game selection flag so the mode selector reappears on
+    // scene restart (e.g. "Play Again" after game-over) — MS-0MUTTVR5K002ZDUP.
+    (s as { newGameSelectionMade?: boolean }).newGameSelectionMade = false;
     // Staff applicant render state (CG-0MSTOATDU006UGAX): destroy the
     // overlay rather than just dropping the reference, so a game restart
     // does not leak orphaned game objects.
