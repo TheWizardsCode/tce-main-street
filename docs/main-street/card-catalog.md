@@ -34,7 +34,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   Physiotherapist), mid-tier (T2/T3) singles, and the T5 Grand Hotel flagship.
   The producer-added Charity Shop (MS-0MUAYBAHW007RMSL) brings the family to 31.
 - Community Space grew from 2 to 8 with the Group B expansion (CG-0MSQJ210I00491ZZ):
-  6 new reputation assets across five synergies (Playground, Community Garden,
+  6 new reputation assets across four synergies (Playground, Community Garden,
   Town Fountain, Health Kiosk, Community Shelter, Public Art), including the
   first ongoing-cost community-space bridge card (Public Art).
 - Event family grew from 37 to 45 with the Group C expansion (CG-0MSQJ244M0055X7S):
@@ -204,12 +204,12 @@ alongside business cards.
 
 ### M3 Community Space Templates (6) — Group B expansion (CG-0MSQJ210I00491ZZ)
 
-Adds reputation assets across five synergies, including the family's first bridge card.
+Adds reputation assets across four synergies, including the family's first bridge card.
 
 | ID | Name | Cost | Income | Ongoing | Synergy | Tier | Rep/turn | Description | Rationale |
 |----|------|------|--------|---------|---------|------|----------|-------------|-----------|
 | `cs-playground` | Playground | 300 | 0 | 0 | Entertainment | 2 | 5 | A safe place for kids to play. Provides +5 reputation per turn. | Cheap early reputation asset (rebalanced from T1). Cost re-priced 400 → 300 (MS-0MUR9IN7L0004TO5). |
-| `cs-community-garden` | Community Garden | 350 | 0 | 10 | Food | 2 | 10 | A shared garden plot for the neighbourhood. Costs 10 coins/turn to run; +10 rep/turn. | Food reputation asset with a small running cost. Cost re-priced 500 → 350 (MS-0MUR9IN7L0004TO5). |
+| `cs-community-garden` | Community Garden | 350 | 0 | 10 | Entertainment | 2 | 10 | A shared community garden that hosts seasonal flower festivals. Costs 10 coins/turn to run; +10 rep/turn. | Entertainment reputation asset with a small running cost; retagged Food → Entertainment (CG-0MUNAQL870015WKF) so the festival garden anchors the Entertainment cluster. Cost re-priced 500 → 350 (MS-0MUR9IN7L0004TO5). |
 | `cs-fountain` | Town Fountain | 350 | 0 | 0 | Culture | 3 | 10 | A gathering spot around the fountain. Provides +10 reputation per turn. | Culture reputation asset (rebalanced from T2). Cost re-priced 500 → 350 (MS-0MUR9IN7L0004TO5). |
 | `cs-health-kiosk` | Health Kiosk | 450 | 0 | 15 | Health | 3 | 15 | A walk-up health advice kiosk. Costs 15 coins/turn to run; +15 rep/turn. | Health reputation asset; deepens the Health family. Cost re-priced 600 → 450 (MS-0MUR9IN7L0004TO5). |
 | `cs-shelter` | Community Shelter | 400 | 0 | 0 | Service | 3 | 15 | A warm shelter for those in need. Provides +15 reputation per turn. | Service reputation asset; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg. Cost re-priced 600 → 400 (MS-0MUR9IN7L0004TO5). |
@@ -445,16 +445,16 @@ The adjacency resolver (`MainStreetAdjacency.ts`) uses `some()` to check if any 
 
 | Synergy | Single-type | Bridge (shared) | Total |
 |---------|-------------|-----------------|-------|
-| Food | 4 (Bakery, Community Garden, Delicatessen, Diner) | 4 (Cafe, Food Truck, Juice Bar, Teahouse) | 8 |
+| Food | 3 (Bakery, Delicatessen, Diner) | 4 (Cafe, Food Truck, Juice Bar, Teahouse) | 7 |
 | Culture | 5 (Bookshop, Charity Shop, Craft Shop, Library, Town Fountain) | 6 (Art Gallery, Cafe, Flower Shop, Public Art, Teahouse, Yoga Studio) | 11 |
 | Commerce | 3 (Boutique, Pawn Shop, Toy Store) | 1 (Flower Shop) | 4 |
 | Service | 6 (Barbershop, Community Shelter, Grand Hotel, Hardware Store, Laundromat, Tailor) | 2 (Day Spa, Physiotherapist) | 8 |
-| Entertainment | 5 (Arcade, Cinema, Music Store, Park, Playground) | 4 (Art Gallery, Day Spa, Food Truck, Public Art) | 9 |
+| Entertainment | 6 (Arcade, Cinema, Community Garden, Music Store, Park, Playground) | 4 (Art Gallery, Day Spa, Food Truck, Public Art) | 10 |
 | Health | 6 (Clinic, Dentist, Gym, Health Kiosk, Pharmacy, Private Clinic) | 3 (Juice Bar, Physiotherapist, Yoga Studio) | 9 |
 
 Service and Health now have bridge representation on a par with the other types, while Commerce remains the most single-type reliant (its only bridge is the Flower Shop). Global totals are intentionally not balanced per type (Culture 11 vs Commerce 4) — the balance rule is defined **per tier**, mirroring the family rebalance (CG-0MT2WU0CX005Z143) along the synergy-type axis.
 
-> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** every tier's synergy-bearing cards (business + community-space) span ≥ 2 distinct types, and no type's assignment count within a tier exceeds 2× any other type's count in that tier (bridge cards count once per type they carry). Sparse tiers are stretched with retags/retiers rather than new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. The producer-added Charity Shop later adds T2 Culture (MS-0MUAYBAHW007RMSL), giving Commerce 2 / Service 1 / Culture 1. Enforced by `tests/main-street/tier-synergy-balance.test.ts`.
+> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** every tier's synergy-bearing cards (business + community-space) span ≥ 2 distinct types, and no type's assignment count within a tier exceeds 2× any other type's count in that tier (bridge cards count once per type they carry). Sparse tiers are stretched with retags/retiers rather than new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. The producer-added Charity Shop later adds T2 Culture (MS-0MUAYBAHW007RMSL), giving Commerce 2 / Service 1 / Culture 1. T4 Community Garden retagged Food→Entertainment (CG-0MUNAQL870015WKF), giving Service 1 / Food 1 / Entertainment 2 (both satisfy the 2× ratio). Enforced by `tests/main-street/tier-synergy-balance.test.ts`.
 
 ### Branching & Multi-Level Upgrades
 

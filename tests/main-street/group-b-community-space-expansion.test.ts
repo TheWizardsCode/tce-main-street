@@ -55,7 +55,7 @@ interface NewCommunitySpaceContract {
 // 4.87-turn business payback; see docs/main-street/analysis/community-space-event-repricing.md).
 const NEW_COMMUNITY_SPACE_CONTRACTS: NewCommunitySpaceContract[] = [
   { id: 'cs-playground', name: 'Playground', cost: 300, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 5 },
-  { id: 'cs-community-garden', name: 'Community Garden', cost: 350, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Food'], tier: '4', reputationPerTurn: 10 },
+  { id: 'cs-community-garden', name: 'Community Garden', cost: 350, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Entertainment'], tier: '4', reputationPerTurn: 10 },
   { id: 'cs-fountain', name: 'Town Fountain', cost: 350, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Culture'], tier: '5', reputationPerTurn: 10 },
   { id: 'cs-health-kiosk', name: 'Health Kiosk', cost: 450, baseIncome: 0, ongoingCost: 15, synergyTypes: ['Health'], tier: '8', reputationPerTurn: 15 },
   { id: 'cs-shelter', name: 'Community Shelter', cost: 400, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Service'], tier: '3', reputationPerTurn: 15 }, // retiered T6->T3 (CG-0MT5VZJLS000B8KI) so T3 keeps a non-Entertainment synergy type

@@ -202,8 +202,9 @@ cheaper community spaces are now more accessible for reputation building.
 
 ## 6. Impact on synergy anchors
 
-All community spaces retain their synergy types (Entertainment, Culture, Food,
-Health, Service) and synergy bonuses. The price changes do not alter the
+All community spaces retain their synergy types (Entertainment, Culture,
+Health, Service) and synergy bonuses (Community Garden was later retagged
+Food → Entertainment, CG-0MUNAQL870015WKF). The price changes do not alter the
 synergy formulas:
 
 ```
