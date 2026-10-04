@@ -13,7 +13,7 @@ import { INVALID_ACTION_MESSAGE, completeCurrentStep, exitTutorial, getCurrentSt
 import type { TutorialActionType, TutorialControllerState } from '../TutorialFlow';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
-import type { MainStreetNewGameOverlay } from './MainStreetNewGameOverlay';
+import type { MainStreetNewGameOverlay, NewGameSelectionFlagHolder } from './MainStreetNewGameOverlay';
 
 export function showTutorialOfferOrDeferredBanner(lmCtx: MainStreetLifecycleManagerContext, 
     tutorialOpts: TutorialVisibilityOptions,
@@ -26,8 +26,9 @@ export function showTutorialOfferOrDeferredBanner(lmCtx: MainStreetLifecycleMana
     // once per boot (not in replay) before the tutorial offer / deferred
     // banner; on confirm, apply the selection and continue the boot flow.
     const newGame = (s as { newGameOverlay?: MainStreetNewGameOverlay }).newGameOverlay;
-    if (newGame && !s.replayMode && !(s as { newGameSelectionMade?: boolean }).newGameSelectionMade) {
-      (s as { newGameSelectionMade?: boolean }).newGameSelectionMade = true;
+    const flagHolder = s as NewGameSelectionFlagHolder;
+    if (newGame && !s.replayMode && !flagHolder.newGameSelectionMade) {
+      flagHolder.newGameSelectionMade = true;
       newGame.show({
         onConfirm: (selection) => {
           lmCtx.applyNewGameSelection(selection);

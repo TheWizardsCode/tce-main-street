@@ -76,4 +76,24 @@ describe('New Game overlay (browser)', () => {
     expect(scene.state.players[1].aiStrategy).toBe('Random');
     expect(scene.state.players[1].aiDifficulty).toBe('Easy');
   });
+
+  it('presents the selector again after a scene restart (Play Again)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    // Complete a boot: confirm a selection, which sets the guard flag.
+    scene.msLifecycleManager.applyNewGameSelection({
+      mode: 'competitive',
+      opponents: [{ strategy: 'Random', difficulty: 'Easy' }],
+    });
+    await waitForCondition(() => (scene.state?.players?.length ?? 0) === 2);
+    expect(scene.newGameSelectionMade).toBe(true);
+
+    // Restart the scene the way the game-over `[ Play Again ]` button does.
+    scene.scene.restart();
+
+    // The guard must be reset in create(), so the selector is offered again.
+    await waitForCondition(() => scene.newGameSelectionMade === false);
+    await waitForCondition(() => scene.newGameOverlay?.isVisible === true);
+  });
 });

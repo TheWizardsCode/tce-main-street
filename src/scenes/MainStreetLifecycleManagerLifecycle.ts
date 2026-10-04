@@ -36,7 +36,7 @@ import { MainStreetTurnController } from './MainStreetTurnController';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
 import { StatsOverlay } from './StatsOverlay';
 import { TutorialOfferModal } from './TutorialOfferModal';
-import { MainStreetNewGameOverlay } from './MainStreetNewGameOverlay';
+import { MainStreetNewGameOverlay, resetNewGameSelectionFlag } from './MainStreetNewGameOverlay';
 
 export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 
@@ -154,7 +154,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     s.pendingBusinessCard = null;
     // Reset new-game selection flag so the mode selector reappears on
     // scene restart (e.g. "Play Again" after game-over) — MS-0MUTTVR5K002ZDUP.
-    (s as { newGameSelectionMade?: boolean }).newGameSelectionMade = false;
+    resetNewGameSelectionFlag(s);
     // Staff applicant render state (CG-0MSTOATDU006UGAX): destroy the
     // overlay rather than just dropping the reference, so a game restart
     // does not leak orphaned game objects.

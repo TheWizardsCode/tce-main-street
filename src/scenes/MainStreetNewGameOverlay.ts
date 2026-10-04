@@ -35,6 +35,26 @@ export interface MainStreetNewGameOverlayCallbacks {
   onConfirm: (selection: NewGameSelection) => void;
 }
 
+/**
+ * Scene flag marking that the boot-time New Game selector has already been
+ * presented for the current boot.
+ */
+export interface NewGameSelectionFlagHolder {
+  newGameSelectionMade?: boolean;
+}
+
+/**
+ * Clears the boot-time selector flag so a scene restart (e.g. "Play Again"
+ * after game-over, or menu round-trip) presents the New Game selector again.
+ *
+ * Phaser reuses the scene instance across `scene.restart()` / `scene.start()`,
+ * so instance properties persist and must be reset in `create()`
+ * (MS-0MUTTVR5K002ZDUP).
+ */
+export function resetNewGameSelectionFlag(scene: NewGameSelectionFlagHolder): void {
+  scene.newGameSelectionMade = false;
+}
+
 const STRATEGIES = ['Random', 'Greedy', 'BankingGreedy'] as const;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard'] as const;
 
