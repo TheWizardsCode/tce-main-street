@@ -97,6 +97,24 @@ export class MainStreetNewGameOverlay {
 
   // ── Rendering ─────────────────────────────────────────────
 
+  /**
+   * Registers a dynamic overlay object for cleanup AND parents it into
+   * `scene.hudContainer`. The latter is required: `createOverlayDialog`
+   * parents its box/title into the HUD container, so objects left on the
+   * scene root render *below* the box and are hidden (MS-0MUU24A3A005A7NW).
+   * Mirrors the `MainStreetOverlayContent` parenting convention.
+   */
+  private track<T extends Phaser.GameObjects.GameObject>(object: T): T {
+    this.dynamicObjects.push(object);
+    try {
+      const hud = (this.scene as unknown as {
+        hudContainer?: { add?: (o: Phaser.GameObjects.GameObject) => unknown };
+      }).hudContainer;
+      if (hud && typeof hud.add === 'function') hud.add(object);
+    } catch { /* headless: no HUD container */ }
+    return object;
+  }
+
   /** Rebuilds the dynamic content (called on every selection change). */
   private render(callbacks: MainStreetNewGameOverlayCallbacks): void {
     const dialog = this.dialog;
@@ -112,8 +130,7 @@ export class MainStreetNewGameOverlay {
     const addText = (text: string, size = '15px', color = BODY_COLOR): Phaser.GameObjects.Text => {
       const t = this.scene.add.text(x, y, text, { fontSize: size, color, fontFamily: 'Arial, sans-serif' });
       t.setDepth(dialog.depthBase + 3);
-      this.dynamicObjects.push(t);
-      return t;
+      return this.track(t);
     };
 
     addText('Choose how you want to play:', '16px');
@@ -130,7 +147,7 @@ export class MainStreetNewGameOverlay {
       this.selection.opponents = [];
       this.render(callbacks);
     });
-    this.dynamicObjects.push(single);
+    this.track(single);
 
     const competitiveActive = this.selection.mode === 'competitive';
     const competitive = createOverlayButton(this.scene, x + 280, y + 8, '[ Competitive ]', dialog.depthBase + 3, {
@@ -144,7 +161,7 @@ export class MainStreetNewGameOverlay {
       }
       this.render(callbacks);
     });
-    this.dynamicObjects.push(competitive);
+    this.track(competitive);
     y += 44;
 
     if (this.selection.mode === 'competitive') {
@@ -157,7 +174,7 @@ export class MainStreetNewGameOverlay {
           this.render(callbacks);
         }
       });
-      this.dynamicObjects.push(minus);
+      this.track(minus);
       const plus = createOverlayButton(this.scene, x + 240, y + 8, '[ + ]', dialog.depthBase + 3, { color: BODY_COLOR });
       plus.on('pointerdown', () => {
         if (this.selection.opponents.length < MAX_AI_OPPONENTS) {
@@ -165,7 +182,7 @@ export class MainStreetNewGameOverlay {
           this.render(callbacks);
         }
       });
-      this.dynamicObjects.push(plus);
+      this.track(plus);
       y += 40;
 
       // Per-opponent strategy/difficulty controls.
@@ -183,7 +200,7 @@ export class MainStreetNewGameOverlay {
           opponent.strategy = cycle(STRATEGIES, opponent.strategy as (typeof STRATEGIES)[number]);
           this.render(callbacks);
         });
-        this.dynamicObjects.push(strategyBtn);
+        this.track(strategyBtn);
 
         const difficultyBtn = createOverlayButton(this.scene, x + 360, y + 8, `[ ${opponent.difficulty} ]`, dialog.depthBase + 3, {
           color: ACTIVE_COLOR,
@@ -193,7 +210,7 @@ export class MainStreetNewGameOverlay {
           opponent.difficulty = cycle(DIFFICULTIES, opponent.difficulty as (typeof DIFFICULTIES)[number]);
           this.render(callbacks);
         });
-        this.dynamicObjects.push(difficultyBtn);
+        this.track(difficultyBtn);
         y += 40;
       });
     }
@@ -208,7 +225,7 @@ export class MainStreetNewGameOverlay {
       this.hide();
       callbacks.onConfirm(selection);
     });
-    this.dynamicObjects.push(start);
+    this.track(start);
   }
 }
 
