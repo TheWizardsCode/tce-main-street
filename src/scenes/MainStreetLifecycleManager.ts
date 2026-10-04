@@ -13,7 +13,8 @@ import type { TutorialActionType } from '../TutorialFlow';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import { preload, create, handleResize } from './MainStreetLifecycleManagerLifecycle';
 import { showTutorialOfferOrDeferredBanner, confirmTutorialStep, exitTutorialFlow, showTutorialStepOverlay, isTutorialActionAllowed, onTutorialActionComplete } from './MainStreetLifecycleManagerTutorial';
-import { loadCampaignAndSetup, updateCampaignProgress, updateStats, loadBoardState, checkForCsvMismatchAndRegenerate, checkForSavedCheckpoint } from './MainStreetLifecycleManagerCampaign';
+import { loadCampaignAndSetup, applyNewGameSelection, updateCampaignProgress, updateStats, loadBoardState, checkForCsvMismatchAndRegenerate, checkForSavedCheckpoint } from './MainStreetLifecycleManagerCampaign';
+import type { NewGameSelection } from './MainStreetNewGameSelection';
 
 export type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
 
@@ -61,6 +62,10 @@ export class MainStreetLifecycleManager implements MainStreetLifecycleManagerCon
 
   public loadCampaignAndSetup(): void {
     loadCampaignAndSetup(this);
+  }
+
+  public applyNewGameSelection(selection: NewGameSelection): void {
+    applyNewGameSelection(this, selection);
   }
 
   public updateCampaignProgress(): Promise<void> {

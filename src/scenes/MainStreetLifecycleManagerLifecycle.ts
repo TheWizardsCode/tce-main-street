@@ -36,6 +36,7 @@ import { MainStreetTurnController } from './MainStreetTurnController';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
 import { StatsOverlay } from './StatsOverlay';
 import { TutorialOfferModal } from './TutorialOfferModal';
+import { MainStreetNewGameOverlay } from './MainStreetNewGameOverlay';
 
 export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 
@@ -438,6 +439,13 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     if (!s.replayMode) {
       s.tooltipManager = new TooltipManager(s, s.settingsPanel);
     }
+
+    // Create the pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1).
+    // It is shown by showTutorialOfferOrDeferredBanner as the first blocking
+    // boot modal, before the tutorial offer / deferred banner.
+    try {
+      (s as any).newGameOverlay = new MainStreetNewGameOverlay(s);
+    } catch (_) { /* ignore if overlay cannot be created (headless) */ }
 
     // Create tutorial offer modal for first-launch onboarding (Milestone 5).
     // The modal shows before free turn interactions begin and blocks input
