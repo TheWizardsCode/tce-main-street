@@ -4,6 +4,28 @@
 
 This document captures the current implementation-level guidance for Main Street UI feedback polish in Milestone 4.
 
+## ToneForge runtime audio (activation + fallback)
+
+Main Street's SFX play through `SoundManager` with an optional ToneForge synth
+integration:
+
+- **Async activation.** `loadMainStreetTfModule()`
+  (`src/tf/mainStreetTfModule.ts`) resolves the committed runtime module after
+  scene boot and attaches it via `createTfPlayer()` / `setSynthIntegration()`.
+  After it settles, `SoundManager.isSynthActive()` is `true` and the debug
+  **ToneForge** entry reports `Active` (and can toggle synthesis without a scene
+  restart).
+- **Loud failures.** A load/normalisation failure emits a `console.warn` with
+  the reason and is retained by `getMainStreetTfDiagnostics()`
+  (`loaded` / `factoryCount` / `lastLoadError`), which the scene forwards to
+  `SoundManager.setSynthDiagnostics()`.
+- **Missing-factory fallback.** `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical
+  keys but the runtime module ships only 12 factories. A mapped key with no
+  matching factory now falls back to the WAV/Phaser path instead of going
+  silent (`tfAdapter` reports whether it handled the key;
+  `SoundManager.play()` falls through when it did not) — engine item
+  CG-0MUU9PSWC009CW76.
+
 ## Player hand layout
 
 Main Street renders the player hand with the core engine's single `HandView`
