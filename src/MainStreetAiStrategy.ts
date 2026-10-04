@@ -1461,6 +1461,27 @@ export function getCompetitivePlayer(
 }
 
 /**
+ * Resolves the decision-policy difficulty for a competitive seat
+ * (MS-0MUTU8ICD002I1MK).
+ *
+ * AI seats use their own per-seat `aiDifficulty`; producer decision Q3
+ * (epic MS-0MUTTVR5K002ZDUP) scopes this to the opponent's decision policy
+ * only. Human seats, single-player states and legacy saves without a per-seat
+ * difficulty fall back to the shared `state.config.difficultyName`.
+ *
+ * @param state    Current game state (read-only by convention).
+ * @param playerId Owner index; defaults to the active player.
+ * @returns Difficulty gating the acting seat's AI policy.
+ */
+export function resolveSeatDifficulty(
+  state: MainStreetState,
+  playerId?: number,
+): DifficultyName {
+  const player = getCompetitivePlayer(state, playerId);
+  return player?.aiDifficulty ?? state.config.difficultyName;
+}
+
+/**
  * Competitive planning horizon: the number of future turns a purchase is
  * expected to yield, derived from the ACTING PLAYER'S OWN score versus the
  * win threshold (not the shared `computeScore`).

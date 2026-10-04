@@ -149,6 +149,50 @@ export type EndReason =
 
 // ── Competitive State (CG-0MT5X3GMA007EG30) ─────────────────
 
+// ── Competitive seat configuration (MS-0MUTU8ICD002I1MK) ────
+
+/** Who controls a competitive seat: a human or an AI. */
+export type SeatController = 'human' | 'ai';
+
+/**
+ * AI strategy identifier for an AI-controlled competitive seat.
+ *
+ * Mirrors the `name` of the strategies in `MainStreetAiStrategy`
+ * (`RandomStrategy`, `GreedyStrategy`, `BankingGreedyStrategy`).
+ */
+export type AiSeatStrategy = 'Random' | 'Greedy' | 'BankingGreedy';
+
+/**
+ * AI decision-policy difficulty for an AI-controlled competitive seat.
+ *
+ * Per producer decision Q3 (epic MS-0MUTTVR5K002ZDUP) this gates only the
+ * opponent's decision policy; the shared economy keeps the player's global
+ * difficulty.
+ */
+export type AiSeatDifficulty = DifficultyName;
+
+/** All valid AI seat strategy identifiers. */
+export const AI_SEAT_STRATEGIES: readonly AiSeatStrategy[] = [
+  'Random',
+  'Greedy',
+  'BankingGreedy',
+] as const;
+
+/** All valid AI seat difficulties. */
+export const AI_SEAT_DIFFICULTIES: readonly AiSeatDifficulty[] = [
+  'Easy',
+  'Medium',
+  'Hard',
+] as const;
+
+/** Per-opponent seat configuration used when building a competitive game. */
+export interface CompetitiveOpponentConfig {
+  /** AI strategy for the seat. */
+  strategy: AiSeatStrategy;
+  /** AI decision-policy difficulty for the seat (Q3). */
+  difficulty: AiSeatDifficulty;
+}
+
 /** Per-player record for competitive mode (N-player-ready). */
 export interface PlayerRecord {
   /** Zero-based owner index; also the index into PlayerRecord[]. */
@@ -165,6 +209,22 @@ export interface PlayerRecord {
   actionBudget: number;
   /** Computed score for this player (updated each EndCheck). */
   score: number;
+  /**
+   * Who controls this seat. Set on every competitive seat created by
+   * `createCompetitiveState`; absent on legacy saves (treated as `'human'`).
+   */
+  controller?: SeatController;
+  /**
+   * AI strategy for AI-controlled seats; absent on human seats and legacy
+   * saves (`resolveSeatStrategy` defaults it to `'Greedy'`).
+   */
+  aiStrategy?: AiSeatStrategy;
+  /**
+   * AI decision-policy difficulty for AI-controlled seats; absent on human
+   * seats and legacy saves (`resolveSeatDifficulty` defaults it to the global
+   * `config.difficultyName`).
+   */
+  aiDifficulty?: AiSeatDifficulty;
 }
 
 /** A single street slot tagged with its owner. */
@@ -179,7 +239,39 @@ export interface OwnerTaggedSlot {
 export interface CompetitiveStateOptions extends MainStreetSetupOptions {
   /** Number of players (N >= 1); each gets a PlayerRecord. Must be >= 1. */
   playerCount: number;
+  /**
+   * Per-opponent seat configuration for AI seats 1..playerCount-1. When
+   * provided, its length must equal `playerCount - 1`. Omit for the legacy
+   * N=1 path or when all AI seats should use the default config.
+   */
+  opponents?: CompetitiveOpponentConfig[];
 }
+
+// ── Game-mode selection (MS-0MUTTVR5K002ZDUP) ───────────────
+
+/** Top-level game mode chosen at start. */
+export type GameMode = 'single-player' | 'competitive';
+
+/** Options shared by both mode selections. */
+export interface GameModeSelectionBase extends MainStreetSetupOptions {
+  /** The chosen game mode. */
+  mode: GameMode;
+}
+
+/** Single-player selection: no AI opponents. */
+export interface SinglePlayerModeSelection extends GameModeSelectionBase {
+  mode: 'single-player';
+}
+
+/** Competitive selection: at least one AI opponent. */
+export interface CompetitiveModeSelection extends GameModeSelectionBase {
+  mode: 'competitive';
+  /** Per-opponent configuration; at least one entry required. */
+  opponents: CompetitiveOpponentConfig[];
+}
+
+/** A start-of-game selection passed to `createStateFromModeSelection`. */
+export type GameModeSelection = SinglePlayerModeSelection | CompetitiveModeSelection;
 
 // ── Main Street State ───────────────────────────────────────
 

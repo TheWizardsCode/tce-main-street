@@ -27,6 +27,7 @@ import {
 import { CHALLENGE_TEMPLATES } from './MainStreetChallenges';
 import { attachMainStreetAchievements } from './MainStreetAchievements';
 import type { StreetCameraState } from './MainStreetMapView';
+import type { DifficultyName } from './MainStreetDifficulty';
 import type {
   MainStreetState,
   MainStreetSerializedState,
@@ -480,6 +481,32 @@ function resizeSoldSlots(sold: boolean[] | undefined, gridLength: number): boole
 }
 
 /**
+ * Backfills the per-seat competitive configuration on load
+ * (MS-0MUTU8ICD002I1MK AC5).
+ *
+ * Saves created before the seat-config feature lack `controller`,
+ * `aiStrategy` and `aiDifficulty`. Missing controllers default to `'human'`
+ * (the pre-feature behaviour — no seat was explicitly AI-controlled). When a
+ * seat IS explicitly AI, its policy fields are defaulted to `'Greedy'` and the
+ * global difficulty so every seat remains fully usable.
+ */
+function normalizeSeatConfig(
+  player: PlayerRecord,
+  fallbackDifficulty: DifficultyName,
+): PlayerRecord {
+  const controller = player.controller ?? 'human';
+  if (controller === 'ai') {
+    return {
+      ...player,
+      controller,
+      aiStrategy: player.aiStrategy ?? 'Greedy',
+      aiDifficulty: player.aiDifficulty ?? fallbackDifficulty,
+    };
+  }
+  return { ...player, controller };
+}
+
+/**
  * Re-sizes the playable street grid to a new planar world lattice
  * (`cols`×`rows` street cells), migrating every placed card, sold flag and
  * ownership tag by WORLD POSITION (CG-0MTH9OW0H0005VKE).
@@ -625,6 +652,15 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
         }
       : null,
   };
+
+  // ── Competitive seat-config backfill (MS-0MUTU8ICD002I1MK AC5) ──
+  // Legacy saves predate per-seat controller/strategy/difficulty fields;
+  // default them so every loaded seat stays usable.
+  if (state.players) {
+    state.players = state.players.map((player) =>
+      normalizeSeatConfig(player, state.config.difficultyName),
+    );
+  }
 
   // ── Per-business employedStaff backfill (CG-0MU3BNO590066H75) ──────
   // Legacy saves and pre-feature in-memory states linked employed staff via
