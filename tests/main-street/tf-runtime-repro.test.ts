@@ -1,27 +1,27 @@
 /**
- * Regression reproduction (engine work item CG-0MUTU0MFE0077H0F,
- * investigation child CG-0MUU9PPA3003S1S4; sibling tracking item
+ * End-to-end activation contract for the Main Street ToneForge runtime path
+ * (engine work item CG-0MUTU0MFE0077H0F; sibling tracking item
  * MS-0MUU9QYQE006NLEZ).
  *
- * ## Root cause
+ * ## Corrected root-cause note (engine child CG-0MUU9PSWI005EZ56)
  *
- * The committed ToneForge runtime synth module cannot produce a playable voice.
- * Every factory routes through `gainNode()`, which calls
- * `new Tone.Gain(clamp(initialVolume))` — passing the gain **positionally**.
- * Tone.js v15 interprets the positional argument as a `Param` and asserts
- * `isAudioParam(options.param) || options.param instanceof Param`, so
- * construction throws `param must be an AudioParam`.
+ * An earlier investigation concluded, from a Node-only reproduction, that the
+ * committed runtime module's `new Tone.Gain(clamp(v))` voice construction
+ * threw `param must be an AudioParam`, making every factory unplayable and so
+ * leaving ToneForge silent. **That conclusion was a Node-environment
+ * artefact**: with no Web Audio context, Tone.js's `Param` assertion fails for
+ * *any* `Gain` construction. In a real browser all 12 factories construct
+ * successfully, and the real scene ends up with an active synth player.
  *
- * `createTfPlayer()` catches the throw per-key and only warns, so the failure
- * is invisible: the module loads, the player attaches, `isSynthActive()` is
- * `true`, and yet nothing plays (and no WAV fallback either, because
- * `SoundManager.play()` returns early after delegating to the synth player).
+ * This test therefore pins the observable, environment-independent contract of
+ * the load -> normalise -> `createTfPlayer()` -> `setSynthIntegration()` chain
+ * that the scene relies on:
  *
- * This test reproduces the load -> normalise -> `createTfPlayer()` chain
- * exactly as the scene wires it and pins the observable contract.
- *
- * The sibling item (MS-0MUU9QYQE006NLEZ) converts the `it.todo` below into a
- * live assertion once the runtime-wiring fix lands.
+ *  - the real loader resolves a normalisable tf module with the expected
+ *    factory keys;
+ *  - attaching it makes `SoundManager.isSynthActive()` true;
+ *  - a synth-mapped key delegates to the synth player and does **not** hit the
+ *    WAV player.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -61,7 +61,7 @@ function createWavPlayer() {
   };
 }
 
-describe('Main Street ToneForge runtime reproduction', () => {
+describe('Main Street ToneForge runtime activation', () => {
   it('loads the committed module through the real loader', async () => {
     const module = await loadMainStreetTfModule();
 
@@ -71,7 +71,7 @@ describe('Main Street ToneForge runtime reproduction', () => {
     }
   });
 
-  it('attaches the loaded module and delegates a synth-mapped key', async () => {
+  it('attaches the loaded module and delegates a synth-mapped key away from WAV', async () => {
     const { player: wavPlayer, played } = createWavPlayer();
     const manager = new SoundManager(wavPlayer, { storage: null });
 
@@ -79,6 +79,13 @@ describe('Main Street ToneForge runtime reproduction', () => {
     expect(module).toBeTruthy();
 
     const synthPlayer = createTfPlayer(module!, { keyMap: MAIN_STREET_TF_SFX_MAPPING });
+    const synthCalls: string[] = [];
+    const originalPlay = synthPlayer.play.bind(synthPlayer);
+    synthPlayer.play = (key: string) => {
+      synthCalls.push(key);
+      originalPlay(key);
+    };
+
     manager.setSynthIntegration(synthPlayer, MAIN_STREET_TF_SFX_MAPPING);
     manager.register('sfx-deal', 'sfx-deal');
 
@@ -86,12 +93,7 @@ describe('Main Street ToneForge runtime reproduction', () => {
 
     manager.play('sfx-deal');
 
-    // The attach + delegation links of the chain are healthy: the WAV player
-    // is bypassed because the key is synth-mapped.
-    expect(played).not.toContain('sfx-deal');
+    expect(synthCalls).toEqual(['card-draw']);
+    expect(played).toEqual([]);
   });
-
-  it.todo(
-    'plays a synth voice for a mapped key (blocked on the runtime-wiring fix — gainNode() positional Tone.Gain arg, CG-0MUU9PSWI005EZ56)',
-  );
 });
