@@ -34,7 +34,7 @@ export function executeCompetitiveWeekStart(
 ): void {
   executeWeekStart(state, skipMarketRefill);
   if (state.players && state.players.length > 0) {
-    state.activePlayerId = 0;
+    state.activePlayerId = Math.max(0, getFirstActivePlayerId(state));
     // Per-player action budgets: reset each day from staff actions + bank.
     for (const p of state.players) {
       const bonus = (p.staffCards ?? []).reduce((s, c) => s + (c.actionsPerTurn ?? 0), 0);
@@ -45,11 +45,45 @@ export function executeCompetitiveWeekStart(
 }
 
 /**
+ * Index of the first non-eliminated seat, or `-1` when every seat is
+ * eliminated. Used to arm the shared day's first MarketPhase.
+ */
+export function getFirstActivePlayerId(state: MainStreetState): number {
+  const players = state.players ?? [];
+  for (let i = 0; i < players.length; i++) {
+    if (!players[i].eliminated) return i;
+  }
+  return -1;
+}
+
+/**
+ * Index of the next non-eliminated seat strictly after `from`, or `-1` when
+ * no active seat remains. Eliminated seats are skipped so they take no
+ * further MarketPhase (MS-0MUVQRBVI0015AB2).
+ */
+export function getNextActivePlayerId(state: MainStreetState, from: number): number {
+  const players = state.players ?? [];
+  for (let i = from + 1; i < players.length; i++) {
+    if (!players[i].eliminated) return i;
+  }
+  return -1;
+}
+
+/**
  * The active player within the shared day (read-only). 0 in single-player
  * (when players[] is absent). Exposed for scene/AI turn alternation.
+ *
+ * When the stored active seat has been eliminated, resolves to the first
+ * remaining active seat instead (MS-0MUVQRBVI0015AB2).
  */
 export function getActivePlayerId(state: MainStreetState): number {
-  return state.activePlayerId ?? 0;
+  const id = state.activePlayerId ?? 0;
+  const players = state.players;
+  if (players && players[id]?.eliminated) {
+    const first = getFirstActivePlayerId(state);
+    return first >= 0 ? first : id;
+  }
+  return id;
 }
 
 /** Sets the active player (internal use; tests may set it directly). */
@@ -80,10 +114,9 @@ export function endCompetitiveMarketTurn(state: MainStreetState): void {
   if (!state.players || state.players.length === 0) {
     throw new Error('endCompetitiveMarketTurn requires competitive state (players)');
   }
-  const n = state.players.length;
   const cur = state.activePlayerId ?? 0;
-  const next = cur + 1;
-  if (next < n) {
+  const next = getNextActivePlayerId(state, cur);
+  if (next >= 0) {
     state.activePlayerId = next;
     state.phase = 'MarketPhase';
   } else {
@@ -145,6 +178,8 @@ export function executeCompetitiveTurn(
     return mergeMidTurnChallenges(processEndOfTurn(state), midTurnCompleted);
   }
   for (let playerId = 0; playerId < n; playerId++) {
+    // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+    if (state.players![playerId].eliminated) continue;
     state.phase = 'MarketPhase';
     state.activePlayerId = playerId;
     runActions(playerActions[playerId]);

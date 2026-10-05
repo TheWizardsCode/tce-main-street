@@ -748,6 +748,8 @@ function playCompetitiveMarketPhases(
   executeCompetitiveWeekStart(state);
   const n = state.players!.length;
   for (let pid = 0; pid < n; pid++) {
+    // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+    if (state.players![pid].eliminated) continue;
     state.activePlayerId = pid;
     let guard = 0;
     for (;;) {

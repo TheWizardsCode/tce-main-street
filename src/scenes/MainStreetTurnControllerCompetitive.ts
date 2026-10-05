@@ -37,6 +37,7 @@ import {
   endCompetitiveMarketTurn,
   executeCompetitiveWeekStart,
   getActivePlayerId,
+  getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
 } from '../MainStreetEngineCompetitiveTurn';
@@ -232,6 +233,8 @@ function driveActiveAiSeat(
 ): number {
   const seat = state.players?.[playerId];
   if (!seat || seat.controller !== 'ai') return 0;
+  // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+  if (seat.eliminated) return 0;
 
   const maxActions = options.maxActionsPerSeat ?? DEFAULT_MAX_ACTIONS_PER_AI_SEAT;
   const rng = (options.rngForSeat ?? ((id) => defaultSeatRng(state, id)))(playerId);
@@ -295,10 +298,11 @@ export function driveAiSeatsUntilClosing(
   const players = state.players ?? [];
   let actions = 0;
 
-  for (let playerId = getActivePlayerId(state); playerId < players.length; playerId++) {
+  for (let playerId = getActivePlayerId(state); playerId >= 0 && playerId < players.length; playerId = getNextActivePlayerId(state, playerId)) {
     if (state.gameResult !== 'playing' || state.phase !== 'MarketPhase') break;
     const seat = players[playerId];
-    if (!seat || seat.controller !== 'ai') break; // human seat — await input
+    if (!seat || seat.eliminated) continue; // eliminated seats take no further turn
+    if (seat.controller !== 'ai') break; // human seat — await input
 
     state.activePlayerId = playerId;
     options.onActiveSeatChange?.(playerId);

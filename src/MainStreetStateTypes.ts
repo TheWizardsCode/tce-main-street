@@ -225,6 +225,14 @@ export interface PlayerRecord {
    * `config.difficultyName`).
    */
   aiDifficulty?: AiSeatDifficulty;
+  /**
+   * Whether this seat has been eliminated from competitive play
+   * (MS-0MUVQRBVI0015AB2). An eliminated seat is skipped in turn rotation and
+   * AI action enumeration, and its owned businesses/community spaces are
+   * closed (removed from `ownerTaggedGrid` and the street grid). Optional so
+   * legacy saves load unchanged; absent is treated as `false`.
+   */
+  eliminated?: boolean;
 }
 
 /** A single street slot tagged with its owner. */

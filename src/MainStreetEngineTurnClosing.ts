@@ -15,8 +15,8 @@ import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
-import { applyIncome, attachUpcomingDeltas } from './MainStreetAdjacency';
-import type { EventCard } from './MainStreetCards';
+import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
+import type { BusinessCard, EventCard } from './MainStreetCards';
 import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
@@ -771,6 +771,8 @@ export function checkCompetitiveSeatFailure(state: MainStreetState): Competitive
   if (!state.players || state.players.length === 0) return [];
   const failures: CompetitiveSeatFailure[] = [];
   for (const player of state.players) {
+    // Eliminated seats are already out of play — they no longer fail.
+    if (player.eliminated) continue;
     if (player.coins < 0) {
       failures.push({ playerId: player.playerId, reason: 'bankruptcy' });
     } else if (state.turn > 1 && player.reputation <= 0) {
@@ -781,14 +783,75 @@ export function checkCompetitiveSeatFailure(state: MainStreetState): Competitive
 }
 
 /**
+ * Closes every street slot owned by a seat as a **direct grid/discard
+ * operation**: no action cost and no wallet change. The card (if any) is
+ * pushed to the unified discard pile, the slot is emptied, the
+ * `ownerTaggedGrid` tag is cleared and neighbouring income/reputation/synergy
+ * caches are recalculated so the cancelled cards no longer contribute.
+ *
+ * @param state    Current game state (mutated in-place).
+ * @param playerId Owner index whose businesses are being closed.
+ * @returns The number of cards actually removed from the grid.
+ */
+export function closeEliminatedSeatBusinesses(
+  state: MainStreetState,
+  playerId: number,
+): number {
+  if (!state.ownerTaggedGrid) return 0;
+  let closed = 0;
+  for (let slotIndex = 0; slotIndex < state.ownerTaggedGrid.length; slotIndex++) {
+    const tag = state.ownerTaggedGrid[slotIndex];
+    if (!tag || tag.ownerId !== playerId) continue;
+
+    const card = state.streetGrid[slotIndex];
+    if (card !== null) {
+      // Remove the card entirely (including sold inert anchors) so it no
+      // longer contributes income, reputation or adjacency synergy.
+      state.discardPile.push(card as unknown as BusinessCard);
+      state.streetGrid[slotIndex] = null;
+      state.soldSlots[slotIndex] = false;
+      updateNeighborsOnClose(state, slotIndex);
+      closed += 1;
+    }
+    state.ownerTaggedGrid[slotIndex] = { card: null, ownerId: null };
+  }
+  return closed;
+}
+
+/**
+ * Eliminates a competitive seat (MS-0MUVQRBVI0015AB2): marks it
+ * `eliminated = true` and closes its owned businesses/community spaces.
+ * Idempotent — a seat already eliminated is a no-op.
+ *
+ * @param state    Current game state (mutated in-place).
+ * @param playerId Owner index to eliminate.
+ * @returns The number of businesses closed (0 when already eliminated).
+ */
+export function eliminateCompetitiveSeat(
+  state: MainStreetState,
+  playerId: number,
+): number {
+  const player = state.players?.[playerId];
+  if (!player || player.eliminated) return 0;
+  player.eliminated = true;
+  const closed = closeEliminatedSeatBusinesses(state, playerId);
+  addLog(
+    state,
+    `AI ${playerId} eliminated — ${closed} business${closed === 1 ? '' : 'es'} closed`,
+    'loss',
+  );
+  return closed;
+}
+
+/**
  * Applies the competitive per-seat failure evaluation to the game result.
  *
  * A failing **human** seat keeps the existing single-player loss semantics
  * (`gameResult = 'loss'` with `bankruptcy` / `reputation_collapse`). A failing
- * **AI** seat does **not** end the game here — elimination is handled by the
- * competitive closing orchestration (MS-0MUVQRBVI0015AB2).
+ * **AI** seat is eliminated (marked `eliminated` and its businesses closed)
+ * and does **not** end the game.
  *
- * @param state Current game state (mutated on a human failure).
+ * @param state Current game state (mutated on a human failure / AI elimination).
  * @returns `true` when the game ended (human failure), `false` otherwise.
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
@@ -808,7 +871,10 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
     return true;
   }
 
-  // AI seat failure(s) are attributed per seat and do not end the game.
+  // AI seat failure(s): eliminate the seat(s) and let the survivors play on.
+  for (const failure of failures) {
+    eliminateCompetitiveSeat(state, failure.playerId);
+  }
   return false;
 }
 

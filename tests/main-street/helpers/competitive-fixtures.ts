@@ -135,11 +135,13 @@ export function buildCompetitiveState(opts: BuildCompetitiveStateOptions): MainS
     player.reputation = override.reputation;
   }
 
-  // Apply grid slot ownership overrides.
+  // Apply grid slot ownership overrides. `ownerTaggedGrid` and `streetGrid`
+  // are kept in sync (as they are in a real game state).
   for (const override of slotOverrides) {
     const slot = state.ownerTaggedGrid![override.slotIndex];
     slot.ownerId = override.ownerId;
     slot.card = override.card;
+    state.streetGrid[override.slotIndex] = override.card;
   }
 
   updateCompetitiveScores(state);

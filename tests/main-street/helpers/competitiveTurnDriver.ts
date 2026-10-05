@@ -108,6 +108,11 @@ export interface RunCompetitiveGameOptions {
   strategies?: readonly MainStreetAiStrategy[];
   /** Explicit per-seat RNGs (mainly for tests); default seeded per seat. */
   seatRngs?: readonly (() => number)[];
+  /**
+   * Override the win threshold (mainly for tests). Lets a test guarantee a
+   * first-to-threshold win without depending on a fragile seed.
+   */
+  winThreshold?: number;
 }
 
 /**
@@ -153,6 +158,8 @@ export function driveCompetitiveMarketPhases(
   const playerCount = state.players?.length ?? 1;
 
   for (let playerId = 0; playerId < playerCount; playerId++) {
+    // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+    if (state.players![playerId].eliminated) continue;
     if (state.gameResult !== 'playing' || state.phase !== 'MarketPhase') break;
     state.activePlayerId = playerId;
 
@@ -211,6 +218,9 @@ export function runCompetitiveGame(options: RunCompetitiveGameOptions): Competit
   } = options;
 
   const state = createCompetitiveState({ seed, playerCount });
+  if (options.winThreshold !== undefined) {
+    state.config = { ...state.config, winThreshold: options.winThreshold } as typeof state.config;
+  }
   const strategies = resolveSeatStrategies(options.strategies, playerCount);
   const seatRngs = explicitRngs && explicitRngs.length === playerCount
     ? [...explicitRngs]
