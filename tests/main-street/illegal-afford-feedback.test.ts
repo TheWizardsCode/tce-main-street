@@ -254,6 +254,43 @@ describe('Main Street click-path illegal-afford feedback', () => {
       controller.onPlayHeldEvent(0);
       expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
     });
+
+    it('pre-flight gate leaves the action budget untouched and adds no undo command when unaffordable (MS-0MUUYGUVB009QOP6)', () => {
+      const event = takeInvestmentEvent(scene.state);
+      event.cost = 5;
+      scene.state.hand = [event];
+      scene.state.resourceBank.coins = 0;
+      scene.state.phase = 'MarketPhase';
+      scene.state.justMovedEventCardId = null;
+      const beforeActions = scene.state.actionsRemaining;
+      const undoBefore = scene.undoManager.undoSize;
+
+      controller.onPlayHeldEvent(0);
+
+      // Non-mutating predicate rejected the play: no action spent, no undo
+      // command recorded, card still in hand, coins unchanged.
+      expect(scene.state.actionsRemaining).toBe(beforeActions);
+      expect(scene.undoManager.undoSize).toBe(undoBefore);
+      expect(scene.state.hand).toHaveLength(1);
+      expect(scene.state.resourceBank.coins).toBe(0);
+      expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
+    });
+
+    it('a legal held-event play passes the pre-flight gate and consumes exactly one action', () => {
+      const event = takeInvestmentEvent(scene.state);
+      event.cost = 1;
+      scene.state.hand = [event];
+      scene.state.resourceBank.coins = 100;
+      scene.state.phase = 'MarketPhase';
+      scene.state.justMovedEventCardId = null;
+      const beforeActions = scene.state.actionsRemaining;
+
+      controller.onPlayHeldEvent(0);
+
+      expect(scene.state.actionsRemaining).toBe(beforeActions - 1);
+      expect(scene.state.hand.some((c: any) => c.id === event.id)).toBe(false);
+      expect(scene.undoManager.undoSize).toBe(1);
+    });
   });
 
   describe('onSlotClick (insufficient coins to place business from hand)', () => {

@@ -14,6 +14,7 @@ import type { EventCard } from '../MainStreetCards';
 import { playEventCommand, resolveEventChoiceCommand } from '../MainStreetCommands';
 import { applyEndOfTurnDeltas, executeWeekStart, finishDeferredEndOfTurn, finishDeferredTurnClosing, processEndOfTurn } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
+import { canPlayEvent } from '../MainStreetMarket';
 import { turnLabel } from '../MainStreetFormatting';
 import { addLog } from '../MainStreetState';
 import { finalizeMainStreetTranscript, recordMainStreetEvent } from '../MainStreetTranscript';
@@ -702,6 +703,18 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (index === undefined || index < 0 || index >= hand.length) return;
     const card = hand[index];
     if (card.family !== 'event') return;
+
+    // Pre-flight legality (MS-0MUUYGUVB009QOP6): reject an illegal event play
+    // BEFORE the command runs, so the player gets immediate feedback with no
+    // action/coin mutation even though the command layer also restores on
+    // throw. Mirrors the command's own affordability/action/timing checks.
+    const legality = canPlayEvent(s.state, index);
+    if (!legality.legal) {
+      const blockedSprite = s.msRenderer?.handView?.getSpriteAt?.(index) as any;
+      playIllegalFeedback(blockedSprite ?? s.actionContainer, s);
+      s.instructionText.setText(legality.reason ?? 'Cannot play this event.');
+      return;
+    }
 
     console.debug('[MS] onPlayHeldEvent: attempting PlayEvent', { eventId: card.id, coinsBefore: s.state.resourceBank.coins });
 
