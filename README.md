@@ -14,6 +14,15 @@ A playable web build is published automatically to:
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how the Pages site is built, released and
 verified.
 
+## Competitive ownership
+
+In human-vs-AI competitive play the shared street is owner-tagged. A seat may
+only **sell, close or upgrade a business it owns**; clicking an opponent-owned
+slot blocks the **Manage Card** dialog with an ownership-specific message. The
+rule is enforced in one legality layer (`canActiveSeatActOnSlot`) so the UI, AI
+and headless paths cannot diverge, and single-player play is unaffected. See
+[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
+
 ## Prerequisites
 
 - **Node.js 20** and npm (the CI workflow pins Node 20).

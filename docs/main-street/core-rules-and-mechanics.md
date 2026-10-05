@@ -270,7 +270,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. |
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
 | Hire a staff card | 1 action | From the general market row. |
-| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). |
+| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
 
 > **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
 > validated by a **non-mutating legality predicate before any mutation**, and
@@ -312,6 +312,19 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > Sell price (CG-0MT5XO7DI0066QCT): the sell refund mirrors the buy-and-place premium (1.5× purchase + upgrades) and adds the card's current synergy value, so emergency cash reflects what the card actually earns on the grid. A card with no synergies still recovers more than before (`/2 → ×1.5`); a well-synergised card recovers coins **plus** rep-derived value automatically. The breakdown is visible before the player confirms.
 
 > Close vs Sell (CG-0MT5XT7K3005IBBV): clicking a non-sold street card opens a **Manage Card** dialog with **[Sell] [Close] [Cancel]**. **Sell** is free and keeps the sold card on the grid as an inert synergy anchor (the slot remains occupied permanently). **Close** costs **1 action and no coins**, removes the card to the discard pile, recalculates its neighbours **without** the removed card's synergy, and frees the slot for a future placement. Sold cards cannot be closed — once sold, the only way past that slot is a future "clear sold card" capability (not yet implemented).
+
+> **Ownership in competitive play (MS-0MUV9P89G0061SRA).** In human-vs-AI
+> competitive games the shared street is owner-tagged (`ownerTaggedGrid`). A
+> seat may only **sell, close or upgrade a business it owns**; a cross-owner
+> attempt mutates no state. Clicking an opponent-owned occupied slot blocks the
+> **Manage Card** dialog and shows an ownership-specific illegal-move message
+> (e.g. *"That business belongs to AI 1."*). The rule is enforced in a single
+> legality layer (`canActiveSeatActOnSlot`, consulted by
+> `canSellBusiness`/`sellBusiness`, `canCloseBusiness`/`closeBusiness`, the
+> upgrade legality/execution paths, and the legacy `sellFromTableau` path), so
+> the UI, AI and headless flows cannot diverge. A permitted sell credits the
+> acting seat's wallet (the acting seat is the slot owner). Single-player states
+> carry no `ownerTaggedGrid`, so the gate is a no-op there.
 
 > Same-week composite pricing (CG-0MT24X0SX007RLHN): clicking a market card (move-to-hand, 1 action) and then placing it on an empty slot the same turn is a **single purchase**. If the move consumed the weekly action (0 actions left), the placement charges the **+50% premium** (`Math.ceil(cost * 1.5 * 2) / 2`) and consumes **no additional action**; an explainer dialog fires first (Proceed commits, Cancel aborts with no cost, "Don't show this again" persists the preference). If an action **remains** (Golden Mile 2-action weeks), the placement consumes it at **listed cost**. A card left in hand and placed in a **later** week costs that week's action at listed cost, with no dialog. Business and community-space cards are priced identically.
 

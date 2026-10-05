@@ -28,7 +28,7 @@ import {
   createCompetitiveState,
   type MainStreetState,
 } from '../../src/MainStreetState';
-import { executeWeekStart, canPlaceFromHand } from '../../src/MainStreetEngine';
+import { executeWeekStart, canPlaceFromHand, sellFromTableau, canSellFromTableau } from '../../src/MainStreetEngine';
 import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 import { updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
 import {
@@ -496,5 +496,56 @@ describe('Cross-owner ownership coverage (AC4-AC7)', () => {
     expect(illegalReason(result)).toBe('That business belongs to AI 1.');
     expect(getSeatLabel(1)).toBe('AI 1');
     expect(getSeatLabel(0)).toBe('the player');
+  });
+});
+
+// ── Legacy tableau sell path guard (MS-0MUVPGAG9005KFEA) ────
+
+describe('Legacy tableau sell path honours the ownership gate', () => {
+  it('canSellFromTableau rejects an opponent-owned slot', () => {
+    const state = compState('legacy-can');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'legacy-ai-biz' }), 0, 1);
+
+    const result = canSellFromTableau(state, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toContain('AI 1');
+  });
+
+  it('sellFromTableau throws for an opponent-owned slot and mutates no state', () => {
+    const state = compState('legacy-throw');
+    state.activePlayerId = 0;
+    const card = makeBiz({ id: 'legacy-ai-biz-2' });
+    place(state, card, 0, 1);
+
+    const coinsBefore = state.resourceBank.coins;
+    const discardBefore = state.discardPile.length;
+
+    expect(() => sellFromTableau(state, 0)).toThrow(/AI 1/);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.streetGrid[0]).toBe(card);
+    expect(state.discardPile).toHaveLength(discardBefore);
+  });
+
+  it('the owner can sell its own business via the legacy path', () => {
+    const state = compState('legacy-own');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'legacy-own-biz', cost: 20 }), 0, 0);
+
+    expect(canSellFromTableau(state, 0).legal).toBe(true);
+    const coinsBefore = state.resourceBank.coins;
+    sellFromTableau(state, 0);
+    expect(state.resourceBank.coins).toBeGreaterThan(coinsBefore);
+    expect(state.streetGrid[0]).toBeNull();
+  });
+
+  it('single-player legacy sell is unaffected (no owner-tagged grid)', () => {
+    const state = soloState('legacy-solo');
+    state.streetGrid[0] = makeBiz({ id: 'legacy-solo-biz' });
+
+    expect(canSellFromTableau(state, 0).legal).toBe(true);
+    sellFromTableau(state, 0);
+    expect(state.streetGrid[0]).toBeNull();
   });
 });

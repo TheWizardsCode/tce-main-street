@@ -8,6 +8,7 @@
  */
 
 import { updateNeighborsOnPlacement, updateNeighborsOnSale, tagSlotOwnerIfCompetitive, getSlotOwnerId } from './MainStreetAdjacency';
+import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from './MainStreetCards';
 import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
@@ -136,7 +137,8 @@ export function sellFromHand(
  *
  * @param state      Current game state (mutated in-place).
  * @param slotIndex  Street grid slot index of the card to sell.
- * @throws Error if the slot is empty or index is invalid.
+ * @throws Error if the slot is empty, the index is invalid, or (in
+ *         competitive mode) the slot is owned by a different seat.
  */
 export function sellFromTableau(
   state: MainStreetState,
@@ -152,6 +154,13 @@ export function sellFromTableau(
   // Check slot is occupied
   if (card === null) {
     throw new Error(`Slot ${slotIndex} is empty. Nothing to sell.`);
+  }
+
+  // Ownership gate (competitive only): a seat may only sell a business it
+  // owns. Single-player states carry no owner-tagged grid and are unaffected.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
   }
 
   // Calculate sell value (75% of purchase price)
@@ -267,7 +276,9 @@ export function canSellFromHand(
  * Checks whether the card at the given tableau slot can be sold without
  * mutating state.
  *
- * Validates slot bounds and slot occupancy.
+ * Validates slot bounds and slot occupancy. In competitive mode an
+ * opponent-owned slot is rejected with an ownership-specific reason;
+ * single-player states (no `ownerTaggedGrid`) are unaffected.
  *
  * @param state      Current game state (read-only).
  * @param slotIndex  Street grid slot index of the card to sell.
@@ -286,6 +297,12 @@ export function canSellFromTableau(
   // Check slot is occupied
   if (state.streetGrid[slotIndex] === null) {
     return { legal: false, reason: `Slot ${slotIndex} is empty. Nothing to sell.` };
+  }
+
+  // Ownership gate (competitive only): a seat may only sell its own business.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    return ownership;
   }
 
   return { legal: true };
