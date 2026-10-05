@@ -7,6 +7,7 @@
  */
 
 import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
+import { canPlaceFromHand } from '../MainStreetEngineCommands';
 
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { UpgradeCard } from '../MainStreetCards';
@@ -85,6 +86,26 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         return;
       }
 
+      // Pre-flight legality check (MS-0MUUDWIXG009IB0W): validate the move
+      // BEFORE any state mutation or animation. This prevents the player
+      // from wasting an action on a move that cannot complete. On failure
+      // the selection is retained so the player can try a different slot.
+      const premiumApplies = s.pendingHandJustMoved && s.state.actionsRemaining <= 0;
+      const premiumCost = premiumApplies
+        ? computeBusinessPurchasePremium(s.state, handCard.cost)
+        : undefined;
+      const legality = canPlaceFromHand(s.state, handIndex, slotIndex, premiumCost);
+      if (!legality.legal) {
+        const handSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex);
+        playIllegalFeedback(handSprite ?? s.actionContainer, s);
+        s.instructionText.setText(legality.reason ?? 'Move not available.');
+        // Return to market phase so the next click can retry or cancel
+        // (the hand card selection highlight is preserved for a quick retry).
+        s.uiPhase = 'market';
+        s.refreshAll();
+        return;
+      }
+
       const cardId = handCard.id;
       const cardName = handCard.name;
 
@@ -104,21 +125,6 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         // Capture synergy pairs before the placement mutates the grid so only
         // NEWLY formed pairs animate.
         const beforePairs = computeSynergyPairs(s.state.streetGrid, s.state.soldSlots ?? [], tcCtx.streetPairDims());
-
-        // Composite pricing (CG-0MT24X0SX007RLHN): a same-week card (just
-        // moved from the market this turn) is part of the move+place purchase
-        // — the move already spent the daily action. When no action remains
-        // for the placement step, the +50% premium replaces the missing
-        // action; when an action DOES remain (Golden Mile 2-action days), the
-        // placement consumes it at listed cost. Held cards (plan-ahead) always
-        // consume an action at listed cost.
-        const premiumApplies = s.pendingHandJustMoved && s.state.actionsRemaining <= 0;
-        // Effective premium after the street-wide Delivery Driver purchase
-        // discount (CG-0MUMCVH3N007KT1M); the engine recomputes the same
-        // value, so the pre-gate and the charge always agree.
-        const premiumCost = premiumApplies
-          ? computeBusinessPurchasePremium(s.state, handCard.cost)
-          : undefined;
 
         // Shared post-place cleanup (success, failure, or dialog cancel).
         const finish = (): void => {
