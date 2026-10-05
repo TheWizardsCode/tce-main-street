@@ -15,6 +15,7 @@ import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
 import type { BusinessCard, UpgradeCard, EventCard } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
+import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import { resolveEvent } from './MainStreetEngine';
 import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
@@ -147,6 +148,15 @@ export function canPurchaseUpgrade(
     return { legal: false, reason: 'Card not found in the upgrade market.' };
   }
 
+  // Ownership gate (competitive only): an upgrade may only target a business
+  // the acting seat owns. With an explicit slot, reject it here so the caller
+  // gets an ownership-specific reason; without one, default target resolution
+  // below is ownership-filtered by `findTargetBusinessSlot`.
+  if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) return ownership;
+  }
+
   // Per-business upgrade discount (CG-0MTKMGL66004I0PC): resolve the discount
   // for the target business BEFORE the coin check, so a Financial Advisor
   // employed at the target can make an otherwise-unaffordable upgrade
@@ -183,13 +193,7 @@ export function canPurchaseUpgrade(
             b.level < b.maxLevel
           );
         })()
-      : state.streetGrid.some(
-          b =>
-            b !== null &&
-            b.name === card.targetBusiness &&
-            b.level === requiredLevel &&
-            b.level < b.maxLevel,
-        );
+      : findTargetBusinessSlot(state, card) !== -1;
   if (!hasTarget) {
     return {
       legal: false,
@@ -401,6 +405,8 @@ export function canPlayUpgradeFromHand(
 
   let businessIndex: number;
   if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) return ownership;
     const biz = state.streetGrid[targetSlot];
     const requiredLevel = upgrade.requiredLevel ?? 0;
     if (
@@ -447,6 +453,8 @@ export function playUpgradeFromHand(
   let businessIndex: number;
   const requiredLevel = upgrade.requiredLevel ?? 0;
   if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) throw new Error(ownership.reason);
     const biz = state.streetGrid[targetSlot];
     if (
       !biz ||
@@ -585,6 +593,14 @@ export function purchaseUpgrade(
     businessIndex = findTargetBusinessSlot(state, card);
   }
 
+  // Ownership gate (competitive only) — defence in depth: even if a caller
+  // bypasses `canPurchaseUpgrade`, an opponent-owned target must never be
+  // mutated.
+  const ownership = canActiveSeatActOnSlot(state, businessIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
+  }
+
   const business = state.streetGrid[businessIndex]!;
 
   // Deduct the discounted cost (per-business upgrade discount,
@@ -654,6 +670,11 @@ export function canBuyAndPlaceUpgrade(
   if (targetSlot < 0 || targetSlot >= state.streetGrid.length) {
     return { legal: false, reason: `Invalid slot index: ${targetSlot}.` };
   }
+
+  // Ownership gate (competitive only): a drag-drop upgrade may only target a
+  // business the acting seat owns.
+  const ownership = canActiveSeatActOnSlot(state, targetSlot);
+  if (!ownership.legal) return ownership;
 
   const biz = state.streetGrid[targetSlot];
   const requiredLevel = card.requiredLevel ?? 0;

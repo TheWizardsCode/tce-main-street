@@ -29,7 +29,7 @@ import {
   type MainStreetState,
 } from '../../src/MainStreetState';
 import { executeWeekStart } from '../../src/MainStreetEngine';
-import type { BusinessCard } from '../../src/MainStreetCards';
+import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 import { updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
 import {
   bindCompetitiveSeat,
@@ -40,6 +40,12 @@ import {
   canSellBusiness,
   closeBusiness,
   canCloseBusiness,
+  canPlayUpgradeFromHand,
+  playUpgradeFromHand,
+  canPurchaseUpgrade,
+  purchaseUpgrade,
+  canBuyAndPlaceUpgrade,
+  findTargetBusinessSlot,
 } from '../../src/MainStreetMarket';
 import type { LegalityResult } from '@rule-engine';
 import {
@@ -287,5 +293,144 @@ describe('Sell command rejects cross-owner execution', () => {
 
     expect(() => sellBusinessCommand(state, 0).execute()).toThrow(/AI 1/);
     expect(state.soldSlots[0]).toBe(false);
+  });
+});
+
+// ── Upgrade ownership gate (AC3) ────────────────────────────
+
+/**
+ * Resolves a level-0 upgrade and its matching business template from the
+ * seeded decks so the fixture always satisfies the name/level match rules.
+ */
+function upgradeFixture(state: MainStreetState): { upgrade: UpgradeCard; business: BusinessCard } {
+  const upgrade = state.decks.upgrade.find(
+    (u) => (u.requiredLevel ?? 0) === 0,
+  ) as UpgradeCard | undefined;
+  if (!upgrade) throw new Error('No level-0 upgrade template');
+  const business = state.decks.business.find(
+    (b) => b.name === upgrade.targetBusiness,
+  ) as BusinessCard | undefined;
+  if (!business) throw new Error(`No business template named "${upgrade.targetBusiness}"`);
+  return { upgrade, business };
+}
+
+/** A base-level copy of the fixture business, ready for placement. */
+function targetBiz(business: BusinessCard, level: number): BusinessCard {
+  return { ...business, level, appliedUpgrades: [] } as BusinessCard;
+}
+
+describe('Competitive upgrade ownership gate (AC3)', () => {
+  it('canPlayUpgradeFromHand rejects an opponent-owned target', () => {
+    const state = compState('up-hand-ai');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.hand = [{ ...upgrade }];
+    state.resourceBank.coins = 10000;
+    place(state, targetBiz(business, upgrade.requiredLevel ?? 0), 0, 1);
+
+    const result = canPlayUpgradeFromHand(state, 0, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toContain('AI 1');
+  });
+
+  it('canPlayUpgradeFromHand allows the owner to upgrade its own business', () => {
+    const state = compState('up-hand-own');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.hand = [{ ...upgrade }];
+    state.resourceBank.coins = 10000;
+    place(state, targetBiz(business, upgrade.requiredLevel ?? 0), 0, 0);
+
+    expect(canPlayUpgradeFromHand(state, 0, 0).legal).toBe(true);
+  });
+
+  it('playUpgradeFromHand throws for an opponent-owned target and mutates no state', () => {
+    const state = compState('up-play-ai');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.hand = [{ ...upgrade }];
+    state.resourceBank.coins = 10000;
+    const placed = targetBiz(business, upgrade.requiredLevel ?? 0);
+    place(state, placed, 0, 1);
+
+    const coinsBefore = state.resourceBank.coins;
+    const levelBefore = placed.level;
+
+    expect(() => playUpgradeFromHand(state, 0, 0)).toThrow(/AI 1/);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.hand).toHaveLength(1);
+    expect(placed.level).toBe(levelBefore);
+  });
+
+  it('canPurchaseUpgrade rejects an opponent-owned explicit target', () => {
+    const state = compState('up-buy-ai');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.market.cards.push({ ...upgrade });
+    state.resourceBank.coins = 10000;
+    place(state, targetBiz(business, upgrade.requiredLevel ?? 0), 0, 1);
+
+    const result = canPurchaseUpgrade(state, upgrade.id, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toContain('AI 1');
+  });
+
+  it('default target selection never resolves to an opponent-owned slot', () => {
+    const state = compState('up-default');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.market.cards.push({ ...upgrade });
+    state.resourceBank.coins = 10000;
+    const requiredLevel = upgrade.requiredLevel ?? 0;
+    // Opponent owns slot 0; the acting seat owns slot 1 — both eligible.
+    place(state, targetBiz(business, requiredLevel), 0, 1);
+    place(state, targetBiz(business, requiredLevel), 1, 0);
+
+    expect(findTargetBusinessSlot(state, upgrade)).toBe(1);
+    expect(canPurchaseUpgrade(state, upgrade.id).legal).toBe(true);
+  });
+
+  it('purchaseUpgrade throws for an opponent-owned target and mutates no state', () => {
+    const state = compState('up-purchase-ai');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.market.cards.push({ ...upgrade });
+    state.resourceBank.coins = 10000;
+    const placed = targetBiz(business, upgrade.requiredLevel ?? 0);
+    place(state, placed, 0, 1);
+
+    const coinsBefore = state.resourceBank.coins;
+    const marketBefore = state.market.cards.length;
+
+    expect(() => purchaseUpgrade(state, upgrade.id, 0)).toThrow(/AI 1/);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.market.cards).toHaveLength(marketBefore);
+    expect(placed.level).toBe(upgrade.requiredLevel ?? 0);
+  });
+
+  it('the drag-drop upgrade gate rejects an opponent-owned target', () => {
+    const state = compState('up-drag-ai');
+    state.activePlayerId = 0;
+    const { upgrade, business } = upgradeFixture(state);
+    state.market.cards.push({ ...upgrade });
+    state.resourceBank.coins = 10000;
+    place(state, targetBiz(business, upgrade.requiredLevel ?? 0), 0, 1);
+
+    const result = canBuyAndPlaceUpgrade(state, upgrade.id, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toContain('AI 1');
+  });
+
+  it('single-player upgrade targeting is unaffected (no owner-tagged grid)', () => {
+    const state = soloState('up-solo');
+    const { upgrade, business } = upgradeFixture(state);
+    state.hand = [{ ...upgrade }];
+    state.resourceBank.coins = 10000;
+    state.streetGrid[0] = targetBiz(business, upgrade.requiredLevel ?? 0);
+
+    expect(findTargetBusinessSlot(state, upgrade)).toBe(0);
+    expect(canPlayUpgradeFromHand(state, 0, 0).legal).toBe(true);
   });
 });
