@@ -1,0 +1,291 @@
+/**
+ * Main Street: Competitive Cross-Owner Sell/Close Ownership Tests
+ *
+ * Leaf MS-0MUVPG9C5004T47L (parent MS-0MUV9P89G0061SRA): in competitive mode a
+ * seat may only sell or close a street slot it owns. The gate lives in the
+ * legality/command layer (`canSellBusiness`/`sellBusiness`,
+ * `canCloseBusiness`/`closeBusiness`) via the shared
+ * `canActiveSeatActOnSlot` helper, so UI, AI and headless paths share one
+ * source of truth. Single-player states carry no `ownerTaggedGrid`, so the
+ * gate is a no-op there.
+ *
+ * AC references (MS-0MUVPG9C5004T47L):
+ *   AC1/AC2: `canSellBusiness` rejects an opponent-owned slot with an
+ *            ownership-specific reason; `sellBusiness` throws and mutates
+ *            no state.
+ *   AC3/AC4: `canCloseBusiness` rejects an opponent-owned slot; a rejected
+ *            `closeBusinessCommand` consumes no action and mutates no state.
+ *   AC5:     Single-player behaviour is unchanged.
+ *   AC6:     Existing phase/sold-slot/action-budget gates are preserved.
+ *
+ * @module
+ */
+
+import { describe, it, expect } from 'vitest';
+
+import {
+  setupMainStreetGame,
+  createCompetitiveState,
+  type MainStreetState,
+} from '../../src/MainStreetState';
+import { executeWeekStart } from '../../src/MainStreetEngine';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import { updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
+import {
+  bindCompetitiveSeat,
+  restoreCompetitiveSeat,
+} from '../../src/MainStreetAiStrategy';
+import {
+  sellBusiness,
+  canSellBusiness,
+  closeBusiness,
+  canCloseBusiness,
+} from '../../src/MainStreetMarket';
+import type { LegalityResult } from '@rule-engine';
+import {
+  sellBusinessCommand,
+  closeBusinessCommand,
+} from '../../src/MainStreetCommands';
+
+// ── Fixtures ────────────────────────────────────────────────
+
+/** Deterministic business card for controlled ownership scenarios. */
+function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
+  return {
+    family: 'business',
+    id: overrides.id ?? 'biz-test',
+    name: overrides.name ?? 'Test Biz',
+    cost: overrides.cost ?? 10,
+    baseIncome: overrides.baseIncome ?? 5,
+    synergyTypes: overrides.synergyTypes ?? [],
+    maxLevel: overrides.maxLevel ?? 2,
+    description: 'A test business',
+    level: overrides.level ?? 0,
+    incomeBonus: 0,
+    synergyRangeBonus: 0,
+    reputationBonus: 0,
+    ongoingCost: 0,
+    appliedUpgrades: [],
+    ...overrides,
+  } as BusinessCard;
+}
+
+/** Two-seat competitive state in MarketPhase with a predictable wallet. */
+function compState(seed: string = 'comp-ownership'): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount: 2 });
+  state.phase = 'MarketPhase';
+  state.actionsRemaining = 3;
+  state.resourceBank.coins = 10000;
+  // Predictable per-seat wallets (reputation 0 → multiplier 1).
+  for (const p of state.players!) {
+    p.coins = 1000;
+    p.reputation = 0;
+  }
+  return state;
+}
+
+/** Single-player state in MarketPhase (no `ownerTaggedGrid`). */
+function soloState(seed: string = 'solo-ownership'): MainStreetState {
+  const state = setupMainStreetGame({ seed });
+  executeWeekStart(state);
+  expect(state.phase).toBe('MarketPhase');
+  expect(state.ownerTaggedGrid).toBeUndefined();
+  return state;
+}
+
+/** Occupies a slot, refreshes adjacency, and tags its owner. */
+function place(
+  state: MainStreetState,
+  card: BusinessCard,
+  slot: number,
+  ownerId: number,
+): void {
+  state.streetGrid[slot] = card;
+  state.ownerTaggedGrid![slot] = { card, ownerId };
+  updateNeighborsOnPlacement(state, slot);
+}
+
+/** Asserts an illegal result and returns its reason (narrows the union). */
+function illegalReason(result: LegalityResult): string {
+  if (result.legal) throw new Error('Expected an illegal legality result');
+  return result.reason;
+}
+
+// ── Sell ownership gate (AC1/AC2) ───────────────────────────
+
+describe('Competitive sell ownership gate (AC1/AC2)', () => {
+  it('rejects selling an AI-owned slot from the human seat with an ownership reason', () => {
+    const state = compState('sell-ai');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'ai-biz' }), 0, 1);
+
+    const result = canSellBusiness(state, 0);
+    expect(result.legal).toBe(false);
+    const reason = illegalReason(result);
+    expect(reason).toContain('AI 1');
+    expect(reason).toMatch(/belongs to/i);
+  });
+
+  it('allows the human seat to sell its own business', () => {
+    const state = compState('sell-own');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'own-biz' }), 0, 0);
+
+    expect(canSellBusiness(state, 0).legal).toBe(true);
+  });
+
+  it('defensively rejects an AI seat selling the human-owned business', () => {
+    const state = compState('sell-human');
+    state.activePlayerId = 1;
+    place(state, makeBiz({ id: 'human-biz' }), 0, 0);
+
+    const result = canSellBusiness(state, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toMatch(/the player/i);
+  });
+
+  it('sellBusiness throws for an opponent-owned slot and mutates no state', () => {
+    const state = compState('sell-throw');
+    state.activePlayerId = 0;
+    const card = makeBiz({ id: 'ai-biz-2' });
+    place(state, card, 0, 1);
+
+    const coinsBefore = state.resourceBank.coins;
+    const gridBefore = state.streetGrid[0];
+    const soldBefore = state.soldSlots[0];
+    const logBefore = state.activityLog.length;
+
+    expect(() => sellBusiness(state, 0)).toThrow(/AI 1/);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.streetGrid[0]).toBe(gridBefore);
+    expect(state.soldSlots[0]).toBe(soldBefore);
+    expect(state.activityLog).toHaveLength(logBefore);
+  });
+
+  it('credits the owning seat wallet when the owner sells its own business', () => {
+    const state = compState('sell-wallet');
+    state.activePlayerId = 0;
+    // Bind the acting seat so the shared wallet mirrors players[0] during play.
+    bindCompetitiveSeat(state, 0);
+    place(state, makeBiz({ id: 'own-wallet-biz' }), 0, 0);
+
+    const walletBefore = state.players![0].coins;
+    sellBusiness(state, 0);
+    restoreCompetitiveSeat(state, 0);
+
+    expect(state.players![0].coins).toBeGreaterThan(walletBefore);
+    expect(state.players![1].coins).toBe(1000); // opponent untouched
+  });
+
+  it('keeps existing sell gates intact (phase and sold-slot)', () => {
+    const state = compState('sell-gates');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'own-gates' }), 0, 0);
+
+    state.phase = 'IncomePhase';
+    expect(canSellBusiness(state, 0).legal).toBe(false);
+
+    state.phase = 'MarketPhase';
+    state.soldSlots[0] = true;
+    const soldResult = canSellBusiness(state, 0);
+    expect(soldResult.legal).toBe(false);
+    expect(illegalReason(soldResult)).toMatch(/sold/i);
+  });
+});
+
+// ── Close ownership gate (AC3/AC4) ──────────────────────────
+
+describe('Competitive close ownership gate (AC3/AC4)', () => {
+  it('rejects closing an AI-owned slot from the human seat', () => {
+    const state = compState('close-ai');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'ai-close-biz' }), 0, 1);
+
+    const result = canCloseBusiness(state, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toContain('AI 1');
+  });
+
+  it('closeBusiness throws for an opponent-owned slot', () => {
+    const state = compState('close-throw');
+    state.activePlayerId = 0;
+    const card = makeBiz({ id: 'ai-close-biz-2' });
+    place(state, card, 0, 1);
+
+    expect(() => closeBusiness(state, 0)).toThrow(/AI 1/);
+    expect(state.streetGrid[0]).toBe(card);
+    expect(state.discardPile).toHaveLength(0);
+  });
+
+  it('a rejected close command consumes no action', () => {
+    const state = compState('close-no-action');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'ai-close-biz-3' }), 0, 1);
+
+    const actionsBefore = state.actionsRemaining;
+    const bankedBefore = state.bankedActions;
+
+    expect(() => closeBusinessCommand(state, 0).execute()).toThrow(/AI 1/);
+
+    expect(state.actionsRemaining).toBe(actionsBefore);
+    expect(state.bankedActions).toBe(bankedBefore);
+    expect(state.streetGrid[0]).not.toBeNull();
+  });
+
+  it('allows the owner to close its own business and frees the slot', () => {
+    const state = compState('close-own');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'own-close-biz' }), 0, 0);
+
+    expect(canCloseBusiness(state, 0).legal).toBe(true);
+    closeBusiness(state, 0);
+    expect(state.streetGrid[0]).toBeNull();
+  });
+
+  it('defensively rejects an AI seat closing the human-owned business', () => {
+    const state = compState('close-human');
+    state.activePlayerId = 1;
+    place(state, makeBiz({ id: 'human-close-biz' }), 0, 0);
+
+    expect(canCloseBusiness(state, 0).legal).toBe(false);
+    expect(() => closeBusiness(state, 0)).toThrow(/the player/i);
+  });
+});
+
+// ── Single-player no-op (AC5) ───────────────────────────────
+
+describe('Single-player sell/close unaffected (AC5)', () => {
+  it('canSellBusiness/sellBusiness remain legal without an owner-tagged grid', () => {
+    const state = soloState('solo-sell');
+    state.streetGrid[0] = makeBiz({ id: 'solo-sell-biz' });
+
+    expect(canSellBusiness(state, 0).legal).toBe(true);
+    const coinsBefore = state.resourceBank.coins;
+    sellBusiness(state, 0);
+    expect(state.resourceBank.coins).toBeGreaterThan(coinsBefore);
+    expect(state.soldSlots[0]).toBe(true);
+  });
+
+  it('canCloseBusiness/closeBusiness remain legal without an owner-tagged grid', () => {
+    const state = soloState('solo-close');
+    state.streetGrid[0] = makeBiz({ id: 'solo-close-biz' });
+
+    expect(canCloseBusiness(state, 0).legal).toBe(true);
+    closeBusiness(state, 0);
+    expect(state.streetGrid[0]).toBeNull();
+  });
+});
+
+// ── Command-level sell guard (AC2 integration) ──────────────
+
+describe('Sell command rejects cross-owner execution', () => {
+  it('sellBusinessCommand throws for an opponent-owned slot', () => {
+    const state = compState('sell-command');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'ai-cmd-biz' }), 0, 1);
+
+    expect(() => sellBusinessCommand(state, 0).execute()).toThrow(/AI 1/);
+    expect(state.soldSlots[0]).toBe(false);
+  });
+});
