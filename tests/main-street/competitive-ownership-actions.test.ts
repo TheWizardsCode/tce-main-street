@@ -28,9 +28,13 @@ import {
   createCompetitiveState,
   type MainStreetState,
 } from '../../src/MainStreetState';
-import { executeWeekStart } from '../../src/MainStreetEngine';
+import { executeWeekStart, canPlaceFromHand } from '../../src/MainStreetEngine';
 import type { BusinessCard, UpgradeCard } from '../../src/MainStreetCards';
 import { updateNeighborsOnPlacement } from '../../src/MainStreetAdjacency';
+import {
+  canActiveSeatActOnSlot,
+  getSeatLabel,
+} from '../../src/MainStreetAdjacencyOwner';
 import {
   bindCompetitiveSeat,
   restoreCompetitiveSeat,
@@ -432,5 +436,65 @@ describe('Competitive upgrade ownership gate (AC3)', () => {
 
     expect(findTargetBusinessSlot(state, upgrade)).toBe(0);
     expect(canPlayUpgradeFromHand(state, 0, 0).legal).toBe(true);
+  });
+});
+
+// ── Consolidated cross-owner coverage (AC4-AC7) ─────────────
+
+describe('Cross-owner ownership coverage (AC4-AC7)', () => {
+  it('a permitted close frees the slot for the owner to place immediately (AC5)', () => {
+    const state = compState('close-placeable');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'own-close-free' }), 0, 0);
+    closeBusiness(state, 0);
+
+    const held = makeBiz({ id: 'held-after-close', cost: 5, baseIncome: 2 });
+    state.hand.push(held);
+    state.resourceBank.coins = Math.max(state.resourceBank.coins, held.cost);
+
+    expect(canPlaceFromHand(state, 0, 0).legal).toBe(true);
+  });
+
+  it('an AI seat can upgrade its own business (positive competitive case)', () => {
+    const state = compState('up-ai-own');
+    state.activePlayerId = 1;
+    const { upgrade, business } = upgradeFixture(state);
+    state.hand = [{ ...upgrade }];
+    state.resourceBank.coins = 10000;
+    place(state, targetBiz(business, upgrade.requiredLevel ?? 0), 0, 1);
+
+    expect(canPlayUpgradeFromHand(state, 0, 0).legal).toBe(true);
+  });
+
+  it('sell, close and upgrade all return the same ownership-specific reason (AC7)', () => {
+    const state = compState('reasons');
+    state.activePlayerId = 0;
+    const { upgrade } = upgradeFixture(state);
+    state.market.cards.push({ ...upgrade });
+    state.resourceBank.coins = 10000;
+    place(state, makeBiz({ id: 'reason-biz' }), 0, 1);
+
+    const expected = 'That business belongs to AI 1.';
+    expect(illegalReason(canSellBusiness(state, 0))).toBe(expected);
+    expect(illegalReason(canCloseBusiness(state, 0))).toBe(expected);
+    expect(illegalReason(canPurchaseUpgrade(state, upgrade.id, 0))).toBe(expected);
+  });
+
+  it('the shared ownership gate is a no-op in single-player (AC5/AC6)', () => {
+    const state = soloState('gate-solo');
+    state.streetGrid[0] = makeBiz({ id: 'gate-solo-biz' });
+    expect(canActiveSeatActOnSlot(state, 0).legal).toBe(true);
+  });
+
+  it('the shared ownership gate rejects the non-owner and labels the owner (AC7)', () => {
+    const state = compState('gate-comp');
+    state.activePlayerId = 0;
+    place(state, makeBiz({ id: 'gate-comp-biz' }), 0, 1);
+
+    const result = canActiveSeatActOnSlot(state, 0);
+    expect(result.legal).toBe(false);
+    expect(illegalReason(result)).toBe('That business belongs to AI 1.');
+    expect(getSeatLabel(1)).toBe('AI 1');
+    expect(getSeatLabel(0)).toBe('the player');
   });
 });
