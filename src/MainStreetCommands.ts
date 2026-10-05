@@ -259,7 +259,20 @@ function snapshotAction(
     description,
     do(state: MainStreetState): void {
       if (pre === null) pre = captureSnapshot(state);
-      doFn(state);
+      try {
+        doFn(state);
+      } catch (err) {
+        // Restore action budget on failure so the command layer never
+        // consumes an action when the underlying operation throws.
+        // (CG-0MUUDWIXG009IB0W: atomic action consumption.)
+        if (pre.actionsRemaining !== null && pre.actionsRemaining !== undefined) {
+          state.actionsRemaining = pre.actionsRemaining;
+        }
+        if (pre.bankedActions !== null && pre.bankedActions !== undefined) {
+          state.bankedActions = pre.bankedActions;
+        }
+        throw err;
+      }
       // Per-action challenge evaluation (CG-0MU37CKRR008252I): complete any
       // challenge satisfied by the command's forward mutation and record the
       // IDs so undo can warn before reverting a completion. Reset first so a
