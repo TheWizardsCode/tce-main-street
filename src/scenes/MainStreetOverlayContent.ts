@@ -1,5 +1,5 @@
 import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
-import { canCloseBusiness } from '../MainStreetMarket';
+import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
 import type { EventCard, StaffCard } from '../MainStreetCards';
 import { SFX_KEYS } from './MainStreetConstants';
@@ -380,6 +380,19 @@ export class MainStreetOverlayContent {
     );
     if (s.hudContainer) s.hudContainer.add(sellBtn);
     sellBtn.on('pointerdown', () => {
+      // Defensive ownership/legality guard (MS-0MUVPGA3A001TGGT): the dialog
+      // is only opened for an owned, sellable slot, but guard the handler too
+      // so a stale overlay can never sell an opponent's business.
+      const sellLegality = canSellBusiness(s.state, slotIndex, false);
+      if (!sellLegality.legal) {
+        safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
+        s.instructionText?.setText(`Cannot sell: ${sellLegality.reason ?? 'unknown'}`);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        s.refreshAll();
+        return;
+      }
+
       // Execute the sell
       let sold = false;
       try {

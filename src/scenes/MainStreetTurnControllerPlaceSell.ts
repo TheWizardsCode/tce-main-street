@@ -13,6 +13,7 @@ import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { UpgradeCard } from '../MainStreetCards';
 import { buyBusinessCommand, playBusinessFromHandCommand, playUpgradeFromHandCommand } from '../MainStreetCommands';
 import { canSellBusiness, computeSellRefund, canPlayUpgradeFromHand } from '../MainStreetMarket';
+import { canActiveSeatActOnSlot } from '../MainStreetAdjacencyOwner';
 import { computeBusinessPurchasePremium } from '../MainStreetStaffBuffs';
 import { isEligibleUpgradeTarget } from '../MainStreetMarketUtils';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
@@ -287,6 +288,17 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     // Check if already sold
     const soldSlots: boolean[] = s.state.soldSlots ?? [];
     if (soldSlots[slotIndex]) return;
+
+    // Ownership guard (MS-0MUVPGA3A001TGGT): in competitive mode the human
+    // seat may only manage street slots it owns. Block the Manage-Card dialog
+    // for an opponent-owned slot and show the ownership-specific illegal-move
+    // message instead (no Sell / Close command is wired up).
+    const ownership = canActiveSeatActOnSlot(s.state, slotIndex);
+    if (!ownership.legal) {
+      s.instructionText.setText(ownership.reason ?? 'You do not own that business.');
+      playIllegalFeedback(s.actionContainer, s);
+      return;
+    }
 
     // Check legality
     const legality = canSellBusiness(s.state, slotIndex, false);
