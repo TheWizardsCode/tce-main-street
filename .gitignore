@@ -83,11 +83,17 @@ tui-debug.log
 Worklog Specific Ignores
 ##################################
 
-# Ignore Worklog directory by default
-.worklog/
+# Ignore Worklog runtime data by default (DB, logs, worktrees) but keep the
+# committed config files and plugins. NOTE: use `.worklog/*` (not `.worklog/`)
+# so the negation rules below can re-include files — Git cannot re-include a
+# file once its parent directory is excluded.
+.worklog/*
 
-# Keep defaults and plugins tracked
+# Committed worklog config (project config + defaults; private config stays ignored)
+!.worklog/config.yaml
 !.worklog/config.defaults.yaml
+
+# Keep plugins tracked
 !.worklog/plugins/
 !.worklog/plugins/**
 
