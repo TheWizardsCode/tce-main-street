@@ -92,13 +92,16 @@ describe('AC1 — optional PlayerRecord.eliminated', () => {
 
 describe('AC2 — AI failure marks elimination without ending the game', () => {
   it('marks the failing AI eliminated and does not set a loss', () => {
-    const state = buildHumanVsAis('elim-ai', 1, [[100, 5], [100, 0]]);
+    // 1 human + 2 AI: eliminating one AI leaves the game playing (the
+    // 1-human-vs-1-AI case now declares a last-standing win — F5).
+    const state = buildHumanVsAis('elim-ai', 2, [[100, 5], [100, 0], [100, 3]]);
     state.turn = 2;
     const ended = resolveCompetitiveSeatFailures(state);
     expect(ended).toBe(false);
     expect(state.gameResult).toBe('playing');
     expect(state.endReason).toBeNull();
     expect(state.players![1].eliminated).toBe(true);
+    expect(state.players![2].eliminated ?? false).toBe(false);
   });
 
   it('is idempotent — a second resolution does not re-eliminate or re-log', () => {
@@ -294,12 +297,14 @@ describe('AC7 — multi-AI: survivors keep rotating', () => {
 describe('Integration — elimination via the shared closing', () => {
   it('a collapsing AI is eliminated during closing while the human continues', () => {
     const biz = makeBusiness({ id: 'ai-collapse-biz', baseIncome: 50 });
-    const state = buildHumanVsAis('close-elim', 1, [[500, 5], [500, 0]]);
+    // 1 human + 2 AI so the game keeps playing after one elimination.
+    const state = buildHumanVsAis('close-elim', 2, [[500, 5], [500, 0], [500, 4]]);
     state.turn = 2;
     state.ownerTaggedGrid![1] = { card: biz, ownerId: 1 };
     state.streetGrid[1] = biz;
 
     executeCompetitiveWeekStart(state);
+    endCompetitiveMarketTurn(state);
     endCompetitiveMarketTurn(state);
     endCompetitiveMarketTurn(state);
 

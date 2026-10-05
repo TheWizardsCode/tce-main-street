@@ -144,6 +144,16 @@ export type EndReason =
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | 'bankruptcy'
   | 'reputation_collapse'
+  // Last-standing (MS-0MUVQRBVI0015AB2/F5): every AI opponent has been
+  // eliminated, so the human is declared the winner but play is paused with
+  // an explicit opt-in to continue solo. `gameResult` is `'win'` while the
+  // offer is open; accepting it switches to `'last_standing_continue'`
+  // (mirroring endless mode's `score_threshold_continue`).
+  | 'last_standing'
+  // Last-standing continuation: the player accepted the continue-solo offer;
+  // `gameResult` returns to `'playing'` and scoring continues toward the
+  // threshold.
+  | 'last_standing_continue'
   | 'turn_exhaustion' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | null;
 

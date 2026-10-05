@@ -171,8 +171,8 @@ describe('resolveCompetitiveSeatFailures — human vs AI attribution', () => {
     expect(state.endReason).toBe('bankruptcy');
   });
 
-  it('does NOT end the game when only an AI seat fails', () => {
-    const state = buildHumanVsAis('resolve-ai-only', 1, [[100, 5], [100, 0]]);
+  it('does NOT end the game when only one AI seat fails (others survive)', () => {
+    const state = buildHumanVsAis('resolve-ai-only', 2, [[100, 5], [100, 0], [100, 3]]);
     state.turn = 2;
     const ended = resolveCompetitiveSeatFailures(state);
     expect(ended).toBe(false);
@@ -181,7 +181,7 @@ describe('resolveCompetitiveSeatFailures — human vs AI attribution', () => {
   });
 
   it('does NOT end the game when an AI is bankrupt but the human is solvent', () => {
-    const state = buildHumanVsAis('resolve-ai-bankrupt', 1, [[100, 5], [-2, 3]]);
+    const state = buildHumanVsAis('resolve-ai-bankrupt', 2, [[100, 5], [-2, 3], [100, 3]]);
     state.turn = 2;
     const ended = resolveCompetitiveSeatFailures(state);
     expect(ended).toBe(false);

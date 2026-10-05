@@ -844,19 +844,97 @@ export function eliminateCompetitiveSeat(
 }
 
 /**
+ * The human seat's owner index (resolved via `controller === 'human'`), or
+ * `-1` when no human seat exists. Used so last-standing does not hard-code
+ * seat 0 (MS-0MUVQRCQJ00737UV AC7).
+ */
+export function findHumanSeatId(state: MainStreetState): number {
+  const players = state.players ?? [];
+  const idx = players.findIndex(p => p.controller === 'human');
+  return idx;
+}
+
+/**
+ * Declares the human the winner by last-standing when every AI seat has been
+ * eliminated (MS-0MUVQRCQJ00737UV).
+ *
+ * Idempotent: once `endReason` is `last_standing` / `last_standing_continue`
+ * the win is not re-declared (and the continue-solo offer is not re-shown on
+ * every subsequent closing). Returns `true` when the win was declared.
+ */
+export function checkLastStanding(state: MainStreetState): boolean {
+  if (!state.players || state.players.length === 0) return false;
+  // Already declared / already continued — never re-declare (AC5).
+  if (state.endReason === 'last_standing' || state.endReason === 'last_standing_continue') {
+    return false;
+  }
+  // Any surviving AI seat means the game is not yet last-standing.
+  const aiRemaining = state.players.some(
+    p => p.controller === 'ai' && !p.eliminated,
+  );
+  if (aiRemaining) return false;
+  // Only a game that started with AI opponents can end by last-standing
+  // (a single-human N=1 competitive state must keep its legacy behaviour).
+  const hadAi = state.players.some(p => p.controller === 'ai');
+  if (!hadAi) return false;
+  const humanId = findHumanSeatId(state);
+  if (humanId < 0) return false;
+  const human = state.players[humanId];
+  if (!human || human.eliminated) return false;
+
+  state.gameResult = 'win';
+  state.endReason = 'last_standing';
+  state.competitiveWinnerId = humanId;
+  addLog(state, `Victory: Player ${humanId} wins by last standing!`, 'gain');
+  return true;
+}
+
+/**
+ * Accepts the continue-solo offer after a last-standing win
+ * (MS-0MUVQRCQJ00737UV). Resumes play at the next shared week with
+ * `gameResult = 'playing'` and `endReason = 'last_standing_continue'`,
+ * mirroring the endless-mode `score_threshold_continue` continuation.
+ *
+ * Idempotent — a no-op unless the offer is open (`endReason ===
+ * 'last_standing'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueAfterLastStanding(state: MainStreetState): boolean {
+  if (state.endReason !== 'last_standing') return false;
+  state.gameResult = 'playing';
+  state.endReason = 'last_standing_continue';
+  // Advance to the next shared week so the resumed day starts cleanly
+  // (mirrors finishCompetitiveClosingTail's continue branch).
+  state.turn += 1;
+  advanceWeek(state);
+  const bankable = Math.min(state.actionsRemaining, 1);
+  state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
+  state.phase = 'WeekStart';
+  state.activePlayerId = Math.max(0, findHumanSeatId(state));
+  addLog(state, 'Continuing solo after last-standing win.', 'neutral');
+  return true;
+}
+
+/**
  * Applies the competitive per-seat failure evaluation to the game result.
  *
  * A failing **human** seat keeps the existing single-player loss semantics
  * (`gameResult = 'loss'` with `bankruptcy` / `reputation_collapse`). A failing
  * **AI** seat is eliminated (marked `eliminated` and its businesses closed)
- * and does **not** end the game.
+ * and does **not** end the game; when the last AI is eliminated the human is
+ * declared the winner by last-standing.
  *
  * @param state Current game state (mutated on a human failure / AI elimination).
- * @returns `true` when the game ended (human failure), `false` otherwise.
+ * @returns `true` when the game ended / a win was declared, `false` otherwise.
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
   const failures = checkCompetitiveSeatFailure(state);
-  if (failures.length === 0) return false;
+  if (failures.length === 0) {
+    // No new failures — but a prior elimination may have left the human as the
+    // last seat standing (idempotent: returns false once already declared).
+    return checkLastStanding(state);
+  }
 
   // A human seat failure keeps the existing single-player loss semantics.
   const humanFailure = failures.find(
@@ -875,7 +953,8 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
   for (const failure of failures) {
     eliminateCompetitiveSeat(state, failure.playerId);
   }
-  return false;
+  // Declare last-standing if no AI seats survive (idempotent).
+  return checkLastStanding(state);
 }
 
 /**

@@ -111,7 +111,9 @@ describe('AC3 — human collapse is not converted to elimination / masked', () =
   });
 
   it('an AI eliminated in an earlier step does not mask a later human loss', () => {
-    const state = buildHumanVsAis('human-after-ai-elim', 1, [[500, 5], [500, 0]]);
+    // 1 human + 2 AI: eliminating one AI keeps the game playing, so the later
+    // human collapse is not masked by a last-standing win.
+    const state = buildHumanVsAis('human-after-ai-elim', 2, [[500, 5], [500, 0], [500, 3]]);
     state.turn = 2;
     // Step 1: the AI collapses and is eliminated.
     resolveCompetitiveSeatFailures(state);
@@ -209,12 +211,15 @@ describe('AI collapse does not end the human game (contrast)', () => {
   it('human healthy + AI collapse → game continues, AI eliminated', () => {
     const state = buildCompetitiveState({
       seed: 'contrast-ai',
-      playerCount: 2,
+      playerCount: 3,
       seatWallets: [
         { playerId: 0, coins: 500, reputation: 5 },
         { playerId: 1, coins: 500, reputation: 0 },
+        { playerId: 2, coins: 500, reputation: 3 },
       ],
     });
+    state.players![1].controller = 'ai';
+    state.players![2].controller = 'ai';
     state.turn = 2;
     const ended = resolveCompetitiveSeatFailures(state);
     expect(ended).toBe(false);

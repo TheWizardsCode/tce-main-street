@@ -60,6 +60,7 @@ import {
   type PlayerRecord,
 } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
+import { continueAfterLastStanding } from '../MainStreetEngineTurnClosing';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
 /** Default hard cap on actions a single AI seat may take in one shared day. */
@@ -389,4 +390,25 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
     try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
     tcCtx.startTurnPhase();
   }
+}
+
+/**
+ * Resumes play after a last-standing win when the player accepts the
+ * continue-solo offer (MS-0MUVQRCQJ00737UV). The scene calls this from the
+ * win overlay's "Continue solo" action; declining simply leaves the state at
+ * the `win` / `last_standing` result (no call).
+ *
+ * Idempotent: a no-op unless the offer is open (`endReason ===
+ * 'last_standing'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueCompetitiveLastStanding(
+  tcCtx: MainStreetTurnControllerContext,
+): boolean {
+  const state: MainStreetState = tcCtx.scene.state;
+  if (!continueAfterLastStanding(state)) return false;
+  tcCtx.scene.uiPhase = 'market';
+  tcCtx.startTurnPhase();
+  return true;
 }
