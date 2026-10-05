@@ -45,6 +45,11 @@ export type {
   TurnResult,
 } from './MainStreetEngineTypes';
 
+export type {
+  CompetitiveSeatFailure,
+  CompetitiveSeatFailureReason,
+} from './MainStreetEngineTurnClosing';
+
 // ── Scoring ─────────────────────────────────────────────
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
@@ -96,6 +101,8 @@ export {
   appendTurnNetRow,
   applyEndOfTurnDeltas,
   checkCompetitiveEndConditions,
+  checkCompetitiveSeatFailure,
+  resolveCompetitiveSeatFailures,
   checkEndConditions,
   checkImmediateLoss,
   endTurnHeadless,

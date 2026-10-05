@@ -34,10 +34,13 @@ function comp(seed = 'phase42', playerCount = 2): MainStreetState {
 }
 
 function setScores(state: MainStreetState, scores: number[]): void {
-  // score is derived as coins+rep+bonus; we set coins to achieve desired score
-  // with rep=startingReputation and bonus=0, then force updateCompetitiveScores to recompute.
+  // score is derived as coins+rep+bonus; we set coins to achieve the desired
+  // score with a small positive rep (so the per-seat reputation-collapse
+  // end condition does not fire — MS-0MUVBH589001L7NL). The old helper used
+  // `startingReputation` (200-500), which forced large negative coin values
+  // that the pre-fix shared-bank check ignored.
   const bonus = state.challengesCompleted.length * state.config.challengeBonusPoints;
-  const rep = state.config.startingReputation;
+  const rep = 1;
   scores.forEach((desired, i) => {
     const neededCoins = desired - rep - bonus;
     state.players![i].coins = neededCoins;

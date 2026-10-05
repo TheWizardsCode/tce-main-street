@@ -11,7 +11,7 @@ import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompet
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, checkImmediateLoss, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { appendTurnNetRow, checkCompetitiveEndConditions, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
@@ -193,7 +193,7 @@ function finishCompetitiveClosingTail(
   incidentRepChange: number,
   turnEnded: number,
 ): TurnResult {
-  if (checkImmediateLoss(state)) {
+  if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
     return {
       income,
@@ -262,7 +262,7 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
     throw new Error('resolveCompetitiveClosingPhases requires competitive state (players)');
   }
   const turnEnded = state.turn;
-  if (checkImmediateLoss(state)) {
+  if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
     return {
       income: null,

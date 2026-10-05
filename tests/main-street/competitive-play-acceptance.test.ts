@@ -84,7 +84,11 @@ describe('Competitive acceptance — end-to-end drive', () => {
   });
 
   it('resolves a competitive winner when a seat reaches a win end condition', () => {
-    const run = runCompetitiveGame({ seed: 'comp-acceptance-winner', maxDays: MAX_DAYS });
+    // Seed re-baselined for the per-seat failure evaluation
+    // (MS-0MUVBH589001L7NL): 'comp-acceptance-winner' now ends in a genuine
+    // human reputation collapse (the old shared-bank check masked it), so a
+    // seed that reaches the threshold while the human stays solvent is used.
+    const run = runCompetitiveGame({ seed: 'comp-acceptance-winner-2', maxDays: MAX_DAYS });
     expect(run.terminal).toBe(true);
     expect(run.gameResult).toBe('win');
     expect(run.winnerId).not.toBeNull();

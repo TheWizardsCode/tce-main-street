@@ -734,6 +734,85 @@ export function checkImmediateLoss(state: MainStreetState): boolean {
 }
 
 /**
+ * Per-seat competitive failure reason (mirrors the single-player
+ * {@link checkImmediateLoss} loss conditions).
+ */
+export type CompetitiveSeatFailureReason = 'bankruptcy' | 'reputation_collapse';
+
+/** A single competitive seat's failure, attributed to that seat only. */
+export interface CompetitiveSeatFailure {
+  /** Owner index (index into `state.players`). */
+  playerId: number;
+  /** Which loss condition the seat hit. */
+  reason: CompetitiveSeatFailureReason;
+}
+
+/**
+ * Evaluates competitive end-condition failures **per seat** rather than from
+ * the shared `state.resourceBank` scratch mirror.
+ *
+ * In competitive mode `bindCompetitiveSeat` / `restoreCompetitiveSeat` mirror
+ * the acting seat into the shared bank but never reset it, so at closing time
+ * `state.resourceBank` holds the **last-acting** (usually AI) wallet. Reading
+ * it for game-over decisions therefore ended the whole game when an AI seat
+ * collapsed — even when the human seat was healthy (MS-0MUVBH589001L7NL).
+ *
+ * Thresholds match the single-player semantics:
+ * - `coins < 0` — bankruptcy (any turn); there is **no** `coins == 0` end
+ *   condition.
+ * - `reputation <= 0` — reputation collapse, only after turn 1 (reputation
+ *   starts at 0 on turn 1).
+ *
+ * @param state Current game state (read-only).
+ * @returns The failing seat(s) with their reason; empty for single-player
+ *          state (no `players[]`) or when every seat is solvent.
+ */
+export function checkCompetitiveSeatFailure(state: MainStreetState): CompetitiveSeatFailure[] {
+  if (!state.players || state.players.length === 0) return [];
+  const failures: CompetitiveSeatFailure[] = [];
+  for (const player of state.players) {
+    if (player.coins < 0) {
+      failures.push({ playerId: player.playerId, reason: 'bankruptcy' });
+    } else if (state.turn > 1 && player.reputation <= 0) {
+      failures.push({ playerId: player.playerId, reason: 'reputation_collapse' });
+    }
+  }
+  return failures;
+}
+
+/**
+ * Applies the competitive per-seat failure evaluation to the game result.
+ *
+ * A failing **human** seat keeps the existing single-player loss semantics
+ * (`gameResult = 'loss'` with `bankruptcy` / `reputation_collapse`). A failing
+ * **AI** seat does **not** end the game here — elimination is handled by the
+ * competitive closing orchestration (MS-0MUVQRBVI0015AB2).
+ *
+ * @param state Current game state (mutated on a human failure).
+ * @returns `true` when the game ended (human failure), `false` otherwise.
+ */
+export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  const failures = checkCompetitiveSeatFailure(state);
+  if (failures.length === 0) return false;
+
+  // A human seat failure keeps the existing single-player loss semantics.
+  const humanFailure = failures.find(
+    failure => state.players![failure.playerId].controller !== 'ai',
+  );
+  if (humanFailure) {
+    state.gameResult = 'loss';
+    state.endReason = humanFailure.reason;
+    updateScore(state);
+    const label = humanFailure.reason === 'bankruptcy' ? 'Bankruptcy' : 'Reputation collapse';
+    addLog(state, `Game Over: ${label} (Player ${humanFailure.playerId})`, 'loss');
+    return true;
+  }
+
+  // AI seat failure(s) are attributed per seat and do not end the game.
+  return false;
+}
+
+/**
  * Checks for end-of-turn win/loss conditions (at EndCheck phase).
  *
  * Win conditions (checked in order):
@@ -774,7 +853,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
     return checkEndConditions(state);
   }
 
-  if (checkImmediateLoss(state)) return true;
+  if (resolveCompetitiveSeatFailures(state)) return true;
 
   updateCompetitiveScores(state);
 
