@@ -367,6 +367,68 @@ export function purchaseBusiness(
 }
 
 /**
+ * Whether the upgrade card at `handIndex` can be played onto the business at
+ * `targetSlot` without mutating state (CG-0MUUDWIXG009IB0W).
+ *
+ * Non-mutating mirror of {@link playUpgradeFromHand}: validates the hand
+ * index, the card family, the target-eligibility rules (name match, level,
+ * max-level) and affordability against the per-business discounted cost.
+ * The UI calls this **before** clearing the selection, changing `uiPhase` or
+ * starting the card-transfer animation, so an illegal attempt leaves the
+ * game exactly as it was.
+ *
+ * @param state      Current game state (read-only).
+ * @param handIndex  Index of the upgrade card in state.hand.
+ * @param targetSlot Optional specific target slot. When omitted, any eligible
+ *                   business on the street is accepted.
+ * @returns LegalityResult indicating whether the upgrade may be played.
+ */
+export function canPlayUpgradeFromHand(
+  state: MainStreetState,
+  handIndex: number,
+  targetSlot?: number,
+): LegalityResult {
+  const hand = state.hand ?? [];
+  if (handIndex < 0 || handIndex >= hand.length) {
+    return { legal: false, reason: `Invalid hand index: ${handIndex}. Hand has ${hand.length} cards.` };
+  }
+
+  const card = hand[handIndex];
+  if (card.family !== 'upgrade') {
+    return { legal: false, reason: `Card at hand index ${handIndex} is not an upgrade card.` };
+  }
+  const upgrade = card as UpgradeCard;
+
+  let businessIndex: number;
+  if (targetSlot !== undefined) {
+    const biz = state.streetGrid[targetSlot];
+    const requiredLevel = upgrade.requiredLevel ?? 0;
+    if (
+      !biz ||
+      biz.name !== upgrade.targetBusiness ||
+      biz.level !== requiredLevel ||
+      biz.level >= biz.maxLevel
+    ) {
+      return { legal: false, reason: `Business at slot ${targetSlot} is not a valid target for this upgrade.` };
+    }
+    businessIndex = targetSlot;
+  } else {
+    businessIndex = findTargetBusinessSlot(state, upgrade);
+    if (businessIndex === -1) {
+      const requiredLevel = upgrade.requiredLevel ?? 0;
+      return { legal: false, reason: `No eligible ${upgrade.targetBusiness} on the street to upgrade (requires level ${requiredLevel}).` };
+    }
+  }
+
+  const cost = effectiveUpgradeCost(state, upgrade, businessIndex);
+  if (state.resourceBank.coins < cost) {
+    return { legal: false, reason: `Not enough coins to play ${upgrade.name} from hand. Need ${cost}, have ${state.resourceBank.coins}.` };
+  }
+
+  return { legal: true };
+}
+
+/**
  * Plays an upgrade card from the player's hand onto a matching business,
  * charging its listed cost at play time (CG-0MSTOATDT009BRX2).
  */

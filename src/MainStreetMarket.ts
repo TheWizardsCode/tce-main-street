@@ -74,6 +74,7 @@ export {
   canPlayEvent,
   purchaseBusiness,
   playUpgradeFromHand,
+  canPlayUpgradeFromHand,
   playEventFromHand,
   purchaseUpgrade,
   canBuyAndPlaceUpgrade,

@@ -12,7 +12,7 @@ import { canPlaceFromHand } from '../MainStreetEngineCommands';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { UpgradeCard } from '../MainStreetCards';
 import { buyBusinessCommand, playBusinessFromHandCommand, playUpgradeFromHandCommand } from '../MainStreetCommands';
-import { canSellBusiness, computeSellRefund } from '../MainStreetMarket';
+import { canSellBusiness, computeSellRefund, canPlayUpgradeFromHand } from '../MainStreetMarket';
 import { computeBusinessPurchasePremium } from '../MainStreetStaffBuffs';
 import { isEligibleUpgradeTarget } from '../MainStreetMarketUtils';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
@@ -339,6 +339,17 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
       s.instructionText.setText(
         `"${handCard.name}" can only upgrade ${handCard.targetBusiness} at level ${requiredLevel}. Click another business.`,
       );
+      return;
+    }
+
+    // Pre-flight affordability check (MS-0MUUYD15V003SP0Z): reject an
+    // unaffordable upgrade BEFORE clearing the selection, changing uiPhase or
+    // starting the transfer animation. On failure the upgrade stays selected
+    // and the player keeps their action and coins.
+    const legality = canPlayUpgradeFromHand(s.state, handIndex, slotIndex);
+    if (!legality.legal) {
+      playIllegalFeedback(handSprite ?? s.actionContainer ?? null, s);
+      s.instructionText.setText(legality.reason ?? 'Move not available.');
       return;
     }
 
