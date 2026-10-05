@@ -74,6 +74,37 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
     4ms per px), so a card released next to its slot settles into place
     quickly instead of taking the full fixed flight (CG-0MST2LS3E004BTPO).
 
+#### Legality before animation (MS-0MUUDWIXG009IB0W)
+
+A transfer animation only ever starts for a move that has already passed a
+**non-mutating legality check**. The UI never animates a move that cannot
+complete, so a rejected attempt leaves the scene exactly as it was instead of
+playing a phantom card transfer.
+
+- Order of operations: validate → (only if legal) clear the selection / set
+  `uiPhase = 'animating'` → start `animateTransferFromMarket` → execute the
+  undoable command. Affordability, target eligibility, occupancy and tutorial
+  gating are all evaluated before any of these mutations.
+- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus an
+  instruction-text reason **precedes any mutation** — no coins, action, hand or
+  grid change, and the current selection/`uiPhase` is retained so the player
+  can immediately retarget.
+- Click paths use the shared predicates `canPlaceFromHand`
+  (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
+  (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
+  animate. Drag paths are gated by the drop zone's `canAccept`
+  (`canDropBusinessCard` / `canDropUpgradeCard`); `@ui/dragDrop` only invokes
+  the `onDrop` handler after `canAccept` returns true, so the transfer starts
+  strictly after the gate.
+- No failed attempt leaves `uiPhase === 'animating'`; every `afterTransfer`
+  path (success or error) restores `uiPhase = 'market'`.
+- Commit-before-feedback: the command layer is the single mutation point and
+  is executed through the undo manager, which only pushes the command after
+  `do()` succeeds. `snapshotAction.do()` restores the pre-action budget when
+  the operation throws, so a failed command never spends an action — the
+  command layer matches the engine `executeAction` restore-on-failure
+  semantics (see [core-rules-and-mechanics.md](core-rules-and-mechanics.md)).
+
 ### Upgrade targeting highlights (click-to-place, CG-0MUDA70FK003J8YL)
 
 - Helpers: `showTargetHighlights()` / `clearTargetHighlights()` in
@@ -89,11 +120,13 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   slots are skipped entirely and are no longer rendered as selectable while an
   upgrade is pending, so only real businesses appear as targets.
 - Eligibility is business-level only, via the shared
-  `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`;
-  affordability and the action budget are surfaced in the instruction text
-  after the click, matching the drag-drop flow. Clicking an ineligible
-  business shakes it back with feedback while the upgrade stays selected for
-  a retry.
+  `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`. The
+  click is then additionally gated by the non-mutating
+  `canPlayUpgradeFromHand()` predicate (`MainStreetMarketPurchase.ts`) — which
+  also checks affordability against the per-business discounted cost — before
+  any animation starts. Clicking an ineligible or unaffordable business shakes
+  it back with feedback while the upgrade stays selected for a retry, and no
+  action or coin is spent.
 - Clearing: `cancelPendingPlacement()` (Escape / switching card) calls
   `clearTargetHighlights()`; applying the upgrade rebuilds the street without
   a pending card, dropping the overlays. Both targeting flows share the

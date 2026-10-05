@@ -272,6 +272,29 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Hire a staff card | 1 action | From the general market row. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). |
 
+> **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
+> validated by a **non-mutating legality predicate before any mutation**, and
+> action consumption is **atomic with a successful operation** — a move that
+> cannot complete never spends an action. Concretely:
+>
+> - The UI runs the relevant predicate (affordability, occupancy, target
+>   eligibility, tutorial gating — e.g. `canPlaceFromHand`,
+>   `canPlayUpgradeFromHand`, `canPurchaseBusiness`, `canDropBusinessCard`,
+>   `canDropUpgradeCard`) **before** it clears the selection, sets
+>   `uiPhase = 'animating'`, starts the card-transfer animation or executes the
+>   undoable command. An illegal attempt plays the standard illegal-move
+>   feedback (ILLEGAL_MOVE SFX + shake + instruction-text reason) and leaves the
+>   action budget, coins, hand and grid untouched, with the selection retained
+>   so the player can immediately pick another target.
+> - Command execution goes through the undo manager, which only pushes a command
+>   after its forward step succeeds. `snapshotAction.do()` restores the
+>   pre-action budget (`actionsRemaining` / `bankedActions`) when the wrapped
+>   operation throws, so a failed command never leaves a spent action behind.
+>   The engine `executeAction` path restores on failure the same way — the two
+>   layers now share identical restore-on-failure semantics.
+> - No failed attempt leaves the scene stuck in `uiPhase === 'animating'`; every
+>   transfer completion path (success or error) returns to `uiPhase = 'market'`.
+
 **Free operations (never consume an action):**
 
 - Market research/refresh
