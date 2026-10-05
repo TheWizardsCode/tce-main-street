@@ -40,10 +40,17 @@ import {
 import {
   GRID_SIZE,
   type BusinessCard,
+  type UpgradeCard,
 } from '../../src/MainStreetCards';
 import {
   executeWeekStart,
 } from '../../src/MainStreetEngine';
+import {
+  canPlayUpgradeFromHand,
+  playUpgradeFromHand,
+  effectiveUpgradeCost,
+} from '../../src/MainStreetMarket';
+import type { LegalityResult } from '@rule-engine';
 
 // ── Feature Detection ───────────────────────────────────────
 
@@ -1043,6 +1050,92 @@ describe('MainStreet Place/Sell System', () => {
       const sellCheck = (engine as any).canSellFromHand(state, 0);
       expect(sellCheck.legal).toBe(false);
       expect(sellCheck.reason).toContain('Event cards cannot be sold');
+    });
+  });
+
+  // ── Upgrade-from-hand legality predicate (MS-0MUUYI950004TG7F) ──
+  //
+  // `canPlayUpgradeFromHand` is the non-mutating gate the UI runs before
+  // animating or spending an action. It must agree with the executor
+  // (`playUpgradeFromHand`) while never mutating state.
+
+  describe('canPlayUpgradeFromHand (non-mutating upgrade-play legality)', () => {
+    /** Level-0 upgrade plus a matching base-level business template. */
+    function upgradeFixture(state: MainStreetState): { upgrade: UpgradeCard; business: BusinessCard } {
+      const upgrade = state.decks.upgrade.find(u => (u.requiredLevel ?? 0) === 0) as UpgradeCard;
+      if (!upgrade) throw new Error('No level-0 upgrade template');
+      const business = state.decks.business.find(b => b.name === upgrade.targetBusiness) as BusinessCard;
+      if (!business) throw new Error(`No business template named "${upgrade.targetBusiness}"`);
+      return { upgrade, business };
+    }
+
+    function illegalReason(result: LegalityResult): string {
+      if (result.legal) throw new Error('Expected an illegal result but got legal');
+      return result.reason;
+    }
+
+    it('returns legal when coins cover the discounted cost and the target is eligible', () => {
+      const state = createTestState('precheck-ok');
+      state.phase = 'MarketPhase';
+      const { upgrade, business } = upgradeFixture(state);
+      state.hand = [{ ...upgrade }];
+      state.streetGrid[0] = { ...business, level: upgrade.requiredLevel ?? 0, appliedUpgrades: [] } as BusinessCard;
+      state.resourceBank.coins = effectiveUpgradeCost(state, upgrade, 0);
+
+      expect(canPlayUpgradeFromHand(state, 0, 0).legal).toBe(true);
+    });
+
+    it('returns illegal with no state mutation when coins are below the effective cost', () => {
+      const state = createTestState('precheck-poor');
+      state.phase = 'MarketPhase';
+      const { upgrade, business } = upgradeFixture(state);
+      state.hand = [{ ...upgrade }];
+      state.streetGrid[0] = { ...business, level: upgrade.requiredLevel ?? 0, appliedUpgrades: [] } as BusinessCard;
+      state.resourceBank.coins = effectiveUpgradeCost(state, upgrade, 0) - 1;
+
+      const beforeCoins = state.resourceBank.coins;
+      const beforeHand = state.hand.length;
+      const beforeGrid = state.streetGrid[0];
+
+      const result = canPlayUpgradeFromHand(state, 0, 0);
+      expect(result.legal).toBe(false);
+      expect(illegalReason(result)).toMatch(/not enough coins/i);
+
+      // The predicate must not mutate anything.
+      expect(state.resourceBank.coins).toBe(beforeCoins);
+      expect(state.hand).toHaveLength(beforeHand);
+      expect(state.streetGrid[0]).toBe(beforeGrid);
+      // And the executor agrees.
+      expect(() => playUpgradeFromHand(state, 0, 0)).toThrow(/Not enough coins/i);
+    });
+
+    it('returns illegal when the target business has the wrong level', () => {
+      const state = createTestState('precheck-level');
+      const { upgrade, business } = upgradeFixture(state);
+      state.hand = [{ ...upgrade }];
+      state.streetGrid[0] = { ...business, level: (upgrade.requiredLevel ?? 0) + 1, appliedUpgrades: [] } as BusinessCard;
+      state.resourceBank.coins = 10000;
+
+      const result = canPlayUpgradeFromHand(state, 0, 0);
+      expect(result.legal).toBe(false);
+      expect(illegalReason(result)).toMatch(/not a valid target/i);
+    });
+
+    it('returns illegal for an invalid hand index', () => {
+      const state = createTestState('precheck-index');
+      const result = canPlayUpgradeFromHand(state, 99, 0);
+      expect(result.legal).toBe(false);
+      expect(illegalReason(result)).toMatch(/invalid hand index/i);
+    });
+
+    it('returns illegal when the hand card is not an upgrade', () => {
+      const state = createTestState('precheck-family');
+      const { business } = upgradeFixture(state);
+      state.hand = [{ ...business }];
+
+      const result = canPlayUpgradeFromHand(state, 0, 0);
+      expect(result.legal).toBe(false);
+      expect(illegalReason(result)).toMatch(/not an upgrade card/i);
     });
   });
 });
