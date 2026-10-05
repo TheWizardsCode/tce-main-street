@@ -281,7 +281,8 @@ describe('Main Street click-path illegal-afford feedback', () => {
       expect(scene.state.hand).toHaveLength(1);
       expect(scene.state.streetGrid[0]).toBeNull();
       expect(scene.state.resourceBank.coins).toBe(0);
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Not enough coins'));
+      // Pre-flight check via canPlaceFromHand uses "Insufficient coins".
+      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Insufficient coins'));
     });
 
     it('does play feedback when the slot is occupied (non-affordability)', async () => {
