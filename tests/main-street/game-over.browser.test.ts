@@ -203,4 +203,49 @@ describe('MainStreet game-over feedback', () => {
     expectOverlayPresent(scene);
     expect(hasOverlayTitle(scene, 'Game Over')).toBe(true);
   }, 30_000);
+
+  it('renders the Game State and Summary columns with the end-reason headline (single-player)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const s = scene as any;
+
+    s.state.endReason = 'all_challenges';
+    s.showGameOverOverlay(gameOverResult(true), []);
+
+    await waitForCondition(() => findOverlayText(scene, 'Summary').length > 0, {
+      timeoutMs: 5000,
+      label: 'two-column game-over summary',
+    });
+    expect(findOverlayText(scene, 'Game State').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'All challenges completed').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'You:').length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it('renders every competitive seat with its failure/elimination badge', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const s = scene as any;
+
+    s.state.players = [
+      {
+        playerId: 0, coins: -5, reputation: 10, score: 50, hand: [], staffCards: [],
+        actionBudget: 1, controller: 'human', eliminated: false,
+      },
+      {
+        playerId: 1, coins: 100, reputation: 10, score: 20, hand: [], staffCards: [],
+        actionBudget: 1, controller: 'ai', eliminated: true,
+      },
+    ];
+    s.state.activePlayerId = 0;
+    s.state.turn = 2;
+    s.state.endReason = 'bankruptcy';
+    s.showGameOverOverlay(gameOverResult(false), []);
+
+    await waitForCondition(() => findOverlayText(scene, 'Bankruptcy — You').length > 0, {
+      timeoutMs: 5000,
+      label: 'competitive game-over headline',
+    });
+    expect(findOverlayText(scene, 'You: -5c  10r  50pt  — Bankrupt').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'AI 1: 100c  10r  20pt  — Eliminated').length).toBeGreaterThan(0);
+  }, 30_000);
 });

@@ -60,9 +60,13 @@ function isCompetitive(state: MainStreetState): boolean {
  */
 export function formatEndReason(state: MainStreetState): string {
   const reason = state.endReason;
-  if (reason === null) return 'Game over';
+  // `null` (still playing) and any legacy/unknown value fall back gracefully
+  // rather than rendering `undefined`; unknown values keep the historic
+  // underscore→space rendering.
+  if (reason == null) return 'Game over';
 
-  const headline = END_REASON_HEADLINES[reason];
+  const headline = (END_REASON_HEADLINES as Record<string, string>)[reason]
+    ?? String(reason).replace(/_/g, ' ');
   if (
     (reason === 'bankruptcy' || reason === 'reputation_collapse') &&
     isCompetitive(state)
