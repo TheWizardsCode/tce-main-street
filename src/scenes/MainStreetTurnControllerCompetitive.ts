@@ -19,6 +19,10 @@
  *      under a bounded guard.
  *   4. {@link runCompetitiveClosing} runs the shared closing and completes a
  *      paused dual-choice incident so the day never stalls.
+ *   5. {@link presentCompetitiveClosing} presents the closing results (income
+ *      summary, incident reveal, end-of-turn text) then advances to the next
+ *      day. Bounded and non-blocking, so the day never stalls even under
+ *      reduced motion, replay or a headless context (MS-0MUVUPRXZ0030LUD).
  *
  * All functions are Phaser-free and operate on `MainStreetState`, so they are
  * exercised by the node integration test while the scene wires them behind a
@@ -346,13 +350,119 @@ function turnResultFromState(state: MainStreetState): TurnResult {
   };
 }
 
+/** Brief hold after the closing summary before the next shared day starts. */
+export const COMPETITIVE_CLOSING_HOLD_MS = 900;
+
+/** Sets the scene instruction text, ignoring presentation-only failures. */
+function setInstruction(s: any, text: string): void {
+  try { s.instructionText?.setText?.(text); } catch { /* presentation-only */ }
+}
+
+/**
+ * Builds the one-line closing summary shown to the player: the shared income
+ * total and, when one resolved, the incident name. Returns an empty string
+ * when there is nothing to report (e.g. a turn that ended outside the closing).
+ *
+ * Mirrors the text feedback shown by the single-player `finishTurnPresentation`
+ * (`Income: +N coins | Incident: <name>`).
+ */
+export function competitiveClosingSummary(result: TurnResult): string {
+  const parts: string[] = [];
+  if (result.income && result.income.total > 0) {
+    parts.push(`Income: +${result.income.total} coins`);
+  }
+  if (result.incident) {
+    parts.push(`Incident: ${result.incident.name}`);
+  }
+  return parts.join(' | ');
+}
+
+/** Schedules `cb` after `delayMs` when the scene has a clock, else runs now. */
+function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
+  try {
+    if (typeof s.time?.delayedCall === 'function') {
+      s.time.delayedCall(delayMs, cb);
+      return;
+    }
+  } catch { /* fall through to immediate */ }
+  cb();
+}
+
+/**
+ * Presents the shared competitive closing results then calls `onComplete`
+ * exactly once. Non-blocking and bounded: reduced motion, replay and headless
+ * contexts skip the animation and advance immediately, so the next day always
+ * starts.
+ *
+ *  - AC1: income summary (shared total), matching the single-player text
+ *         feedback ("and/or income phase labels" — the total is the required
+ *         half of that disjunction; the full coin-grid choreography is
+ *         deliberately omitted so the AI closing stays condensed/bounded).
+ *  - AC2: incident reveal (name + deltas) when an incident resolved.
+ *  - AC3: instruction text reflects the closing progression.
+ *  - AC4: the next day always starts (bounded); text feedback survives reduced
+ *         motion, replay and headless contexts.
+ *
+ * @param tcCtx      Scene context (only `scene` is used).
+ * @param result     The closing `TurnResult` from `runCompetitiveClosing`.
+ * @param onComplete Invoked exactly once when the presentation is done.
+ */
+export function presentCompetitiveClosing(
+  tcCtx: MainStreetTurnControllerContext,
+  result: TurnResult,
+  onComplete: () => void,
+): void {
+  const s = tcCtx.scene;
+  const replay = s.replayMode === true;
+  const reducedMotion = s.settingsPanel?.reducedMotion === true;
+  const animationsEnabled = !replay && !reducedMotion;
+
+  // AC3: reflect the closing phase progression in the instruction text.
+  setInstruction(s, 'Resolving end-of-turn effects...');
+
+  // AC1: income summary (shared total) + resolved incident name. Always shown
+  // as text so reduced motion / replay / headless still receive the feedback.
+  const summary = competitiveClosingSummary(result);
+  if (summary) setInstruction(s, summary);
+
+  const finish = (): void => {
+    setInstruction(s, 'End of turn complete.');
+    scheduleOrRun(s, COMPETITIVE_CLOSING_HOLD_MS, onComplete);
+  };
+
+  // AC2: incident reveal (skipped when animations are disabled — the incident
+  // name is already in the summary text). The reveal blocks the day start only
+  // for its own bounded hold; `finish` then schedules the condensed end-of-turn
+  // hold and advances.
+  const incident = result.incident;
+  if (incident && animationsEnabled) {
+    try {
+      const from = s.msRenderer?.getFrontIncidentCardCenter?.()
+        ?? { x: (s.layout?.gameW ?? 0) / 2, y: (s.layout?.gameH ?? 0) / 2 };
+      s.msAnimator?.animateIncidentReveal?.({
+        cardId: incident.id,
+        incidentName: incident.name,
+        coinChange: result.incidentCoinChange,
+        repChange: result.incidentRepChange,
+        from,
+        onComplete: finish,
+      });
+    } catch {
+      finish();
+    }
+  } else {
+    finish();
+  }
+}
+
 /**
  * Scene entry point for ending a competitive day (called by `endTurn`).
  *
  * Ends the human's MarketPhase, drives every AI seat to the shared closing,
- * runs the closing (resolving any paused choice) and hands control back to the
- * scene: game-over via `handleGameOver`, otherwise the next day via
- * `startTurnPhase`.
+ * runs the closing (resolving any paused choice), presents the closing results
+ * via {@link presentCompetitiveClosing} and hands control back to the scene:
+ * game-over via `handleGameOver`, otherwise the next day via `startTurnPhase`.
+ * The presentation is bounded/non-blocking, so the next day always starts.
  */
 export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): void {
   const s = tcCtx.scene;
@@ -388,7 +498,9 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
     // has advanced the shared day to WeekStart, so persist here (the
     // single-player path saves after processEndOfTurn).
     try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
-    tcCtx.startTurnPhase();
+    // Present the closing (income → incident → end check) before the next day
+    // starts. Bounded/non-blocking: the day always advances (AC4).
+    presentCompetitiveClosing(tcCtx, closing, () => tcCtx.startTurnPhase());
   }
 }
 
