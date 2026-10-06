@@ -258,6 +258,16 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 - **No expiry:** banked actions persist indefinitely across weeks until spent. They reset to 0 only on a new game.
 - At week end, at most **1** action can bank (only the base portion), so reaching the cap takes two idle weeks; overflow beyond the cap is discarded.
 
+> **Competitive play (human vs AI, MS-0MUVUPWHD0032CU4).** In a shared day the
+> banked reserve is a **single collective pool**: each seat's daily budget is
+> its bank-free base (`actionBudget = 1 + staff actions`) **plus** the
+> currently-remaining `bankedActions`, added when the seat is bound
+> (`bindCompetitiveSeat`). Spending by one seat draws the shared pool down, so
+> the next seat receives base + the *remaining* bank rather than a stale
+> day-start snapshot; at the shared closing, one unused action banks (cap 2).
+> `restoreCompetitiveSeat` strips the bank back out so `actionBudget` stays the
+> seat's base budget. Single-player banking is unchanged.
+
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 
 **Action-type operations (spend the weekly action):**

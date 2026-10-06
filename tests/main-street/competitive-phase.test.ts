@@ -26,6 +26,7 @@ import {
   processEndOfTurn,
   executeWeekStart,
 } from '../../src/MainStreetEngine';
+import { bindCompetitiveSeat } from '../../src/MainStreetAiStrategy';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -137,14 +138,21 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
     expect(s.phase).toBe('InvestmentResolution');
   });
 
-  it('action budget hand-off: each day resets per-player budgets from staff+bank', () => {
+  it('action budget hand-off: base budgets reset per player and binding adds the shared bank', () => {
     const s = comp('ac1-budget', 2);
-    // Give P0 a staff with +1 action to verify per-player derivation
+    // Give P0 a staff with +1 action to verify per-player base derivation
     s.players![0].staffCards = [{ id: 'staff-gm', name: 'GM', family: 'staff', cost: 2, actionsPerTurn: 1, handSlotsAdded: 0, ongoingCost: 0, specializationSkillIds: [] } as any];
     s.bankedActions = 1;
     executeCompetitiveWeekStart(s);
-    expect(s.players![0].actionBudget).toBe(3); // 1 base +1 staff +1 bank
-    expect(s.players![1].actionBudget).toBe(2); // 1 base +0 staff +1 bank
+    // `actionBudget` is the bank-free daily base (1 base + staff bonus).
+    expect(s.players![0].actionBudget).toBe(2); // 1 base +1 staff
+    expect(s.players![1].actionBudget).toBe(1); // 1 base +0 staff
+    // Binding a seat adds the *shared* bank on top of its base budget
+    // (MS-0MUVUPWHD0032CU4), so every seat draws from the remaining pool.
+    bindCompetitiveSeat(s, 0);
+    expect(s.actionsRemaining).toBe(3); // 1 base +1 staff +1 bank
+    bindCompetitiveSeat(s, 1);
+    expect(s.actionsRemaining).toBe(2); // 1 base +0 staff +1 bank
   });
 
   it('executeCompetitiveTurn convenience runs WeekStart -> N markets -> shared closing', () => {

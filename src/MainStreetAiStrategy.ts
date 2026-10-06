@@ -2007,6 +2007,12 @@ function competitiveFavourScore(
  * against the correct owner; `restoreCompetitiveSeat` writes the shared
  * wallet back into the record afterwards. No-op in single-player states.
  *
+ * The per-seat `actionBudget` is the *base* daily budget (base + staff
+ * actions); the shared `state.bankedActions` pool is added on top here so
+ * every seat draws from the same, currently-remaining bank
+ * (MS-0MUVUPWHD0032CU4). `restoreCompetitiveSeat` subtracts it again so the
+ * base field is never polluted by the bank across bind/restore cycles.
+ *
  * @param state    Current game state (mutated in-place).
  * @param playerId Owner index; defaults to the active player.
  */
@@ -2017,7 +2023,7 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
   state.resourceBank.reputation = player.reputation;
   state.hand = player.hand;
   state.staffCards = player.staffCards;
-  state.actionsRemaining = player.actionBudget;
+  state.actionsRemaining = player.actionBudget + (state.bankedActions ?? 0);
   syncResourceBankToLedger(state);
 }
 
@@ -2036,7 +2042,9 @@ export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number
   player.reputation = state.resourceBank.reputation;
   player.hand = state.hand;
   player.staffCards = state.staffCards;
-  player.actionBudget = state.actionsRemaining;
+  // Strip the shared banked pool back out so `actionBudget` stays the seat's
+  // base daily budget; the bank is re-added by the next `bindCompetitiveSeat`.
+  player.actionBudget = state.actionsRemaining - (state.bankedActions ?? 0);
 }
 
 // ── CompetitiveGreedyStrategy ───────────────────────────────

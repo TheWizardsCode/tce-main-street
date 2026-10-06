@@ -215,7 +215,13 @@ export interface PlayerRecord {
   hand: (BusinessCard | CommunitySpaceCard | EventCard | UpgradeCard)[];
   /** Active staff cards owned by this player. */
   staffCards: StaffCard[];
-  /** Remaining actions this player can take this turn. */
+  /**
+   * Seat's daily action budget **excluding** the shared banked pool.
+   * Reset at WeekStart to `1 + sum(staff actionsPerTurn)`;
+   * `bindCompetitiveSeat` adds the shared `bankedActions` to derive the
+   * effective `actionsRemaining`, and `restoreCompetitiveSeat` writes it back
+   * as `actionsRemaining - bankedActions` (MS-0MUVUPWHD0032CU4).
+   */
   actionBudget: number;
   /** Computed score for this player (updated each EndCheck). */
   score: number;

@@ -35,10 +35,15 @@ export function executeCompetitiveWeekStart(
   executeWeekStart(state, skipMarketRefill);
   if (state.players && state.players.length > 0) {
     state.activePlayerId = Math.max(0, getFirstActivePlayerId(state));
-    // Per-player action budgets: reset each day from staff actions + bank.
+    // Per-player action budgets: reset each day from staff actions only.
+    // Banked actions are a *shared* pool, not baked into the per-seat base
+    // budget — `bindCompetitiveSeat` adds the currently-banked amount when it
+    // arms the seat (MS-0MUVUPWHD0032CU4). Keeping `actionBudget` bank-free
+    // lets every seat see the *remaining* bank rather than a stale day-start
+    // snapshot (which double-counted / lost the bank across alternating seats).
     for (const p of state.players) {
       const bonus = (p.staffCards ?? []).reduce((s, c) => s + (c.actionsPerTurn ?? 0), 0);
-      p.actionBudget = 1 + bonus + Math.min(2, state.bankedActions ?? 0);
+      p.actionBudget = 1 + bonus;
     }
     state.competitiveWinnerId = null;
   }
@@ -255,8 +260,8 @@ function finishCompetitiveClosingTail(
     advanceWeek(state);
     const bankable = Math.min(state.actionsRemaining, 1);
     state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
-    // Mirror shared banked value into each player's budget for next week's costing.
-    // (Per-player budgets are re-derived from staff+bank at next week start.)
+    // The shared bank is re-applied per seat by `bindCompetitiveSeat` at the
+    // next week start; per-player `actionBudget` stays bank-free.
     state.phase = 'WeekStart';
     state.activePlayerId = 0;
   }

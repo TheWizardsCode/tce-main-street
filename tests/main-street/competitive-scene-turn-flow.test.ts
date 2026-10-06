@@ -32,8 +32,17 @@ import {
   RandomStrategy,
   GreedyStrategy,
   BankingGreedyStrategy,
+  bindCompetitiveSeat,
+  restoreCompetitiveSeat,
 } from '../../src/MainStreetAiStrategy';
-import { executeAction, type PlayerAction, type TurnResult } from '../../src/MainStreetEngine';
+import {
+  consumeAction,
+  endCompetitiveMarketTurn,
+  executeAction,
+  resolveCompetitiveClosingPhases,
+  type PlayerAction,
+  type TurnResult,
+} from '../../src/MainStreetEngine';
 import {
   createCompetitiveState,
   seedToNumber,
@@ -267,6 +276,90 @@ describe('AC3 — closing and terminal resolution', () => {
     // collapse under the per-seat evaluation, before the AI acts).
     expect(runs.some(({ run }) => run.aiActions > 0)).toBe(true);
   }, 60_000);
+});
+
+// ── Competitive action banking (MS-0MUVUPWHD0032CU4) ─────────
+
+describe('Competitive action banking', () => {
+  /**
+   * A fresh human-vs-AI competitive state armed for P0's MarketPhase with a
+   * high win threshold and padded wallets so the shared day never ends early.
+   */
+  function bankedState(seed: string, bank: number): MainStreetState {
+    const state = createCompetitiveState({ seed, playerCount: 2, opponents: OPPONENTS });
+    state.config = { ...state.config, winThreshold: 10_000_000 } as typeof state.config;
+    for (const p of state.players!) {
+      p.coins = 100000;
+      p.reputation = 100000;
+    }
+    state.bankedActions = bank;
+    startCompetitiveDay(state);
+    return state;
+  }
+
+  /** An idle seat: bind (arm its budget), then restore without acting, then
+   * advance the shared day to the next seat / closing. */
+  function idleSeat(state: MainStreetState, playerId: number): void {
+    bindCompetitiveSeat(state, playerId);
+    restoreCompetitiveSeat(state, playerId);
+    endCompetitiveMarketTurn(state);
+  }
+
+  it('AC2 — binding a seat grants base budget plus the remaining shared bank', () => {
+    const state = bankedState('bank-bind', 2);
+    // P0 was bound by startCompetitiveDay: 1 base + 2 banked.
+    expect(state.actionsRemaining).toBe(3);
+    // The seat's base budget stays bank-free while bound.
+    expect(state.players![0].actionBudget).toBe(1);
+
+    // The human spends one action — `consumeAction` draws down both the
+    // weekly counter and the shared bank.
+    consumeAction(state);
+    expect(state.actionsRemaining).toBe(2);
+    expect(state.bankedActions).toBe(1);
+    endHumanMarketPhase(state);
+    expect(state.players![0].actionBudget).toBe(1); // base restored bank-free
+
+    // The next seat sees base + the *remaining* bank (not the full day-start
+    // snapshot, and not zero).
+    bindCompetitiveSeat(state, 1);
+    expect(state.actionsRemaining).toBe(2); // 1 base + 1 banked remaining
+  });
+
+  it('AC1 — an idle shared day banks exactly one action, regardless of seat', () => {
+    const state = bankedState('bank-idle-day', 0);
+    expect(state.bankedActions).toBe(0);
+    expect(state.actionsRemaining).toBe(1); // P0 base only
+
+    // Human idles (production path), then the AI seat idles.
+    endHumanMarketPhase(state);
+    idleSeat(state, 1);
+    const closing = resolveCompetitiveClosingPhases(state);
+    expect(closing.choicePending).toBe(false);
+    expect(state.bankedActions).toBe(1);
+
+    // A second idle day reaches the cap of 2.
+    startCompetitiveDay(state);
+    endHumanMarketPhase(state);
+    idleSeat(state, 1);
+    resolveCompetitiveClosingPhases(state);
+    expect(state.bankedActions).toBe(2);
+  });
+
+  it('AC2 — a banked action spent by the human is not re-granted to the AI', () => {
+    const state = bankedState('bank-shared-pool', 2);
+    expect(state.actionsRemaining).toBe(3); // 1 base + 2 banked
+
+    // Human spends a banked action, depleting the shared pool to 1.
+    consumeAction(state);
+    expect(state.bankedActions).toBe(1);
+    endHumanMarketPhase(state);
+
+    // The AI gets base + remaining bank only (2), never base + the original 2 (3).
+    bindCompetitiveSeat(state, 1);
+    expect(state.actionsRemaining).toBe(2);
+    expect(state.bankedActions).toBe(1);
+  });
 });
 
 // ── AC4: visibility + per-seat difficulty ────────────────────
