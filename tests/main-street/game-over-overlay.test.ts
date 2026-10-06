@@ -264,4 +264,26 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
     expect((scene.overlayObjects as unknown[])).toHaveLength(0);
     expect((scene.add as { text: ReturnType<typeof vi.fn> }).text).not.toHaveBeenCalled();
   });
+
+  it('offers a Continue Solo action for a last-standing win and wires it to the turn controller', () => {
+    const continueFn = vi.fn();
+    const { scene } = makeScene({ endReason: 'last_standing' });
+    (scene as Record<string, unknown>).msTurnController = {
+      continueCompetitiveLastStanding: continueFn,
+    };
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const labels = ui.buttons.map((b) => b.label);
+    expect(labels).toContain('[ Continue Solo ]');
+    expect(labels).toEqual(expect.arrayContaining(['[ Play Again ]', '[ Menu ]']));
+
+    ui.buttons.find((b) => b.label === '[ Continue Solo ]')?.emit('pointerdown');
+    expect(continueFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Continue Solo when no last-standing offer is open', () => {
+    const { scene } = makeScene({ endReason: 'bankruptcy' });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+    expect(ui.buttons.map((b) => b.label)).not.toContain('[ Continue Solo ]');
+  });
 });

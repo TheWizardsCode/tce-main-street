@@ -28,6 +28,7 @@ import {
   resolveCompetitiveClosingPhases,
 } from '../../src/MainStreetEngine';
 import { continueCompetitiveLastStanding } from '../../src/scenes/MainStreetTurnControllerCompetitive';
+import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import type { MainStreetState } from '../../src/MainStreetState';
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -234,5 +235,17 @@ describe('AC6 — scene-level offered/declined paths', () => {
     const { ctx, startTurnPhase } = fakeControllerContext(state);
     expect(continueCompetitiveLastStanding(ctx)).toBe(false);
     expect(startTurnPhase).not.toHaveBeenCalled();
+  });
+
+  it('MainStreetTurnController exposes continueCompetitiveLastStanding and delegates', () => {
+    const state = buildHumanVsAis('ls-controller', 1, [[500, 5], [500, 0]]);
+    state.turn = 2;
+    resolveCompetitiveSeatFailures(state);
+    const scene: any = { state, uiPhase: 'game-over', refreshAll: vi.fn(), overlayObjects: [] };
+    const controller = new MainStreetTurnController(scene);
+    const startSpy = vi.spyOn(controller, 'startTurnPhase').mockImplementation(() => {});
+    expect(controller.continueCompetitiveLastStanding()).toBe(true);
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    expect(state.endReason).toBe('last_standing_continue');
   });
 });

@@ -1640,6 +1640,10 @@ export function enumerateCompetitiveLegalActions(
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return enumerateLegalActions(state);
 
+  // Eliminated seats take no further MarketPhase and contribute no legal
+  // actions (AC3 action-enumeration skip; rotation already skips them).
+  if (player.eliminated) return [];
+
   const pid = player.playerId;
   const coins = player.coins ?? 0;
   const reputation = player.reputation ?? 0;

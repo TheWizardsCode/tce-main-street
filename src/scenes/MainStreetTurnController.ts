@@ -19,7 +19,7 @@ import { onBusinessCardClick, onEventCardClick, onRefreshMarketClick, onPeekClic
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
 import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
 import { animateMarketDealIn, animateMarketSwap, animateNewSynergyPairs } from './MainStreetTurnControllerAnimation';
-import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { canHumanSeatAct, continueCompetitiveLastStanding } from './MainStreetTurnControllerCompetitive';
 
 export type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -46,6 +46,15 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
 
   public handleGameOver(result: TurnResult): void {
     handleGameOver(this, result);
+  }
+
+  /**
+   * Resumes play after a last-standing win when the player accepts the
+   * continue-solo offer (MS-0MUVQRCQJ00737UV). Delegates to the competitive
+   * free function; idempotent and returns `false` when no offer is open.
+   */
+  public continueCompetitiveLastStanding(): boolean {
+    return continueCompetitiveLastStanding(this);
   }
 
   public presentEventChoiceDialog(): void {

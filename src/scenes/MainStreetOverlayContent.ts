@@ -356,10 +356,32 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(cycleBtn);
     s.overlayObjects.push(cycleBtn);
 
-    // Buttons (positioned relative to panel bottom)
+    // Buttons (positioned relative to panel bottom). When the last-standing
+    // win offers a continue-solo option (`endReason === 'last_standing'`), an
+    // explicit [ Continue Solo ] action is presented alongside Play Again /
+    // Menu so the player can keep playing solo (MS-0MUVQRCQJ00737UV AC4).
     const btnY = panelTop + panelH - 28;
+    const centerX = s.layout.gameW / 2;
+    const canContinueSolo = s.state.endReason === 'last_standing';
+
+    if (canContinueSolo) {
+      const continueBtn = createOverlayButton(
+        s, centerX - 200, btnY,
+        '[ Continue Solo ]', 201,
+      );
+      continueBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        // Resume play via the scene's turn controller. Idempotent: the
+        // controller is a no-op unless the last-standing offer is still open.
+        s.msTurnController?.continueCompetitiveLastStanding?.();
+      });
+      if (s.hudContainer) s.hudContainer.add(continueBtn);
+      s.overlayObjects.push(continueBtn);
+    }
+
     const playAgainBtn = createOverlayButton(
-      s, s.layout.gameW / 2 - 110, btnY,
+      s, canContinueSolo ? centerX : centerX - 110, btnY,
       '[ Play Again ]', 201,
     );
     playAgainBtn.on('pointerdown', () => {
@@ -371,7 +393,7 @@ export class MainStreetOverlayContent {
     s.overlayObjects.push(playAgainBtn);
 
     const menuBtn = createOverlayButton(
-      s, s.layout.gameW / 2 + 110, btnY,
+      s, canContinueSolo ? centerX + 200 : centerX + 110, btnY,
       '[ Menu ]', 201,
     );
     menuBtn.on('pointerdown', () => {
