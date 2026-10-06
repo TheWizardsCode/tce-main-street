@@ -118,7 +118,17 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
   // documented band. This guard makes a future regression detectable through
   // the G5 balance metric (the loss-mode decomposition) rather than only via
   // the win-rate bands.
-  it('greedy Medium loss mode stays inside the PRD §G5 band', () => {
+  //
+  // MS-0MUVB2ZES005V83Y (Community Favour enablement gate): the greedy AI now
+  // only spends reputation on the rep→coins exchange when it enables a
+  // high-value placement, so it bleeds far less reputation. Combined with the
+  // R2 reputation re-tune, the Medium split shifts to ~12% reputation collapse
+  // / ~88% bankruptcy (measured 8/66 and 58/66 on the canonical 200-seed
+  // profile). The producer approved widening the band to the combined design
+  // (option 1, 2026-10-06) rather than relaxing the favour gate, since fewer
+  // reputation-collapse losses is the intended outcome. The band still catches
+  // a catastrophic collapse or a bankruptcy blow-out.
+  it('greedy Medium loss mode stays inside the combined PRD §G5 band', () => {
     const [medium] = runAllCombinations({
       seeds: SEEDS,
       maxTurns: MAX_TURNS,
@@ -129,11 +139,12 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
     const g5 = computeLossModeDecomposition(medium.runs);
     expect(g5.totalLosses).toBeGreaterThan(0);
 
-    // PRD §G5 / guardrail table: reputation collapse 20–40% of losses
-    // (G5 target 30–40%), bankruptcy 40–70% (G5 target 50–60%).
-    expect(g5.shares.reputation_collapse).toBeGreaterThanOrEqual(0.2);
+    // PRD §G5 / guardrail table as revised for the combined R2 + Community
+    // Favour design: reputation collapse 5–40% of losses (G5 target 30–40%),
+    // bankruptcy 40–95% (G5 target 50–60%).
+    expect(g5.shares.reputation_collapse).toBeGreaterThanOrEqual(0.05);
     expect(g5.shares.reputation_collapse).toBeLessThanOrEqual(0.4);
     expect(g5.shares.bankruptcy).toBeGreaterThanOrEqual(0.4);
-    expect(g5.shares.bankruptcy).toBeLessThanOrEqual(0.7);
+    expect(g5.shares.bankruptcy).toBeLessThanOrEqual(0.95);
   }, 120_000);
 });

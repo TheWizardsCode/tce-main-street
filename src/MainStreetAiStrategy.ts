@@ -84,6 +84,37 @@ const AI_HORIZON_CAP = 25;
  */
 const AI_SCORE_PACE = 800;
 
+// ── Community Favour rep→coins heuristic (MS-0MUVB2ZES005V83Y) ──
+
+/**
+ * Minimum reputation that must remain *after* a rep→coins Community Favour
+ * exchange (AC4). The exchange spends `favourRepToCoinsRepCost` reputation;
+ * keeping at least this many points back guarantees the exchange itself never
+ * triggers the `reputation <= 0` collapse loss condition. Retained from the
+ * original heuristic and named so tests can assert it directly.
+ */
+const FAVOUR_REP_TO_COINS_MIN_REP_BUFFER = 1;
+
+/**
+ * Value/timing gate for the rep→coins Community Favour exchange (AC3).
+ *
+ * The exchange is only worthwhile when the placement it enables returns a
+ * gross reward (base income + projected synergy over the planning horizon)
+ * of at least this many multiples of the reputation spent. A high multiple
+ * restricts the exchange to early, high-value placements — when the horizon
+ * is long and/or the placement secures a strong synergy slot — instead of
+ * paying 200 reputation for a late-game or low-value liquidity top-up.
+ *
+ * Calibrated against the canonical 200-seed profile (AC1/AC5) **on the
+ * post-R2 dev base** (MS-0MUR9IMN60093HIE reputation re-tune): the ratio
+ * sweep (4–24) is recorded in work item MS-0MUVB2ZES005V83Y. The chosen
+ * value keeps the per-difficulty committed-baseline tolerances (winRate
+ * ±0.25, coins ±30%) and the Easy ≥ Medium ≥ Hard ladder intact while
+ * materially lowering rep→coins usage. See `docs/main-street/` for the
+ * before/after evidence artefacts.
+ */
+const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
+
 /**
  * Computes the AI planning horizon — the number of future turns whose
  * income a purchase is expected to yield — derived from the distance to
@@ -623,34 +654,87 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
 
 // ── RandomStrategy ──────────────────────────────────────────
 
+export { FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO, FAVOUR_REP_TO_COINS_MIN_REP_BUFFER };
+
 /**
- * Returns the cheapest purchasable MARKET card cost (business/community-
- * space/upgrade/event/staff), or Infinity when the market is empty.
+ * Best placement newly enabled by a rep→coins Community Favour exchange
+ * (AC2).
  *
- * Used by the Community Favour heuristic to detect a STALLED turn — a
- * player who cannot afford the cheapest market card cannot advance the
- * economy with normal purchases, so the free rep→coins exchange is the
- * right fallback. Staff cards are part of the general market row
- * (CG-0MT3KZNQB0053K55), so they are included like any other family.
+ * Considers every market and handheld business / community-space card that is
+ * *unaffordable* at `coinsBefore` but affordable at `coinsAfter`, skips
+ * value-negative placements, and returns the one with the highest positive
+ * net greedy value (`(base income + projected synergy) × horizon − effective
+ * cost`). `reward` is the gross income + synergy over the horizon used by the
+ * value/timing gate (AC3).
+ *
+ * Returns `null` when the exchange cannot enable any positive-value placement
+ * (including when the street has no empty slot to place into).
  */
-function getCheapestMarketCost(state: MainStreetState): number {
-  const marketCards = state.market?.cards ?? [];
-  let cheapest = Infinity;
-  for (const card of marketCards) {
-    if (typeof card !== 'object' || card === null) continue;
-    let cost = (card as { cost?: number }).cost;
-    // Business/community-space purchases benefit from the street-wide
-    // Delivery Driver discount (CG-0MUMCVH3N007KT1M), so a stalled-turn check
-    // must compare against the effective price.
-    if (
-      (card.family === 'business' || card.family === 'community-space') &&
-      typeof cost === 'number'
-    ) {
-      cost = computeEffectiveBusinessPurchaseCost(state, cost);
+function bestEnabledFavourPlacement(
+  state: MainStreetState,
+  coinsBefore: number,
+  coinsAfter: number,
+  horizon: number,
+): { netValue: number; reward: number } | null {
+  // No empty slot ⇒ nothing can be placed, so the exchange enables nothing.
+  if (!state.streetGrid.some(slot => slot === null)) return null;
+
+  let bestNet = Number.NEGATIVE_INFINITY;
+  let bestReward = 0;
+  let found = false;
+  const consider = (card: BusinessCard | CommunitySpaceCard): void => {
+    const effectiveCost = computeEffectiveBusinessPurchaseCost(state, card.cost);
+    // Only placements the exchange *enables*: unaffordable before, affordable after.
+    if (effectiveCost <= coinsBefore || effectiveCost > coinsAfter) return;
+    const reward = (card.baseIncome + bestPlacementSynergy(state, card)) * horizon;
+    const netValue = reward - effectiveCost;
+    if (netValue <= 0) return;
+    if (netValue > bestNet) {
+      bestNet = netValue;
+      bestReward = reward;
+      found = true;
     }
-    if (typeof cost === 'number' && cost >= 0 && cost < cheapest) cheapest = cost;
+  };
+
+  for (const card of state.market?.cards ?? []) {
+    if (card.family === 'business' || card.family === 'community-space') {
+      consider(card as BusinessCard | CommunitySpaceCard);
+    }
   }
-  return cheapest;
+  for (const card of state.hand ?? []) {
+    if (card.family === 'business' || card.family === 'community-space') {
+      consider(card as BusinessCard | CommunitySpaceCard);
+    }
+  }
+  return found ? { netValue: bestNet, reward: bestReward } : null;
+}
+
+/**
+ * Decides whether a rep→coins Community Favour exchange is worth taking,
+ * shared by the single-player `scoreAction` and the competitive
+ * `competitiveFavourScore` so the two heuristics cannot diverge (AC2/AC3/AC4).
+ *
+ * The exchange must survive the reputation buffer (AC4), then enable a
+ * positive-value placement (AC2), and that placement's gross reward over the
+ * horizon must clear
+ * {@link FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO} × the reputation spent (AC3).
+ */
+function isRepToCoinsFavourWorthwhile(
+  state: MainStreetState,
+  coins: number,
+  reputation: number,
+  horizon: number,
+): boolean {
+  const repCost = state.config.favourRepToCoinsRepCost;
+  // AC4: never spend into (or toward) reputation collapse.
+  if (reputation < repCost + FAVOUR_REP_TO_COINS_MIN_REP_BUFFER) return false;
+
+  const coinsAfter = coins + state.config.favourRepToCoinsCoinGain;
+  const enabled = bestEnabledFavourPlacement(state, coins, coinsAfter, horizon);
+  // AC2: no profitable placement becomes affordable ⇒ decline the exchange.
+  if (!enabled) return false;
+  // AC3: only early, high-value placements justify the reputation spent.
+  return enabled.reward >= FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO * repCost;
 }
 
 // ── RandomStrategy ──────────────────────────────────────────
@@ -1362,26 +1446,20 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
       return 1;
     case 'community-favour':
       // Community Favour (CG-0MSTOATDQ005XDET): a free fallback when the
-      // player cannot afford purchases. rep-to-coins is genuinely valuable
-      // only when the player is STALLED (cannot afford the cheapest market
-      // card) AND the conversion leaves a reputation buffer (reputation
-      // after the exchange stays >= 1) — burning the last reputation would
-      // trigger reputation-collapse loss. Otherwise the exchange is a
-      // low-value (score 1) legal fallback that never outranks purchases.
+      // player cannot afford purchases. rep-to-coins only scores above the
+      // neutral default when the exchange passes the shared enablement +
+      // value/timing gate (AC2/AC3) and leaves the reputation buffer intact
+      // (AC4). Otherwise it stays a neutral (score 1) legal fallback that
+      // never outranks purchases.
       if (action.direction === 'rep-to-coins') {
-        const cheapestCardCost = getCheapestMarketCost(state);
-        // Convert only when genuinely stalled (cannot afford the cheapest
-        // market card) AND the conversion leaves a reputation buffer
-        // (reputation after the exchange stays >= 1) — burning the last
-        // reputation would trigger reputation-collapse loss.
-        if (
-          Number.isFinite(cheapestCardCost) &&
-          state.resourceBank.coins < cheapestCardCost &&
-          state.resourceBank.reputation >= state.config.favourRepToCoinsRepCost + 1
-        ) {
-          return 3; // useful fallback when stalled with rep to spare
-        }
-        return 1;
+        return isRepToCoinsFavourWorthwhile(
+          state,
+          state.resourceBank.coins,
+          state.resourceBank.reputation,
+          aiPlanningHorizon(state),
+        )
+          ? 3
+          : 1;
       }
       // coins-to-rep: spending scarce coins on reputation is rarely better
       // than buying cards; stays as a legal fallback at the low default.
@@ -1985,15 +2063,14 @@ function competitiveFavourScore(
   direction: 'coins-to-rep' | 'rep-to-coins',
 ): number {
   if (direction === 'coins-to-rep') return 1;
-  const cheapest = getCheapestMarketCost(state);
-  if (
-    Number.isFinite(cheapest) &&
-    (player.coins ?? 0) < cheapest &&
-    (player.reputation ?? 0) >= state.config.favourRepToCoinsRepCost + 1
-  ) {
-    return 3;
-  }
-  return 1;
+  return isRepToCoinsFavourWorthwhile(
+    state,
+    player.coins ?? 0,
+    player.reputation ?? 0,
+    aiCompetitivePlanningHorizon(state, player.playerId),
+  )
+    ? 3
+    : 1;
 }
 
 // ── Competitive seat binding (headless / harness driving) ─────
