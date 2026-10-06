@@ -26,6 +26,22 @@
 > exists yet** — rendering (owner-coloured street slots, shared-market phase
 > alternation affordance, SFX/animations) is deferred to a planning-created
 > child. Single-player remains the N=1 case and is behaviourally unchanged.
+>
+> **Competitive end conditions (MS-0MUVBH589001L7NL).** Competitive game-over
+> is evaluated **per seat** from each `PlayerRecord.coins` / `.reputation` —
+> the shared `resourceBank` is only a scratch mirror of the last-acting seat
+> and is not authoritative. A failing **human** seat keeps the single-player
+> loss reasons (`bankruptcy` = `coins < 0`, `reputation_collapse` =
+> `reputation <= 0` after turn 1); there is no `coins == 0` end condition. A
+> failing **AI** seat is **eliminated** — removed from turn rotation and AI
+> action enumeration, with its owned businesses/community spaces closed
+> (cards to the discard pile, ownership cleared, neighbours recalculated) —
+> and the survivors play on. When the last AI is eliminated the human is
+> declared the winner as **last standing** (`competitiveWinnerId` = the
+> human seat, `endReason = 'last_standing'`) with an explicit **continue
+> solo** opt-in (`last_standing_continue`, mirroring endless-mode
+> `score_threshold_continue`). The competitive Monte Carlo harness reports the
+> same per-seat attribution, including a per-player `eliminated` flag.
 
 ---
 

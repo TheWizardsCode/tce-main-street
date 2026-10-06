@@ -353,6 +353,7 @@ The game is considered **won** when **any** of the following conditions are sati
    ```
 2. **Challenge Completion** – All **Primary Challenges** (defined in `docs/games/the-build/challenges.md`) are completed, granting an automatic win regardless of numeric score.
 3. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
+4. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
 
 All win conditions are **deterministic** given the same seed, ensuring testability.
 
@@ -375,9 +376,27 @@ The game ends in **loss** if **any** of the following occur **immediately after 
 
 - **Bankruptcy** – `resourceBank.coins < 0`.
 - **Reputation Collapse** – `resourceBank.reputation <= 0` (the town is considered abandoned).
-- **Turn Exhaustion Without Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns`: `turn >= maxTurns` is reached and none of the win conditions in Section 7 are met.
+- **Turn Exhaustion Without Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns`: `turn >= maxTurns` is reached and none of the win conditions in Section 7 are met.
 
 Loss conditions are evaluated at the end of the **Night Income** phase before checking win conditions, guaranteeing a clear order of evaluation.
+
+> **Per-seat evaluation in competitive play (MS-0MUVBH589001L7NL).** In
+> human-vs-AI games each seat's own `PlayerRecord.coins` / `.reputation` is
+> authoritative — the shared `resourceBank` is only a scratch mirror of the
+> **last-acting** seat (written by `bindCompetitiveSeat` and left in place by
+> `restoreCompetitiveSeat`), so it must never be read for a game-over
+> decision. The thresholds are the same as single-player: **bankruptcy is
+> `coins < 0`** (there is **no** `coins == 0` end condition) and
+> **reputation collapse is `reputation <= 0` after turn 1**. A failing
+> **human** seat ends the game with the existing loss reasons
+> (`bankruptcy` / `reputation_collapse`). A failing **AI** seat instead marks
+> that seat `eliminated`, removes it from turn rotation and AI action
+> enumeration, and closes its owned businesses/community spaces — each card is
+> moved to the discard pile, its `ownerTaggedGrid` ownership cleared, and its
+> neighbours recalculated so the cancelled cards no longer contribute income,
+> reputation or synergy. The closure is a direct grid/discard operation with
+> **no action cost and no wallet change**. Single-player (`N = 1`, no
+> `players[]`) keeps the existing `checkImmediateLoss` behaviour exactly.
 
 ---
 

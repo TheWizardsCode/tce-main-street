@@ -20,7 +20,13 @@ In human-vs-AI competitive play the shared street is owner-tagged. A seat may
 only **sell, close or upgrade a business it owns**; clicking an opponent-owned
 slot blocks the **Manage Card** dialog with an ownership-specific message. The
 rule is enforced in one legality layer (`canActiveSeatActOnSlot`) so the UI, AI
-and headless paths cannot diverge, and single-player play is unaffected. See
+and headless paths cannot diverge, and single-player play is unaffected.
+
+Competitive game-over is evaluated **per seat** from each seat's own wallet. A
+failing AI opponent is **eliminated** — removed from turn rotation with its
+businesses closed — and the surviving seats play on; when the last AI is
+eliminated the human wins by **last standing**, with an explicit option to
+continue solo. A human seat's own collapse still ends the game as a loss. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
 ## Prerequisites
