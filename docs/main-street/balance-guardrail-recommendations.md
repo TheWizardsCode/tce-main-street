@@ -195,6 +195,13 @@ For reference, an earlier sweep with a different seed prefix (`mc-baseline-`) ga
 
 Loss decomposition (greedy, 60 turns): bankruptcy dominates on all difficulties (Medium 100% of losses; Hard 92% bankruptcy / 8% reputation collapse). No run hits the 60-turn harness cap.
 
+> **MS-0MUVB2ZES005V83Y + R2 combined G5 band (2026-10-06, producer-approved).**
+> The Community Favour enablement gate removes much of the AI's reputation
+> bleeding, so the combined design shifts Medium to 12% reputation collapse /
+> 88% bankruptcy (loss-only). `tests/main-street/monte-carlo-greedy-guardrail.test.ts`
+> now guards reputation collapse 0.05–0.40 and bankruptcy 0.40–0.95. See
+> [favour-ai-evidence.md](favour-ai-evidence.md).
+
 > **CG-0MUE03DGQ005KPZ7 re-baseline (2026-09-25, producer-approved):** the
 > 2026-09-12 snapshot was unratified and ~900 commits stale. A three-point
 > attribution found the drift was 100% cumulative balance change (per-action

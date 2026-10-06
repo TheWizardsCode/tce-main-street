@@ -85,6 +85,45 @@ The banking-aware variant is guarded like any other strategy, **additively** —
 
 - **Bank consumption fix (CG-0MTCP7F9S009HARC):** This behaviour depends on the bank consumption fix that decrements `bankedActions` on every `consumeAction` call, so the hoarded reserve actually depletes as the AI spends.
 
+## Community Favour: enablement + value/timing heuristic (MS-0MUVB2ZES005V83Y)
+
+Community Favour (CG-0MSTOATDQ005XDET) is a free, once-per-turn resource
+exchange (MarketPhase only): `coins→rep` (200 coins → 1 reputation) or
+`rep→coins` (200 reputation → 300 coins). The greedy AI only ever takes
+`rep→coins`; the reverse is scored 1 and never outranks a purchase.
+
+The `rep→coins` fallback is **not** a blanket stall-breaker. `scoreAction`
+(`case 'community-favour'`) routes through `isRepToCoinsFavourWorthwhile` — the
+same gate used by the competitive `competitiveFavourScore`, so the two
+heuristics cannot diverge. The exchange is taken (score 3) only when **all** of
+the following hold:
+
+1. **Enablement (AC2)** — the `favourRepToCoinsCoinGain` coins enable affording
+   at least one business / community-space placement that was unaffordable
+   before and whose greedy value is positive after the exchange
+   (`bestEnabledFavourPlacement`, evaluated with `bestPlacementSynergy` and
+   `computeEffectiveBusinessPurchaseCost`). Candidates come from the market row
+   and the hand, exactly as `scoreBusinessAction` /
+   `scorePlayBusinessFromHandAction` value them.
+2. **Value/timing (AC3)** — the enabled placement's gross reward
+   `(baseIncome + projected synergy) × aiPlanningHorizon` is at least
+   `FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO` (= 12) × the reputation spent
+   (`favourRepToCoinsRepCost`). This restricts the exchange to early,
+   high-value placements (long horizon and/or a strong synergy slot) rather
+   than a late-game or low-value liquidity top-up.
+3. **Reputation buffer (AC4)** — reputation after the exchange stays
+   `≥ FAVOUR_REP_TO_COINS_MIN_REP_BUFFER` (= 1), so the exchange can never
+   itself trigger the `reputation <= 0` collapse loss.
+
+Otherwise the action scores the neutral default (1) and, because
+`chooseGreedyAction` only takes a favour action when its score is `> 1`, the
+AI ends the turn instead.
+
+Both thresholds are constants in `MainStreetAiStrategy.ts`. Ratio 12 was
+calibrated on the canonical 200-seed profile after the R2 reputation re-tune;
+the before/after evidence (including the producer-approved G5 band revision)
+is in [favour-ai-evidence.md](favour-ai-evidence.md).
+
 ## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
 
 In human-vs-AI competitive play the AI seats are removed from play when they can

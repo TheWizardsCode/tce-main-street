@@ -58,6 +58,14 @@ Loss-only split:
 > PRD §G5 loss-mode band. On the canonical after-state profile Medium is now
 > **32% reputation collapse / 68% bankruptcy** (loss-only). See
 > [reputation-retune-evidence.md](reputation-retune-evidence.md).
+>
+> **Follow-up (MS-0MUVB2ZES005V83Y).** The greedy AI's Community Favour
+> `rep→coins` heuristic was subsequently tightened to an enablement +
+> value/timing gate, so the AI stops bleeding reputation for liquidity it
+> cannot use well. Combined with R2, Medium moves to **12% reputation collapse
+> / 88% bankruptcy**, and `rep→coins` usage falls materially on every
+> difficulty. The producer approved widening the G5 band to the combined
+> design. See [favour-ai-evidence.md](favour-ai-evidence.md).
 
 ## 3. Synergy utilisation & diversity
 
