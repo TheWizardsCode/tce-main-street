@@ -150,7 +150,7 @@ export function onTutorialActionComplete(lmCtx: MainStreetLifecycleManagerContex
     }
 
     // Only complete the step when the action matches the requiredAction.
-    // During place-business steps (T7/T15/T19), select-hand-card is allowed
+    // During place-business steps (T7/T16/T20), select-hand-card is allowed
     // (isRequiredAction returns true) but does NOT complete the step — only
     // the actual placement (place-business) advances the tutorial.
     // (CG-0MTMYI6YP0040NT5 — tutorial place-business step was completing on
@@ -164,7 +164,7 @@ export function onTutorialActionComplete(lmCtx: MainStreetLifecycleManagerContex
 
     // A completed place-business step already returns the scene to the
     // market phase with pendingHandIndex cleared. This reset for play-event
-    // steps (T20) keeps the held event card clickable in the hand (event
+    // steps (T22) keeps the held event card clickable in the hand (event
     // clicks are only wired while uiPhase === 'market').
     const nextStep = getCurrentStep(newState);
     if (nextStep?.requiredAction === 'play-event') {

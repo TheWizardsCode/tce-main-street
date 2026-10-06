@@ -685,7 +685,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
 
     // Tutorial gating: only allow play-event if it's the required action or
-    // the tutorial is inactive (T14 "Triggering Events" uses this gate).
+    // the tutorial is inactive (T22 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);
     if (check && !check.allowed) {
       s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');

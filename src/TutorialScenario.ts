@@ -24,8 +24,8 @@
  *   so the scenario is robust across deck construction ordering.
  * - `ensureTutorialMarketForUpcomingSteps()` — The single-row market holds
  *   only `MARKET_TOTAL_SLOTS` (3) cards, but the tutorial needs six purchase
- *   targets across nine days (Laundromat T3, Local Festival T10, Bookshop T12,
- *   Library T19 — moved to hand, then placed from hand the next week). At
+ *   targets across eight days (Laundromat T3, Local Festival T10, Bookshop T12,
+ *   Library T18 — moved to hand, then placed from hand the next week). At
  *   each day start the turn controller calls this hook, which forces the
  *   upcoming action steps' required cards into the visible line (from
  *   decks/discards), mirroring the legacy two-row scenario-placing behaviour.
@@ -48,15 +48,19 @@
  * | T12 | Move Bookshop to hand | 0 | 0 | 915 |
  * | T14 | End Turn (day 4 → 5) | 120 | 0 | 1035 |
  * | T15 | Community Favour (200 rep → 300c) | 300 | 0 | 1335 |
- * | T16 | End Turn + income (~133) | 133 | 0 | 1469 |
- * | T17 | Place Bookshop (listed $300) | 0 | 300 | 1169 |
- * | T18 | End Turn + income (~391) | 391 | 0 | 1560 |
- * | T19 | Move Library to hand | 0 | 0 | 1560 |
- * | T20 | End Turn + income (~392) | 392 | 0 | 1952 |
- * | T21 | Place Library (listed $700) | 0 | 700 | 1252 |
- * | T22 | End Turn + income (~100) | 100 | 0 | 1352 |
- * | T23 | Play Local Festival (~+100 net) | 100 | 0 | 1452 |
- * | T24+ | Confirm steps (no cost) | 0 | 0 | ≥ 1452 |
+ * | T16 | Place Bookshop (listed $300) | 0 | 300 | 1035 |
+ * | T17 | End Turn + income (~391) | 391 | 0 | 1426 |
+ * | T18 | Move Library to hand | 0 | 0 | 1426 |
+ * | T19 | End Turn + income (~392) | 392 | 0 | 1818 |
+ * | T20 | Place Library (listed $700) | 0 | 700 | 1118 |
+ * | T21 | End Turn + income (~100) | 100 | 0 | 1218 |
+ * | T22 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
+ * | T23+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
+ *
+ * MS-0MT3JK16W006A66P merged the former standalone Community-Favour day into
+ * the Bookshop-placement day (T15 favour → T16 place → T17 end), so every day
+ * that ends now spends its action. The income figures are approximate and
+ * validated by the tutorial e2e/budget tests.
  *
  * All placements are at listed cost because each follows an End Turn
  * (plan-ahead). The rep→coins Community Favour exchange teaches the
@@ -141,34 +145,34 @@ export interface TutorialScenario {
  * (CG-0MSTOATDT009BRX2) of exactly 3 cards on day 1:
  *   - `biz-bakery` (Bakery, $300, Food) — filler slot
  *   - `biz-laundromat` (Laundromat, $400, Service) — T3 purchase target
- *   - `evt-festival` (Local Festival, $300) — T9 purchase target
+ *   - `evt-festival` (Local Festival, $300) — T10 purchase target
  *
  * Later tutorial days force the remaining targets (Bookshop for T12,
- * Library for T19) into the line via `ensureTutorialMarketForUpcomingSteps`
+ * Library for T18) into the line via `ensureTutorialMarketForUpcomingSteps`
  * (called by the turn controller at day start).
  *
  * **Investments row is gone:** the two upgrade cards (upg-patisserie,
  * upg-garden) are no longer scenario-placed; upgrades may appear in the
  * line randomly but no tutorial step requires them.
  *
- * **Incident Deck (face-down, 8 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH):**
- * The 26-step flow runs 9 days with 8 End Turns (T6, T8, T11, T14, T16, T18, T20, T22),
- * so the deterministic deck holds exactly 8 incidents. All are budget-safe
+ * **Incident Deck (face-down, 7 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH):**
+ * The 25-step flow runs 8 days with 7 End Turns (T6, T8, T11, T14, T17, T19, T21),
+ * so the deterministic deck holds exactly 7 incidents. All are budget-safe
  * on the tutorial street (no Food businesses are placed):
- *   - `evt-award` (Community Award, +200 reputation) ×3
- *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×2
+ *   - `evt-award` (Community Award, +200 reputation) ×4
+ *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×3
  *
  * **Coin Budget:** 1200 starting coins; payments happen at play time
  * (cost-at-play, listed cost — every placement follows an End Turn, so no
  * same-turn premium is requested): Laundromat placement $400 (T7) + Bookshop
- * placement $300 (T17) + Library placement $700 (T21) + Local Festival play $300
- * (T23, net +100 with the two Culture cards) — all covered by 1200 + income
- * across the eight end-turn steps + the T15 Community Favour exchange.
+ * placement $300 (T16) + Library placement $700 (T20) + Local Festival play $300
+ * (T22, net +100 with the two Culture cards) — all covered by 1200 + income
+ * across the seven end-turn steps + the T15 Community Favour exchange.
  * RNG-independent. See the budget table in the module docs.
  */
 export const STANDARD_TUTORIAL_SCENARIO: TutorialScenario = {
   difficulty: 'Easy',
-  // 1200 starting coins: the 26-step flow places four cards (Laundromat $400 +
+  // 1200 starting coins: the 25-step flow places four cards (Laundromat $400 +
   // Bookshop $300 + Library $700 + Local Festival $300) and earns ~260 income +
   // one Community Favour conversion (200 rep → 300 coins) at T15, which is
   // REQUIRED to afford the $700 Library (770 + 300 = 1070 ≥ 700). Reputation
@@ -190,7 +194,6 @@ export const STANDARD_TUTORIAL_SCENARIO: TutorialScenario = {
     'evt-award',
     'evt-rainy',
     'evt-award',
-    'evt-rainy',
   ],
   seed: 'tutorial-scenario',
 };
@@ -257,9 +260,9 @@ export function createTutorialScenario(
       'TutorialScenario: incident deck must not be empty.',
     );
   }
-  // The tutorial's 26-step flow (CG-0MTNMBX5Z002U0MH) spans 9 days with 8
-  // End Turns (T6, T8, T11, T14, T16, T18, T20, T22), so the scenario declares a
-  // deterministic incident card per resolution. INCIDENT_QUEUE_SIZE (the
+  // The tutorial's 25-step flow spans 8 days with 7 End Turns (T6, T8, T11,
+  // T14, T17, T19, T21), so the scenario declares a deterministic incident card
+  // per resolution. INCIDENT_QUEUE_SIZE (the
   // legacy face-down-queue size, still 2 for the real game) no longer constrains
   // the scripted scenario deck — the scenario's own list is authoritative.
 
@@ -290,8 +293,8 @@ export function createTutorialScenario(
 
   // Incident deck (face-down, CG-0MSTOATDP000JNHH): scenario-placed
   // incidents at the deck front (next to resolve). The tutorial flow now runs
-  // 8 End Turns (9 days, CG-0MTNMBX5Z002U0MH) so the scenario declares exactly
-  // 8 deterministic, budget-safe incidents (see STANDARD_TUTORIAL_SCENARIO).
+  // 7 End Turns (8 days) so the scenario declares exactly 7 deterministic,
+  // budget-safe incidents (see STANDARD_TUTORIAL_SCENARIO).
   // All are non-negative on the tutorial street (no Food businesses are
   // placed), so the tight coin budget stays deterministic — a larger random
   // deck could still resolve an unbudgeted, coin-costing incident, which is
@@ -433,7 +436,7 @@ function upcomingStepCardIds(controllerState: TutorialControllerState): string[]
   const result: string[] = [];
   if (!controllerState.isActive) return result;
   // INCLUSIVE start: after an end-turn step completes, the controller is
-  // already ON the next step (e.g. T11 move-Bookshop / T17 move-Library),
+  // already ON the next step (e.g. T12 move-Bookshop / T18 move-Library),
   // and `startTurnPhase` runs the guarantee hook for it. The current step's
   // required card must be covered too (CG-0MT53NXGZ004H5AE two-turn flow).
   const startIndex = Math.max(0, controllerState.currentStepIndex);
@@ -482,7 +485,7 @@ function extractTemplateCard(
  * single-row market at day start (CG-0MSTOATDT009BRX2).
  *
  * With only 3 visible slots and four buys spread across the tutorial
- * (Laundromat T3, Local Festival T9, Bookshop T11, Library T17), the visible
+ * (Laundromat T3, Local Festival T10, Bookshop T12, Library T18), the visible
  * line alone cannot hold every target. Scanning the upcoming action steps
  * (up to the next end-turn), this hook forces any missing required card into
  * the line: cards are drawn from the decks (or their discards), displacing

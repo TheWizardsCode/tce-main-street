@@ -1,7 +1,8 @@
 /**
  * Tutorial Text Updates Tests
  *
- * Validates the 26-step two-turn tutorial text (CG-0MTNMBX5Z002U0MH):
+ * Validates the 25-step two-turn tutorial text (CG-0MTNMBX5Z002U0MH,
+ * MS-0MT3JK16W006A66P merged the favour/bookshop day):
  * 1. Every resolved title and body is ≤3 sentences and communicates exactly one point.
  * 2. T1 no longer mentions "25 turns" (time-limited play sentence removed).
  * 3. Upcoming Incidents has no "blue" wording and no incident-impact details.
@@ -43,7 +44,7 @@ function countSentences(text: string): number {
   return parts.length;
 }
 
-describe('Tutorial text updates (26-step two-turn restructure)', () => {
+describe('Tutorial text updates (25-step two-turn restructure)', () => {
   beforeEach(() => {
     resetI18n();
     registerLocale('en', TUTORIAL_EN_BUNDLE);
@@ -201,39 +202,39 @@ describe('Tutorial text updates (26-step two-turn restructure)', () => {
     });
   });
 
-  describe('T21 Build a Library next to the Bookshop (AC: synergy system, Culture adjacency)', () => {
+  describe('T20 Build a Library next to the Bookshop (AC: synergy system, Culture adjacency)', () => {
     it('mentions the Culture bonus via synergyCardName placeholder', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T21')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T20')!).body;
       expect(body).toContain('Bookshop');
       expect(body.toLowerCase()).toMatch(/culture/);
       expect(body.toLowerCase()).toMatch(/bonus/);
     });
     it('tells the player to select and place the Library next to the Bookshop', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T21')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T20')!).body;
       expect(body.toLowerCase()).toMatch(/hand/);
       expect(body.toLowerCase()).toMatch(/place/);
       expect(body.toLowerCase()).toMatch(/next to/);
     });
   });
 
-  describe('T23 Triggering Events (AC: play festival from hand)', () => {
+  describe('T22 Triggering Events (AC: play festival from hand)', () => {
     it('mentions clicking the held festival in hand', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!).body;
       expect(body.toLowerCase()).toMatch(/hand/);
       expect(body.toLowerCase()).toMatch(/click/);
     });
   });
 
-  describe('T24 Success and Failure (AC: scoring bar)', () => {
+  describe('T23 Success and Failure (AC: scoring bar)', () => {
     it('mentions the scoring bar components', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T24')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!).body;
       expect(body.toLowerCase()).toMatch(/coins/);
       expect(body.toLowerCase()).toMatch(/score/);
       expect(body.toLowerCase()).toMatch(/target/);
     });
   });
 
-  describe('T26 button label (AC: "Let\'s play!")', () => {
+  describe('T25 button label (AC: "Let\'s play!")', () => {
     it('overlay startFullGame is "Let\'s play!"', () => {
       expect(t('tutorial.overlay.startFullGame')).toBe("Let's play!");
     });
@@ -330,7 +331,7 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
   });
 
   it('T20 resolves {cardName} (Library) and {synergyCardName} (Bookshop) from card data', () => {
-    const t20 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T21')!;
+    const t20 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T20')!;
     const libraryRow = getCsvRows().find(r => r.id === getBaseTypeId(t20.referencedCardId!))!;
     const bookshopRow = getCsvRows().find(r => r.id === getBaseTypeId(t20.synergyCardId!))!;
     expect(libraryRow).toBeDefined();
@@ -342,9 +343,9 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
     expect(body).not.toMatch(/\{[A-Za-z_]+\}/);
   });
 
-  it('T14 Community Favour resolves with no unresolved placeholder tokens', () => {
-    const t14 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T14')!;
-    const body = resolveTutorialStepText(t14).body;
+  it('T15 Community Favour resolves with no unresolved placeholder tokens', () => {
+    const t15 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T15')!;
+    const body = resolveTutorialStepText(t15).body;
     expect(body).not.toMatch(/\{[A-Za-z_]+\}/);
   });
 
@@ -360,9 +361,9 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
       expect(body.toLowerCase()).toMatch(/action/);
     });
 
-    it('T23 play-event copy names the action cost', () => {
-      const t23 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!;
-      const body = resolveTutorialStepText(t23).body;
+    it('T22 play-event copy names the action cost', () => {
+      const t22 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!;
+      const body = resolveTutorialStepText(t22).body;
       expect(body.toLowerCase()).toMatch(/action/);
     });
 
@@ -375,12 +376,12 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
     });
 
     it('event steps keep each action day within the 1-action budget', () => {
-      // T10 (buy-event) and T23 (play-event) each consume the day's single
+      // T10 (buy-event) and T22 (play-event) each consume the day's single
       // action, so each must be preceded by its own end-turn day boundary.
       // The partitioning guard lives in tutorial-action-economy.test.ts;
       // this asserts the two event steps are still classified as consumers.
       const consuming = new Set(['buy-event', 'play-event']);
-      for (const stepId of ['T10', 'T23']) {
+      for (const stepId of ['T10', 'T22']) {
         const step = UNIFIED_TUTORIAL_STEPS.find(s => s.id === stepId)!;
         expect(consuming.has(step.requiredAction!), `${stepId} should be action-gated`).toBe(true);
       }

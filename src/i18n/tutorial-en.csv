@@ -39,28 +39,26 @@ tutorial.T14.title,End this turn
 tutorial.T14.body,End the week to collect income and start the next week. The card you took waits in your hand until next week.
 tutorial.T15.title,Community Favour
 tutorial.T15.body,"You can also turn reputation into coins: click the **2r → 3c** button in the action bar below — a FREE **Community Favour** exchange, once per turn."
-tutorial.T16.title,End this turn
-tutorial.T16.body,The **{cardName}** waits in your hand. End this turn to continue to next week.
-tutorial.T17.title,Place the Bookshop
-tutorial.T17.body,"Click the **{cardName}** in your hand, then click an empty slot on the street to place it at its listed **{cost}**. It starts earning income right away."
-tutorial.T18.title,End this turn
-tutorial.T18.body,End the week to collect income from your street and start the next week.
-tutorial.T19.title,Move the Library to hand
-tutorial.T19.body,"The **{cardName}** brings a Culture bonus when placed next to other Culture cards. Click it to move it to your hand — that's this week's **one action**."
-tutorial.T20.title,End this turn
-tutorial.T20.body,End the week to collect income and reach the Library's placement week.
-tutorial.T21.title,Build a Library
-tutorial.T21.body,"Click the **{cardName}** in your hand, then click a slot **next to {synergyCardName}** — orthogonally or diagonally — to place it at its listed cost and gain the Culture bonus."
-tutorial.T22.title,End this turn
-tutorial.T22.body,End this turn to collect income and reach the festival week.
-tutorial.T23.title,Triggering Events
-tutorial.T23.body,"Two Culture businesses on your street power the festival. Click the **{cardName}** in your hand to play it — it uses this week's action."
-tutorial.T24.title,Success and Failure
-tutorial.T24.body,"The bar shows your coins, reputation, score, and target. Hover each to see how it is calculated."
-tutorial.T25.title,Challenges
-tutorial.T25.body,Each game gives you challenges for bonus points. See them in the Challenge Tracker. Completing challenges unlocks new cards for future games!
-tutorial.T26.title,Tutorial Complete
-tutorial.T26.body,There are many more things to discover as you play, but you have the basics now. Let's play.
+tutorial.T16.title,Place the Bookshop
+tutorial.T16.body,"Click the **{cardName}** in your hand, then click an empty slot on the street to place it at its listed **{cost}**. It starts earning income right away."
+tutorial.T17.title,End this turn
+tutorial.T17.body,End the week to collect income from your street and start the next week.
+tutorial.T18.title,Move the Library to hand
+tutorial.T18.body,"The **{cardName}** brings a Culture bonus when placed next to other Culture cards. Click it to move it to your hand — that's this week's **one action**."
+tutorial.T19.title,End this turn
+tutorial.T19.body,End the week to collect income and reach the Library's placement week.
+tutorial.T20.title,Build a Library
+tutorial.T20.body,"Click the **{cardName}** in your hand, then click a slot **next to {synergyCardName}** — orthogonally or diagonally — to place it at its listed cost and gain the Culture bonus."
+tutorial.T21.title,End this turn
+tutorial.T21.body,End this turn to collect income and reach the festival week.
+tutorial.T22.title,Triggering Events
+tutorial.T22.body,"Two Culture businesses on your street power the festival. Click the **{cardName}** in your hand to play it — it uses this week's action."
+tutorial.T23.title,Success and Failure
+tutorial.T23.body,"The bar shows your coins, reputation, score, and target. Hover each to see how it is calculated."
+tutorial.T24.title,Challenges
+tutorial.T24.body,Each game gives you challenges for bonus points. See them in the Challenge Tracker. Completing challenges unlocks new cards for future games!
+tutorial.T25.title,Tutorial Complete
+tutorial.T25.body,There are many more things to discover as you play, but you have the basics now. Let's play.
 tutorial.steamFollow.cta,Follow us on Steam
 tutorial.steamFollow.opened,Steam is opening in the background — follow us, then come back.
 tutorial.steamFollow.openedBrowser,Opening the Steam page in your browser. Steam rewards are only available in the desktop launcher.

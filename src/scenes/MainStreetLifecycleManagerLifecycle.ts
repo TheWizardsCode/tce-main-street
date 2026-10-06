@@ -506,7 +506,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
               // flag since we are not going to play the deferred banner.
               s.deferredWeekBanner = false;
               s.startTurnPhase(false, true);
-              // Start the action-gated tutorial flow (T1-T17)
+              // Start the action-gated tutorial flow (T1-T25)
               const controller = (s as any).tutorialController as TutorialControllerState | undefined;
               if (controller) {
                 Object.assign(s, { tutorialController: startTutorial(controller) });
