@@ -52,7 +52,7 @@ const NEW_STAFF_CONTRACTS: NewStaffContract[] = [
   { id: 'staff-apprentice', name: 'Apprentice', cost: 200, ongoingCost: 50, handSlotsAdded: 1 },
   { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 4 },
   { id: 'staff-socialite', name: 'Socialite', cost: 800, ongoingCost: 150, handSlotsAdded: 1, reputationPerTurn: 10 },
-  { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 1 },
+  { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 100 },
 ];
 
 function findStaff(deck: readonly StaffCard[], id: string): StaffCard | undefined {
@@ -185,7 +185,7 @@ describe('Group F: Socialite reputation ability (AC2)', () => {
 // ── AC2: Accountant refresh discount ──────────────────────────────────
 
 describe('Group F: Accountant refresh discount (AC2)', () => {
-  it('reduces the market refresh cost by 1', () => {
+  it('reduces the market refresh cost by 100 (×100 integer economy)', () => {
     const state = setupMainStreetGame({ seed: 'group-f-accountant' });
     state.phase = 'MarketPhase';
 
@@ -195,18 +195,18 @@ describe('Group F: Accountant refresh discount (AC2)', () => {
     const accountant = findStaff(createStaffDeck(1), 'staff-accountant')!;
     state.staffCards.push({ ...accountant });
 
-    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 1);
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - 100);
   });
 
   it('allows a refresh and deducts only the discounted cost', () => {
     const state = setupMainStreetGame({ seed: 'group-f-accountant-deduct' });
     state.phase = 'MarketPhase';
-    state.resourceBank.coins = REFRESH_MARKET_COST - 1;
+    state.resourceBank.coins = REFRESH_MARKET_COST - 100;
 
     const accountant = findStaff(createStaffDeck(1), 'staff-accountant')!;
     state.staffCards.push({ ...accountant });
 
-    // 499 coins is exactly enough with the discount (base 500 - 1).
+    // 400 coins is exactly enough with the discount (base 500 - 100).
     expect(canRefreshMarket(state).legal).toBe(true);
 
     refreshMarket(state);
@@ -226,18 +226,19 @@ describe('Group F: Accountant refresh discount (AC2)', () => {
 // ── AC3: No regression for existing staff ─────────────────────────────
 
 describe('Group F: existing staff no-regression (AC3)', () => {
-  it('Assistant/Manager/Director keep their original stats and no abilities', () => {
+  it('Assistant/Manager/Director keep their cost stats; Manager slots drop to +1 and Manager/Director grant an action', () => {
     const deck = createStaffDeck(1);
     const expected = [
-      { id: 'staff-assistant', cost: 300, ongoingCost: 100, slots: 1 },
-      { id: 'staff-manager', cost: 700, ongoingCost: 250, slots: 2 },
-      { id: 'staff-director', cost: 1400, ongoingCost: 400, slots: 3 },
+      { id: 'staff-assistant', cost: 300, ongoingCost: 100, slots: 1, actions: undefined },
+      { id: 'staff-manager', cost: 700, ongoingCost: 250, slots: 1, actions: 1 },
+      { id: 'staff-director', cost: 1400, ongoingCost: 400, slots: 3, actions: 1 },
     ];
     for (const e of expected) {
       const card = findStaff(deck, e.id)!;
       expect(card.cost).toBe(e.cost);
       expect(card.ongoingCost).toBe(e.ongoingCost);
       expect(card.handSlotsAdded).toBe(e.slots);
+      expect(card.actionsPerTurn).toBe(e.actions);
       expect(card.reputationPerTurn).toBeUndefined();
       expect(card.refreshCostDiscount).toBeUndefined();
     }
@@ -249,6 +250,14 @@ describe('Group F: existing staff no-regression (AC3)', () => {
       const card = findStaff(deck, id)!;
       expect(card.reputationPerTurn).toBeUndefined();
       expect(card.refreshCostDiscount).toBeUndefined();
+      expect(card.actionsPerTurn).toBeUndefined();
+    }
+  });
+
+  it('non-action staff (Socialite, Accountant, Lookout) do not grant actions', () => {
+    const deck = createStaffDeck(1);
+    for (const id of ['staff-socialite', 'staff-accountant', 'staff-lookout']) {
+      expect(findStaff(deck, id)!.actionsPerTurn).toBeUndefined();
     }
   });
 });
@@ -275,7 +284,7 @@ describe('Group F: balance guardrails (AC5/AC6)', () => {
   });
 
   it('keeps other families unchanged in count (data-driven scope)', () => {
-    expect(createBusinessDeck(1).length).toBe(30);
+    expect(createBusinessDeck(1).length).toBe(31);
     expect(createCommunitySpaceDeck(1).length).toBe(8);
     expect(createEventDeck(1, undefined, createSeededRng(42), 1).length).toBe(71); // +8 chain + 7 Irish-holiday (CG-0MTT0K9RX0004QTE)
     expect(createUpgradeDeck(1).length).toBe(39);

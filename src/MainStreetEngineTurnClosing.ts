@@ -15,9 +15,9 @@ import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
-import { applyIncome } from './MainStreetAdjacency';
-import type { EventCard } from './MainStreetCards';
-import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex, getEventTemplates, getBaseTypeId } from './MainStreetCards';
+import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
+import type { BusinessCard, EventCard } from './MainStreetCards';
+import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
@@ -25,6 +25,15 @@ import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './Ma
 import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
+import {
+  getPendingStorylineOptions,
+  resolveStorylineOption,
+  markChoiceResolved,
+  recordStorylineResolution,
+  eventHasStoryline,
+  createPendingStorylineChoice,
+} from './MainStreetStoryline';
+import { storyUpdateLine } from './MainStreetStorylineUi';
 
 /**
  * Resolves the front Incident event from the face-down incident deck
@@ -80,16 +89,23 @@ export function resolveIncident(
   // Track the draw so the balance history mirrors the resolved sequence.
   recordIncidentDraw(state.incidentBalance, event);
 
-  // Dual-choice event interception (CG-0MTSHG8RP008E128 AC5): when the drawn
-  // incident has `hasChoices`, its effect is DEFERRED — stash the drawn event
-  // as `pendingEventChoice` (unresolved) and return null (no effect applied,
-  // no escalation yet). The caller (processEndOfTurn) pauses with
-  // TurnResult.choicePending so the UI can present the Accept/Reject dialog;
-  // resolveEventChoice applies the chosen path later.
-  if (event.hasChoices) {
-    state.pendingEventChoice = { event, chosenOption: null, resolved: false };
-    addLog(state, `Incident: ${event.name} — a decision is required.`, 'neutral');
-    return null;
+  // Storyline/choice event interception (CG-0MTSHG8RP008E128 AC5 /
+  // MS-0MUMP93DI0018OGV): when the drawn incident presents a choice (legacy
+  // `hasChoices`, or an explicit registered option list), its effect is
+  // DEFERRED — stash the drawn event as `pendingEventChoice` (unresolved) and
+  // return null (no effect applied, no escalation yet). The caller
+  // (processEndOfTurn) pauses with TurnResult.choicePending so the UI can
+  // present the option dialog; resolveEventChoice/resolveEventOption applies
+  // the chosen path later. The pending choice is created through the
+  // game-agnostic extraction seam. A bare `storylineId` is descriptive
+  // metadata only and does NOT intercept resolution.
+  if (eventHasStoryline(event)) {
+    const pending = createPendingStorylineChoice(event, state);
+    if (pending) {
+      state.pendingEventChoice = pending;
+      addLog(state, `Incident: ${event.name} — a decision is required.`, 'neutral');
+      return null;
+    }
   }
 
   // Deferred-mutation path (CG-0MTR72P14000VO6Q): compute the resource
@@ -132,14 +148,158 @@ export function resolveIncident(
 }
 
 /**
+ * Maps a compiled option label to the transcript/state token.
+ *
+ * Legacy two-option choice cards (exactly [Accept, Reject]) keep the lowercase
+ * `'accept'`/`'reject'` tokens so the transcript and pending-state shape is
+ * unchanged from the pre-seam engine. Generalised storylines (any other option
+ * list) record the full label, lower-cased for stable matching.
+ */
+function legacyLabelToToken(label: string, optionCount: number): string {
+  const lower = label.toLowerCase();
+  if (optionCount === 2 && (lower === 'accept' || lower === 'reject')) {
+    return lower;
+  }
+  return label;
+}
+
+/**
+ * Resolves the pending storyline incident by selecting the option at the
+ * given index in the card's ordered option list (generalised API, AC2).
+ *
+ * The option list is compiled/registered through the game-agnostic extraction
+ * seam ({@link getStorylineOptions}); the chosen option's effect policy is
+ * applied and its successor (if any) is pushed onto the incident deck.
+ * Records the decision in the transcript and marks the pending choice
+ * resolved — the deferred closing (EndCheck → next week) is completed by
+ * {@link finishDeferredEndOfTurn}.
+ *
+ * @param state       Current game state (mutated). Must have an unresolved choice.
+ * @param optionIndex Index into the ordered option list (0-based).
+ * @throws Error when no unresolved choice is pending or the index is invalid.
+ */
+export function resolveEventOption(
+  state: MainStreetState,
+  optionIndex: number,
+): EventChoiceResolution {
+  const pending = state.pendingEventChoice;
+  if (!pending) {
+    throw new Error('No pending event choice to resolve.');
+  }
+  if (pending.resolved) {
+    throw new Error(`Event choice for ${pending.event.name} is already resolved.`);
+  }
+  const event = pending.event;
+  // Use the draw-time frozen option snapshot when present so callback
+  // conditions are never re-evaluated at resolution time (AC3); fall back
+  // to recompiling for legacy pending choices without a snapshot.
+  const options = getPendingStorylineOptions(pending, state);
+  if (options.length > 0) {
+    const option = options[optionIndex];
+    if (!option) {
+      throw new Error(
+        `No storyline option at index ${optionIndex} for ${event.name} (has ${options.length}).`,
+      );
+    }
+    const appliesEffect = option.effectPolicy === 'apply';
+    if (!appliesEffect) {
+      addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
+    }
+
+    const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, option);
+
+    if (appliesEffect) {
+      // Show the ACTUAL applied delta (CG-0MTQ7W0ZX0059R3J AC6): for the
+      // proportional Tax Audit this is the real percentage amount, e.g.
+      // "Chose to accept: Tax Audit (-450 coins).", using the same
+      // describeEventEffects formatting as the Incident: log lines.
+      addLog(
+        state,
+        `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
+        classifyEffect(coinChange, repChange),
+      );
+    }
+    syncResourceBankToLedger(state);
+
+    // Transcript: recorded identically for player and AI. The legacy
+    // accept/reject successor ids are preserved for backward compatibility.
+    // Legacy two-option cards record the lowercase token ('accept'/'reject')
+    // so the transcript shape is byte-for-byte identical to the pre-seam
+    // engine; generalised multi-way storylines record the full option label.
+    const transcriptOption = legacyLabelToToken(option.label, options.length);
+    recordStorylineResolution(
+      state,
+      event,
+      transcriptOption,
+      event.acceptNextCardId ?? null,
+      event.rejectNextCardId ?? null,
+    );
+    // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): a concise narrative
+    // "story update" tied to the storyline, when the card belongs to one.
+    const update = storyUpdateLine(event, transcriptOption, coinChange, repChange);
+    if (update) {
+      addLog(state, update, classifyEffect(coinChange, repChange));
+    }
+
+    markChoiceResolved(pending, transcriptOption);
+    return { event, option: transcriptOption, coinChange, repChange, pushedCard };
+  }
+
+  // Legacy fallback: an event staged as a pending choice without any compiled
+  // option list (e.g. a synthetic non-choice card in an existing test, or a
+  // legacy save hand-crafted into the pending state). Preserve the original
+  // accept/reject semantics exactly: index 0 applies the effect, index 1
+  // skips it, and the legacy successor ids drive the deck push.
+  const appliesEffect = optionIndex === 0;
+  if (!appliesEffect) {
+    addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
+  }
+  const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, {
+    label: appliesEffect ? 'Accept' : 'Reject',
+    successorId: appliesEffect ? event.acceptNextCardId : event.rejectNextCardId,
+    effectPolicy: appliesEffect ? 'apply' : 'skip',
+  });
+  if (appliesEffect) {
+    addLog(
+      state,
+      `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
+      classifyEffect(coinChange, repChange),
+    );
+  }
+  syncResourceBankToLedger(state);
+  recordStorylineResolution(
+    state,
+    event,
+    appliesEffect ? 'accept' : 'reject',
+    event.acceptNextCardId ?? null,
+    event.rejectNextCardId ?? null,
+  );
+  // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): story update when applicable.
+  const fallbackUpdate = storyUpdateLine(
+    event,
+    appliesEffect ? 'accept' : 'reject',
+    coinChange,
+    repChange,
+  );
+  if (fallbackUpdate) {
+    addLog(state, fallbackUpdate, classifyEffect(coinChange, repChange));
+  }
+  markChoiceResolved(pending, appliesEffect ? 'accept' : 'reject');
+  return { event, option: appliesEffect ? 'accept' : 'reject', coinChange, repChange, pushedCard };
+}
+
+/**
  * Resolves a pending dual-choice incident (CG-0MTSHG8RP008E128 AC8/AC9).
  *
  * Accept applies the event's effect (via resolveEvent) then pushes the
  * `acceptNextCardId` escalation onto the incident deck. Reject skips the
  * effect entirely and pushes the `rejectNextCardId` escalation instead.
- * Records the decision in the transcript and marks the pending choice
- * resolved — the deferred closing (EndCheck → next week) is completed by
- * {@link finishDeferredEndOfTurn}.
+ *
+ * This is a thin backward-compatible wrapper over {@link resolveEventOption}:
+ * legacy choice cards compile to the ordered list [Accept, Reject] — index 0
+ * applies the effect, index 1 skips it — so behaviour is byte-for-byte
+ * equivalent to the previous inline handling, including the lowercase
+ * `chosenOption` token stored on the pending state.
  *
  * @param state  Current game state (mutated). Must have a pending unresolved choice.
  * @param option The player's decision.
@@ -156,51 +316,12 @@ export function resolveEventChoice(
   if (pending.resolved) {
     throw new Error(`Event choice for ${pending.event.name} is already resolved.`);
   }
-  const event = pending.event;
-  const coinsBefore = state.resourceBank.coins;
-  const repBefore = state.resourceBank.reputation;
-
-  let pushedCard: EventCard | null;
-  if (option === 'accept') {
-    // Accept path (AC8): apply the event's stated effect, then chain on.
-    resolveEvent(state, event);
-    pushedCard = pushChainCard(state, event.acceptNextCardId);
-  } else {
-    // Reject path (AC9): refuse the event's effect (nothing applied); the
-    // escalation (worse/better card) is added to the deck instead.
-    pushedCard = pushChainCard(state, event.rejectNextCardId);
-    addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
-  }
-
-  const coinChange = state.resourceBank.coins - coinsBefore;
-  const repChange = state.resourceBank.reputation - repBefore;
-  if (option === 'accept') {
-    // Show the ACTUAL applied delta (CG-0MTQ7W0ZX0059R3J AC6): for the
-    // proportional Tax Audit this is the real percentage amount, e.g.
-    // "Chose to accept: Tax Audit (-450 coins).", using the same
-    // describeEventEffects formatting as the Incident: log lines.
-    addLog(
-      state,
-      `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
-      classifyEffect(coinChange, repChange),
-    );
-  }
-  syncResourceBankToLedger(state);
-
-  // Transcript (AC12): the choice is recorded identically for player and AI.
-  recordMainStreetEvent({
-    type: 'event-choice',
-    turn: state.turn,
-    eventId: event.id,
-    cardName: event.name,
-    option,
-    acceptNextCardId: event.acceptNextCardId ?? null,
-    rejectNextCardId: event.rejectNextCardId ?? null,
-  });
-
+  const optionIndex = option === 'accept' ? 0 : 1;
+  const result = resolveEventOption(state, optionIndex);
+  // Preserve the legacy lowercase token on the pending state for backward
+  // compatibility with existing snapshots/UI expectations.
   pending.chosenOption = option;
-  pending.resolved = true;
-  return { event, option, coinChange, repChange, pushedCard };
+  return { ...result, option };
 }
 
 /**
@@ -344,6 +465,18 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   const incidentRepChange = deferred
     ? incidentDeltasOut!.repChange
     : state.resourceBank.reputation - repBeforeIncident;
+
+  // Upcoming-card flow metadata (CG-0MUA1UH3A008M4BS): decorate the income
+  // phase breakdown with the incident's coin/reputation deltas, tagged by
+  // attachment (source `EventCard.target`), so the phased `upcoming` animation
+  // can route each flow to the affected business card or the HUD totals.
+  // Presentational only — never changes `state`, the transcript, or the
+  // credited totals (`creditedIncomeTotal` excludes `upcomingDeltas`).
+  if (incident) {
+    try {
+      attachUpcomingDeltas(income, state, incident, incidentCoinChange, incidentRepChange);
+    } catch { /* presentation-only — never break the closing */ }
+  }
 
   if (deferred) {
     pendingCoinDelta =
@@ -601,6 +734,230 @@ export function checkImmediateLoss(state: MainStreetState): boolean {
 }
 
 /**
+ * Per-seat competitive failure reason (mirrors the single-player
+ * {@link checkImmediateLoss} loss conditions).
+ */
+export type CompetitiveSeatFailureReason = 'bankruptcy' | 'reputation_collapse';
+
+/** A single competitive seat's failure, attributed to that seat only. */
+export interface CompetitiveSeatFailure {
+  /** Owner index (index into `state.players`). */
+  playerId: number;
+  /** Which loss condition the seat hit. */
+  reason: CompetitiveSeatFailureReason;
+}
+
+/**
+ * Evaluates competitive end-condition failures **per seat** rather than from
+ * the shared `state.resourceBank` scratch mirror.
+ *
+ * In competitive mode `bindCompetitiveSeat` / `restoreCompetitiveSeat` mirror
+ * the acting seat into the shared bank but never reset it, so at closing time
+ * `state.resourceBank` holds the **last-acting** (usually AI) wallet. Reading
+ * it for game-over decisions therefore ended the whole game when an AI seat
+ * collapsed — even when the human seat was healthy (MS-0MUVBH589001L7NL).
+ *
+ * Thresholds match the single-player semantics:
+ * - `coins < 0` — bankruptcy (any turn); there is **no** `coins == 0` end
+ *   condition.
+ * - `reputation <= 0` — reputation collapse, only after turn 1 (reputation
+ *   starts at 0 on turn 1).
+ *
+ * @param state Current game state (read-only).
+ * @returns The failing seat(s) with their reason; empty for single-player
+ *          state (no `players[]`) or when every seat is solvent.
+ */
+export function checkCompetitiveSeatFailure(state: MainStreetState): CompetitiveSeatFailure[] {
+  if (!state.players || state.players.length === 0) return [];
+  const failures: CompetitiveSeatFailure[] = [];
+  for (const player of state.players) {
+    // Eliminated seats are already out of play — they no longer fail.
+    if (player.eliminated) continue;
+    if (player.coins < 0) {
+      failures.push({ playerId: player.playerId, reason: 'bankruptcy' });
+    } else if (state.turn > 1 && player.reputation <= 0) {
+      failures.push({ playerId: player.playerId, reason: 'reputation_collapse' });
+    }
+  }
+  return failures;
+}
+
+/**
+ * Closes every street slot owned by a seat as a **direct grid/discard
+ * operation**: no action cost and no wallet change. The card (if any) is
+ * pushed to the unified discard pile, the slot is emptied, the
+ * `ownerTaggedGrid` tag is cleared and neighbouring income/reputation/synergy
+ * caches are recalculated so the cancelled cards no longer contribute.
+ *
+ * @param state    Current game state (mutated in-place).
+ * @param playerId Owner index whose businesses are being closed.
+ * @returns The number of cards actually removed from the grid.
+ */
+export function closeEliminatedSeatBusinesses(
+  state: MainStreetState,
+  playerId: number,
+): number {
+  if (!state.ownerTaggedGrid) return 0;
+  let closed = 0;
+  for (let slotIndex = 0; slotIndex < state.ownerTaggedGrid.length; slotIndex++) {
+    const tag = state.ownerTaggedGrid[slotIndex];
+    if (!tag || tag.ownerId !== playerId) continue;
+
+    const card = state.streetGrid[slotIndex];
+    if (card !== null) {
+      // Remove the card entirely (including sold inert anchors) so it no
+      // longer contributes income, reputation or adjacency synergy.
+      state.discardPile.push(card as unknown as BusinessCard);
+      state.streetGrid[slotIndex] = null;
+      state.soldSlots[slotIndex] = false;
+      updateNeighborsOnClose(state, slotIndex);
+      closed += 1;
+    }
+    state.ownerTaggedGrid[slotIndex] = { card: null, ownerId: null };
+  }
+  return closed;
+}
+
+/**
+ * Eliminates a competitive seat (MS-0MUVQRBVI0015AB2): marks it
+ * `eliminated = true` and closes its owned businesses/community spaces.
+ * Idempotent — a seat already eliminated is a no-op.
+ *
+ * @param state    Current game state (mutated in-place).
+ * @param playerId Owner index to eliminate.
+ * @returns The number of businesses closed (0 when already eliminated).
+ */
+export function eliminateCompetitiveSeat(
+  state: MainStreetState,
+  playerId: number,
+): number {
+  const player = state.players?.[playerId];
+  if (!player || player.eliminated) return 0;
+  player.eliminated = true;
+  const closed = closeEliminatedSeatBusinesses(state, playerId);
+  addLog(
+    state,
+    `AI ${playerId} eliminated — ${closed} business${closed === 1 ? '' : 'es'} closed`,
+    'loss',
+  );
+  return closed;
+}
+
+/**
+ * The human seat's owner index (resolved via `controller === 'human'`), or
+ * `-1` when no human seat exists. Used so last-standing does not hard-code
+ * seat 0 (MS-0MUVQRCQJ00737UV AC7).
+ */
+export function findHumanSeatId(state: MainStreetState): number {
+  const players = state.players ?? [];
+  const idx = players.findIndex(p => p.controller === 'human');
+  return idx;
+}
+
+/**
+ * Declares the human the winner by last-standing when every AI seat has been
+ * eliminated (MS-0MUVQRCQJ00737UV).
+ *
+ * Idempotent: once `endReason` is `last_standing` / `last_standing_continue`
+ * the win is not re-declared (and the continue-solo offer is not re-shown on
+ * every subsequent closing). Returns `true` when the win was declared.
+ */
+export function checkLastStanding(state: MainStreetState): boolean {
+  if (!state.players || state.players.length === 0) return false;
+  // Already declared / already continued — never re-declare (AC5).
+  if (state.endReason === 'last_standing' || state.endReason === 'last_standing_continue') {
+    return false;
+  }
+  // Any surviving AI seat means the game is not yet last-standing.
+  const aiRemaining = state.players.some(
+    p => p.controller === 'ai' && !p.eliminated,
+  );
+  if (aiRemaining) return false;
+  // Only a game that started with AI opponents can end by last-standing
+  // (a single-human N=1 competitive state must keep its legacy behaviour).
+  const hadAi = state.players.some(p => p.controller === 'ai');
+  if (!hadAi) return false;
+  const humanId = findHumanSeatId(state);
+  if (humanId < 0) return false;
+  const human = state.players[humanId];
+  if (!human || human.eliminated) return false;
+
+  state.gameResult = 'win';
+  state.endReason = 'last_standing';
+  state.competitiveWinnerId = humanId;
+  addLog(state, `Victory: Player ${humanId} wins by last standing!`, 'gain');
+  return true;
+}
+
+/**
+ * Accepts the continue-solo offer after a last-standing win
+ * (MS-0MUVQRCQJ00737UV). Resumes play at the next shared week with
+ * `gameResult = 'playing'` and `endReason = 'last_standing_continue'`,
+ * mirroring the endless-mode `score_threshold_continue` continuation.
+ *
+ * Idempotent — a no-op unless the offer is open (`endReason ===
+ * 'last_standing'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueAfterLastStanding(state: MainStreetState): boolean {
+  if (state.endReason !== 'last_standing') return false;
+  state.gameResult = 'playing';
+  state.endReason = 'last_standing_continue';
+  // Advance to the next shared week so the resumed day starts cleanly
+  // (mirrors finishCompetitiveClosingTail's continue branch).
+  state.turn += 1;
+  advanceWeek(state);
+  const bankable = Math.min(state.actionsRemaining, 1);
+  state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
+  state.phase = 'WeekStart';
+  state.activePlayerId = Math.max(0, findHumanSeatId(state));
+  addLog(state, 'Continuing solo after last-standing win.', 'neutral');
+  return true;
+}
+
+/**
+ * Applies the competitive per-seat failure evaluation to the game result.
+ *
+ * A failing **human** seat keeps the existing single-player loss semantics
+ * (`gameResult = 'loss'` with `bankruptcy` / `reputation_collapse`). A failing
+ * **AI** seat is eliminated (marked `eliminated` and its businesses closed)
+ * and does **not** end the game; when the last AI is eliminated the human is
+ * declared the winner by last-standing.
+ *
+ * @param state Current game state (mutated on a human failure / AI elimination).
+ * @returns `true` when the game ended / a win was declared, `false` otherwise.
+ */
+export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  const failures = checkCompetitiveSeatFailure(state);
+  if (failures.length === 0) {
+    // No new failures — but a prior elimination may have left the human as the
+    // last seat standing (idempotent: returns false once already declared).
+    return checkLastStanding(state);
+  }
+
+  // A human seat failure keeps the existing single-player loss semantics.
+  const humanFailure = failures.find(
+    failure => state.players![failure.playerId].controller !== 'ai',
+  );
+  if (humanFailure) {
+    state.gameResult = 'loss';
+    state.endReason = humanFailure.reason;
+    updateScore(state);
+    const label = humanFailure.reason === 'bankruptcy' ? 'Bankruptcy' : 'Reputation collapse';
+    addLog(state, `Game Over: ${label} (Player ${humanFailure.playerId})`, 'loss');
+    return true;
+  }
+
+  // AI seat failure(s): eliminate the seat(s) and let the survivors play on.
+  for (const failure of failures) {
+    eliminateCompetitiveSeat(state, failure.playerId);
+  }
+  // Declare last-standing if no AI seats survive (idempotent).
+  return checkLastStanding(state);
+}
+
+/**
  * Checks for end-of-turn win/loss conditions (at EndCheck phase).
  *
  * Win conditions (checked in order):
@@ -641,7 +998,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
     return checkEndConditions(state);
   }
 
-  if (checkImmediateLoss(state)) return true;
+  if (resolveCompetitiveSeatFailures(state)) return true;
 
   updateCompetitiveScores(state);
 
@@ -1000,43 +1357,5 @@ function runSinglePlayerTurnClosing(
     newlyCompletedChallenges,
     choicePending: false,
   };
-}
-
-/**
- * Builds a fresh instance of an escalation card (by template ID) and pushes it
- * onto the TOP of the incident deck (next to be drawn). Deterministic: the
- * serial suffix is derived from existing instances of the same base template,
- * so no RNG / clock is consumed (replay-safe).
- *
- * @param state      Current game state (mutated — incidentDeck may grow).
- * @param templateId The card template ID to add (acceptNextCardId / rejectNextCardId).
- * @returns The pushed card instance, or null when no chain card was requested
- *          or the template does not exist.
- */
-function pushChainCard(state: MainStreetState, templateId: string | null | undefined): EventCard | null {
-  if (!templateId) return null; // chain ends — nothing added (AC4/AC9)
-  const template = getEventTemplates().find((t) => t.id === templateId);
-  if (!template) {
-    addLog(state, `Chain card ${templateId} not found in card data.`, 'neutral');
-    return null;
-  }
-  const base = getBaseTypeId(template.id);
-  // Deterministic serial: highest existing suffix for the base template across
-  // every event-card location, +1. Replay-safe (no RNG / wall clock).
-  let maxSerial = -1;
-  const scan = (cards: readonly EventCard[]): void => {
-    for (const c of cards) {
-      if (getBaseTypeId(c.id) !== base) continue;
-      const m = c.id.match(/-(\d+)$/);
-      const n = m ? Number(m[1]) : -1;
-      if (n > maxSerial) maxSerial = n;
-    }
-  };
-  scan(state.incidentDeck);
-  scan(state.decks.event);
-  scan(state.discards.event);
-  const card: EventCard = { ...template, id: `${base}-${maxSerial + 1}` };
-  state.incidentDeck.push(card);
-  return card;
 }
 

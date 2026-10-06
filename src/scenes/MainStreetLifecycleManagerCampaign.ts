@@ -14,6 +14,8 @@ import { CSV_CHECKSUM } from '../MainStreetCards';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import { createDefaultCampaignProgress, loadCampaignProgress, updateCampaignAfterRun } from '../MainStreetSaveLoad';
 import { deserializeMainStreetState, setupMainStreetGame } from '../MainStreetState';
+import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
+import { createStateFromNewGameSelection, type NewGameSelection } from './MainStreetNewGameSelection';
 import { BrowserStatsStorageAdapter, loadStats, saveStats, updateStatsAfterRun } from '../StatsDomain';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
@@ -254,6 +256,37 @@ export async function checkForCsvMismatchAndRegenerate(lmCtx: MainStreetLifecycl
       s.msSvgTextureManager.regenerateSvgSourcesFromCsv();
     }
   
+}
+
+export function applyNewGameSelection(lmCtx: MainStreetLifecycleManagerContext, selection: NewGameSelection): void {
+
+    const s = lmCtx.scene;
+    // Single-player keeps the existing state byte-for-byte (AC5 — no
+    // behavioural change); only the competitive selection rebuilds the state.
+    if (selection.mode !== 'competitive') return;
+
+    s.state = createStateFromNewGameSelection(selection, {
+      difficulty: s.selectedDifficulty,
+      unlockedCardIds: s.campaign?.unlockedCardIds,
+    });
+
+    // Re-initialise the transcript recorder with the new seed so a competitive
+    // run records against its own seed.
+    try {
+      const recorder = new MainStreetTranscriptRecorder({
+        seed: s.state.seed,
+        snapshotAtTurn: s.state.turn,
+        week: s.state.week ?? 1,
+        year: s.state.year ?? 1,
+      });
+      setMainStreetRecorder(recorder);
+    } catch (_) { /* transcript is optional */ }
+
+    // Start the first shared day (suppress the day-banner, matching boot).
+    s.deferredWeekBanner = false;
+    try { s.startTurnPhase(false, true); } catch (_) { /* ignore */ }
+    try { s.refreshAll(); } catch (_) { /* ignore */ }
+
 }
 
 export function checkForSavedCheckpoint(lmCtx: MainStreetLifecycleManagerContext, tutorialOpts: TutorialVisibilityOptions): void {

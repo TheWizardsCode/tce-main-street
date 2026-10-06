@@ -160,14 +160,25 @@ the design notes.
 
 - Reduced motion: pop + cheer SFX retained; spark burst skipped.
 
-## Game-over win celebration / loss sting
+## Game-over panel and win celebration / loss sting
 
-`MainStreetAnimator.animateGameOver({ win, width, height })` plays when
-`MainStreetOverlayContent.showGameOverOverlay()` reveals the final panel:
+`MainStreetOverlayContent.showGameOverOverlay()` renders the final panel as a
+two-column summary (top band title + plain-language end-reason headline;
+left **Game State** column of per-player rows with failure/elimination badges
+and the run's challenges met; right **Summary** column with the retained score
+breakdown, challenge details, tier/campaign stats, difficulty selector and the
+Play Again / Menu buttons). The content is derived from committed state by the
+pure `src/scenes/MainStreetGameOverSummary.ts` model (no Phaser import), read
+from each `PlayerRecord` in competitive mode. Overlay conventions: elements
+parented into `scene.hudContainer` at depths 199 backdrop / 200 box / 201
+interactive; read-only and reduced-motion safe.
+
+`MainStreetAnimator.animateGameOver({ win, width, height })` plays when the
+panel is revealed:
 
 - **Win** (`gameResult: 'win'`): a confetti burst (24 coloured rectangles)
-  falls across the board (depth 100.5 — above the overlay backdrop, below
-  the panel text) with the victory fanfare `sfx-game-win`.
+  falls across the board (scene-level depth 100.5) with the victory fanfare
+  `sfx-game-win`.
 - **Loss** (`gameResult: 'loss'`): a brief full-board dark pulse (depth 99.5,
   under the backdrop — only the board dims) with the low sting `sfx-game-lost`.
 

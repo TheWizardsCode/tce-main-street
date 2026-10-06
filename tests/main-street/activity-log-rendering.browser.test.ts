@@ -684,4 +684,64 @@ describe('MainStreet Activity Log scroll bounds', () => {
       expect(scene.logScrollOffset).toBeCloseTo(scene.logMaxScroll, 0);
     }
   });
+
+  // ── Deferred log rendering (MS-0MURBOD2E009SOM2) ─────────────
+  it('suppresses new entry rendering while logDeferredUntilPhaseComplete is set', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    await waitFrames(10);
+
+    // Seed one visible entry and render it.
+    scene.state.activityLog.push({ text: 'Visible entry', type: 'neutral', turn: 1 });
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+    const renderedBefore = scene.logContentContainer.list.length;
+    const prevCountBefore = scene.logPrevEntryCount;
+
+    // Enter the deferral window and add a new entry.
+    scene.logDeferredUntilPhaseComplete = true;
+    scene.state.activityLog.push({ text: 'Deferred entry', type: 'gain', turn: 1 });
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+
+    // No new content was rendered and the count tracker did not advance, so
+    // the next non-deferred refresh still sees a change to render.
+    expect(scene.logContentContainer.list.length).toBe(renderedBefore);
+    expect(scene.logPrevEntryCount).toBe(prevCountBefore);
+
+    // Lift the deferral: the accumulated entry now renders.
+    scene.logDeferredUntilPhaseComplete = false;
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+
+    const texts = scene.logContentContainer.list.map((c: any) => c.text?.text);
+    expect(texts).toContain('Deferred entry');
+  });
+
+  it('keeps accumulated entries in order when rendered after the deferral window', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    await waitFrames(10);
+
+    scene.logDeferredUntilPhaseComplete = true;
+    scene.state.activityLog.push({ text: 'Order A', type: 'neutral', turn: 1 });
+    scene.state.activityLog.push({ text: 'Order B', type: 'gain', turn: 1 });
+    scene.state.activityLog.push({ text: 'Order C', type: 'loss', turn: 1 });
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+
+    scene.logDeferredUntilPhaseComplete = false;
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+
+    const texts = scene.logContentContainer.list.map((c: any) => c.text?.text);
+    const a = texts.indexOf('Order A');
+    const b = texts.indexOf('Order B');
+    const c = texts.indexOf('Order C');
+    expect(a).toBeGreaterThanOrEqual(0);
+    expect(a).toBeLessThan(b);
+    expect(b).toBeLessThan(c);
+  });
 });

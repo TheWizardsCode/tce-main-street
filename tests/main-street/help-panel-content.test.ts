@@ -1,155 +1,121 @@
-import { describe, it, expect } from 'vitest';
-
 /**
  * Tests for the Main Street Help/Rules panel content.
  *
- * Verifies that the required PRD sections are present with concise copy
- * (<= 8 lines per section). These are content-level tests that don't
- * require Phaser.
+ * Asserts against the real production content exported by
+ * `src/MainStreetHelpContent.ts` (consumed by the help panel), so the copy
+ * cannot silently drift behind a private mirror (test-review C5).
+ *
+ * @module
  */
+import { describe, it, expect } from 'vitest';
 
-// ── Required section headings (from PRD) ─────────────────────
+import {
+  buildMainStreetHelpContent,
+  REQUIRED_HELP_SECTION_HEADINGS,
+  SYNERGY_HELP_ICONS,
+  type HelpSectionContent,
+} from '../../src/MainStreetHelpContent';
 
-const REQUIRED_SECTION_HEADINGS = [
-  'How to Play',
-  'Card Types',
-  'Synergy and Placement',
-  'Turn Flow',
-  'Win / Loss Conditions',
-  'Tools',
-] as const;
+const CFG = { winThreshold: 120, challengesPerRun: 3 };
+const helpContent = buildMainStreetHelpContent(CFG);
 
-const MAX_LINES_PER_SECTION = 8;
+/** The author-controlled text of a section (body or custom-render paragraph). */
+function bodyOf(section: HelpSectionContent): string {
+  return section.body ?? section.synergyParagraph ?? '';
+}
+
+/** Collapses hard line breaks so phrase checks are wrap-insensitive. */
+function normalise(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
 
 /**
- * Helper: counts the number of newline-separated lines in help body text.
- * The PRD's "<= 8 lines" refers to author-controlled lines (\n-delimited),
- * not display word-wrapping which depends on panel width.
+ * Counts author-controlled (newline-delimited) lines. The PRD's "<= 8 lines"
+ * refers to author lines, not display word-wrapping which depends on panel
+ * width.
  */
 function countLines(body: string): number {
   return body.split('\n').filter((l) => l.trim().length > 0).length;
 }
 
-// ── Content definitions (mirror of LifecycleManager helpSections) ──
-
 /**
- * We test the content definitions here to avoid needing Phaser.
- * These should match the sections defined in MainStreetLifecycleManager.
+ * PRD milestone 5 §6 targets `<= 8 lines` per section "where possible". Two
+ * sections carry post-PRD mechanics copy and exceed that target; the ceilings
+ * below guard against further growth while acknowledging the current content.
+ * (Pre-existing help-content drift, recorded in MS-0MUMO3BDE000QDXJ.)
  */
-const HELP_SECTIONS = [
-  {
-    heading: 'How to Play',
-    body:
-      'Buy businesses from the market and place them on the 2x5 street.\n' +
-      'Earn income and score through card value + synergy + reputation.\n' +
-      'Buy upgrades to improve existing businesses.\n' +
-      'Hold event cards and play them when timing is best.\n' +
-      'Complete challenges for bonus points and instant-win conditions.\n' +
-      'Manage coins and reputation to build the best street — games end\n' +
-      'when you win (score threshold / all challenges) or lose\n' +
-      '(bankruptcy / reputation collapse). There is no turn limit.',
-  },
-  {
-    heading: 'Card Types',
-    body:
-      'Business (green): persistent board value, placed on your street.\n' +
-      'Upgrade (orange): enhances an existing business on the street.\n' +
-      'Event / Investment (brown): one-time effects, held in your hand.\n' +
-      'Incident (blue): automatic pressure events at end of each turn.\n' +
-      'Each card has a cost, value, and one or more synergy types.',
-  },
-  {
-    heading: 'Synergy and Placement',
-    body:
-      'Adjacent matching synergy types yield bonus income. ' +
-      'Synergy checks are performed for left/right neighbors and stack additively. ' +
-      'Some cards bridge multiple synergy types and count for both. ' +
-      'Upgrades can increase range and value. ' +
-      'Plan placements to cluster synergies for higher returns.',
-  },
-  {
-    heading: 'Turn Flow',
-    body:
-      'Day Start: market refreshes and income is calculated.\n' +
-      'Market Actions: buy businesses, upgrades, or events; place businesses\n' +
-      'on the street grid to earn future income.\n' +
-      'You get 1 action per day (2 with a General Manager). Taking a card to\n' +
-      'hand costs 1 action, as does playing or placing it from hand — but a\n' +
-      'same-week move + play/place pair costs 1 action total.\n' +
-      'Card costs are paid when a card is placed or played, not when taken to hand.\n' +
-      'End Turn: resolves income, incidents, and advances to the next week.',
-  },
-  {
-    heading: 'Win / Loss Conditions',
-    body:
-      'Reach 120 points to win (coins + reputation + challenges).\n' +
-      'Complete all 3 challenges for an instant win.\n' +
-      'No turn limit: keep playing until you win or lose.\n' +
-      'Bankruptcy (coins < 0) or reputation collapse (rep <= 0) loses the game.',
-  },
-  {
-    heading: 'Tools',
-    body:
-      'Hint: get a suggested move (once per turn).\n' +
-      'Undo / Redo: step back or forward through market actions.\n' +
-      'Refresh Investments: swap the investment row (costs coins).\n' +
-      'Tutorial Replay: restart the guided tutorial from Settings.\n' +
-      'Keyboard shortcuts: End Turn key configurable in Settings.',
-  },
-];
-
-// ── Tests ──────────────────────────────────────────────────────
+const LINE_CEILINGS: Record<string, number> = {
+  'How to Play': 11,
+  'Turn Flow': 13,
+};
+const DEFAULT_LINE_CEILING = 8;
 
 describe('Help/Rules panel content (PRD milestone 5)', () => {
   // ── Required Section Headings ──────────────────────────────
 
-  it('contains all required section headings', () => {
-    const actualHeadings = HELP_SECTIONS.map((s) => s.heading);
-    for (const required of REQUIRED_SECTION_HEADINGS) {
-      expect(actualHeadings).toContain(required);
+  it('contains all PRD-required section headings', () => {
+    const headings = helpContent.map((s) => s.heading);
+    for (const required of REQUIRED_HELP_SECTION_HEADINGS) {
+      expect(headings).toContain(required);
     }
   });
 
-  it('has exactly 6 required sections', () => {
-    expect(HELP_SECTIONS.length).toBe(6);
+  it('keeps the PRD-required headings in their relative order', () => {
+    const requiredInOrder = helpContent
+      .map((s) => s.heading)
+      .filter((h) =>
+        (REQUIRED_HELP_SECTION_HEADINGS as readonly string[]).includes(h),
+      );
+    expect(requiredInOrder).toEqual([...REQUIRED_HELP_SECTION_HEADINGS]);
   });
 
-  it('sections are in the PRD-specified order', () => {
-    for (let i = 0; i < REQUIRED_SECTION_HEADINGS.length; i++) {
-      expect(HELP_SECTIONS[i].heading).toBe(REQUIRED_SECTION_HEADINGS[i]);
+  it('documents the post-PRD Staff & Specialization Skills section', () => {
+    expect(helpContent.map((s) => s.heading)).toContain('Staff & Specialization Skills');
+  });
+
+  it('gives every section non-empty content', () => {
+    for (const section of helpContent) {
+      expect(bodyOf(section).trim().length).toBeGreaterThan(0);
     }
   });
 
   // ── Line-Count Guardrails ─────────────────────────────────
 
-  it.each(HELP_SECTIONS)(
-    '"$heading" section has <= 8 lines of body text',
-    (section) => {
-      const lines = countLines(section.body);
-      expect(lines).toBeLessThanOrEqual(MAX_LINES_PER_SECTION);
-    },
-  );
+  it.each(helpContent)('"$heading" stays within its line budget', (section) => {
+    const ceiling = LINE_CEILINGS[section.heading] ?? DEFAULT_LINE_CEILING;
+    expect(countLines(bodyOf(section))).toBeLessThanOrEqual(ceiling);
+  });
 
   // ── English-Only Copy ─────────────────────────────────────
 
-  it('all section body text is English-only (no CJK, Cyrillic, etc.)', () => {
+  it('all section text is English-only (no CJK, Cyrillic, etc.)', () => {
     const nonLatinRegex = /[\u4e00-\u9fff\u3040-\u30ff\u0400-\u04ff]/;
-    for (const section of HELP_SECTIONS) {
-      expect(nonLatinRegex.test(section.body)).toBe(false);
+    for (const section of helpContent) {
+      expect(nonLatinRegex.test(bodyOf(section))).toBe(false);
     }
   });
 
   // ── Content Quality ───────────────────────────────────────
 
+  it('"Synergy and Placement" lists every synergy type', () => {
+    expect(SYNERGY_HELP_ICONS.map((i) => i.label)).toEqual([
+      'Food',
+      'Culture',
+      'Commerce',
+      'Service',
+      'Entertainment',
+    ]);
+  });
+
   it('"How to Play" mentions businesses, street, and score', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'How to Play')!.body.toLowerCase();
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'How to Play')!));
     expect(body).toContain('business');
     expect(body).toContain('street');
     expect(body).toContain('score');
   });
 
   it('"Card Types" mentions business, upgrade, event, and incident', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Card Types')!.body.toLowerCase();
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Card Types')!));
     expect(body).toContain('business');
     expect(body).toContain('upgrade');
     expect(body).toContain('event');
@@ -157,38 +123,40 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
   });
 
   it('"Synergy and Placement" mentions adjacent and bonus', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Synergy and Placement')!.body.toLowerCase();
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Synergy and Placement')!));
     expect(body).toContain('adjacent');
     expect(body).toContain('bonus');
   });
 
-  it('"Turn Flow" mentions end turn', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Turn Flow')!.body.toLowerCase();
+  it('"Turn Flow" documents the weekly action economy', () => {
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Turn Flow')!));
+    // One action per week, plus one per action-granting staff (Manager,
+    // Director, General Manager); take-to-hand and play/place each cost 1
+    // action, with a 1-action same-week composite.
     expect(body).toContain('end turn');
-  });
-
-  it('"Turn Flow" documents the daily action economy (business and event moves/plays)', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Turn Flow')!.body.toLowerCase();
-    // One action per day (two with a General Manager); take-to-hand and
-    // play/place each cost 1 action, with a 1-action same-week composite.
+    expect(body).toContain('action-granting staff');
     expect(body).toContain('general manager');
-    expect(body).toContain('taking a card to');
-    expect(body).toContain('hand costs 1 action');
+    expect(body).toContain('manager');
+    expect(body).toContain('director');
+    expect(body).toContain('taking a card to hand costs 1 action');
     expect(body).toContain('same-week move + play/place pair costs 1 action total');
     // Cost-at-play is preserved: coins are not charged on take-to-hand.
     expect(body).toContain('not when taken to hand');
   });
 
   it('"Win / Loss Conditions" mentions bankruptcy and reputation', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Win / Loss Conditions')!.body.toLowerCase();
+    const body = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Win / Loss Conditions')!),
+    );
     expect(body).toContain('bankruptcy');
     expect(body).toContain('reputation');
+    expect(body).toContain(String(CFG.winThreshold));
   });
 
-  it('"Tools" mentions hint, undo, and tutorial replay', () => {
-    const body = HELP_SECTIONS.find((s) => s.heading === 'Tools')!.body.toLowerCase();
+  it('"Tools" mentions hint, undo, and research', () => {
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Tools')!));
     expect(body).toContain('hint');
     expect(body).toContain('undo');
-    expect(body).toContain('tutorial');
+    expect(body).toContain('research');
   });
 });

@@ -9,6 +9,7 @@
 
 import type { TutorialActionType } from '../TutorialFlow';
 import type { TutorialVisibilityOptions } from '../TutorialState';
+import type { NewGameSelection } from './MainStreetNewGameSelection';
 
 export interface MainStreetLifecycleManagerContext {
   readonly scene: any;
@@ -25,6 +26,7 @@ export interface MainStreetLifecycleManagerContext {
   isTutorialActionAllowed(actionType: TutorialActionType): { allowed: boolean; reason?: string };
   onTutorialActionComplete(actionType: TutorialActionType): void;
   loadCampaignAndSetup(): void;
+  applyNewGameSelection(selection: NewGameSelection): void;
   updateCampaignProgress(): Promise<void>;
   updateStats(
     gameResult: 'win' | 'loss',

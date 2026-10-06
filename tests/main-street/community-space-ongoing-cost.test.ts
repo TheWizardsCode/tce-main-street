@@ -5,10 +5,12 @@
  * CG-0MRXYGM9B006I3PE ("Why would a library bring in money"):
  * - Community space cards with `ongoingCost` are charged each income phase
  *   (clamped at 0 coins, logged) alongside staff costs.
- * - The Library (cs-library) is a reputation asset: no income, 0.25/turn
- *   ongoing cost, +0.1 reputation/turn, full synergy participation (Park
+ * - The Library (cs-library) is a reputation asset: no income, 25/turn
+ *   ongoing cost, +10 reputation/turn, full synergy participation (Park
  *   model, default 0.5 coin rate).
- * - The Community Hub upgrade (upg-community-hub) grants +0.1 reputation/turn
+ * - The Park (cs-park) has a 40/turn ongoing cost (CG-0MU9NW9EP003B1AK),
+ *   clamped at 0 coins and exempt when sold.
+ * - The Community Hub upgrade (upg-community-hub) grants +10 reputation/turn
  *   and no income or synergy-range bonus.
  *
  * @module
@@ -69,7 +71,9 @@ describe('Library card stats (reputation asset)', () => {
     // CG-0MSKS963N000ZSTU).
     expect(library!.synergyCoinBonus).toBeUndefined();
     expect(library!.synergyRepBonus).toBeUndefined();
-    expect(library!.cost).toBe(700);
+    // Cost re-priced 700 -> 400 by MS-0MUR9IN7L0004TO5 (see
+    // docs/main-street/analysis/community-space-event-repricing.md).
+    expect(library!.cost).toBe(400);
   });
 });
 
@@ -111,9 +115,9 @@ describe('Library synergy participation (behavioral, Park model)', () => {
     state.streetGrid[1] = library;
 
     // The Library participates in synergy now, so it is counted toward N:
-    // Cafe earns 520 base income × 0.5 default rate × 1 neighbor = 260 coins
-    // (base income raised by CG-0MSVYPEZ90085SHE: 5.2 → 520).
-    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(260);
+    // Cafe earns 315 base income × 0.5 default rate × 1 neighbor = 158 coins
+    // (5-turn payback rebalance, MS-0MUQUBJFL0076RT6).
+    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(158);
   });
 
   it('should give a Bookshop 1.15 Culture synergy when placed adjacent', () => {
@@ -124,9 +128,9 @@ describe('Library synergy participation (behavioral, Park model)', () => {
     state.streetGrid[0] = bookshop;
     state.streetGrid[1] = library;
 
-    // 230 base income × 0.5 default rate × 1 neighbor = 115 coins/turn
-    // (base income raised by CG-0MSVYPEZ90085SHE: 2.3 → 230).
-    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(115);
+    // 161 base income × 0.5 default rate × 1 neighbor = 81 coins/turn
+    // (5-turn payback rebalance, MS-0MUQUBJFL0076RT6).
+    expect(computeSynergyBonus(state.streetGrid, 0)).toBe(81);
   });
 
   it('should draw a Culture synergy line between a Bookshop and the Library', () => {
@@ -176,16 +180,49 @@ describe('Community space ongoing-cost deduction', () => {
 
   it('should do nothing when no community space has an ongoing cost', () => {
     const state = createTestState();
-    // Park has no ongoing cost
-    const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
-    park.currentIncome = park.baseIncome;
-    park.currentReputationPerTurn = park.reputationPerTurn ?? 0;
-    state.streetGrid[0] = park;
+    // Playground has no ongoing cost (Park was given a 40/turn cost by
+    // CG-0MU9NW9EP003B1AK).
+    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    playground.currentIncome = playground.baseIncome;
+    playground.currentReputationPerTurn = playground.reputationPerTurn ?? 0;
+    state.streetGrid[0] = playground;
 
     state.resourceBank.coins = 5;
     applyCommunitySpaceOngoingCosts(state);
 
     expect(state.resourceBank.coins).toBe(5);
+  });
+
+  it('should deduct 40 coins per turn for a placed Park (CG-0MU9NW9EP003B1AK)', () => {
+    const state = createTestState('park-ongoing-cost');
+    state.resourceBank.coins = 1000;
+
+    const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
+    park.currentIncome = park.baseIncome;
+    park.currentReputationPerTurn = park.reputationPerTurn ?? 0;
+    state.streetGrid[0] = park;
+
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(960);
+    const log = state.activityLog.find(l => l.text.includes('Community space costs'));
+    expect(log).toBeDefined();
+    expect(log!.text).toContain('-40');
+  });
+
+  it('should clamp a Park deduction at 0 coins and log insufficient funds', () => {
+    const state = createTestState('park-clamped');
+    const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
+    park.currentIncome = park.baseIncome;
+    park.currentReputationPerTurn = park.reputationPerTurn ?? 0;
+    state.streetGrid[0] = park;
+
+    state.resourceBank.coins = 30;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(0);
+    const log = state.activityLog.find(l => l.text.includes('Insufficient coins for community space costs'));
+    expect(log).toBeDefined();
   });
 
   it('should deduct community-space costs alongside staff costs in the full turn loop', () => {
@@ -260,6 +297,22 @@ describe('Sold-card exclusion from community-space ongoing costs (CG-0MU3VH7QW00
     expect(state.resourceBank.coins).toBe(coinsBefore - 25);
   });
 
+  it('should NOT deduct the Park 40/turn cost when the Park is sold', () => {
+    const state = createTestState('sold-park-no-cost');
+    state.resourceBank.coins = 1000;
+
+    const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
+    park.currentIncome = park.baseIncome;
+    park.currentReputationPerTurn = park.reputationPerTurn ?? 0;
+    state.streetGrid[0] = park;
+    state.soldSlots[0] = true;
+
+    const coinsBefore = state.resourceBank.coins;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+  });
+
   it('should only deduct for unsold spaces when mixing sold and unsold community spaces', () => {
     const state = createTestState('mixed-sold-unsold-cs');
     state.resourceBank.coins = 1000;
@@ -271,7 +324,7 @@ describe('Sold-card exclusion from community-space ongoing costs (CG-0MU3VH7QW00
     state.streetGrid[0] = soldLibrary;
     state.soldSlots[0] = true;
 
-    // Unsold Park in slot 1 (Park has ongoingCost 0 — no cost)
+    // Unsold Park in slot 1 (Park costs 40/turn since CG-0MU9NW9EP003B1AK)
     const park = createCommunitySpaceDeck(1).find(c => c.name === 'Park')!;
     park.currentIncome = park.baseIncome;
     park.currentReputationPerTurn = park.reputationPerTurn ?? 0;
@@ -286,8 +339,9 @@ describe('Sold-card exclusion from community-space ongoing costs (CG-0MU3VH7QW00
     const coinsBefore = state.resourceBank.coins;
     applyCommunitySpaceOngoingCosts(state);
 
-    // Only the unsold Community Garden charged; sold library is free
-    const expectedCost = (garden.ongoingCost ?? 0);
+    // Sold library is free, but both the unsold Park (40) and the unsold
+    // Community Garden (10) are charged.
+    const expectedCost = (park.ongoingCost ?? 0) + (garden.ongoingCost ?? 0);
     expect(state.resourceBank.coins).toBe(coinsBefore - expectedCost);
   });
 });

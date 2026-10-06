@@ -2,7 +2,7 @@
  * Main Street: Tier synergy-type balance tests (CG-0MT3IPFSF005KEFB)
  *
  * Mirrors `tier-family-balance.test.ts` (family axis, CG-0MT2WU0CX005Z143)
- * along the synergy-type axis. Only business (30) and community-space (8)
+ * along the synergy-type axis. Only business (31) and community-space (8)
  * cards carry synergy types; events, upgrades and staff carry none.
  *
  * The rebalance (CG-0MT3IPFSF005KEFB) fixes three failing sparse tiers:
@@ -12,6 +12,8 @@
  *   Culture 2 / Food 2 / Service 1 / Entertainment 1.
  * - T2 had Commerce 3 (single type) -> Hardware Store retagged to Service
  *   (supplies tools = tool-supply service), giving Commerce 2 / Service 1.
+ *   The producer-added Charity Shop (MS-0MUAYBAHW007RMSL) later adds
+ *   Culture 1, giving Commerce 2 / Service 1 / Culture 1.
  * - T3 had Entertainment 2 (single type, Arcade + Playground) -> Community
  *   Shelter (Service) retiered T6->T3 (CG-0MT5VZJLS000B8KI, a neighbourhood
  *   amenity), giving Entertainment 2 / Service 1. (To keep T6's event share
@@ -102,7 +104,7 @@ describe('Main Street tier synergy-type balance (CG-0MT3IPFSF005KEFB)', () => {
   it('the sparse tiers fixed by the rebalance carry their documented spans', () => {
     const snapshot = {
       'tier-1': { Culture: 2, Food: 2, Service: 1, Entertainment: 1 },
-      'tier-2': { Commerce: 2, Service: 1 },
+      'tier-2': { Commerce: 2, Service: 1, Culture: 1 },
       'tier-3': { Entertainment: 2, Service: 1 },
     };
     for (const [tierId, expected] of Object.entries(snapshot)) {

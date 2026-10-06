@@ -9,6 +9,8 @@
  * @module
  */
 
+import type { MainStreetState } from './MainStreetState';
+
 // ── Synergy Types ───────────────────────────────────────────
 
 /** Synergy types used by Business cards for adjacency bonuses. */
@@ -242,6 +244,17 @@ export interface EventCard {
    * deck (the event's effect is NOT applied). Null / absent ends the chain.
    */
   readonly rejectNextCardId?: string | null;
+  /**
+   * Optional storyline identifier — groups cards into a named story arc.
+   * Absent means the card is not part of a storyline (legacy behaviour).
+   * Cards sharing the same `storylineId` form one story arc.
+   */
+  readonly storylineId?: string | null;
+  /**
+   * Human-readable title for the storyline (displayed in journal/UI).
+   * Optional; defaults to the storylineId when absent.
+   */
+  readonly storylineTitle?: string | null;
 }
 
 /**
@@ -354,6 +367,25 @@ export interface StaffCard {
    */
   readonly refreshCostDiscount?: number;
   /**
+   * Optional flat coin discount applied to buying an upgrade for the
+   * business where this staff member is employed (e.g. the Financial
+   * Advisor's "upgrade costs 100 less" ability — CG-0MTKMGL66004I0PC).
+   * Scoped to the employing business (`employedAtSlot` / the business's
+   * `employedStaff` list); discounts from multiple staff at the same
+   * business stack additively and the effective upgrade cost is floored
+   * at 0. Absent for staff without the ability (backward compatible).
+   */
+  readonly upgradeCostDiscount?: number;
+  /**
+   * Optional flat coin discount applied to business-card purchase cost,
+   * summed street-wide across all hired staff (e.g. the Delivery Driver's
+   * "reduces business card purchase cost by 50" ability —
+   * CG-0MUMCVH3N007KT1M). Street-wide: every hired staff member's
+   * `purchaseCostDiscount` is summed, clamped at 0. Absent for staff
+   * without the ability (backward compatible).
+   */
+  readonly purchaseCostDiscount?: number;
+  /**
    * Optional Tax Audit rate override, as a fraction of banked coins
    * (e.g. `0.25` for the Accountant's "tax losses reduced to 25%" ability).
    * When one or more employed staff define this, the lowest (most
@@ -364,7 +396,8 @@ export interface StaffCard {
   readonly taxAuditRate?: number;
   /**
    * Optional additional actions granted per turn.
-   * (e.g. the General Manager's +1 action per day — CG-0MSTOF1N5005PK2R).
+   * (e.g. the Manager, Director and General Manager each grant +1 action
+   * per week — CG-0MSTOF1N5005PK2R, MS-0MTQ7S5EJ008MWD0).
    */
   readonly actionsPerTurn?: number;
   /**
@@ -522,3 +555,60 @@ export const DEFAULT_INCIDENT_MAX_STREAK = 2;
  * this depth; beyond it the constraint degrades gracefully (uses all history).
  */
 export const MAX_TRACKED_INCIDENT_HISTORY = 10;
+
+// ── Generalised option model (extraction seam types) ─────────
+
+/**
+ * A single option within a storyline's ordered option list.
+ * The engine resolves options sequentially (in declaration order) until the
+ * player selects one.
+ */
+export interface StorylineOption {
+  /** Human-readable label for the option (e.g. "Accept", "Reject", "Investigate"). */
+  readonly label: string;
+  /** The card ID to push when this option is chosen. Null / absent ends the chain. */
+  readonly successorId: string | null | undefined;
+  /** Whether the event's intrinsic effect applies when this option is chosen. */
+  readonly effectPolicy: 'apply' | 'skip';
+  /**
+   * Optional runtime condition evaluated at draw time.
+   * If the callback returns `false` the option is omitted from the presented
+   * option list.  Evaluated once when the option list is compiled (at draw
+   * time), never at resolution.
+   *
+   * **Contract:** must be a pure function — no observable side effects.
+   * Mutating state inside a condition callback is undefined behaviour.
+   *
+   * @readonly
+   */
+  readonly condition?: (state: MainStreetState) => boolean;
+  /**
+   * Optional runtime successor resolver evaluated at resolution time.
+   * When present, the callback is invoked and its return value is used as
+   * the pushed successor card ID instead of `option.successorId`.
+   * Returns `null` or `undefined` to end the chain (no card pushed).
+   *
+   * **Contract:** must be a pure function — no observable side effects.
+   *
+   * @readonly
+   */
+  readonly successorResolver?: (state: MainStreetState) => string | null | undefined;
+}
+
+/**
+ * A compiled storyline definition extracted from a card's legacy
+ * hasChoices / acceptNextCardId / rejectNextCardId fields, or from
+ * explicit storyline metadata.
+ *
+ * Legacy compilation:
+ * - `hasChoices: false` → compiledOptions is empty (non-choice card).
+ * - `hasChoices: true` → two options:
+ *   1. label="Accept", successorId=acceptNextCardId, effectPolicy="apply"
+ *   2. label="Reject", successorId=rejectNextCardId, effectPolicy="skip"
+ */
+export interface CompiledStoryline {
+  /** The storyline identifier this definition belongs to. Null for non-storyline cards. */
+  readonly storylineId: string | null;
+  /** Ordered list of options; empty for non-choice cards. */
+  readonly compiledOptions: StorylineOption[];
+}

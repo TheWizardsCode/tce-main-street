@@ -306,6 +306,60 @@ describe('Main Street upgrade hand-first click flow (browser)', () => {
     expect(scene.state.actionsRemaining).toBe(1);
   }, 60_000);
 
+  it('rejects an unaffordable upgrade before animating and keeps the selection (MS-0MUUYD15V003SP0Z)', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    const { upgrade } = setupUpgradeScene(scene, {
+      actions: 1,
+      upgradeInHand: true,
+      coins: 0, // cannot afford any upgrade
+    });
+
+    scene.onHandUpgradeCardClick(0);
+    expect(scene.uiPhase).toBe('placing-from-hand');
+    expect(scene.pendingHandIndex).toBe(0);
+
+    const beforeActions = scene.state.actionsRemaining;
+    const beforeBanked = scene.state.bankedActions;
+    const beforeCoins = scene.state.resourceBank.coins;
+    const beforeLevel = scene.state.streetGrid[0]?.level;
+
+    scene.onSlotClick(0);
+
+    // Illegal affordability: no animation, no mutation, selection retained.
+    expect(scene.uiPhase).toBe('placing-from-hand');
+    expect(scene.pendingHandIndex).toBe(0);
+    expect(scene.state.actionsRemaining).toBe(beforeActions);
+    expect(scene.state.bankedActions).toBe(beforeBanked);
+    expect(scene.state.resourceBank.coins).toBe(beforeCoins);
+    expect(scene.state.streetGrid[0]?.level).toBe(beforeLevel);
+    expect(scene.state.hand.some((c: any) => c.id === upgrade.id)).toBe(true);
+  }, 60_000);
+
+  it('applies an affordable upgrade selected from hand and returns to market (MS-0MUUYD15V003SP0Z)', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    const { upgrade } = setupUpgradeScene(scene, {
+      actions: 1,
+      upgradeInHand: true,
+      coins: 2000,
+    });
+
+    scene.onHandUpgradeCardClick(0);
+    expect(scene.uiPhase).toBe('placing-from-hand');
+
+    scene.onSlotClick(0);
+
+    await waitForCondition(
+      () => scene.state.streetGrid[0]?.level === 1,
+      'affordable upgrade applied',
+    );
+
+    expect(scene.uiPhase).toBe('market');
+    expect(scene.pendingHandIndex).toBeNull();
+    expect(scene.state.hand.some((c: any) => c.id === upgrade.id)).toBe(false);
+  }, 60_000);
+
   it('shows market upgrades and dims them when the budget is spent', async () => {
     game = await bootGame();
     const scene = getScene(game);

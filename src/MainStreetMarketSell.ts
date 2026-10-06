@@ -13,6 +13,7 @@ import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
 import type { BusinessCard, CommunitySpaceCard } from './MainStreetCards';
 import { updateNeighborsOnSale, updateNeighborsOnClose, hasAdjacentSameType } from './MainStreetAdjacency';
+import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import { roundInt } from './MainStreetDifficulty';
 import type { CloseResult, SellRefundBreakdown, SellResult } from './MainStreetMarketTypes';
 
@@ -57,14 +58,26 @@ export function computeSellRefund(
     effectiveBase = roundInt(effectiveBase * 0.6);
   }
 
-  // Synergy income component: the portion of currentIncome above effectiveBase
-  const synergyIncomeComponent = Math.max(0, (card.currentIncome ?? 0) - effectiveBase);
+  // Synergy income component: the portion of currentIncome above effectiveBase.
+  // Undefined cached income means the card has not been (re)calculated — treat
+  // as no synergy contribution rather than deriving one from a zero baseline.
+  const synergyIncomeComponent =
+    card.currentIncome === undefined
+      ? 0
+      : Math.max(0, card.currentIncome - effectiveBase);
 
-  // Synergy reputation component: the portion above base rep + upgrade bonus
-  const synergyRepComponent = Math.max(
-    0,
-    (card.currentReputationPerTurn ?? 0) - (card.reputationPerTurn ?? 0) - card.reputationBonus,
-  );
+  // Synergy reputation component: the portion above base rep + upgrade bonus.
+  // As with income, an undefined cached value contributes no synergy — this
+  // matters for cards whose base `reputationPerTurn` is negative (e.g. the
+  // Pawn Shop, -10): `(undefined ?? 0) - (-10)` would otherwise fabricate a
+  // +10 "synergy" refund for an uncalculated card.
+  const synergyRepComponent =
+    card.currentReputationPerTurn === undefined
+      ? 0
+      : Math.max(
+          0,
+          card.currentReputationPerTurn - (card.reputationPerTurn ?? 0) - card.reputationBonus,
+        );
 
   const totalRefund = baseRefund + synergyIncomeComponent + synergyRepComponent;
 
@@ -88,7 +101,8 @@ export function computeSellRefund(
  * @param state     Current game state (mutated in-place).
  * @param slotIndex Street grid slot index of the card to sell.
  * @returns SellResult on success.
- * @throws Error if the slot is empty, already sold, or not in MarketPhase.
+ * @throws Error if the slot is empty, already sold, not in MarketPhase, or
+ *         (in competitive mode) owned by a different seat.
  */
 export function sellBusiness(
   state: MainStreetState,
@@ -110,6 +124,13 @@ export function sellBusiness(
   const soldSlots: boolean[] = state.soldSlots ?? [];
   if (soldSlots[slotIndex]) {
     throw new Error(`Slot ${slotIndex} has already been sold.`);
+  }
+
+  // Ownership gate (competitive only): a seat may only sell a business it
+  // owns. Single-player states have no owner-tagged grid, so this is a no-op.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
   }
 
   // Calculate refund using the new formula (CG-0MT5XO7DI0066QCT)
@@ -146,7 +167,9 @@ export function sellBusiness(
  * @param state         Current game state.
  * @param slotIndex     Street grid slot index to check.
  * @param isPlacingMode Whether the player is currently in card-placement mode (selling not allowed).
- * @returns LegalityResult indicating whether the action is permitted.
+ * @returns LegalityResult indicating whether the action is permitted. In
+ *          competitive mode an opponent-owned slot is rejected with an
+ *          ownership-specific reason; single-player is unaffected.
  */
 export function canSellBusiness(
   state: MainStreetState,
@@ -181,6 +204,12 @@ export function canSellBusiness(
     return { legal: false, reason: `Slot ${slotIndex} has already been sold.` };
   }
 
+  // Ownership gate (competitive only): a seat may only sell its own business.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    return ownership;
+  }
+
   return { legal: true };
 }
 
@@ -204,7 +233,9 @@ export function canSellBusiness(
  * @param state         Current game state.
  * @param slotIndex     Street grid slot index to check.
  * @param isPlacingMode Whether the player is currently in card-placement mode (closing not allowed).
- * @returns LegalityResult indicating whether the action is permitted.
+ * @returns LegalityResult indicating whether the action is permitted. In
+ *          competitive mode an opponent-owned slot is rejected with an
+ *          ownership-specific reason; single-player is unaffected.
  */
 export function canCloseBusiness(
   state: MainStreetState,
@@ -233,6 +264,14 @@ export function canCloseBusiness(
     return { legal: false, reason: `Slot ${slotIndex} has already been sold and cannot be closed.` };
   }
 
+  // Ownership gate (competitive only): a seat may only close its own
+  // business. Checked before the action budget so a cross-owner attempt is
+  // always reported as an ownership violation (and never consumes an action).
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    return ownership;
+  }
+
   if ((state.actionsRemaining ?? 0) <= 0) {
     return { legal: false, reason: 'No actions remaining this week. Closing costs 1 action.' };
   }
@@ -256,7 +295,8 @@ export function canCloseBusiness(
  * @param state     Current game state (mutated in-place).
  * @param slotIndex Street grid slot index of the card to close.
  * @returns CloseResult on success.
- * @throws Error if the slot is out of bounds, empty, or already sold.
+ * @throws Error if the slot is out of bounds, empty, already sold, or (in
+ *         competitive mode) owned by a different seat.
  */
 export function closeBusiness(
   state: MainStreetState,
@@ -274,6 +314,12 @@ export function closeBusiness(
   const soldSlots: boolean[] = state.soldSlots ?? [];
   if (soldSlots[slotIndex]) {
     throw new Error(`Slot ${slotIndex} has already been sold and cannot be closed.`);
+  }
+
+  // Ownership gate (competitive only): a seat may only close its own business.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
   }
 
   // Send the card to the unified discard pile (community-space cards share the

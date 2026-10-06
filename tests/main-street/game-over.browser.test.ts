@@ -96,14 +96,46 @@ function spyOnGameOver(scene: Phaser.Scene & Record<string, unknown>): { calls: 
   return { calls };
 }
 
+/**
+ * Locates the overlay text objects whose content includes `text`.
+ *
+ * The Game Over overlay parents every text object into
+ * `scene.hudContainer`, so this is the canonical content lookup reused by
+ * the two-column layout assertions added by later children.
+ */
+function findOverlayText(
+  scene: Phaser.Scene & Record<string, unknown>,
+  text: string,
+): Phaser.GameObjects.Text[] {
+  const hud = scene.hudContainer as unknown as { list?: unknown[] } | null;
+  if (!hud?.list) return [];
+  return hud.list.filter((child: unknown): child is Phaser.GameObjects.Text => {
+    const t = child as { text?: string };
+    return typeof t.text === 'string' && t.text.includes(text);
+  });
+}
+
+/** Whether the overlay contains a text object whose content includes `text`. */
+function overlayHasText(
+  scene: Phaser.Scene & Record<string, unknown>,
+  text: string,
+): boolean {
+  return findOverlayText(scene, text).length > 0;
+}
+
+/**
+ * Asserts the Game Over overlay is present: it has pushed objects into
+ * `scene.overlayObjects` (background, box, texts and buttons).
+ */
+function expectOverlayPresent(scene: Phaser.Scene & Record<string, unknown>): void {
+  const objects = scene.overlayObjects as unknown[] | undefined;
+  expect(Array.isArray(objects)).toBe(true);
+  expect(objects!.length).toBeGreaterThan(0);
+}
+
 /** Whether the game-over panel title with the given text is visible. */
 function hasOverlayTitle(scene: Phaser.Scene & Record<string, unknown>, title: string): boolean {
-  const hud = scene.hudContainer as unknown as { list?: unknown[] } | null;
-  if (!hud?.list) return false;
-  return hud.list.some((child: unknown) => {
-    const t = child as { text?: string };
-    return typeof t.text === 'string' && t.text.includes(title);
-  });
+  return overlayHasText(scene, title);
 }
 
 describe('MainStreet game-over feedback', () => {
@@ -144,6 +176,7 @@ describe('MainStreet game-over feedback', () => {
 
     // The 'You Win!' panel is up.
     expect(s.uiPhase).toBe('game-over');
+    expectOverlayPresent(scene);
     expect(hasOverlayTitle(scene, 'You Win!')).toBe(true);
   }, 30_000);
 
@@ -167,6 +200,52 @@ describe('MainStreet game-over feedback', () => {
 
     // The 'Game Over' panel is up.
     expect(s.uiPhase).toBe('game-over');
+    expectOverlayPresent(scene);
     expect(hasOverlayTitle(scene, 'Game Over')).toBe(true);
+  }, 30_000);
+
+  it('renders the Game State and Summary columns with the end-reason headline (single-player)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const s = scene as any;
+
+    s.state.endReason = 'all_challenges';
+    s.showGameOverOverlay(gameOverResult(true), []);
+
+    await waitForCondition(() => findOverlayText(scene, 'Summary').length > 0, {
+      timeoutMs: 5000,
+      label: 'two-column game-over summary',
+    });
+    expect(findOverlayText(scene, 'Game State').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'All challenges completed').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'You:').length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it('renders every competitive seat with its failure/elimination badge', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const s = scene as any;
+
+    s.state.players = [
+      {
+        playerId: 0, coins: -5, reputation: 10, score: 50, hand: [], staffCards: [],
+        actionBudget: 1, controller: 'human', eliminated: false,
+      },
+      {
+        playerId: 1, coins: 100, reputation: 10, score: 20, hand: [], staffCards: [],
+        actionBudget: 1, controller: 'ai', eliminated: true,
+      },
+    ];
+    s.state.activePlayerId = 0;
+    s.state.turn = 2;
+    s.state.endReason = 'bankruptcy';
+    s.showGameOverOverlay(gameOverResult(false), []);
+
+    await waitForCondition(() => findOverlayText(scene, 'Bankruptcy — You').length > 0, {
+      timeoutMs: 5000,
+      label: 'competitive game-over headline',
+    });
+    expect(findOverlayText(scene, 'You: -5c  10r  50pt  — Bankrupt').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'AI 1: 100c  10r  20pt  — Eliminated').length).toBeGreaterThan(0);
   }, 30_000);
 });

@@ -19,7 +19,7 @@
  * @module tests/main-street/click-place.browser
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
@@ -256,5 +256,57 @@ describe('MainStreet click-to-place via real pointer events (browser)', () => {
     // Back in the market phase for further play (placement completed).
     expect(scene.uiPhase).toBe('market');
   });
+
+  it('rejecting an unaffordable placement does not animate, spend an action, or drop the selection (MS-0MUUYI950004TG7F)', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    await waitForMarketReady(scene);
+    await waitForSettled(scene);
+
+    // Buy a business to hand (cost-at-play: the move charges an action but
+    // does not check coins), then drain the purse so the placement is
+    // unaffordable. This is the exact reported defect: placing from hand with
+    // too few coins used to animate and spend the action before failing.
+    const targetSlot = getEmptySlots(scene.state)[0];
+    expect(targetSlot).toBeGreaterThanOrEqual(0);
+    const business = scene.state.market.cards.find((c: any) =>
+      c && canPurchaseBusiness(scene.state, c.id, targetSlot).legal,
+    );
+    expect(business).toBeTruthy();
+
+    scene.state.resourceBank.coins = 2000;
+    scene.onBusinessCardClick(business);
+    await waitForCondition(
+      () => scene.state.hand?.some((c: any) => c.id === business.id),
+      'business moved to hand',
+    );
+
+    // Select the held card, then make the placement illegal.
+    scene.onHandBusinessCardClick(0);
+    expect(scene.uiPhase).toBe('placing-from-hand');
+    expect(scene.pendingHandIndex).toBe(0);
+    const beforeActions = scene.state.actionsRemaining;
+    const beforeBanked = scene.state.bankedActions;
+    scene.state.resourceBank.coins = 0;
+
+    const transferSpy = vi.spyOn(scene, 'animateTransferFromMarket');
+
+    // Real pointer click on the empty slot (same pipeline as the legal case).
+    await wait(120);
+    const slotCenter = scene.getStreetSlotCenter(targetSlot);
+    await clickAt(slotCenter.x, slotCenter.y);
+
+    // No phantom transfer, no spent action, and the selection is retained so
+    // the player can immediately retarget.
+    expect(transferSpy).not.toHaveBeenCalled();
+    expect(scene.state.streetGrid[targetSlot]).toBeNull();
+    expect(scene.state.actionsRemaining).toBe(beforeActions);
+    expect(scene.state.bankedActions).toBe(beforeBanked);
+    expect(scene.state.hand.some((c: any) => c.id === business.id)).toBe(true);
+    expect(scene.pendingHandIndex).toBe(0);
+    // The failed attempt must never leave the scene stuck in 'animating'.
+    expect(scene.uiPhase).toBe('placing-from-hand');
+    expect(scene.hiddenTransferSourceCardIds.has(business.id)).toBe(false);
+  }, 60_000);
 
 });

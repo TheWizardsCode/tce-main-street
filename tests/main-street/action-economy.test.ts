@@ -84,6 +84,13 @@ function gmTemplate() {
   return gm;
 }
 
+/** Finds a staff template by exact id (throws if the CSV row is missing). */
+function staffTemplate(id: string) {
+  const card = getStaffCardTemplates().find(t => t.id === id);
+  if (!card) throw new Error(`${id} template missing from card-data.csv`);
+  return card;
+}
+
 // ── General Manager Card ────────────────────────────────────
 
 describe('General Manager staff card', () => {
@@ -99,6 +106,90 @@ describe('General Manager staff card', () => {
     const state = setupMainStreetGame({ seed: 'gm-market' });
     const inDeck = state.decks.staff.some((c: any) => c.id.startsWith('staff-general-manager'));
     expect(inDeck).toBe(true);
+  });
+});
+
+// ── Action-granting staff ladder (MS-0MTQ7S5EJ008MWD0) ──────
+
+describe('action-granting staff ladder', () => {
+  it('Manager grants +1 action/turn and +1 hand slot (a trade-off from +2 slots)', () => {
+    const manager = staffTemplate('staff-manager');
+    expect(manager.cost).toBe(700);
+    expect(manager.ongoingCost).toBe(250);
+    expect(manager.handSlotsAdded).toBe(1);
+    expect(manager.actionsPerTurn).toBe(1);
+  });
+
+  it('Manager description states the +1 hand slot and the action benefit (no longer +2 slots)', () => {
+    const manager = staffTemplate('staff-manager');
+    expect(manager.description).not.toContain('+2 hand slots');
+    expect(manager.description).toContain('+1 hand slot');
+    expect(manager.description.toLowerCase()).toContain('action');
+  });
+
+  it('Director grants +1 action/turn and keeps +3 hand slots', () => {
+    const director = staffTemplate('staff-director');
+    expect(director.cost).toBe(1400);
+    expect(director.ongoingCost).toBe(400);
+    expect(director.handSlotsAdded).toBe(3);
+    expect(director.actionsPerTurn).toBe(1);
+  });
+
+  it('only Manager, Director and General Manager grant actionsPerTurn', () => {
+    const granters = new Set(['staff-manager', 'staff-director', 'staff-general-manager']);
+    for (const card of getStaffCardTemplates()) {
+      if (granters.has(card.id)) {
+        expect(card.actionsPerTurn, `${card.id} should grant an action`).toBe(1);
+      } else {
+        expect(card.actionsPerTurn ?? 0, `${card.id} should not grant an action`).toBe(0);
+      }
+    }
+  });
+
+  it('resets to 3 at WeekStart with a Manager and Director employed (+1 action each)', () => {
+    const state = setupMainStreetGame({ seed: 'reset-manager-director' });
+    state.staffCards.push({ ...staffTemplate('staff-manager') });
+    state.staffCards.push({ ...staffTemplate('staff-director') });
+    state.phase = 'WeekStart';
+    executeWeekStart(state, true);
+    expect(state.actionsRemaining).toBe(3);
+  });
+
+  it('composes 1 base + staff actions + banked (capped at 2) with a Manager employed', () => {
+    const state = setupMainStreetGame({ seed: 'compose-manager' });
+    state.staffCards.push({ ...staffTemplate('staff-manager') });
+    state.bankedActions = 5; // deliberately above the bank cap
+    state.phase = 'WeekStart';
+    executeWeekStart(state, true);
+    // 1 base + 1 Manager + min(2, 5) banked = 4
+    expect(state.actionsRemaining).toBe(4);
+  });
+
+  it('banks only the base action on an idle Manager week (staff actions never bank)', () => {
+    const state = setupMainStreetGame({ seed: 'bank-manager' });
+    state.config = { ...state.config, winThreshold: Number.MAX_SAFE_INTEGER };
+    state.staffCards.push({ ...staffTemplate('staff-manager') });
+    state.phase = 'WeekStart';
+    executeWeekStart(state, true);
+    expect(state.actionsRemaining).toBe(2);
+    // Idle week — only the base portion (1) banks, never the Manager's extra.
+    endTurnHeadless(state);
+    expect(state.bankedActions).toBe(1);
+  });
+
+  it('consumes staff actions first: a Manager week still leaves the base action banked', () => {
+    const state = setupMainStreetGame({ seed: 'spend-manager-bank' });
+    state.config = { ...state.config, winThreshold: Number.MAX_SAFE_INTEGER };
+    state.staffCards.push({ ...staffTemplate('staff-manager') });
+    state.phase = 'WeekStart';
+    executeWeekStart(state, true);
+    state.resourceBank.coins = 10000;
+    const card = state.market.cards[0];
+    executeAction(state, { type: 'move-to-hand', cardId: card.id });
+    expect(state.actionsRemaining).toBe(1);
+    endTurnHeadless(state);
+    // One action spent and one remaining: the remaining base action still banks.
+    expect(state.bankedActions).toBe(1);
   });
 });
 

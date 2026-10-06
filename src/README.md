@@ -4,6 +4,17 @@ Main Street now uses the shared **Screen Layout Language (SLL)** as its canonica
 
 The street is a 10-slot grid rendered as **2 rows × 5 columns**; synergy adjacency is **8-way (Chebyshev)** — orthogonally *and* diagonally adjacent slots count as neighbors (CG-0MSP1HCAS00785MP).
 
+## Synergy link tooltips
+
+Hover a persistent synergy line (drawn between adjacent synergistic businesses) to see what that link does:
+
+- **Shared type** — the synergy type the two cards have in common (the line's colour) plus both card names.
+- **Per-link effect** — for EACH endpoint, the per-turn coin and/or reputation that one link contributes under the active difficulty multiplier (`config.synergyBonusPerNeighbor`). The coin value is the per-link marginal share (`effectiveBase × synergyCoinBonus × multiplier`), shown to at most one decimal; the engine rounds the card's total across all neighbours, so a per-link share is an approximation.
+- **Reputation** flows from the neighbour (`synergyRepBonus`), so each endpoint's rep line reflects the other card's bonus.
+- **Sold endpoints** earn nothing from the link but still anchor the synergy for the other card; the tooltip says so.
+- **Opt-out cards** (e.g. the Pawn Shop) draw no line and show no tooltip.
+- **Replay mode** shows no tooltip; the Settings → Show tooltips toggle suppresses all tooltips (via `TooltipManager`).
+
 ## Upgrade cards: hand-first economy (CG-0MT3IYSRL001VVUP)
 
 Upgrade cards follow the business-card action economy — they are never a free second weekly action:
@@ -34,11 +45,18 @@ income choreography** instead of a single fly-to-HUD burst:
   geometry — over `INCOME_FLIGHT_MS` (600ms) with a 60ms per-line stagger
   (`INCOME_FLIGHT_STAGGER_MS`). Each stream carries the receiver's
   per-neighbour share (split so shares sum exactly) and lands in its coin grid.
-- **On-card coin grids** (`createCoinGrid`, `example-games/main-street/coin-grid.ts`)
+- **On-card coin grids** (`createCoinGrid`, `src/coin-grid.ts`)
   render each producing slot's contribution left-aligned on the card
   (starting at the card's left inset and growing rightwards), filling
   progressively; phase contributions fly in/out; the
   collection finale lands a `+total` pop at the HUD coins counter.
+- **Upcoming routing (CG-0MUA1UH3A008M4BS):** the `upcoming` phase animates
+  the end-of-turn Upcoming-card (incident/event) coin AND reputation deltas
+  with one uniform sign rule — a card that gives flows **actor → HUD**, one
+  that costs flows **HUD → actor** — where the actor is the affected business
+  card when the effect is attached (`SpecificSynergy` / `RandomBusiness`),
+  otherwise the Upcoming panel. Upcoming deltas never touch a business coin
+  grid (it is reserved for credited income).
 - **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between phases — collection at
   ≈11s. The turn controller defers the week start (250ms poll, 16s cap)
   until the show completes, so gameplay timing is unchanged; the street
@@ -134,13 +152,13 @@ compatibility.
 
 ## Layout files and adapter
 
-- Canonical layout JSON: `example-games/main-street/layouts/main-street.layout.json`
-- Tutorial layout JSON: `example-games/main-street/layouts/main-street-tutorial.layout.json`
+- Canonical layout JSON: `src/layouts/main-street.layout.json`
+- Tutorial layout JSON: `src/layouts/main-street-tutorial.layout.json`
   - Defines 7 bounding-box zones for tutorial highlight areas (HUD, market, street, etc.)
   - Uses optional `w`/`h` dimensions on `NormalizedRect` for zone extents
   - Composed with the base layout via `composeResolvedLayouts()` in the tutorial system
-- Scene adapter: `example-games/main-street/scenes/MainStreetLayoutAdapter.ts`
-- Renderer entrypoint: `example-games/main-street/scenes/MainStreetRenderer.ts`
+- Scene adapter: `src/scenes/MainStreetLayoutAdapter.ts`
+- Renderer entrypoint: `src/scenes/MainStreetRenderer.ts`
 
 `MainStreetRenderer.computeLayout()` computes legacy layout metrics first, then applies SLL zone overrides through `computeMainStreetLayoutWithSll(...)`.
 
@@ -205,9 +223,17 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 
 ## Card Data CSV
 
+> **Storylines.** The dual-choice incident chain mechanic (`hasChoices`,
+> `acceptNextCardId`, `rejectNextCardId`, `storylineId`, `storylineTitle`) is
+> documented in full — model, lifecycle, AI policy, tooling and an authoring
+> walkthrough — in [docs/main-street/storylines.md](../docs/main-street/storylines.md).
+> Tooling: `npm run validate:storylines` (static validator),
+> `npm run storylines:graph` (graph/manifest export),
+> `npm run storylines:author` (safe authoring helper).
+
 All card template data is defined in a single CSV file:
 
-- **File:** `example-games/main-street/card-data.csv`
+- **File:** `src/card-data.csv`
 
 ### How it works
 
@@ -264,6 +290,11 @@ The first row is the header. Columns common to all card families:
 | `coinDelta` | number | Coin change when the event resolves |
 | `reputationDelta` | number | Reputation change when the event resolves |
 | `effect` | string | Human-readable effect description |
+| `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses for Accept/Reject (storyline choice). See [docs/main-street/storylines.md](../docs/main-street/storylines.md). |
+| `acceptNextCardId` | string | Card queued on **Accept** (option 0, applies the effect); empty ends the chain. |
+| `rejectNextCardId` | string | Card queued on **Reject** (option 1, skips the effect); empty ends the chain. |
+| `storylineId` | string | Storyline grouping key (e.g. `storyline-tax`). Descriptive metadata. |
+| `storylineTitle` | string | Storyline display name (e.g. `Tax Troubles`). |
 
 Duration events (e.g. Flu Outbreak) also use:
 
@@ -391,8 +422,9 @@ Main Street Milestone 5 (CG-0MOY5TOJK008JFJM) adds a first-time player onboardin
 
 ### Help/Rules Panel
 
-- Updated to 6 PRD-required sections: How to Play, Card Types, Synergy and Placement, Turn Flow, Win/Loss Conditions, Tools.
-- Each section has <= 8 lines of concise English-only copy.
+- 7 sections: How to Play, Card Types, Synergy and Placement, Staff & Specialization Skills (post-PRD addition), Turn Flow, Win/Loss Conditions, Tools.
+- Line budgets: How to Play <= 11, Turn Flow <= 13, all others <= 8. (Post-PRD mechanics copy in How to Play and Turn Flow exceeds the default 8-line ceiling.)
+- Each section uses concise English-only copy (author-controlled, newline-delimited, non-empty lines).
 
 ### Game Selector Integration
 

@@ -27,7 +27,7 @@ describe('compareMetrics', () => {
 
   it('flags metrics with warning severity breaches', () => {
     const current: Record<string, number> = {
-      medianScore_greedy_medium: 200, // warning: max is 180
+      medianScore_greedy_medium: 250, // warning: max is 200
     };
     const baseline: Record<string, number> = {
       medianScore_greedy_medium: 150,
@@ -41,13 +41,13 @@ describe('compareMetrics', () => {
     const comp = result.comparisons[0];
     expect(comp.metric).toBe('medianScore_greedy_medium');
     expect(comp.status).toBe('flag');
-    expect(comp.delta).toBe(50);
-    expect(comp.deltaPct).toBeCloseTo(33.33, 1);
+    expect(comp.delta).toBe(100);
+    expect(comp.deltaPct).toBeCloseTo(66.67, 1);
   });
 
   it('fails metrics with critical severity breaches', () => {
     const current: Record<string, number> = {
-      winRate_greedy_medium: 25, // critical: min is 45
+      winRate_greedy_medium: 15, // critical: min is 20
     };
     const baseline: Record<string, number> = {
       winRate_greedy_medium: 45,
@@ -64,8 +64,8 @@ describe('compareMetrics', () => {
 
   it('produces mixed statuses across multiple metrics', () => {
     const current: Record<string, number> = {
-      winRate_greedy_medium: 25,     // fail (critical, min 45)
-      winRate_greedy_hard: 10,       // flag (warning, min 15)
+      winRate_greedy_medium: 15,     // fail (critical, min 20)
+      winRate_greedy_hard: 3,        // flag (warning, min 5)
       winRate_random_medium: 12,     // pass (warning, min 5, max 20)
     };
     const baseline: Record<string, number> = {

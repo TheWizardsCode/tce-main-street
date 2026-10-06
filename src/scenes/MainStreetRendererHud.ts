@@ -10,8 +10,10 @@
  */
 
 import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
+import { continuityIndicatorLabel } from '../MainStreetStorylineUi';
 import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
+import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
 import { buildCardTooltipInfo, turnLabel, weekLabel } from '../MainStreetFormatting';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
@@ -25,6 +27,8 @@ import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { createActionButton, createSceneTitle } from '@ui/Renderer';
 import Phaser from 'phaser';
+import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { renderCompetitiveScoreboard } from './MainStreetRendererCompetitiveHud';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
@@ -237,10 +241,30 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Reputation (CG-0MUFAITED0088AGN).
     renderFavourButtons(s);
 
+    // Storyline continuity indicator (MS-0MUMP96XH002SJ89 AC3): a transient
+    // HUD label showing the storyline(s) currently in play. Rebuilt on every
+    // refresh (so it persists through cycles and disappears when the thread
+    // ends), positioned just above the strip's left edge.
+    const storylineLabel = continuityIndicatorLabel(s.state);
+    if (storylineLabel) {
+      const storylineText = markHudTransient(s.add.text(
+        hudLeft, hudY - HUD_BAR_HEIGHT_PX / 2 - 10, storylineLabel,
+        { fontSize: '12px', fontStyle: 'italic', color: '#ffcc88', fontFamily: FONT_FAMILY },
+      ).setOrigin(0, 1));
+      s.hudContainer.add(storylineText);
+    }
+
     // NOTE: the actions-remaining counter is intentionally NOT rendered in the
     // HUD strip. It lives in the action cluster above the End Turn button
     // (CG-0MUFAITX70081W41) so the player sees the action budget next to the
     // control it gates. Its tooltip moves with it (see `refreshActionButtons`).
+
+    // Competitive scoreboard (MS-0MUTU8J9T0034OT7): render every seat's own
+    // wallet/score above the strip so the shared (bound-seat) readout is not
+    // the only view. Single-player is unchanged.
+    if ((s.state.players?.length ?? 0) > 1) {
+      renderCompetitiveScoreboard(renderer);
+    }
 
     // HUD tooltip zones (desktop: pointer hover, mobile: tap toggle)
     if (!s.replayMode) {
@@ -320,6 +344,26 @@ export function refreshChallengeTracker(renderer: MainStreetRendererContext): vo
       ).setOrigin(0, 0);
       s.challengeContainer.add(challengeText);
 
+      // Live progress (MS-0MUI7ZJK8003HY9J): progress-capable challenges show
+      // `<current>/<target>` right-aligned against the description column. It
+      // is right-aligned at the description start (minus a small gutter) so it
+      // never overlaps the description and changes nothing for the challenges
+      // that carry no progress provider.
+      const progressLabel = formatChallengeProgress(ac.challenge, s.state);
+      if (progressLabel) {
+        const progressText = s.add.text(
+          challengeW * 0.42 - 6, yOff,
+          progressLabel,
+          {
+            fontSize: '10px',
+            fontStyle: 'bold',
+            color,
+            fontFamily: FONT_FAMILY,
+          },
+        ).setOrigin(1, 0);
+        s.challengeContainer.add(progressText);
+      }
+
       // Description (right portion of the row)
       const descText = s.add.text(
         challengeW * 0.42, yOff,
@@ -374,7 +418,9 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
     // The applicant phase (CG-0MSTOATDU006UGAX) deliberately shares the
     // market action bar so End Turn stays reachable — ending the turn
     // auto-declines an unresolved applicant instead of stranding the player.
-    if (s.uiPhase === 'market' || s.uiPhase === 'applicant') {
+    // In competitive mode the market controls are hidden while an AI seat is
+    // active (input is gated in the controller too; MS-0MUTU8J9T0034OT7).
+    if ((s.uiPhase === 'market' || s.uiPhase === 'applicant') && canHumanSeatAct(s.state)) {
       const rightX = s.layout.gameW - 24;
       const by = s.layout.actionY;
 
@@ -442,6 +488,25 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         );
         s.actionContainer.add(peekBtn);
       }
+
+      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the Hint/Peek
+      // cluster. Opens the journal overlay listing past storyline choices and
+      // outcomes. Always available (it shows an empty state before any choice).
+      let leftmostX = rightX - btnW - 12 - hintBtnW;
+      if (hasPeekStaff) leftmostX -= 12 + btnW;
+      const journalBtn = createActionButton(
+        s, leftmostX - 12 - btnW, by + 4, btnW, 'Journal',
+        () => s.showStorylineJournal(),
+        {
+          height: s.layout.actionButtonH,
+          fillColor: 0x2a2233,
+          fillAlpha: 0.8,
+          strokeColor: 0x8855aa,
+          textColor: '#cc99ff',
+          fontSize: '14px',
+        },
+      );
+      s.actionContainer.add(journalBtn);
 
     } else if (s.uiPhase === 'placing-from-hand') {
       const rightX = s.layout.gameW - 24;
@@ -597,6 +662,29 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
 
     // Visible area inside the panel (below title bar, above bottom edge)
     const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - 4);
+
+    // ── Deferral gate (MS-0MURBOD2E009SOM2) ─────────────────────
+    // When logDeferredUntilPhaseComplete is true, suppress all rendering
+    // so log entries added during end-of-turn closing only appear AFTER
+    // the upcoming/phase UI updates have been displayed to the player.
+    // Do NOT update logPrevEntryCount while deferred — the next render
+    // after deferral is cleared must see a count change and re-render.
+    if (s.logDeferredUntilPhaseComplete) {
+      // Compute scroll bounds from existing content only (no re-render).
+      if (s.logTotalContentH <= visibleH) {
+        s.logMaxScroll = 0;
+        s.logScrollOffset = 0;
+      } else {
+        s.logMaxScroll = s.logTotalContentH - visibleH;
+        if (s.logAutoScroll) {
+          s.logScrollOffset = s.logMaxScroll;
+        } else {
+          s.logScrollOffset = Phaser.Math.Clamp(s.logScrollOffset, 0, s.logMaxScroll);
+        }
+      }
+      s.logContentContainer.setY(LOG_TITLE_H + 2 - s.logScrollOffset);
+      return;
+    }
 
     // ── Re-render only if the entry count changed ────────────────
     if (newCount !== s.logPrevEntryCount) {

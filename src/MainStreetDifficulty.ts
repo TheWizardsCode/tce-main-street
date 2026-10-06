@@ -163,6 +163,28 @@ export interface GameConfig extends DifficultyConfig {
 // ── Preset Definitions ──────────────────────────────────────
 
 /**
+ * Economy rebalance note (MS-0MUQ50I1Y000B6L3, producer decision Q3 = C).
+ *
+ * The 5-turn payback rebalance (MS-0MUQUBJFL0076RT6) deliberately reduced
+ * business `baseIncome` by ~2.4x, producing a materially tighter economy.
+ * The producer accepted this tighter economy as the new design intent rather
+ * than compensating it away with presets. The difficulty presets below are
+ * therefore left **unchanged**:
+ *
+ * - the canonical 200-seed / 60-turn greedy profile preserves the primary
+ *   balance gate — a monotone-decreasing win-rate ladder
+ *   Easy (0.62) ≥ Medium (0.325) ≥ Hard (0.11);
+ * - the guardrail bands (src/scripts/balance/guards/thresholds.ts and the
+ *   Monte Carlo guardrail tests) are revised to the measured after-state
+ *   instead of the presets being re-tuned to the old baseline;
+ * - ongoingCost needs no change (the payback model already accounts for it).
+ *
+ * Community-space / event / upgrade pricing was reviewed and any relative
+ * re-valuation is tracked as follow-up work rather than changed here. See
+ * docs/main-street/payback-rebalance-evidence.md.
+ */
+
+/**
  * Easy preset: generous resources, lower win threshold.
  * Designed for new players learning the mechanics. No turn limit
  * (CG-0MSLXJCHH001DLIO — turn limits are opt-in via explicit `maxTurns`).

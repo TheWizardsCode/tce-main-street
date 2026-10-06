@@ -16,7 +16,7 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Hardware Store | 300 | 230 | Service | Hardware Store → Home Improvement | Supplies tools. Gains 50% of base income per adjacent Service business. *(Commerce→Service retag, CG-0MT3IPFSF005KEFB — tool supply is a Service, gives T2 a second type.)* |
 | Juice Bar | 500 | 350 | Food, Health | — | Fresh juices and smoothies. Bridges Food and Health synergies. *(Group A: first Health bridge.)* |
 | Yoga Studio | 800 | 580 | Culture, Health | — | Calm practice space for mind and body. Bridges Culture and Health synergies. *(Group A.)* |
-| Physiotherapy | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
+| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
 | Tailor | 500 | 375 | Service | — | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. *(Group A.)* |
 | Gym | 800 | 580 | Health | — | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
 | Dentist | 1200 | 870 | Health | — | Smiles for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
@@ -24,6 +24,7 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Music Store | 800 | 580 | Entertainment | — | Records and instruments for every taste. Gains 50% of base income per adjacent Entertainment business. *(Group A.)* |
 | Delicatessen | 500 | 375 | Food | — | Fine meats and cheeses. Gains 50% of base income per adjacent Food business. *(Group A.)* |
 | Craft Shop | 500 | 375 | Culture | — | Handmade goods by local makers. Gains 50% of base income per adjacent Culture business. *(Group A.)* |
+| Charity Shop | 300 | 150 | Culture | — | Sells donated goods. Provides +15 reputation per turn. Gains 50% of base income per adjacent Culture business. *(Producer-added, MS-0MUAYBAHW007RMSL; tier 2, standalone, ongoing −75/turn.)* |
 | Grand Hotel | 1600 | 1210 | Service | — | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business; +10 rep/turn. *(Group A T5 flagship.)* |
 | Teahouse | 700 | 495 | Food, Culture | — | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. *(Group A.)* |
 
@@ -63,15 +64,31 @@ Event cards are split into two trigger types:
 
 **Deck composition:** 5 event templates × 3 copies = 15 cards total (3 Investment, 12 Incident). At game start, the Investments market row draws 1 Investment event and the incident deck is built from the Incident-trigger events, constraint-ordered so repeat-spacing/streak limits hold across the draw sequence (CG-0MSTOATDP000JNHH).
 
+### 1.2a Storyline Choice Cards
+
+Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/main-street/storylines.md](./storylines.md)**.
+
+The shipped storylines are:
+
+| Storyline | Choice cards | Escalation |
+|-----------|--------------|------------|
+| Tax Troubles (`storyline-tax`) | Tax Audit, Error in Tax Return, Inquiry Commission | intentional cycle |
+| Public Health Crisis (`storyline-health`) | Flu Outbreak | Pandemic |
+| Economic Downturn (`storyline-economy`) | Economic Recession | Depression |
+| Labour Unrest (`storyline-labor`) | Service Workers Strike | General Strike |
+| Restaurant Renaissance (`storyline-restaurant`) | Popular Menu Item | Farm-to-Table Feature |
+
+Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export).
+
 ### 1.2b Community Space Cards
 
 Community-space cards are placed on the street grid like businesses but generate **reputation per turn** instead of income (some carry a small ongoing coin cost). They appear in the Development market row alongside businesses. *(Group B, CG-0MSQJ210I00491ZZ, grew this family from 2 to 8 cards.)*
 
 | Name | Cost (coins) | Ongoing/turn | Synergy | Tier | Rep/turn | Description |
 |------|--------------|--------------|---------|------|----------|-------------|
-| Park | 300 | 0 | Entertainment | 1 | 0 | Offers leisure space. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB.)* |
+| Park | 300 | 40 | Entertainment | 1 | 0 | Offers leisure space. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK.)* |
 | Playground | 400 | 0 | Entertainment | 3 | 5 | A safe place for kids to play. *(Group B.)* |
-| Community Garden | 500 | 10 | Food | 4 | 10 | A shared garden plot for the neighbourhood. *(Group B.)* |
+| Community Garden | 500 | 10 | Entertainment | 4 | 10 | A shared community garden that hosts seasonal flower festivals. *(Group B; Food→Entertainment retag, CG-0MUNAQL870015WKF.)* |
 | Town Fountain | 500 | 0 | Culture | 5 | 10 | A gathering spot around the fountain. *(Group B.)* |
 | Health Kiosk | 600 | 15 | Health | 8 | 15 | A walk-up health advice kiosk. *(Group B.)* |
 | Community Shelter | 600 | 0 | Service | 3 | 15 | A warm shelter for those in need. *(Group B; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg.)* |
@@ -80,7 +97,7 @@ Community-space cards are placed on the street grid like businesses but generate
 
 > 12-tier expansion (CG-0MT3C744B009DS84): community-space cards are spread across 6 of the 12 tiers (8 cards cannot cover every tier; the Community Shelter retiered T6→T3, CG-0MT5VZJLS000B8KI); Park and Library are Tier-1 because the tutorial requires them in the tier-1 card pool.
 
-> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** across business + community-space cards, every tier spans ≥ 2 distinct synergy types, and no type's assignment count within a tier exceeds 2× any other type's count (bridge cards count once per type they carry). The three sparse tiers were stretched without new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. See `card-catalog.md` "Synergy Type Coverage" and `tests/main-street/tier-synergy-balance.test.ts`.
+> **Per-tier synergy balance (CG-0MT3IPFSF005KEFB):** across business + community-space cards, every tier spans ≥ 2 distinct synergy types, and no type's assignment count within a tier exceeds 2× any other type's count (bridge cards count once per type they carry). The three sparse tiers were stretched without new cards: T1 Park Culture→Entertainment, T2 Hardware Store Commerce→Service, T3 Arcade stays Entertainment with the Community Shelter retiered 6→3 (CG-0MT5VZJLS000B8KI) → Entertainment 2 / Service 1. The producer-added Charity Shop later adds T2 Culture (MS-0MUAYBAHW007RMSL) → Commerce 2 / Service 1 / Culture 1. See `card-catalog.md` "Synergy Type Coverage" and `tests/main-street/tier-synergy-balance.test.ts`.
 
 ### 1.3 Upgrade Cards
 | Name | Target Business | Cost (coins) | Income Bonus | Synergy Range Bonus | Description |
@@ -111,11 +128,11 @@ Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG
 |------|------|--------------|--------|------|---------|-------------|
 | Apprentice | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot. *(Group F.)* |
 | Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. |
-| Manager | 700 | 250 | +2 | 3 | — | A skilled manager keeps things organised. |
+| Manager | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. |
 | Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds hand capacity and reputation. *(Group F.)* |
-| Accountant | 800 | 150 | +1 | 6 | refresh −1; tax 25% | Makes market refreshes cost 1 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J.)* |
+| Accountant | 800 | 150 | +1 | 6 | refresh −100; tax 25% | Makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J; ×100 rescale CG-0MTKMGL66004I0PC.)* |
 | Lookout | 1000 | 200 | +1 | 7 | peek once/turn | Peek at the top incident-deck card once per turn. *(CG-0MSXOW6GN008ZSMN.)* |
-| Director | 1400 | 400 | +3 | 9 | — | An experienced director oversees your operations. |
+| Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
 | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity. *(Group F.)* |
 | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
 

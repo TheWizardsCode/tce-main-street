@@ -221,6 +221,87 @@ export interface CostToIncomeInput {
  * @returns Cost-to-income ratio.
  * @throws {TypeError} If cost or baseIncome are negative.
  */
+// =========================================================================
+// M3 Companion: Net Payback & Gross Payback
+// =========================================================================
+
+/**
+ * Input for net/gross payback computation.
+ */
+export interface PaybackInput {
+  /** Card purchase cost (integer coin-cent units, ×100). */
+  cost: number;
+  /** Card base income per turn (integer coin-cent units, ×100). */
+  baseIncome: number;
+  /** Card ongoing cost per turn (integer coin-cent units, ×100; defaults to 0). */
+  ongoingCost?: number;
+}
+
+/**
+ * Result type for net/gross payback computation.
+ */
+export interface PaybackResult {
+  /**
+   * Net payback in turns: `cost ÷ (baseIncome − ongoingCost)`.
+   * Returns `Infinity` when net income is zero or negative
+   * (i.e. `baseIncome <= ongoingCost`).
+   * Returns `0` when cost is 0.
+   */
+  netPayback: number;
+  /**
+   * Gross payback in turns: `cost ÷ baseIncome`.
+   * Returns `Infinity` when `baseIncome` is 0.
+   * Returns `0` when cost is 0.
+   */
+  grossPayback: number;
+  /** Net income per turn (`baseIncome − ongoingCost`), in integer cent units. */
+  netIncome: number;
+  /** The ongoing cost used in computation. */
+  ongoingCost: number;
+}
+
+/**
+ * Computes M3 companion: net payback = cost / (baseIncome − ongoingCost).
+ *
+ * Also reports gross payback = cost / baseIncome for transparency.
+ *
+ * - Handles zero `baseIncome` by returning `Infinity` (the card never
+ *   pays back through base income alone).
+ * - Handles `baseIncome <= ongoingCost` (non-positive net income)
+ *   by returning `Infinity` for net payback.
+ * - Handles zero `cost` by returning `0` (free card, instant payback).
+ * - `ongoingCost` defaults to 0 when absent.
+ *
+ * This metric is computed in whole-coin display units: the CSV stores
+ * values in integer cent units (×100), so the division naturally
+ * produces payback in turns.
+ *
+ * @param input - Card cost, base income, and optional ongoing cost.
+ * @returns Payback result with net and gross payback values.
+ * @throws {TypeError} If cost or baseIncome are negative.
+ */
+export function computePayback(input: PaybackInput): PaybackResult {
+  const { cost, baseIncome, ongoingCost = 0 } = input;
+
+  if (cost < 0 || baseIncome < 0) {
+    throw new TypeError('computePayback: cost and baseIncome must be non-negative');
+  }
+
+  const netIncome = baseIncome - ongoingCost;
+
+  // Gross payback
+  const grossPayback = baseIncome === 0
+    ? Infinity
+    : cost / baseIncome;
+
+  // Net payback
+  const netPayback = netIncome <= 0
+    ? Infinity
+    : cost / netIncome;
+
+  return { netPayback, grossPayback, netIncome, ongoingCost };
+}
+
 export function computeCostToIncomeRatio(input: CostToIncomeInput): number {
   if (input.cost < 0 || input.baseIncome < 0) {
     throw new TypeError('computeCostToIncomeRatio: cost and baseIncome must be non-negative');

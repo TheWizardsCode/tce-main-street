@@ -51,13 +51,15 @@ interface NewCommunitySpaceContract {
   reputationPerTurn: number;
 }
 
+// Costs re-priced by MS-0MUR9IN7L0004TO5 (community spaces relative to the
+// 4.87-turn business payback; see docs/main-street/analysis/community-space-event-repricing.md).
 const NEW_COMMUNITY_SPACE_CONTRACTS: NewCommunitySpaceContract[] = [
-  { id: 'cs-playground', name: 'Playground', cost: 400, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 5 },
-  { id: 'cs-community-garden', name: 'Community Garden', cost: 500, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Food'], tier: '4', reputationPerTurn: 10 },
-  { id: 'cs-fountain', name: 'Town Fountain', cost: 500, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Culture'], tier: '5', reputationPerTurn: 10 },
-  { id: 'cs-health-kiosk', name: 'Health Kiosk', cost: 600, baseIncome: 0, ongoingCost: 15, synergyTypes: ['Health'], tier: '8', reputationPerTurn: 15 },
-  { id: 'cs-shelter', name: 'Community Shelter', cost: 600, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Service'], tier: '3', reputationPerTurn: 15 }, // retiered T6->T3 (CG-0MT5VZJLS000B8KI) so T3 keeps a non-Entertainment synergy type
-  { id: 'cs-public-art', name: 'Public Art', cost: 800, baseIncome: 0, ongoingCost: 25, synergyTypes: ['Culture', 'Entertainment'], tier: '12', reputationPerTurn: 20 },
+  { id: 'cs-playground', name: 'Playground', cost: 300, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 5 },
+  { id: 'cs-community-garden', name: 'Community Garden', cost: 350, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Entertainment'], tier: '4', reputationPerTurn: 10 },
+  { id: 'cs-fountain', name: 'Town Fountain', cost: 350, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Culture'], tier: '5', reputationPerTurn: 10 },
+  { id: 'cs-health-kiosk', name: 'Health Kiosk', cost: 450, baseIncome: 0, ongoingCost: 15, synergyTypes: ['Health'], tier: '8', reputationPerTurn: 15 },
+  { id: 'cs-shelter', name: 'Community Shelter', cost: 400, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Service'], tier: '3', reputationPerTurn: 15 }, // retiered T6->T3 (CG-0MT5VZJLS000B8KI) so T3 keeps a non-Entertainment synergy type
+  { id: 'cs-public-art', name: 'Public Art', cost: 600, baseIncome: 0, ongoingCost: 25, synergyTypes: ['Culture', 'Entertainment'], tier: '12', reputationPerTurn: 20 },
 ];
 
 function byId(templates: readonly { id: string }[], id: string): CommunitySpaceCard | undefined {
@@ -258,7 +260,7 @@ describe('Group B community-space expansion: balance guardrails (AC5)', () => {
   });
 
   it('keeps other families unchanged in count (data-driven scope)', () => {
-    expect(createBusinessDeck(1).length).toBe(30);
+    expect(createBusinessDeck(1).length).toBe(31);
     expect(createEventDeck(1, undefined, createSeededRng(42), 1).length).toBe(71); // +8 chain + 7 Irish-holiday (CG-0MTT0K9RX0004QTE)
     expect(createUpgradeDeck(1).length).toBe(39); // +12 Group E upgrades
   });

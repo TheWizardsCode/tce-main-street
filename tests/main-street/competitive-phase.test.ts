@@ -26,6 +26,7 @@ import {
   processEndOfTurn,
   executeWeekStart,
 } from '../../src/MainStreetEngine';
+import { bindCompetitiveSeat } from '../../src/MainStreetAiStrategy';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -34,10 +35,13 @@ function comp(seed = 'phase42', playerCount = 2): MainStreetState {
 }
 
 function setScores(state: MainStreetState, scores: number[]): void {
-  // score is derived as coins+rep+bonus; we set coins to achieve desired score
-  // with rep=startingReputation and bonus=0, then force updateCompetitiveScores to recompute.
+  // score is derived as coins+rep+bonus; we set coins to achieve the desired
+  // score with a small positive rep (so the per-seat reputation-collapse
+  // end condition does not fire — MS-0MUVBH589001L7NL). The old helper used
+  // `startingReputation` (200-500), which forced large negative coin values
+  // that the pre-fix shared-bank check ignored.
   const bonus = state.challengesCompleted.length * state.config.challengeBonusPoints;
-  const rep = state.config.startingReputation;
+  const rep = 1;
   scores.forEach((desired, i) => {
     const neededCoins = desired - rep - bonus;
     state.players![i].coins = neededCoins;
@@ -102,7 +106,7 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
   });
 
   it('shared closing with N=3 alternates P0->P1->P2 then closing', () => {
-    const s = comp('ac1-n3', 3);
+    const s = comp('ac1-n3-1', 3);
     executeCompetitiveWeekStart(s);
     expect(getActivePlayerId(s)).toBe(0);
     endCompetitiveMarketTurn(s);
@@ -134,14 +138,21 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
     expect(s.phase).toBe('InvestmentResolution');
   });
 
-  it('action budget hand-off: each day resets per-player budgets from staff+bank', () => {
+  it('action budget hand-off: base budgets reset per player and binding adds the shared bank', () => {
     const s = comp('ac1-budget', 2);
-    // Give P0 a staff with +1 action to verify per-player derivation
+    // Give P0 a staff with +1 action to verify per-player base derivation
     s.players![0].staffCards = [{ id: 'staff-gm', name: 'GM', family: 'staff', cost: 2, actionsPerTurn: 1, handSlotsAdded: 0, ongoingCost: 0, specializationSkillIds: [] } as any];
     s.bankedActions = 1;
     executeCompetitiveWeekStart(s);
-    expect(s.players![0].actionBudget).toBe(3); // 1 base +1 staff +1 bank
-    expect(s.players![1].actionBudget).toBe(2); // 1 base +0 staff +1 bank
+    // `actionBudget` is the bank-free daily base (1 base + staff bonus).
+    expect(s.players![0].actionBudget).toBe(2); // 1 base +1 staff
+    expect(s.players![1].actionBudget).toBe(1); // 1 base +0 staff
+    // Binding a seat adds the *shared* bank on top of its base budget
+    // (MS-0MUVUPWHD0032CU4), so every seat draws from the remaining pool.
+    bindCompetitiveSeat(s, 0);
+    expect(s.actionsRemaining).toBe(3); // 1 base +1 staff +1 bank
+    bindCompetitiveSeat(s, 1);
+    expect(s.actionsRemaining).toBe(2); // 1 base +0 staff +1 bank
   });
 
   it('executeCompetitiveTurn convenience runs WeekStart -> N markets -> shared closing', () => {

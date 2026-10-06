@@ -4,7 +4,8 @@
  * Validates the 12 new business cards added by the "Main Street: design 50+
  * new cards of varying types" epic (CG-0MSQE2NLX003ADIY), Group A:
  *
- * - Template count grows from 18 to 30 business cards (AC1).
+ * - Template count grows from 18 to 31 business cards (AC1; the 31st is the
+ *   producer-added Charity Shop, MS-0MUAYBAHW007RMSL).
  * - Every new card matches its design contract (name, cost, income, synergy,
  *   tier, reputation per turn).
  * - Every new card appears in `CARD_TIER_MAP` at the contracted tier (AC2)
@@ -50,20 +51,20 @@ interface NewBusinessContract {
 }
 
 const NEW_BUSINESS_CONTRACTS: NewBusinessContract[] = [
-  // Income/rep values raised by the CG-0MSVYPEZ90085SHE ongoing-cost rebalance
-  // (income = old income + 2.4 × ongoing cost; tiered reputation per turn).
-  { id: 'biz-juice-bar', name: 'Juice Bar', cost: 500, baseIncome: 350, synergyTypes: ['Food', 'Health'], tier: '5', reputationPerTurn: 8 },
-  { id: 'biz-yoga-studio', name: 'Yoga Studio', cost: 800, baseIncome: 580, synergyTypes: ['Culture', 'Health'], tier: '9', reputationPerTurn: 12 },
-  { id: 'biz-physio', name: 'Physiotherapy', cost: 1000, baseIncome: 700, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 15 },
-  { id: 'biz-tailor', name: 'Tailor', cost: 500, baseIncome: 375, synergyTypes: ['Service'], tier: '6', reputationPerTurn: 8 },
-  { id: 'biz-gym', name: 'Gym', cost: 800, baseIncome: 580, synergyTypes: ['Health'], tier: '9', reputationPerTurn: 12 },
-  { id: 'biz-dentist', name: 'Dentist', cost: 1200, baseIncome: 870, synergyTypes: ['Health'], tier: '11', reputationPerTurn: 20 },
-  { id: 'biz-toy-store', name: 'Toy Store', cost: 500, baseIncome: 375, synergyTypes: ['Commerce'], tier: '6', reputationPerTurn: 8 },
-  { id: 'biz-music-store', name: 'Music Store', cost: 800, baseIncome: 580, synergyTypes: ['Entertainment'], tier: '10', reputationPerTurn: 12 },
-  { id: 'biz-delicatessen', name: 'Delicatessen', cost: 500, baseIncome: 375, synergyTypes: ['Food'], tier: '7', reputationPerTurn: 8 },
-  { id: 'biz-craft-shop', name: 'Craft Shop', cost: 500, baseIncome: 375, synergyTypes: ['Culture'], tier: '7', reputationPerTurn: 8 },
-  { id: 'biz-hotel', name: 'Grand Hotel', cost: 1600, baseIncome: 1210, synergyTypes: ['Service'], tier: '12', reputationPerTurn: 30 },
-  { id: 'biz-teahouse', name: 'Teahouse', cost: 700, baseIncome: 495, synergyTypes: ['Food', 'Culture'], tier: '7', reputationPerTurn: 10 },
+  // Income values re-derived by the 5-turn payback rebalance (MS-0MUQUBJFL0076RT6):
+  // baseIncome = cost / targetPayback + ongoingCost (cost-graded targets).
+  { id: 'biz-juice-bar', name: 'Juice Bar', cost: 500, baseIncome: 225, synergyTypes: ['Food', 'Health'], tier: '5', reputationPerTurn: 8 },
+  { id: 'biz-yoga-studio', name: 'Yoga Studio', cost: 800, baseIncome: 345, synergyTypes: ['Culture', 'Health'], tier: '9', reputationPerTurn: 12 },
+  { id: 'biz-physio', name: 'Physiotherapist', cost: 1000, baseIncome: 432, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 15 },
+  { id: 'biz-tailor', name: 'Tailor', cost: 500, baseIncome: 225, synergyTypes: ['Service'], tier: '6', reputationPerTurn: 8 },
+  { id: 'biz-gym', name: 'Gym', cost: 800, baseIncome: 345, synergyTypes: ['Health'], tier: '9', reputationPerTurn: 12 },
+  { id: 'biz-dentist', name: 'Dentist', cost: 1200, baseIncome: 485, synergyTypes: ['Health'], tier: '11', reputationPerTurn: 20 },
+  { id: 'biz-toy-store', name: 'Toy Store', cost: 500, baseIncome: 225, synergyTypes: ['Commerce'], tier: '6', reputationPerTurn: 8 },
+  { id: 'biz-music-store', name: 'Music Store', cost: 800, baseIncome: 345, synergyTypes: ['Entertainment'], tier: '10', reputationPerTurn: 12 },
+  { id: 'biz-delicatessen', name: 'Delicatessen', cost: 500, baseIncome: 225, synergyTypes: ['Food'], tier: '7', reputationPerTurn: 8 },
+  { id: 'biz-craft-shop', name: 'Craft Shop', cost: 500, baseIncome: 225, synergyTypes: ['Culture'], tier: '7', reputationPerTurn: 8 },
+  { id: 'biz-hotel', name: 'Grand Hotel', cost: 1600, baseIncome: 629, synergyTypes: ['Service'], tier: '12', reputationPerTurn: 30 },
+  { id: 'biz-teahouse', name: 'Teahouse', cost: 700, baseIncome: 315, synergyTypes: ['Food', 'Culture'], tier: '7', reputationPerTurn: 10 },
 ];
 
 function byId(templates: readonly { id: string }[], id: string): BusinessCard | undefined {
@@ -73,9 +74,9 @@ function byId(templates: readonly { id: string }[], id: string): BusinessCard | 
 // ── AC1: Template count ───────────────────────────────────────────────
 
 describe('Group A business expansion: template count (AC1)', () => {
-  it('grows the business family from 18 to exactly 30 templates', () => {
+  it('grows the business family from 18 to exactly 31 templates', () => {
     const templates = getBusinessTemplates();
-    expect(templates.length).toBe(30);
+    expect(templates.length).toBe(31);
   });
 
   it('adds exactly the 12 contracted card IDs (no more, no fewer)', () => {
@@ -187,8 +188,8 @@ describe('Group A business expansion: Health bridges', () => {
 // ── Deck generation & market integration ──────────────────────────────
 
 describe('Group A business expansion: deck generation', () => {
-  it('builds a 90-card business deck at the default 3 copies', () => {
-    expect(createBusinessDeck(3)).toHaveLength(90);
+  it('builds a 93-card business deck at the default 3 copies', () => {
+    expect(createBusinessDeck(3)).toHaveLength(93);
   });
 
   it('includes every new card in a 1-copy (template) deck', () => {

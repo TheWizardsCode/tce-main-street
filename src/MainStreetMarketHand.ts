@@ -15,6 +15,10 @@ import { addLog, describeEventEffects, classifyEffect } from './MainStreetState'
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import type { PurchaseResult } from './MainStreetMarketTypes';
+import {
+  computeEffectiveBusinessPurchaseCost,
+  computeBusinessPurchasePremium,
+} from './MainStreetStaffBuffs';
 
 /**
  * Checks whether the player can add a card to their hand.
@@ -96,6 +100,11 @@ export function validateHandIndex(state: MainStreetState, handIndex: number): An
  * street grid, charging its listed cost at placement time
  * (CG-0MSTOATDT009BRX2 cost-at-play deferral model).
  *
+ * The base listed cost is reduced by the street-wide `purchaseCostDiscount`
+ * (Delivery Driver, CG-0MUMCVH3N007KT1M) before the optional premium is
+ * applied — discount-first, then premium — matching the buy-and-place
+ * ordering rule (CG-0MTKMGL66004I0PC).
+ *
  * @param premiumCost Optional premium price to charge instead of the listed
  *                    `card.cost` (same-week composite buy-and-play when no
  *                    action is available — CG-0MT24X0SX007RLHN). When absent,
@@ -111,7 +120,15 @@ export function playBusinessFromHand(
   if (card.family !== 'business' && card.family !== 'community-space') {
     throw new Error(`Card at hand index ${handIndex} is not a business/community-space card.`);
   }
-  const price = premiumCost ?? card.cost;
+
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): discount the
+  // base listed cost first. When the caller requests the composite/drag
+  // premium (a numeric `premiumCost`), apply the +50% premium to the
+  // discounted base (discount-first rule, CG-0MTKMGL66004I0PC).
+  const price = premiumCost !== undefined
+    ? computeBusinessPurchasePremium(state, card.cost)
+    : computeEffectiveBusinessPurchaseCost(state, card.cost);
+
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to play ${card.name} from hand. Need ${price}, have ${state.resourceBank.coins}.`);
   }

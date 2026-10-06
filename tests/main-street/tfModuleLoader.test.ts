@@ -1,62 +1,61 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+
+/** All synth factory keys shipped by the committed runtime module. */
+const EXPECTED_KEYS = [
+  'card-draw',
+  'card-slide',
+  'card-place',
+  'card-discard',
+  'card-coin-collect',
+  'ui-notification-chime',
+  'card-table-ambience',
+  'construction-hammer',
+  'construction-saw',
+  'construction-lite-hammer',
+  'construction-lite-saw',
+  'crowd-cheer',
+];
 
 describe('mainStreet tf module loader', () => {
   afterEach(() => {
     delete (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE__;
     delete (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE_URL__;
-    vi.resetModules();
   });
 
-  it('returns injected tf module immediately', async () => {
+  it('returns an injected tf module immediately', async () => {
     const injected = { factories: { foo: () => ({ play: () => {} }) } };
     (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE__ = injected;
 
     const mod = await import('../../src/tf/mainStreetTfModule');
-    const result = await mod.loadMainStreetTfModule();
 
-    expect(result).toBe(injected);
+    expect(mod.getMainStreetTfModule()).toBe(injected);
+    await expect(mod.loadMainStreetTfModule()).resolves.toBe(injected);
   });
 
-  it('loads tf module from configured URL', async () => {
-    (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE_URL__ =
-      'data:text/javascript,export const factories={bar:()=>({play(){}})};export const TF_RUNTIME_MODULE={factories};';
-
+  it('loads the committed runtime synth module without any generation step', async () => {
     const mod = await import('../../src/tf/mainStreetTfModule');
-    const result = await mod.loadMainStreetTfModule();
 
-    expect(result).toBeTruthy();
-    expect(typeof result?.factories?.bar).toBe('function');
+    const runtime = await mod.loadMainStreetTfModule();
+
+    expect(runtime).toBeTruthy();
+    expect(runtime?.getFactory).toBeInstanceOf(Function);
+    for (const key of EXPECTED_KEYS) {
+      expect(typeof runtime?.factories?.[key]).toBe('function');
+    }
   });
 
-  it('returns null and warns when module URL returns HTML (missing module)', async () => {
-    // Simulate a missing module by pointing to a data: URL with text/html content-type.
-    // The pre-check in loadMainStreetTfModule() detects text/html and returns null
-    // without attempting the dynamic import, avoiding the Chromium console error.
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE_URL__ =
-      'data:text/html,<html><body>Vite 404 fallback</body></html>';
-
-    const mod = await import('../../src/tf/mainStreetTfModule');
-    const result = await mod.loadMainStreetTfModule();
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('ToneForge synth module not found'),
-    );
-
-    warnSpy.mockRestore();
-  });
-
-  it('returns null when fetch fails (network error) and falls through to dynamic import', async () => {
-    // Simulate a URL where fetch() throws (e.g., malformed URL).
-    // The pre-check falls through to the dynamic import, which also fails.
+  it('ignores the legacy module URL override (module is code-split, never fetched)', async () => {
+    // Regression guard for CG-0MUL2G17U003C1N6: the previous implementation
+    // dynamic-imported this URL, which made Vite throw because the target lived
+    // in `public/`. The module is now imported with a static specifier, so the
+    // override is inert.
     (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE_URL__ =
       'http://[::1]:1/nonexistent/module.mjs';
 
     const mod = await import('../../src/tf/mainStreetTfModule');
-    const result = await mod.loadMainStreetTfModule();
+    const runtime = await mod.loadMainStreetTfModule();
 
-    expect(result).toBeNull();
+    expect(runtime).toBeTruthy();
+    expect(typeof runtime?.factories?.['card-place']).toBe('function');
   });
 });

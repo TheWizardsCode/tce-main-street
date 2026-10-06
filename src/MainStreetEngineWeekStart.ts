@@ -35,12 +35,12 @@ export function executeWeekStart(state: MainStreetState, skipMarketRefill: boole
 
   // Action economy: reset daily action budget.
   // Base 1 action + sum of actionsPerTurn from employed staff + banked actions (capped at 2).
-  const gmBonus = (state.staffCards ?? []).reduce((sum, card) => sum + (card.actionsPerTurn ?? 0), 0);
+  const staffActionBonus = (state.staffCards ?? []).reduce((sum, card) => sum + (card.actionsPerTurn ?? 0), 0);
   // Defensive clamp: banking never exceeds the cap (2) at day end, but a
   // malformed/legacy save could carry a higher value — cap the day budget
   // contribution explicitly (AC3, CG-0MT3IOPZB005LNAR).
   const banked = Math.min(2, state.bankedActions ?? 0);
-  state.actionsRemaining = 1 + gmBonus + banked;
+  state.actionsRemaining = 1 + staffActionBonus + banked;
 
   // Staff peek gate (CG-0MSXOW6GN008ZSMN): exactly one peek per turn.
   state.peekUsedThisTurn = false;

@@ -45,6 +45,11 @@ export type {
   TurnResult,
 } from './MainStreetEngineTypes';
 
+export type {
+  CompetitiveSeatFailure,
+  CompetitiveSeatFailureReason,
+} from './MainStreetEngineTurnClosing';
+
 // ── Scoring ─────────────────────────────────────────────
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
@@ -69,6 +74,8 @@ export {
   executeCompetitiveTurn,
   executeCompetitiveWeekStart,
   getActivePlayerId,
+  getFirstActivePlayerId,
+  getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
   setActivePlayerId,
@@ -96,6 +103,13 @@ export {
   appendTurnNetRow,
   applyEndOfTurnDeltas,
   checkCompetitiveEndConditions,
+  checkCompetitiveSeatFailure,
+  checkLastStanding,
+  closeEliminatedSeatBusinesses,
+  continueAfterLastStanding,
+  eliminateCompetitiveSeat,
+  findHumanSeatId,
+  resolveCompetitiveSeatFailures,
   checkEndConditions,
   checkImmediateLoss,
   endTurnHeadless,
@@ -104,6 +118,7 @@ export {
   finishDeferredTurnClosing,
   processEndOfTurn,
   resolveEventChoice,
+  resolveEventOption,
   resolveIncident,
   resolvePendingEventChoice,
 } from './MainStreetEngineTurnClosing';

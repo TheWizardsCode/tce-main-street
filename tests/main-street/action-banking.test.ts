@@ -171,7 +171,7 @@ describe('AC2 · cap enforced', () => {
 
 describe('AC3 · day-start composition', () => {
   it('budget = 1 base + bankedActions (no staff)', () => {
-    const state = setupMainStreetGame({ seed: 'ac3-no-staff' });
+    const state = setupMainStreetGame({ seed: 'ac3-no-staff-1' });
     // Bank 2 actions first
     for (let i = 0; i < 2; i++) {
       startTurn(state);

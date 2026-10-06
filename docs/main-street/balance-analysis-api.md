@@ -14,9 +14,10 @@
 2. [Statistics (`engine/statistics.ts`)](#engine-statistics)
 3. [Card Metrics (`engine/card-metrics.ts`)](#engine-card-metrics)
 4. [Global Metrics (`engine/global-metrics.ts`)](#engine-global-metrics)
-5. [Comparison (`engine/comparison.ts`)](#engine-comparison)
-6. [Baseline (`engine/baseline.ts`)](#engine-baseline)
-7. [Guardrail Thresholds (`guards/thresholds.ts`)](#guards-thresholds)
+5. [Storyline Metrics (`engine/storyline-metrics.ts`)](#engine-storyline-metrics)
+6. [Comparison (`engine/comparison.ts`)](#engine-comparison)
+7. [Baseline (`engine/baseline.ts`)](#engine-baseline)
+8. [Guardrail Thresholds (`guards/thresholds.ts`)](#guards-thresholds)
 
 ---
 
@@ -182,6 +183,74 @@ const sd = computeScoreDistribution(runs);
 // G5
 const lm = computeLossModeDecomposition(runs);
 // { totalLosses: 1, shares: { bankruptcy: 1, reputation_collapse: 0, turn_exhaustion: 0 }, counts: {...} }
+```
+
+---
+
+## `engine/storyline-metrics.ts` {#engine-storyline-metrics}
+
+Storyline coverage analytics (S1–S4). Each function accepts an array of
+`MonteCarloRunSummary` objects whose `storylineEvents` field is populated by
+the Monte Carlo harness (one record per storyline event-choice resolution).
+All four functions return `null` when no run summary carries a
+`storylineEvents` field, matching the graceful-degradation pattern of
+M2/M4/M6 and G3/G4/G6/G7.
+
+### Exports
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `computeStorylineFireFrequency(runs)` | `StorylineFireFrequencyResult \| null` | S1: runs and percentage featuring each storyline. |
+| `computeChainDepthStats(runs)` | `ChainDepthStatsResult \| null` | S2: mean / median / max chain depth per storyline. |
+| `computeCycleStats(runs)` | `CycleStatsResult \| null` | S3: chain-revisit frequency per storyline and per run. |
+| `computeChoiceWinRateDelta(runs, eventId)` | `ChoiceWinRateDeltaResult \| null` | S4: accept − reject win-rate delta for a choice event. |
+| `KNOWN_STORYLINE_IDS` | `readonly string[]` | The five shipped storylines (always reported by S1). |
+
+### Types
+
+```ts
+interface StorylineFireStat { storylineId: string; runCount: number; runPercentage: number; eventCount: number }
+interface StorylineFireFrequencyResult { totalRuns: number; byStoryline: Record<string, StorylineFireStat>; storylinesCovered: number }
+interface StorylineChainDepthStat { storylineId: string; meanDepth: number; medianDepth: number; maxDepth: number; eventCount: number; runCount: number }
+interface ChainDepthStatsResult { byStoryline: Record<string, StorylineChainDepthStat> }
+interface StorylineCycleStat { storylineId: string; cycleCount: number; runsWithCycle: number; cycleFrequency: number; cyclesPerRun: number }
+interface CycleStatsResult { byStoryline: Record<string, StorylineCycleStat>; totalCycles: number; cycleFrequencyPerRun: number }
+interface ChoiceWinRateDeltaResult { eventId: string; value: number; winRateWhenAccept: number; winRateWhenReject: number; acceptRuns: number; rejectRuns: number }
+```
+
+### Definitions
+
+- **Chain depth** — the 1-based position of an event within its successor
+  chain (root = 1). The harness derives it at capture time: an event whose base
+  ID matches the successor queued by the previous event of the same storyline
+  continues that chain; otherwise it starts a new chain at depth 1.
+- **Cycle occurrence** — a chain transition that revisits a base event ID
+  already seen in the current chain (e.g. the shipped
+  `evt-tax → evt-tax-inquiry → evt-tax-error → evt-tax` loop).
+- **Choice win-rate delta** — a run is classified by its **first** recorded
+  choice for the event; `value = winRateWhenAccept − winRateWhenReject`.
+
+### Examples
+
+```ts
+import {
+  computeStorylineFireFrequency,
+  computeChainDepthStats,
+  computeCycleStats,
+  computeChoiceWinRateDelta,
+} from '../../scripts/balance/engine';
+
+const fire = computeStorylineFireFrequency(result.runs);
+// { totalRuns: 200, byStoryline: { 'storyline-tax': { runCount: 84, runPercentage: 0.42, eventCount: 96 }, ... }, storylinesCovered: 5 }
+
+const depth = computeChainDepthStats(result.runs);
+// { byStoryline: { 'storyline-tax': { meanDepth: 2.1, medianDepth: 2, maxDepth: 7, ... } } }
+
+const cycles = computeCycleStats(result.runs);
+// { byStoryline: { 'storyline-tax': { cycleCount: 12, runsWithCycle: 9, cycleFrequency: 0.045, ... } }, totalCycles: 12, cycleFrequencyPerRun: 0.045 }
+
+const delta = computeChoiceWinRateDelta(result.runs, 'evt-tax');
+// { eventId: 'evt-tax', value: 0.08, winRateWhenAccept: 0.61, winRateWhenReject: 0.53, acceptRuns: 84, rejectRuns: 40 }
 ```
 
 ---
@@ -357,6 +426,8 @@ const result = evaluateGuardrails({
 | | `PickRateResult`, `WinRateDeltaResult`, `CostToIncomeInput`, `SynergyUtilizationResult`, `UpgradeAdoptionResult`, `EventImpactResult`, `SurvivalRateResult`, `CardDeltas` |
 | `engine/global-metrics` | `computeWinRateByStrategyDifficulty`, `computeScoreDistribution`, `computeEconomyHealth`, `computeSynergyDiversity`, `computeLossModeDecomposition`, `computeCardUsageDiversity`, `computeTurnByTurnSnapshots`, `computeTrapCardPrevalence` |
 | | `WinRateMatrixEntry`, `ScoreDistributionResult`, `EconomyHealthResult`, `SynergyDiversityResult`, `LossModeDecompositionResult`, `CardUsageDiversityResult`, `TurnByTurnSnapshotsResult`, `TrapCardPrevalenceResult`, `CardMetricSummary` |
+| `engine/storyline-metrics` | `computeStorylineFireFrequency`, `computeChainDepthStats`, `computeCycleStats`, `computeChoiceWinRateDelta`, `KNOWN_STORYLINE_IDS` |
+| | `StorylineFireStat`, `StorylineFireFrequencyResult`, `StorylineChainDepthStat`, `ChainDepthStatsResult`, `StorylineCycleStat`, `CycleStatsResult`, `ChoiceWinRateDeltaResult` |
 | `engine/comparison` | `compareMetrics` |
 | | `ComparisonEntry`, `ComparisonSummary`, `ComparisonMeta`, `ComparisonReport` |
 | `engine/baseline` | `captureBaseline`, `loadBaseline`, `validateBaseline` |

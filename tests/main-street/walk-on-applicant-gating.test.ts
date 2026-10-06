@@ -86,10 +86,10 @@ describe('AC1: walk-on requires a matching deployed business type', () => {
     expect(card!.id.startsWith('staff-barista')).toBe(true);
   });
 
-  it('a Florist specialist walks on when a Florist business is deployed (name match)', () => {
+  it('a Florist specialist walks on when a Flower Shop business is deployed (name match)', () => {
     const state = setupMainStreetGame({ seed: 'gate-florist' });
-    deploy(state, 0, 'Florist', ['Commerce', 'Culture']);
-    // Pool: Chef (no Florist/Commerce/Culture), Florist (matches by name).
+    deploy(state, 0, 'Flower Shop', ['Commerce', 'Culture']);
+    // Pool: Chef (no Flower Shop/Commerce/Culture), Florist (matches by name).
     triggerWith(state, staffOf('staff-chef', 'staff-florist'));
     const card = pendingCard(state);
     expect(card).not.toBeNull();

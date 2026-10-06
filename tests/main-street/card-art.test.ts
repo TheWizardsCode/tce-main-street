@@ -1,14 +1,15 @@
 /**
  * Unit tests for the Main Street card-art resolver and embedding
- * (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R).
+ * (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R, CG-0MUBVL4H80061B1E).
  *
  * The 64×64 left-art graphic zone on every card face embeds a base64 bitmap
  * `data:` URI from `src/card-art-map.json` (generated
  * by `scripts/generate-main-street-card-art.mjs` from the 1024×1024 sprites in
  * `src/sprites/`). These tests verify the resolver, the
  * spelling-variant aliases, the fallback behaviour, the embedded bitmap
- * resolution/format, and that both the runtime and static SVG generators
- * actually embed the art.
+ * resolution/format, that both the runtime and static SVG generators
+ * actually embed the art, and that every unique card in `card-data.csv`
+ * resolves to a non-`Fallback` sprite (CG-0MUBVL4H80061B1E drift guard).
  *
  * @module
  */
@@ -42,7 +43,12 @@ import type {
   UpgradeCard,
 } from '../../src/MainStreetCards';
 // @ts-ignore: no declaration file for .mjs script — intentional
-import { generateCardSvg } from '../../src/scripts/generate-main-street-card-svgs.mjs';
+import { generateCardSvg, resolveCardArtDataUri } from '../../src/scripts/generate-main-street-card-svgs.mjs';
+// @ts-ignore: no declaration file for .mjs script — intentional
+import { buildAliasesFromCsv, buildMappingsFromCsv } from '../../src/scripts/generate-main-street-card-art.mjs';
+import artMapJson from '../../src/card-art-map.json';
+
+const ART_MAP = artMapJson as { version: number; aliases: Record<string, string>; art: Record<string, string>; fallback: string };
 
 const SPRITES_DIR = path.resolve('src/sprites');
 const ART_DATA_URI = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/;
@@ -64,6 +70,45 @@ async function embeddedArtMeta(
   const base64 = uri.slice(uri.indexOf(',') + 1);
   const meta = await sharp(Buffer.from(base64, 'base64')).metadata();
   return { width: meta.width, height: meta.height, format: meta.format };
+}
+
+/** Parse card-data.csv and return the set of unique card names. */
+function uniqueCardNames(): Set<string> {
+  const text = fs.readFileSync(path.resolve('src/card-data.csv'), 'utf8');
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  const nameIdx = headers.indexOf('name');
+  const names = new Set<string>();
+  for (let i = 1; i < lines.length; i++) {
+    const values: string[] = [];
+    let cur = '';
+    let inQ = false;
+    for (let j = 0; j < lines[i].length; j++) {
+      const ch = lines[i][j];
+      if (inQ) {
+        if (ch === '"' && lines[i][j + 1] === '"') {
+          cur += '"';
+          j++;
+        } else if (ch === '"') {
+          inQ = false;
+        } else {
+          cur += ch;
+        }
+      } else if (ch === '"') {
+        inQ = true;
+      } else if (ch === ',') {
+        values.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    values.push(cur);
+    if (nameIdx >= 0 && nameIdx < values.length && values[nameIdx]) {
+      names.add(values[nameIdx]);
+    }
+  }
+  return names;
 }
 
 function makeBusiness(overrides: Partial<BusinessCard> = {}): BusinessCard {
@@ -131,7 +176,8 @@ describe('MainStreetCardArt — name resolution', () => {
     expect(resolveCardArtName('Community Renovation')).toBe('Community Rennovation');
     expect(resolveCardArtName('Labor Shortage')).toBe('Labour Shortage');
     expect(resolveCardArtName('Neighborhood Watch')).toBe('Neighbourhood Watch');
-    expect(resolveCardArtName('Physiotherapy')).toBe('Physiotherapist');
+    // Physiotherapy alias removed — Physiotherapist now resolves via exact CSV→sprite match.
+    expect(resolveCardArtName('Physiotherapist')).toBe('Physiotherapist');
     expect(hasDedicatedCardArt('Community Renovation')).toBe(true);
   });
 });
@@ -153,6 +199,134 @@ describe('MainStreetCardArt — sprite coverage', () => {
     expect(cardArtSpriteCount()).toBe(sourceSpriteStems().length);
   });
 });
+
+describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
+  const CSV_PATH = path.resolve('src/card-data.csv');
+  const KNOWN_SPRITES = new Set(sourceSpriteStems());
+  const MAPPINGS = buildMappingsFromCsv(CSV_PATH, KNOWN_SPRITES) as Record<string, string>;
+
+  /**
+   * Sprite targets that are still pending from the producer (MS-0MTSAWSME004BH6S
+   * "Add images for all cards"). This set may only shrink as art lands: a new
+   * card that maps to an art-less target outside this set fails the guard, and
+   * the art-less card count may never grow. Emptying this set is the final step
+   * of CG-0MUBVL4H80061B1E (AC 1-5).
+   */
+  const PENDING_ART_TARGETS = new Set<string>([
+    'Accountant',
+    'Apprentice',
+    'Assistant',
+    'Baker',
+    'Barista',
+    'Bookkeeper',
+    'Cafe',
+    'Charity Shop',
+    'Chef',
+    'Community Shelter',
+    'Customer Service Rep',
+    'Delivery Driver',
+    'Director',
+    'Event Planner',
+    'Executive',
+    'Financial Advisor',
+    'Florist',
+    'General Manager',
+    'Health & Safety Inspector',
+    'Health Kiosk',
+    'IT Specialist',
+    'Incident__',
+    'Incident__Culture',
+    'Incident__Entertainment',
+    'Incident__Food',
+    'Incident__Health',
+    'Incident__Service',
+    'Investment__',
+    'Investment__Commerce',
+    'Investment__Entertainment',
+    'Investment__Food',
+    'Investment__Health',
+    'Investment__Service',
+    'Laundromat',
+    'Library',
+    'Lookout',
+    'Maintenance Worker',
+    'Manager',
+    'Marketing Consultant',
+    'Mechanic',
+    'PR Officer',
+    'Park',
+    'Playground',
+    'Public Art',
+    'Security Guard',
+    'Socialite',
+    'Town Fountain',
+  ]);
+
+  /** Baseline of art-less cards: may only shrink as the producer's art lands.
+   *  79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL): the
+   *  new business ships without dedicated art and uses the generic fallback
+   *  until the producer supplies a 1024×1024 sprite. */
+  const BASELINE_UNRESOLVED_CARDS = 79;
+
+  it('maps every unique card name in card-data.csv', () => {
+    const names = uniqueCardNames();
+    expect(names.size).toBeGreaterThan(0);
+
+    const unmapped = [...names].filter((name) => !MAPPINGS[name]);
+    expect(unmapped, `unmapped card(s): ${unmapped.join(', ')}`).toEqual([]);
+  });
+
+  it('applies the documented per-family mapping rules', () => {
+    // Upgrade -> its targetBusiness art (duplicated under newDisplayName).
+    expect(MAPPINGS['Upgrade to Patisserie']).toBe('Bakery');
+    // Art-less event -> (trigger, targetSynergy) category sprite.
+    expect(MAPPINGS['Rainy Day']).toBe('Incident__Food');
+    // Existing dedicated event art is retained (not category-overridden).
+    expect(MAPPINGS['Tax Audit']).toBe('Tax Audit');
+    // Pre-existing spelling aliases are preserved.
+    expect(MAPPINGS['Community Renovation']).toBe('Community Rennovation');
+    // Staff / business / community-space map directly.
+    expect(MAPPINGS['Chef']).toBe('Chef');
+  });
+
+  it('resolves every card to dedicated art or a documented pending-art target', () => {
+    const unresolved = Object.entries(MAPPINGS)
+      .filter(([name, target]) => !hasDedicatedCardArt(name) && !PENDING_ART_TARGETS.has(target))
+      .map(([name, target]) => `${name} -> ${target}`);
+    expect(
+      unresolved,
+      `${unresolved.length} card(s) map to an undocumented art-less target: ${unresolved.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('does not grow the art-less card count beyond the documented baseline', () => {
+    const unresolvedCount = Object.keys(MAPPINGS).filter(
+      (name) => !hasDedicatedCardArt(name),
+    ).length;
+    expect(unresolvedCount).toBeLessThanOrEqual(BASELINE_UNRESOLVED_CARDS);
+  });
+
+  it('committed card-art-map.json aliases match a fresh generator run (reproducibility)', () => {
+    const expected = buildAliasesFromCsv(CSV_PATH, KNOWN_SPRITES) as Record<string, string>;
+    expect(ART_MAP.aliases).toEqual(expected);
+  });
+
+  it('runtime and static consumers resolve every card to identical art (AC7)', () => {
+    for (const name of uniqueCardNames()) {
+      // Both consumers read the same card-art-map.json and apply the same
+      // alias lookup, so their resolved data URI must match exactly.
+      expect(
+        resolveCardArtDataUri(name),
+        `static generator diverges from the runtime resolver for "${name}"`,
+      ).toBe(getCardArtDataUri(name));
+    }
+  });
+
+  it('card-art-map.json version is 3 (CG-0MUBVL4H80061B1E CSV-driven)', () => {
+    expect(ART_MAP.version).toBe(3);
+  });
+});
+
 
 describe('Runtime SVG generator embeds the 256×256 card art', () => {
   it('business card SVG embeds the sprite image + rounded clip-path', () => {

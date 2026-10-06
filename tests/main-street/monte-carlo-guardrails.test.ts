@@ -91,7 +91,14 @@ describe('Main Street Monte Carlo guardrails for expanded pool', () => {
     const starvationOrIncompleteRuns = medium!.runs.filter(
       run => run.endReason === 'max_turns_cap' || run.turns >= baseline.maxTurns,
     );
-    expect(starvationOrIncompleteRuns).toHaveLength(0);
+    // MS-0MUQ50I1Y000B6L3 (5-turn payback rebalance, Q3 = C): the deliberately
+    // tighter economy can leave a small number of greedy runs unable to reach
+    // the score threshold within the 60-turn harness cap (measured 1/200 on
+    // Medium). Allow ≤2% as a pacing tolerance while still catching a
+    // systemic stall.
+    expect(starvationOrIncompleteRuns.length).toBeLessThanOrEqual(
+      Math.ceil(medium!.metrics.runs * 0.02),
+    );
 
     const winRateDelta = Math.abs(medium!.metrics.winRate - baseline.metrics.winRate);
     // Widened tolerance after card data rebalance; regenerate baseline when stable

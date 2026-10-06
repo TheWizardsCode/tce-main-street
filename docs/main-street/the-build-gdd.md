@@ -272,6 +272,8 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Hardware Store | 5 | 3 | Commerce | Hardware Store → Home Improvement | Supplies tools. Gains 50% of base income per adjacent Commerce business. |
 | ... *(additional business cards may be added later)* |
 
+> **Historical note (pre-rescale, CG-0MU9NW9EP003B1AK):** this inventory predates the integer-economy rescale (CG-0MTIO1M15001E9Y6) and the Park reclassification (CG-0MQBLGQ2Z0066UGP). The **Park row above is stale** — Park is now the Tier-1 `community-space` card `cs-park` (cost 300, Entertainment synergy, 40 coins/turn running cost). See `content-design-and-progression.md` and `card-catalog.md` for current values.
+
 #### 1.2 Event Cards
 
 Event cards are split into two trigger types:

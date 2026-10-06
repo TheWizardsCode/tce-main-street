@@ -5,6 +5,38 @@ import { canPurchaseEvent, getAffordableBusinessCards, getAffordableUpgradeCards
 import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlayer, resolveAiEventChoice, bindCompetitiveSeat, restoreCompetitiveSeat, CompetitiveGreedyStrategy, type MainStreetAiStrategy } from './MainStreetAiStrategy';
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
+import { getBaseTypeId, getEventTemplates } from './MainStreetCards';
+import type { EventCard } from './MainStreetCardsTypes';
+import {
+  MainStreetTranscriptRecorder,
+  setMainStreetRecorder,
+  getMainStreetRecorder,
+  type MainStreetTranscriptEvent,
+} from './MainStreetTranscript';
+
+/**
+ * A single storyline event-choice decision captured during a Monte Carlo run.
+ *
+ * Derived from the harness's `event-choice` transcript records; the harness
+ * enriches each record with the card's storyline grouping and the 1-based
+ * depth of the event within its successor chain.
+ */
+export interface StorylineEventRecord {
+  /** Event card instance ID (e.g. `'evt-tax-0'`). */
+  eventId: string;
+  /** Base event template ID with the serial suffix stripped (e.g. `'evt-tax'`). */
+  baseEventId: string;
+  /** Storyline grouping key (e.g. `'storyline-tax'`), or null when ungrouped. */
+  storylineId: string | null;
+  /** Choice made — legacy `'accept'`/`'reject'` tokens for two-option cards. */
+  choice: string;
+  /** 1-based depth of this event within its successor chain (root = 1). */
+  chainDepth: number;
+  /** Turn on which the event was resolved. */
+  turn: number;
+  /** Base ID of the successor card queued by this choice, or null to end the chain. */
+  successorId: string | null;
+}
 
 export interface MonteCarloRunSummary {
   seed: string;
@@ -26,6 +58,13 @@ export interface MonteCarloRunSummary {
    * at that point. Captured via EconomyLedger.getHistory() at run end.
    */
   economyHistory: Array<{ turn: number; coins: number; reputation: number; score: number }>;
+  /**
+   * Storyline event-choice decisions encountered during the run, in resolution
+   * order (Phase 2 analytics data). Present only when the harness captured an
+   * `event-choice` transcript; absent on legacy run summaries — the balance
+   * engine's storyline metrics degrade gracefully to `null` in that case.
+   */
+  storylineEvents?: StorylineEventRecord[];
 }
 
 export interface MonteCarloMetrics {
@@ -230,88 +269,194 @@ function createAiPlayerForStrategy(strategy: MonteCarloStrategy, seed: string): 
   return null;
 }
 
-function runSeed(seed: string, maxTurns: number, strategy: MonteCarloStrategy): MonteCarloRunSummary {
-  const state = setupMainStreetGame({ seed });
-  const aiPlayer = createAiPlayerForStrategy(strategy, seed);
+/**
+ * Derives enriched `StorylineEventRecord`s from captured `event-choice`
+ * transcript events.
+ *
+ * Chain depth is reconstructed from the successor links recorded on each
+ * event: an event whose base ID matches the successor queued by the previous
+ * event of the same storyline continues that chain (depth + 1); otherwise it
+ * starts a new chain at depth 1. Storyline grouping is looked up from the
+ * static event templates. Events are returned in resolution order.
+ */
+function deriveStorylineEvents(
+  events: readonly MainStreetTranscriptEvent[],
+): StorylineEventRecord[] {
+  const templateByBaseId = new Map<string, EventCard>();
+  for (const template of getEventTemplates()) {
+    templateByBaseId.set(getBaseTypeId(template.id), template);
+  }
 
-  let turns = 0;
-  let noActionTurns = 0;
-  let turnWhenGridHalf: number | null = null;
-  let turnWhenGridFull: number | null = null;
-  /** Card IDs purchased during this run. */
-  const cardsOwned: string[] = [];
-  /** Set of card IDs seen in the market (across all turns). No duplicates. */
-  const marketOfferSet = new Set<string>();
+  const records: StorylineEventRecord[] = [];
+  // Per-storyline expectation of the next chain card: its base ID and the
+  // depth it should receive when it resolves.
+  const expected = new Map<string, { baseId: string; depth: number }>();
 
-  while (state.gameResult === 'playing' && turns < maxTurns) {
-    executeWeekStart(state);
+  for (const event of events) {
+    if (event.type !== 'event-choice') continue;
 
-    // Record all card IDs currently in the market as offers for this turn.
-    for (const card of state.market.cards) {
-      marketOfferSet.add(card.id);
+    const baseEventId = getBaseTypeId(event.eventId);
+    const template = templateByBaseId.get(baseEventId);
+    const storylineId = template?.storylineId ?? null;
+    const key = storylineId ?? baseEventId;
+
+    const pending = expected.get(key);
+    const chainDepth = pending && pending.baseId === baseEventId ? pending.depth : 1;
+
+    const optionLower = event.option.toLowerCase();
+    const successorRaw =
+      optionLower === 'accept'
+        ? event.acceptNextCardId
+        : optionLower === 'reject'
+          ? event.rejectNextCardId
+          : null;
+    const successorId = successorRaw ? getBaseTypeId(successorRaw) : null;
+
+    if (successorId) {
+      expected.set(key, { baseId: successorId, depth: chainDepth + 1 });
+    } else {
+      expected.delete(key);
     }
 
-    let executedAction = false;
+    records.push({
+      eventId: event.eventId,
+      baseEventId,
+      storylineId,
+      choice: event.option,
+      chainDepth,
+      turn: event.turn,
+      successorId,
+    });
+  }
 
-    if (aiPlayer !== null) {
-      // AI strategy: choose actions one at a time until end-turn or game ends.
-      let action = aiPlayer.chooseAction(state);
-      while (action.type !== 'end-turn' && state.gameResult === 'playing') {
-        // Track purchases before executing the action.
-        if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
-          cardsOwned.push(action.cardId);
-        }
-        executeAction(state, action);
-        executedAction = true;
-        // Record AI action in transcript (if recorder is present)
-        try {
-          // recordMainStreetEvent is imported lazily to avoid circular deps when not present
-           
-          const { recordMainStreetEvent } = require('./MainStreetTranscript');
-          recordMainStreetEvent({ type: 'ai-action', turn: state.turn, strategy: aiPlayer.strategy.name, action });
-        } catch (_) {
-          // ignore if recorder not wired
-        }
-        action = aiPlayer.chooseAction(state);
+  return records;
+}
+
+/**
+ * Runs `body` with a temporary global transcript recorder installed so the
+ * engine's `event-choice` events are captured, then restores the previous
+ * recorder. Returns the body's result plus the captured transcript events.
+ *
+ * The transcript module is imported statically (it has no dependency back on
+ * the harness), so the capture works in the bundled game, under `vite-node`,
+ * and under Vitest alike — unlike the lazy `require` path used for the
+ * `ai-action` events, which silently no-ops when `require` is unavailable.
+ */
+function withStorylineRecorder<T>(
+  state: MainStreetState,
+  body: () => T,
+): { result: T; events: MainStreetTranscriptEvent[] } {
+  const previous = getMainStreetRecorder();
+  const recorder = new MainStreetTranscriptRecorder({
+    week: state.week,
+    year: state.year,
+    turn: state.turn,
+  });
+  setMainStreetRecorder(recorder);
+
+  try {
+    const result = body();
+    return { result, events: recorder.getTranscript().events };
+  } finally {
+    setMainStreetRecorder(previous);
+  }
+}
+
+/**
+ * Runs a single Monte Carlo seed to completion against the supplied state.
+ *
+ * Storyline `event-choice` transcript records are captured for the run and
+ * enriched into `storylineEvents` on the returned summary (Phase 2 analytics).
+ */
+function simulateSeed(
+  state: MainStreetState,
+  seed: string,
+  maxTurns: number,
+  strategy: MonteCarloStrategy,
+): MonteCarloRunSummary {
+  const { result: loop, events } = withStorylineRecorder(state, () => {
+    const aiPlayer = createAiPlayerForStrategy(strategy, seed);
+
+    let turns = 0;
+    let noActionTurns = 0;
+    let turnWhenGridHalf: number | null = null;
+    let turnWhenGridFull: number | null = null;
+    /** Card IDs purchased during this run. */
+    const cardsOwned: string[] = [];
+    /** Set of card IDs seen in the market (across all turns). No duplicates. */
+    const marketOfferSet = new Set<string>();
+
+    while (state.gameResult === 'playing' && turns < maxTurns) {
+      executeWeekStart(state);
+
+      // Record all card IDs currently in the market as offers for this turn.
+      for (const card of state.market.cards) {
+        marketOfferSet.add(card.id);
       }
-    } else {
-      // Legacy harness strategies: plan a list of actions upfront.
-      const planned = chooseActionsForStrategy(state, strategy);
-      for (const action of planned) {
-        if (action.type === 'end-turn') break;
-        // Track purchases before executing the action.
-        if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
-          cardsOwned.push(action.cardId);
-        }
-        try {
+
+      let executedAction = false;
+
+      if (aiPlayer !== null) {
+        // AI strategy: choose actions one at a time until end-turn or game ends.
+        let action = aiPlayer.chooseAction(state);
+        while (action.type !== 'end-turn' && state.gameResult === 'playing') {
+          // Track purchases before executing the action.
+          if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
+            cardsOwned.push(action.cardId);
+          }
           executeAction(state, action);
           executedAction = true;
-        } catch {
-          // Ignore illegal actions selected by legacy strategy.
+          // Record AI action in transcript (if recorder is present)
+          try {
+            // recordMainStreetEvent is imported lazily to avoid circular deps when not present
+            const { recordMainStreetEvent } = require('./MainStreetTranscript');
+            recordMainStreetEvent({ type: 'ai-action', turn: state.turn, strategy: aiPlayer.strategy.name, action });
+          } catch (_) {
+            // ignore if recorder not wired
+          }
+          action = aiPlayer.chooseAction(state);
         }
+      } else {
+        // Legacy harness strategies: plan a list of actions upfront.
+        const planned = chooseActionsForStrategy(state, strategy);
+        for (const action of planned) {
+          if (action.type === 'end-turn') break;
+          // Track purchases before executing the action.
+          if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
+            cardsOwned.push(action.cardId);
+          }
+          try {
+            executeAction(state, action);
+            executedAction = true;
+          } catch {
+            // Ignore illegal actions selected by legacy strategy.
+          }
+        }
+      }
+
+      if (!executedAction) {
+        noActionTurns++;
+      }
+
+      const turnResult = processEndOfTurn(state);
+      // Dual-choice incident (CG-0MTSHG8RP008E128): resolve any pending choice
+      // per the AI difficulty strategy so the sim never stalls.
+      if (turnResult.choicePending) {
+        resolveAiEventChoice(state);
+      }
+      turns++;
+
+      const occupied = state.streetGrid.filter(slot => slot !== null).length;
+      if (turnWhenGridHalf === null && occupied >= 5) {
+        turnWhenGridHalf = turns;
+      }
+      if (turnWhenGridFull === null && occupied >= 10) {
+        turnWhenGridFull = turns;
       }
     }
 
-    if (!executedAction) {
-      noActionTurns++;
-    }
-
-    const turnResult = processEndOfTurn(state);
-    // Dual-choice incident (CG-0MTSHG8RP008E128): resolve any pending choice
-    // per the AI difficulty strategy so the sim never stalls.
-    if (turnResult.choicePending) {
-      resolveAiEventChoice(state);
-    }
-    turns++;
-
-    const occupied = state.streetGrid.filter(slot => slot !== null).length;
-    if (turnWhenGridHalf === null && occupied >= 5) {
-      turnWhenGridHalf = turns;
-    }
-    if (turnWhenGridFull === null && occupied >= 10) {
-      turnWhenGridFull = turns;
-    }
-  }
+    return { turns, noActionTurns, turnWhenGridHalf, turnWhenGridFull, cardsOwned, marketOffers: [...marketOfferSet] };
+  });
 
   const result = state.gameResult === 'playing' ? 'loss' : state.gameResult;
   const endReason = state.gameResult === 'playing' ? 'max_turns_cap' : (state.endReason ?? 'unknown');
@@ -322,14 +467,19 @@ function runSeed(seed: string, maxTurns: number, strategy: MonteCarloStrategy): 
     endReason,
     finalScore: state.finalScore,
     finalCoins: state.resourceBank.coins,
-    turns,
-    turnWhenGridHalf,
-    turnWhenGridFull,
-    noActionTurns,
-    cardsOwned,
-    marketOffers: [...marketOfferSet],
+    turns: loop.turns,
+    turnWhenGridHalf: loop.turnWhenGridHalf,
+    turnWhenGridFull: loop.turnWhenGridFull,
+    noActionTurns: loop.noActionTurns,
+    cardsOwned: loop.cardsOwned,
+    marketOffers: loop.marketOffers,
     economyHistory: [...state.ledger.getHistory()],
+    storylineEvents: deriveStorylineEvents(events),
   };
+}
+
+function runSeed(seed: string, maxTurns: number, strategy: MonteCarloStrategy): MonteCarloRunSummary {
+  return simulateSeed(setupMainStreetGame({ seed }), seed, maxTurns, strategy);
 }
 
 /**
@@ -402,95 +552,7 @@ function runSeedWithDifficulty(
   strategy: MonteCarloStrategy,
   difficulty: DifficultyName,
 ): MonteCarloRunSummary {
-  const state = setupMainStreetGame({ seed, difficulty });
-  const aiPlayer = createAiPlayerForStrategy(strategy, seed);
-
-  let turns = 0;
-  let noActionTurns = 0;
-  let turnWhenGridHalf: number | null = null;
-  let turnWhenGridFull: number | null = null;
-  const cardsOwned: string[] = [];
-  const marketOfferSet = new Set<string>();
-
-  while (state.gameResult === 'playing' && turns < maxTurns) {
-    executeWeekStart(state);
-
-    for (const card of state.market.cards) {
-      marketOfferSet.add(card.id);
-    }
-
-    let executedAction = false;
-
-    if (aiPlayer !== null) {
-      let action = aiPlayer.chooseAction(state);
-      while (action.type !== 'end-turn' && state.gameResult === 'playing') {
-        if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
-          cardsOwned.push(action.cardId);
-        }
-        executeAction(state, action);
-        executedAction = true;
-        try {
-          const { recordMainStreetEvent } = require('./MainStreetTranscript');
-          recordMainStreetEvent({ type: 'ai-action', turn: state.turn, strategy: aiPlayer.strategy.name, action });
-        } catch (_) {
-          // ignore if recorder not wired
-        }
-        action = aiPlayer.chooseAction(state);
-      }
-    } else {
-      const planned = chooseActionsForStrategy(state, strategy);
-      for (const action of planned) {
-        if (action.type === 'end-turn') break;
-        if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
-          cardsOwned.push(action.cardId);
-        }
-        try {
-          executeAction(state, action);
-          executedAction = true;
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    if (!executedAction) {
-      noActionTurns++;
-    }
-
-    const turnResult = processEndOfTurn(state);
-    // Dual-choice incident (CG-0MTSHG8RP008E128): resolve any pending choice
-    // per the AI difficulty strategy so the sim never stalls.
-    if (turnResult.choicePending) {
-      resolveAiEventChoice(state);
-    }
-    turns++;
-
-    const occupied = state.streetGrid.filter(slot => slot !== null).length;
-    if (turnWhenGridHalf === null && occupied >= 5) {
-      turnWhenGridHalf = turns;
-    }
-    if (turnWhenGridFull === null && occupied >= 10) {
-      turnWhenGridFull = turns;
-    }
-  }
-
-  const result = state.gameResult === 'playing' ? 'loss' : state.gameResult;
-  const endReason = state.gameResult === 'playing' ? 'max_turns_cap' : (state.endReason ?? 'unknown');
-
-  return {
-    seed,
-    result,
-    endReason,
-    finalScore: state.finalScore,
-    finalCoins: state.resourceBank.coins,
-    turns,
-    turnWhenGridHalf,
-    turnWhenGridFull,
-    noActionTurns,
-    cardsOwned,
-    marketOffers: [...marketOfferSet],
-    economyHistory: [...state.ledger.getHistory()],
-  };
+  return simulateSeed(setupMainStreetGame({ seed, difficulty }), seed, maxTurns, strategy);
 }
 
 /**
@@ -597,10 +659,17 @@ export interface CompetitivePlayerRunSummary {
   finalReputation: number;
   /**
    * Why the player lost ('' for wins/draws): 'outraced' (opponent hit the
-   * threshold first), 'bankruptcy', 'reputation_collapse', 'max_turns_cap',
-   * or the engine's endReason (e.g. 'turn_exhaustion').
+   * threshold first), 'eliminated' (the seat failed and was removed from
+   * play), 'bankruptcy', 'reputation_collapse', 'max_turns_cap', or the
+   * engine's endReason (e.g. 'turn_exhaustion').
    */
   lossReason: string;
+  /**
+   * Whether the seat was eliminated during the run (MS-0MUVQRDQ3004WIPE).
+   * Eliminated seats are removed from rotation and their businesses closed;
+   * their loss is attributed to the seat, never to a healthy survivor.
+   */
+  eliminated: boolean;
   /** Card IDs the player acquired (buy-business / buy-upgrade / buy-event). */
   cardsOwned: string[];
 }
@@ -686,6 +755,8 @@ function playCompetitiveMarketPhases(
   executeCompetitiveWeekStart(state);
   const n = state.players!.length;
   for (let pid = 0; pid < n; pid++) {
+    // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+    if (state.players![pid].eliminated) continue;
     state.activePlayerId = pid;
     let guard = 0;
     for (;;) {
@@ -769,7 +840,13 @@ export function runCompetitiveSeed(
     const pid = p.playerId;
     let result: 'win' | 'loss' | 'draw' = 'loss';
     let lossReason = endReason;
-    if (winnerId !== null) {
+    const eliminated = p.eliminated === true;
+    if (eliminated) {
+      // An eliminated seat loses for its own reason — never inherit the
+      // run-level (possibly another seat's) loss reason.
+      result = 'loss';
+      lossReason = 'eliminated';
+    } else if (winnerId !== null) {
       result = pid === winnerId ? 'win' : 'loss';
       lossReason = pid === winnerId ? '' : 'outraced';
     } else if (state.gameResult === 'loss') {
@@ -805,6 +882,7 @@ export function runCompetitiveSeed(
       finalCoins: p.coins,
       finalReputation: p.reputation,
       lossReason,
+      eliminated,
       cardsOwned: cardsOwnedByPlayer[pid],
     };
   });
@@ -892,6 +970,7 @@ export function toCompetitiveCsv(runs: readonly CompetitiveRunSummary[]): string
     String(p.finalScore),
     String(p.finalCoins),
     p.lossReason,
+    p.eliminated ? 'true' : 'false',
   ];
   const header = [
     'seed',
@@ -903,6 +982,7 @@ export function toCompetitiveCsv(runs: readonly CompetitiveRunSummary[]): string
       `p${p.playerId}_score`,
       `p${p.playerId}_coins`,
       `p${p.playerId}_lossReason`,
+      `p${p.playerId}_eliminated`,
     ]),
   ];
   const rows = runs.map(run => [

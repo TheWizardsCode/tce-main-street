@@ -1,0 +1,816 @@
+{
+  "version": 1,
+  "source": "Generated from src/card-data.csv via the typed storyline model (deterministic).",
+  "storylineIds": [
+    "storyline-economy",
+    "storyline-health",
+    "storyline-labor",
+    "storyline-restaurant",
+    "storyline-tax"
+  ],
+  "nodes": [
+    {
+      "id": "evt-art-sale",
+      "name": "Art Sale",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-award",
+      "name": "Community Award",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 200
+    },
+    {
+      "id": "evt-block-party",
+      "name": "Block Party",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 250,
+      "reputationDelta": 350
+    },
+    {
+      "id": "evt-book-fair",
+      "name": "Book Fair",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 300,
+      "reputationDelta": 950
+    },
+    {
+      "id": "evt-bulk-purchase",
+      "name": "Bulk Purchase",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 300,
+      "reputationDelta": 950
+    },
+    {
+      "id": "evt-charity-drive",
+      "name": "Charity Drive",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 1350
+    },
+    {
+      "id": "evt-christmas",
+      "name": "Christmas",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 600,
+      "reputationDelta": 650
+    },
+    {
+      "id": "evt-community-garden",
+      "name": "Garden Party",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 350,
+      "reputationDelta": 450
+    },
+    {
+      "id": "evt-community-renovation",
+      "name": "Community Renovation",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-construction",
+      "name": "Road Construction",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-cultural-grant",
+      "name": "Cultural Grant",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 100,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-depression",
+      "name": "Depression",
+      "storylineId": "storyline-economy",
+      "storylineTitle": "Economic Downturn",
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-easter",
+      "name": "Easter",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 500
+    },
+    {
+      "id": "evt-farm-table",
+      "name": "Farm-to-Table Feature",
+      "storylineId": "storyline-restaurant",
+      "storylineTitle": "Restaurant Renaissance",
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 600,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-farmers-market",
+      "name": "Farmers Market Day",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 100,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-festival",
+      "name": "Local Festival",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-festival-season",
+      "name": "Festival Season",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 550,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-flu-outbreak",
+      "name": "Flu Outbreak",
+      "storylineId": "storyline-health",
+      "storylineTitle": "Public Health Crisis",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-food-critic",
+      "name": "Food Critic Visit",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 100,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-food-tasting",
+      "name": "Food Tasting Tour",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-general-strike",
+      "name": "General Strike",
+      "storylineId": "storyline-labor",
+      "storylineTitle": "Labour Unrest",
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -500,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-good-press",
+      "name": "Good Press",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-graffiti",
+      "name": "Graffiti",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-graffiti-art",
+      "name": "Graffiti Art",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-grand-opening",
+      "name": "Grand Opening Sale",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 450,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-harvest-festival",
+      "name": "Harvest Festival",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 600,
+      "reputationDelta": 450
+    },
+    {
+      "id": "evt-health-campaign",
+      "name": "Health Campaign",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 150,
+      "reputationDelta": 300
+    },
+    {
+      "id": "evt-health-carnival",
+      "name": "Health Carnival",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-health-screening",
+      "name": "Free Health Screening",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-heatwave",
+      "name": "Heatwave",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-inspection",
+      "name": "Health Inspection",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-labor-shortage",
+      "name": "Labor Shortage",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-library-reading",
+      "name": "Children's Story Hour",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-lughnasadh",
+      "name": "Lughnasadh",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 500,
+      "reputationDelta": 350
+    },
+    {
+      "id": "evt-may-day",
+      "name": "May Day / Bealtaine",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 350,
+      "reputationDelta": 250
+    },
+    {
+      "id": "evt-movie-premiere",
+      "name": "Movie Premiere",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 100,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-neighborhood-watch",
+      "name": "Neighborhood Watch",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-noise-complaint",
+      "name": "Noise Complaint",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-pandemic",
+      "name": "Pandemic",
+      "storylineId": "storyline-health",
+      "storylineTitle": "Public Health Crisis",
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-parking-tickets",
+      "name": "Parking Enforcement",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-pest-infestation",
+      "name": "Pest Infestation",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-pipe-burst",
+      "name": "Pipe Burst",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-popular-menu",
+      "name": "Popular Menu Item",
+      "storylineId": "storyline-restaurant",
+      "storylineTitle": "Restaurant Renaissance",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": 300,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-power-outage",
+      "name": "Power Outage",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-power-surge",
+      "name": "Power Surge",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-protest",
+      "name": "Protest",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-rainy",
+      "name": "Rainy Day",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-recession",
+      "name": "Economic Recession",
+      "storylineId": "storyline-economy",
+      "storylineTitle": "Economic Downturn",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-samhain",
+      "name": "Samhain / Halloween",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 450,
+      "reputationDelta": 500
+    },
+    {
+      "id": "evt-service-week",
+      "name": "Service Week",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-shoplifting",
+      "name": "Shoplifting Spree",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-shopping-spree",
+      "name": "Shopping Spree",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 250,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-slow-season",
+      "name": "Slow Season",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-st-brigids",
+      "name": "St Brigid's Day",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 450
+    },
+    {
+      "id": "evt-st-patricks",
+      "name": "St Patrick's Day",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 400,
+      "reputationDelta": 350
+    },
+    {
+      "id": "evt-street-cleaning",
+      "name": "Street Cleaning",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-street-performer",
+      "name": "Street Performer",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 500,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-strike",
+      "name": "Strike",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-strike-service",
+      "name": "Service Workers Strike",
+      "storylineId": "storyline-labor",
+      "storylineTitle": "Labour Unrest",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-summer-fest",
+      "name": "Summer Fest",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-supply-chain",
+      "name": "Supply Chain Delay",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-tax",
+      "name": "Tax Audit",
+      "storylineId": "storyline-tax",
+      "storylineTitle": "Tax Troubles",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": -300,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-tax-error",
+      "name": "Error in Tax Return",
+      "storylineId": "storyline-tax",
+      "storylineTitle": "Tax Troubles",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-tax-inquiry",
+      "name": "Inquiry Commission",
+      "storylineId": "storyline-tax",
+      "storylineTitle": "Tax Troubles",
+      "hasChoices": true,
+      "optionCount": 2,
+      "coinDelta": -600,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-tourist-bus",
+      "name": "Tourist Bus",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-tourist-season",
+      "name": "Tourist Season",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 0,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-vandalism",
+      "name": "Vandalism",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -100,
+      "reputationDelta": -100
+    },
+    {
+      "id": "evt-viral-review",
+      "name": "Viral Review",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 100
+    },
+    {
+      "id": "evt-volunteer-day",
+      "name": "Volunteer Day",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 700,
+      "reputationDelta": 1400
+    },
+    {
+      "id": "evt-water-main",
+      "name": "Water Main Break",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": -200,
+      "reputationDelta": 0
+    },
+    {
+      "id": "evt-wellness-fair",
+      "name": "Wellness Fair",
+      "storylineId": null,
+      "storylineTitle": null,
+      "hasChoices": false,
+      "optionCount": 0,
+      "coinDelta": 200,
+      "reputationDelta": 150
+    }
+  ],
+  "edges": [
+    {
+      "from": "evt-flu-outbreak",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-flu-outbreak",
+      "label": "Reject",
+      "to": "evt-pandemic",
+      "cycle": false
+    },
+    {
+      "from": "evt-popular-menu",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-popular-menu",
+      "label": "Reject",
+      "to": "evt-farm-table",
+      "cycle": false
+    },
+    {
+      "from": "evt-recession",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-recession",
+      "label": "Reject",
+      "to": "evt-depression",
+      "cycle": false
+    },
+    {
+      "from": "evt-strike-service",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-strike-service",
+      "label": "Reject",
+      "to": "evt-general-strike",
+      "cycle": false
+    },
+    {
+      "from": "evt-tax",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-tax",
+      "label": "Reject",
+      "to": "evt-tax-inquiry",
+      "cycle": true
+    },
+    {
+      "from": "evt-tax-error",
+      "label": "Accept",
+      "to": null,
+      "cycle": false
+    },
+    {
+      "from": "evt-tax-error",
+      "label": "Reject",
+      "to": "evt-tax",
+      "cycle": true
+    },
+    {
+      "from": "evt-tax-inquiry",
+      "label": "Accept",
+      "to": "evt-tax-error",
+      "cycle": true
+    },
+    {
+      "from": "evt-tax-inquiry",
+      "label": "Reject",
+      "to": null,
+      "cycle": false
+    }
+  ],
+  "cycles": [
+    [
+      "evt-tax",
+      "evt-tax-error",
+      "evt-tax-inquiry"
+    ]
+  ]
+}

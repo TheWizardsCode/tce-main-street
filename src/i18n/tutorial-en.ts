@@ -1,15 +1,20 @@
 /**
  * Main Street Tutorial — English locale bundle.
  *
- * Contains all user-facing string values for:
- * - T1–T26 tutorial step titles and bodies
- * - Tutorial offer modal (title, body, skip/start buttons)
- * - Tutorial overlay buttons (dismiss, next, exit, start full game)
+ * All user-facing string values are sourced from
+ * `tutorial-en.csv` (spreadsheet-editable).  This module:
+ *
+ *  1. Bundles the CSV at build time via Vite `?raw`.
+ *  2. Parses it with the core `parseCsv()` helper.
+ *  3. Strips a leading UTF-8 BOM (if present) before parsing the header.
+ *  4. Exports the same `TUTORIAL_EN_BUNDLE` plus key helpers so that
+ *     gameplay code and existing tests are unchanged.
  *
  * The i18n keys follow these conventions:
  * - Step text: `tutorial.<stepId>.title` and `tutorial.<stepId>.body`
  * - Modal: `tutorial.modal.<field>`
  * - Overlay: `tutorial.overlay.<field>`
+ * - Banking hint: `tutorial.bankingHint.<field>`
  *
  * ## Editorial rules (26-step flow, two-turn plan-ahead)
  *
@@ -25,11 +30,11 @@
  * ## Card-data placeholders
  *
  * Step bodies that reference card facts (name, cost, income bonus) MUST use
- * `{cardName}` / `{cost}` / `{bonus}` placeholders instead of hardcoded
- * values.  `resolveTutorialStepText()` in `TutorialFlow.ts` substitutes the
- * live values from `card-data.csv` at render time, so rebalancing card data
- * never leaves the tutorial stale.  Never hardcode a card name, cost, or
- * income figure in a step string.
+ * `{cardName}` / `{cost}` / `{bonus}` / `{synergyCardName}` placeholders instead
+ * of hardcoded values.  `resolveTutorialStepText()` in `TutorialFlow.ts`
+ * substitutes the live values from `card-data.csv` at render time, so
+ * rebalancing card data never leaves the tutorial stale.  Never hardcode a
+ * card name, cost, or income figure in a step string.
  *
  * Placeholders resolved from card data:
  * - `{cardName}` — the card's `name` column.
@@ -45,6 +50,11 @@
  *
  * @module
  */
+
+import { parseCsv } from '@core-engine/CsvLoader';
+import rawCsv from './tutorial-en.csv?raw';
+
+// ── Key prefix ────────────────────────────────────────────────
 
 /**
  * The i18n key prefix for tutorial step strings.
@@ -62,11 +72,17 @@
  *   ${KEY_PREFIX}.overlay.next
  *   ${KEY_PREFIX}.overlay.exit
  *   ${KEY_PREFIX}.overlay.startFullGame
+ *
+ * Banking hint keys:
+ *   ${KEY_PREFIX}.bankingHint.title
+ *   ${KEY_PREFIX}.bankingHint.body
  */
 export const TUTORIAL_I18N_KEY_PREFIX = 'tutorial';
 
+// ── Key helper functions ──────────────────────────────────────
+
 /**
- * Build the i18n key for a tutorial step's title.
+ * Build the i18n key for a tutorial step's title or body.
  * @example `tutorialKey('T3', 'title')` → `'tutorial.T3.title'`
  */
 export function tutorialKey(stepId: string, field: 'title' | 'body'): string {
@@ -74,9 +90,8 @@ export function tutorialKey(stepId: string, field: 'title' | 'body'): string {
 }
 
 /**
- * Helper to build keys for tutorial modal and overlay UI strings.
- * @example modalKey('title') → 'tutorial.modal.title'
- * @example overlayKey('dismiss') → 'tutorial.overlay.dismiss'
+ * Helper to build keys for tutorial modal strings.
+ * @example `modalKey('title')` → `'tutorial.modal.title'`
  */
 export function modalKey(field: string): string {
   return `${TUTORIAL_I18N_KEY_PREFIX}.modal.${field}`;
@@ -84,263 +99,41 @@ export function modalKey(field: string): string {
 
 /**
  * Helper to build keys for tutorial overlay button labels.
- * @example overlayKey('dismiss') → 'tutorial.overlay.dismiss'
+ * @example `overlayKey('dismiss')` → `'tutorial.overlay.dismiss'`
  */
 export function overlayKey(field: string): string {
   return `${TUTORIAL_I18N_KEY_PREFIX}.overlay.${field}`;
 }
 
+/**
+ * Helper to build keys for tutorial banking-hint strings.
+ * @example `bankingHintKey('title')` → `'tutorial.bankingHint.title'`
+ */
 export function bankingHintKey(field: string): string {
   return `${TUTORIAL_I18N_KEY_PREFIX}.bankingHint.${field}`;
 }
 
+// ── CSV loader ────────────────────────────────────────────────
+
 /**
- * English locale bundle for all 17 tutorial step strings.
+ * English locale bundle for all tutorial strings, loaded from CSV.
  *
  * Maps i18n keys (e.g. `tutorial.T1.title`) to English string values.
+ * The CSV is bundled at build time via Vite `?raw` import.
  */
-export const TUTORIAL_EN_BUNDLE: Record<string, string> = {
-  // ── Offer Modal ────────────────────────────────────────────
-  [modalKey('title')]:
-    'Welcome to Main Street!',
-  [modalKey('body')]:
-    'Would you like a tour to learn the basics of Main Street?',
-  [modalKey('skipBtn')]:
-    'Skip',
-  [modalKey('startBtn')]:
-    'Start Tutorial',
 
-  // ── Overlay Buttons ────────────────────────────────────────
-  [overlayKey('dismiss')]:
-    'Dismiss',
-  [overlayKey('next')]:
-    'Next >',
-  [overlayKey('exit')]:
-    'Exit Tutorial',
-  [overlayKey('startFullGame')]:
-    "Let's play!",
+/**
+ * Strip a leading UTF-8 BOM (EF BB BF) from a string.
+ * `parseCsv` does not trim header cells, so a BOM would corrupt
+ * the first column name unless we strip it first.
+ */
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
 
-  // ── Banking Hint (contextual first-bank trigger, CG-0MT3JK16W006A66P) ──
-  // Editorial: ≤3 sentences, exactly one point (cap-2 + carry-forward + HUD cue).
-  // Staff-first rule softened in T5 (early-game caveat); the hint itself
-  // reads naturally even when the player owns no staff yet.
-  [bankingHintKey('title')]:
-    'Bank your spare action',
-  [bankingHintKey('body')]:
-    'Any unused action banks up to 2 and carries into future weeks. Check the "(1 banked)" count in the action counter above.',
+const parsed = parseCsv(stripBom(rawCsv));
 
-  // ── T1: Welcome ─────────────────────────────────────────────
-  [tutorialKey('T1', 'title')]:
-    'Welcome to Main Street',
-  [tutorialKey('T1', 'body')]:
-    'Build the best Main Street! I\'ll guide your first few actions.',
-
-  // ── T2: Development Row (informative) ──────────────────────
-  [tutorialKey('T2', 'title')]:
-    'The Market Row',
-  [tutorialKey('T2', 'body')]:
-    'This row shows the cards on offer this week. Hover a card for more details.',
-
-  // ── T3: Buy the Laundromat ─────────────────────────────────
-  [tutorialKey('T3', 'title')]:
-    'Buy the Laundromat',
-  // {cardName}/{cost} are resolved from card-data.csv at render time via
-  // resolveTutorialStepText() — do NOT hardcode the card name or price here.
-  // Cost-at-play (CG-0MSTOATDT009BRX2): picking the card up is free; the
-  // price is paid when the card is placed on the street. Two-turn plan-ahead
-  // (CG-0MT53NXGZ004H5AE): taking the card uses this week's ONE action; you'll
-  // end the turn and place it next week at its LISTED cost. Same-turn
-  // placement after the move would cost +50% premium (CG-0MSTOF1N5005PK2R).
-  [tutorialKey('T3', 'body')]:
-    "Click the **{cardName}** card to buy it — taking it is free now, but it uses this week's **one action**. You'll end the turn and place it next week for its listed **{cost}**.",
-
-  // ── T4: Your Hand ──────────────────────────────────────────
-  [tutorialKey('T4', 'title')]:
-    'Your Hand',
-  [tutorialKey('T4', 'body')]:
-    'Cards you take wait here in your hand. They earn nothing until placed. Place them next week — the listed price costs an action then, and it is far cheaper than rushing this week.',
-
-  // ── T5: Upcoming Incidents ──
-  // Face-down incident deck (CG-0MSTOATDP000JNHH): incidents are hidden in
-  // a deck — the player sees only the remaining count; the top card is
-  // revealed and resolved at the end of each turn.
-  [tutorialKey('T5', 'title')]:
-    'Upcoming Incidents',
-  [tutorialKey('T5', 'body')]:
-    'Incidents hide in a face-down deck \u2014 you see only how many are left, not what is next. The top card is revealed and resolved at the end of each turn.',
-
-  // ── T6: End Turn (week 1 → week 2) ─────────────────────────
-  [tutorialKey('T6', 'title')]:
-    'End Turn',
-  [tutorialKey('T6', 'body')]:
-    'End the week to collect income and start the next week. The card you took waits in your hand until next week.',
-
-  // ── T7: Place a Business (week 2 — listed cost) ────────────
-  [tutorialKey('T7', 'title')]:
-    'Place a Business',
-  [tutorialKey('T7', 'body')]:
-    'The card waited in your hand until next week. Click it in your hand, then click an empty slot on the street to place it and pay its listed **cost**. It starts earning income right away.',
-
-  // ── T8: Investments ────────────────────────────────────────
-  // ── T8: End this turn (week 2 → week 3) ────────────────────
-  // CG-0MTNMBX5Z002U0MH: inserted end-turn before More than Businesses so
-  // T7 (place-business) and T10 (buy-event) no longer share Week 2's single
-  // base action. Ends Week 2; Week 3 starts with a fresh action for the Festival.
-  [tutorialKey('T8', 'title')]:
-    'End this turn',
-  [tutorialKey('T8', 'body')]:
-    'End the week to collect income and start the next week. You\'ll have a fresh action next week for the Festival.',
-
-  [tutorialKey('T9', 'title')]:
-    'More than Businesses',
-  [tutorialKey('T9', 'body')]:
-    'The market row can also hold upgrade cards, which improve businesses you own, and event cards, which boost your street when played.',
-
-  // ── T10: Buy the Local Festival ────────────────────────────
-  [tutorialKey('T10', 'title')]:
-    'Buy the Local Festival',
-  // {cardName}/{cost}/{bonus} resolved from card-data.csv (evt-festival) at render time.
-  // Investment events cost 1 action to take to hand (CG-0MTFWBNL30043ZBM):
-  // T8 ended week 2 so this step spends week 3's fresh action.
-  [tutorialKey('T10', 'body')]:
-    'Click the **{cardName}** card to add it to your hand — it uses this week\'s action, and you pay **{cost}** when you play it. It waits in your hand for the right moment.',
-
-  // ── T10: End this turn (week 2 → week 3) ───────────────────
-  [tutorialKey('T11', 'title')]:
-    'End this turn',
-  // Explains the festival is held because no action points remain, and that
-  // cultural focused businesses should be opened first to strengthen its impact (CG-0MUA2TPL9001FYYH).
-  [tutorialKey('T11', 'body')]:
-    'We can\'t start the festival now because we have no action points left. Besides, we need to maximize the impact it will have by opening cultural focused businesses first. End this turn for now.',
-
-  // ── T11: Move the Bookshop to hand (week 3, split 1 of 2) ──
-  [tutorialKey('T12', 'title')]:
-    'Move the Bookshop to hand',
-  // {cardName}/{cost} resolved from card-data.csv (biz-bookshop) at render time.
-  // Two-turn plan-ahead (CG-0MT53NXGZ004H5AE): taking the Bookshop to hand
-  // uses this week's one action; placing it this week would cost +50% premium
-  // (CG-0MT24X0SX007RLHN), so we End the turn and place at listed cost
-  // next week (T15). Post-CG-0MSXIQIPJ000NDTL: no auto-select after the move.
-  [tutorialKey('T12', 'body')]:
-    'The **{cardName}** is a Culture business that makes your festival stronger. Move it to your hand for this week\'s **one action** — you\'ll place it next week at its listed **{cost}**, not a same-week premium.',
-
-  // ── T12: Costs and Reputation ──────────────────────────────
-  [tutorialKey('T13', 'title')]:
-    'Costs and Reputation',
-  // {cardName} = cs-library — resolved from card-data.csv at render time.
-  // Informative step (confirm gate): focuses exclusively on the Library's
-  // running cost vs reputation trade-off. NO synergy mention here — the
-  // Culture adjacency bonus is taught by the T19 action step.
-  [tutorialKey('T13', 'body')]:
-    'Some businesses cost coins to run but bring in customers. The **{cardName}** builds your reputation.',
-
-  // ── T13: Community Favour (CG-0MSTOATDQ005XDET) ─────────────
-  // Teaches the free once-per-turn rep→coins exchange. In the two-turn
-  // budget the conversion is NOT strictly required (income already covers
-  // the Library), so the copy teaches the mechanic without a
-  // "REQUIRED for the Library" claim (CG-0MT53NXGZ004H5AE).
-  // ── T14: End this turn (week 4 → week 5) ───────────────────
-  // CG-0MTNMBX5Z002U0MH: splits Week 4 so T12 (move Bookshop) and T15
-  // (community-favour) land on separate weeks. Community Favour is free
-  // (CG-0MSTOATDQ005XDET), so this boundary is no longer budget-required;
-  // retained as the natural week marker.
-  [tutorialKey('T14', 'title')]:
-    'End this turn',
-  [tutorialKey('T14', 'body')]:
-    'End the week to collect income and start the next week. The card you took waits in your hand until next week.',
-
-  [tutorialKey('T15', 'title')]:
-    'Community Favour',
-  [tutorialKey('T15', 'body')]:
-    'You can also turn reputation into coins: click the **2r → 3c** button in the action bar below — a FREE **Community Favour** exchange, once per turn.',
-
-  // ── T14: End this turn (week 3 → week 4) ───────────────────
-  [tutorialKey('T16', 'title')]:
-    'End this turn',
-  // {cardName} resolved from card-data.csv (biz-bookshop) at render time.
-  [tutorialKey('T16', 'body')]:
-    'The **{cardName}** waits in your hand. End this turn to continue to next week.',
-
-  // ── T15: Place the Bookshop (week 4, split 2 of 2) ─────────
-  [tutorialKey('T17', 'title')]:
-    'Place the Bookshop',
-  // {cardName}/{cost} resolved from card-data.csv (biz-bookshop) at render time.
-  // Listed-cost placement from hand (plan-ahead); no same-week premium.
-  [tutorialKey('T17', 'body')]:
-    'Click the **{cardName}** in your hand, then click an empty slot on the street to place it at its listed **{cost}**. It starts earning income right away.',
-
-  // ── T16: End this turn (week 4 → week 5) ───────────────────
-  [tutorialKey('T18', 'title')]:
-    'End this turn',
-  [tutorialKey('T18', 'body')]:
-    'End the week to collect income from your street and start the next week.',
-
-  // ── T17: Move the Library to hand (week 5, split 1 of 2) ───
-  [tutorialKey('T19', 'title')]:
-    'Move the Library to hand',
-  // {cardName}/{cost} resolved from card-data.csv (cs-library) at render time.
-  // Two-turn plan-ahead (CG-0MT53NXGZ004H5AE): moving the Library to hand
-  // uses this week's one action; it will be placed next week at listed $700 next to
-  // the Bookshop (culture adjacency). Only ONE Culture partner is needed to
-  // trigger the festival at T20, so holding it a week is safe.
-  [tutorialKey('T19', 'body')]:
-    'The **{cardName}** brings a Culture bonus when placed next to other Culture cards. Click it to move it to your hand — that\'s this week\'s **one action**.',
-
-  // ── T18: End this turn (week 5 → week 6) ───────────────────
-  [tutorialKey('T20', 'title')]:
-    'End this turn',
-  [tutorialKey('T20', 'body')]:
-    'End the week to collect income and reach the Library\'s placement week.',
-
-  // ── T19: Build a Library next to the Bookshop (week 6, split 2 of 2) ──
-  [tutorialKey('T21', 'title')]:
-    'Build a Library',
-  // {cardName} = cs-library, {synergyCardName} = biz-bookshop — resolved from
-  // card-data.csv at render time. The synergy system: placing the Library next
-  // to the Bookshop (a Culture business) earns the Culture adjacency bonus.
-  // Adjacency is 8-way (Chebyshev): placing the Library diagonally next to the
-  // Bookshop counts just as much as orthogonally. Listed-cost placement from
-  // hand (plan-ahead) — no same-week premium for the $700 card.
-  [tutorialKey('T21', 'body')]:
-    'Click the **{cardName}** in your hand, then click a slot **next to {synergyCardName}** — orthogonally or diagonally — to place it at its listed cost and gain the Culture bonus.',
-
-  // ── T20: Triggering Events ─────────────────────────────────
-  // ── T22: End this turn (week 8 → week 9) ───────────────────
-  // CG-0MTNMBX5Z002U0MH: inserted to split Week 8 so T21 (place Library)
-  // and T23 (play festival) no longer share a single action.
-  [tutorialKey('T22', 'title')]:
-    'End this turn',
-  [tutorialKey('T22', 'body')]:
-    'End this turn to collect income and reach the festival week.',
-
-  [tutorialKey('T23', 'title')]:
-    'Triggering Events',
-  // {cardName} resolved from card-data.csv (evt-festival) at render time.
-  // Playing a held Investment event costs 1 action (CG-0MTFWBNL30043ZBM);
-  // T22 ended week 8 so this step spends week 9's fresh action.
-  [tutorialKey('T23', 'body')]:
-    'Two Culture businesses on your street power the festival. Click the **{cardName}** in your hand to play it — it uses this week\'s action.',
-
-  // ── T21: Success and Failure ───────────────────────────────
-  [tutorialKey('T24', 'title')]:
-    'Success and Failure',
-  [tutorialKey('T24', 'body')]:
-    'The bar shows your coins, reputation, score, and target. Hover each to see how it is calculated.',
-
-  // ── T22: Challenges ────────────────────────────────────────
-  [tutorialKey('T25', 'title')]:
-    'Challenges',
-  [tutorialKey('T25', 'body')]:
-    'Each game gives you challenges for bonus points. See them in the Challenge Tracker. Completing challenges unlocks new cards for future games!',
-
-  // ── T23: Tutorial Complete ─────────────────────────────────
-  [tutorialKey('T26', 'title')]:
-    'Tutorial Complete',
-  [tutorialKey('T26', 'body')]:
-    'There are many more things to discover as you play, but you have the basics now. Let\'s play.',
-
-} as const;
-
-// Re-export helpers
-// tutorialKey is already exported above;
-// modalKey and overlayKey are new exports above.
+export const TUTORIAL_EN_BUNDLE: Record<string, string> = {};
+for (const row of parsed) {
+  TUTORIAL_EN_BUNDLE[row.key] = row.text;
+}

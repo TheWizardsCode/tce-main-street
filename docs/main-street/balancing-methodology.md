@@ -57,15 +57,18 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 |------|----------|
 | **Pawn Shop** | No synergy bonuses (contributes/receives none); negative reputation per turn (−10) trades reputation for a below-tier price (200) |
 | **Clinic** | reputationPerTurn = +20 factored into cost calculation (weight × 30) |
-| **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. |
+| **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. **Re-priced to 400 by MS-0MUR9IN7L0004TO5**: the curve result was materially over-priced relative to the ~4.87-turn business payback (net drain of 10/turn even at the rep-converted value); see [analysis/community-space-event-repricing.md](analysis/community-space-event-repricing.md). |
+| **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam. The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. **Re-priced 300 → 150 by MS-0MUR9IN7L0004TO5**: Park provides zero reputation, so at 300 it was a pure net drain and over-priced even as a Tier-1 synergy anchor. |
+| **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 15` is still factored into the curve for reference. |
 
 ## Per-Family Strategy
 
-### Business (30 cards) and Community Space (2 cards)
+### Business (31 cards) and Community Space (8 cards)
 
 > Business grew from 18 to 30 in the Group A expansion (CG-0MSQJ1XIB0004QVN):
-> 12 new cards (Health bridges, T2/T3 singles, T5 Grand Hotel flagship). The
-> 1/3 cost-spread rule now applies to 30 cards (threshold 10).
+> 12 new cards (Health bridges, T2/T3 singles, T5 Grand Hotel flagship), plus
+> the producer-added Charity Shop (MS-0MUAYBAHW007RMSL) for 31 cards in total.
+> The 1/3 cost-spread rule now applies to 31 cards (threshold 11).
 
 - **Goal**: Wider cost spread (target: range increase ≥ 30%)
 - **Inputs**: baseIncome, synergyCount, synergy bonuses, reputation, tier
@@ -102,6 +105,7 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 - **Inputs**: ongoingCost, handSlotsAdded
 - **Ongoing cost adjusted proportionally**: Higher purchase cost → proportionally higher ongoing cost
 - **`refreshCostDiscount`** (staff ability, e.g. Accountant): recognized and validated as a numeric CSV column (CG-0MSREC65T004J5SS), but **excluded from the cost curve** — like `reputationPerTurn` for staff, it is an ability field tracked outside the curve model.
+- **`upgradeCostDiscount`** (staff ability, e.g. Financial Advisor, CG-0MTKMGL66004I0PC): a numeric CSV column on staff cards, **excluded from the cost curve** — the same treatment as `refreshCostDiscount` and `reputationPerTurn`. It applies per-business (only to upgrades bought for the business where the advisor is employed).
 - **`actionsPerTurn`** (staff ability, e.g. General Manager, CG-0MSTOF1N5005PK2R): a numeric CSV column on staff cards, **excluded from the cost curve** — the same treatment as `refreshCostDiscount` and `reputationPerTurn`. The action economy is a **game-design lever**, not part of the standard cost formula: the General Manager's +1 action/week is balanced by its high cost (20) and ongoing cost (5), and is never priced into `ongoingCost * 5 + handSlotsAdded * 5`.
 
 ## Rationale Codes
@@ -142,6 +146,59 @@ This document consolidates all balancing methodology content previously scattere
 - `docs/main-street/card-catalog.md` — Event Balance Summary table, Upgrade Cost Distribution table
 
 The origin documents now contain cross-references to this document.
+
+### Business payback rebalance (MS-0MUQ50I1Y000B6L3, 2026-10-02)
+
+Following the ongoing-cost re-baseline, businesses recovered their purchase cost in only
+**~2.1 turns** on average (net of running cost), so buildings became profitable almost
+immediately and runs snowballed. The producer requested a **~5-turn average** payback with
+a cost-graded spread, enforced by a deterministic contract test.
+
+**Model.** Net payback (the contract metric) is
+
+```
+net payback (turns) = cost ÷ (baseIncome − ongoingCost)
+```
+
+computed in whole display coins. Gross payback (`cost ÷ baseIncome`) is also reported for
+transparency. The balance metric lives in
+`src/scripts/balance/engine/card-metrics.ts` (`computePayback`, the M3 companion to
+`computeCostToIncomeRatio`) and is enforced by
+`tests/main-street/business-payback.test.ts` directly from `src/card-data.csv`
+(no simulation).
+
+**Income derivation.** `baseIncome = round(cost ÷ targetPayback + ongoingCost)`, with a
+cost-graded target so cheaper businesses pay back faster:
+
+| Cost band | Example cards | Target net payback |
+|---|---|---:|
+| ≤ 400 (cost 2–4) | Pawn Shop, Bakery, Laundromat, Arcade | 3.5 |
+| 500–700 (cost 5–7) | Barbershop, Cafe, Flower Shop, Teahouse | 5.0 |
+| 800–1000 (cost 8–10) | Yoga Studio, Gym, Physiotherapist | 5.5 |
+| 1200 (cost 12) | Dentist | 6.5 |
+| 1400 (cost 14) | Art Gallery, Day Spa, Private Clinic | 6.7 |
+| 1600 (cost 16) | Grand Hotel | 7.0 |
+
+**Rounding rule.** `card-data.csv` stores integer coin-cent units (×100). Incomes are
+rounded to the nearest integer cent unit, so paybacks land within ~0.02 turns of the target.
+
+**Measured after-state** (30 income businesses): mean net payback **4.87** turns; bucket
+means strictly increasing **3.55 < 5.00 < 5.51 < 6.71**; Spearman(cost, payback) **0.96**;
+all net incomes positive.
+
+**Documented exceptions** (excluded from the contract mean):
+
+| Card | Handling |
+|------|----------|
+| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+40 rep/turn), so payback is n/a. |
+| **Charity Shop** (`biz-charity-shop`) | Producer-set cost override (MS-0MUAYBAHW007RMSL); low-income reputation-leaning card, payback not representative. |
+| **0-cost incident events** | Not income businesses; excluded. |
+| **Community spaces** | 0 income by design; excluded. |
+
+The tighter economy is the accepted design intent (producer decision Q3 = C): difficulty
+presets are unchanged, the win-rate ladder `Easy ≥ Medium ≥ Hard` is preserved
+(0.62 ≥ 0.325 ≥ 0.11), and the guardrail bands were revised to the measured after-state. See
+[payback-rebalance-evidence.md](payback-rebalance-evidence.md).
 
 ## 8-Way Adjacency Re-Tune (CG-0MSP1HCAS00785MP / CG-0MSP26Q5N002EH8P)
 
@@ -197,6 +254,7 @@ Guardrail tests (`monte-carlo-guardrails`, `monte-carlo-greedy-guardrail`,
 ## See Also
 
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that build on this balancing algorithm.
+- **[Five-Turn Payback Rebalance — Evidence](payback-rebalance-evidence.md)** — Before/after Monte Carlo evidence for the MS-0MUQ50I1Y000B6L3 payback rebalance.
 - **[Monte Carlo Sample Results](monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness used for balance validation.
 - **[Card Catalog](card-catalog.md)** — Complete card template reference with balance-relevant stats.
 - **[Playtest Scenarios](playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.

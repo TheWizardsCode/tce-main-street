@@ -38,6 +38,7 @@ import {
   type IncidentBalanceState,
 } from './MainStreetCards';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
+import { attachMainStreetAchievements } from './MainStreetAchievements';
 import { assignStaffApplicantSkills } from './MainStreetStaffSkills';
 import { getPreset } from './MainStreetDifficulty';
 import type {
@@ -45,8 +46,14 @@ import type {
   MainStreetSetupOptions,
   MarketState,
   CompetitiveStateOptions,
+  CompetitiveOpponentConfig,
+  GameModeSelection,
   PlayerRecord,
   OwnerTaggedSlot,
+} from './MainStreetStateTypes';
+import {
+  AI_SEAT_DIFFICULTIES,
+  AI_SEAT_STRATEGIES,
 } from './MainStreetStateTypes';
 import { addLog } from './MainStreetStateLog';
 
@@ -467,10 +474,51 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     completed: false,
   }));
 
+  // Attach the persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). The
+  // sink resolves to the IPC client inside the Electron launcher and to a
+  // no-op sink in the browser/headless, so this never changes gameplay.
+  attachMainStreetAchievements(state);
+
   return state;
 }
 
 // ── Competitive State (CG-0MT5X3GMA007EG30) ─────────────────
+
+/**
+ * Validates a per-opponent seat configuration list against `playerCount`
+ * (MS-0MUTU8ICD002I1MK AC3). Throws a clear error on a length mismatch or an
+ * unknown strategy/difficulty.
+ */
+function validateOpponentConfigs(
+  opponents: CompetitiveOpponentConfig[],
+  playerCount: number,
+): void {
+  if (!Array.isArray(opponents)) {
+    throw new Error(`opponents must be an array, got ${typeof opponents}`);
+  }
+  if (opponents.length !== playerCount - 1) {
+    throw new Error(
+      `opponents length must equal playerCount - 1 (${playerCount - 1}), got ${opponents.length}`,
+    );
+  }
+  opponents.forEach((config, index) => {
+    if (!config || typeof config !== 'object') {
+      throw new Error(`opponents[${index}] must be an object`);
+    }
+    if (!AI_SEAT_STRATEGIES.includes(config.strategy)) {
+      throw new Error(
+        `Unknown AI strategy for opponents[${index}]: ${String(config.strategy)} ` +
+          `(expected one of ${AI_SEAT_STRATEGIES.join(', ')})`,
+      );
+    }
+    if (!AI_SEAT_DIFFICULTIES.includes(config.difficulty)) {
+      throw new Error(
+        `Unknown AI difficulty for opponents[${index}]: ${String(config.difficulty)} ` +
+          `(expected one of ${AI_SEAT_DIFFICULTIES.join(', ')})`,
+      );
+    }
+  });
+}
 
 /**
  * Creates a competitive game state with N per-player records.
@@ -478,6 +526,12 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
  * N-player-ready (parallel PlayerRecord[] indexed by ownerId): shared
  * market, decks, and incidentDeck remain single-owner and unchanged.
  * Each player's starting coins/reputation comes from the preset.
+ *
+ * Seat 0 is always the human (`controller: 'human'`); seats 1..playerCount-1
+ * are AI seats populated from `options.opponents`. When `opponents` is
+ * omitted every AI seat defaults to `Greedy` at the global difficulty (the
+ * backward-compatible path for existing callers); when supplied its length
+ * must equal `playerCount - 1` and each entry is validated.
  */
 export function createCompetitiveState(
   options: CompetitiveStateOptions,
@@ -486,23 +540,42 @@ export function createCompetitiveState(
     throw new Error(`playerCount must be an integer >= 1, got ${options.playerCount}`);
   }
 
+  const opponentConfigs = options.opponents;
+  if (opponentConfigs !== undefined) {
+    validateOpponentConfigs(opponentConfigs, options.playerCount);
+  }
+
   // Reuse single-player setup so seeded deck order / RNG semantics are
   // identical to MainStreet; then overlay the per-player layer.
-  const { playerCount, ...singlePlayerOptions } = options;
+  const { playerCount, opponents: _opponents, ...singlePlayerOptions } = options;
   const state = setupMainStreetGame(singlePlayerOptions);
 
   const initCoins = state.config.startingCoins;
   const initRep = state.config.startingReputation;
 
-  state.players = Array.from({ length: playerCount }, (_, playerId) => ({
-    playerId,
-    coins: initCoins,
-    reputation: initRep,
-    hand: [],
-    staffCards: [],
-    actionBudget: 1,
-    score: 0,
-  } as PlayerRecord));
+  state.players = Array.from({ length: playerCount }, (_, playerId) => {
+    const seat: PlayerRecord = {
+      playerId,
+      coins: initCoins,
+      reputation: initRep,
+      hand: [],
+      staffCards: [],
+      actionBudget: 1,
+      score: 0,
+    };
+    if (playerId === 0) {
+      seat.controller = 'human';
+      return seat;
+    }
+    const config = opponentConfigs?.[playerId - 1] ?? {
+      strategy: 'Greedy',
+      difficulty: state.config.difficultyName,
+    };
+    seat.controller = 'ai';
+    seat.aiStrategy = config.strategy;
+    seat.aiDifficulty = config.difficulty;
+    return seat;
+  });
 
   state.ownerTaggedGrid = Array.from(
     { length: state.streetGrid.length },
@@ -514,6 +587,52 @@ export function createCompetitiveState(
   state.competitiveWinnerId = null;
 
   return state;
+}
+
+/**
+ * Creates a game state from a start-of-game mode selection
+ * (MS-0MUTU8ICD002I1MK AC2/AC3).
+ *
+ * Single-player delegates straight to `setupMainStreetGame` (no seat
+ * records). Competitive requires at least one AI opponent, then builds a
+ * `playerCount = opponents.length + 1` state with seat 0 as the human.
+ *
+ * @param selection The chosen mode plus its options and (for competitive)
+ *                  the per-opponent configuration.
+ * @returns A ready-to-play `MainStreetState`.
+ * @throws When competitive is selected with zero AI opponents.
+ */
+export function createStateFromModeSelection(
+  selection: GameModeSelection,
+): MainStreetState {
+  if (selection.mode === 'single-player') {
+    return setupMainStreetGame({
+      seed: selection.seed,
+      difficulty: selection.difficulty,
+      unlockedCardIds: selection.unlockedCardIds,
+      endlessMode: selection.endlessMode,
+    });
+  }
+
+  if (selection.mode !== 'competitive') {
+    throw new Error(
+      `Unknown game mode: ${String((selection as { mode?: unknown }).mode)}`,
+    );
+  }
+
+  const opponents = selection.opponents;
+  if (!Array.isArray(opponents) || opponents.length < 1) {
+    throw new Error('Competitive mode requires at least one AI opponent');
+  }
+
+  return createCompetitiveState({
+    seed: selection.seed,
+    difficulty: selection.difficulty,
+    unlockedCardIds: selection.unlockedCardIds,
+    endlessMode: selection.endlessMode,
+    playerCount: opponents.length + 1,
+    opponents,
+  });
 }
 
 

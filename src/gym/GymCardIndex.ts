@@ -386,6 +386,7 @@ export function formatCardDetailLines(entry: CardIndexEntry): string[] {
       );
       field(lines, 'Reputation/turn', orAbsent(s.reputationPerTurn));
       field(lines, 'Refresh cost discount', orAbsent(s.refreshCostDiscount));
+      field(lines, 'Upgrade cost discount', orAbsent(s.upgradeCostDiscount));
       field(lines, 'Actions/turn', orAbsent(s.actionsPerTurn));
       field(lines, 'Peek once per turn', orAbsent(s.peekOncePerTurn));
       field(

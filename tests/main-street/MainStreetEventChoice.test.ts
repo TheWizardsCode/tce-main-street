@@ -154,13 +154,13 @@ describe('DurationEventCard inherits choice fields', () => {
 
 describe('CSV parsing: hasChoices / acceptNextCardId / rejectNextCardId', () => {
   const csvWithChoices =
-    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-yes,Choice Yes,0,,,,,,,,,1,Incident,Test incident,All,,-300,0,,,,,,,,,,,,,,,,true,evt-next-accept,evt-next-reject
-event,evt-choice-no,Choice No,0,,,,,,,,,1,Incident,Test incident 2,All,,0,0,,,,,,,,,,,,,,,,false,,
-event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Plain incident,All,,-100,0,,,,,,,,,,,,,,,,,,,
-event,evt-duration-choice,Duration Choice,100,,,,,,,,,1,Incident,Duration incident,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,true,,evt-depression
-event,evt-accept-only,Accept Only,0,,,,,,,,,1,Incident,Accept only,All,,-300,0,,,,,,,,,,,,,,,,true,,
-event,evt-reject-only,Reject Only,0,,,,,,,,,1,Incident,Reject only,All,,-300,0,,,,,,,,,,,,,,,,true,,evt-worse`;
+    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-choice-yes,Choice Yes,0,,,,,,,,,1,Incident,Test incident,All,,-300,0,,,,,,,,,,,,,,,,,true,evt-next-accept,evt-next-reject
+event,evt-choice-no,Choice No,0,,,,,,,,,1,Incident,Test incident 2,All,,0,0,,,,,,,,,,,,,,,,,false,,
+event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Plain incident,All,,-100,0,,,,,,,,,,,,,,,,,,,,
+event,evt-duration-choice,Duration Choice,100,,,,,,,,,1,Incident,Duration incident,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-depression
+event,evt-accept-only,Accept Only,0,,,,,,,,,1,Incident,Accept only,All,,-300,0,,,,,,,,,,,,,,,,,true,,
+event,evt-reject-only,Reject Only,0,,,,,,,,,1,Incident,Reject only,All,,-300,0,,,,,,,,,,,,,,,,,true,,evt-worse`;
 
   afterEach(() => {
     resetTemplatesToDefault();
@@ -247,11 +247,11 @@ event,evt-reject-only,Reject Only,0,,,,,,,,,1,Incident,Reject only,All,,-300,0,,
 
 describe('CSV hasChoices is strict: only literal "true" is accepted', () => {
   const csvMixedCase =
-    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-yes-lower,Yes Lower,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,true,,
-event,evt-yes-upper,Yes Upper,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,TRUE,,
-event,evt-yes-one,Yes One,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,1,,
-event,evt-no,No,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,false,,`;
+    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-yes-lower,Yes Lower,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,true,,
+event,evt-yes-upper,Yes Upper,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,TRUE,,
+event,evt-yes-one,Yes One,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,1,,
+event,evt-no,No,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,false,,`;
 
   afterEach(() => resetTemplatesToDefault());
 

@@ -153,6 +153,17 @@ function computeExpectedZoneBounds(
         h: layout.actionButtonH,
       };
     }
+    case 'actionCounter': {
+      // Actions-remaining + banked count text: right-aligned above
+      // the action row at (gameW-24, actionY-22). Zone covers the full
+      // text region with padding (CG-0MT3JK16W006A66P).
+      return {
+        x: layout.gameW - 252,
+        y: layout.actionY - 32,
+        w: 240,
+        h: 28,
+      };
+    }
     case 'centerModal':
     case 'completionModal':
       return null;
@@ -201,6 +212,7 @@ const TUTORIAL_ZONE_NAMES = [
   'investmentsRow',
   'hand',
   'helpButton',
+  'actionCounter',
 ];
 
 /** Zones that resolveZoneToAnchor() returns null for (no highlight needed). */
@@ -214,7 +226,7 @@ describe('Tutorial layout resolution', () => {
       expect(result.errors).toEqual([]);
     });
 
-    it('accepts all 9 required zones', () => {
+    it('accepts all 10 required zones', () => {
       const layout = parseTutorialLayout();
       expect(layout.requiredZones.sort()).toEqual(TUTORIAL_ZONE_NAMES.sort());
     });

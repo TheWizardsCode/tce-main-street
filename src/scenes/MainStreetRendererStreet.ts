@@ -14,7 +14,7 @@ import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
-import { buildCardTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSynergyRate } from '../MainStreetFormatting';
+import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
@@ -27,6 +27,18 @@ import Phaser from 'phaser';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
+
+/**
+ * Thickness (px) of the invisible hover band placed around each persistent
+ * synergy line.
+ *
+ * Narrow enough that it does not steal the business-slot hover/click zones
+ * (which sit underneath the line in the street render order), but comfortably
+ * wider than the 3px line + 6px glow so a mouse can actually hit it. The band
+ * is rotated to the segment angle and spans the clipped edge-to-edge segment,
+ * so it covers only the gap between the two cards.
+ */
+const SYNERGY_LINE_HIT_THICKNESS = 12;
 
 
 // markHudTransient and clearTransientHud are now imported from src/ui/Renderer
@@ -589,7 +601,7 @@ export function drawSynergyLines(renderer: MainStreetRendererContext): void {
       const from = centreByIndex.get(pair.fromIndex);
       const to = centreByIndex.get(pair.toIndex);
       if (!from || !to) continue;
-      const { p1, p2 } = synergyLineEndpoints(pair, s.layout, { from, to });
+      const { p1, p2, mid } = synergyLineEndpoints(pair, s.layout, { from, to });
       const color = synergyColor(pair.sharedSynergy);
 
       const line = s.add.graphics();
@@ -607,6 +619,38 @@ export function drawSynergyLines(renderer: MainStreetRendererContext): void {
       line.strokePath();
 
       s.streetContainer.add(line);
+
+      // ── Interactive hover band (synergy-link tooltip) ───────
+      // The line itself is decorative; an invisible rotated band over the
+      // clipped segment makes it hoverable. It spans only the gap between the
+      // two slots, so slot hover/click zones keep working everywhere except
+      // immediately along the line. Skipped in replay mode and when no
+      // TooltipManager exists (mirrors the business-slot tooltip guarding);
+      // the `showTooltips` setting is enforced by TooltipManager itself.
+      if (!s.replayMode && s.tooltipManager) {
+        const info = buildSynergyLinkTooltipInfo(
+          s.state.streetGrid,
+          pair.fromIndex,
+          pair.toIndex,
+          pair.sharedSynergy,
+          s.state.config,
+          s.state.soldSlots ?? [],
+          gridDims,
+        );
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const length = Math.hypot(dx, dy);
+        if (info && length > 0) {
+          const hitBand = s.add.zone(mid.x, mid.y, length, SYNERGY_LINE_HIT_THICKNESS);
+          hitBand.setOrigin(0.5);
+          hitBand.setRotation(Math.atan2(dy, dx));
+          hitBand.setName(`ms-synergy-line-zone-${pair.fromIndex}-${pair.toIndex}`);
+          hitBand.setInteractive();
+          hitBand.on('pointerover', () => s.tooltipManager?.show(info, mid.x, mid.y));
+          hitBand.on('pointerout', () => s.tooltipManager?.hide());
+          s.streetContainer.add(hitBand);
+        }
+      }
     }
   
 }
@@ -724,7 +768,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
       tooltipZone.setName(`ms-business-slot-zone-${_index}`);
       tooltipZone.on('pointerover', () => {
         if (isSold) {
-          const info = `Sold: ${biz.name}\nThis card no longer produces income, but still provides synergy to adjacent businesses.`;
+          const info = formatSoldCardTooltip(biz);
           s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
           return;
         }
@@ -787,7 +831,7 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
       container.add(border);
     }
 
-    // Level badge (top-right)
+    // Level badge (top-left)
     if (spec.levelBadge) {
       const lvlText = renderer.scene.add.text(
         spec.levelBadge.x,
@@ -800,7 +844,7 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
           fontFamily: FONT_FAMILY,
         },
       );
-      lvlText.setOrigin(1, 0);
+      lvlText.setOrigin(0, 0);
       container.add(lvlText);
     }
 

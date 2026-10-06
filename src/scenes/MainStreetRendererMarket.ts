@@ -143,9 +143,9 @@ export function drawMarketRow(renderer: MainStreetRendererContext,
       }
     }
 
-    // Deck info and re-roll button - immediately below the label.
+    // Deck info and Research button - immediately below the label.
     const deckY = y + 16;
-    // Single row: show all deck counts + one Re-roll button.
+    // Single row: show all deck counts + one Research button.
     const bizCount = s.state.decks.business.length;
     const csCount = s.state.decks.communitySpace.length;
     const upgCount = s.state.decks.upgrade.length;
@@ -155,7 +155,7 @@ export function drawMarketRow(renderer: MainStreetRendererContext,
     }).setOrigin(0, 0);
     s.marketContainer.add(deckText);
 
-    // Re-roll button (single market refresh, Accountant discount applies).
+    // Research button (single market refresh, Accountant discount applies).
     try {
       const refreshResult = canRefreshMarket(s.state);
       const canRefresh = refreshResult.legal;
@@ -165,7 +165,7 @@ export function drawMarketRow(renderer: MainStreetRendererContext,
       const btnX = Math.round(labelCenter - btnW / 2);
       const btnY = deckY + 22;
 
-      const labelText = `Re-roll (${refreshCost})`;
+      const labelText = `Research (${refreshCost})`;
 
       const btn = createActionButton(s, btnX, btnY, btnW, labelText, canRefresh ? () => { s.onRefreshMarketClick(); } : () => {}, {
         disabled: !canRefresh,
@@ -179,9 +179,9 @@ export function drawMarketRow(renderer: MainStreetRendererContext,
             bg.setFillStyle(0x333333, 0.6);
           }
 
-          // Tooltip for the Re-roll button
+          // Tooltip for the Research button
           const reasonSuffix = !canRefresh && refreshResult.reason ? `\n\n${refreshResult.reason}` : '';
-          const info = `Pay €${refreshCost} to re-roll the market and replace all visible cards. Removed cards go to their discard piles. Available only during Market phase.${reasonSuffix}`;
+          const info = `Invest in researching new opportunities.\n\nPay €${refreshCost} to research the market and replace all visible cards. Removed cards go to their discard piles. Available only during Market phase.${reasonSuffix}`;
           try {
             bg.on('pointerover', (pointer: any) => {
               if (s.tooltipManager) {

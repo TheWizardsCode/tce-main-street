@@ -68,10 +68,13 @@ export {
 export {
   canPurchaseBusiness,
   canPurchaseUpgrade,
+  effectiveUpgradeCost,
+  bestEffectiveUpgradeCost,
   canPurchaseEvent,
   canPlayEvent,
   purchaseBusiness,
   playUpgradeFromHand,
+  canPlayUpgradeFromHand,
   playEventFromHand,
   purchaseUpgrade,
   canBuyAndPlaceUpgrade,

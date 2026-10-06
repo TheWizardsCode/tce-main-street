@@ -244,4 +244,66 @@ describe('Main Street hand capacity outlines', () => {
     handView.setShowPositionOutlines(true);
     await waitFrames(4);
   });
+
+  it('slot/card positions are capacity-stable across a card add (CG-0MUAYBB4E007LWEQ follow-up)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene(SCENE_KEY) as any;
+    await waitFrames(20);
+    await wait(200);
+
+    const handView = handViewOf(scene);
+    expect(handView).toBeDefined();
+
+    // Populate the hand with 2 cards from the market so the render path is
+    // exercised — the hand is left-anchored in the capacity row.
+    const marketCards: any[] = (scene.state?.market?.cards ?? []).filter(Boolean);
+    expect(marketCards.length).toBeGreaterThanOrEqual(2);
+    scene.state.hand = marketCards.slice(0, 2).map((c: any) => ({ ...c }));
+    scene.msRenderer.refreshPlayerHand();
+    await waitFrames(10);
+    await wait(200);
+
+    // Snapshot: record every slot position and every card centre.
+    const sprites = handView.getSprites();
+    const rects = outlineRectsOf(scene);
+    const maxHandSize = scene.state.maxHandSize;
+
+    expect(sprites.length).toBe(2);
+    expect(rects.length).toBe(maxHandSize);
+
+    const preCardCentres = sprites.map((s: any) => ({ x: s.x, y: s.y, rotation: s.rotation }));
+    const preSlotPositions = rects.map((r: any) => ({ x: r.x, y: r.y, rotation: r.rotation }));
+
+    // ── Add a third card (fills the next free slot) ──
+    if (marketCards.length >= 3) {
+      scene.state.hand = marketCards.slice(0, 3).map((c: any) => ({ ...c }));
+    } else {
+      // Fallback: duplicate one of the existing cards with a new id.
+      const extra = { ...marketCards[0], id: 'stability-extra-card' };
+      scene.state.hand = [...scene.state.hand, extra];
+    }
+    scene.msRenderer.refreshPlayerHand();
+    await waitFrames(10);
+    await wait(200);
+
+    const spritesAfter = handView.getSprites();
+    const rectsAfter = outlineRectsOf(scene);
+
+    // All pre-existing cards must keep their exact positions (capacity-stable
+    // layout: slots are derived from maxSlots, not card count).
+    expect(spritesAfter.length).toBe(3);
+    for (let i = 0; i < preCardCentres.length; i++) {
+      expect(spritesAfter[i].x).toBeCloseTo(preCardCentres[i].x, 4);
+      expect(spritesAfter[i].y).toBeCloseTo(preCardCentres[i].y, 4);
+      expect(spritesAfter[i].rotation).toBeCloseTo(preCardCentres[i].rotation, 4);
+    }
+
+    // All pre-existing slot outlines must keep their exact positions.
+    expect(rectsAfter.length).toBe(maxHandSize); // capacity unchanged
+    for (let i = 0; i < preSlotPositions.length; i++) {
+      expect(rectsAfter[i].x).toBeCloseTo(preSlotPositions[i].x, 4);
+      expect(rectsAfter[i].y).toBeCloseTo(preSlotPositions[i].y, 4);
+      expect(rectsAfter[i].rotation).toBeCloseTo(preSlotPositions[i].rotation, 4);
+    }
+  });
 });

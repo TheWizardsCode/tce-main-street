@@ -188,7 +188,7 @@ The list below is retained as historical context for prior milestone discussions
 
 | Type | Remaining M2 Cards (added to Tier 1 pool) |
 |------|--------------------------------------------|
-| Business | Boutique, Barbershop, Cinema, Food Truck, Art Gallery, Florist, Clinic |
+| Business | Boutique, Barbershop, Cinema, Food Truck, Art Gallery, Flower Shop, Clinic |
 | Event | Power Outage, Shoplifting Spree, Noise Complaint, Pipe Burst, Food Critic Visit, Road Construction, Viral Review, Vandalism |
 | Upgrade | Home Improvement, Vintage Shop, Designer Store, Dry Cleaners, Salon, Gaming Lounge, IMAX Theater, Roastery, Gourmet Truck, Museum, Resort Spa, Garden Center, Medical Center, Fast Food, Drive-In Theater, Restaurant, Multiplex, Luxury Retreat, Wellness Center |
 
@@ -1015,17 +1015,20 @@ Challenge-based unlock paths are designed to be achievable by skilled players wh
 **Acceptance Criteria:**
 
 1. At least 10 challenge templates are defined, each with a unique id, title, description, category, evaluator function, and reward points.
-2. Challenge categories include synergy, placement, resource, upgrade, and cross-cutting, with at least 2 challenges per category.
+2. Challenge categories include synergy, placement, resource, upgrade, and cross-cutting, with at least 2 challenges per category. An additional `economic` category (MS-0MUI7ZJK8003HY9J) holds the single `ch-serial-seller` challenge ("Serial Seller" — sell 3 or more street businesses in a single game); the original five categories keep at least 2 templates each.
 3. Each challenge evaluator is a pure function of `MainStreetState` that returns `true` when the challenge condition is met.
 4. Every evaluator returns `false` for an empty street grid state (negative baseline).
+5. A challenge may declare an optional `progress(state)` provider; when present the challenge HUD renders `<current>/<target>` (e.g. `2/3`) on the challenge row. Challenges without a provider render unchanged.
 
 **Testable Conditions:**
 
 - `CHALLENGE_TEMPLATES.length >= 10`.
 - For each category in `['synergy', 'placement', 'resource', 'upgrade', 'cross-cutting']`, `CHALLENGE_TEMPLATES.filter(c => c.category === cat).length >= 2`.
+- `CHALLENGE_TEMPLATES.find(c => c.id === 'ch-serial-seller').category === 'economic'` and its `progress()` reports `{ current: <sold count>, target: 3 }`.
 - Given an initial state with no businesses placed, every `CHALLENGE_TEMPLATES[i].evaluator(emptyState)` returns `false`.
 - Given a state with 3 adjacent Food businesses, the `ch-foodie-row` evaluator returns `true`.
 - Given a state with exactly 4 Culture businesses, the `ch-culture-district` evaluator returns `true`.
+- Given a state with 3 sold street businesses (`state.soldSlots` has 3 `true` entries), the `ch-serial-seller` evaluator returns `true`; with 2 it returns `false`.
 
 ### US-14: Deterministic Challenge Selection
 
@@ -1037,7 +1040,7 @@ Challenge-based unlock paths are designed to be achievable by skilled players wh
 2. Same seed produces the same challenge set every time (determinism).
 3. When `count > templates.length`, all templates are returned.
 4. When `count <= 0`, an empty array is returned.
-5. Given a pool of 12 templates and 100 distinct seeds with `count=3`, every template is selected at least once (uniform distribution).
+5. Given a pool of 13 templates and 100 distinct seeds with `count=3`, every template is selected at least once (uniform distribution).
 
 **Testable Conditions:**
 

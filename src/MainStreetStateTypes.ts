@@ -14,6 +14,7 @@
 
 import type { StreetCameraState } from './MainStreetMapView';
 import type { ActiveEffect } from '@core-engine';
+import type { AchievementSystem } from '@core-engine/AchievementSystem';
 import type { EconomyLedger } from '@rule-engine/EconomyLedger';
 import type {
   BusinessCard,
@@ -23,6 +24,7 @@ import type {
   StaffCard,
   IncidentBalanceState,
 } from './MainStreetCards';
+import type { StorylineOption } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
 
@@ -142,10 +144,64 @@ export type EndReason =
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | 'bankruptcy'
   | 'reputation_collapse'
+  // Last-standing (MS-0MUVQRBVI0015AB2/F5): every AI opponent has been
+  // eliminated, so the human is declared the winner but play is paused with
+  // an explicit opt-in to continue solo. `gameResult` is `'win'` while the
+  // offer is open; accepting it switches to `'last_standing_continue'`
+  // (mirroring endless mode's `score_threshold_continue`).
+  | 'last_standing'
+  // Last-standing continuation: the player accepted the continue-solo offer;
+  // `gameResult` returns to `'playing'` and scoring continues toward the
+  // threshold.
+  | 'last_standing_continue'
   | 'turn_exhaustion' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | null;
 
 // ── Competitive State (CG-0MT5X3GMA007EG30) ─────────────────
+
+// ── Competitive seat configuration (MS-0MUTU8ICD002I1MK) ────
+
+/** Who controls a competitive seat: a human or an AI. */
+export type SeatController = 'human' | 'ai';
+
+/**
+ * AI strategy identifier for an AI-controlled competitive seat.
+ *
+ * Mirrors the `name` of the strategies in `MainStreetAiStrategy`
+ * (`RandomStrategy`, `GreedyStrategy`, `BankingGreedyStrategy`).
+ */
+export type AiSeatStrategy = 'Random' | 'Greedy' | 'BankingGreedy';
+
+/**
+ * AI decision-policy difficulty for an AI-controlled competitive seat.
+ *
+ * Per producer decision Q3 (epic MS-0MUTTVR5K002ZDUP) this gates only the
+ * opponent's decision policy; the shared economy keeps the player's global
+ * difficulty.
+ */
+export type AiSeatDifficulty = DifficultyName;
+
+/** All valid AI seat strategy identifiers. */
+export const AI_SEAT_STRATEGIES: readonly AiSeatStrategy[] = [
+  'Random',
+  'Greedy',
+  'BankingGreedy',
+] as const;
+
+/** All valid AI seat difficulties. */
+export const AI_SEAT_DIFFICULTIES: readonly AiSeatDifficulty[] = [
+  'Easy',
+  'Medium',
+  'Hard',
+] as const;
+
+/** Per-opponent seat configuration used when building a competitive game. */
+export interface CompetitiveOpponentConfig {
+  /** AI strategy for the seat. */
+  strategy: AiSeatStrategy;
+  /** AI decision-policy difficulty for the seat (Q3). */
+  difficulty: AiSeatDifficulty;
+}
 
 /** Per-player record for competitive mode (N-player-ready). */
 export interface PlayerRecord {
@@ -159,10 +215,40 @@ export interface PlayerRecord {
   hand: (BusinessCard | CommunitySpaceCard | EventCard | UpgradeCard)[];
   /** Active staff cards owned by this player. */
   staffCards: StaffCard[];
-  /** Remaining actions this player can take this turn. */
+  /**
+   * Seat's daily action budget **excluding** the shared banked pool.
+   * Reset at WeekStart to `1 + sum(staff actionsPerTurn)`;
+   * `bindCompetitiveSeat` adds the shared `bankedActions` to derive the
+   * effective `actionsRemaining`, and `restoreCompetitiveSeat` writes it back
+   * as `actionsRemaining - bankedActions` (MS-0MUVUPWHD0032CU4).
+   */
   actionBudget: number;
   /** Computed score for this player (updated each EndCheck). */
   score: number;
+  /**
+   * Who controls this seat. Set on every competitive seat created by
+   * `createCompetitiveState`; absent on legacy saves (treated as `'human'`).
+   */
+  controller?: SeatController;
+  /**
+   * AI strategy for AI-controlled seats; absent on human seats and legacy
+   * saves (`resolveSeatStrategy` defaults it to `'Greedy'`).
+   */
+  aiStrategy?: AiSeatStrategy;
+  /**
+   * AI decision-policy difficulty for AI-controlled seats; absent on human
+   * seats and legacy saves (`resolveSeatDifficulty` defaults it to the global
+   * `config.difficultyName`).
+   */
+  aiDifficulty?: AiSeatDifficulty;
+  /**
+   * Whether this seat has been eliminated from competitive play
+   * (MS-0MUVQRBVI0015AB2). An eliminated seat is skipped in turn rotation and
+   * AI action enumeration, and its owned businesses/community spaces are
+   * closed (removed from `ownerTaggedGrid` and the street grid). Optional so
+   * legacy saves load unchanged; absent is treated as `false`.
+   */
+  eliminated?: boolean;
 }
 
 /** A single street slot tagged with its owner. */
@@ -177,7 +263,39 @@ export interface OwnerTaggedSlot {
 export interface CompetitiveStateOptions extends MainStreetSetupOptions {
   /** Number of players (N >= 1); each gets a PlayerRecord. Must be >= 1. */
   playerCount: number;
+  /**
+   * Per-opponent seat configuration for AI seats 1..playerCount-1. When
+   * provided, its length must equal `playerCount - 1`. Omit for the legacy
+   * N=1 path or when all AI seats should use the default config.
+   */
+  opponents?: CompetitiveOpponentConfig[];
 }
+
+// ── Game-mode selection (MS-0MUTTVR5K002ZDUP) ───────────────
+
+/** Top-level game mode chosen at start. */
+export type GameMode = 'single-player' | 'competitive';
+
+/** Options shared by both mode selections. */
+export interface GameModeSelectionBase extends MainStreetSetupOptions {
+  /** The chosen game mode. */
+  mode: GameMode;
+}
+
+/** Single-player selection: no AI opponents. */
+export interface SinglePlayerModeSelection extends GameModeSelectionBase {
+  mode: 'single-player';
+}
+
+/** Competitive selection: at least one AI opponent. */
+export interface CompetitiveModeSelection extends GameModeSelectionBase {
+  mode: 'competitive';
+  /** Per-opponent configuration; at least one entry required. */
+  opponents: CompetitiveOpponentConfig[];
+}
+
+/** A start-of-game selection passed to `createStateFromModeSelection`. */
+export type GameModeSelection = SinglePlayerModeSelection | CompetitiveModeSelection;
 
 // ── Main Street State ───────────────────────────────────────
 
@@ -408,6 +526,15 @@ export interface MainStreetState {
    * serialized (transient presentation state).
    */
   _newlyCompletedThisAction?: string[];
+  /**
+   * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
+   * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
+   * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
+   * achievement exactly once per run. The system is a runtime service (it
+   * holds an `AchievementSink`), so it is never serialized — save/load
+   * re-attaches a fresh system with the launcher-provided persistence.
+   */
+  achievementSystem?: AchievementSystem | null;
 }
 
 /**
@@ -429,10 +556,27 @@ export interface PendingApplicant {
 export interface PendingEventChoice {
   /** The choice event drawn from the incident deck (effect deferred). */
   event: EventCard;
-  /** The player's decision, once made; null while the dialog is showing. */
-  chosenOption: null | 'accept' | 'reject';
+  /**
+   * The chosen option label, once made; null while the dialog is showing.
+   * Legacy accept/reject choices store the lowercase `'accept'`/`'reject'`
+   * tokens for backward compatibility; generalised storylines store the
+   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   */
+  chosenOption: string | null;
   /** False while the dialog is pending; true after the choice is applied. */
   resolved: boolean;
+  /**
+   * Runtime-only snapshot of the compiled option list, captured when the
+   * choice is drawn (`createPendingStorylineChoice`).  Callback `condition`s
+   * are evaluated once, at draw time, and the resulting list is frozen: the
+   * player selects from this snapshot at resolution time, so mutating state
+   * between draw and resolution cannot change the presented options.
+   *
+   * Never serialised (callbacks are functions) — a loaded save recompiles
+   * from the runtime registry instead.  Absent on legacy pending choices,
+   * where the engine falls back to recompiling.
+   */
+  options?: StorylineOption[];
 }
 
 export interface MainStreetSerializedState {

@@ -14,6 +14,7 @@ import type { EventCard } from '../MainStreetCards';
 import { playEventCommand, resolveEventChoiceCommand } from '../MainStreetCommands';
 import { applyEndOfTurnDeltas, executeWeekStart, finishDeferredEndOfTurn, finishDeferredTurnClosing, processEndOfTurn } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
+import { canPlayEvent } from '../MainStreetMarket';
 import { turnLabel } from '../MainStreetFormatting';
 import { addLog } from '../MainStreetState';
 import { finalizeMainStreetTranscript, recordMainStreetEvent } from '../MainStreetTranscript';
@@ -22,6 +23,11 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
+import {
+  endCompetitiveTurnDay,
+  isCompetitiveState,
+  startCompetitiveDay,
+} from './MainStreetTurnControllerCompetitive';
 
 export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarketRefill: boolean = false, suppressWeekBanner: boolean = false): void {
     // A new day begins: reset the per-turn celebrated-challenge set so this
@@ -30,7 +36,12 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
 
     const s = tcCtx.scene;
     // Execute WeekStart (optionally refills market, transitions to MarketPhase)
-    executeWeekStart(s.state, skipMarketRefill);
+    if (isCompetitiveState(s.state)) {
+      // Competitive shared day: per-seat action budgets + human seat binding.
+      startCompetitiveDay(s.state, skipMarketRefill);
+    } else {
+      executeWeekStart(s.state, skipMarketRefill);
+    }
     // Staff applicant walk-on (CG-0MSTOATDU006UGAX): if a pending applicant
     // arrived at WeekStart the player must resolve it (hire or decline).
     s.pendingApplicant = (s.state as any).pendingApplicant ?? null;
@@ -93,6 +104,13 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
 export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
 
     const s = tcCtx.scene;
+    // Competitive shared day: the human's End Turn closes their MarketPhase,
+    // then the AI seats are driven to the shared closing. Single-player keeps
+    // the legacy processEndOfTurn path below byte-for-byte.
+    if (isCompetitiveState(s.state)) {
+      endCompetitiveTurnDay(tcCtx);
+      return;
+    }
     // Tutorial gating: only allow end-turn if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('end-turn' as TutorialActionType);
     if (check && !check.allowed) {
@@ -310,6 +328,10 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // on-card coin grids (child 2); refresh everything EXCEPT the
     // street so those grids survive until collection completes, then
     // refresh fully once the choreography finishes.
+    // Defer log rendering until after startTurnPhase has displayed
+    // upcoming cards (MS-0MURBOD2E009SOM2). The deferred flag suppresses
+    // the log render; it is cleared in finalizeTurn after startTurnPhase.
+    s.logDeferredUntilPhaseComplete = true;
     if (s.incomeCollectionActive) {
       s.msRenderer.refreshAllExceptStreet();
     } else {
@@ -325,6 +347,14 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // Advance the day once the closing presentation is done: present
     // the banking hint (if any), then defer to the phased income show
     // (bounded) or the normal ~800ms schedule.
+    // Lift the log-render deferral and render every entry accumulated during
+    // closing (MS-0MURBOD2E009SOM2). Called after the upcoming/phase UI has
+    // been displayed — or, on game-over, before the overlay so the log never
+    // stays suppressed. Safe to call more than once.
+    const flushDeferredLog = (): void => {
+      s.logDeferredUntilPhaseComplete = false;
+      try { s.refreshLog(); } catch { /* presentation-only */ }
+    };
     const advanceTurn = (): void => {
       // ── Banking hint presentation (CG-0MT3JK16W006A66P) ─────
       // Non-blocking HUD-highlighting overlay, once per save. Fires
@@ -383,10 +413,16 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         s.previousCoins = null;
         s.previousReputation = null;
         s.incidentRevealActive = false;
+        // Defer log rendering until after startTurnPhase has displayed
+        // upcoming cards (MS-0MURBOD2E009SOM2).
+        s.logDeferredUntilPhaseComplete = true;
         // Render the final post-delta state under the upcoming overlay
         // (startTurnPhase refreshes internally for the continuing path).
         try { s.refreshAll(); } catch { /* presentation-only */ }
         if (finalResult.gameResult !== 'playing') {
+          // No upcoming phase — flush the accumulated log alongside the
+          // game-over overlay instead of leaving it suppressed.
+          flushDeferredLog();
           tcCtx.handleGameOver(finalResult);
           return;
         }
@@ -395,14 +431,20 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         // checkpoint always reflects a complete, applied turn).
         try { tcCtx.onSaveCheckpoint?.(); } catch (e) { /* ignore */ }
         tcCtx.startTurnPhase();
+        // Log entries accumulated during closing now render after the
+        // phase UI has been displayed (MS-0MURBOD2E009SOM2).
+        flushDeferredLog();
       } else {
         tcCtx.startTurnPhase();
+        // Clear deferral flag so accumulated log entries render after
+        // the phase UI (MS-0MURBOD2E009SOM2).
+        flushDeferredLog();
       }
     };
 
     // Incident reveal presentation (CG-0MTW18KFK000MM3I): the resolved
     // incident card flies from the Upcoming panel to board centre, flips
-    // face-up and stays visible for 4 seconds so the player can read the
+    // face-up and stays visible for INCIDENT_REVEAL_HOLD_MS so the player can read the
     // incident before the turn advances. The reveal **blocks** the day
     // start until the hold completes (then the normal advance applies).
     //
@@ -411,7 +453,7 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // starting the incident reveal.
     //
     // Tutorial exemption: the tutorial keeps its window-safe step pacing,
-    // so the reveal (and its 4-second hold) is skipped — the same
+    // so the reveal (and its hold) is skipped — the same
     // precedent as the phased income show and the day banner being
     // skipped during the tutorial.
     //
@@ -605,7 +647,7 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
       // Visual consequence for resource deltas (accepted effect), mirroring
       // the standard incident reveal. Reject applies nothing (deltas 0) — the
       // instruction text above is the only feedback. The reveal blocks the
-      // day start until its 4-second hold completes (CG-0MTW18KFK000MM3I).
+      // day start until its hold completes (CG-0MTW18KFK000MM3I).
       const present = (): void => tcCtx.finishTurnPresentation(finalResult, false);
       if (coinChange !== 0 || repChange !== 0) {
         try {
@@ -661,6 +703,18 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (index === undefined || index < 0 || index >= hand.length) return;
     const card = hand[index];
     if (card.family !== 'event') return;
+
+    // Pre-flight legality (MS-0MUUYGUVB009QOP6): reject an illegal event play
+    // BEFORE the command runs, so the player gets immediate feedback with no
+    // action/coin mutation even though the command layer also restores on
+    // throw. Mirrors the command's own affordability/action/timing checks.
+    const legality = canPlayEvent(s.state, index);
+    if (!legality.legal) {
+      const blockedSprite = s.msRenderer?.handView?.getSpriteAt?.(index) as any;
+      playIllegalFeedback(blockedSprite ?? s.actionContainer, s);
+      s.instructionText.setText(legality.reason ?? 'Cannot play this event.');
+      return;
+    }
 
     console.debug('[MS] onPlayHeldEvent: attempting PlayEvent', { eventId: card.id, coinsBefore: s.state.resourceBank.coins });
 

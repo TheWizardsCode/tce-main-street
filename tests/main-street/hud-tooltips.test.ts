@@ -248,7 +248,7 @@ describe('buildActionTooltip', () => {
     expect(tooltip).toContain(`${HUD_TOOLTIP_STRINGS.actionBankedLabel}: 0`);
   });
 
-  it('appends the General Manager note when a GM is employed', () => {
+  it('appends the staff action note when a General Manager is employed', () => {
     const state = setupMainStreetGame({ seed: 'tooltip-action-gm' });
     const gm = getStaffCardTemplates().find(t => t.id === 'staff-general-manager');
     if (!gm) throw new Error('staff-general-manager template missing');
@@ -260,12 +260,41 @@ describe('buildActionTooltip', () => {
     expect(tooltip).toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
   });
 
-  it('omits the General Manager note when no staff boosts actions', () => {
+  it('appends the staff action note when a Manager is employed', () => {
+    const state = setupMainStreetGame({ seed: 'tooltip-action-manager' });
+    const manager = getStaffCardTemplates().find(t => t.id === 'staff-manager');
+    if (!manager) throw new Error('staff-manager template missing');
+    state.staffCards.push({ ...manager });
+    state.actionsRemaining = 2;
+
+    const tooltip = buildActionTooltip(state);
+    expect(tooltip).toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
+  });
+
+  it('appends the staff action note when a Director is employed', () => {
+    const state = setupMainStreetGame({ seed: 'tooltip-action-director' });
+    const director = getStaffCardTemplates().find(t => t.id === 'staff-director');
+    if (!director) throw new Error('staff-director template missing');
+    state.staffCards.push({ ...director });
+    state.actionsRemaining = 2;
+
+    const tooltip = buildActionTooltip(state);
+    expect(tooltip).toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
+  });
+
+  it('omits the staff action note when no staff boosts actions', () => {
     const state = setupMainStreetGame({ seed: 'tooltip-action-no-gm' });
     state.staffCards = [];
 
     const tooltip = buildActionTooltip(state);
     expect(tooltip).not.toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
+  });
+
+  it('uses staff-generic wording for the action note (not General-Manager-only)', () => {
+    // AC4 of MS-0MTQ7S5EJ008MWD0: the note must be accurate for any
+    // action-granting staff (Manager/Director) while still covering the GM.
+    expect(HUD_TOOLTIP_STRINGS.actionBankingGmNote).toContain('staff');
+    expect(HUD_TOOLTIP_STRINGS.actionBankingGmNote).not.toContain('from General Manager');
   });
 
   it('i18n override changes banking explanation text', () => {

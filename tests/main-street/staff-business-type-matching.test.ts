@@ -156,7 +156,7 @@ describe('AC2: existing staff receive targeted or broad type lists', () => {
 
 describe('AC3: new specialist staff rows with income-buff effects', () => {
   it('Florist and Baker are added with their business-specific restriction', () => {
-    expect(getAllowedBusinessTypesForStaff(staffTemplate('staff-florist'))).toContain('Florist');
+    expect(getAllowedBusinessTypesForStaff(staffTemplate('staff-florist'))).toContain('Flower Shop');
     expect(getAllowedBusinessTypesForStaff(staffTemplate('staff-baker'))).toContain('Bakery');
     expect(getAllowedBusinessTypesForStaff(staffTemplate('staff-mechanic'))).toContain('Service');
   });
@@ -173,7 +173,7 @@ describe('AC3: new specialist staff rows with income-buff effects', () => {
     const deck = createStaffDeck(1);
     const florist = deck.find(c => c.id.startsWith('staff-florist'));
     expect(florist).toBeDefined();
-    expect(getAllowedBusinessTypesForStaff(florist!)).toContain('Florist');
+    expect(getAllowedBusinessTypesForStaff(florist!)).toContain('Flower Shop');
   });
 });
 

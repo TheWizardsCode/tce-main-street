@@ -97,6 +97,7 @@ export type TutorialHighlightZone =
   | 'completionModal'
   | 'hand'             // hand area (Your Hand / Triggering Events)
   | 'actionButtons'    // Community Favour button band (relocated into the HUD strip, CG-0MUFAITED0088AGN)
+  | 'actionCounter'    // actions-remaining + banked count (right above action row, CG-0MT3JK16W006A66P)
   | 'laundromatCard'   // card-level: Laundromat on the market row (T3)
   | 'festivalCard';    // card-level: Local Festival on the market row (T9)
 
@@ -194,9 +195,13 @@ export interface UnifiedTutorialStepDef {
    * next to the Bookshop for a Culture adjacency bonus.
    */
   synergyCardId?: string;
+  /**
+   * If true, the step's tooltip renders the Steam follow call-to-action
+   * (F5, CG-0MSMAJQQT004SDCC). Set on the final completion step only; the CTA
+   * is additive and never blocks finishing the tutorial.
+   */
+  showSteamFollowCta?: boolean;
 }
-
-// ── Unified Tutorial Script (T1-T26) ────────────────────────
 
 /**
  * The unified set of 26 tutorial steps, in sequential order.
@@ -487,6 +492,10 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     bodyKey: tutorialKey('T26', 'body'),
     highlightZone: 'completionModal',
     gate: 'confirm',
+    // F5 (CG-0MSMAJQQT004SDCC): the final completion step carries the Steam
+    // follow CTA. It never blocks finishing — the CTA is additive to the
+    // existing "Let's play!" action.
+    showSteamFollowCta: true,
   },
 ] as const;
 
@@ -497,7 +506,7 @@ export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
   id: 'BANKING',
   titleKey: bankingHintKey('title'),
   bodyKey: bankingHintKey('body'),
-  highlightZone: 'hud',
+  highlightZone: 'actionCounter',
   gate: 'confirm',
 };
 
