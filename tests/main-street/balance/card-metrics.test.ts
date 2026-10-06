@@ -94,6 +94,22 @@ describe('computePickRate (M1)', () => {
       expect(result.appearances).toBe(0);
     }
   });
+
+  it('matches instance-suffixed market offers and purchases by base ID', () => {
+    // Real Monte Carlo runs store instance-suffixed IDs (e.g. `biz-bakery-0`).
+    const runs = [
+      makeRun({ cardsOwned: ['biz-bakery-0'], marketOffers: ['biz-bakery-0', 'biz-laundromat-1'] }),
+      makeRun({ cardsOwned: [], marketOffers: ['biz-bakery-2'] }),
+      makeRun({ cardsOwned: [], marketOffers: ['biz-laundromat-0'] }),
+    ];
+    const result = computePickRate('biz-bakery', runs);
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.appearances).toBe(2);
+      expect(result.purchases).toBe(1);
+      expect(result.value).toBeCloseTo(0.5, 3);
+    }
+  });
 });
 
 // ========================================================================
@@ -284,6 +300,22 @@ describe('computeUpgradeAdoption (M5)', () => {
     delete (runs[0] as any).cardsOwned;
     const result = computeUpgradeAdoption('upg-bakery-v2', 'biz-bakery', runs);
     expect(result).toBeNull();
+  });
+
+  it('matches instance-suffixed parent and upgrade IDs by base ID', () => {
+    // Real Monte Carlo runs store instance-suffixed IDs (e.g. `biz-bakery-0`).
+    const runs = [
+      makeRun({ cardsOwned: ['biz-bakery-0', 'upg-bakery-v2-0'] }),
+      makeRun({ cardsOwned: ['biz-bakery-1'] }),
+      makeRun({ cardsOwned: ['biz-laundromat-0'] }),
+    ];
+    const result = computeUpgradeAdoption('upg-bakery-v2', 'biz-bakery', runs);
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.parentPurchases).toBe(2);
+      expect(result.upgrades).toBe(1);
+      expect(result.value).toBeCloseTo(0.5, 3);
+    }
   });
 });
 
