@@ -53,6 +53,19 @@ export interface MonteCarloRunSummary {
   /** Card IDs that appeared in the market (offered for purchase) across all turns. */
   marketOffers: string[];
   /**
+   * Count of Community Favour `rep-to-coins` exchanges taken during the run
+   * (CG-0MSTOATDQ005XDET / MS-0MUVB2ZES005V83Y). Optional for backward
+   * compatibility with stored summaries and test fixtures predating the
+   * counter; absent is treated as 0.
+   */
+  favourRepToCoinsUses?: number;
+  /**
+   * Count of Community Favour `coins-to-rep` exchanges taken during the run.
+   * Optional for the same backward-compatibility reason as
+   * {@link MonteCarloRunSummary.favourRepToCoinsUses}.
+   */
+  favourCoinsToRepUses?: number;
+  /**
    * Turn-by-turn economy history recorded after each economy mutation.
    * Each entry contains a sequence number (turn), coins, reputation, and score
    * at that point. Captured via EconomyLedger.getHistory() at run end.
@@ -385,6 +398,16 @@ function simulateSeed(
     const cardsOwned: string[] = [];
     /** Set of card IDs seen in the market (across all turns). No duplicates. */
     const marketOfferSet = new Set<string>();
+    /** Community Favour usage counters (CG-0MSTOATDQ005XDET). */
+    let favourRepToCoinsUses = 0;
+    let favourCoinsToRepUses = 0;
+
+    /** Records a Community Favour exchange against the right direction. */
+    const trackFavour = (action: PlayerAction): void => {
+      if (action.type !== 'community-favour') return;
+      if (action.direction === 'rep-to-coins') favourRepToCoinsUses++;
+      else favourCoinsToRepUses++;
+    };
 
     while (state.gameResult === 'playing' && turns < maxTurns) {
       executeWeekStart(state);
@@ -404,6 +427,7 @@ function simulateSeed(
           if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
             cardsOwned.push(action.cardId);
           }
+          trackFavour(action);
           executeAction(state, action);
           executedAction = true;
           // Record AI action in transcript (if recorder is present)
@@ -426,6 +450,7 @@ function simulateSeed(
             cardsOwned.push(action.cardId);
           }
           try {
+            trackFavour(action);
             executeAction(state, action);
             executedAction = true;
           } catch {
@@ -455,7 +480,16 @@ function simulateSeed(
       }
     }
 
-    return { turns, noActionTurns, turnWhenGridHalf, turnWhenGridFull, cardsOwned, marketOffers: [...marketOfferSet] };
+    return {
+      turns,
+      noActionTurns,
+      turnWhenGridHalf,
+      turnWhenGridFull,
+      cardsOwned,
+      marketOffers: [...marketOfferSet],
+      favourRepToCoinsUses,
+      favourCoinsToRepUses,
+    };
   });
 
   const result = state.gameResult === 'playing' ? 'loss' : state.gameResult;
@@ -473,6 +507,8 @@ function simulateSeed(
     noActionTurns: loop.noActionTurns,
     cardsOwned: loop.cardsOwned,
     marketOffers: loop.marketOffers,
+    favourRepToCoinsUses: loop.favourRepToCoinsUses,
+    favourCoinsToRepUses: loop.favourCoinsToRepUses,
     economyHistory: [...state.ledger.getHistory()],
     storylineEvents: deriveStorylineEvents(events),
   };

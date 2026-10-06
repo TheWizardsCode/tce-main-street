@@ -1,0 +1,83 @@
+{
+  "label": "baseline",
+  "generatedAt": "2026-10-06T22:49:38.877Z",
+  "commitSha": "e464368b0cabaca1b01de329562738119576bcc7",
+  "profile": {
+    "seeds": 200,
+    "seedPrefix": "mc-balance",
+    "maxTurns": 60,
+    "strategy": "greedy",
+    "difficulties": [
+      "Easy",
+      "Medium",
+      "Hard"
+    ]
+  },
+  "perDifficulty": {
+    "Easy": {
+      "runs": 200,
+      "wins": 137,
+      "winRate": 0.685,
+      "repToCoinsUses": 747,
+      "repToCoinsPerRun": 3.735,
+      "coinsToRepUses": 0,
+      "coinsToRepPerRun": 0,
+      "losses": 63,
+      "lossModes": {
+        "bankruptcy": 29,
+        "reputation_collapse": 33,
+        "turn_exhaustion": 1,
+        "other": 0
+      },
+      "reputationCollapseShare": 0.5238095238095238,
+      "bankruptcyShare": 0.4603174603174603,
+      "averageCoinsPerTurn": 403.8133122650611,
+      "medianScore": 10151.5
+    },
+    "Medium": {
+      "runs": 200,
+      "wins": 70,
+      "winRate": 0.35,
+      "repToCoinsUses": 628,
+      "repToCoinsPerRun": 3.14,
+      "coinsToRepUses": 0,
+      "coinsToRepPerRun": 0,
+      "losses": 130,
+      "lossModes": {
+        "bankruptcy": 42,
+        "reputation_collapse": 88,
+        "turn_exhaustion": 0,
+        "other": 0
+      },
+      "reputationCollapseShare": 0.676923076923077,
+      "bankruptcyShare": 0.3230769230769231,
+      "averageCoinsPerTurn": 250.09632409413743,
+      "medianScore": 1330.5
+    },
+    "Hard": {
+      "runs": 200,
+      "wins": 23,
+      "winRate": 0.115,
+      "repToCoinsUses": 438,
+      "repToCoinsPerRun": 2.19,
+      "coinsToRepUses": 0,
+      "coinsToRepPerRun": 0,
+      "losses": 177,
+      "lossModes": {
+        "bankruptcy": 101,
+        "reputation_collapse": 76,
+        "turn_exhaustion": 0,
+        "other": 0
+      },
+      "reputationCollapseShare": 0.4293785310734463,
+      "bankruptcyShare": 0.5706214689265536,
+      "averageCoinsPerTurn": 84.02253073784635,
+      "medianScore": 152
+    }
+  },
+  "ladder": {
+    "easyAtLeastMedium": true,
+    "mediumAtLeastHard": true,
+    "monotone": true
+  }
+}
