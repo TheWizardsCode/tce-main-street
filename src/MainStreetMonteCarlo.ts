@@ -659,10 +659,17 @@ export interface CompetitivePlayerRunSummary {
   finalReputation: number;
   /**
    * Why the player lost ('' for wins/draws): 'outraced' (opponent hit the
-   * threshold first), 'bankruptcy', 'reputation_collapse', 'max_turns_cap',
-   * or the engine's endReason (e.g. 'turn_exhaustion').
+   * threshold first), 'eliminated' (the seat failed and was removed from
+   * play), 'bankruptcy', 'reputation_collapse', 'max_turns_cap', or the
+   * engine's endReason (e.g. 'turn_exhaustion').
    */
   lossReason: string;
+  /**
+   * Whether the seat was eliminated during the run (MS-0MUVQRDQ3004WIPE).
+   * Eliminated seats are removed from rotation and their businesses closed;
+   * their loss is attributed to the seat, never to a healthy survivor.
+   */
+  eliminated: boolean;
   /** Card IDs the player acquired (buy-business / buy-upgrade / buy-event). */
   cardsOwned: string[];
 }
@@ -833,7 +840,13 @@ export function runCompetitiveSeed(
     const pid = p.playerId;
     let result: 'win' | 'loss' | 'draw' = 'loss';
     let lossReason = endReason;
-    if (winnerId !== null) {
+    const eliminated = p.eliminated === true;
+    if (eliminated) {
+      // An eliminated seat loses for its own reason — never inherit the
+      // run-level (possibly another seat's) loss reason.
+      result = 'loss';
+      lossReason = 'eliminated';
+    } else if (winnerId !== null) {
       result = pid === winnerId ? 'win' : 'loss';
       lossReason = pid === winnerId ? '' : 'outraced';
     } else if (state.gameResult === 'loss') {
@@ -869,6 +882,7 @@ export function runCompetitiveSeed(
       finalCoins: p.coins,
       finalReputation: p.reputation,
       lossReason,
+      eliminated,
       cardsOwned: cardsOwnedByPlayer[pid],
     };
   });
@@ -956,6 +970,7 @@ export function toCompetitiveCsv(runs: readonly CompetitiveRunSummary[]): string
     String(p.finalScore),
     String(p.finalCoins),
     p.lossReason,
+    p.eliminated ? 'true' : 'false',
   ];
   const header = [
     'seed',
@@ -967,6 +982,7 @@ export function toCompetitiveCsv(runs: readonly CompetitiveRunSummary[]): string
       `p${p.playerId}_score`,
       `p${p.playerId}_coins`,
       `p${p.playerId}_lossReason`,
+      `p${p.playerId}_eliminated`,
     ]),
   ];
   const rows = runs.map(run => [

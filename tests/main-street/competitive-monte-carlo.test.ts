@@ -64,10 +64,12 @@ describe('AC1 — Deterministic head-to-head execution', () => {
 
   it('should complete within the maxTurns cap', () => {
     const maxTurns = 5;
-    // 'ac1-cap-1' ended via reputation collapse under the 13-template pool
-    // (MS-0MUI7ZJK8003HY9J added ch-serial-seller, shifting the seeded RNG
-    // stream). 'ac1-cap-3' still exercises cap termination.
-    const run = runCompetitiveSeed('ac1-cap-3', maxTurns);
+    // 'ac1-cap-1' previously ended via reputation collapse under the
+    // 13-template pool (MS-0MUI7ZJK8003HY9J added ch-serial-seller, shifting
+    // the seeded RNG stream) and was swapped for 'ac1-cap-3'. With the
+    // per-seat failure evaluation (MS-0MUVBH589001L7NL) it is restored: the
+    // run now terminates via the harness cap as intended.
+    const run = runCompetitiveSeed('ac1-cap-1', maxTurns);
 
     expect(run.turns).toBeLessThanOrEqual(maxTurns);
     expect(run.endReason).toBe('max_turns_cap');
@@ -239,6 +241,75 @@ describe('AC4 — CompetitiveGreedyStrategy validation', () => {
       expect(run1.players[pid].finalScore).toBe(run2.players[pid].finalScore);
       expect(run1.players[pid].finalCoins).toBe(run2.players[pid].finalCoins);
     }
+  });
+});
+
+// ── AC1/AC5: elimination & last-standing alignment ──────────
+
+describe('Elimination & last-standing alignment', () => {
+  it('reports an eliminated seat with its own loss reason, not the run reason', () => {
+    // 'ac1-cap-5' ends by last-standing: the AI is eliminated and the human
+    // wins. The healthy winner must not be attributed the collapsed seat's
+    // reason.
+    const run = runCompetitiveSeed('ac1-cap-5', 5);
+    expect(run.endReason).toBe('last_standing');
+    expect(run.winnerId).toBe(0);
+
+    const eliminated = run.players.find(p => p.eliminated);
+    expect(eliminated).toBeDefined();
+    expect(eliminated!.result).toBe('loss');
+    expect(eliminated!.lossReason).toBe('eliminated');
+
+    const winner = run.players.find(p => p.playerId === run.winnerId);
+    expect(winner).toBeDefined();
+    expect(winner!.result).toBe('win');
+    expect(winner!.lossReason).toBe('');
+  });
+
+  it('aggregated per-player loss reasons do not attribute a collapse to healthy seats', () => {
+    const seeds = Array.from({ length: 30 }, (_, i) => `elim-align-${i + 1}`);
+    const result = runCompetitiveMonteCarlo({ seeds, maxTurns: 20 });
+
+    for (const run of result.runs) {
+      if (!run.players.some(p => p.eliminated)) continue;
+      for (const p of run.players) {
+        if (p.eliminated) continue;
+        // A surviving seat is never tagged with the 'eliminated' reason.
+        expect(p.lossReason).not.toBe('eliminated');
+      }
+    }
+  });
+
+  it('same seed → identical winner, eliminations and end reason (determinism)', () => {
+    const seed = 'ac1-cap-5';
+    const a = runCompetitiveSeed(seed, 5);
+    const b = runCompetitiveSeed(seed, 5);
+    expect(b.winnerId).toBe(a.winnerId);
+    expect(b.endReason).toBe(a.endReason);
+    expect(b.turns).toBe(a.turns);
+    for (let pid = 0; pid < a.players.length; pid++) {
+      expect(b.players[pid].eliminated).toBe(a.players[pid].eliminated);
+      expect(b.players[pid].result).toBe(a.players[pid].result);
+      expect(b.players[pid].lossReason).toBe(a.players[pid].lossReason);
+    }
+  });
+
+  it('every run stays bounded by maxTurns (no non-terminating seed)', () => {
+    const maxTurns = 12;
+    const seeds = Array.from({ length: 60 }, (_, i) => `bounded-${i + 1}`);
+    const result = runCompetitiveMonteCarlo({ seeds, maxTurns });
+    for (const run of result.runs) {
+      expect(run.turns).toBeLessThanOrEqual(maxTurns);
+      for (const p of run.players) {
+        expect(['win', 'loss', 'draw']).toContain(p.result);
+      }
+    }
+  });
+
+  it('CSV includes the per-player eliminated column', () => {
+    const result = runCompetitiveMonteCarlo({ seeds: ['ac1-cap-5'], maxTurns: 5 });
+    const csv = toCompetitiveCsv(result.runs);
+    expect(csv.split('\n')[0]).toContain('p1_eliminated');
   });
 });
 
