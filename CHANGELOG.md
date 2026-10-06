@@ -1,0 +1,40 @@
+# Changelog
+
+## v0.1.18 (2026-10-06)
+> **Release focus:** This release introduces a new competitive mode where you race AI opponents on the shared street, alongside a browser-playable version of Main Street requiring no download. It also rebalances core economy mechanics, including business payback periods and community space pricing, while fixing numerous bugs across staff discounts, upgrades, and UI behavior.
+### Features
+- Hire a Manager or Director to gain an extra action each week. (MS-0MTQ7S5EJ008MWD0)
+- Upcoming incident cards now clear faster, so turns start sooner. (MS-0MUO7CPH3003TXFI)
+- Play Main Street instantly in your browser — no download needed. (MS-0MUQ1KXAS003FJ42)
+- Financial Advisor's upgrade discount now works correctly. (MS-0MULW540X009EP9A)
+- Play against AI opponents in a new competitive mode. (MS-0MUTTVR5K002ZDUP)
+- You now see what happened after AI turns, like income earned and incidents. (MS-0MUVUPRXZ0030LUD)
+- Businesses now take about 5 turns to pay for themselves, making build choices more meaningful. (MS-0MUQ50I1Y000B6L3)
+- The Game Over screen now clearly explains why your run ended and shows everyone's final stats. (MS-0MUWDL0V40041USM)
+- Cards in your hand no longer shift around when you draw a new one. (MS-0MUMAZTAY00515MC)
+- Hover synergy lines to see what each link earns your businesses. (MS-0MUDYQQ2E00913QN)
+- Race an AI opponent on the shared street in Main Street's new competitive mode. (MS-0MT5X3GMA007EG30)
+- Community spaces and events now have fairer prices, so your spending choices feel more balanced. (MS-0MUR9IN7L0004TO5)
+- Selling a business now clearly shows its sale value, making the payout easier to understand. (MS-0MURC68DH0066UPK)
+- Storyline choices can now adapt to your past decisions and current stats. (MS-0MUPORT1Z000QX8N)
+- App icons now load correctly across all pages. (MS-0MUV6VTLB000ICYG)
+- New event chains make your choices matter more, with consequences that can escalate or resolve. (MS-0MTT7FC7A000AA58)
+- Community Garden now boosts Entertainment synergy instead of Food. (MS-0MUWKG6NS006OG2D)
+- IT Specialist and Delivery Driver discounts now actually apply when you hire them. (MS-0MUMCVH3N007KT1M)
+- The Physiotherapy business card now correctly reads Physiotherapist. (MS-0MTRRYOT6001167R)
+- The market reroll button is now called Research, with clearer wording everywhere. (MS-0MTIS895Y008XGQ1)
+### Bug Fixes
+- Upgrade drag-and-drop now works reliably during busy moments. (MS-0MUE2U21C0007BKL)
+- Fixed cheat menu market cards so they can be selected and purchased again. (MS-0MUO7FS95000OLN9)
+- Fixed a build error so the game can be updated and released properly. (MS-0MUR5F7IK0005H8U)
+- The New Game menu now shows all mode and opponent options so you can start a game. (MS-0MUU24A3A005A7NW)
+- Illegal moves are now rejected instantly, so you keep your action and can pick another move. (MS-0MUUDWIXG009IB0W)
+- Accountant now correctly reduces investment refresh costs by 100 coins. (MS-0MULWEEE8007J2TB)
+- Staff card text now shows correct ×100 values for consistent costs and bonuses. (MS-0MULWBSF9000Z64Z)
+- Unused actions now carry over correctly in competitive games against AI. (MS-0MUVUPWHD0032CU4)
+- Main Street's dynamic synth audio now plays reliably, with clear warnings if it fails to load. (MS-0MUU9QYQE006NLEZ)
+- Activity log now appears in sync with on-screen events, not before them. (MS-0MURBOD2E009SOM2)
+### Other
+- Improved test reliability so game features are verified by real behavior, not placeholder checks. (MS-0MUMO3BDE000QDXJ)
+- Help documentation now accurately reflects the in-game help panel. (MS-0MUO8B93V002CL06)
+
