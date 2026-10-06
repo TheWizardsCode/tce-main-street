@@ -549,6 +549,46 @@ void popTextOrIcon({
 - Reuse: `popTextOrIcon` + tweened circles (same deterministic pattern as
   `animateLevelUp`) + `SFX_KEYS.EVENT_CHEER`; no new engine infrastructure.
 
+### Game-over panel (two-column summary)
+
+- Renderer: `MainStreetOverlayContent.showGameOverOverlay()`.
+- Model: `src/scenes/MainStreetGameOverSummary.ts` (pure, no Phaser import) —
+  `formatEndReason`, `buildGameOverPlayerRows` and
+  `buildGameOverChallengeSummary`, reusing
+  `buildCompetitiveScoreboard` for the per-seat rows.
+- Layout:
+  - **Top band:** the title (`You Win!` / `Game Over`) plus a plain-language
+    end-reason headline derived from `state.endReason` (e.g. *Bankruptcy*,
+    *Reputation collapse*, *Score threshold reached*, *All challenges
+    completed*, *Last standing*, *Turn limit exhausted*). In competitive mode a
+    per-seat failure names the player concerned (e.g. `Bankruptcy — You`,
+    `Reputation collapse — AI 1`), preferring the human seat.
+  - **Left "Game State" column:** one row per player — `You` for the human
+    seat, `AI <n>` for AI seats — showing coins, reputation and score read
+    directly from each `PlayerRecord` (single-player synthesises the sole
+    `You` row from the shared wallet). A failing or eliminated seat carries a
+    `Bankrupt`, `Reputation collapse` or `Eliminated` badge (cause before
+    consequence; reputation collapse applies only after turn 1). The run's
+    challenges met follow below — challenges are run-global in the engine, so
+    they are shown once per run rather than per player.
+  - **Right "Summary" column:** the retained score breakdown (coins,
+    reputation, challenges, final score), per-challenge details, tier-unlock
+    notifications, current tier + campaign stats and the difficulty selector,
+    with the `[ Play Again ]` / `[ Menu ]` buttons anchored at the panel
+    bottom.
+- Presentation contract: reads committed state only (never mutates it); uses
+  `createOverlayBackground` / `createOverlayButton` from `@ui`; all elements
+  are parented into `s.hudContainer`; depths follow the shared overlay
+  convention (199 backdrop / 200 box / 201 interactive); everything is pushed
+  into `s.overlayObjects` for dismissal.
+- Reduced motion: the panel itself adds no animation; the game-over feedback
+  below is unchanged.
+- Headless/replay exemption (AGENTS.md rule 8): the panel returns immediately
+  in replay/headless mode (`scene.replayMode`).
+- The panel widens to 900 px and computes its height from the taller of the
+  two columns so both fit the 1280×720 game layout without clipping or
+  vertical overflow.
+
 ### Game-over celebration / loss sting
 
 - Helper: `MainStreetAnimator.animateGameOver()`.
@@ -559,9 +599,9 @@ void popTextOrIcon({
   1. **Win:** a confetti burst (24 coloured rectangles) falls across the
      whole board, spinning + fading with a stagger (`Quad.easeIn`), plus the
      victory fanfare WAV (`SFX_KEYS.GAME_WIN` ← `assets/audio/default/game-win.wav`).
-     Confetti depth 100.5 — above the overlay backdrop/box (100), below the
-     panel text/buttons (101), so it stays bright against the dim without
-     covering the panel content.
+     Confetti is a scene-level effect at depth 100.5, created by the animator
+     while the overlay backdrop/box (199/200) and text/buttons (201) are
+     parented into `s.hudContainer`.
   2. **Loss:** a brief full-board dark pulse (the "sting beat", depth 99.5 —
      under the backdrop, so only the board dims) plus the low sting WAV
      (`SFX_KEYS.GAME_LOST` ← `assets/audio/default/game-lost.wav`). The

@@ -26,7 +26,10 @@ Competitive game-over is evaluated **per seat** from each seat's own wallet. A
 failing AI opponent is **eliminated** — removed from turn rotation with its
 businesses closed — and the surviving seats play on; when the last AI is
 eliminated the human wins by **last standing**, with an explicit option to
-continue solo. A human seat's own collapse still ends the game as a loss. See
+continue solo. A human seat's own collapse still ends the game as a loss. The
+Game Over screen states the reason the run ended in plain language and shows
+every seat's final coins, reputation and score side by side, flagging bankrupt,
+collapsed and eliminated seats. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
 ## Prerequisites
