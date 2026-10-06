@@ -407,17 +407,34 @@ describe('Competitive action banking', () => {
     expect(state.bankedActions).toBe(1);
   });
 
-  it('AC1 — the shared pool banks when the AI idles and the human spends', () => {
-    // "Regardless of how many seats acted during the day": an unused action
-    // from *any* seat tops up the shared bank (capped at one per day).
-    const state = bankedState('bank-ai-unused', 0);
-    consumeAction(state); // human spends its base action
-    endHumanMarketPhase(state);
-    expect(state.players![0].actionBudget).toBe(0);
+  it('AC1 — spending the full budget clears the bank even if the AI idles (producer repro)', () => {
+    // Producer repro: day 1 idle -> bank 1; day 2 spend both APs -> the bank
+    // must clear. An AI seat's own unused action must NOT top the human's bank
+    // back up, or the bank would never clear while the AI had no good move.
+    const state = bankedState('bank-clear-on-spend', 0);
 
-    idleSeat(state, 1); // AI leaves its base action unused
+    // Day 1: human idles, AI idles -> bank 1.
+    endHumanMarketPhase(state);
+    idleSeat(state, 1);
     resolveCompetitiveClosingPhases(state);
     expect(state.bankedActions).toBe(1);
+
+    // Day 2: human receives base 1 + banked 1 = 2 APs.
+    startCompetitiveDay(state);
+    expect(state.actionsRemaining).toBe(2);
+
+    // Spend both APs, then end the day; the AI idles.
+    consumeAction(state);
+    consumeAction(state);
+    endHumanMarketPhase(state);
+    expect(state.players![0].actionBudget).toBe(0);
+    idleSeat(state, 1);
+    resolveCompetitiveClosingPhases(state);
+    expect(state.bankedActions).toBe(0);
+
+    // Day 3: base budget only — the bank did not linger.
+    startCompetitiveDay(state);
+    expect(state.actionsRemaining).toBe(1);
   });
 });
 

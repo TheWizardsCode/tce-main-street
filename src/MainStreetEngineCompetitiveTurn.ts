@@ -11,7 +11,7 @@ import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompet
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
@@ -258,19 +258,17 @@ function finishCompetitiveClosingTail(
   if (state.gameResult === 'playing') {
     state.turn += 1;
     advanceWeek(state);
-    // Bank the shared day's unused *base* action for competitive play. Each
-    // seat's `actionBudget` holds that seat's remaining bank-free budget after
-    // `restoreCompetitiveSeat` (MS-0MUVUPWHD0032CU4). Banking from the shared
-    // `state.actionsRemaining` alone only saw the *last* seat's MarketPhase, so
-    // an earlier seat's unused action was discarded whenever a later seat
-    // spent its own — the reported "turns do not bank against AI" symptom.
-    // Taking the largest remaining seat budget preserves any seat's unused
-    // action, capped at one per day, matching single-player banking ("one
-    // unused base action banks"). Eliminated seats take no MarketPhase, so
-    // they are ignored. N<=1 keeps the legacy single-counter behaviour.
-    const activeSeats = (state.players ?? []).filter((p) => !p.eliminated);
-    const seatLeftover = activeSeats.length > 1
-      ? activeSeats.reduce((best, p) => Math.max(best, p.actionBudget ?? 0), 0)
+    // Bank the *human* seat's unused base action for the shared day. Only the
+    // human's own leftover feeds the shared bank: letting an AI seat's unused
+    // action top it up meant spending the full budget never cleared the bank
+    // while the AI idled (producer repro MS-0MUVUPWHD0032CU4). The human's
+    // `actionBudget` holds their remaining bank-free budget after
+    // `restoreCompetitiveSeat`; N<=1 and the legacy engine path (which never
+    // binds seats) fall back to the shared counter. Banking stays capped at
+    // one action per day.
+    const humanId = (state.players?.length ?? 0) > 1 ? findHumanSeatId(state) : -1;
+    const seatLeftover = humanId >= 0
+      ? (state.players?.[humanId]?.actionBudget ?? 0)
       : state.actionsRemaining;
     const bankable = Math.min(seatLeftover, 1);
     state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
