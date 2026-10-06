@@ -258,7 +258,21 @@ function finishCompetitiveClosingTail(
   if (state.gameResult === 'playing') {
     state.turn += 1;
     advanceWeek(state);
-    const bankable = Math.min(state.actionsRemaining, 1);
+    // Bank the shared day's unused *base* action for competitive play. Each
+    // seat's `actionBudget` holds that seat's remaining bank-free budget after
+    // `restoreCompetitiveSeat` (MS-0MUVUPWHD0032CU4). Banking from the shared
+    // `state.actionsRemaining` alone only saw the *last* seat's MarketPhase, so
+    // an earlier seat's unused action was discarded whenever a later seat
+    // spent its own — the reported "turns do not bank against AI" symptom.
+    // Taking the largest remaining seat budget preserves any seat's unused
+    // action, capped at one per day, matching single-player banking ("one
+    // unused base action banks"). Eliminated seats take no MarketPhase, so
+    // they are ignored. N<=1 keeps the legacy single-counter behaviour.
+    const activeSeats = (state.players ?? []).filter((p) => !p.eliminated);
+    const seatLeftover = activeSeats.length > 1
+      ? activeSeats.reduce((best, p) => Math.max(best, p.actionBudget ?? 0), 0)
+      : state.actionsRemaining;
+    const bankable = Math.min(seatLeftover, 1);
     state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
     // The shared bank is re-applied per seat by `bindCompetitiveSeat` at the
     // next week start; per-player `actionBudget` stays bank-free.

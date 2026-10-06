@@ -305,6 +305,15 @@ describe('Competitive action banking', () => {
     endCompetitiveMarketTurn(state);
   }
 
+  /** A spending seat: bind (arm its budget), consume `spend` actions, then
+   * restore and advance the shared day to the next seat / closing. */
+  function spendingSeat(state: MainStreetState, playerId: number, spend: number): void {
+    bindCompetitiveSeat(state, playerId);
+    for (let i = 0; i < spend; i++) consumeAction(state);
+    restoreCompetitiveSeat(state, playerId);
+    endCompetitiveMarketTurn(state);
+  }
+
   it('AC2 — binding a seat grants base budget plus the remaining shared bank', () => {
     const state = bankedState('bank-bind', 2);
     // P0 was bound by startCompetitiveDay: 1 base + 2 banked.
@@ -358,6 +367,56 @@ describe('Competitive action banking', () => {
     // The AI gets base + remaining bank only (2), never base + the original 2 (3).
     bindCompetitiveSeat(state, 1);
     expect(state.actionsRemaining).toBe(2);
+    expect(state.bankedActions).toBe(1);
+  });
+
+  it('AC1 — the human\'s unused base action banks even when an AI seat spends its action', () => {
+    // Regression (MS-0MUVUPWHD0032CU4 manual rejection): the human ends their
+    // MarketPhase without acting and the AI then spends its own base action.
+    // The day-end bank must still bank the human's unused base action — the
+    // AI draining the shared counter must not discard it.
+    const state = bankedState('bank-human-unused', 0);
+    expect(state.actionsRemaining).toBe(1); // human base only
+
+    endHumanMarketPhase(state);
+    expect(state.players![0].actionBudget).toBe(1); // human base left over
+
+    spendingSeat(state, 1, 1); // AI spends its own base action
+    const closing = resolveCompetitiveClosingPhases(state);
+    expect(closing.choicePending).toBe(false);
+    expect(state.bankedActions).toBe(1);
+  });
+
+  it('AC1 — a banked action persists to the next day and is not lost when the AI spends', () => {
+    const state = bankedState('bank-ai-spends-each-day', 0);
+    endHumanMarketPhase(state); // human idles, banking its base action
+    spendingSeat(state, 1, 1); // AI spends its own base action
+    resolveCompetitiveClosingPhases(state);
+    expect(state.bankedActions).toBe(1);
+
+    // The bank survives the day boundary: P0's shared budget is base + banked.
+    startCompetitiveDay(state);
+    expect(state.actionsRemaining).toBe(2); // 1 base + 1 banked
+    expect(state.bankedActions).toBe(1);
+
+    // Day 2: the AI draws the carried bank down, but the human's idle base
+    // action re-banks, so the pool is still non-empty rather than lost.
+    endHumanMarketPhase(state);
+    spendingSeat(state, 1, 1);
+    resolveCompetitiveClosingPhases(state);
+    expect(state.bankedActions).toBe(1);
+  });
+
+  it('AC1 — the shared pool banks when the AI idles and the human spends', () => {
+    // "Regardless of how many seats acted during the day": an unused action
+    // from *any* seat tops up the shared bank (capped at one per day).
+    const state = bankedState('bank-ai-unused', 0);
+    consumeAction(state); // human spends its base action
+    endHumanMarketPhase(state);
+    expect(state.players![0].actionBudget).toBe(0);
+
+    idleSeat(state, 1); // AI leaves its base action unused
+    resolveCompetitiveClosingPhases(state);
     expect(state.bankedActions).toBe(1);
   });
 });

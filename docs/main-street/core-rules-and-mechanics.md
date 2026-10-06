@@ -264,9 +264,14 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > currently-remaining `bankedActions`, added when the seat is bound
 > (`bindCompetitiveSeat`). Spending by one seat draws the shared pool down, so
 > the next seat receives base + the *remaining* bank rather than a stale
-> day-start snapshot; at the shared closing, one unused action banks (cap 2).
-> `restoreCompetitiveSeat` strips the bank back out so `actionBudget` stays the
-> seat's base budget. Single-player banking is unchanged.
+> day-start snapshot. At the shared closing, one unused base action banks
+> (cap 2); the unused action is taken from the **largest remaining per-seat
+> budget**, so an earlier seat's unused base action still banks even when a
+> later seat spends its own action to zero on the shared counter. (Banking
+> from the shared counter alone only saw the last seat's MarketPhase — the
+> "turns do not bank against AI" defect.) `restoreCompetitiveSeat` strips the
+> bank back out so `actionBudget` stays the seat's base budget. Single-player
+> banking is unchanged.
 
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 
