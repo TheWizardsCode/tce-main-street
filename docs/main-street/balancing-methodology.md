@@ -56,10 +56,10 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 | Card | Handling |
 |------|----------|
 | **Pawn Shop** | No synergy bonuses (contributes/receives none); negative reputation per turn (−10) trades reputation for a below-tier price (200) |
-| **Clinic** | reputationPerTurn = +20 factored into cost calculation (weight × 30) |
+| **Clinic** | reputationPerTurn = +160 factored into cost calculation (weight × 30) |
 | **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. **Re-priced to 400 by MS-0MUR9IN7L0004TO5**: the curve result was materially over-priced relative to the ~4.87-turn business payback (net drain of 10/turn even at the rep-converted value); see [analysis/community-space-event-repricing.md](analysis/community-space-event-repricing.md). |
 | **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam. The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. **Re-priced 300 → 150 by MS-0MUR9IN7L0004TO5**: Park provides zero reputation, so at 300 it was a pure net drain and over-priced even as a Tier-1 synergy anchor. |
-| **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 15` is still factored into the curve for reference. |
+| **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 60` is still factored into the curve for reference. |
 
 ## Per-Family Strategy
 
@@ -190,7 +190,7 @@ all net incomes positive.
 
 | Card | Handling |
 |------|----------|
-| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+40 rep/turn), so payback is n/a. |
+| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+160 rep/turn), so payback is n/a. |
 | **Charity Shop** (`biz-charity-shop`) | Producer-set cost override (MS-0MUAYBAHW007RMSL); low-income reputation-leaning card, payback not representative. |
 | **0-cost incident events** | Not income businesses; excluded. |
 | **Community spaces** | 0 income by design; excluded. |

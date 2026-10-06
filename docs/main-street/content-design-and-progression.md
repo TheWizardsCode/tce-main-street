@@ -16,7 +16,7 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Hardware Store | 300 | 230 | Service | Hardware Store → Home Improvement | Supplies tools. Gains 50% of base income per adjacent Service business. *(Commerce→Service retag, CG-0MT3IPFSF005KEFB — tool supply is a Service, gives T2 a second type.)* |
 | Juice Bar | 500 | 350 | Food, Health | — | Fresh juices and smoothies. Bridges Food and Health synergies. *(Group A: first Health bridge.)* |
 | Yoga Studio | 800 | 580 | Culture, Health | — | Calm practice space for mind and body. Bridges Culture and Health synergies. *(Group A.)* |
-| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
+| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +60 rep/turn. *(Group A.)* |
 | Tailor | 500 | 375 | Service | — | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. *(Group A.)* |
 | Gym | 800 | 580 | Health | — | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
 | Dentist | 1200 | 870 | Health | — | Smiles for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
@@ -24,8 +24,8 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Music Store | 800 | 580 | Entertainment | — | Records and instruments for every taste. Gains 50% of base income per adjacent Entertainment business. *(Group A.)* |
 | Delicatessen | 500 | 375 | Food | — | Fine meats and cheeses. Gains 50% of base income per adjacent Food business. *(Group A.)* |
 | Craft Shop | 500 | 375 | Culture | — | Handmade goods by local makers. Gains 50% of base income per adjacent Culture business. *(Group A.)* |
-| Charity Shop | 300 | 150 | Culture | — | Sells donated goods. Provides +15 reputation per turn. Gains 50% of base income per adjacent Culture business. *(Producer-added, MS-0MUAYBAHW007RMSL; tier 2, standalone, ongoing −75/turn.)* |
-| Grand Hotel | 1600 | 1210 | Service | — | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business; +10 rep/turn. *(Group A T5 flagship.)* |
+| Charity Shop | 300 | 150 | Culture | — | Sells donated goods. Provides +60 reputation per turn. Gains 50% of base income per adjacent Culture business. *(Producer-added, MS-0MUAYBAHW007RMSL; tier 2, standalone, ongoing −75/turn.)* |
+| Grand Hotel | 1600 | 1210 | Service | — | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business; +120 rep/turn. *(Group A T5 flagship.)* |
 | Teahouse | 700 | 495 | Food, Culture | — | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. *(Group A.)* |
 
 ### 1.2 Event Cards

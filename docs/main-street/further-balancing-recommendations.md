@@ -53,6 +53,12 @@ Loss-only split:
 - **One run in 200 hits the 60-turn harness cap** — negligible, but the first
   appearance of a stall; worth monitoring, not acting on.
 
+> **Addressed by R2 (MS-0MUR9IMN60093HIE).** The reputation-source re-tune
+> (all positive business / community-space `reputationPerTurn` ×4) restores the
+> PRD §G5 loss-mode band. On the canonical after-state profile Medium is now
+> **32% reputation collapse / 68% bankruptcy** (loss-only). See
+> [reputation-retune-evidence.md](reputation-retune-evidence.md).
+
 ## 3. Synergy utilisation & diversity
 
 - Synergy adjacency continues to be the main income amplifier: with base
@@ -88,7 +94,7 @@ Ownership frequency (Medium, share of runs where the card was owned):
 | # | Priority | Recommendation | Evidence | Follow-up |
 |---|---|---|---|---|
 | R1 | High | Re-evaluate **upgrade costs / incomeBonus** so upgrades clear the ~5-turn payback opportunity cost (reduce upgrade cost and/or raise `incomeBonus`). | Upgrades appear in ≤1% of runs. | MS-0MUR9I9WO004EW0M |
-| R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE |
+| R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE — **done**: positive rep/turn ×4; Medium now 32% / 68% (see reputation-retune-evidence.md). |
 | R3 | Medium | Confirm **win thresholds / run length** are the intended difficulty lever now that liquidity is slack (net liquidity 2–4 coins/turn, runs ~10–12 turns). Consider raising `winThreshold` or capping turns if "tighter" should mean harder. | avgTurns 10–12; liquidity ≪ band. | MS-0MUR9IMXE0090WIV |
 | R4 | Medium | Re-price **community spaces / events** relative to the slower business payback (community spaces are now relatively stronger value per coin). | Intake risk note; distribution shift to cheap cards. | MS-0MUR9IN7L0004TO5 |
 | R5 | Low | Track **synergy-diversity (G4/HHI)** and placement dominance in the next re-baseline to confirm no single synergy type crowds out the others. | Intake synergy-distortion risk. | MS-0MUR9INHX001QCSE |

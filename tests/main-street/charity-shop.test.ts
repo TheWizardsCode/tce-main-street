@@ -2,9 +2,9 @@
  * Charity Shop card tests (MS-0MUAYBAHW007RMSL).
  *
  * The Charity Shop is a tier-2, standalone Culture business added by the
- * producer: 1.5 gross income per turn + 0.15 reputation per turn, costing 3.
+ * producer: 1.5 gross income per turn + 0.6 reputation per turn, costing 3.
  * Under the ×100 integer economy (CG-0MTIO1M15001E9Y6) that maps to
- * `cost = 300`, `baseIncome = 150`, `reputationPerTurn = 15`; the standard
+ * `cost = 300`, `baseIncome = 150`, `reputationPerTurn = 60`; the standard
  * ¼-price ongoing cost convention (CG-0MSVYPEZ90085SHE) gives
  * `ongoingCost = 75` (net 75 coins/turn, or 0.75 at the design scale).
  *
@@ -83,8 +83,8 @@ describe('Charity Shop card data (×100 integer economy)', () => {
     expect(findCharityShop().baseIncome).toBe(150);
   });
 
-  it('provides +15 reputation per turn (design 0.15)', () => {
-    expect(findCharityShop().reputationPerTurn).toBe(15);
+  it('provides +60 reputation per turn (design 0.6)', () => {
+    expect(findCharityShop().reputationPerTurn).toBe(60);
   });
 
   it('pays the standard ¼-price ongoing cost of 75 per turn', () => {
@@ -120,7 +120,7 @@ describe('Charity Shop card text matches its data', () => {
     // The shared card-text-data-consistency guard parses "N reputation per turn"
     // from every non-event description and asserts it equals reputationPerTurn.
     const description = findCharityShop().description;
-    expect(description).toContain('15 reputation per turn');
+    expect(description).toContain('60 reputation per turn');
   });
 
   it('names only Culture in its adjacency synergy sentence', () => {
@@ -157,15 +157,15 @@ describe('Charity Shop registration and progression', () => {
 // ── AC1: behaviour through the income phase ─────────────────
 
 describe('Charity Shop income phase', () => {
-  it('credits +15 reputation per turn', () => {
+  it('credits +60 reputation per turn', () => {
     const state = createEmptyState();
     placeCharityShop(state, 0);
     const reputationBefore = state.resourceBank.reputation;
 
     const result = applyIncome(state);
 
-    expect(result.repDelta).toBe(15);
-    expect(state.resourceBank.reputation).toBe(reputationBefore + 15);
+    expect(result.repDelta).toBe(60);
+    expect(state.resourceBank.reputation).toBe(reputationBefore + 60);
   });
 
   it('generates its 150 base income with no neighbours', () => {

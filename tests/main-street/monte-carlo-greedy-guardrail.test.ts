@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runAllCombinations } from '../../src/MainStreetMonteCarlo';
+import { computeLossModeDecomposition } from '../../src/scripts/balance/engine/global-metrics';
 
 /**
  * Per-difficulty design-intent guardrails (CG-0MSRKN325004ELH2).
@@ -110,4 +111,29 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
     expect(medium.metrics.medianScore).toBeGreaterThanOrEqual(200);
     expect(medium.metrics.medianScore).toBeLessThanOrEqual(20000);
   });
+
+  // MS-0MUR9IMN60093HIE (reputation-source re-tune): before the re-tune the
+  // Medium loss-only split was 69% reputation collapse / 30% bankruptcy — the
+  // dominant loss mode, outside the PRD §G5 band. The re-tune restores the
+  // documented band. This guard makes a future regression detectable through
+  // the G5 balance metric (the loss-mode decomposition) rather than only via
+  // the win-rate bands.
+  it('greedy Medium loss mode stays inside the PRD §G5 band', () => {
+    const [medium] = runAllCombinations({
+      seeds: SEEDS,
+      maxTurns: MAX_TURNS,
+      strategies: ['greedy'],
+      difficulties: ['Medium'],
+    });
+
+    const g5 = computeLossModeDecomposition(medium.runs);
+    expect(g5.totalLosses).toBeGreaterThan(0);
+
+    // PRD §G5 / guardrail table: reputation collapse 20–40% of losses
+    // (G5 target 30–40%), bankruptcy 40–70% (G5 target 50–60%).
+    expect(g5.shares.reputation_collapse).toBeGreaterThanOrEqual(0.2);
+    expect(g5.shares.reputation_collapse).toBeLessThanOrEqual(0.4);
+    expect(g5.shares.bankruptcy).toBeGreaterThanOrEqual(0.4);
+    expect(g5.shares.bankruptcy).toBeLessThanOrEqual(0.7);
+  }, 120_000);
 });
