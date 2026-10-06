@@ -96,14 +96,46 @@ function spyOnGameOver(scene: Phaser.Scene & Record<string, unknown>): { calls: 
   return { calls };
 }
 
+/**
+ * Locates the overlay text objects whose content includes `text`.
+ *
+ * The Game Over overlay parents every text object into
+ * `scene.hudContainer`, so this is the canonical content lookup reused by
+ * the two-column layout assertions added by later children.
+ */
+function findOverlayText(
+  scene: Phaser.Scene & Record<string, unknown>,
+  text: string,
+): Phaser.GameObjects.Text[] {
+  const hud = scene.hudContainer as unknown as { list?: unknown[] } | null;
+  if (!hud?.list) return [];
+  return hud.list.filter((child: unknown): child is Phaser.GameObjects.Text => {
+    const t = child as { text?: string };
+    return typeof t.text === 'string' && t.text.includes(text);
+  });
+}
+
+/** Whether the overlay contains a text object whose content includes `text`. */
+function overlayHasText(
+  scene: Phaser.Scene & Record<string, unknown>,
+  text: string,
+): boolean {
+  return findOverlayText(scene, text).length > 0;
+}
+
+/**
+ * Asserts the Game Over overlay is present: it has pushed objects into
+ * `scene.overlayObjects` (background, box, texts and buttons).
+ */
+function expectOverlayPresent(scene: Phaser.Scene & Record<string, unknown>): void {
+  const objects = scene.overlayObjects as unknown[] | undefined;
+  expect(Array.isArray(objects)).toBe(true);
+  expect(objects!.length).toBeGreaterThan(0);
+}
+
 /** Whether the game-over panel title with the given text is visible. */
 function hasOverlayTitle(scene: Phaser.Scene & Record<string, unknown>, title: string): boolean {
-  const hud = scene.hudContainer as unknown as { list?: unknown[] } | null;
-  if (!hud?.list) return false;
-  return hud.list.some((child: unknown) => {
-    const t = child as { text?: string };
-    return typeof t.text === 'string' && t.text.includes(title);
-  });
+  return overlayHasText(scene, title);
 }
 
 describe('MainStreet game-over feedback', () => {
@@ -144,6 +176,7 @@ describe('MainStreet game-over feedback', () => {
 
     // The 'You Win!' panel is up.
     expect(s.uiPhase).toBe('game-over');
+    expectOverlayPresent(scene);
     expect(hasOverlayTitle(scene, 'You Win!')).toBe(true);
   }, 30_000);
 
@@ -167,6 +200,7 @@ describe('MainStreet game-over feedback', () => {
 
     // The 'Game Over' panel is up.
     expect(s.uiPhase).toBe('game-over');
+    expectOverlayPresent(scene);
     expect(hasOverlayTitle(scene, 'Game Over')).toBe(true);
   }, 30_000);
 });
