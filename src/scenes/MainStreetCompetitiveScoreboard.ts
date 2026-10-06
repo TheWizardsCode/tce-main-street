@@ -10,6 +10,18 @@
 
 import type { MainStreetState } from '../MainStreetState';
 
+/**
+ * Failure / elimination badge attached to a game-over scoreboard row.
+ *
+ * `kind` is machine-readable for tests; `label` is the short display text
+ * rendered next to the row (e.g. `Bankrupt`, `Reputation collapse`,
+ * `Eliminated`).
+ */
+export interface CompetitiveScoreboardBadge {
+  kind: 'bankruptcy' | 'reputation_collapse' | 'eliminated';
+  label: string;
+}
+
 /** One rendered scoreboard row (per competitive seat). */
 export interface CompetitiveScoreboardRow {
   /** Owner index (index into `state.players`). */
@@ -23,6 +35,11 @@ export interface CompetitiveScoreboardRow {
   isHuman: boolean;
   /** True when this seat is the acting seat for the current shared day. */
   isActive: boolean;
+  /**
+   * Optional failure/elimination badge (game-over summary only). Absent while
+   * a seat is solvent; the live competitive HUD never sets it.
+   */
+  badge?: CompetitiveScoreboardBadge;
 }
 
 /**
@@ -53,4 +70,15 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
 /** One-line scoreboard cell, e.g. `▶ You: 600c 300r 0pt`. */
 export function formatCompetitiveScoreboardRow(row: CompetitiveScoreboardRow): string {
   return `${row.isActive ? '▶ ' : ''}${row.label}: ${row.coins}c ${row.reputation}r ${row.score}pt`;
+}
+
+/**
+ * Formats a row's failure/elimination badge, or `''` when the seat is healthy.
+ *
+ * The live competitive HUD's {@link formatCompetitiveScoreboardRow} output is
+ * intentionally unchanged; the game-over summary renders the badge separately
+ * so it can be drawn in a distinct colour beside the row.
+ */
+export function formatCompetitiveScoreboardBadge(row: CompetitiveScoreboardRow): string {
+  return row.badge?.label ?? '';
 }

@@ -31,6 +31,13 @@ import type {
   SeatController,
 } from '../../src/MainStreetState';
 import { setupMainStreetGame } from '../../src/MainStreetState';
+import type { ActiveChallenge } from '../../src/MainStreetChallenges';
+import { formatCompetitiveScoreboardBadge } from '../../src/scenes/MainStreetCompetitiveScoreboard';
+import {
+  buildGameOverChallengeSummary,
+  buildGameOverPlayerRows,
+  formatEndReason,
+} from '../../src/scenes/MainStreetGameOverSummary';
 import { buildHumanVsAis } from './helpers/competitive-fixtures';
 
 // ── End reasons ───────────────────────────────────────────────
@@ -304,5 +311,167 @@ describe('makeSinglePlayerGameOverState / makeCompetitiveGameOverState', () => {
     expect(state.players).toHaveLength(4);
     expect(state.players![0].controller).toBe('human');
     expect(state.players!.slice(1).every((player) => player.controller === 'ai')).toBe(true);
+  });
+});
+
+// ── End-reason headline model ─────────────────────────────────
+
+/** Expected plain-language headline per end reason (the user-facing spec). */
+const EXPECTED_HEADLINES: Record<Exclude<EndReason, null>, string> = {
+  score_threshold: 'Score threshold reached',
+  score_threshold_continue: 'Score threshold reached — endless mode continues',
+  all_challenges: 'All challenges completed',
+  turn_limit_victory: 'Turn limit survived',
+  bankruptcy: 'Bankruptcy',
+  reputation_collapse: 'Reputation collapse',
+  last_standing: 'Last standing',
+  last_standing_continue: 'Last standing — continuing solo',
+  turn_exhaustion: 'Turn limit exhausted',
+};
+
+describe('formatEndReason', () => {
+  it('returns a plain-language headline for every end reason (single-player)', () => {
+    for (const endReason of END_REASONS) {
+      const state = makeSinglePlayerGameOverState(endReason);
+      const expected = endReason === null ? 'Game over' : EXPECTED_HEADLINES[endReason];
+      expect(formatEndReason(state)).toBe(expected);
+    }
+  });
+
+  it('names the human seat for a competitive bankruptcy', () => {
+    const state = makeCompetitiveGameOverState(1, 'bankruptcy', {
+      seats: [{ coins: -5, reputation: 10 }, { coins: 120, reputation: 10 }],
+    });
+    expect(formatEndReason(state)).toBe('Bankruptcy — You');
+  });
+
+  it('names the failing AI seat for a competitive reputation collapse', () => {
+    const state = makeCompetitiveGameOverState(1, 'reputation_collapse', {
+      seats: [{ coins: 120, reputation: 10 }, { coins: 120, reputation: 0 }],
+    });
+    state.turn = 2;
+    expect(formatEndReason(state)).toBe('Reputation collapse — AI 1');
+  });
+
+  it('does not name a player in single-player', () => {
+    const state = makeSinglePlayerGameOverState('bankruptcy', { seats: [{ coins: -5 }] });
+    expect(formatEndReason(state)).toBe('Bankruptcy');
+  });
+});
+
+// ── Per-player rows and badges ────────────────────────────────
+
+describe('buildGameOverPlayerRows', () => {
+  it('synthesises the single You row from the shared wallet', () => {
+    const state = makeSinglePlayerGameOverState('all_challenges', {
+      seats: [{ coins: 123, reputation: 9, score: 456 }],
+    });
+    const rows = buildGameOverPlayerRows(state);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      playerId: 0,
+      label: 'You',
+      coins: 123,
+      reputation: 9,
+      score: 456,
+      isHuman: true,
+    });
+  });
+
+  it('lists every competitive seat and reads PlayerRecord, not the shared bank', () => {
+    const state = makeCompetitiveGameOverState(3, 'score_threshold', {
+      seats: [{ coins: 11 }, { coins: 22 }, { coins: 33 }, { coins: 44 }],
+    });
+    state.resourceBank.coins = 9999;
+
+    const rows = buildGameOverPlayerRows(state);
+    expect(rows.map((row) => row.label)).toEqual(['You', 'AI 1', 'AI 2', 'AI 3']);
+    expect(rows.map((row) => row.coins)).toEqual([11, 22, 33, 44]);
+  });
+});
+
+/** Minimal active challenge for summary tests. */
+function activeChallenge(id: string, title: string, completed: boolean): ActiveChallenge {
+  return {
+    challenge: {
+      id,
+      title,
+      description: '',
+      category: 'resource',
+      evaluator: () => completed,
+      rewardPoints: 0,
+    },
+    completed,
+  };
+}
+
+describe('failure / elimination badges', () => {
+  it('flags a bankrupt seat and formats the badge', () => {
+    const state = makeCompetitiveGameOverState(1, 'bankruptcy', {
+      seats: [{ coins: -1 }, {}],
+    });
+    const row = buildGameOverPlayerRows(state)[0];
+    expect(row.badge).toEqual({ kind: 'bankruptcy', label: 'Bankrupt' });
+    expect(formatCompetitiveScoreboardBadge(row)).toBe('Bankrupt');
+  });
+
+  it('flags reputation collapse only after turn 1', () => {
+    const state = makeCompetitiveGameOverState(1, null, {
+      seats: [{ coins: 100, reputation: 5 }, { coins: 100, reputation: 0 }],
+    });
+    state.turn = 1;
+    expect(buildGameOverPlayerRows(state)[1].badge).toBeUndefined();
+
+    state.turn = 2;
+    expect(buildGameOverPlayerRows(state)[1].badge).toEqual({
+      kind: 'reputation_collapse',
+      label: 'Reputation collapse',
+    });
+  });
+
+  it('flags an eliminated seat', () => {
+    const state = makeCompetitiveGameOverState(1, 'last_standing', {
+      seats: [{ coins: 100, reputation: 5 }, { coins: 100, reputation: 5, eliminated: true }],
+    });
+    expect(buildGameOverPlayerRows(state)[1].badge).toEqual({
+      kind: 'eliminated',
+      label: 'Eliminated',
+    });
+  });
+
+  it('prefers the failure cause over the eliminated flag', () => {
+    const state = makeCompetitiveGameOverState(1, 'last_standing', {
+      seats: [{ coins: 100, reputation: 5 }, { coins: -3, reputation: 5, eliminated: true }],
+    });
+    expect(buildGameOverPlayerRows(state)[1].badge?.kind).toBe('bankruptcy');
+  });
+
+  it('leaves solvent seats unflagged and formats an empty badge', () => {
+    const state = makeCompetitiveGameOverState(1, 'score_threshold');
+    const row = buildGameOverPlayerRows(state)[0];
+    expect(row.badge).toBeUndefined();
+    expect(formatCompetitiveScoreboardBadge(row)).toBe('');
+  });
+});
+
+// ── Challenge summary ─────────────────────────────────────────
+
+describe('buildGameOverChallengeSummary', () => {
+  it('reports the run-global challenge completion state', () => {
+    const state = makeSinglePlayerGameOverState('all_challenges');
+    state.activeChallenges = [
+      activeChallenge('ch-1', 'First challenge', true),
+      activeChallenge('ch-2', 'Second challenge', false),
+    ];
+    state.challengesCompleted = ['ch-1'];
+
+    const summary = buildGameOverChallengeSummary(state);
+    expect(summary.items).toEqual([
+      { title: 'First challenge', completed: true },
+      { title: 'Second challenge', completed: false },
+    ]);
+    expect(summary.completedCount).toBe(1);
+    expect(summary.totalCount).toBe(2);
+    expect(summary.completedChallengeIds).toEqual(['ch-1']);
   });
 });
