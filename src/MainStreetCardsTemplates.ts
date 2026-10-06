@@ -157,6 +157,9 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       const hasChoices = r.hasChoices ? r.hasChoices.trim().toLowerCase() === 'true' : undefined;
       const acceptNextCardId = r.acceptNextCardId ? r.acceptNextCardId.trim() || null : undefined;
       const rejectNextCardId = r.rejectNextCardId ? r.rejectNextCardId.trim() || null : undefined;
+      // Parse storyline metadata (MS-0MUMP93DI0018OGV / AC1)
+      const storylineId = r.storylineId ? r.storylineId.trim() || null : undefined;
+      const storylineTitle = r.storylineTitle ? r.storylineTitle.trim() || null : undefined;
       // Optional proportional coin effect (CG-0MTQ7W0ZX0059R3J): signed
       // fraction of banked coins (e.g. -0.45 for the Tax Audit). Absent on
       // flat-delta events.
@@ -180,6 +183,8 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
         ...(hasChoices === true ? { hasChoices: true } : {}),
         ...(acceptNextCardId !== undefined ? { acceptNextCardId } : {}),
         ...(rejectNextCardId !== undefined ? { rejectNextCardId } : {}),
+        ...(storylineId !== undefined ? { storylineId } : {}),
+        ...(storylineTitle !== undefined ? { storylineTitle } : {}),
         ...(coinPercentDelta !== undefined && Number.isFinite(coinPercentDelta)
           ? { coinPercentDelta }
           : {}),
@@ -257,6 +262,10 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       allowedBusinessTypes: (r.allowedBusinessTypes || '').split('|').filter(Boolean),
       reputationPerTurn: r.reputationPerTurn ? Number(r.reputationPerTurn) : undefined,
       refreshCostDiscount: r.refreshCostDiscount ? Number(r.refreshCostDiscount) : undefined,
+      // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
+      upgradeCostDiscount: r.upgradeCostDiscount ? Number(r.upgradeCostDiscount) : undefined,
+      // Street-wide purchase discount (Delivery Driver, CG-0MUMCVH3N007KT1M).
+      purchaseCostDiscount: r.purchaseCostDiscount ? Number(r.purchaseCostDiscount) : undefined,
       taxAuditRate: r.taxAuditRate !== undefined && r.taxAuditRate !== '' ? Number(r.taxAuditRate) : undefined,
       actionsPerTurn: r.actionsPerTurn ? Number(r.actionsPerTurn) : undefined,
       peekOncePerTurn: r.peekOncePerTurn ? Number(r.peekOncePerTurn) > 0 : undefined,

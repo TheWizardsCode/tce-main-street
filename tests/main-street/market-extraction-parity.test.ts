@@ -621,8 +621,10 @@ describe('MarketOfferEngine — negative-path invalid row/slot', () => {
       state.streetGrid[1] = { ...matchingBiz, level: upgrade.requiredLevel ?? 0 };
 
       state.resourceBank.coins = upgrade.cost;
-      // Targeting slot 0 (non-matching) should throw
-      expect(() => purchaseUpgrade(state, upgrade.id, 0)).toThrow('not a valid target');
+      // Targeting slot 0 (non-matching) should be rejected. The specific-slot
+      // legality gate reports the missing eligible target before the
+      // defensive slot check in purchaseUpgrade, so accept either message.
+      expect(() => purchaseUpgrade(state, upgrade.id, 0)).toThrow(/No eligible .* on the street to upgrade|not a valid target/);
     });
   });
 

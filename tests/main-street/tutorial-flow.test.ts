@@ -6,6 +6,7 @@ import {
   exitTutorial, completeCurrentStep, isOnStep, getCurrentStep,
   isRequiredAction, shouldAllowAction,
   resolveTutorialStepText, isSynergyAdjacentPlacement,
+  BANKING_HINT_STEP,
 } from '../../src/TutorialFlow';
 import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { resetI18n, registerLocale } from '@core-engine/I18n';
@@ -29,7 +30,7 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
       expect(body.length).toBeGreaterThan(0);
     }
   });
-  it('each step has valid highlightZone', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['centerModal','hud','marketBusinessRow','developmentRow','streetGrid','endTurnButton','incidentQueue','investmentsRow','challengePanel','helpButton','completionModal','hand','actionButtons','laundromatCard','festivalCard']).toContain(step.highlightZone); });
+  it('each step has valid highlightZone', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['centerModal','hud','marketBusinessRow','developmentRow','streetGrid','endTurnButton','incidentQueue','investmentsRow','challengePanel','helpButton','completionModal','hand','actionButtons','actionCounter','laundromatCard','festivalCard']).toContain(step.highlightZone); });
   it('each step has gate confirm or action', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['confirm','action']).toContain(step.gate); });
   // CG-0MTNMBX5Z002U0MH: 9 confirm + 17 action (inserted T8/T14/T22 end-turns).
   // Distribution is enforced independently by `tutorial-action-economy.test.ts` per-day audit.
@@ -71,6 +72,38 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
     for (const step of UNIFIED_TUTORIAL_STEPS) {
       expect(step.requiredAction).not.toBe('buy-and-place');
     }
+  });
+});
+
+// ── BANKING_HINT_STEP (CG-0MT3JK16W006A66P) ─────────────────
+
+describe('BANKING_HINT_STEP', () => {
+  it('is not part of UNIFIED_TUTORIAL_STEPS (contextual first-bank hint)', () => {
+    const ids = UNIFIED_TUTORIAL_STEPS.map(s => s.id);
+    expect(ids).not.toContain('BANKING');
+  });
+
+  it('has confirm gate (non-blocking overlay)', () => {
+    expect(BANKING_HINT_STEP.gate).toBe('confirm');
+  });
+
+  it('highlights the actionCounter zone so the hint covers the "(N banked)" text', () => {
+    expect(BANKING_HINT_STEP.highlightZone).toBe('actionCounter');
+  });
+
+  it('has valid titleKey and bodyKey referencing tutorial.bankingHint', () => {
+    expect(BANKING_HINT_STEP.titleKey).toBe('tutorial.bankingHint.title');
+    expect(BANKING_HINT_STEP.bodyKey).toBe('tutorial.bankingHint.body');
+  });
+
+  it('title resolves to non-empty text', () => {
+    const { title } = resolveTutorialStepText(BANKING_HINT_STEP);
+    expect(title.length).toBeGreaterThan(0);
+  });
+
+  it('body resolves to non-empty text', () => {
+    const { body } = resolveTutorialStepText(BANKING_HINT_STEP);
+    expect(body.length).toBeGreaterThan(0);
   });
 });
 

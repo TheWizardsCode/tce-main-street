@@ -204,21 +204,33 @@ Help content should be concise, scannable, and aligned with existing panel secti
 3. **Synergy and Placement**
    - Adjacent matching categories yield bonuses.
    - Upgrades can increase range/value.
-4. **Turn Flow**
+4. **Staff & Specialization Skills** *(post-PRD addition — the PRD originally specified 6 required sections)*
+   - Staff applicants carry specialization skills (coloured chips) that modify gameplay.
+   - Specialisation skills can grant additional actions per turn.
+5. **Turn Flow**
    - Week start -> market actions -> end turn resolution.
-5. **Win / Loss Conditions**
+6. **Win / Loss Conditions**
    - Win threshold / challenge completion paths.
    - Bankruptcy / reputation collapse / turn exhaustion loss states.
-6. **Tools**
+7. **Tools**
    - Hint usage behavior.
    - Undo/Redo behavior.
    - Tutorial replay and settings toggles.
 
 ### Content UX Rules
 
-- Keep each section to <= 8 lines where possible.
+- Keep each section to <= 8 lines where possible, measured as author-controlled, newline-delimited, non-empty lines.
 - Prefer short sentences and explicit verbs.
 - Use color-coding terminology consistent with in-game UI.
+
+#### Exception ceilings
+
+Two sections carry post-PRD mechanics copy that exceeds the 8-line target:
+
+- **How to Play: <= 11 lines.** Covers the core loop, challenge resolution timing, and win/loss conditions in a single section.
+- **Turn Flow: <= 13 lines.** Describes the turn structure including action-economy mechanics (action-granting staff), where "turn" = one Irish year week.
+
+All other sections remain at the default 8-line ceiling.
 
 ---
 
@@ -361,7 +373,7 @@ interface MainStreetStatsV1 {
 - [x] Tutorial script implemented according to Section 4 (TutorialFlow.ts with T1-T10 controller).
 - [x] First-time onboarding prompt and replay flow implemented (TutorialOfferModal + TutorialState).
 - [x] Main Street selector metadata confirmed and validated (game-selector-integration.test.ts).
-- [x] Help/rules sections complete and reviewed (6 PRD-required sections, <= 8 lines each).
+- [x] Help/rules sections complete and reviewed (7 sections including post-PRD Staff & Specialization Skills; How to Play <= 11 lines, Turn Flow <= 13 lines, all others <= 8 lines).
 - [x] Optional stats feature explicitly deferred (see Section 12 below).
 - [x] All automated tests and build pass (207+ tests, TypeScript + Vite build green).
 - [ ] Producer review completed and approved.

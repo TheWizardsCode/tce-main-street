@@ -11,7 +11,7 @@ import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompet
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { decideEventChoice, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, checkImmediateLoss, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
@@ -34,22 +34,61 @@ export function executeCompetitiveWeekStart(
 ): void {
   executeWeekStart(state, skipMarketRefill);
   if (state.players && state.players.length > 0) {
-    state.activePlayerId = 0;
-    // Per-player action budgets: reset each day from staff actions + bank.
+    state.activePlayerId = Math.max(0, getFirstActivePlayerId(state));
+    // Per-player action budgets: reset each day from staff actions only.
+    // Banked actions are a *shared* pool, not baked into the per-seat base
+    // budget — `bindCompetitiveSeat` adds the currently-banked amount when it
+    // arms the seat (MS-0MUVUPWHD0032CU4). Keeping `actionBudget` bank-free
+    // lets every seat see the *remaining* bank rather than a stale day-start
+    // snapshot (which double-counted / lost the bank across alternating seats).
     for (const p of state.players) {
       const bonus = (p.staffCards ?? []).reduce((s, c) => s + (c.actionsPerTurn ?? 0), 0);
-      p.actionBudget = 1 + bonus + Math.min(2, state.bankedActions ?? 0);
+      p.actionBudget = 1 + bonus;
     }
     state.competitiveWinnerId = null;
   }
 }
 
 /**
+ * Index of the first non-eliminated seat, or `-1` when every seat is
+ * eliminated. Used to arm the shared day's first MarketPhase.
+ */
+export function getFirstActivePlayerId(state: MainStreetState): number {
+  const players = state.players ?? [];
+  for (let i = 0; i < players.length; i++) {
+    if (!players[i].eliminated) return i;
+  }
+  return -1;
+}
+
+/**
+ * Index of the next non-eliminated seat strictly after `from`, or `-1` when
+ * no active seat remains. Eliminated seats are skipped so they take no
+ * further MarketPhase (MS-0MUVQRBVI0015AB2).
+ */
+export function getNextActivePlayerId(state: MainStreetState, from: number): number {
+  const players = state.players ?? [];
+  for (let i = from + 1; i < players.length; i++) {
+    if (!players[i].eliminated) return i;
+  }
+  return -1;
+}
+
+/**
  * The active player within the shared day (read-only). 0 in single-player
  * (when players[] is absent). Exposed for scene/AI turn alternation.
+ *
+ * When the stored active seat has been eliminated, resolves to the first
+ * remaining active seat instead (MS-0MUVQRBVI0015AB2).
  */
 export function getActivePlayerId(state: MainStreetState): number {
-  return state.activePlayerId ?? 0;
+  const id = state.activePlayerId ?? 0;
+  const players = state.players;
+  if (players && players[id]?.eliminated) {
+    const first = getFirstActivePlayerId(state);
+    return first >= 0 ? first : id;
+  }
+  return id;
 }
 
 /** Sets the active player (internal use; tests may set it directly). */
@@ -80,10 +119,9 @@ export function endCompetitiveMarketTurn(state: MainStreetState): void {
   if (!state.players || state.players.length === 0) {
     throw new Error('endCompetitiveMarketTurn requires competitive state (players)');
   }
-  const n = state.players.length;
   const cur = state.activePlayerId ?? 0;
-  const next = cur + 1;
-  if (next < n) {
+  const next = getNextActivePlayerId(state, cur);
+  if (next >= 0) {
     state.activePlayerId = next;
     state.phase = 'MarketPhase';
   } else {
@@ -145,6 +183,8 @@ export function executeCompetitiveTurn(
     return mergeMidTurnChallenges(processEndOfTurn(state), midTurnCompleted);
   }
   for (let playerId = 0; playerId < n; playerId++) {
+    // Eliminated seats take no further MarketPhase (MS-0MUVQRBVI0015AB2).
+    if (state.players![playerId].eliminated) continue;
     state.phase = 'MarketPhase';
     state.activePlayerId = playerId;
     runActions(playerActions[playerId]);
@@ -193,7 +233,7 @@ function finishCompetitiveClosingTail(
   incidentRepChange: number,
   turnEnded: number,
 ): TurnResult {
-  if (checkImmediateLoss(state)) {
+  if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
     return {
       income,
@@ -218,10 +258,22 @@ function finishCompetitiveClosingTail(
   if (state.gameResult === 'playing') {
     state.turn += 1;
     advanceWeek(state);
-    const bankable = Math.min(state.actionsRemaining, 1);
+    // Bank the *human* seat's unused base action for the shared day. Only the
+    // human's own leftover feeds the shared bank: letting an AI seat's unused
+    // action top it up meant spending the full budget never cleared the bank
+    // while the AI idled (producer repro MS-0MUVUPWHD0032CU4). The human's
+    // `actionBudget` holds their remaining bank-free budget after
+    // `restoreCompetitiveSeat`; N<=1 and the legacy engine path (which never
+    // binds seats) fall back to the shared counter. Banking stays capped at
+    // one action per day.
+    const humanId = (state.players?.length ?? 0) > 1 ? findHumanSeatId(state) : -1;
+    const seatLeftover = humanId >= 0
+      ? (state.players?.[humanId]?.actionBudget ?? 0)
+      : state.actionsRemaining;
+    const bankable = Math.min(seatLeftover, 1);
     state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
-    // Mirror shared banked value into each player's budget for next week's costing.
-    // (Per-player budgets are re-derived from staff+bank at next week start.)
+    // The shared bank is re-applied per seat by `bindCompetitiveSeat` at the
+    // next week start; per-player `actionBudget` stays bank-free.
     state.phase = 'WeekStart';
     state.activePlayerId = 0;
   }
@@ -262,7 +314,7 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
     throw new Error('resolveCompetitiveClosingPhases requires competitive state (players)');
   }
   const turnEnded = state.turn;
-  if (checkImmediateLoss(state)) {
+  if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
     return {
       income: null,

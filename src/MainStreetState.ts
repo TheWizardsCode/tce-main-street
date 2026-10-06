@@ -28,6 +28,15 @@ export type {
   PlayerRecord,
   OwnerTaggedSlot,
   CompetitiveStateOptions,
+  SeatController,
+  AiSeatStrategy,
+  AiSeatDifficulty,
+  CompetitiveOpponentConfig,
+  GameMode,
+  GameModeSelectionBase,
+  SinglePlayerModeSelection,
+  CompetitiveModeSelection,
+  GameModeSelection,
   MainStreetState,
   PendingApplicant,
   PendingEventChoice,
@@ -37,7 +46,7 @@ export type {
   MainStreetSetupOptions,
 } from './MainStreetStateTypes';
 
-export { PHASE_ORDER } from './MainStreetStateTypes';
+export { PHASE_ORDER, AI_SEAT_STRATEGIES, AI_SEAT_DIFFICULTIES } from './MainStreetStateTypes';
 
 // ── Logging ─────────────────────────────────────────────────
 export {
@@ -57,6 +66,7 @@ export {
   refillSingleRowMarket,
   setupMainStreetGame,
   createCompetitiveState,
+  createStateFromModeSelection,
   setIncidentBalanceLimits,
   setStreetGridLattice,
 } from './MainStreetStateSetup';

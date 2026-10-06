@@ -54,13 +54,15 @@ interface NewEventContract {
   multiplier?: number;
 }
 
+// Costs re-priced by MS-0MUR9IN7L0004TO5 (investment events to a minimum
+// ~0.70x total ROI; see docs/main-street/analysis/community-space-event-repricing.md).
 const NEW_EVENT_CONTRACTS: NewEventContract[] = [
-  { id: 'evt-health-carnival', name: 'Health Carnival', cost: 500, tier: '7', targetSynergy: 'Health', coinDelta: 200, reputationDelta: 100 },
-  { id: 'evt-food-tasting', name: 'Food Tasting Tour', cost: 500, tier: '7', targetSynergy: 'Food', coinDelta: 200, reputationDelta: 100 },
-  { id: 'evt-art-sale', name: 'Art Sale', cost: 500, tier: '7', targetSynergy: 'Culture', coinDelta: 200, reputationDelta: 100 },
-  { id: 'evt-shopping-spree', name: 'Shopping Spree', cost: 700, tier: '8', targetSynergy: 'Commerce', coinDelta: 250, reputationDelta: 0 },
-  { id: 'evt-summer-fest', name: 'Summer Fest', cost: 700, tier: '8', targetSynergy: 'Entertainment', coinDelta: 200, reputationDelta: 100 },
-  { id: 'evt-service-week', name: 'Service Week', cost: 700, tier: '8', targetSynergy: 'Service', coinDelta: 200, reputationDelta: 100 },
+  { id: 'evt-health-carnival', name: 'Health Carnival', cost: 350, tier: '7', targetSynergy: 'Health', coinDelta: 200, reputationDelta: 100 },
+  { id: 'evt-food-tasting', name: 'Food Tasting Tour', cost: 350, tier: '7', targetSynergy: 'Food', coinDelta: 200, reputationDelta: 100 },
+  { id: 'evt-art-sale', name: 'Art Sale', cost: 350, tier: '7', targetSynergy: 'Culture', coinDelta: 200, reputationDelta: 100 },
+  { id: 'evt-shopping-spree', name: 'Shopping Spree', cost: 350, tier: '8', targetSynergy: 'Commerce', coinDelta: 250, reputationDelta: 0 },
+  { id: 'evt-summer-fest', name: 'Summer Fest', cost: 400, tier: '8', targetSynergy: 'Entertainment', coinDelta: 200, reputationDelta: 100 },
+  { id: 'evt-service-week', name: 'Service Week', cost: 400, tier: '8', targetSynergy: 'Service', coinDelta: 200, reputationDelta: 100 },
   { id: 'evt-tourist-season', name: 'Tourist Season', cost: 1000, tier: '12', coinDelta: 0, reputationDelta: 0, duration: 3, effectType: 'income-multiplier', multiplier: 1.15 },
   { id: 'evt-community-renovation', name: 'Community Renovation', cost: 1000, tier: '12', coinDelta: 0, reputationDelta: 0, duration: 4, effectType: 'rep-multiplier', multiplier: 1.2 },
 ];
@@ -379,7 +381,7 @@ describe('Group C: deck generation & balance guardrails (AC6)', () => {
   });
 
   it('keeps other families unchanged in count (data-driven scope)', () => {
-    expect(createBusinessDeck(1).length).toBe(30);
+    expect(createBusinessDeck(1).length).toBe(31);
     expect(createCommunitySpaceDeck(1).length).toBe(8);
     expect(createUpgradeDeck(1).length).toBe(39); // +12 Group E upgrades
   });

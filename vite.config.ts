@@ -20,6 +20,25 @@ const coreRoot = path.resolve(__dirname, './core');
 const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 );
+/**
+ * Production base path for the GitHub Pages project site.
+ *
+ * Derived generically from the package name (the last path segment, so a
+ * scoped package like `@scope/game` yields `/game/`), with a `PAGES_BASE`
+ * environment override for forks or custom domains. No hard-coded repository
+ * name appears outside this derivation, so a re-scaffold (which regenerates
+ * this file from `core/scripts/game-repo-scaffold.ts`) never regresses it.
+ */
+function resolvePagesBase(): string {
+  const override = process.env.PAGES_BASE;
+  if (override && override.trim() !== '') {
+    const trimmed = override.trim();
+    return trimmed === '/' ? '/' : `/${trimmed.replace(/^\/+|\/+$/g, '')}/`;
+  }
+  const name = String(pkg.name ?? 'app');
+  const segment = name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
+  return `/${segment}/`;
+}
 // A game repo's only preset is ./configs/game.json; the
 // plugin default (core-only) applies to the core repo. GAMES_CONFIG can
 // still override for an ad-hoc build.
@@ -33,7 +52,10 @@ export default defineConfig(({ mode }) => ({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   // Electron loads the bundle over file://, so relative asset URLs are required.
-  base: mode === 'electron' ? './' : '/',
+  // Electron uses file:// → relative paths; production (GitHub Pages)
+  // uses the project path derived from the package name; dev uses root
+  // (localhost serves at /).
+  base: mode === 'electron' ? './' : mode === 'production' ? resolvePagesBase() : '/',
   plugins: [
     // Reads ./configs/game.json and generates
     // 'virtual:game-registry' (Gym from the core + this one game).

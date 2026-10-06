@@ -28,6 +28,7 @@ import {
 import {
   buyAndPlaceBusinessCommand,
   moveToHandCommand,
+  sellBusinessCommand,
 } from '../../src/MainStreetCommands';
 import {
   CHALLENGE_TEMPLATES,
@@ -260,5 +261,45 @@ describe('no double-report at end of turn', () => {
     expect(result.newlyCompletedChallenges).not.toContain('ch-deep-pockets');
     expect(state.challengesCompleted.filter(id => id === 'ch-deep-pockets')).toHaveLength(1);
     expect(challengeLogCount(state, 'Deep Pockets')).toBe(1);
+  });
+});
+
+// ── 6 · Serial Seller: undo/redo of street sales ────────────
+
+describe('Serial Seller completion is undo/redo consistent', () => {
+  it('undo reverts the progress count and completion; redo re-applies exactly once', () => {
+    const state = setupMarketState('serial-seller-undo');
+    activate(state, 'ch-serial-seller');
+    fillStreet(state, 3);
+    const undoManager = new UndoRedoManager();
+
+    // Sell three businesses; the third sale completes the challenge.
+    for (const slot of [0, 1, 2]) {
+      undoManager.execute(sellBusinessCommand(state, slot));
+    }
+    expect(state.soldSlots.filter(Boolean)).toHaveLength(3);
+    expect(state.challengesCompleted).toContain('ch-serial-seller');
+    expect(state.activeChallenges[0].completed).toBe(true);
+    expect(challengeLogCount(state, 'Serial Seller')).toBe(1);
+
+    // Undo the third sale: the warn dialog fires and confirming revokes both
+    // the progress count and the completion it caused.
+    const { tcCtx, dialogCalls } = makeUndoScene(state, undoManager);
+    performUndo(tcCtx);
+    expect(dialogCalls).toHaveLength(1);
+    expect(dialogCalls[0].titles).toEqual(['Serial Seller']);
+    dialogCalls[0].onConfirm();
+
+    expect(state.soldSlots.filter(Boolean)).toHaveLength(2);
+    expect(state.challengesCompleted).not.toContain('ch-serial-seller');
+    expect(state.activeChallenges[0].completed).toBe(false);
+    expect(challengeLogCount(state, 'Serial Seller')).toBe(0);
+
+    // Redo re-applies the sale and the completion exactly once.
+    undoManager.redo();
+    expect(state.soldSlots.filter(Boolean)).toHaveLength(3);
+    expect(state.challengesCompleted.filter(id => id === 'ch-serial-seller')).toHaveLength(1);
+    expect(state.activeChallenges[0].completed).toBe(true);
+    expect(challengeLogCount(state, 'Serial Seller')).toBe(1);
   });
 });

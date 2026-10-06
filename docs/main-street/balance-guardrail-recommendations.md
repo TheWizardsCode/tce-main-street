@@ -112,23 +112,35 @@ current dev state.
 
 All values below are **enforced in the guardrail test suite** (`tests/main-street/monte-carlo-greedy-guardrail.test.ts`) **and** documented in PRD §3.3 and `scripts/balance/guards/thresholds.ts` — the same number never appears with two different meanings.
 
+> **MS-0MUQ50I1Y000B6L3 (2026-10-02, producer decision Q3 = C).** The
+> five-turn payback rebalance cut business `baseIncome` by ~2.4× (net payback
+> 2.1 → 4.87 turns). The producer accepted the resulting **tighter economy as
+> the new design intent**, so the bands below are revised to the measured
+> after-state rather than compensating the economy back. The **primary balance
+> gate remains the monotone win-rate ladder Easy ≥ Medium ≥ Hard** (measured
+> 0.62 ≥ 0.325 ≥ 0.11). See [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+
 **Greedy AI, canonical harness profile (200 seeds, 60 max turns, seed prefix `mc-balance-`):**
 
 | Metric | Easy | Medium | Hard | Severity |
 |--------|------|--------|------|----------|
-| **Win rate** | **60–100%** | **45–95%** | **15–75%** | Medium: critical; Easy/Hard: warning |
-| **Avg coins per turn** (net liquidity, `finalCoins/turns`) | — | **0–10** | — | Critical (producer ruling; widened by CG-0MSTOATDQ005XDET, CG-0MT3J8FXG006RCOA, CG-0MSVYPEZ90085SHE, then CG-0MTC31LN3000UHDY) |
-| **Median score** | — | **120–180** | — | Warning |
+| **Win rate** | **45–95%** | **20–85%** | **5–60%** | Medium: critical; Easy/Hard: warning |
+| **Avg coins per turn** (net liquidity, `finalCoins/turns`) | — | **0–10** | — | Critical (producer ruling; widened by CG-0MSTOATDQ005XDET, CG-0MT3J8FXG006RCOA, CG-0MSVYPEZ90085SHE, CG-0MTC31LN3000UHDY) |
+| **Median score** | — | **2–200** | — | Warning |
 
 ### Changes vs the previous documented state
 
 | Metric | Previous | Recommended | Rationale (short) |
 |--------|----------|-------------|-------------------|
-| Win rate Medium | 30–60% (PRD critical) | **45–95%** | Measured 89.5% after CG-0MTC31LN3000UHDY (hand-held businesses no longer incur ongoing costs) — the greedy AI's `move-to-hand` hoarding is no longer drained, lifting its Medium win rate from 62%. 45–95 preserves ladder separation and the win-rate ladder stays the primary balance gate. |
-| Win rate Easy | 60–85% (PRD warning) | **60–100%** | Easy is the learning/comfort preset; after hand-held businesses stopped incurring ongoing costs (CG-0MTC31LN3000UHDY) greedy measures 98.5% — the preset is now comfortably winnable and the cap is removed. Floor unchanged at 60%. |
-| Win rate Hard | 15–40% (PRD warning) | **15–75%** | **CG-0MTC31LN3000UHDY**: removing the hand-held ongoing cost roughly quintuples the greedy AI's Hard win rate (measured 65%) — the AI now keeps its liquidity while holding cards for placement (its `move-to-hand` / `play-from-hand` flow is no longer drained). Floors unchanged; Hard remains the toughest preset and the ladder (Easy ≥ Medium ≥ Hard) is the primary gate. |
-| Avg coins per turn | Producer ruling 0–2 (G3 text only, never codified) | **0–2.5** | Formalized into the guardrail table + thresholds + tests; measured 2.21 after the Community Favour rep→coins fallback added AI liquidity (CG-0MSTOATDQ005XDET). **0–3 since CG-0MT3J8FXG006RCOA**: plain-count reputation + retuned thresholds (100/120/150) deflated scores, measured 2.69 (operator pre-accepted balance drift). **0–6 since CG-0MSVYPEZ90085SHE**: business ongoing costs + income raise make winning greedy runs short ~10-turn sprints that bank 50–80 coins (measured 5.76; win-rate ladder preserved as the primary gate). **0–10 since CG-0MTC31LN3000UHDY**: hand-held businesses no longer incur ongoing costs, so the greedy AI hoards cards free of charge and net liquidity climbs to 9.08 (measured on the canonical 200-seed set; liquidity is a pacing signal — the win-rate ladder remains the primary gate). |
-| Median score Medium | 120–180 (PRD warning); conflicting 20–65 in `monte-carlo-balance.test.ts` (market-greedy) | **120–180** (greedy); the 20–65 market-greedy assertion was **removed** | Score bands are strategy-scoped; the market-greedy median is bimodal and unstable (41.6 at 100 seeds → 91.6 at 200 seeds). |
+| Win rate Medium | 45–95% | **20–85%** | Five-turn payback rebalance (MS-0MUQ50I1Y000B6L3): the ~2.4× income cut measures greedy Medium at 0.325. Band re-centres on the new design intent; floor 20% still catches a broken economy. |
+| Win rate Easy | 60–100% | **45–95%** | Same rebalance: measured 0.62 (was 0.89). Retains a comfortable learning margin. |
+| Win rate Hard | 15–75% | **5–60%** | Same rebalance: measured 0.11 (was 0.44). Floor 5% still catches Hard becoming unwinnable. |
+| Avg coins per turn | 0–10 | **0–10** (unchanged) | Measured Medium 2.40 after the rebalance — comfortably inside the existing band, so no change was needed. |
+| Median score Medium | 120–180 (greedy) | **2–200** | Same rebalance: the tighter economy deflates the median to 7.9 display (788 ×100). Band wide enough to catch a score collapse without re-litigating the intentional deflation. |
+
+> The pre-rebalance rows these bands replaced (Win rate Medium 45–95%, Easy
+> 60–100%, Hard 15–75%, median 120–180) are retained in the change story of
+> the unit, together with the CG-0MTC31LN3000UHDY measurement that drove them.
 
 ### Tuned targets vs regression guardrails (two tiers)
 
@@ -167,8 +179,11 @@ Generated with `runAllCombinations()` — greedy, 200 seeds, 60 max turns, `mc-b
 > **CG-0MSVYPEZ90085SHE re-baseline (2026-08-24, operator-chosen option A):**
 > business cards now incur an ongoing cost (`max(25, cost/4)` coins/turn)
 > **even while held in hand**, so business income was raised
-> (`income = old income + 240 × ongoing cost`) and every business gained
-> tiered reputation-per-turn to feed the late-game income multiplier.
+> (`income = old income + 2.4 × ongoing cost`, in whole coins) and every
+> business gained tiered reputation-per-turn to feed the late-game income
+> multiplier. That raise was superseded by the five-turn payback rebalance
+> (MS-0MUQ50I1Y000B6L3), which re-derived `baseIncome` from a cost-graded
+> payback target instead.
 > Hand-held cards drain coins every turn, so winning runs are short (~10-turn)
 > sprints that bank 50–80 coins: measured Medium liquidity 5.76 (band widened
 > 0–3 → 0–6), win rates Easy 0.835 / Medium 0.595 / Hard 0.160 (all in the
@@ -222,9 +237,9 @@ The producer ruling (CG-0MSP26Q5N002EH8P) defines net liquidity as `finalCoins/t
 
 This is consistent with, and complementary to, the **gross** income band of 400–800 coins/turn (G3): gross income covers costs and events, while net liquidity measures the reserve at the end. The net band remains a **critical** guardrail (producer ruling) — codified in §3.3, `thresholds.ts`, and the guardrail tests — but since CG-0MSVYPEZ90085SHE the win-rate ladder is the primary balance gate and liquidity is a pacing signal.
 
-### 3.3 medianScore — 120–180 (greedy/Medium)
+### 3.3 medianScore — 2–200 (greedy/Medium)
 
-- The PRD's 120–180 warning band is retained and is now **enforced** in the guardrail suite (measured 153 — comfortably mid-band).
+- The band is enforced in the guardrail suite. The five-turn payback rebalance (MS-0MUQ50I1Y000B6L3) deliberately deflated scores to a measured median of **7.9** display (788 ×100), so the band was re-centred to 2–200 to catch a score collapse without re-litigating the intentional deflation.
 - The conflicting 20–65 band in `monte-carlo-balance.test.ts` was a **market-greedy** artifact, not a score target. Score bands are strategy-scoped: market-greedy (buys only the cheapest business) scores far below greedy, and its score distribution is **bimodal** (loss cluster ~10–60 vs win cluster ~140+), so its *median* jumps discontinuously once its win rate crosses 50% — 41.6 at 100 seeds, 91.6 at 200 seeds. Any fixed band for that metric is inherently flaky, so the assertion was removed and the greedy/Medium band became the single authoritative score guardrail.
 - Score as a **warning** (not hard gate) is correct: score is a pacing/health signal, while win rate and liquidity are the critical gates.
 

@@ -261,7 +261,8 @@ describe('Park reclassification to community-space (AC4)', () => {
     expect(park).toBeDefined();
 
     // These stats should remain unchanged from original business card
-    expect(park!.cost).toBe(300);
+    // (cost re-priced 300 -> 150 by MS-0MUR9IN7L0004TO5).
+    expect(park!.cost).toBe(150);
     expect(park!.baseIncome).toBe(0);
     // Synergy rebalanced Culture -> Entertainment (CG-0MT3IPFSF005KEFB):
     // Park's "leisure space" flavour now feeds the Entertainment type.
@@ -343,10 +344,11 @@ describe('Library card design and stats (AC5)', () => {
     expect(libraryUpgrade!.family).toBe('upgrade');
   });
 
-  it('Library should be a reputation asset: cost 7, no income, ongoing cost, +0.1 rep/turn', () => {
+  it('Library should be a reputation asset: cost 4, no income, ongoing cost, +0.1 rep/turn', () => {
     const library = communitySpaceDeck.find(c => c.name === 'Library');
     expect(library).toBeDefined();
-    expect(library!.cost).toBe(700);
+    // Cost re-priced 700 -> 400 by MS-0MUR9IN7L0004TO5.
+    expect(library!.cost).toBe(400);
     expect(library!.baseIncome).toBe(0);
     expect(library!.ongoingCost).toBe(25);
     expect(library!.reputationPerTurn).toBe(10);

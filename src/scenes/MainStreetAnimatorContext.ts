@@ -144,6 +144,30 @@ export interface MainStreetAnimatorContext {
     at: number,
     flightMs?: number,
   ): void;
+  /**
+   * Flies coin visuals point-to-point without touching a business grid
+   * (CG-0MUA1UH3A008M4BS — all Upcoming coin deltas: gain actor → HUD coin
+   * counter, loss HUD coin counter → actor).
+   */
+  flyCoinsToPoint(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void;
+  /**
+   * Flies reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS AC3 —
+   * reputation parity for Upcoming deltas: gain actor → HUD reputation
+   * counter, loss HUD counter → actor).
+   */
+  flyRepPips(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    amount: number,
+    at: number,
+    flightMs?: number,
+  ): void;
   applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void;
   collectIncomeGrids(slots: IncomePhaseSlot[], ctx: {
     reducedMotion: boolean;
@@ -187,6 +211,12 @@ export interface MainStreetAnimatorContext {
      */
     pendingDeltas?: PendingEndOfTurnDeltas;
   }): void;
+  /**
+   * Animates the resource-delta bubbles between the board-centre incident card
+   * and the HUD counters during the reveal hold. Gain = card → HUD, loss =
+   * HUD → card, for coins and reputation alike; both coordinate axes follow
+   * the sign (CG-0MUA1UH3A008M4BS).
+   */
   animateIncidentDeltaBubbles(params: {
     coinChange: number;
     repChange: number;
@@ -279,4 +309,85 @@ export interface MainStreetAnimatorContext {
     reducedMotion?: boolean,
     onComplete?: () => void,
   ): void;
+}
+
+// ── Upcoming / event delta routing (CG-0MUA1UH3A008M4BS) ────────────────
+// Pure routing decision shared by the income animator and its unit tests.
+// Lives in the type hub so helper modules can depend on it without importing
+// each other (preserving the hub-and-spoke import graph).
+
+/** A resolved flow for one coin/reputation delta (origin → target + kind). */
+export interface DeltaFlowRoute {
+  /**
+   * Flow origin, per the uniform incident-reveal sign rule: for a gain it is
+   * the actor (the affected business card when attached, otherwise the
+   * Upcoming panel); for a loss it is the HUD resource counter (coins or
+   * reputation).
+   */
+  from: { x: number; y: number };
+  /** Flow destination: the HUD resource counter for a gain, the actor for a loss. */
+  to: { x: number; y: number };
+  /**
+   * Whether the delta's actor is a business card (`true`) or the HUD totals
+   * (`false`). Attached deltas (a number `attachedSlotIndex`) use the business
+   * card as the actor; unattached deltas use the Upcoming panel.
+   */
+  attached: boolean;
+  /** Resource kind: coins or reputation (reputation parity — AC3). */
+  kind: 'coin' | 'rep';
+  /** Signed delta (negative = loss). */
+  delta: number;
+}
+
+/** Geometry the routing helper needs; supplied by the caller (scene layout). */
+export interface DeltaFlowGeometry {
+  /** Upcoming-panel source point (coin/rep originate here for gains). */
+  upcomingSource: { x: number; y: number };
+  /** Business-attached target: the affected slot's centre. */
+  slotCenter: { x: number; y: number };
+  /** HUD coin counter position. */
+  hudCoin: { x: number; y: number };
+  /** HUD reputation counter position. */
+  hudRep: { x: number; y: number };
+}
+
+/**
+ * Resolves the flow route (origin, destination, attachment, kind) for an
+ * Upcoming/event coin or reputation delta (CG-0MUA1UH3A008M4BS AC1–AC3).
+ *
+ * Routing is uniform for coins and reputation and reuses the incident-reveal
+ * sign rule (CG-0MU41XVNV002N2D9):
+ * - The **actor** is the affected business card when the delta is **attached**
+ *   (`attachedSlotIndex` is a number — source `EventCard.target` is
+ *   `SpecificSynergy` / `RandomBusiness`), otherwise the Upcoming panel.
+ * - The **resource** is the HUD coin counter for `coin` deltas and the HUD
+ *   reputation counter for `rep` deltas.
+ * - **Gain** (`delta >= 0`): actor → HUD resource (a card that gives flows to
+ *   the HUD). **Loss** (`delta < 0`): HUD resource → actor (a card that costs
+ *   draws from the HUD).
+ *
+ * This resolves the producer's manual review (2026-10-01): the flow must go
+ * "from the card to the HUD" for a gain and "from the HUD to the card" for a
+ * loss, for **both** coins and reputation. No Upcoming delta ever touches a
+ * business coin grid; the grid only ever accumulates credited income.
+ *
+ * Pure and exported for unit testing (AC1/AC2/AC3 assertions on flight
+ * start/end points and direction).
+ */
+export function resolveDeltaFlow(
+  delta: { delta: number; kind?: 'coin' | 'rep'; attachedSlotIndex?: number | null },
+  geometry: DeltaFlowGeometry,
+): DeltaFlowRoute {
+  const kind: 'coin' | 'rep' = delta.kind === 'rep' ? 'rep' : 'coin';
+  const attached = typeof delta.attachedSlotIndex === 'number';
+  const isGain = delta.delta >= 0;
+  const actor = attached ? geometry.slotCenter : geometry.upcomingSource;
+  const resource = kind === 'rep' ? geometry.hudRep : geometry.hudCoin;
+  return {
+    from: isGain ? actor : resource,
+    to: isGain ? resource : actor,
+    attached,
+    kind,
+    delta: delta.delta,
+  };
 }

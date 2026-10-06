@@ -1,6 +1,6 @@
 {
   "source": "Generated from MainStreetCards.ts and Tier 1 IDs from MainStreetTiers.ts",
-  "generatedAt": "2026-08-21T21:21:40.676Z",
+  "generatedAt": "2026-09-29T13:29:32.100Z",
   "baselineTier1CardIds": [
     "biz-bakery",
     "biz-bookshop",
@@ -12,6 +12,7 @@
     "evt-festival",
     "evt-rainy",
     "evt-tax",
+    "evt-tax-error",
     "staff-apprentice",
     "upg-bistro",
     "upg-garden",
@@ -24,6 +25,7 @@
       "biz-barbershop",
       "biz-boutique",
       "biz-cafe",
+      "biz-charity-shop",
       "biz-cinema",
       "biz-clinic",
       "biz-craft-shop",
@@ -106,7 +108,6 @@
       "evt-strike-service",
       "evt-summer-fest",
       "evt-supply-chain",
-      "evt-tax-error",
       "evt-tax-inquiry",
       "evt-tourist-bus",
       "evt-tourist-season",

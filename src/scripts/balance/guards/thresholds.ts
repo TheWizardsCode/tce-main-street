@@ -120,27 +120,33 @@ export interface GuardrailResult {
  *    to 9.08 on the canonical 200-seed set → band widened to 0–10, and the
  *    win-rate bands raised to match the measured values (Easy 98.5%,
  *    Medium 89.5%, Hard 65%). The win-rate ladder remains the primary gate.
+ *    MS-0MUQ50I1Y000B6L3 (5-turn payback rebalance, producer Q3 = C): the
+ *    deliberately tighter economy is the new design intent. Win-rate bands
+ *    are revised to the measured after-state (Easy 62, Medium 32.5, Hard 11)
+ *    and medianScore to 2–200 display points (measured 7.9); the primary
+ *    gate remains the monotone-decreasing win-rate ladder Easy ≥ Medium ≥
+ *    Hard. See docs/main-street/payback-rebalance-evidence.md.
  */
 export const GUARDRAIL_THRESHOLDS: Record<string, GuardrailThreshold> = {
   'winRate_greedy_medium': {
     metric: 'winRate_greedy_medium',
     label: 'Win Rate (Greedy, Medium)',
-    min: 45,
-    max: 95,
+    min: 20,
+    max: 85,
     severity: 'critical',
   },
   'winRate_greedy_easy': {
     metric: 'winRate_greedy_easy',
     label: 'Win Rate (Greedy, Easy)',
-    min: 60,
+    min: 45,
     max: 100,
     severity: 'warning',
   },
   'winRate_greedy_hard': {
     metric: 'winRate_greedy_hard',
     label: 'Win Rate (Greedy, Hard)',
-    min: 15,
-    max: 75,
+    min: 5,
+    max: 60,
     severity: 'warning',
   },
   'winRate_random_medium': {
@@ -160,8 +166,8 @@ export const GUARDRAIL_THRESHOLDS: Record<string, GuardrailThreshold> = {
   'medianScore_greedy_medium': {
     metric: 'medianScore_greedy_medium',
     label: 'Median Score (Greedy, Medium)',
-    min: 120,
-    max: 180,
+    min: 2,
+    max: 200,
     severity: 'warning',
   },
   'avgTurns_greedy_medium': {

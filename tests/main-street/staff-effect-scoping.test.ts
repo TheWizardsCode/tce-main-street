@@ -34,6 +34,7 @@ import {
   getEmployedSpecializationSkills,
   computeStaffSalaryCost,
   computeRefreshCostDiscount,
+  computeUpgradeCostDiscount,
 } from '../../src/MainStreetStaffBuffs';
 import { getSkill } from '../../src/MainStreetStaffSkills';
 
@@ -70,6 +71,12 @@ function placeBusinessAt(
 function staffWithSkills(name: string, skillIds: string[]): StaffCard {
   const base = createStaffDeck(1).find(c => c.id.startsWith('staff-assistant'))!;
   return { ...base, id: `${base.id}-${name}`, name, specializationSkillIds: [...skillIds] };
+}
+
+/** A staff member carrying a per-business upgrade discount (Financial Advisor). */
+function staffWithUpgradeDiscount(name: string, discount: number): StaffCard {
+  const base = createStaffDeck(1).find(c => c.id.startsWith('staff-assistant'))!;
+  return { ...base, id: `${base.id}-${name}`, name, upgradeCostDiscount: discount };
 }
 
 /** Registers the member on the business's employedStaff list (new source of truth). */
@@ -149,6 +156,28 @@ describe('AC4: no double-counting between per-business and street-wide', () => {
     expect(result.total).toBeCloseTo(4.4);
     const buffed = result.breakdown.filter((s: { total: number }) => s.total > 2.01);
     expect(buffed.length).toBe(1);
+  });
+});
+
+// ── Per-business upgrade cost discount (CG-0MTKMGL66004I0PC) ──
+
+describe('AC1 (upgrade cost): upgrade discount is per-business', () => {
+  it('discounts only the employing business and never leaks to another slot', () => {
+    const state = setupMainStreetGame({ seed: 'scope-upgrade-discount' });
+    placeBusinessAt(state, 0, ['Food'], 2);
+    placeBusinessAt(state, 2, ['Food'], 2);
+    employAt(state, 0, staffWithUpgradeDiscount('advisor', 100));
+
+    expect(computeUpgradeCostDiscount(state, 0)).toBe(100);
+    expect(computeUpgradeCostDiscount(state, 2)).toBe(0);
+  });
+
+  it('hand-slot staff (no employment) contribute no upgrade discount', () => {
+    const state = setupMainStreetGame({ seed: 'scope-upgrade-hand' });
+    placeBusinessAt(state, 0, ['Food'], 2);
+    state.staffCards.push(staffWithUpgradeDiscount('advisor', 100)); // hand-slot only
+
+    expect(computeUpgradeCostDiscount(state, 0)).toBe(0);
   });
 });
 

@@ -87,6 +87,7 @@ import { deriveUnlockedCardIds } from './MainStreetTiers';
 import { createSeededRng } from '@core-engine';
 import { createEconomyLedger } from '@rule-engine/EconomyLedger';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
+import { attachMainStreetAchievements } from './MainStreetAchievements';
 import { getBaseTypeId } from './MainStreetCards';
 import { UNIFIED_TUTORIAL_STEPS, type TutorialControllerState } from './TutorialFlow';
 
@@ -415,6 +416,9 @@ export function createTutorialScenario(
     challenge: ch,
     completed: false,
   }));
+
+  // Attach the persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP).
+  attachMainStreetAchievements(state);
 
   return state;
 }

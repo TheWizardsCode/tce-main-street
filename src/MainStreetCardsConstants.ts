@@ -111,7 +111,7 @@ export const MARKET_STAFF_MAX = 1;
 export const INCIDENT_QUEUE_SIZE = 2;
 
 /**
- * Fixed coin cost to re-roll the single-row market (CG-0MSTOATDT009BRX2),
+ * Fixed coin cost to research (refresh) the single-row market (CG-0MSTOATDT009BRX2),
  * replacing the legacy per-row refresh costs (€200 each).
  * The Accountant's `refreshCostDiscount` (Group F) applies to this cost.
  */

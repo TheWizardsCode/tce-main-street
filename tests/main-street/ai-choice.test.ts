@@ -48,11 +48,11 @@ import {
 // ── Synthetic chain templates (registry for Hard lookups) ──
 
 const CHAIN_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-esc-bad,Bad Escalation,0,,,,,,,,,1,Incident,Lose 1000 coins,All,,-1000,0,,,,,,,,,,,,,,,,,,,
-event,evt-esc-mid,Mid Escalation,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,,,,
-event,evt-esc-small,Small Escalation,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,,
-event,evt-esc-pos,Positive Escalation,0,,,,,,,,,1,Incident,Gain 300 coins,All,,300,0,,,,,,,,,,,,,,,,,,,`;
+  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-esc-bad,Bad Escalation,0,,,,,,,,,1,Incident,Lose 1000 coins,All,,-1000,0,,,,,,,,,,,,,,,,,,,,
+event,evt-esc-mid,Mid Escalation,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,,,,,
+event,evt-esc-small,Small Escalation,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,,,
+event,evt-esc-pos,Positive Escalation,0,,,,,,,,,1,Incident,Gain 300 coins,All,,300,0,,,,,,,,,,,,,,,,,,,,`;
 
 // ── Helpers ─────────────────────────────────────────────────
 

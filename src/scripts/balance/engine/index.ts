@@ -16,6 +16,7 @@ export {
   computePickRate,
   computeWinRateDelta,
   computeCostToIncomeRatio,
+  computePayback,
   computeSynergyUtilization,
   computeUpgradeAdoption,
   computeEventImpactScore,
@@ -25,6 +26,8 @@ export type {
   PickRateResult,
   WinRateDeltaResult,
   CostToIncomeInput,
+  PaybackInput,
+  PaybackResult,
   SynergyUtilizationResult,
   UpgradeAdoptionResult,
   EventImpactResult,
@@ -53,6 +56,23 @@ export type {
   TrapCardPrevalenceResult,
   CardMetricSummary,
 } from './global-metrics';
+
+export {
+  KNOWN_STORYLINE_IDS,
+  computeStorylineFireFrequency,
+  computeChainDepthStats,
+  computeCycleStats,
+  computeChoiceWinRateDelta,
+} from './storyline-metrics';
+export type {
+  StorylineFireStat,
+  StorylineFireFrequencyResult,
+  StorylineChainDepthStat,
+  ChainDepthStatsResult,
+  StorylineCycleStat,
+  CycleStatsResult,
+  ChoiceWinRateDeltaResult,
+} from './storyline-metrics';
 
 export { compareMetrics } from './comparison';
 export type {

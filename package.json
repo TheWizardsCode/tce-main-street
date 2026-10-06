@@ -1,6 +1,6 @@
 {
   "name": "tce-main-street",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "description": "Single-game Tableau Card Engine launcher for \"main-street\". Composes the engine checkout at ./core and builds web + Electron renderer bundles.",
   "type": "module",
@@ -10,6 +10,9 @@
     "build:electron": "tsc --noEmit && vite build --mode electron",
     "preview": "vite preview --host",
     "balance-cards": "tsx src/scripts/run-balance-cards.ts",
+    "validate:storylines": "vite-node src/scripts/validate-storylines-cli.ts",
+    "storylines:graph": "vite-node src/scripts/storyline-graph-cli.ts",
+    "storylines:author": "vite-node src/scripts/storyline-author-cli.ts",
     "test": "vitest run --project unit",
     "test:smoke": "bash scripts/run-smoke-tests.sh",
     "test:dev": "bash scripts/run-dev-tests.sh",
@@ -34,14 +37,18 @@
     "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core"
   },
   "dependencies": {
-    "phaser": "4.0.0-rc.7"
+    "phaser": "4.0.0-rc.7",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
+    "@types/semver": "^7.8.0",
     "@typescript-eslint/eslint-plugin": "^8.58.2",
     "@typescript-eslint/parser": "^8.58.2",
     "@vitest/browser": "^3.2.4",
     "ajv": "^8.12.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "playwright": "^1.58.2",
@@ -51,9 +58,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0",
-    "vitest": "^3.0.0",
-    "electron": "^43.3.0",
-    "electron-builder": "^26.15.3"
+    "vitest": "^3.0.0"
   },
   "license": "MIT"
 }

@@ -9,11 +9,12 @@ describe('GUARDRAIL_THRESHOLDS', () => {
     const t = GUARDRAIL_THRESHOLDS['winRate_greedy_medium'];
     expect(t).toBeDefined();
     expect(t.metric).toBe('winRate_greedy_medium');
-    expect(t.min).toBe(45);
-    // CG-0MTC31LN3000UHDY: max widened 75 → 95 — hand-held businesses no
-    // longer incur ongoing costs, lifting the greedy AI's Medium win rate to
-    // ~89.5% on the canonical 200-seed set.
-    expect(t.max).toBe(95);
+    expect(t.min).toBe(20);
+    // MS-0MUQ50I1Y000B6L3 (5-turn payback rebalance, Q3 = C): the tighter
+    // economy deflates the greedy Medium win rate to 32.5% on the canonical
+    // 200-seed set; band revised 45-95 → 20-85. The win-rate ladder
+    // (Easy ≥ Medium ≥ Hard) remains the primary balance gate.
+    expect(t.max).toBe(85);
     expect(t.severity).toBe('critical');
   });
 
@@ -93,7 +94,7 @@ describe('evaluateGuardrails', () => {
     const metrics: Record<string, number> = {
       winRate_greedy_medium: 55,
       winRate_greedy_easy: 72,
-      winRate_greedy_hard: 10, // Below warning range (15-40)
+      winRate_greedy_hard: 3, // Below warning range (5-60)
       winRate_random_medium: 12,
       avgCoinsPerTurn_greedy_medium: 1.5,
       medianScore_greedy_medium: 150,
@@ -104,7 +105,7 @@ describe('evaluateGuardrails', () => {
       giniCoefficient_greedy_medium: 0.45,
     };
     const result = evaluateGuardrails(metrics);
-    // winRate_greedy_hard is warning severity below 15%
+    // winRate_greedy_hard is warning severity below 5%
     // That should result in flagged=1 and overall=flag
     expect(result.flagged).toBeGreaterThanOrEqual(1);
     expect(result.failed).toBe(0);
@@ -118,7 +119,7 @@ describe('evaluateGuardrails', () => {
 
   it('fails critical thresholds outside range', () => {
     const metrics: Record<string, number> = {
-      winRate_greedy_medium: 97, // Above critical range (45-95)
+      winRate_greedy_medium: 97, // Above critical range (20-85)
       winRate_greedy_easy: 72,
       winRate_greedy_hard: 28,
       winRate_random_medium: 12,
@@ -150,8 +151,8 @@ describe('evaluateGuardrails', () => {
 
   it('handles mixed pass/flag/fail correctly', () => {
     const metrics: Record<string, number> = {
-      winRate_greedy_medium: 97, // FAIL: critical, above 95 (CG-0MTC31LN3000UHDY re-baseline)
-      winRate_greedy_hard: 10, // FLAG: warning, below 15
+      winRate_greedy_medium: 97, // FAIL: critical, above 85 (MS-0MUQ50I1Y000B6L3 re-baseline)
+      winRate_greedy_hard: 3, // FLAG: warning, below 5
       winRate_greedy_easy: 72,
       winRate_random_medium: 12,
       avgCoinsPerTurn_greedy_medium: 1.5,

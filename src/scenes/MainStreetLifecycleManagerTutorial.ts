@@ -13,8 +13,36 @@ import { INVALID_ACTION_MESSAGE, completeCurrentStep, exitTutorial, getCurrentSt
 import type { TutorialActionType, TutorialControllerState } from '../TutorialFlow';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
+import type { MainStreetNewGameOverlay, NewGameSelectionFlagHolder } from './MainStreetNewGameOverlay';
 
 export function showTutorialOfferOrDeferredBanner(lmCtx: MainStreetLifecycleManagerContext, 
+    tutorialOpts: TutorialVisibilityOptions,
+    legacySeen?: boolean,
+  ): boolean {
+
+    const s = lmCtx.scene;
+    // Pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1): the first
+    // blocking boot modal, mirroring the tutorial-offer pattern. Present it
+    // once per boot (not in replay) before the tutorial offer / deferred
+    // banner; on confirm, apply the selection and continue the boot flow.
+    const newGame = (s as { newGameOverlay?: MainStreetNewGameOverlay }).newGameOverlay;
+    const flagHolder = s as NewGameSelectionFlagHolder;
+    if (newGame && !s.replayMode && !flagHolder.newGameSelectionMade) {
+      flagHolder.newGameSelectionMade = true;
+      newGame.show({
+        onConfirm: (selection) => {
+          lmCtx.applyNewGameSelection(selection);
+          showTutorialOfferOnly(lmCtx, tutorialOpts, legacySeen);
+        },
+      });
+      return true;
+    }
+    return showTutorialOfferOnly(lmCtx, tutorialOpts, legacySeen);
+  
+}
+
+/** Shows the tutorial-offer modal, or plays the deferred banner when none. */
+function showTutorialOfferOnly(lmCtx: MainStreetLifecycleManagerContext, 
     tutorialOpts: TutorialVisibilityOptions,
     legacySeen?: boolean,
   ): boolean {

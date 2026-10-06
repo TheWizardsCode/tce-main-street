@@ -85,6 +85,34 @@ The banking-aware variant is guarded like any other strategy, **additively** —
 
 - **Bank consumption fix (CG-0MTCP7F9S009HARC):** This behaviour depends on the bank consumption fix that decrements `bankedActions` on every `consumeAction` call, so the hoarded reserve actually depletes as the AI spends.
 
+## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
+
+In human-vs-AI competitive play the AI seats are removed from play when they can
+no longer sustain themselves. At the shared-day closing, the engine evaluates
+each seat's **own** wallet (`PlayerRecord.coins` / `.reputation`) — not the
+shared `resourceBank`, which is only a scratch mirror of the last-acting seat.
+An AI seat with `coins < 0` (bankruptcy, any turn) or `reputation <= 0` (after
+turn 1) is marked `eliminated` and the game does **not** end.
+
+Elimination effects on the AI:
+
+- The seat is **skipped in turn rotation** and in AI action enumeration
+  (`driveAiSeatsUntilClosing`, `getNextActivePlayerId`, `endCompetitiveMarketTurn`)
+  — it takes no further MarketPhase.
+- All of its `ownerTaggedGrid` businesses/community spaces are **closed**: the
+  card is pushed to the discard pile, the slot is emptied, ownership is cleared
+  and neighbours are recalculated, so the cancelled cards contribute no income,
+  reputation or synergy. The closure is a direct grid/discard operation with no
+  action cost and no wallet change.
+- `resolveSeatStrategy` / `driveActiveAiSeat` already guard on the seat, so no
+  AI strategy change is required for an eliminated seat — it simply never acts.
+- When the **last** AI seat is eliminated the human wins by last standing and is
+  offered an explicit **continue solo** opt-in (see
+  `docs/main-street/core-rules-and-mechanics.md`, Win Conditions).
+
+Only the AI elimination path is special-cased; a human seat's own collapse keeps
+the existing loss semantics. Single-player (`N = 1`) is unaffected.
+
 ## Expected Output
 
 A formal GDD section covering The Build's AI design with enough detail for an engineer to implement the strategy classes using the engine's existing AI abstractions.

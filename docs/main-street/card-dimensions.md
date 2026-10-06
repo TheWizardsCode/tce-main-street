@@ -69,11 +69,11 @@ img.setOrigin(0.5, 0.5);
 
 Keep this document in sync with `docs/main-street/prd-milestone-*` and `public/assets/CREDITS.md` when canonical dimensions change.
 
-## 64×64 art zone (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R)
+## 64×64 art zone (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R, CG-0MUBVL4H80061B1E)
 
 Every Main Street card has a square art zone at `(8, 8)` sized `64×64 px`
 (the `GRAPHIC_*` constants in `MainStreetCardSvgGenerator.ts`). The zone is
-filled with the card's art — `example-games/main-street/sprites/<Name>_1024_x_1024.png`
+filled with the card's art — `src/sprites/<Name>_1024_x_1024.png`
 — embedded as an **inline base64 `data:` URI** (an `<image>` clipped to the
 rounded 64×64 corners). Inline embedding is required because the SVG is
 rasterised from a `data:image/svg+xml` URI, where external image references
@@ -85,15 +85,15 @@ rasterises the card SVG at up to 4× quality scale (`rasteriseSvgToTexture`,
 *device* pixels. The embedded bitmap is therefore **256×256 WebP**, filling
 the zone at 1:1; a 64×64 bitmap would be stretched 4× and appeared pixelated.
 
-- **Source art**: `example-games/main-street/sprites/<Name>_1024_x_1024.png`
+- **Source art**: `src/sprites/<Name>_1024_x_1024.png`
   (project-generated from each card's `art_notes`). The 1024×1024 files are
 the source of truth; the `_64_x_64.png` files are superseded legacy thumbnails.
-- **Art map**: `node scripts/generate-main-street-card-art.mjs` downscales each
-  1024×1024 source to 256×256 and re-encodes it as lossy WebP (quality 90),
-  writing the shared `example-games/main-street/card-art-map.json` (base64),
-  consumed by both `MainStreetCardArt.ts` (runtime) and
-  `scripts/generate-main-street-card-svgs.mjs` (static SVGs). Cards without a
-  dedicated sprite use the `Fallback` art via `resolveCardArtName()`.
+- **Art map**: `node src/scripts/generate-main-street-card-art.mjs` downscales
+  each 1024×1024 source to 256×256 and re-encodes it as lossy WebP (quality
+  90), writing the shared `src/card-art-map.json` (base64), consumed by both
+  `src/MainStreetCardArt.ts` (runtime) and
+  `src/scripts/generate-main-street-card-svgs.mjs` (static SVGs). Cards without
+  a dedicated sprite use the `Fallback` art via `resolveCardArtName()`.
 - **Why WebP**: a 256-colour indexed PNG at 256×256 costs ~5.3 MB of base64
   across all 63 sprites (more than the whole app bundle); lossy WebP costs
   ~0.6 MB — still far less than the pixels it carries — and is decoded by all
@@ -101,6 +101,30 @@ the source of truth; the `_64_x_64.png` files are superseded legacy thumbnails.
 - **Hand overlap / stacking**: the logo is top-heavy inside the zone (top
   40 %), so it stays recognisable at ~23 px visible height when cards stack
   and at ≥44 px under ~20 px hand overlap.
+
+### Card-name → art mapping rules (CG-0MUBVL4H80061B1E)
+
+The map is generated from `card-data.csv`; the resolver stays name-keyed and
+all indirection lives in the generated `aliases` table. A content author must
+give **every** unique card name a mapping:
+
+| Family | Rule | Example |
+|--------|------|---------|
+| `business`, `community-space`, `staff` | Direct name match | `Bakery` → `Bakery` |
+| `upgrade` | `targetBusiness` art (duplicated under the upgrade's `newDisplayName`) | `Upgrade to Patisserie` → `Bakery` |
+| `event` | Its exact-name sprite when one exists, otherwise the `(trigger, targetSynergy)` category sprite `<trigger>__<synergy>` | `Tax Audit` → `Tax Audit`; `Rainy Day` → `Incident__Food` |
+| any | Pre-existing spelling alias is preserved | `Labor Shortage` → `Labour Shortage` |
+
+Genuinely-unknown/future cards still fall back to `Fallback` via
+`resolveCardArtName()`, and the `Fallback` sprite stays in the map.
+
+**Pending producer art.** The producer supplies the remaining source sprites
+(see [MS-0MTSAWSME004BH6S](https://github.com/TheWizardsCode/tce-main-street/issues)
+— "Add images for all cards"); until they land, cards whose mapping target
+has no sprite render `Fallback`. Running the generator prints the coverage and
+the pending target list, and the `card-art.csv` drift guard in
+`tests/main-street/card-art.test.ts` locks the pending set so a new card can
+never silently reintroduce generic art (the set may only shrink).
 
 ## Synergy icons
 

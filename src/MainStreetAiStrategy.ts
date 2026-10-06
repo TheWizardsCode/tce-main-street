@@ -20,6 +20,7 @@ import type { AiStrategyBase } from '@ai';
 import { AiPlayer as AiPlayerBase, pickRandom, pickBest } from '@ai';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
+import { computePurchaseCostDiscount, computeEffectiveBusinessPurchaseCost } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
 import {
   executeWeekStart,
@@ -44,6 +45,8 @@ import {
   canPurchaseStaff,
   canAddToHand,
   getEmptySlots,
+  effectiveUpgradeCost,
+  bestEffectiveUpgradeCost,
 } from './MainStreetMarket';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, StaffCard, SynergyType } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
@@ -146,7 +149,7 @@ export const BANKING_DIFFICULTY_PROFILES: Record<DifficultyName, BankingDifficul
 const PIPELINE_TARGET_WEIGHT = 0.5;
 
 /** A candidate banking target: a valuable card the AI cannot yet afford. */
-interface BankTarget {
+export interface BankTarget {
   /** Net expected value of owning the card (income * horizon - cost). */
   score: number;
   /** The card's cost (> current coins by construction). */
@@ -181,7 +184,7 @@ function bestPlacementSynergy(
  * or in the market row (AC3(a)). Returns `null` when every visible card is
  * affordable or has no positive value.
  */
-function bestVisibleBankTarget(
+export function bestVisibleBankTarget(
   state: MainStreetState,
   coins: number,
   horizon: number,
@@ -195,20 +198,25 @@ function bestVisibleBankTarget(
   };
 
   // Hand: business / community-space cards whose play-from-hand cost exceeds coins
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): the AI uses
+  // the effective (discounted) cost for affordability checks.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
   for (const card of hand) {
     const c = card as BusinessCard & { cost: number; family: string };
     if (c.family !== 'business' && c.family !== 'community-space') continue;
-    if (c.cost <= coins) continue; // already affordable — not a banking target
+    const effectiveCost = Math.max(0, c.cost - purchaseDiscount);
+    if (effectiveCost <= coins) continue; // already affordable — not a banking target
     const synergy = bestPlacementSynergy(state, c);
-    consider((c.baseIncome + synergy) * horizon - c.cost, c.cost);
+    consider((c.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
   }
 
-  // Hand: upgrade cards whose cost exceeds coins
+  // Hand: upgrade cards whose effective cost exceeds coins
   for (const card of hand) {
     const c = card as UpgradeCard & { cost: number; family: string };
     if (c.family !== 'upgrade') continue;
-    if (c.cost <= coins) continue;
-    consider(c.incomeBonus * horizon - c.cost, c.cost);
+    const cost = bestEffectiveUpgradeCost(state, c as UpgradeCard);
+    if (cost <= coins) continue;
+    consider(c.incomeBonus * horizon - cost, cost);
   }
 
   // Hand: Investment events whose cost exceeds coins
@@ -222,20 +230,23 @@ function bestVisibleBankTarget(
   // Market: business / community-space cards that are unaffordable and placeable
   for (const card of state.market.cards) {
     if (card.family !== 'business' && card.family !== 'community-space') continue;
-    if (card.cost <= coins) continue;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) continue;
     if (emptyCount === 0) continue;
     const biz = card as BusinessCard;
     const synergy = bestPlacementSynergy(state, biz);
-    consider((biz.baseIncome + synergy) * horizon - biz.cost, biz.cost);
+    consider((biz.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
   }
 
   // Market: upgrade cards that are unaffordable. Even without an immediate
-  // target the upgrade may become valid later, so it is still scored.
+  // target the upgrade may become valid later, so it is still scored. Uses
+  // the best effective (discounted) cost across eligible targets.
   for (const card of state.market.cards) {
     if (card.family !== 'upgrade') continue;
-    if (card.cost <= coins) continue;
     const upg = card as UpgradeCard;
-    consider(upg.incomeBonus * horizon - upg.cost, upg.cost);
+    const cost = bestEffectiveUpgradeCost(state, upg);
+    if (cost <= coins) continue;
+    consider(upg.incomeBonus * horizon - cost, cost);
   }
 
   // Market: Investment events that are unaffordable
@@ -268,6 +279,9 @@ function bestPipelineBankTarget(
   if (depth <= 0) return null;
 
   const emptyCount = state.streetGrid.filter(s => s === null).length;
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): the AI uses
+  // the effective (discounted) cost for affordability checks.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
   let best: BankTarget | null = null;
 
   const consider = (score: number, cost: number, weight: number): void => {
@@ -286,17 +300,19 @@ function bestPipelineBankTarget(
   };
 
   eachTopCard(state.decks?.business, (card, weight) => {
-    if (card.cost <= coins) return;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) return;
     if (emptyCount === 0) return;
     const synergy = bestPlacementSynergy(state, card);
-    consider((card.baseIncome + synergy) * horizon - card.cost, card.cost, weight);
+    consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost, weight);
   });
 
   eachTopCard(state.decks?.communitySpace, (card, weight) => {
-    if (card.cost <= coins) return;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+    if (effectiveCost <= coins) return;
     if (emptyCount === 0) return;
     const synergy = bestPlacementSynergy(state, card);
-    consider((card.baseIncome + synergy) * horizon - card.cost, card.cost, weight);
+    consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost, weight);
   });
 
   eachTopCard(state.decks?.upgrade, (card, weight) => {
@@ -483,11 +499,12 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
     c => c.family === 'upgrade',
   ) as UpgradeCard[];
   for (const card of upgradeCards) {
-    const canBuy = canPurchaseUpgrade(state, card.id);
-    if (!canBuy.legal) continue;
-
     // Generate one action per valid target slot so the AI can choose
     // which slot to upgrade (important for branching upgrade paths).
+    // Affordability is checked per slot against the effective (discounted)
+    // upgrade cost, so a Financial Advisor employed at one target can make
+    // the upgrade affordable there even if it is unaffordable elsewhere
+    // (CG-0MTKMGL66004I0PC).
     const requiredLevel = card.requiredLevel ?? 0;
     for (let i = 0; i < state.streetGrid.length; i++) {
       const biz = state.streetGrid[i];
@@ -495,7 +512,8 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
         biz !== null &&
         biz.name === card.targetBusiness &&
         biz.level === requiredLevel &&
-        biz.level < biz.maxLevel
+        biz.level < biz.maxLevel &&
+        canPurchaseUpgrade(state, card.id, i).legal
       ) {
         actions.push({ type: 'buy-upgrade', cardId: card.id, targetSlot: i });
       }
@@ -550,7 +568,9 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   // ── play-*-from-hand (cost-at-play) ───────────────────────
   hand.forEach((card, handIndex) => {
     if (card.family === 'business' || card.family === 'community-space') {
-      if (state.resourceBank.coins < card.cost) return;
+      // Delivery Driver purchase discount (CG-0MUMCVH3N007KT1M): gate on the
+      // effective cost so a discounted-but-not-listed price is still offered.
+      if (state.resourceBank.coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) return;
       for (const slotIndex of emptySlots) {
         actions.push({ type: 'play-business-from-hand', handIndex, slotIndex });
       }
@@ -618,7 +638,16 @@ function getCheapestMarketCost(state: MainStreetState): number {
   let cheapest = Infinity;
   for (const card of marketCards) {
     if (typeof card !== 'object' || card === null) continue;
-    const cost = (card as { cost?: number }).cost;
+    let cost = (card as { cost?: number }).cost;
+    // Business/community-space purchases benefit from the street-wide
+    // Delivery Driver discount (CG-0MUMCVH3N007KT1M), so a stalled-turn check
+    // must compare against the effective price.
+    if (
+      (card.family === 'business' || card.family === 'community-space') &&
+      typeof cost === 'number'
+    ) {
+      cost = computeEffectiveBusinessPurchaseCost(state, cost);
+    }
     if (typeof cost === 'number' && cost >= 0 && cost < cheapest) cheapest = cost;
   }
   return cheapest;
@@ -661,7 +690,6 @@ function sameWeekCompositeUpgradeActions(state: MainStreetState): PlayerAction[]
     if (card.family !== 'upgrade') return;
     if (!isFreeSameWeekUpgradePlay(state, handIndex)) return;
     const upgrade = card as UpgradeCard;
-    if (state.resourceBank.coins < upgrade.cost) return;
     const requiredLevel = upgrade.requiredLevel ?? 0;
     for (let i = 0; i < state.streetGrid.length; i++) {
       const biz = state.streetGrid[i];
@@ -669,7 +697,8 @@ function sameWeekCompositeUpgradeActions(state: MainStreetState): PlayerAction[]
         biz !== null &&
         biz.name === upgrade.targetBusiness &&
         biz.level === requiredLevel &&
-        biz.level < biz.maxLevel
+        biz.level < biz.maxLevel &&
+        state.resourceBank.coins >= effectiveUpgradeCost(state, upgrade, i)
       ) {
         actions.push({ type: 'play-upgrade-from-hand', handIndex, targetSlot: i });
       }
@@ -1140,7 +1169,13 @@ function scoreUpgradeAction(
   if (!card) return 0;
 
   const horizon = aiPlanningHorizon(state);
-  return card.incomeBonus * horizon - card.cost;
+  // Use the effective (discounted) cost so the AI values an upgrade at the
+  // price it will actually pay at the chosen target (CG-0MTKMGL66004I0PC).
+  const cost =
+    action.targetSlot !== undefined
+      ? effectiveUpgradeCost(state, card, action.targetSlot)
+      : bestEffectiveUpgradeCost(state, card);
+  return card.incomeBonus * horizon - cost;
 }
 
 /**
@@ -1172,7 +1207,7 @@ function scoreBusinessAction(
   );
 
   const horizon = aiPlanningHorizon(state);
-  return (card.baseIncome + projectedSynergyBonus) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 /**
@@ -1223,7 +1258,7 @@ function scorePlayBusinessFromHandAction(
     state.config.synergyBonusPerNeighbor,
   );
   const horizon = aiPlanningHorizon(state);
-  return (card.baseIncome + projectedSynergyBonus) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 /**
@@ -1237,7 +1272,12 @@ function scorePlayUpgradeFromHandAction(
   const card = (state.hand ?? [])[action.handIndex] as UpgradeCard | undefined;
   if (!card) return 0;
   const horizon = aiPlanningHorizon(state);
-  return card.incomeBonus * horizon - card.cost;
+  // Effective (discounted) cost for the chosen target (CG-0MTKMGL66004I0PC).
+  const cost =
+    action.targetSlot !== undefined
+      ? effectiveUpgradeCost(state, card, action.targetSlot)
+      : bestEffectiveUpgradeCost(state, card);
+  return card.incomeBonus * horizon - cost;
 }
 
 /**
@@ -1418,6 +1458,27 @@ export function getCompetitivePlayer(
   if (!state.players || state.players.length === 0) return undefined;
   const id = playerId ?? state.activePlayerId ?? 0;
   return state.players[id];
+}
+
+/**
+ * Resolves the decision-policy difficulty for a competitive seat
+ * (MS-0MUTU8ICD002I1MK).
+ *
+ * AI seats use their own per-seat `aiDifficulty`; producer decision Q3
+ * (epic MS-0MUTTVR5K002ZDUP) scopes this to the opponent's decision policy
+ * only. Human seats, single-player states and legacy saves without a per-seat
+ * difficulty fall back to the shared `state.config.difficultyName`.
+ *
+ * @param state    Current game state (read-only by convention).
+ * @param playerId Owner index; defaults to the active player.
+ * @returns Difficulty gating the acting seat's AI policy.
+ */
+export function resolveSeatDifficulty(
+  state: MainStreetState,
+  playerId?: number,
+): DifficultyName {
+  const player = getCompetitivePlayer(state, playerId);
+  return player?.aiDifficulty ?? state.config.difficultyName;
 }
 
 /**
@@ -1611,7 +1672,7 @@ export function enumerateCompetitiveLegalActions(
   // ── buy-business (direct buy-and-place) ───────────────────
   for (const card of state.market.cards) {
     if (card.family !== 'business' && card.family !== 'community-space') continue;
-    if (coins < card.cost) continue;
+    if (coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) continue;
     for (const slotIndex of emptySlots) {
       actions.push({ type: 'buy-business', cardId: card.id, slotIndex });
     }
@@ -1652,7 +1713,7 @@ export function enumerateCompetitiveLegalActions(
   // ── play-*-from-hand (cost-at-play) ───────────────────────
   hand.forEach((card, handIndex) => {
     if (card.family === 'business' || card.family === 'community-space') {
-      if (coins < card.cost) return;
+      if (coins < computeEffectiveBusinessPurchaseCost(state, card.cost)) return;
       for (const slotIndex of emptySlots) {
         actions.push({ type: 'play-business-from-hand', handIndex, slotIndex });
       }
@@ -1753,7 +1814,7 @@ export function scoreCompetitiveAction(
   switch (action.type) {
     case 'buy-upgrade':
     case 'buy-and-place-upgrade':
-      return competitiveUpgradeScore(state, action.cardId, horizon);
+      return competitiveUpgradeScore(state, action.cardId, horizon, (action as { targetSlot?: number }).targetSlot);
     case 'buy-business':
     case 'buy-and-place':
       return competitiveBusinessScore(state, action.cardId, action.slotIndex, horizon);
@@ -1762,7 +1823,7 @@ export function scoreCompetitiveAction(
     case 'play-business-from-hand':
       return competitiveHandBusinessScore(state, player, action.handIndex, action.slotIndex, horizon);
     case 'play-upgrade-from-hand':
-      return competitiveHandUpgradeScore(player, action.handIndex, horizon);
+      return competitiveHandUpgradeScore(state, player, action.handIndex, horizon, action.targetSlot);
     case 'play-event-from-hand':
     case 'play-event':
       return competitiveHandEventScore(state, player, action.handIndex, pid);
@@ -1819,12 +1880,19 @@ function competitiveUpgradeScore(
   state: MainStreetState,
   cardId: string,
   horizon: number,
+  targetSlot?: number,
 ): number {
   const card = state.market.cards.find(
     c => c.id === cardId && c.family === 'upgrade',
   ) as UpgradeCard | undefined;
   if (!card) return 0;
-  return card.incomeBonus * horizon - card.cost;
+  // Effective (discounted) cost — per target slot when known, otherwise the
+  // best eligible target (CG-0MTKMGL66004I0PC).
+  const cost =
+    targetSlot !== undefined
+      ? effectiveUpgradeCost(state, card, targetSlot)
+      : bestEffectiveUpgradeCost(state, card);
+  return card.incomeBonus * horizon - cost;
 }
 
 function competitiveBusinessScore(
@@ -1842,7 +1910,7 @@ function competitiveBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 function competitiveMarketEventScore(
@@ -1873,17 +1941,25 @@ function competitiveHandBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - card.cost;
+  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
 function competitiveHandUpgradeScore(
+  state: MainStreetState,
   player: PlayerRecord,
   handIndex: number,
   horizon: number,
+  targetSlot?: number,
 ): number {
   const card = (player.hand ?? [])[handIndex] as UpgradeCard | undefined;
   if (!card) return 0;
-  return card.incomeBonus * horizon - card.cost;
+  // Effective (discounted) cost — per target slot when known, otherwise the
+  // best eligible target (CG-0MTKMGL66004I0PC).
+  const cost =
+    targetSlot !== undefined
+      ? effectiveUpgradeCost(state, card, targetSlot)
+      : bestEffectiveUpgradeCost(state, card);
+  return card.incomeBonus * horizon - cost;
 }
 
 function competitiveHandEventScore(
@@ -1931,6 +2007,12 @@ function competitiveFavourScore(
  * against the correct owner; `restoreCompetitiveSeat` writes the shared
  * wallet back into the record afterwards. No-op in single-player states.
  *
+ * The per-seat `actionBudget` is the *base* daily budget (base + staff
+ * actions); the shared `state.bankedActions` pool is added on top here so
+ * every seat draws from the same, currently-remaining bank
+ * (MS-0MUVUPWHD0032CU4). `restoreCompetitiveSeat` subtracts it again so the
+ * base field is never polluted by the bank across bind/restore cycles.
+ *
  * @param state    Current game state (mutated in-place).
  * @param playerId Owner index; defaults to the active player.
  */
@@ -1941,7 +2023,7 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
   state.resourceBank.reputation = player.reputation;
   state.hand = player.hand;
   state.staffCards = player.staffCards;
-  state.actionsRemaining = player.actionBudget;
+  state.actionsRemaining = player.actionBudget + (state.bankedActions ?? 0);
   syncResourceBankToLedger(state);
 }
 
@@ -1960,7 +2042,9 @@ export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number
   player.reputation = state.resourceBank.reputation;
   player.hand = state.hand;
   player.staffCards = state.staffCards;
-  player.actionBudget = state.actionsRemaining;
+  // Strip the shared banked pool back out so `actionBudget` stays the seat's
+  // base daily budget; the bank is re-added by the next `bindCompetitiveSeat`.
+  player.actionBudget = state.actionsRemaining - (state.bankedActions ?? 0);
 }
 
 // ── CompetitiveGreedyStrategy ───────────────────────────────

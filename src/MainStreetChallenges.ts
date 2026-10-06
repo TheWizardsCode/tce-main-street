@@ -11,6 +11,7 @@
  *   - resource:     Rewards accumulating coins or reputation
  *   - upgrade:      Rewards upgrading businesses
  *   - cross-cutting: Rewards diversity or multi-category achievements
+ *   - economic:     Rewards buying, selling and space-management decisions
  *
  * ## Engine Component Adapter (CG-0MMJ8S9850MV4L0A)
  *
@@ -50,7 +51,27 @@ export type ChallengeCategory =
   | 'placement'
   | 'resource'
   | 'upgrade'
-  | 'cross-cutting';
+  | 'cross-cutting'
+  | 'economic';
+
+/**
+ * Live progress toward a challenge's completion condition. `current` is the
+ * player's progress so far and `target` the value required to complete it.
+ */
+export interface ChallengeProgress {
+  readonly current: number;
+  readonly target: number;
+}
+
+/**
+ * Optional progress provider for a challenge (MS-0MUI7ZJK8003HY9J).
+ *
+ * When present, the challenge HUD renders `<current>/<target>` on the
+ * challenge row so the player can see how close they are. Challenges without
+ * a progress provider render exactly as before.
+ */
+export type ChallengeProgressProvider =
+  (state: MainStreetState) => ChallengeProgress;
 
 /**
  * A Main Street challenge template: a meta-goal that can be selected for a run.
@@ -62,6 +83,11 @@ export type ChallengeCategory =
 export interface Challenge extends ChallengeDefinition<MainStreetState> {
   /** Category narrowed to Main Street's challenge categories. */
   readonly category: ChallengeCategory;
+  /**
+   * Optional live progress provider. Rendered by the challenge HUD as
+   * `<current>/<target>` for progress-capable challenges (MS-0MUI7ZJK8003HY9J).
+   */
+  readonly progress?: ChallengeProgressProvider;
 }
 
 /**
@@ -126,6 +152,19 @@ function countDistinctSynergyTypes(state: MainStreetState): number {
 }
 
 /**
+ * Counts street/tableau businesses sold via the interactive Manage Card → Sell
+ * path this run (MS-0MUI7ZJK8003HY9J).
+ *
+ * Sold cards remain on the grid as inert synergy anchors and cannot be closed,
+ * so `state.soldSlots` is cumulative for the run and captured by the undo/redo
+ * snapshots. Hand sales (`sellFromHand`) and the legacy `sellFromTableau` path
+ * do not set `soldSlots` and are deliberately out of scope.
+ */
+function countSoldBusinesses(state: MainStreetState): number {
+  return (state.soldSlots ?? []).filter(Boolean).length;
+}
+
+/**
  * Counts placed businesses that have been upgraded (level > 0).
  */
 function countUpgradedBusinesses(state: MainStreetState): number {
@@ -151,10 +190,14 @@ function longestContiguousRun(state: MainStreetState): number {
 
 // ── Challenge Templates ─────────────────────────────────────
 
+/** Number of street businesses that must be sold to complete Serial Seller. */
+export const SERIAL_SELLER_TARGET = 3;
+
 /**
  * The full catalog of challenge templates.
  *
- * 12 challenges across 5 categories, with at least 2 per category.
+ * 13 challenges across 6 categories: the original 5 categories keep at least
+ * 2 templates each, plus a single `economic` challenge (`ch-serial-seller`).
  * Every synergy type appears in at least one synergy-focused challenge.
  */
 export const CHALLENGE_TEMPLATES: readonly Challenge[] = [
@@ -297,10 +340,42 @@ export const CHALLENGE_TEMPLATES: readonly Challenge[] = [
     },
     rewardPoints: CHALLENGE_BONUS_POINTS,
   },
+
+  // ── Economic Challenges (1) ─────────────────────────────────
+  {
+    id: 'ch-serial-seller',
+    title: 'Serial Seller',
+    description: 'Sell 3 or more businesses in a single game.',
+    category: 'economic',
+    evaluator: (state: MainStreetState): boolean => {
+      return countSoldBusinesses(state) >= SERIAL_SELLER_TARGET;
+    },
+    progress: (state: MainStreetState): ChallengeProgress => ({
+      current: countSoldBusinesses(state),
+      target: SERIAL_SELLER_TARGET,
+    }),
+    rewardPoints: CHALLENGE_BONUS_POINTS,
+  },
 ];
 
 /** Default number of challenges selected per run. */
 export const DEFAULT_CHALLENGES_PER_RUN = 3;
+
+// ── Progress ────────────────────────────────────────────────
+
+/**
+ * Formats a challenge's live progress as `<current>/<target>`, or `null` when
+ * the challenge declares no `progress` provider (MS-0MUI7ZJK8003HY9J).
+ *
+ * Pure and Phaser-free so both the challenge HUD and unit tests can use it.
+ */
+export function formatChallengeProgress(
+  challenge: Challenge,
+  state: MainStreetState,
+): string | null {
+  const progress = challenge.progress?.(state);
+  return progress ? `${progress.current}/${progress.target}` : null;
+}
 
 // ── Selection ───────────────────────────────────────────────
 
@@ -340,11 +415,16 @@ export function selectChallenges(
  * with a Main Street-specific completion callback that:
  * - Pushes the challenge ID to `state.challengesCompleted`
  * - Adds an activity log entry
+ * - Forwards the challenge to `state.achievementSystem` (if attached) so the
+ *   mapped persistent Steam achievement is unlocked (F7, CG-0MUNC7FK5001T5CP).
+ *   The engine `AchievementSystem` is idempotent, so a completion fires at
+ *   most one unlock per achievement per session, and the launcher persists
+ *   unlocks across runs.
  *
  * Once a challenge is marked complete it stays complete (no revocation).
  *
  * @param activeChallenges  The active challenges to evaluate.
- * @param state             Current game state (mutated in-place: challengesCompleted, activityLog).
+ * @param state             Current game state (mutated in-place: challengesCompleted, activityLog, achievementSystem).
  * @returns Array of challenge IDs that were newly completed this call.
  */
 export function evaluateChallenges(
@@ -361,6 +441,9 @@ export function evaluateChallenges(
         text: `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`,
         type: 'gain',
       });
+      // Persistent achievement bridge (F7). The engine tolerates a throwing
+      // or absent sink, so this never affects gameplay.
+      s.achievementSystem?.onChallengeCompleted(challenge.id);
     },
   );
 }

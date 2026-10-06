@@ -48,14 +48,14 @@ import {
 // ── Synthetic CSV: a 3-step cycle + a 2-step escalation chain ──
 
 const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-tax-e1,Cycle One,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,true,,evt-tax-e2
-event,evt-tax-e2,Cycle Two,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,true,,evt-tax-e3
-event,evt-tax-e3,Cycle Three,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,0,,,,,,,,,,,,,,,,true,evt-tax-e1,
-event,evt-chain-a,Chain A,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,true,evt-chain-b,evt-chain-worse
-event,evt-chain-b,Chain B,0,,,,,,,,,1,Incident,Lose 75 coins,All,,-75,0,,,,,,,,,,,,,,,,,,
-event,evt-chain-worse,Chain Worse,0,,,,,,,,,1,Incident,Lose 600 coins,All,,-600,0,,,,,,,,,,,,,,,,,,
-event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Lose 20 coins,All,,-20,0,,,,,,,,,,,,,,,,,,`;
+  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
+event,evt-tax-e1,Cycle One,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,true,,evt-tax-e2
+event,evt-tax-e2,Cycle Two,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,,true,,evt-tax-e3
+event,evt-tax-e3,Cycle Three,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,0,,,,,,,,,,,,,,,,,true,evt-tax-e1,
+event,evt-chain-a,Chain A,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,true,evt-chain-b,evt-chain-worse
+event,evt-chain-b,Chain B,0,,,,,,,,,1,Incident,Lose 75 coins,All,,-75,0,,,,,,,,,,,,,,,,,,,
+event,evt-chain-worse,Chain Worse,0,,,,,,,,,1,Incident,Lose 600 coins,All,,-600,0,,,,,,,,,,,,,,,,,,,
+event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Lose 20 coins,All,,-20,0,,,,,,,,,,,,,,,,,,,`;
 
 // ── Helpers ─────────────────────────────────────────────────
 

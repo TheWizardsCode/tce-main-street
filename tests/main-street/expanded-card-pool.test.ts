@@ -58,8 +58,8 @@ const upgradeDeck = createUpgradeDeck(1);
 // ── Template Completeness ───────────────────────────────────
 
 describe('Expanded Card Pool: Template Completeness', () => {
-  it('should have exactly 30 business templates', () => {
-    expect(businessDeck).toHaveLength(30);
+  it('should have exactly 31 business templates', () => {
+    expect(businessDeck).toHaveLength(31);
   });
 
   it('should have exactly 71 event templates', () => {
@@ -227,28 +227,29 @@ describe('Expanded Card Pool: Multi-Synergy Bridge Cards', () => {
     expect(gallery!.synergyTypes).toContain('Entertainment');
   });
 
-  it('Florist should bridge Commerce and Culture', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist');
+  it('Flower Shop should bridge Commerce and Culture', () => {
+    const florist = businessDeck.find(c => c.name === 'Flower Shop');
     expect(florist).toBeDefined();
     expect(florist!.synergyTypes).toContain('Commerce');
     expect(florist!.synergyTypes).toContain('Culture');
   });
 });
 
-// ── Florist Income rebalance (CG-0MT6EQSPW002E7RC) ─────────
+// ── Flower Shop Income rebalance (CG-0MT6EQSPW002E7RC) ─────────
 
-describe('Florist income rebalance (CG-0MT6EQSPW002E7RC)', () => {
-  it('locks the rebalanced template income at tier-5 parity (baseIncome 350, ongoing 125) (×100)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist');
+describe('Flower Shop income rebalance (CG-0MT6EQSPW002E7RC)', () => {
+  it('locks the rebalanced template income at tier-5 parity (baseIncome 225, ongoing 125) (×100)', () => {
+    const florist = businessDeck.find(c => c.name === 'Flower Shop');
     expect(florist).toBeDefined();
-    expect(florist!.baseIncome).toBe(350); // ×100: 3.5 → 350
+    expect(florist!.baseIncome).toBe(225); // ×100: 2.25 → 225 (5-turn payback rebalance, MS-0MUQUBJFL0076RT6)
     expect(florist!.ongoingCost).toBe(125); // ×100: 1.25 → 125
-    // Net per-turn income after the ongoing cost meets the tier-5 floor (≥ 200/turn) (×100)
-    expect(florist!.baseIncome - florist!.ongoingCost).toBeGreaterThanOrEqual(200);
+    // Net per-turn income after the ongoing cost is cost-graded to a ~5-turn payback (×100)
+    expect(florist!.baseIncome - florist!.ongoingCost).toBeGreaterThan(0);
+    expect(florist!.cost / (florist!.baseIncome - florist!.ongoingCost)).toBeCloseTo(5.0, 1);
   });
 
   it('matches peer tier-5 net income (Cinema / Juice Bar)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist')!;
+    const florist = businessDeck.find(c => c.name === 'Flower Shop')!;
     const cinema = businessDeck.find(c => c.name === 'Cinema')!;
     const juiceBar = businessDeck.find(c => c.name === 'Juice Bar')!;
     expect(florist.baseIncome - florist.ongoingCost)
@@ -258,10 +259,10 @@ describe('Florist income rebalance (CG-0MT6EQSPW002E7RC)', () => {
   });
 
   it('computes positive solo income at runtime via computeBusinessIncome (AC1)', () => {
-    const florist = businessDeck.find(c => c.name === 'Florist')!;
+    const florist = businessDeck.find(c => c.name === 'Flower Shop')!;
     const grid: (BusinessCard | null)[] = new Array(GRID_SIZE).fill(null);
     grid[0] = florist;
-    expect(computeBusinessIncome(grid, 0)).toBe(350); // ×100: 3.5 → 350
+    expect(computeBusinessIncome(grid, 0)).toBe(225); // ×100: 2.25 → 225
   });
 });
 
@@ -504,8 +505,8 @@ describe('Expanded Card Pool: Event Card Fields', () => {
 // ── Deck Building ───────────────────────────────────────────
 
 describe('Expanded Card Pool: Deck Building', () => {
-  it('business deck with 3 copies should have 90 cards', () => {
-    expect(createBusinessDeck(3)).toHaveLength(90);
+  it('business deck with 3 copies should have 93 cards', () => {
+    expect(createBusinessDeck(3)).toHaveLength(93);
   });
 
     it('event deck with 3 copies should have 213 cards', () => {
@@ -528,7 +529,7 @@ describe('Expanded Card Pool: Deck Building', () => {
     expect(bakeries).toHaveLength(2);
     for (const b of bakeries) {
       expect(b.cost).toBe(300); // ×100: 3 → 300
-      expect(b.baseIncome).toBe(230); // ×100: 2.3 → 230 (raised 0.5 → 2.3 by CG-0MSVYPEZ90085SHE)
+      expect(b.baseIncome).toBe(161); // ×100: 1.61 → 161 (5-turn payback rebalance, MS-0MUQUBJFL0076RT6)
       expect(b.synergyTypes).toEqual(['Food']);
     }
   });

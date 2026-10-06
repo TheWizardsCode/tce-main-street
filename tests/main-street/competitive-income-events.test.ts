@@ -403,6 +403,11 @@ describe('AC3 — Deterministic replay of per-owner routing (CG-0MTIIL6J200291ZQ
     // within two days (winThreshold 10000; ~200-500/day incomes).
     state.players![0].coins = 100;
     state.players![1].coins = 100;
+    // A positive per-seat reputation keeps the per-seat reputation-collapse
+    // end condition from firing once turn > 1 (MS-0MUVBH589001L7NL); the
+    // fixture's rep=0 was previously masked by the shared-bank check.
+    state.players![0].reputation = 100;
+    state.players![1].reputation = 100;
     place(state, makeBiz({ id: 'biz-a', baseIncome: 250 }), 0, 0);
     place(state, makeBiz({ id: 'biz-b', baseIncome: 180, synergyTypes: ['Food'] }), 1, 0);
     place(state, makeBiz({ id: 'biz-c', baseIncome: 200, synergyTypes: ['Culture'] }), 6, 1);

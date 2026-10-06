@@ -8,11 +8,11 @@
  * 1. A card-back-over-face container at the incident queue origin.
  * 2. A flight to board centre (~550ms).
  * 3. A hinge-flip (scaleX → 0) that reveals the card face.
- * 4. A 4-second hold where delta bubbles animate.
+ * 4. A hold (INCIDENT_REVEAL_HOLD_MS) where delta bubbles animate.
  * 5. A return to the queue origin and cleanup.
  *
  * Reduced motion: flight, hinge flip and bubble travel are skipped, but the
- * 4000ms hold + cleanup are preserved (parent AC3).
+ * INCIDENT_REVEAL_HOLD_MS hold + cleanup are preserved (parent AC3).
  *
  * No incident: the entire animation is a no-op — no tweens, no delayed
  * calls, no SFX, no game-state/transcript mutation (parent AC4).
@@ -39,6 +39,11 @@ vi.mock('@ui', () => ({
 
 import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
 import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
+import {
+  INCIDENT_BUBBLE_FLIGHT_MS,
+  INCIDENT_BUBBLE_STAGGER_MS,
+  INCIDENT_REVEAL_HOLD_MS,
+} from '../../src/scenes/MainStreetAnimatorTiming';
 import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import { processEndOfTurn } from '../../src/MainStreetEngine';
 import type { EventCard } from '../../src/MainStreetCards';
@@ -69,6 +74,8 @@ interface MockContainer {
   type?: string;
   x?: number;
   y?: number;
+  radius?: number;
+  color?: number;
   scaleX?: number;
   scaleY?: number;
   visible?: boolean;
@@ -95,7 +102,7 @@ function createMockScene(overrides: Record<string, unknown> = {}) {
   /**
    * Invoke recorded delayed-call callbacks whose delay is strictly below
    * `maxDelayExclusive`. Used by the bubble tests to fire the short bubble
-   * stagger delays without triggering the 4000ms reveal hold.
+   * stagger delays without triggering the reveal hold.
    */
   const flushDelayedCallsBelow = (maxDelayExclusive: number): void => {
     for (const call of delayedCalls) {
@@ -127,7 +134,7 @@ function createMockScene(overrides: Record<string, unknown> = {}) {
       add: vi.fn((config: TweenConfig) => {
         tweens.push(config);
         // Invoke onComplete synchronously so the mock traces the full choreography
-        // chain (flight → hinge → 4000ms hold) without real tween timing.
+        // chain (flight → hinge → hold) without real tween timing.
         config.onComplete?.();
         return { stop: vi.fn() };
       }),
@@ -176,9 +183,9 @@ function createMockScene(overrides: Record<string, unknown> = {}) {
         };
         return text;
       }),
-      circle: vi.fn((_x: number, _y: number, _r: number, _color: number, _alpha: number) => {
+      circle: vi.fn((x: number, y: number, r: number, color: number, _alpha: number) => {
         const circle: MockContainer = {
-          type: 'Circle', scaleX: 1, scaleY: 1,
+          type: 'Circle', x, y, radius: r, color, scaleX: 1, scaleY: 1,
           setDepth: vi.fn().mockReturnThis(),
           setVisible: vi.fn().mockReturnThis(),
           destroy: vi.fn(),
@@ -244,7 +251,7 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
     expect(hinge).toBeDefined();
   });
 
-  it('holds the face visible for exactly 4000ms before returning/cleanup', () => {
+  it('holds the face visible for exactly INCIDENT_REVEAL_HOLD_MS before returning/cleanup', () => {
     const { scene, delayedCalls } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -256,13 +263,21 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
       from: { x: 400, y: 300 },
     });
 
-    // The 4000ms hold is implemented as a delayedCall after the flip completes.
-    const holdCall = delayedCalls.find((d) => d.delay >= 4000);
+    // The hold is implemented as a delayedCall after the flip completes.
+    const holdCall = delayedCalls.find((d) => d.delay === INCIDENT_REVEAL_HOLD_MS);
     expect(holdCall).toBeDefined();
-    expect(holdCall!.delay).toBeGreaterThanOrEqual(4000);
+    expect(holdCall!.delay).toBe(INCIDENT_REVEAL_HOLD_MS);
   });
 
-  it('reduces motion: skips flight, hinge flip and bubble travel but still schedules the 4000ms hold and cleanup', () => {
+  it('derives the hold from the bubble window so bubbles always finish before the hold ends', () => {
+    // hold = bubble flight + stagger × (maxBubbles − 1) + 1000ms buffer.
+    const maxBubbles = 5;
+    const bubbleWindowMs = INCIDENT_BUBBLE_FLIGHT_MS + INCIDENT_BUBBLE_STAGGER_MS * (maxBubbles - 1);
+    expect(bubbleWindowMs).toBe(920);
+    expect(INCIDENT_REVEAL_HOLD_MS).toBe(bubbleWindowMs + 1000);
+  });
+
+  it('reduces motion: skips flight, hinge flip and bubble travel but still schedules the INCIDENT_REVEAL_HOLD_MS hold and cleanup', () => {
     const { scene, tweens, delayedCalls, createdContainers } = createMockScene({
       settingsPanel: { reducedMotion: true },
     });
@@ -290,8 +305,8 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
     const hinge = tweens.find((t) => t.scaleX === 0);
     expect(hinge).toBeUndefined();
 
-    // 4000ms hold is still scheduled.
-    const holdCall = delayedCalls.find((d) => d.delay >= 4000);
+    // INCIDENT_REVEAL_HOLD_MS hold is still scheduled.
+    const holdCall = delayedCalls.find((d) => d.delay === INCIDENT_REVEAL_HOLD_MS);
     expect(holdCall).toBeDefined();
   });
 
@@ -355,9 +370,9 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
       from: { x: 400, y: 300 },
     });
 
-    // Fire the short bubble stagger delays first, then invoke the 4000ms hold.
+    // Fire the short bubble stagger delays first, then invoke the hold.
     flushDelayedCallsBelow(1000);
-    const holdCall = delayedCalls.find((d) => d.delay >= 4000 && d.callback);
+    const holdCall = delayedCalls.find((d) => d.delay === INCIDENT_REVEAL_HOLD_MS && d.callback);
     expect(holdCall).toBeDefined();
     holdCall!.callback!();
     // Return tween's onComplete (invoked synchronously by the mock) destroys
@@ -378,18 +393,18 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
       onComplete: () => { completed = true; },
     });
 
-    // onComplete should not fire before the 4000ms hold completes.
+    // onComplete should not fire before the hold completes.
     expect(completed).toBe(false);
 
-    // Trigger the delayed 4000ms hold; the return tween's onComplete
+    // Trigger the delayed hold; the return tween's onComplete
     // (invoked synchronously by the mock) calls cleanup → onComplete.
-    const holdCall = delayedCalls.find((d) => d.delay >= 4000 && d.callback);
+    const holdCall = delayedCalls.find((d) => d.delay === INCIDENT_REVEAL_HOLD_MS && d.callback);
     expect(holdCall).toBeDefined();
     holdCall!.callback!();
     expect(completed).toBe(true);
   });
 
-  it('fires onComplete after the 4-second hold under reduced motion', () => {
+  it('fires onComplete after the INCIDENT_REVEAL_HOLD_MS hold under reduced motion', () => {
     const { scene, delayedCalls } = createMockScene({
       settingsPanel: { reducedMotion: true },
     });
@@ -406,7 +421,7 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
     });
 
     expect(completed).toBe(false);
-    const holdCall = delayedCalls.find((d) => d.delay >= 4000 && d.callback);
+    const holdCall = delayedCalls.find((d) => d.delay === INCIDENT_REVEAL_HOLD_MS && d.callback);
     expect(holdCall).toBeDefined();
     holdCall!.callback!();
     expect(completed).toBe(true);
@@ -433,7 +448,7 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
     vi.clearAllMocks();
   });
 
-  it('launches coin-loss bubbles from HUD to card when coinChange < 0', () => {
+  it('launches coin-loss bubbles from the HUD coin counter to the card centre when coinChange < 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -446,21 +461,22 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
       hudY: 50,
     });
 
-    // Fire the short bubble stagger delays (but not the 4000ms hold).
+    // Fire the short bubble stagger delays (but not the hold).
     flushDelayedCallsBelow(1000);
 
     // Gold coin circles are created.
     const coinBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(coinBubbles.length).toBeGreaterThan(0);
 
-    // Bubbles travel via moveGameObject; loss travels HUD → card.
-    expect(moveGameObject).toHaveBeenCalled();
+    // Loss: starts at the HUD coin counter (390, 50), lands on the card
+    // centre (640, 360).
+    expect(coinBubbles[0]).toMatchObject({ x: 390, y: 50 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
     expect(first.destY).toBe(360);
   });
 
-  it('launches coin-gain bubbles from card to HUD when coinChange > 0', () => {
+  it('launches coin-gain bubbles from the card centre to the HUD coin counter when coinChange > 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -477,12 +493,17 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const coinBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(coinBubbles.length).toBeGreaterThan(0);
-    // Gain travels card → HUD.
+    // Gain: starts at the card centre (640, 360) and lands on the HUD coin
+    // counter (390, 50). BOTH axes follow the sign — the earlier bug moved
+    // only X, so the bubble still travelled from the HUD's vertical band to
+    // the card's and read as HUD → card.
+    expect(coinBubbles[0]).toMatchObject({ x: 640, y: 360 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(390);
+    expect(first.destY).toBe(50);
   });
 
-  it('launches reputation-loss bubbles from HUD to card when repChange < 0', () => {
+  it('launches reputation-loss bubbles from the HUD reputation counter to the card centre when repChange < 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -499,12 +520,14 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const repBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(repBubbles.length).toBeGreaterThan(0);
-    // Loss travels HUD rep counter → card.
+    // Loss: HUD reputation counter (640, 50) → card centre (640, 360).
+    expect(repBubbles[0]).toMatchObject({ x: 640, y: 50 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
+    expect(first.destY).toBe(360);
   });
 
-  it('launches reputation-gain bubbles from card to HUD when repChange > 0', () => {
+  it('launches reputation-gain bubbles from the card centre to the HUD reputation counter when repChange > 0', () => {
     const { scene, createdCircles, flushDelayedCallsBelow } = createMockScene();
     const animator = new MainStreetAnimator(scene);
 
@@ -521,9 +544,14 @@ describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {
 
     const repBubbles = createdCircles.filter((c) => c.type === 'Circle');
     expect(repBubbles.length).toBeGreaterThan(0);
-    // Gain travels card → HUD rep counter.
+    // Gain: card centre (640, 360) → HUD reputation counter (640, 50). The two
+    // endpoints share an X, so only Y distinguishes the direction — the exact
+    // reason the producer's Farm-to-Table (+coin/+rep) gain still read as
+    // HUD → card (CG-0MUA1UH3A008M4BS rework 3).
+    expect(repBubbles[0]).toMatchObject({ x: 640, y: 360 });
     const first = moveGameObject.mock.calls[0][0] as { destX: number; destY: number };
     expect(first.destX).toBe(640);
+    expect(first.destY).toBe(50);
   });
 
   it('launches no bubbles when both deltas are zero', () => {

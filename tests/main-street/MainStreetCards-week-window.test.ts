@@ -139,10 +139,10 @@ describe('DurationEventCard week-window', () => {
 
 describe('CSV parsing: availableWeekStart / availableWeekEnd', () => {
   // The CSV header has 34 columns. We'll append two more for our new fields.
-  const csvWithWindows = `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,art_notes,availableWeekStart,availableWeekEnd
-event,evt-windowed,Festival Event,300,,,,,,,,,1,Investment,+2 coins,SpecificSynergy,Culture,200,100,,,,,,,,,,,,,,,Festival art,18,35
-event,evt-year-round,All Year Event,100,,,,,,,,,2,Incident,-1 coin,All,,-100,0,,,,,,,,,,,,,,,Year-round art,,,
-event,evt-single-week,Single Week Event,0,,,,,,,,,3,Incident,+1 rep,All,,0,100,,,,,,,,,,,,,,,Single week art,12,12`;
+  const csvWithWindows = `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,availableWeekStart,availableWeekEnd
+event,evt-windowed,Festival Event,300,,,,,,,,,1,Investment,+2 coins,SpecificSynergy,Culture,200,100,,,,,,,,,,,,,,,,Festival art,18,35
+event,evt-year-round,All Year Event,100,,,,,,,,,2,Incident,-1 coin,All,,-100,0,,,,,,,,,,,,,,,,Year-round art,,,
+event,evt-single-week,Single Week Event,0,,,,,,,,,3,Incident,+1 rep,All,,0,100,,,,,,,,,,,,,,,,Single week art,12,12`;
 
   afterEach(() => {
     // Restore original templates

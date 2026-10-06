@@ -4,6 +4,58 @@
 
 This document captures the current implementation-level guidance for Main Street UI feedback polish in Milestone 4.
 
+## ToneForge runtime audio (activation + fallback)
+
+Main Street's SFX play through `SoundManager` with an optional ToneForge synth
+integration:
+
+- **Async activation.** `loadMainStreetTfModule()`
+  (`src/tf/mainStreetTfModule.ts`) resolves the committed runtime module after
+  scene boot and attaches it via `createTfPlayer()` / `setSynthIntegration()`.
+  After it settles, `SoundManager.isSynthActive()` is `true` and the debug
+  **ToneForge** entry reports `Active` (and can toggle synthesis without a scene
+  restart).
+- **Loud failures.** A load/normalisation failure emits a `console.warn` with
+  the reason and is retained by `getMainStreetTfDiagnostics()`
+  (`loaded` / `factoryCount` / `lastLoadError`), which the scene forwards to
+  `SoundManager.setSynthDiagnostics()`.
+- **Missing-factory fallback.** `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical
+  keys but the runtime module ships only 12 factories. A mapped key with no
+  matching factory now falls back to the WAV/Phaser path instead of going
+  silent (`tfAdapter` reports whether it handled the key;
+  `SoundManager.play()` falls through when it did not) — engine item
+  CG-0MUU9PSWC009CW76.
+
+## Player hand layout
+
+Main Street renders the player hand with the core engine's single `HandView`
+(`MainStreetRendererStreet.ts`), anchored on `handCenterX` and declaring the
+hand's capacity up front with `maxSlots: state.maxHandSize`.
+
+- **Capacity-stable slots (CG-0MUAYBB4E007LWEQ).** Because `maxSlots` is set,
+  the card row is placed into the *same fixed capacity template* the empty hand
+  renders rather than being re-centred on the current card count. Adding or
+  drawing a card therefore fills the next empty slot to the **right** without
+  re-laying the row — every already-placed card and every ghost outline slot
+  keeps its exact position and rotation, up to capacity. `setMaxSlots()` (driven
+  by `refreshPlayerHand()` from `state.maxHandSize`, e.g. after hiring a staff
+  card) is the only mutation that may move existing cards.
+- **Left-anchored partial hand.** A partially-filled hand sits left-anchored in
+  the capacity row (cards fill left-to-right) instead of being centred on the
+  current card count. Click / drag / hand-to-street transfer paths that use the
+  hand centre (`handCenterX`) or hide the transfer source
+  (`hiddenTransferSourceCardIds`) must therefore read the card's actual
+  `HandView` position rather than assuming a symmetric centred row; the
+  capacity template guarantees that position is stable across adds.
+- **Ghost outlines.** `showPositionOutlines: true` renders one ghost slot per
+  `maxSlots`; the outlines are purely visual, so toggling them never moves a
+  card. Occupied slots ghost their card exactly (same centre and rotation);
+  extra capacity slots continue the same row to the right, below every card.
+- See the core `docs/DEVELOPER.md` § *Hand capacity outlines* for the full
+  `HandView` semantics and browser coverage in
+  `tests/main-street/hand-outlines.browser.test.ts` (including the
+  slot/card-position stability assertion).
+
 ## Event Feedback Animations
 
 ### Card transfer feedback (market -> destination)
@@ -22,6 +74,37 @@ This document captures the current implementation-level guidance for Main Street
     4ms per px), so a card released next to its slot settles into place
     quickly instead of taking the full fixed flight (CG-0MST2LS3E004BTPO).
 
+#### Legality before animation (MS-0MUUDWIXG009IB0W)
+
+A transfer animation only ever starts for a move that has already passed a
+**non-mutating legality check**. The UI never animates a move that cannot
+complete, so a rejected attempt leaves the scene exactly as it was instead of
+playing a phantom card transfer.
+
+- Order of operations: validate → (only if legal) clear the selection / set
+  `uiPhase = 'animating'` → start `animateTransferFromMarket` → execute the
+  undoable command. Affordability, target eligibility, occupancy and tutorial
+  gating are all evaluated before any of these mutations.
+- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus an
+  instruction-text reason **precedes any mutation** — no coins, action, hand or
+  grid change, and the current selection/`uiPhase` is retained so the player
+  can immediately retarget.
+- Click paths use the shared predicates `canPlaceFromHand`
+  (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
+  (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
+  animate. Drag paths are gated by the drop zone's `canAccept`
+  (`canDropBusinessCard` / `canDropUpgradeCard`); `@ui/dragDrop` only invokes
+  the `onDrop` handler after `canAccept` returns true, so the transfer starts
+  strictly after the gate.
+- No failed attempt leaves `uiPhase === 'animating'`; every `afterTransfer`
+  path (success or error) restores `uiPhase = 'market'`.
+- Commit-before-feedback: the command layer is the single mutation point and
+  is executed through the undo manager, which only pushes the command after
+  `do()` succeeds. `snapshotAction.do()` restores the pre-action budget when
+  the operation throws, so a failed command never spends an action — the
+  command layer matches the engine `executeAction` restore-on-failure
+  semantics (see [core-rules-and-mechanics.md](core-rules-and-mechanics.md)).
+
 ### Upgrade targeting highlights (click-to-place, CG-0MUDA70FK003J8YL)
 
 - Helpers: `showTargetHighlights()` / `clearTargetHighlights()` in
@@ -37,11 +120,13 @@ This document captures the current implementation-level guidance for Main Street
   slots are skipped entirely and are no longer rendered as selectable while an
   upgrade is pending, so only real businesses appear as targets.
 - Eligibility is business-level only, via the shared
-  `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`;
-  affordability and the action budget are surfaced in the instruction text
-  after the click, matching the drag-drop flow. Clicking an ineligible
-  business shakes it back with feedback while the upgrade stays selected for
-  a retry.
+  `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`. The
+  click is then additionally gated by the non-mutating
+  `canPlayUpgradeFromHand()` predicate (`MainStreetMarketPurchase.ts`) — which
+  also checks affordability against the per-business discounted cost — before
+  any animation starts. Clicking an ineligible or unaffordable business shakes
+  it back with feedback while the upgrade stays selected for a retry, and no
+  action or coin is spent.
 - Clearing: `cancelPendingPlacement()` (Escape / switching card) calls
   `clearTargetHighlights()`; applying the upgrade rebuilds the street without
   a pending card, dropping the overlays. Both targeting flows share the
@@ -103,6 +188,37 @@ void popTextOrIcon({
   - Reputation / event contributions fly in/out of the grids;
     events also light up their `Upcoming`-panel effect lines
     (`animateUpcomingEffectLine`).
+  - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
+    animates the end-of-turn Upcoming-card (incident/event) coin AND
+    reputation deltas using **one uniform sign rule** for both resources
+    (incident-reveal convention, CG-0MU41XVNV002N2D9, as clarified by the
+    producer's manual review 2026-10-01): a card that **gives** coins or
+    reputation flows **card → HUD**; one that **costs** flows **HUD → card**.
+    - **Actor** (derived from the source `EventCard.target`) — the affected
+      **business card** when the effect is attached (`SpecificSynergy` /
+      `RandomBusiness`, i.e. `upcomingDeltas[i].attachedSlotIndex` is a
+      number), otherwise the **Upcoming panel** (`target = All`).
+    - **Coins** — every coin delta flies point-to-point between the actor and
+      the **HUD coin counter** (`flyCoinsToPoint`), never via a business coin
+      grid: a **gain** actor → HUD, a **loss** HUD → actor. (The on-card coin
+      grid is reserved for credited income and is drained by the collection
+      phase; Upcoming deltas never accumulate in it.)
+    - **Reputation** — same actor and same direction rule, flying silent
+      reputation pips between the actor and the **HUD reputation counter**
+      (`flyRepPips`, matching the reputation income phase).
+    - **Direction convention** (AC1/AC2/AC3): `gain = actor → HUD resource`,
+      `loss = HUD resource → actor`. The pure decision is `resolveDeltaFlow`
+      in `MainStreetAnimatorContext.ts`; the routing descriptors (with
+      `kind` and `attachedSlotIndex`) are populated by `attachUpcomingDeltas`
+      (`MainStreetAdjacencyScoring.ts`) from the resolved incident in
+      `processEndOfTurn`. This supersedes the earlier coin-accumulation rule
+      (attached gains landing on the card grid) and the reputation-only
+      correction of the first rework.
+    - **Presentational only** (AC4): the descriptors are additive and are
+      deliberately **excluded** from `creditedIncomeTotal`, so the income
+      phase-sum invariant (`base + synergy + repBonus + eventDeltas` = credited
+      total) and the deferred-mutation economy are unchanged; reduced-motion
+      and replay/headless modes keep their no-flight exemption.
   - Phase pace: `INCOME_PHASE_GAP_MS` (default 2200ms) between phases;
     collection lands at ≈11s — **this pacing is part of the feature's
     acceptance criteria and MUST NOT be shortened** (the turn controller
@@ -169,7 +285,7 @@ void popTextOrIcon({
 - Headless/replay exemption: returns immediately in replay/headless mode
   (`replayMode`) — presentation-only, never mutates game state or the
   transcript, and never blocks the turn flow.
-### Incident reveal (flip + 4-second hold + delta bubbles)
+### Incident reveal (flip + ~1920ms hold + delta bubbles)
 
 - Helper: `MainStreetAnimator.animateIncidentReveal()`.
 - Trigger: `MainStreetTurnController.endTurn()` when `TurnResult.incident` is
@@ -183,25 +299,29 @@ void popTextOrIcon({
      (`MainStreetRenderer.getFrontIncidentCardCenter()`).
   2. The container flies to the board centre (~550ms).
   3. The card back hinges open (`scaleX → 0`) to reveal the incident face.
-  4. The face stays visible for **4 seconds** so the player can read the
+  4. The face stays visible for **1920ms** (`INCIDENT_REVEAL_HOLD_MS`) so the player can read the
      incident. During the hold, resource-delta bubbles animate between the
-     HUD score bar and the card: coin loss travels HUD → card, coin gain
-     card → HUD (gold, `SFX_KEYS.COIN_POP`); reputation loss/gain does the
-     same for the blue reputation pips (silent). No bubbles when a delta
-     is zero.
+     HUD score bar and the card: a **gain** starts at the card centre and
+     lands on the HUD counter (`card → HUD`); a **loss** starts at the HUD
+     counter and lands on the card (`HUD → card`). This applies to both the
+     gold coin bubbles (`SFX_KEYS.COIN_POP`) and the silent blue reputation
+     pips, and **both coordinate axes follow the sign** (CG-0MUA1UH3A008M4BS
+     rework 3 — an earlier version moved only X, so a gain still travelled
+     from the HUD's vertical band to the card and read as HUD → card). No
+     bubbles when a delta is zero.
   5. The container returns to the Upcoming card centre and is destroyed;
      the reveal's `onComplete` then chains the week start.
 - **Blocking timing (CG-0MTW18KFK000MM3I):** the reveal now **gates** the turn
   advance — `finishTurnPresentation` defers `startTurnPhase()` until the
-  reveal's `onComplete` fires (flight + 550ms flip + 4000ms hold + 400ms
+  reveal's `onComplete` fires (flight + 550ms flip + 1920ms hold + 400ms
   return, then the existing income-show deferral or the ~800ms schedule).
   With no incident the reveal is skipped entirely and the ~800ms advance is
   unchanged (no delay, no animation).
 - Accessibility (reduced motion): the flight, hinge flip and bubble travel
   are skipped — the card appears instantly face-up at board centre — but the
-  4-second hold, cleanup and `onComplete` are **preserved** so the player
+  1920ms hold, cleanup and `onComplete` are **preserved** so the player
   still has time to read the incident (producer-confirmed silent hold).
-- Tutorial exemption: the reveal (and its 4-second hold) is skipped while the
+- Tutorial exemption: the reveal (and its hold) is skipped while the
   tutorial is active, preserving the tutorial's window-safe step pacing —
   the same precedent as the phased income show and the week banner being
   skipped during the tutorial.
@@ -253,13 +373,51 @@ void popTextOrIcon({
   immediately in replay/headless mode (`scene.replayMode`), never mutates
   state or transcript.
 - Reuse: `synergyColor` + `SoundManager` + `popTextOrIcon`; no new engine
+
+### Synergy link tooltip
+
+- Content builder: `buildSynergyLinkTooltipInfo(grid, fromIndex, toIndex,
+  sharedSynergy, config, soldSlots?, gridDims?)` in `MainStreetFormatting.ts`
+  — a pure, headless-testable helper (mirrors `synergyLineEndpoints.ts`). It
+  names the shared synergy type and, for EACH endpoint, states the per-turn
+  coin and/or reputation effect of that one link:
+  - **Coin** — the per-link marginal share
+    (`effectiveBase × effectiveSynergyCoinBonus × config.synergyBonusPerNeighbor`),
+    reusing `synergyCoinContributionPerNeighbor()` so the tooltip can never drift
+    from `computeSynergyBonus()`. The engine rounds the card's TOTAL across all
+    matching neighbours, so a per-link share is shown to at most one decimal and
+    is documented as an approximation.
+  - **Reputation** — synergy flows FROM the neighbour (`computeSynergyRepBonus`
+    sums the neighbour's `synergyRepBonus`), so each endpoint's rep line reflects
+    the other card's `synergyRepBonus`.
+  - **Sold endpoint** — earns nothing from the link but still anchors the
+    synergy for the other card (CG-0MT5XUE2200047IJ); its line says so.
+  - **Zero-synergy opt-out** (e.g. the Pawn Shop) — returns `''` (no tooltip).
+- Wiring: `MainStreetRenderer.drawSynergyLines()` adds one narrow (`12px`),
+  rotated, invisible `Phaser.GameObjects.Zone` per pair on top of the line,
+  parented into `streetContainer` so it is recreated/destroyed with the street
+  layer (no listener leak). The band spans only the clipped edge-to-edge
+  segment — the gap between the two cards — and is wired to
+  `s.tooltipManager.show(...)` on `pointerover` / `.hide()` on `pointerout`.
+- Guards: no band in `replayMode`, and no band when `s.tooltipManager` is
+  absent — matching the business-slot tooltip guards. The
+  `settingsPanel.showTooltips = false` toggle is enforced by `TooltipManager`
+  itself.
+- Interaction safety: the band is thin and confined to the gap between the two
+  slot rects, so slot hover tooltips, click-to-place, sell and upgrade
+  targeting keep working everywhere except immediately along the line. Reduced
+  motion is unaffected (the tooltip appears/hides immediately; no animation).
+- Reuse: `TooltipManager` (`@ui`) + the existing `synergyLineEndpoints`
+  geometry; no new engine API.
+
 ### Upgrade level-up burst
 
 - Helper: `MainStreetAnimator.animateLevelUp()`.
 - Trigger: `MainStreetTurnController.onUpgradeCardClick()` — the `afterTransfer`
   hook fires `animateLevelUp({ slotIndex: targetSlot, level })` only when the
   `buyUpgradeCommand` actually succeeded (upgraded flag), after the final
-  `refreshAll` (the newly-rendered level badge is visible underneath).
+  `refreshAll` (the newly-rendered level badge — top-left of the card — is
+  visible underneath).
 - Behavior (reduced-motion OFF):
   1. A small gold sparkle burst (six fixed-direction sparks, `0xffd700`)
      tweens outward and fades on the upgraded business card — deterministic
@@ -391,6 +549,46 @@ void popTextOrIcon({
 - Reuse: `popTextOrIcon` + tweened circles (same deterministic pattern as
   `animateLevelUp`) + `SFX_KEYS.EVENT_CHEER`; no new engine infrastructure.
 
+### Game-over panel (two-column summary)
+
+- Renderer: `MainStreetOverlayContent.showGameOverOverlay()`.
+- Model: `src/scenes/MainStreetGameOverSummary.ts` (pure, no Phaser import) —
+  `formatEndReason`, `buildGameOverPlayerRows` and
+  `buildGameOverChallengeSummary`, reusing
+  `buildCompetitiveScoreboard` for the per-seat rows.
+- Layout:
+  - **Top band:** the title (`You Win!` / `Game Over`) plus a plain-language
+    end-reason headline derived from `state.endReason` (e.g. *Bankruptcy*,
+    *Reputation collapse*, *Score threshold reached*, *All challenges
+    completed*, *Last standing*, *Turn limit exhausted*). In competitive mode a
+    per-seat failure names the player concerned (e.g. `Bankruptcy — You`,
+    `Reputation collapse — AI 1`), preferring the human seat.
+  - **Left "Game State" column:** one row per player — `You` for the human
+    seat, `AI <n>` for AI seats — showing coins, reputation and score read
+    directly from each `PlayerRecord` (single-player synthesises the sole
+    `You` row from the shared wallet). A failing or eliminated seat carries a
+    `Bankrupt`, `Reputation collapse` or `Eliminated` badge (cause before
+    consequence; reputation collapse applies only after turn 1). The run's
+    challenges met follow below — challenges are run-global in the engine, so
+    they are shown once per run rather than per player.
+  - **Right "Summary" column:** the retained score breakdown (coins,
+    reputation, challenges, final score), per-challenge details, tier-unlock
+    notifications, current tier + campaign stats and the difficulty selector,
+    with the `[ Play Again ]` / `[ Menu ]` buttons anchored at the panel
+    bottom.
+- Presentation contract: reads committed state only (never mutates it); uses
+  `createOverlayBackground` / `createOverlayButton` from `@ui`; all elements
+  are parented into `s.hudContainer`; depths follow the shared overlay
+  convention (199 backdrop / 200 box / 201 interactive); everything is pushed
+  into `s.overlayObjects` for dismissal.
+- Reduced motion: the panel itself adds no animation; the game-over feedback
+  below is unchanged.
+- Headless/replay exemption (AGENTS.md rule 8): the panel returns immediately
+  in replay/headless mode (`scene.replayMode`).
+- The panel widens to 900 px and computes its height from the taller of the
+  two columns so both fit the 1280×720 game layout without clipping or
+  vertical overflow.
+
 ### Game-over celebration / loss sting
 
 - Helper: `MainStreetAnimator.animateGameOver()`.
@@ -401,9 +599,9 @@ void popTextOrIcon({
   1. **Win:** a confetti burst (24 coloured rectangles) falls across the
      whole board, spinning + fading with a stagger (`Quad.easeIn`), plus the
      victory fanfare WAV (`SFX_KEYS.GAME_WIN` ← `assets/audio/default/game-win.wav`).
-     Confetti depth 100.5 — above the overlay backdrop/box (100), below the
-     panel text/buttons (101), so it stays bright against the dim without
-     covering the panel content.
+     Confetti is a scene-level effect at depth 100.5, created by the animator
+     while the overlay backdrop/box (199/200) and text/buttons (201) are
+     parented into `s.hudContainer`.
   2. **Loss:** a brief full-board dark pulse (the "sting beat", depth 99.5 —
      under the backdrop, so only the board dims) plus the low sting WAV
      (`SFX_KEYS.GAME_LOST` ← `assets/audio/default/game-lost.wav`). The

@@ -7,11 +7,14 @@
  */
 
 import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
+import { canPlaceFromHand } from '../MainStreetEngineCommands';
 
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import type { UpgradeCard } from '../MainStreetCards';
 import { buyBusinessCommand, playBusinessFromHandCommand, playUpgradeFromHandCommand } from '../MainStreetCommands';
-import { canSellBusiness, computeSellRefund } from '../MainStreetMarket';
+import { canSellBusiness, computeSellRefund, canPlayUpgradeFromHand } from '../MainStreetMarket';
+import { canActiveSeatActOnSlot } from '../MainStreetAdjacencyOwner';
+import { computeBusinessPurchasePremium } from '../MainStreetStaffBuffs';
 import { isEligibleUpgradeTarget } from '../MainStreetMarketUtils';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep, isSynergyAdjacentPlacement, resolveTutorialCardParams } from '../TutorialFlow';
@@ -84,6 +87,26 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         return;
       }
 
+      // Pre-flight legality check (MS-0MUUDWIXG009IB0W): validate the move
+      // BEFORE any state mutation or animation. This prevents the player
+      // from wasting an action on a move that cannot complete. On failure
+      // the selection is retained so the player can try a different slot.
+      const premiumApplies = s.pendingHandJustMoved && s.state.actionsRemaining <= 0;
+      const premiumCost = premiumApplies
+        ? computeBusinessPurchasePremium(s.state, handCard.cost)
+        : undefined;
+      const legality = canPlaceFromHand(s.state, handIndex, slotIndex, premiumCost);
+      if (!legality.legal) {
+        const handSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex);
+        playIllegalFeedback(handSprite ?? s.actionContainer, s);
+        s.instructionText.setText(legality.reason ?? 'Move not available.');
+        // Return to market phase so the next click can retry or cancel
+        // (the hand card selection highlight is preserved for a quick retry).
+        s.uiPhase = 'market';
+        s.refreshAll();
+        return;
+      }
+
       const cardId = handCard.id;
       const cardName = handCard.name;
 
@@ -103,18 +126,6 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         // Capture synergy pairs before the placement mutates the grid so only
         // NEWLY formed pairs animate.
         const beforePairs = computeSynergyPairs(s.state.streetGrid, s.state.soldSlots ?? [], tcCtx.streetPairDims());
-
-        // Composite pricing (CG-0MT24X0SX007RLHN): a same-week card (just
-        // moved from the market this turn) is part of the move+place purchase
-        // — the move already spent the daily action. When no action remains
-        // for the placement step, the +50% premium replaces the missing
-        // action; when an action DOES remain (Golden Mile 2-action days), the
-        // placement consumes it at listed cost. Held cards (plan-ahead) always
-        // consume an action at listed cost.
-        const premiumApplies = s.pendingHandJustMoved && s.state.actionsRemaining <= 0;
-        const premiumCost = premiumApplies
-          ? Math.ceil(handCard.cost * 1.5 * 2) / 2
-          : undefined;
 
         // Shared post-place cleanup (success, failure, or dialog cancel).
         const finish = (): void => {
@@ -278,6 +289,17 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     const soldSlots: boolean[] = s.state.soldSlots ?? [];
     if (soldSlots[slotIndex]) return;
 
+    // Ownership guard (MS-0MUVPGA3A001TGGT): in competitive mode the human
+    // seat may only manage street slots it owns. Block the Manage-Card dialog
+    // for an opponent-owned slot and show the ownership-specific illegal-move
+    // message instead (no Sell / Close command is wired up).
+    const ownership = canActiveSeatActOnSlot(s.state, slotIndex);
+    if (!ownership.legal) {
+      s.instructionText.setText(ownership.reason ?? 'You do not own that business.');
+      playIllegalFeedback(s.actionContainer, s);
+      return;
+    }
+
     // Check legality
     const legality = canSellBusiness(s.state, slotIndex, false);
     if (!legality.legal) {
@@ -297,7 +319,6 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     const cardLabel = isCommunitySpace ? 'Community Space' : 'Business';
     const info = `${cardLabel}: ${card.name}\n` +
       `Purchase €${card.cost} · Upgrades €${(card as any).totalUpgradeCost ?? 0}\n` +
-      `Sell refund €${refund} (base €${breakdown.baseRefund})\n` +
       `Synergy: +€${breakdown.synergyIncomeComponent} income, +€${breakdown.synergyRepComponent} rep\n\n` +
       `Sell: free, card stays on the grid (inert).`;
 
@@ -330,6 +351,17 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
       s.instructionText.setText(
         `"${handCard.name}" can only upgrade ${handCard.targetBusiness} at level ${requiredLevel}. Click another business.`,
       );
+      return;
+    }
+
+    // Pre-flight affordability check (MS-0MUUYD15V003SP0Z): reject an
+    // unaffordable upgrade BEFORE clearing the selection, changing uiPhase or
+    // starting the transfer animation. On failure the upgrade stays selected
+    // and the player keeps their action and coins.
+    const legality = canPlayUpgradeFromHand(s.state, handIndex, slotIndex);
+    if (!legality.legal) {
+      playIllegalFeedback(handSprite ?? s.actionContainer ?? null, s);
+      s.instructionText.setText(legality.reason ?? 'Move not available.');
       return;
     }
 

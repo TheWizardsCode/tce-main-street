@@ -48,11 +48,11 @@ describe('formatEmployedStaffSummary (AC2/AC3/AC5)', () => {
   });
 
   it('aggregates alongside business info (the tooltip is one string)', () => {
-    const summary = formatEmployedStaffSummary([member('Florist', ['Florist', 'Commerce', 'Culture'])]);
+    const summary = formatEmployedStaffSummary([member('Florist', ['Flower Shop', 'Commerce', 'Culture'])]);
     // The renderer appends the summary to the business info line.
     const full = `Business: Florist Shop\nIncome: +10/turn${summary}`;
     expect(full).toContain('Business: Florist Shop');
     expect(full).toContain('Employed staff (1):');
-    expect(full).toContain('• Florist (Florist/Commerce/Culture) — Florist effect text.');
+    expect(full).toContain('• Florist (Flower Shop/Commerce/Culture) — Florist effect text.');
   });
 });

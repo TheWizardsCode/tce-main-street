@@ -168,6 +168,37 @@ describe('computeSellRefund — new formula', () => {
     expect(breakdown.synergyIncomeComponent).toBe(0);
     expect(breakdown.totalRefund).toBe(expectedBase);
   });
+
+  it('should not fabricate reputation synergy for an uncalculated card with negative base rep', () => {
+    // Regression (MS-0MUO7GNG1004VMF2): the Pawn Shop has reputationPerTurn
+    // -10 and provides/receives no synergy. With an undefined cached
+    // currentReputationPerTurn the component must be 0, not +10.
+    const state = createTestState('sell-price-negative-base-rep');
+    const card: BusinessCard = {
+      family: 'business',
+      id: 'biz-pawnshop-regression',
+      name: 'Pawn Shop',
+      cost: 200,
+      baseIncome: 230,
+      synergyTypes: ['Commerce'],
+      upgradePath: 'Pawn Shop',
+      maxLevel: 1,
+      description: 'Test pawn shop.',
+      level: 0,
+      incomeBonus: 0,
+      synergyRangeBonus: 0,
+      reputationBonus: 0,
+      reputationPerTurn: -10,
+      ongoingCost: 0,
+      appliedUpgrades: [],
+    } as BusinessCard;
+    state.streetGrid[0] = card;
+
+    const breakdown = computeSellRefund(state, card, 0);
+
+    expect(breakdown.synergyRepComponent).toBe(0);
+    expect(breakdown.totalRefund).toBe(Math.ceil(card.cost * 1.5));
+  });
 });
 
 describe('sellBusiness — new formula integration', () => {

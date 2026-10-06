@@ -19,7 +19,7 @@ fixed **baseline skill on every applicant**.
 |---|---|---|---|
 | **Income Boost** | Networker, Chef de Cuisine, DJ, Sales Champion, Tech Guru | **+20–50 coins/turn, or +20% of a business's income** (Food / Entertainment per-type) | Percent bonuses apply to the business's cached income at income phase; flat bonuses add coins. Adjacency-scoped (Networker +20/adjacent synergy, Tech Guru +1 synergy range for Entertainment) are kept out of the per-business income fold. |
 | **Reputation Boost** | Town Gossip (baseline), Community Builder, Brand Ambassador, PR Strategist | **+10–15 rep/turn, or +50% rep gains** from incidents/investments | Community Builder is street-wide (all businesses); PR Strategist is Service-only; Brand Ambassador multi-*plies event-source rep gains* (incidents + investments), not per-turn rep. |
-| **Cost Reduction** | Cost Cutter, Negotiator, Operations Manager | **−50–100 cost, −15% street-wide ongoing** | See the "street-wide flag" below for Cost Cutter. |
+| **Cost Reduction** | Cost Cutter, Negotiator, Operations Manager, Accountant, IT Specialist, Delivery Driver | **−50–100 cost, −15% street-wide ongoing** | See the "street-wide flag" below for Cost Cutter. |
 | **Incident Mitigation** | Quality Inspector, Risk Manager, Security Consultant, Compliance Officer | **−15% incident probability, −30% coin damage, −50 rep damage, theft immunity** | Probability and immunity are engine-modeled (see wiring notes). |
 
 **Stacking constraint (AC3/AC4):** no single staff member may hold **more than 1 income-boost
@@ -51,7 +51,13 @@ incident mitigation. Cost-reduction and incident-mitigation skills stack freely.
 - **Cost reductions:** Cost Cutter applies to **all three** ongoing-cost families
   (staff/community-space/business) at end of turn; Operations Manager discounts **only its own
   member's** salary; Negotiator reduces `refreshMarketCost` in addition to legacy
-  `refreshCostDiscount` staff abilities (Group F).
+  `refreshCostDiscount` staff abilities (Group F); the Financial Advisor's
+  `upgradeCostDiscount` reduces the upgrade cost of its employing business only
+  (CG-0MTKMGL66004I0PC); the Accountant's and IT Specialist's `refreshCostDiscount` reduce
+  `refreshMarketCost` street-wide (CG-0MULWEEE8007J2TB / CG-0MUMCVH3N007KT1M); the Delivery
+  Driver's `purchaseCostDiscount` reduces business/community-space purchase cost street-wide
+  across every acquisition path (click, drag, deferred play-from-hand), discount applied to the
+  base cost before any premium, floored at 0 (CG-0MUMCVH3N007KT1M).
 - **Incidents:** damage reductions and theft immunity apply to Incident-trigger events only;
   Brand Ambassador multiplies *positive* reputation deltas from both incidents and investments.
   Risk Manager averts a turn's incident draw with 15% probability (deterministic — consumes one

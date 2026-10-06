@@ -103,6 +103,16 @@ export function setMainStreetRecorder(r: MainStreetTranscriptRecorder | null): v
   globalRecorder = r;
 }
 
+/**
+ * Returns the currently installed global recorder, or null when none is set.
+ *
+ * Used by headless callers (e.g. the Monte Carlo harness) that temporarily
+ * install their own recorder and must restore the previous one afterwards.
+ */
+export function getMainStreetRecorder(): MainStreetTranscriptRecorder | null {
+  return globalRecorder;
+}
+
 export function recordMainStreetEvent(e: MainStreetTranscriptEvent): void {
   if (!globalRecorder) return;
   try {

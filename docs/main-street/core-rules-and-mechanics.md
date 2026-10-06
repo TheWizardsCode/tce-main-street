@@ -243,7 +243,7 @@ Default presets impose **no turn limit** (CG-0MSLXJCHH001DLIO): a player who kee
 
 ### 6.0 Action Economy (weekly action budget)
 
-Each week (MarketPhase) the player has **exactly one action** — two while a **General Manager** is employed (CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting staff member** employed — the **Manager**, **Director** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
 
 **Week-start composition.** At WeekStart the weekly budget is:
 
@@ -252,11 +252,25 @@ Each week (MarketPhase) the player has **exactly one action** — two while a **
 ```
 
 - The **base action banks**: any unused base action at end of week is banked, up to a **bank cap of 2**.
-- **Staff actions never bank.** Staff-derived actions (e.g. the General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle GM week banks exactly 1 (the base), not 2.
+- **Staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
 - Spending during the week draws down the combined budget (base + staff + banked share one counter).
 - **Banked is consumed 1-per-action.** Every action-type operation decrements the banked reserve by 1 (floor 0) alongside the weekly counter (CG-0MTCP7F9S009HARC) — banked actions are spent as the player acts, so a banked week grants only its carried-over actions, never an endless reserve. Premium same-week placements (which replace the action with a +50% coin charge) do **not** consume the bank.
 - **No expiry:** banked actions persist indefinitely across weeks until spent. They reset to 0 only on a new game.
 - At week end, at most **1** action can bank (only the base portion), so reaching the cap takes two idle weeks; overflow beyond the cap is discarded.
+
+> **Competitive play (human vs AI, MS-0MUVUPWHD0032CU4).** In a shared day the
+> banked reserve is a **single collective pool**: each seat's daily budget is
+> its bank-free base (`actionBudget = 1 + staff actions`) **plus** the
+> currently-remaining `bankedActions`, added when the seat is bound
+> (`bindCompetitiveSeat`). Spending by one seat draws the shared pool down, so
+> the next seat receives base + the *remaining* bank rather than a stale
+> day-start snapshot. At the shared closing, one unused base action banks
+> (cap 2). The bank belongs to the **human player**: it is topped up from the
+> human seat's own unused base action only, so an AI seat's unused action never
+> keeps the bank alive after the human spends their full budget, and the bank
+> clears the following day. `restoreCompetitiveSeat` strips the bank back out
+> so `actionBudget` stays the seat's base budget. Single-player banking is
+> unchanged.
 
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 
@@ -270,11 +284,34 @@ Each week (MarketPhase) the player has **exactly one action** — two while a **
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. |
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
 | Hire a staff card | 1 action | From the general market row. |
-| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). |
+| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
+
+> **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
+> validated by a **non-mutating legality predicate before any mutation**, and
+> action consumption is **atomic with a successful operation** — a move that
+> cannot complete never spends an action. Concretely:
+>
+> - The UI runs the relevant predicate (affordability, occupancy, target
+>   eligibility, tutorial gating — e.g. `canPlaceFromHand`,
+>   `canPlayUpgradeFromHand`, `canPurchaseBusiness`, `canDropBusinessCard`,
+>   `canDropUpgradeCard`) **before** it clears the selection, sets
+>   `uiPhase = 'animating'`, starts the card-transfer animation or executes the
+>   undoable command. An illegal attempt plays the standard illegal-move
+>   feedback (ILLEGAL_MOVE SFX + shake + instruction-text reason) and leaves the
+>   action budget, coins, hand and grid untouched, with the selection retained
+>   so the player can immediately pick another target.
+> - Command execution goes through the undo manager, which only pushes a command
+>   after its forward step succeeds. `snapshotAction.do()` restores the
+>   pre-action budget (`actionsRemaining` / `bankedActions`) when the wrapped
+>   operation throws, so a failed command never leaves a spent action behind.
+>   The engine `executeAction` path restores on failure the same way — the two
+>   layers now share identical restore-on-failure semantics.
+> - No failed attempt leaves the scene stuck in `uiPhase === 'animating'`; every
+>   transfer completion path (success or error) returns to `uiPhase = 'market'`.
 
 **Free operations (never consume an action):**
 
-- Market re-roll/refresh
+- Market research/refresh
 - Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
   The sell dialog and activity log show the breakdown (base, synergy income, synergy rep).
 - Hint (still 1/week)
@@ -289,6 +326,19 @@ Each week (MarketPhase) the player has **exactly one action** — two while a **
 > Sell price (CG-0MT5XO7DI0066QCT): the sell refund mirrors the buy-and-place premium (1.5× purchase + upgrades) and adds the card's current synergy value, so emergency cash reflects what the card actually earns on the grid. A card with no synergies still recovers more than before (`/2 → ×1.5`); a well-synergised card recovers coins **plus** rep-derived value automatically. The breakdown is visible before the player confirms.
 
 > Close vs Sell (CG-0MT5XT7K3005IBBV): clicking a non-sold street card opens a **Manage Card** dialog with **[Sell] [Close] [Cancel]**. **Sell** is free and keeps the sold card on the grid as an inert synergy anchor (the slot remains occupied permanently). **Close** costs **1 action and no coins**, removes the card to the discard pile, recalculates its neighbours **without** the removed card's synergy, and frees the slot for a future placement. Sold cards cannot be closed — once sold, the only way past that slot is a future "clear sold card" capability (not yet implemented).
+
+> **Ownership in competitive play (MS-0MUV9P89G0061SRA).** In human-vs-AI
+> competitive games the shared street is owner-tagged (`ownerTaggedGrid`). A
+> seat may only **sell, close or upgrade a business it owns**; a cross-owner
+> attempt mutates no state. Clicking an opponent-owned occupied slot blocks the
+> **Manage Card** dialog and shows an ownership-specific illegal-move message
+> (e.g. *"That business belongs to AI 1."*). The rule is enforced in a single
+> legality layer (`canActiveSeatActOnSlot`, consulted by
+> `canSellBusiness`/`sellBusiness`, `canCloseBusiness`/`closeBusiness`, the
+> upgrade legality/execution paths, and the legacy `sellFromTableau` path), so
+> the UI, AI and headless flows cannot diverge. A permitted sell credits the
+> acting seat's wallet (the acting seat is the slot owner). Single-player states
+> carry no `ownerTaggedGrid`, so the gate is a no-op there.
 
 > Same-week composite pricing (CG-0MT24X0SX007RLHN): clicking a market card (move-to-hand, 1 action) and then placing it on an empty slot the same turn is a **single purchase**. If the move consumed the weekly action (0 actions left), the placement charges the **+50% premium** (`Math.ceil(cost * 1.5 * 2) / 2`) and consumes **no additional action**; an explainer dialog fires first (Proceed commits, Cancel aborts with no cost, "Don't show this again" persists the preference). If an action **remains** (Golden Mile 2-action weeks), the placement consumes it at **listed cost**. A card left in hand and placed in a **later** week costs that week's action at listed cost, with no dialog. Business and community-space cards are priced identically.
 
@@ -317,6 +367,7 @@ The game is considered **won** when **any** of the following conditions are sati
    ```
 2. **Challenge Completion** – All **Primary Challenges** (defined in `docs/games/the-build/challenges.md`) are completed, granting an automatic win regardless of numeric score.
 3. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
+4. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
 
 All win conditions are **deterministic** given the same seed, ensuring testability.
 
@@ -339,9 +390,27 @@ The game ends in **loss** if **any** of the following occur **immediately after 
 
 - **Bankruptcy** – `resourceBank.coins < 0`.
 - **Reputation Collapse** – `resourceBank.reputation <= 0` (the town is considered abandoned).
-- **Turn Exhaustion Without Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns`: `turn >= maxTurns` is reached and none of the win conditions in Section 7 are met.
+- **Turn Exhaustion Without Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns`: `turn >= maxTurns` is reached and none of the win conditions in Section 7 are met.
 
 Loss conditions are evaluated at the end of the **Night Income** phase before checking win conditions, guaranteeing a clear order of evaluation.
+
+> **Per-seat evaluation in competitive play (MS-0MUVBH589001L7NL).** In
+> human-vs-AI games each seat's own `PlayerRecord.coins` / `.reputation` is
+> authoritative — the shared `resourceBank` is only a scratch mirror of the
+> **last-acting** seat (written by `bindCompetitiveSeat` and left in place by
+> `restoreCompetitiveSeat`), so it must never be read for a game-over
+> decision. The thresholds are the same as single-player: **bankruptcy is
+> `coins < 0`** (there is **no** `coins == 0` end condition) and
+> **reputation collapse is `reputation <= 0` after turn 1**. A failing
+> **human** seat ends the game with the existing loss reasons
+> (`bankruptcy` / `reputation_collapse`). A failing **AI** seat instead marks
+> that seat `eliminated`, removes it from turn rotation and AI action
+> enumeration, and closes its owned businesses/community spaces — each card is
+> moved to the discard pile, its `ownerTaggedGrid` ownership cleared, and its
+> neighbours recalculated so the cancelled cards no longer contribute income,
+> reputation or synergy. The closure is a direct grid/discard operation with
+> **no action cost and no wallet change**. Single-player (`N = 1`, no
+> `players[]`) keeps the existing `checkImmediateLoss` behaviour exactly.
 
 ---
 

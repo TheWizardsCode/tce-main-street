@@ -70,10 +70,10 @@ describe('AC1: specialist staff are market-visible', () => {
   });
 
   it('a specialist card can be drawn into the market row (deterministic seed)', () => {
-    // Seed chosen so a fresh refill places staff-chef in the row (deck
-    // composition shifts which seed does this; spec-market-29 verified
-    // against the calendar-expanded pool, CG-0MTT0K9RX0004QTE).
-    const state = setupMainStreetGame({ seed: 'spec-market-29' });
+    // Seed chosen so a fresh refill places a specialist in the row (deck
+    // composition shifts which seed does this; spec-market-7 re-verified
+    // after the Charity Shop addition, MS-0MUAYBAHW007RMSL).
+    const state = setupMainStreetGame({ seed: 'spec-market-7' });
     // Discard any visible staff and re-draw the row fresh (mirrors refresh).
     for (const card of state.market.cards) {
       if (card.family === 'staff') state.discards.staff.push(card as never);
@@ -165,7 +165,7 @@ describe('AC4: legacy staff without allowedBusinessTypes are unaffected', () => 
   });
 
   it('generalist staff (broad allowedBusinessTypes) still appear in the deck', () => {
-    const state = setupMainStreetGame({ seed: 'specialist-generalist' });
+    const state = setupMainStreetGame({ seed: 'specialist-generalist-1' });
     const deckIds = new Set(state.decks.staff.map(c => baseId(c.id)));
     expect(deckIds).toContain('staff-assistant');
     expect(deckIds).toContain('staff-manager');

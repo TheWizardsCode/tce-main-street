@@ -14,6 +14,34 @@
 > the threshold-distance planning horizon (`aiPlanningHorizon`: floor 5 /
 > cap 25 / scorePace 8). See `docs/main-street/core-rules-and-mechanics.md`
 > for the current rules.
+>
+> **Scope extension (CG-0MT5X3GMA007EG30):** Competitive mode — an AI
+> opponent on the shared street — is a **deliberate scope extension beyond
+> M3**, shipped as an **engine-only** change. The M3 out-of-scope row for
+> "AI vs. player (competitive mode)" is therefore superseded: the engine
+> now supports N players on one owner-tagged street, alternating
+> MarketPhases within a shared day, per-owner income/event routing,
+> ownership-aware (and staff-free) competitive AI, and a head-to-head Monte
+> Carlo harness. **No competitive game-selector entry, scene, or UI chrome
+> exists yet** — rendering (owner-coloured street slots, shared-market phase
+> alternation affordance, SFX/animations) is deferred to a planning-created
+> child. Single-player remains the N=1 case and is behaviourally unchanged.
+>
+> **Competitive end conditions (MS-0MUVBH589001L7NL).** Competitive game-over
+> is evaluated **per seat** from each `PlayerRecord.coins` / `.reputation` —
+> the shared `resourceBank` is only a scratch mirror of the last-acting seat
+> and is not authoritative. A failing **human** seat keeps the single-player
+> loss reasons (`bankruptcy` = `coins < 0`, `reputation_collapse` =
+> `reputation <= 0` after turn 1); there is no `coins == 0` end condition. A
+> failing **AI** seat is **eliminated** — removed from turn rotation and AI
+> action enumeration, with its owned businesses/community spaces closed
+> (cards to the discard pile, ownership cleared, neighbours recalculated) —
+> and the survivors play on. When the last AI is eliminated the human is
+> declared the winner as **last standing** (`competitiveWinnerId` = the
+> human seat, `endReason = 'last_standing'`) with an explicit **continue
+> solo** opt-in (`last_standing_continue`, mirroring endless-mode
+> `score_threshold_continue`). The competitive Monte Carlo harness reports the
+> same per-seat attribution, including a per-player `eliminated` flag.
 
 ---
 
@@ -92,7 +120,7 @@ Deliver AI auto-play, a player-facing hint system, and undo/redo functionality f
 | Progressive hints (vague to specific) | Single-move highlight is sufficient for M3 | Future |
 | Multi-action hint sequences | Greedy evaluates one action at a time; chained suggestions deferred | Future |
 | Undo across turn boundaries | Undo stack clears at end-of-turn; cross-turn undo adds complexity | Future |
-| AI vs. player (competitive mode) | Main Street is single-player; AI is used for auto-play and hints only | N/A |
+| AI vs. player (competitive mode) | **Superseded** — engine-level competitive mode shipped as a deliberate scope extension (CG-0MT5X3GMA007EG30); rendering/scene deferred to a planning child | M3 extension (engine) |
 | Visual polish for hint/undo UI | Placeholder styling; polish deferred to M4 | M4 |
 
 ---
@@ -191,6 +219,8 @@ Deliver AI auto-play, a player-facing hint system, and undo/redo functionality f
 - [ ] AC-7.4: Output is available in both JSON and CSV formats.
 - [ ] AC-7.5: Greedy strategy win rate on Medium difficulty is within 30-60% (matching M2 balance targets).
 - [ ] AC-7.6: Greedy strategy median score on Medium difficulty is within 120-180.
+
+> **Superseded by later re-baselines** (CG-0MSRKN325004ELH2, CG-0MTC31LN3000UHDY, MS-0MUQ50I1Y000B6L3): the enforced greedy/Medium bands are now win rate 20-85% and median score 2-200 (PRD §3.3). AC-7.5/AC-7.6 are retained as the historical M3 acceptance values.
 - [ ] AC-7.7: Random strategy win rate is significantly lower than Greedy (validates strategy differentiation).
 
 ### US-8: Transcript Records AI, Hint, and Undo Events
@@ -523,12 +553,13 @@ The M2 Monte Carlo harness (`MainStreetMonteCarlo.ts`) runs 200 seeds x 25 turns
 - Win rate: 30-60% (market-greedy)
 - Median score: 120-180
 
-> **Superseded (CG-0MSRKN325004ELH2, 2026-08-13):** this milestone document's
-> balance targets are historical planning values. The current enforced guardrail
-> bands live in PRD §3.3 and
+> **Superseded (CG-0MSRKN325004ELH2, 2026-08-13; revised MS-0MUQ50I1Y000B6L3,
+> 2026-10-02):** this milestone document's balance targets are historical
+> planning values. The current enforced guardrail bands live in PRD §3.3 and
 > [balance-guardrail-recommendations.md](balance-guardrail-recommendations.md)
-> (greedy per difficulty: Easy 60-90%, Medium 45-75%, Hard 15-40%; net
-> liquidity 0–2; median score 120–180).
+> (greedy per difficulty after the five-turn payback rebalance:
+> Easy 45-95%, Medium 20-85%, Hard 5-60%; net liquidity 0–10; median score
+> 2–200).
 
 ### 6.2 M3 Extension
 
@@ -568,7 +599,7 @@ The following targets validate M2's economy across difficulty presets:
 | Difficulty | Strategy | Win Rate | Median Score | Avg Turns |
 |------------|----------|----------|-------------|-----------|
 | Easy | Greedy | 60-85% | 140-200 | 12-20 |
-| Medium | Greedy | 40-70% | 120-180 | 14-22 |
+| Medium | Greedy | 20-85% | 2-200 | 14-22 |
 | Hard | Greedy | 15-40% | 100-160 | 13-15 |
 | Medium | Random | 5-20% | 60-120 | 15-25 |
 

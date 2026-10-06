@@ -322,6 +322,95 @@ export function computeRefreshCostDiscount(skills: readonly SpecializationSkill[
 }
 
 /**
+ * Flat coin discount on business-card purchases, summed street-wide across
+ * every hired staff member (e.g. the Delivery Driver's "purchase costs 50
+ * less" ability — CG-0MUMCVH3N007KT1M).
+ *
+ * Summates the `purchaseCostDiscount` field of every card in `state.staffCards`
+ * and floors at 0 — the same aggregation and clamp semantics as the
+ * `refreshMarketCost` staff discount path.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state Current game state.
+ * @returns Non-negative flat coin discount for a business-card purchase.
+ */
+export function computePurchaseCostDiscount(state: MainStreetState): number {
+  const total = (state.staffCards ?? []).reduce(
+    (sum, card) => sum + (card.purchaseCostDiscount ?? 0),
+    0,
+  );
+  return Math.max(0, total);
+}
+
+/**
+ * Effective base coin cost of acquiring/placing a business or
+ * community-space card, after the street-wide `purchaseCostDiscount`
+ * (CG-0MUMCVH3N007KT1M). The result is floored at 0. This is the single
+ * shared source of truth for the click (`purchaseBusiness`), drag
+ * (`buyAndPlaceBusiness`) and deferred from-hand (`playBusinessFromHand`)
+ * acquisition paths, including the UI affordability pre-gates.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function computeEffectiveBusinessPurchaseCost(
+  state: MainStreetState,
+  listedCost: number,
+): number {
+  return Math.max(0, listedCost - computePurchaseCostDiscount(state));
+}
+
+/**
+ * Effective +50% drag/composite premium on a business or community-space
+ * card, after the street-wide `purchaseCostDiscount` (CG-0MUMCVH3N007KT1M).
+ * Per the discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is
+ * applied to the base cost BEFORE the premium.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function computeBusinessPurchasePremium(
+  state: MainStreetState,
+  listedCost: number,
+): number {
+  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost) * 1.5 * 2) / 2;
+}
+
+/**
+ * Flat coin discount applied to buying an upgrade for the business at
+ * `slotIndex`, summing the `upgradeCostDiscount` of every staff member
+ * employed there (e.g. the Financial Advisor's "upgrade costs 100 less"
+ * ability — CG-0MTKMGL66004I0PC).
+ *
+ * This is the per-business counterpart of the street-wide refresh / salary
+ * discounts: the discount applies ONLY to the business where the staff
+ * member is employed, and never leaks street-wide (the same scoping rule as
+ * per-business income/reputation buffs, CG-0MSTOATDU006UGAX). Multiple members
+ * at the same business stack additively and the total is floored at 0 — the
+ * same aggregation and clamp semantics as `refreshMarketCost`'s staff
+ * `refreshCostDiscount` sum.
+ *
+ * Reads the per-business employed-staff source of truth
+ * (`business.employedStaff`) and falls back to `employedAtSlot` links for
+ * legacy in-memory states (identical to
+ * `getEmployedSpecializationSkillsForBusiness`).
+ *
+ * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state     Current game state.
+ * @param slotIndex Street-grid slot index of the business being upgraded.
+ * @returns Non-negative flat coin discount for an upgrade at that slot.
+ */
+export function computeUpgradeCostDiscount(state: MainStreetState, slotIndex: number): number {
+  const business = state.streetGrid[slotIndex];
+  const members =
+    business && Array.isArray((business as { employedStaff?: unknown }).employedStaff)
+      ? (business as { employedStaff: StaffCard[] }).employedStaff
+      : (state.staffCards ?? []).filter(card => card.employedAtSlot === slotIndex);
+  const total = members.reduce((sum, card) => sum + (card.upgradeCostDiscount ?? 0), 0);
+  return Math.max(0, total);
+}
+
+/**
  * Effective proportional-tax rate after employed-staff overrides
  * (CG-0MTQ7W0ZX0059R3J). The event supplies the base rate (e.g. the Tax
  * Audit's 45%); any employed staff member with a `taxAuditRate` (e.g. the

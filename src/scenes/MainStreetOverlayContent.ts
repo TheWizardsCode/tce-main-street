@@ -1,5 +1,5 @@
 import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
-import { canCloseBusiness } from '../MainStreetMarket';
+import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
 import type { EventCard, StaffCard } from '../MainStreetCards';
 import { SFX_KEYS } from './MainStreetConstants';
@@ -7,6 +7,14 @@ import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import type { TurnResult } from '../MainStreetEngine';
 import { FONT_FAMILY, createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
+import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
+import { buildJournal, journalIsEmpty, journalTitle, choiceClarityLabels } from '../MainStreetStorylineJournal';
+import {
+  buildGameOverChallengeSummary,
+  buildGameOverPlayerRows,
+  formatEndReason,
+} from './MainStreetGameOverSummary';
+import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -25,11 +33,36 @@ registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
 export class MainStreetOverlayContent {
   constructor(private readonly scene: any) {}
 
+  /**
+   * Shows the Game Over overlay as a two-column panel (epic MS-0MUWDL0V40041USM).
+   *
+   * Layout:
+   * - Top band: the title (`You Win!` / `Game Over`) and the plain-language
+   *   end-reason headline, spanning both columns.
+   * - Left **Game State** column: one row per player (label, coins,
+   *   reputation, score and any failure/elimination badge) followed by the
+   *   run's challenges met.
+   * - Right **Summary** column: the retained score breakdown, challenge
+   *   details, tier-unlock notifications, tier + campaign stats, the
+   *   difficulty selector and the Play Again / Menu buttons anchored at the
+   *   panel bottom.
+   *
+   * The body is read-only (never mutates committed `state`) and reuses the
+   * pure summary model ({@link buildGameOverPlayerRows},
+   * {@link buildGameOverChallengeSummary}, {@link formatEndReason}). Overlay
+   * conventions follow AGENTS.md UI best practices: `createOverlayBackground` /
+   * `createOverlayButton` from `@ui`, all elements parented into
+   * `s.hudContainer`, depths 199 (backdrop) / 200 (box) / 201 (interactive),
+   * everything pushed into `s.overlayObjects`. No animation is added here, so
+   * the overlay is reduced-motion safe, and headless/replay mode returns early.
+   */
   public showGameOverOverlay(
     result: TurnResult,
     newlyUnlockedTiers: string[] = [],
   ): void {
     const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
     s.uiPhase = 'game-over';
     s.refreshAll();
 
@@ -37,13 +70,19 @@ export class MainStreetOverlayContent {
     const title = isWin ? 'You Win!' : 'Game Over';
     const color = isWin ? '#44ff44' : '#ff4444';
 
-    // Per-challenge breakdown lines (rendered below score breakdown)
-    const activeChallenges = s.state.activeChallenges;
-    const challengeLineCount = activeChallenges.length;
-    // Extra height: section header + one line per challenge
-    const challengeExtraH = challengeLineCount > 0 ? 24 + challengeLineCount * 20 : 0;
+    // ── Model inputs (pure, read-only) ──────────────────────────
+    // Per-player rows (PlayerRecord in competitive mode, the shared wallet in
+    // single-player), the run-global challenge summary and the explicit
+    // end-reason headline.
+    const playerRows = buildGameOverPlayerRows(s.state);
+    const challengeSummary = buildGameOverChallengeSummary(s.state);
+    const endReasonHeadline = formatEndReason(s.state);
 
-    // ── Meta-progression section heights ──
+    const activeChallenges = s.state.activeChallenges ?? [];
+    const challengeLineCount = activeChallenges.length;
+    const completedChallenges = s.state.challengesCompleted ?? [];
+
+    // ── Content heights ─────────────────────────────────────────
     // Tier unlock notifications (conditional)
     let tierUnlockH = 0;
     if (newlyUnlockedTiers.length > 0) {
@@ -52,25 +91,46 @@ export class MainStreetOverlayContent {
       tierUnlockH += 8; // bottom padding
     }
     // Current tier + campaign stats (always shown when campaign exists)
-    const campaignH = s.campaign ? 80 : 0; // tier indicator + 3 stat lines + spacing
+    const campaignH = s.campaign ? 80 : 0; // tier indicator + stat lines + spacing
 
-    const panelH = 360 + challengeExtraH + tierUnlockH + campaignH;
+    const rowH = 26;
+    const leftPlayersH = 26 + playerRows.length * rowH; // "Game State" header + rows
+    const leftChallengesH = 20 + 22 + 20 + challengeSummary.totalCount * 20; // gap + header + met line + items
+    const leftTotalH = leftPlayersH + leftChallengesH;
 
-    // Overlay background & box (created by createOverlayBackground).
+    const breakdownH = 108;
+    const detailsH = challengeLineCount > 0 ? 24 + challengeLineCount * 20 : 0;
+    const controlsH = 88; // difficulty row + buttons
+    const rightContentH = 26 + breakdownH + detailsH + tierUnlockH + campaignH;
+    const rightTotalH = rightContentH + controlsH;
+
+    const topBandH = 92;
+    const panelPad = 24;
+    const colGap = 24;
+    const panelW = 900;
+    const colW = (panelW - panelPad * 2 - colGap) / 2;
+    const bodyH = Math.max(leftTotalH, rightTotalH);
+    const panelH = topBandH + bodyH + panelPad;
+    const panelTop = s.layout.gameH / 2 - panelH / 2;
+    const panelLeft = s.layout.gameW / 2 - panelW / 2;
+    const leftX = panelLeft + panelPad;
+    const rightX = leftX + colW + colGap;
+    const bodyTop = panelTop + topBandH;
+
+    // Overlay background & box (backdrop 199 / box 200).
     const boxConfig = {
-      width: 500,
+      width: panelW,
       height: panelH,
       color: 0x000000,
       alpha: 1.0,
-      depth: 100,
+      depth: 200,
     };
     const overlay = createOverlayBackground(
       s,
-      { depth: 100, alpha: 0.75 },
+      { depth: 199, alpha: 0.75 },
       boxConfig,
     );
     if (overlay.box) {
-      const panelTop = s.layout.gameH / 2 - panelH / 2;
       // Position box center at panel top + panel height / 2
       overlay.box.y = panelTop + panelH / 2;
     }
@@ -86,29 +146,82 @@ export class MainStreetOverlayContent {
       height: s.layout.gameH,
     });
 
-    // Vertical anchor: centre of the panel
-    const panelTop = s.layout.gameH / 2 - panelH / 2;
-
-    // Title
-    const titleText = s.add.text(s.layout.gameW / 2, panelTop + 30, title, {
-      fontSize: '36px', fontStyle: 'bold', color, fontFamily: FONT_FAMILY,
-    }).setOrigin(0.5).setDepth(101);
+    // ── Top band: title + explicit end-reason headline ──────────
+    const titleText = s.add.text(s.layout.gameW / 2, panelTop + 32, title, {
+      fontSize: '34px', fontStyle: 'bold', color, fontFamily: FONT_FAMILY,
+    }).setOrigin(0.5).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(titleText);
     s.overlayObjects.push(titleText);
 
-    // End reason
-    const reason = s.state.endReason ?? 'unknown';
-    const reasonText = s.add.text(
-      s.layout.gameW / 2, panelTop + 72,
-      reason.replace(/_/g, ' '),
-      { fontSize: '18px', color: '#ccbbaa', fontFamily: FONT_FAMILY },
-    ).setOrigin(0.5).setDepth(101);
+    const reasonText = s.add.text(s.layout.gameW / 2, panelTop + 70, endReasonHeadline, {
+      fontSize: '18px', color: '#ccbbaa', fontFamily: FONT_FAMILY, align: 'center',
+    }).setOrigin(0.5).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(reasonText);
     s.overlayObjects.push(reasonText);
 
-    // Score breakdown
+    // ── Left "Game State" column ────────────────────────────────
+    const leftHeader = s.add.text(leftX, bodyTop, 'Game State', {
+      fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(leftHeader);
+    s.overlayObjects.push(leftHeader);
+
+    let leftY = bodyTop + 26;
+    for (const row of playerRows) {
+      const badge = formatCompetitiveScoreboardBadge(row);
+      const line = `${row.label}: ${row.coins}c  ${row.reputation}r  ${row.score}pt`
+        + (badge ? `  — ${badge}` : '');
+      const rowColor = row.badge ? '#ff8888' : (row.isHuman ? '#ddccbb' : '#bbaa99');
+      const rowText = s.add.text(leftX, leftY, line, {
+        fontSize: '14px', color: rowColor, fontFamily: FONT_FAMILY,
+      }).setOrigin(0, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(rowText);
+      s.overlayObjects.push(rowText);
+      leftY += rowH;
+    }
+
+    // Challenges met (run-global in the engine).
+    leftY += 20;
+    const challengesHeader = s.add.text(leftX, leftY, 'Challenges', {
+      fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(challengesHeader);
+    s.overlayObjects.push(challengesHeader);
+    leftY += 22;
+
+    const metLine = challengeSummary.totalCount > 0
+      ? `Met: ${challengeSummary.completedCount} / ${challengeSummary.totalCount}`
+      : `Completed: ${completedChallenges.length}`;
+    const challengesMet = s.add.text(leftX, leftY, metLine, {
+      fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+    }).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(challengesMet);
+    s.overlayObjects.push(challengesMet);
+    leftY += 20;
+
+    for (const item of challengeSummary.items) {
+      const icon = item.completed ? '\u2713' : '\u2717'; // checkmark or cross
+      const itemColor = item.completed ? '#44ff44' : '#ff6666';
+      const itemText = s.add.text(leftX, leftY, `${icon}  ${item.title}`, {
+        fontSize: '13px', color: itemColor, fontFamily: FONT_FAMILY,
+      }).setOrigin(0, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(itemText);
+      s.overlayObjects.push(itemText);
+      leftY += 20;
+    }
+
+    // ── Right "Summary" column (retained content) ───────────────
+    const rightHeader = s.add.text(rightX, bodyTop, 'Summary', {
+      fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(rightHeader);
+    s.overlayObjects.push(rightHeader);
+
+    let cursorY = bodyTop + 26;
+
+    // Score breakdown (retained; kept as one joined multi-line text).
     const { coins, reputation } = s.state.resourceBank;
-    const challenges = s.state.challengesCompleted.length;
+    const challenges = completedChallenges.length;
     const cfg = s.state.config;
     const lines = [
       // Integer economy — whole-number display (CG-0MTIO1M15001E9Y6).
@@ -117,22 +230,19 @@ export class MainStreetOverlayContent {
       `Challenges: ${challenges} (x${cfg.challengeBonusPoints} = ${challenges * cfg.challengeBonusPoints})`,
       `Final Score: ${Math.round(result.finalScore)}`,
     ];
-    const breakdownY = panelTop + 110;
-    const breakdown = s.add.text(s.layout.gameW / 2, breakdownY, lines.join('\n'), {
-      fontSize: '16px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-      align: 'center', lineSpacing: 6,
-    }).setOrigin(0.5, 0).setDepth(101);
+    const breakdown = s.add.text(rightX, cursorY, lines.join('\n'), {
+      fontSize: '15px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      align: 'left', lineSpacing: 6,
+    }).setOrigin(0, 0).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(breakdown);
     s.overlayObjects.push(breakdown);
+    cursorY += breakdownH;
 
-    // Per-challenge breakdown (below score breakdown)
-    let cursorY = breakdownY + 100; // approximate height of score breakdown text
+    // Per-challenge details (retained).
     if (challengeLineCount > 0) {
-      const sectionTitle = s.add.text(
-        s.layout.gameW / 2, cursorY,
-        'Challenge Details:',
-        { fontSize: '14px', fontStyle: 'bold', color: '#aa9977', fontFamily: FONT_FAMILY },
-      ).setOrigin(0.5, 0).setDepth(101);
+      const sectionTitle = s.add.text(rightX, cursorY, 'Challenge Details:', {
+        fontSize: '14px', fontStyle: 'bold', color: '#aa9977', fontFamily: FONT_FAMILY,
+      }).setOrigin(0, 0).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(sectionTitle);
       s.overlayObjects.push(sectionTitle);
       cursorY += 22;
@@ -141,25 +251,21 @@ export class MainStreetOverlayContent {
         const done = ac.completed;
         const icon = done ? '\u2713' : '\u2717'; // checkmark or cross
         const lineColor = done ? '#44ff44' : '#ff6666';
-        const challengeLine = s.add.text(
-          s.layout.gameW / 2, cursorY,
-          `${icon}  ${ac.challenge.title}`,
-          { fontSize: '13px', color: lineColor, fontFamily: FONT_FAMILY },
-        ).setOrigin(0.5, 0).setDepth(101);
+        const challengeLine = s.add.text(rightX, cursorY, `${icon}  ${ac.challenge.title}`, {
+          fontSize: '13px', color: lineColor, fontFamily: FONT_FAMILY,
+        }).setOrigin(0, 0).setDepth(201);
         if (s.hudContainer) s.hudContainer.add(challengeLine);
         s.overlayObjects.push(challengeLine);
         cursorY += 20;
       }
     }
 
-    // ── Meta-progression: Tier Unlock Notifications ──
+    // ── Meta-progression: Tier Unlock Notifications (retained) ──
     if (newlyUnlockedTiers.length > 0) {
       cursorY += 8;
-      const unlockHeader = s.add.text(
-        s.layout.gameW / 2, cursorY,
-        'Tier Unlocked!',
-        { fontSize: '14px', fontStyle: 'bold', color: '#44ff44', fontFamily: FONT_FAMILY },
-      ).setOrigin(0.5, 0).setDepth(101);
+      const unlockHeader = s.add.text(rightX, cursorY, 'Tier Unlocked!', {
+        fontSize: '14px', fontStyle: 'bold', color: '#44ff44', fontFamily: FONT_FAMILY,
+      }).setOrigin(0, 0).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(unlockHeader);
       s.overlayObjects.push(unlockHeader);
       cursorY += 22;
@@ -176,10 +282,10 @@ export class MainStreetOverlayContent {
           ? '(via challenges)' : '(via reputation)';
 
         const tierLine = s.add.text(
-          s.layout.gameW / 2, cursorY,
+          rightX, cursorY,
           `NEW: Tier ${def.order} - ${def.name} ${triggerLabel}`,
           { fontSize: '13px', color: '#88ff88', fontFamily: FONT_FAMILY },
-        ).setOrigin(0.5, 0).setDepth(101);
+        ).setOrigin(0, 0).setDepth(201);
         if (s.hudContainer) s.hudContainer.add(tierLine);
         s.overlayObjects.push(tierLine);
         cursorY += 20;
@@ -187,17 +293,17 @@ export class MainStreetOverlayContent {
         // Show count of new cards added by this tier
         const cardCount = def.newCardIds.length;
         const countLine = s.add.text(
-          s.layout.gameW / 2, cursorY,
+          rightX, cursorY,
           `  + ${cardCount} new card${cardCount === 1 ? '' : 's'}`,
           { fontSize: '12px', color: '#aaddaa', fontFamily: FONT_FAMILY },
-        ).setOrigin(0.5, 0).setDepth(101);
+        ).setOrigin(0, 0).setDepth(201);
         if (s.hudContainer) s.hudContainer.add(countLine);
         s.overlayObjects.push(countLine);
         cursorY += 16;
       }
     }
 
-    // ── Meta-progression: Current Tier + Campaign Stats ──
+    // ── Meta-progression: Current Tier + Campaign Stats (retained) ──
     if (s.campaign) {
       cursorY += 8;
       const highest = highestUnlockedTier(s.campaign.unlockedTiers);
@@ -205,10 +311,9 @@ export class MainStreetOverlayContent {
       const tierLabel = highest
         ? `Current Tier: ${highest.order} / ${tierCount} - ${highest.name}`
         : 'Current Tier: --';
-      const tierIndicator = s.add.text(
-        s.layout.gameW / 2, cursorY, tierLabel,
-        { fontSize: '14px', fontStyle: 'bold', color: '#ddbb88', fontFamily: FONT_FAMILY },
-      ).setOrigin(0.5, 0).setDepth(101);
+      const tierIndicator = s.add.text(rightX, cursorY, tierLabel, {
+        fontSize: '14px', fontStyle: 'bold', color: '#ddbb88', fontFamily: FONT_FAMILY,
+      }).setOrigin(0, 0).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(tierIndicator);
       s.overlayObjects.push(tierIndicator);
       cursorY += 22;
@@ -220,29 +325,29 @@ export class MainStreetOverlayContent {
         `Runs: ${s.campaign.totalRuns}  |  Wins: ${s.campaign.totalWins}  (${winRate}%)`,
         `High Score: ${Math.round(s.campaign.highestScore)}  |  Best Rep: ${s.campaign.persistentReputation}`,
       ];
-      const statsText = s.add.text(
-        s.layout.gameW / 2, cursorY, statsLines.join('\n'),
-        { fontSize: '13px', color: '#bbaa99', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
-      ).setOrigin(0.5, 0).setDepth(101);
+      const statsText = s.add.text(rightX, cursorY, statsLines.join('\n'), {
+        fontSize: '13px', color: '#bbaa99', fontFamily: FONT_FAMILY,
+        align: 'left', lineSpacing: 4,
+      }).setOrigin(0, 0).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(statsText);
       s.overlayObjects.push(statsText);
     }
 
-    // Difficulty selector
-    const diffY = panelTop + panelH - 80;
+    // ── Controls anchored at the panel bottom ───────────────────
+    const diffY = panelTop + panelH - 58;
     const diffLabel = s.add.text(
-      s.layout.gameW / 2 - 80, diffY,
+      rightX, diffY,
       `Difficulty: ${s.selectedDifficulty}`,
       { fontSize: '14px', color: '#ccbbaa', fontFamily: FONT_FAMILY },
-    ).setOrigin(0, 0.5).setDepth(101);
+    ).setOrigin(0, 0.5).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(diffLabel);
     s.overlayObjects.push(diffLabel);
 
     const cycleBtn = s.add.text(
-      s.layout.gameW / 2 + 90, diffY,
+      rightX + colW, diffY,
       '[ Change ]',
       { fontSize: '14px', color: '#ffdd88', fontFamily: FONT_FAMILY },
-    ).setOrigin(0, 0.5).setDepth(101).setInteractive({ useHandCursor: true });
+    ).setOrigin(1, 0.5).setDepth(201).setInteractive({ useHandCursor: true });
     cycleBtn.on('pointerdown', () => {
       const idx = DIFFICULTY_NAMES.indexOf(s.selectedDifficulty);
       s.selectedDifficulty = DIFFICULTY_NAMES[(idx + 1) % DIFFICULTY_NAMES.length];
@@ -252,10 +357,10 @@ export class MainStreetOverlayContent {
     s.overlayObjects.push(cycleBtn);
 
     // Buttons (positioned relative to panel bottom)
-    const btnY = panelTop + panelH - 40;
+    const btnY = panelTop + panelH - 28;
     const playAgainBtn = createOverlayButton(
       s, s.layout.gameW / 2 - 110, btnY,
-      '[ Play Again ]', 101,
+      '[ Play Again ]', 201,
     );
     playAgainBtn.on('pointerdown', () => {
       dismissOverlay(s.overlayObjects);
@@ -267,7 +372,7 @@ export class MainStreetOverlayContent {
 
     const menuBtn = createOverlayButton(
       s, s.layout.gameW / 2 + 110, btnY,
-      '[ Menu ]', 101,
+      '[ Menu ]', 201,
     );
     menuBtn.on('pointerdown', () => {
       dismissOverlay(s.overlayObjects);
@@ -277,7 +382,6 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(menuBtn);
     s.overlayObjects.push(menuBtn);
   }
-
   /**
    * Shows the Manage Card overlay for a card on the street grid.
    *
@@ -355,12 +459,12 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(infoText);
     s.overlayObjects.push(infoText);
 
-    // Sell refund highlight (Sell only — Close grants no coins)
-    const refundText = s.add.text(centerX, panelY + 186, `Sell refund: +€${refund}`, {
+    // Sale value highlight (Sell only — Close grants no coins)
+    const saleValueText = s.add.text(centerX, panelY + 186, `Sale value: +€${refund}`, {
       fontSize: '20px', fontStyle: 'bold', color: '#44ff44', fontFamily: FONT_FAMILY,
     }).setOrigin(0.5).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(refundText);
-    s.overlayObjects.push(refundText);
+    if (s.hudContainer) s.hudContainer.add(saleValueText);
+    s.overlayObjects.push(saleValueText);
 
     // Close cost line — makes the 1-action / no-coins cost explicit
     const closeCostText = s.add.text(
@@ -378,6 +482,19 @@ export class MainStreetOverlayContent {
     );
     if (s.hudContainer) s.hudContainer.add(sellBtn);
     sellBtn.on('pointerdown', () => {
+      // Defensive ownership/legality guard (MS-0MUVPGA3A001TGGT): the dialog
+      // is only opened for an owned, sellable slot, but guard the handler too
+      // so a stale overlay can never sell an opponent's business.
+      const sellLegality = canSellBusiness(s.state, slotIndex, false);
+      if (!sellLegality.legal) {
+        safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
+        s.instructionText?.setText(`Cannot sell: ${sellLegality.reason ?? 'unknown'}`);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        s.refreshAll();
+        return;
+      }
+
       // Execute the sell
       let sold = false;
       try {
@@ -786,7 +903,7 @@ export class MainStreetOverlayContent {
     if (s.replayMode) return; // headless/replay: never present UI
 
     const panelW = 500;
-    const panelH = 240;
+    const panelH = 300;
     const panelY = s.layout.gameH / 2 - panelH / 2;
 
     // Overlay background with semi-transparent backdrop (199 / 200 / 201).
@@ -804,8 +921,9 @@ export class MainStreetOverlayContent {
     );
     s.overlayObjects.push(...overlay.objects);
 
-    // Title: the event name (a decision is required).
-    const titleText = s.add.text(s.layout.gameW / 2, panelY + 28, event.name, {
+    // Title: the storyline name when available (fallback: the card name), so
+    // the player knows which arc they are in (MS-0MUMP96XH002SJ89 AC1).
+    const titleText = s.add.text(s.layout.gameW / 2, panelY + 22, choiceDialogTitle(event), {
       fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
       align: 'center',
       wordWrap: { width: panelW - 60 },
@@ -813,10 +931,22 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(titleText);
     s.overlayObjects.push(titleText);
 
+    // Subtitle: the specific incident within the storyline (omitted for legacy
+    // choice cards without a storyline).
+    const subtitle = choiceDialogSubtitle(event);
+    if (subtitle) {
+      const subtitleText = s.add.text(s.layout.gameW / 2, panelY + 50, subtitle, {
+        fontSize: '14px', fontStyle: 'italic', color: '#bbaa88', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: panelW - 60 },
+      }).setOrigin(0.5).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(subtitleText);
+      s.overlayObjects.push(subtitleText);
+    }
+
     // Body: what Accept does (the card's stated effect). No preview of the
     // escalation either way — rejecting keeps the consequence unknown.
     const bodyText = s.add.text(
-      s.layout.gameW / 2, panelY + 92,
+      s.layout.gameW / 2, panelY + 78,
       `An incident has occurred.\nAccept: ${event.effect}\nReject: refuse this consequence — a different event will replace it.`,
       {
         fontSize: '13px',
@@ -829,6 +959,24 @@ export class MainStreetOverlayContent {
     ).setOrigin(0.5, 0).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(bodyText);
     s.overlayObjects.push(bodyText);
+
+    // Choice clarity (MS-0MUMP97LQ006PP1D AC3): explanatory labels describing
+    // the consequence semantics (apply vs skip). They deliberately never name
+    // the escalation card — the tension is preserved.
+    const clarity = choiceClarityLabels(event);
+    const acceptClarity = s.add.text(s.layout.gameW / 2, panelY + 158, clarity.accept, {
+      fontSize: '12px', color: '#99cc99', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(acceptClarity);
+    s.overlayObjects.push(acceptClarity);
+
+    const rejectClarity = s.add.text(s.layout.gameW / 2, panelY + 190, clarity.reject, {
+      fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(rejectClarity);
+    s.overlayObjects.push(rejectClarity);
 
     // Accept button — label carries the event name per AC14: "Service Workers
     // Strike (Accept)". Accepting is the safe path (no escalation).
@@ -862,5 +1010,94 @@ export class MainStreetOverlayContent {
       onReject();
     });
     s.overlayObjects.push(rejectBtn);
+  }
+
+  /**
+   * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D).
+   *
+   * Lists past storyline choices and their outcomes (from the activity log's
+   * story-update lines), most recent first, with a sensible empty state before
+   * any choice has been made.
+   *
+   * Overlay pattern compliance: `createOverlayBackground` + `createOverlayButton`
+   * from @ui; ALL elements are parented into `s.hudContainer`; depths 199
+   * (backdrop) / 200 (box) / 201 (interactive). No animations (reduced-motion
+   * safe). Cleanup on dismissal resets `s.overlayObjects`.
+   *
+   * @param onClose Called after the overlay is dismissed.
+   */
+  public showStorylineJournalDialog(onClose?: () => void): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    const entries = buildJournal(s.state);
+    const empty = journalIsEmpty(s.state);
+    const maxRows = 10;
+    const rowH = 34;
+    const shown = entries.slice(0, maxRows);
+    const panelW = 560;
+    const panelH = Math.max(240, 150 + Math.max(1, shown.length) * rowH);
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    const titleText = s.add.text(s.layout.gameW / 2, panelY + 24, journalTitle(s.state), {
+      fontSize: '20px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    if (empty) {
+      // Empty state (AC2) — shown before any storyline choice is made.
+      const emptyText = s.add.text(
+        s.layout.gameW / 2, panelY + 100,
+        'No storyline choices yet.\nYour decisions will appear here as the story unfolds.',
+        { fontSize: '14px', color: '#bbaa88', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(emptyText);
+      s.overlayObjects.push(emptyText);
+    } else {
+      shown.forEach((entry, index) => {
+        const y = panelY + 64 + index * rowH;
+        const storyline = s.add.text(20, y, entry.storyline, {
+          fontSize: '13px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
+          wordWrap: { width: 180 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(storyline);
+        s.overlayObjects.push(storyline);
+
+        const outcome = s.add.text(210, y, `[Day ${entry.turn}] ${entry.outcome}`, {
+          fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+          wordWrap: { width: panelW - 240 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(outcome);
+        s.overlayObjects.push(outcome);
+      });
+      if (entries.length > maxRows) {
+        const moreText = s.add.text(
+          s.layout.gameW / 2, panelY + 64 + maxRows * rowH,
+          `…and ${entries.length - maxRows} earlier`, {
+            fontSize: '12px', fontStyle: 'italic', color: '#998877', fontFamily: FONT_FAMILY,
+          },
+        ).setOrigin(0.5, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(moreText);
+        s.overlayObjects.push(moreText);
+      }
+    }
+
+    const closeBtn = createOverlayButton(
+      s, s.layout.gameW / 2, panelY + panelH - 40, '[ Close ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(closeBtn);
+    closeBtn.on('pointerdown', () => {
+      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+      onClose?.();
+    });
+    s.overlayObjects.push(closeBtn);
   }
 }

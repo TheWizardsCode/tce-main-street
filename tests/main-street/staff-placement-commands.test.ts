@@ -89,9 +89,9 @@ describe('AC3: placement validates allowedBusinessTypes', () => {
     expect(chef.employedAtSlot).toBe(0);
   });
 
-  it('accepts a specialist whose business NAME matches (Florist → Florist)', () => {
+  it('accepts a specialist whose business NAME matches (Florist → Flower Shop)', () => {
     const state = freshState();
-    placeBusinessAt(state, 0, 'Florist', ['Commerce', 'Culture']);
+    placeBusinessAt(state, 0, 'Flower Shop', ['Commerce', 'Culture']);
     const florist = hire(state, 'staff-florist');
     expect(canPlaceStaffOnBusiness(state, florist.id, 0).legal).toBe(true);
     placeStaffOnBusiness(state, florist.id, 0);

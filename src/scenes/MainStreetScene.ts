@@ -38,12 +38,7 @@ import {
   zoomInLevel,
   zoomOutLevel,
 } from '../MainStreetMapView';
-import { createMarketCardCheatTool } from '../debug/MarketCardCheatOverlay';
-import { createStaffApplicantCheatTool } from '../debug/StaffApplicantCheatOverlay';
-import { createSessionExportTool } from '@ui/debug/SessionExportTool';
-import { createStateInspectorTool } from '@ui/debug/StateInspectorOverlay';
-import { createGameEventLogTool } from '@ui/debug/GameEventLogOverlay';
-import { createAiDecisionViewerTool } from '@ui/debug/AiDecisionOverlay';
+import { buildMainStreetDebugTools } from '../debug/MainStreetDebugTools';
 
 type UIPhase =
   | 'idle'               // Waiting for WeekStart
@@ -79,14 +74,7 @@ export class MainStreetScene extends CardGameScene {
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, [
-        createSessionExportTool(),
-        createStateInspectorTool(),
-        createGameEventLogTool(),
-        createAiDecisionViewerTool(),
-        createMarketCardCheatTool(),
-        createStaffApplicantCheatTool(),
-      ], vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true), vetoToggle);
       return;
     }
     super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
@@ -260,6 +248,11 @@ export class MainStreetScene extends CardGameScene {
    * `MainStreetRenderer.refreshLog` and `MainStreetInputManager.handleLogWheel`). */
   public logAutoScroll = true;
   public logPrevEntryCount = 0;
+  /** When true, `refreshLog` suppresses rendering of new entries so they
+   * only appear after the upcoming/phase UI has been displayed to the player.
+   * Cleared in `finalizeTurn` after `startTurnPhase` completes.
+   * (MS-0MURBOD2E009SOM2) */
+  public logDeferredUntilPhaseComplete = false;
   /** The index of the first entry displayed in the current log window (for windowed rendering). */
   public logRenderedStartIdx = 0;
 
@@ -1281,6 +1274,17 @@ export class MainStreetScene extends CardGameScene {
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showEventChoiceDialog === 'function') {
       (this.msOverlayManager as any).showEventChoiceDialog(event, onAccept, onReject);
+    }
+  }
+
+  /**
+   * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D): past storyline
+   * choices and outcomes, or a sensible empty state. Delegates to the overlay
+   * manager's showStorylineJournalDialog.
+   */
+  public showStorylineJournal(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showStorylineJournalDialog === 'function') {
+      (this.msOverlayManager as any).showStorylineJournalDialog();
     }
   }
 

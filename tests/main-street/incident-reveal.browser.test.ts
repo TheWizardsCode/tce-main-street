@@ -7,15 +7,15 @@
  * 1. Ending the turn with an incident at the front of the Upcoming queue
  *    triggers the new reveal: a card-back-over-face container builds,
  *    flies to board centre, hinges open (scaleX → 0), and the face stays
- *    visible for 4 seconds before the turn advances.
+ *    visible for INCIDENT_REVEAL_HOLD_MS (~1920ms) before the turn advances.
  * 2. The reveal **blocks** the turn advance — the next week starts only
- *    after the 4-second hold completes (new gating behaviour).
+ *    after the hold completes (new gating behaviour).
  * 3. Under reduced motion the reveal shows the card instantly (no flight,
- *    no hinge flip) but still waits 4 seconds before advancing.
+ *    no hinge flip) but still waits the hold before advancing.
  *
  * Timing notes — the reveal choreography (flight 550ms + hinge 260ms +
- * hold 4000ms + return 400ms = 5210ms) plus the controller's 800ms delay
- * after reveal completion makes the nominal wall-clock ~6s. Under CPU
+ * hold 1920ms + return 400ms = 3130ms) plus the controller's 800ms delay
+ * after reveal completion makes the nominal wall-clock ~4s. Under CPU
  * contention Phaser rAF timers lag, so the test uses a generous margin
  * (+16s) to avoid false failures; see the pattern in
  * `income-collection.browser.test.ts`.
@@ -30,11 +30,12 @@ import { waitForScene } from '@core-tests/helpers/waitForScene';
 import type { EventCard } from '../../src/MainStreetCards';
 
 // ── Timing constants ───────────────────────────────────────────
-// Nominal reveal choreography: flight 550ms + hinge 260ms + hold 4000ms
-// + return 400ms = 5210ms, plus the controller's 800ms delay after
-// reveal completion → ~6010ms nominal. Under CPU contention Phaser rAF
-// timers lag; use a generous margin (+16s) to avoid false failures.
-const REVEAL_WAIT_MS = 6_000 + 16_000;
+// Nominal reveal choreography: flight 550ms + hinge 260ms + hold 1920ms
+// (INCIDENT_REVEAL_HOLD_MS) + return 400ms = 3130ms, plus the controller's
+// 800ms delay after reveal completion → ~3930ms nominal. Under CPU
+// contention Phaser rAF timers lag; use a generous margin (+16s) to avoid
+// false failures.
+const REVEAL_WAIT_MS = 4_000 + 16_000;
 
 /** No-incident fast path: advanceTurn's 800ms delay plus generous margin. */
 const FAST_PATH_WAIT_MS = 2_000 + 12_000;
@@ -135,7 +136,7 @@ describe('MainStreet incident reveal presentation', () => {
     game = null;
   });
 
-  it('triggers the reveal with the incident deltas and gates turn advance until the 4-second hold completes', async () => {
+  it('triggers the reveal with the incident deltas and gates turn advance until the hold completes', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
 
@@ -157,14 +158,14 @@ describe('MainStreet incident reveal presentation', () => {
     expect(calls[0].repChange).toBe(0);
 
     // The reveal gates the turn advance: the next week does NOT start
-    // immediately (800ms). Instead it waits for the 4-second hold.
+    // immediately (800ms). Instead it waits for the hold.
     // Verify that the phase does NOT return to MarketPhase within 2s
     // (which would be the old non-blocking behaviour).
     const earlyPhase = (scene.state as { phase: string }).phase;
     expect(earlyPhase).not.toBe('MarketPhase');
 
-    // After the full reveal (4s hold + return animation), the next week starts.
-    // Use generous timeout: nominal ~6s + 16s margin for contention-induced RAF lag.
+    // After the full reveal (hold + return animation), the next week starts.
+    // Use generous timeout: nominal ~4s + 16s margin for contention-induced RAF lag.
     await waitForCondition(() => (scene.state as { phase: string }).phase === 'MarketPhase', {
       timeoutMs: REVEAL_WAIT_MS,
       label: 'next week start after reveal hold (gated)',
@@ -195,7 +196,7 @@ describe('MainStreet incident reveal presentation', () => {
     // The reveal is skipped in the tutorial...
     expect(spy).not.toHaveBeenCalled();
 
-    // ...and the day still advances on the usual window (no 4s hold).
+    // ...and the day still advances on the usual window (no reveal hold).
     await waitForCondition(() => (scene.state as { phase: string }).phase === 'MarketPhase', {
       timeoutMs: FAST_PATH_WAIT_MS,
       label: 'next week start during tutorial (reveal skipped)',

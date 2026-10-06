@@ -15,10 +15,62 @@ import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
 import type { BusinessCard, UpgradeCard, EventCard } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
+import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import { resolveEvent } from './MainStreetEngine';
 import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
 import { canAddToHand, validateHandIndex } from './MainStreetMarketHand';
+import { computeUpgradeCostDiscount, computePurchaseCostDiscount } from './MainStreetStaffBuffs';
+
+/**
+ * Effective coin cost of an upgrade at a specific business, after the
+ * per-business `upgradeCostDiscount` staff buff (CG-0MTKMGL66004I0PC).
+ *
+ * The discount is subtracted from the upgrade's LISTED (base) cost and the
+ * result is floored at 0; staff employed at other businesses never discount
+ * this business's upgrades. Pure; consumes no RNG.
+ *
+ * @param state      Current game state.
+ * @param card       The upgrade card being bought/applied.
+ * @param targetSlot Street-grid slot of the business being upgraded.
+ * @returns Non-negative discounted base cost.
+ */
+export function effectiveUpgradeCost(
+  state: MainStreetState,
+  card: UpgradeCard,
+  targetSlot: number,
+): number {
+  return Math.max(0, card.cost - computeUpgradeCostDiscount(state, targetSlot));
+}
+
+/**
+ * Lowest effective upgrade cost across every eligible target business on the
+ * street (used when no target slot is known yet, e.g. AI bank planning).
+ * Falls back to the listed cost when no business is eligible.
+ *
+ * @param state Current game state.
+ * @param card  The upgrade card.
+ * @returns The best (lowest) effective base cost. Pure; consumes no RNG.
+ */
+export function bestEffectiveUpgradeCost(
+  state: MainStreetState,
+  card: UpgradeCard,
+): number {
+  let best = card.cost;
+  const requiredLevel = card.requiredLevel ?? 0;
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    const biz = state.streetGrid[i];
+    if (
+      biz !== null &&
+      biz.name === card.targetBusiness &&
+      biz.level === requiredLevel &&
+      biz.level < biz.maxLevel
+    ) {
+      best = Math.min(best, effectiveUpgradeCost(state, card, i));
+    }
+  }
+  return best;
+}
 
 /**
  * Checks whether the player can purchase a Business card from the market
@@ -50,9 +102,13 @@ export function canPurchaseBusiness(
     };
   }
 
-  // Check coins
-  if (state.resourceBank.coins < card.cost) {
-    return { legal: false, reason: `Not enough coins. Need ${card.cost}, have ${state.resourceBank.coins}.` };
+  // Check coins against the effective (discounted) cost.
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
+  // discount applied to the base listed cost.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
+  const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+  if (state.resourceBank.coins < effectiveCost) {
+    return { legal: false, reason: `Not enough coins. Need ${effectiveCost}, have ${state.resourceBank.coins}.` };
   }
 
   // Validate slot index
@@ -82,6 +138,7 @@ export function canPurchaseBusiness(
 export function canPurchaseUpgrade(
   state: MainStreetState,
   cardId: string,
+  targetSlot?: number,
 ): LegalityResult {
   // Find card in the market (must be an upgrade)
   const card = state.market.cards.find(
@@ -91,20 +148,52 @@ export function canPurchaseUpgrade(
     return { legal: false, reason: 'Card not found in the upgrade market.' };
   }
 
-  // Check coins
-  if (state.resourceBank.coins < card.cost) {
-    return { legal: false, reason: `Not enough coins. Need ${card.cost}, have ${state.resourceBank.coins}.` };
+  // Ownership gate (competitive only): an upgrade may only target a business
+  // the acting seat owns. With an explicit slot, reject it here so the caller
+  // gets an ownership-specific reason; without one, default target resolution
+  // below is ownership-filtered by `findTargetBusinessSlot`.
+  if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) return ownership;
+  }
+
+  // Per-business upgrade discount (CG-0MTKMGL66004I0PC): resolve the discount
+  // for the target business BEFORE the coin check, so a Financial Advisor
+  // employed at the target can make an otherwise-unaffordable upgrade
+  // affordable. With no explicit slot, use the same default target
+  // `purchaseUpgrade` resolves (`findTargetBusinessSlot`) so the `can*` and
+  // `do*` paths can never diverge. Unknown/out-of-range slots contribute no
+  // discount here; the target check below rejects them.
+  const discountSlot =
+    targetSlot !== undefined
+      ? (targetSlot >= 0 && targetSlot < state.streetGrid.length ? targetSlot : undefined)
+      : findTargetBusinessSlot(state, card);
+  const discount =
+    discountSlot !== undefined && discountSlot !== -1
+      ? computeUpgradeCostDiscount(state, discountSlot)
+      : 0;
+  const effectiveCost = Math.max(0, card.cost - discount);
+
+  // Check coins against the discounted cost
+  if (state.resourceBank.coins < effectiveCost) {
+    return { legal: false, reason: `Not enough coins. Need ${effectiveCost}, have ${state.resourceBank.coins}.` };
   }
 
   // Check a matching business is placed on the street at the required level
   const requiredLevel = card.requiredLevel ?? 0;
-  const hasTarget = state.streetGrid.some(
-    b =>
-      b !== null &&
-      b.name === card.targetBusiness &&
-      b.level === requiredLevel &&
-      b.level < b.maxLevel,
-  );
+  const hasTarget =
+    targetSlot !== undefined
+      ? (() => {
+          const b = state.streetGrid[targetSlot];
+          return (
+            b !== null &&
+            b !== undefined &&
+            b.name === card.targetBusiness &&
+            b.level === requiredLevel &&
+            b.level < b.maxLevel
+          );
+        })()
+      : findTargetBusinessSlot(state, card) !== -1;
   if (!hasTarget) {
     return {
       legal: false,
@@ -251,8 +340,13 @@ export function purchaseBusiness(
   const marketIndex = state.market.cards.findIndex(c => c.id === cardId);
   const card = state.market.cards[marketIndex];
 
-  // Deduct cost
-  state.resourceBank.coins -= card.cost;
+  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
+  // discount applied to the base listed cost.
+  const purchaseDiscount = computePurchaseCostDiscount(state);
+  const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
+
+  // Deduct effective (discounted) cost
+  state.resourceBank.coins -= effectiveCost;
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -271,9 +365,73 @@ export function purchaseBusiness(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${card.cost}, ${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0));
+  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0));
 
-  return { card, cost: card.cost, refilled };
+  return { card, cost: effectiveCost, refilled };
+}
+
+/**
+ * Whether the upgrade card at `handIndex` can be played onto the business at
+ * `targetSlot` without mutating state (CG-0MUUDWIXG009IB0W).
+ *
+ * Non-mutating mirror of {@link playUpgradeFromHand}: validates the hand
+ * index, the card family, the target-eligibility rules (name match, level,
+ * max-level) and affordability against the per-business discounted cost.
+ * The UI calls this **before** clearing the selection, changing `uiPhase` or
+ * starting the card-transfer animation, so an illegal attempt leaves the
+ * game exactly as it was.
+ *
+ * @param state      Current game state (read-only).
+ * @param handIndex  Index of the upgrade card in state.hand.
+ * @param targetSlot Optional specific target slot. When omitted, any eligible
+ *                   business on the street is accepted.
+ * @returns LegalityResult indicating whether the upgrade may be played.
+ */
+export function canPlayUpgradeFromHand(
+  state: MainStreetState,
+  handIndex: number,
+  targetSlot?: number,
+): LegalityResult {
+  const hand = state.hand ?? [];
+  if (handIndex < 0 || handIndex >= hand.length) {
+    return { legal: false, reason: `Invalid hand index: ${handIndex}. Hand has ${hand.length} cards.` };
+  }
+
+  const card = hand[handIndex];
+  if (card.family !== 'upgrade') {
+    return { legal: false, reason: `Card at hand index ${handIndex} is not an upgrade card.` };
+  }
+  const upgrade = card as UpgradeCard;
+
+  let businessIndex: number;
+  if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) return ownership;
+    const biz = state.streetGrid[targetSlot];
+    const requiredLevel = upgrade.requiredLevel ?? 0;
+    if (
+      !biz ||
+      biz.name !== upgrade.targetBusiness ||
+      biz.level !== requiredLevel ||
+      biz.level >= biz.maxLevel
+    ) {
+      return { legal: false, reason: `Business at slot ${targetSlot} is not a valid target for this upgrade.` };
+    }
+    businessIndex = targetSlot;
+  } else {
+    businessIndex = findTargetBusinessSlot(state, upgrade);
+    if (businessIndex === -1) {
+      const requiredLevel = upgrade.requiredLevel ?? 0;
+      return { legal: false, reason: `No eligible ${upgrade.targetBusiness} on the street to upgrade (requires level ${requiredLevel}).` };
+    }
+  }
+
+  const cost = effectiveUpgradeCost(state, upgrade, businessIndex);
+  if (state.resourceBank.coins < cost) {
+    return { legal: false, reason: `Not enough coins to play ${upgrade.name} from hand. Need ${cost}, have ${state.resourceBank.coins}.` };
+  }
+
+  return { legal: true };
 }
 
 /**
@@ -290,14 +448,13 @@ export function playUpgradeFromHand(
     throw new Error(`Card at hand index ${handIndex} is not an upgrade card.`);
   }
   const upgrade = card as UpgradeCard;
-  if (state.resourceBank.coins < upgrade.cost) {
-    throw new Error(`Not enough coins to play ${upgrade.name} from hand. Need ${upgrade.cost}, have ${state.resourceBank.coins}.`);
-  }
 
   // Locate the target business (mirror purchaseUpgrade's matching rules).
   let businessIndex: number;
   const requiredLevel = upgrade.requiredLevel ?? 0;
   if (targetSlot !== undefined) {
+    const ownership = canActiveSeatActOnSlot(state, targetSlot);
+    if (!ownership.legal) throw new Error(ownership.reason);
     const biz = state.streetGrid[targetSlot];
     if (
       !biz ||
@@ -316,7 +473,15 @@ export function playUpgradeFromHand(
   }
 
   const business = state.streetGrid[businessIndex]!;
-  state.resourceBank.coins -= upgrade.cost;
+
+  // Per-business upgrade discount (CG-0MTKMGL66004I0PC): the business the
+  // upgrade is played onto may employ a Financial Advisor (-100).
+  const cost = effectiveUpgradeCost(state, upgrade, businessIndex);
+  if (state.resourceBank.coins < cost) {
+    throw new Error(`Not enough coins to play ${upgrade.name} from hand. Need ${cost}, have ${state.resourceBank.coins}.`);
+  }
+
+  state.resourceBank.coins -= cost;
   state.hand.splice(handIndex, 1);
 
   business.level += 1;
@@ -327,13 +492,13 @@ export function playUpgradeFromHand(
     business.appliedUpgrades = [];
   }
   business.appliedUpgrades.push(upgrade.id);
-  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + upgrade.cost;
+  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + cost;
   business.displayName = upgrade.newDisplayName || business.displayName;
   updateNeighborsOnPlacement(state, businessIndex);
 
-  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${upgrade.cost}, ${describeEventEffects(-upgrade.cost, 0)})`, classifyEffect(-upgrade.cost, 0));
+  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
 
-  return { card: upgrade, cost: upgrade.cost, refilled: false };
+  return { card: upgrade, cost, refilled: false };
 }
 
 /**
@@ -400,7 +565,7 @@ export function purchaseUpgrade(
   cardId: string,
   targetSlot?: number,
 ): PurchaseResult {
-  const legality = canPurchaseUpgrade(state, cardId);
+  const legality = canPurchaseUpgrade(state, cardId, targetSlot);
   if (!legality.legal) {
     throw new Error(legality.reason);
   }
@@ -428,10 +593,20 @@ export function purchaseUpgrade(
     businessIndex = findTargetBusinessSlot(state, card);
   }
 
+  // Ownership gate (competitive only) — defence in depth: even if a caller
+  // bypasses `canPurchaseUpgrade`, an opponent-owned target must never be
+  // mutated.
+  const ownership = canActiveSeatActOnSlot(state, businessIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
+  }
+
   const business = state.streetGrid[businessIndex]!;
 
-  // Deduct cost
-  state.resourceBank.coins -= card.cost;
+  // Deduct the discounted cost (per-business upgrade discount,
+  // CG-0MTKMGL66004I0PC). The discount applies to the listed base cost.
+  const cost = effectiveUpgradeCost(state, card, businessIndex);
+  state.resourceBank.coins -= cost;
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -445,7 +620,7 @@ export function purchaseUpgrade(
     business.appliedUpgrades = [];
   }
   business.appliedUpgrades.push(card.id);
-  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + card.cost;
+  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + cost;
   business.displayName = card.newDisplayName || business.displayName;
 
   // Recalculate the upgraded card's cached values (incomeBonus and reputationBonus changed)
@@ -456,9 +631,9 @@ export function purchaseUpgrade(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${card.cost}, ${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0));
+  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
 
-  return { card, cost: card.cost, refilled };
+  return { card, cost, refilled };
 }
 
 /**
@@ -496,6 +671,11 @@ export function canBuyAndPlaceUpgrade(
     return { legal: false, reason: `Invalid slot index: ${targetSlot}.` };
   }
 
+  // Ownership gate (competitive only): a drag-drop upgrade may only target a
+  // business the acting seat owns.
+  const ownership = canActiveSeatActOnSlot(state, targetSlot);
+  if (!ownership.legal) return ownership;
+
   const biz = state.streetGrid[targetSlot];
   const requiredLevel = card.requiredLevel ?? 0;
   if (
@@ -510,7 +690,13 @@ export function canBuyAndPlaceUpgrade(
     };
   }
 
-  const premiumCost = Math.ceil(card.cost * 1.5 * 2) / 2;
+  // Ordering (CG-0MTKMGL66004I0PC): apply the per-business upgrade discount
+  // to the LISTED base cost FIRST, then the +50% drag premium — the discount
+  // is never compounded by the premium. The click path (purchaseUpgrade)
+  // charges the discounted base cost, so the discount is reflected in both.
+  const discount = computeUpgradeCostDiscount(state, targetSlot);
+  const discountedCost = Math.max(0, card.cost - discount);
+  const premiumCost = Math.ceil(discountedCost * 1.5 * 2) / 2;
   const price = priceOverride ?? premiumCost;
   if (state.resourceBank.coins < price) {
     return {
@@ -539,28 +725,30 @@ export function buyAndPlaceUpgrade(
   targetSlot?: number,
   priceOverride?: number,
 ): PurchaseResult {
-  const legality = canPurchaseUpgrade(state, cardId);
-  if (!legality.legal) {
-    throw new Error(legality.reason);
-  }
-
   const marketIndex = state.market.cards.findIndex(
     c => c.id === cardId && c.family === 'upgrade',
   );
   const card = state.market.cards[marketIndex] as UpgradeCard;
+  if (!card) {
+    throw new Error('Card not found in the upgrade market.');
+  }
 
   // Find the target business
   let businessIndex: number;
   if (targetSlot !== undefined) {
     // Slot-specific legality goes through the shared helper so the drag-drop
     // gate and the execution path can never diverge (target match, level,
-    // max-level and premium affordability in one place).
+    // max-level and discounted-premium affordability in one place).
     const targetLegality = canBuyAndPlaceUpgrade(state, cardId, targetSlot, priceOverride);
     if (!targetLegality.legal) {
       throw new Error(targetLegality.reason);
     }
     businessIndex = targetSlot;
   } else {
+    const legality = canPurchaseUpgrade(state, cardId);
+    if (!legality.legal) {
+      throw new Error(legality.reason);
+    }
     businessIndex = findTargetBusinessSlot(state, card);
   }
 
@@ -569,7 +757,12 @@ export function buyAndPlaceUpgrade(
   // +50% premium — identical formula to business buy-and-place
   // (`Math.ceil(cost * 1.5 * 2) / 2`, see buyAndPlaceBusiness), so an upgrade
   // drag-drop is never priced differently from a business drag-drop.
-  const premiumCost = Math.ceil(card.cost * 1.5 * 2) / 2;
+  //
+  // Ordering (CG-0MTKMGL66004I0PC): discount the LISTED base cost first,
+  // THEN apply the premium. The click path charges the discounted base cost.
+  const discount = computeUpgradeCostDiscount(state, businessIndex);
+  const discountedCost = Math.max(0, card.cost - discount);
+  const premiumCost = Math.ceil(discountedCost * 1.5 * 2) / 2;
   const price = priceOverride ?? premiumCost;
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to buy-and-place ${card.name}${priceOverride !== undefined ? '' : ' at premium'}. Need ${price}, have ${state.resourceBank.coins}.`);
@@ -589,7 +782,7 @@ export function buyAndPlaceUpgrade(
     business.appliedUpgrades = [];
   }
   business.appliedUpgrades.push(card.id);
-  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + card.cost;
+  (business as any).totalUpgradeCost = ((business as any).totalUpgradeCost ?? 0) + discountedCost;
   business.displayName = card.newDisplayName || business.displayName;
 
   // Recalculate the upgraded card's cached values

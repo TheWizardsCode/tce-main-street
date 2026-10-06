@@ -129,17 +129,18 @@ export function buildUpgradeOverlaySpec(
   const totalIncome = biz.baseIncome + biz.incomeBonus;
   const totalReputation = (biz.reputationPerTurn ?? 0) + (biz.reputationBonus ?? 0);
 
-  // Level badge: top-right corner, only for upgraded cards
+  // Level badge: top-left corner, only for upgraded cards
   // Container origin is at card centre, so subtract width/2 and height/2
   // to convert from absolute-card to container-local coordinates.
   const levelBadge: OverlayTextSpec | null = isUpgraded
     ? {
         text: `Lvl ${biz.level}`,
-        x: Math.round(width / 2 - 4),
+        x: Math.round(-width / 2 + 4),
         y: Math.round(4 - height / 2),
         fontSize: '10px',
         color: '#ffdd44',
         fontStyle: 'bold',
+        originX: 0,
       }
     : null;
 

@@ -284,13 +284,13 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
 
     const legality = canRefreshMarket(s.state);
     if (!legality.legal) {
-      s.instructionText.setText(`Cannot re-roll: ${legality.reason ?? 'unknown'}`);
+      s.instructionText.setText(`Cannot research: ${legality.reason ?? 'unknown'}`);
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Re-rolling the market...');
+    s.instructionText.setText('Researching the market...');
     s.refreshAll();
 
     // Capture the outgoing row before the command replaces it — the swap
@@ -302,8 +302,8 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
       s.undoManager.execute(cmd);
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'refresh-market' }, description: cmd.description }); } catch (_) {}
-      s.instructionText.setText('Market re-rolled');
-      addLog(s.state, 'Re-rolled market (via UI)', 'neutral');
+      s.instructionText.setText('Market researched');
+      addLog(s.state, 'Researched market (via UI)', 'neutral');
       refreshed = true;
     } catch (e) {
       console.error('[MS] RefreshMarket failed', e);

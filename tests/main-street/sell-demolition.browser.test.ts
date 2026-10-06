@@ -113,6 +113,61 @@ describe('MainStreet sell demolition animation', () => {
     game = null;
   });
 
+  // AC2: Info block no longer contains "Sell refund" line
+  it('sell confirmation info string does not contain "Sell refund"', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const biz = makeBusiness();
+
+    const state = scene.state as {
+      streetGrid: Array<BusinessCard | null>;
+      resourceBank: { coins: number };
+    };
+    state.streetGrid[0] = biz;
+    state.resourceBank.coins = 50;
+    (scene as unknown as { refreshAll: () => void }).refreshAll();
+
+    // Spy on showSellConfirmation to capture the info string.
+    let capturedInfo = '';
+    const original = (scene as any).showSellConfirmation.bind(scene);
+    vi.spyOn(scene as any, 'showSellConfirmation').mockImplementation((...args: unknown[]) => {
+      capturedInfo = String(args[3]);
+      return original(...args);
+    });
+
+    // Open the sell confirmation dialog.
+    (scene.msTurnController as unknown as { onSellCard: (slotIndex: number) => void }).onSellCard(0);
+
+    expect(capturedInfo).not.toContain('Sell refund');
+    expect(capturedInfo).toContain(biz.name);
+  }, 30_000);
+
+  it('overlay dialog displays "Sale value:" instead of "Sell refund:"', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const biz = makeBusiness();
+
+    const state = scene.state as {
+      streetGrid: Array<BusinessCard | null>;
+      resourceBank: { coins: number };
+    };
+    state.streetGrid[0] = biz;
+    state.resourceBank.coins = 50;
+    (scene as unknown as { refreshAll: () => void }).refreshAll();
+
+    // Open the sell confirmation dialog.
+    (scene.msTurnController as unknown as { onSellCard: (slotIndex: number) => void }).onSellCard(0);
+
+    // Find the sale value / refund text among overlay objects.
+    const objects = (scene as unknown as { overlayObjects: Phaser.GameObjects.GameObject[] }).overlayObjects ?? [];
+    const saleValueText = objects.find(
+      (o) => (o as unknown as { text?: string }).text?.includes('Sale value:'),
+    ) as Phaser.GameObjects.Text | undefined;
+    expect(saleValueText).toBeDefined();
+    expect(saleValueText!.text).toContain('Sale value:');
+    expect(saleValueText!.text).not.toContain('Sell refund');
+  }, 30_000);
+
   it('confirming a sale triggers the demolition + refund fly and credits the refund', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;

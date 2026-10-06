@@ -18,8 +18,13 @@ step carries an i18n **key**:
 { id: 'T1', titleKey: 'tutorial.T1.title', bodyKey: 'tutorial.T1.body' }
 ```
 
-The actual string values are stored in **locale bundles** — currently just
-English in [`tutorial-en.ts`](../../example-games/main-street/i18n/tutorial-en.ts).
+The actual string values are stored in **locale bundles**. English copy lives in
+[`tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv) — a
+spreadsheet-editable `key,text` CSV — which is bundled at build time via Vite's
+`?raw` import and parsed by the core [`parseCsv()`](../../src/core-engine/CsvLoader.ts)
+helper into the `TUTORIAL_EN_BUNDLE` exported by
+[`tutorial-en.ts`](../../example-games/main-street/i18n/tutorial-en.ts). The `.ts`
+module now holds only the key helpers and the loader; it contains no copy.
 
 At runtime, the overlay manager ([`MainStreetTutorialHints`](../../example-games/main-street/scenes/MainStreetTutorialHints.ts))
 calls `t(key)` to resolve the active locale's string for each step. The
@@ -39,11 +44,11 @@ time, so rebalancing card data never leaves the tutorial stale.
 | `{cost}` | card's `cost` column via `formatCurrency()` | `€400` |
 | `{bonus}` | event card's `coinDelta` as `+N coins` | `+200 coins` |
 
-Example (T3 body in `tutorial-en.ts`):
+Example (T3 body in `tutorial-en.csv`):
 
-```ts
-[tutorialKey('T3', 'body')]:
-  'Buy the **{cardName}** card from the Development row for {cost}. ...',
+```csv
+key,text
+tutorial.T3.body,"Buy the **{cardName}** card from the Development row for {cost}. ..."
 ```
 
 #### How placeholders are resolved
@@ -213,10 +218,29 @@ authoritative walkthrough lives in the `Coin Budget (Easy / 1200 coins)` table i
 
 ### Changing existing text
 
-1. Open [`i18n/tutorial-en.ts`](../../example-games/main-street/i18n/tutorial-en.ts).
-2. Find the key for the string you want to update (e.g. `tutorial.T3.body`).
-3. Change the string value.
-4. The change takes effect immediately — no gameplay code changes needed.
+1. Open [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
+   in a spreadsheet application (Excel, LibreOffice Calc, Google Sheets) — or
+   any plain-text editor.
+2. Find the `key` for the string you want to update (e.g. `tutorial.T3.body`)
+   and edit its `text` cell.
+3. Save the file as **CSV UTF-8** (see [Spreadsheet save rules](#spreadsheet-save-rules)
+   below for quoting guidance).
+4. Rebuild/redeploy — the change takes effect after the normal build (the CSV
+   is bundled at build time, not fetched at runtime).
+
+**Spreadsheet save rules**
+
+- Keep the `key,text` header exactly as-is — do not rename, reorder, or delete columns.
+- Values containing a comma, a double quote, or a newline must be wrapped in
+  double quotes; an embedded double quote is escaped by doubling it (`""`).
+  Every mainstream spreadsheet writes RFC4180 quoting automatically when saving
+  as CSV.
+- Save with **UTF-8** encoding. A leading UTF-8 BOM is tolerated (the loader
+  strips it), but avoid adding one if your editor offers the choice.
+- Do not add trailing blank rows or extra columns; the integrity test validates
+  the exact key set.
+- Keep placeholder tokens (`{cardName}`, `{cost}`, `{bonus}`,
+  `{synergyCardName}`) in the same positions — do not translate or rename them.
 
 **Never hardcode card facts.** If the text references a card's name, cost, or
 income bonus, keep the `{cardName}` / `{cost}` / `{bonus}` placeholder tokens
@@ -228,16 +252,18 @@ automatically.
 
 For offer modal or button label changes:
 
-1. Open [`i18n/tutorial-en.ts`](../../example-games/main-street/i18n/tutorial-en.ts).
-2. Find the relevant `tutorial.modal.*` or `tutorial.overlay.*` key.
-3. Update the value.
-4. The change takes effect immediately.
+1. Open [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
+   in your spreadsheet editor.
+2. Find the relevant `tutorial.modal.*` or `tutorial.overlay.*` row.
+3. Update the `text` cell and save as CSV UTF-8.
+4. Rebuild/redeploy.
 
 ### Verification
 
 Run the i18n tests to confirm all keys resolve:
 
 ```bash
+npx vitest run tests/main-street/tutorial-csv.test.ts
 npx vitest run tests/main-street/tutorial-i18n.test.ts
 npx vitest run tests/main-street/tutorial-text-updates.test.ts
 npx vitest run tests/main-street/tutorial-flow.test.ts
@@ -246,6 +272,29 @@ npx vitest run tests/main-street/tutorial-flow.test.ts
 The build will also fail if any step key is missing from the English bundle.
 
 ## Adding a New Language
+
+Locale bundles can be supplied either as a **CSV** (recommended — same
+spreadsheet workflow as English) or as a hand-written TypeScript module.
+Both build a `Record<string, string>` keyed by the same `tutorial.*` keys.
+
+### Option A — CSV locale (spreadsheet-friendly)
+
+1. Copy [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
+   to `example-games/main-street/i18n/tutorial-fr.csv`.
+2. Translate the `text` column, keeping the `key` column unchanged and
+   preserving every placeholder token in the same positions.
+3. Add a thin loader that mirrors `tutorial-en.ts`:
+
+   ```ts
+   import { parseCsv } from '@core-engine/CsvLoader';
+   import rawCsv from './tutorial-fr.csv?raw';
+
+   const parsed = parseCsv(rawCsv.charCodeAt(0) === 0xfeff ? rawCsv.slice(1) : rawCsv);
+   export const TUTORIAL_FR_BUNDLE: Record<string, string> = {};
+   for (const row of parsed) TUTORIAL_FR_BUNDLE[row.key] = row.text;
+   ```
+
+### Option B — TypeScript locale
 
 1. Create a new locale bundle file, e.g. `example-games/main-street/i18n/tutorial-fr.ts`:
 
@@ -260,10 +309,12 @@ The build will also fail if any step key is missing from the English bundle.
    ```
 
    **Keep placeholder tokens in translated strings.**  Any step that uses
-   `{cardName}` / `{cost}` / `{bonus}` in English must keep the same tokens
-   in the same positions in the translation — the resolver substitutes the
-   live card-data values regardless of locale.  The surrounding prose can
-   be translated freely; the tokens themselves must match exactly.
+   `{cardName}` / `{cost}` / `{bonus}` / `{synergyCardName}` in English must keep
+   the same tokens in the same positions in the translation — the resolver
+   substitutes the live card-data values regardless of locale.  The surrounding
+   prose can be translated freely; the tokens themselves must match exactly.
+
+### Register and activate the locale
 
 2. Register the bundle at a suitable startup point. The overlay manager
    currently registers English at module load time. You can register additional
@@ -315,6 +366,7 @@ The following test files cover tutorial localization:
 
 | Test file | What it verifies |
 |-----------|-----------------|
+| `tests/main-street/tutorial-csv.test.ts` | CSV integrity: `key,text` header, exactly 62 required keys, no duplicates/orphans, no empty values, comma/quote round-trip, BOM tolerance, placeholder preservation |
 | `tests/main-street/tutorial-i18n.test.ts` | All keys exist in English bundle; locale switching; `resolveTutorialStepText()` correctness; per-locale placeholder interpolation |
 | `tests/main-street/tutorial-text-updates.test.ts` | Data-driven text content (T3 cost matches `card-data.csv`; no raw `{token}` text; changed cost ⇒ updated text; deterministic resolution; T7/T8/T9 placeholders) |
 | `tests/main-street/tutorial-flow.test.ts` | Step definitions have non-empty `titleKey`/`bodyKey`; `resolveTutorialStepText()` returns non-empty text |
@@ -325,7 +377,8 @@ The following test files cover tutorial localization:
 | File | Purpose |
 |------|---------|
 | `example-games/main-street/TutorialFlow.ts` | Step definitions (keys + `requiredCardId`/`referencedCardId`), controller logic, `resolveTutorialStepText()` data-driven resolution |
-| `example-games/main-street/i18n/tutorial-en.ts` | English locale bundle with all title/body values; `{cardName}`/`{cost}`/`{bonus}` placeholders for card facts |
+| `example-games/main-street/i18n/tutorial-en.csv` | **Source of truth** — spreadsheet-editable `key,text` CSV holding all 62 English tutorial/modal/overlay/banking strings; `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders for card facts |
+| `example-games/main-street/i18n/tutorial-en.ts` | Thin loader: `?raw` CSV import + `parseCsv()` + BOM strip → `TUTORIAL_EN_BUNDLE`; exports the `tutorialKey`/`modalKey`/`overlayKey`/`bankingHintKey` helpers. Contains no copy |
 | `example-games/main-street/MainStreetCards.ts` | Live card templates parsed from `card-data.csv` (`getCsvRows()`, `getBaseTypeId()`) |
 | `example-games/main-street/scenes/MainStreetTutorialHints.ts` | Overlay manager — resolves via `resolveTutorialStepText()` at render time (DOM + Phaser) |
 | `src/core-engine/I18n.ts` | Core i18n lookup + `t(key, params)` placeholder interpolation |

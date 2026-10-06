@@ -32,7 +32,7 @@ npm run monte-carlo
 
 ### What happens
 
-The player purchases a Florist and a Block Party investment on turn 1, then faces a Tax Audit incident. The tight coin reserve leads to bankruptcy by turn 4.
+The player purchases a Flower Shop and a Block Party investment on turn 1, then faces a Tax Audit incident. The tight coin reserve leads to bankruptcy by turn 4.
 
 ### Smoke test
 
@@ -60,7 +60,7 @@ Tutorial steps are defined in `example-games/main-street/TutorialFlow.ts` in the
 - `gate` — `'confirm'` for informational steps, `'action'` for action-gated steps
 - `requiredAction` — (only for action-gated steps) the in-game action required to advance
 
-All step text lives in the English locale bundle (`example-games/main-street/i18n/tutorial-en.ts`) with card facts resolved from `card-data.csv` via `{cardName}`/`{cost}`/`{bonus}` placeholders. See `docs/main-street/tutorial-localization.md` for the editorial rules (≤3 sentences per box, one point per box) and the T1–T23 step-flow table.
+All step text lives in the spreadsheet-editable English locale bundle (`example-games/main-street/i18n/tutorial-en.csv`, loaded via `i18n/tutorial-en.ts`) with card facts resolved from `card-data.csv` via `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders. See `docs/main-street/tutorial-localization.md` for the editing workflow (open the CSV, edit the `text` column, save as CSV UTF-8), the editorial rules (≤3 sentences per box, one point per box) and the step-flow table.
 
 ---
 
@@ -125,12 +125,12 @@ The player builds a street of low-cost businesses (Food Trucks, Cafe, Diner) but
 
 ### What happens
 
-The player opens with Florist (cost 2) and invests in Block Party but then faces two turns of inactivity (no affordable actions). Income is very low until turn 8-9 when Service synergies finally kick in with Pawn Shop + Laundromat + Barbershop. The win doesn't arrive until turn 17 -- a slow build that would previously have been close to the 20-turn limit; with no turn limit by default the game continues until the score threshold, all challenges, bankruptcy, or reputation collapse (CG-0MSLXJCHH001DLIO).
+The player opens with Flower Shop (cost 2) and invests in Block Party but then faces two turns of inactivity (no affordable actions). Income is very low until turn 8-9 when Service synergies finally kick in with Pawn Shop + Laundromat + Barbershop. The win doesn't arrive until turn 17 -- a slow build that would previously have been close to the 20-turn limit; with no turn limit by default the game continues until the score threshold, all challenges, bankruptcy, or reputation collapse (CG-0MSLXJCHH001DLIO).
 
 ### Balance observations
 
 - This is a "near-miss" scenario -- any additional negative incident could push it into a time-out loss.
-- Demonstrates that low-cost openings (Florist at $2, Food Truck at $2) produce slower income curves.
+- Demonstrates that low-cost openings (Flower Shop at $2, Food Truck at $2) produce slower income curves.
 - The grid fills by turn 15 and the final turns are pure income accumulation with no purchases.
 - Service synergy cluster (Laundromat + Barbershop) provides steady mid-game income.
 - **Pass criteria:** Win. Score in range 150-165. Turns >= 15.
@@ -145,11 +145,11 @@ The player opens with Florist (cost 2) and invests in Block Party but then faces
 
 ### What happens
 
-The player builds a diverse street: Park, Food Truck, Park, Bakery, Pawn Shop, Bookshop, Florist, Pawn Shop, Laundromat, Bookshop. Bridge cards (Food Truck, Florist) connect Culture and Commerce clusters. Income ramps steadily after turn 7 when the grid passes 50% capacity.
+The player builds a diverse street: Park, Food Truck, Park, Bakery, Pawn Shop, Bookshop, Flower Shop, Pawn Shop, Laundromat, Bookshop. Bridge cards (Food Truck, Flower Shop) connect Culture and Commerce clusters. Income ramps steadily after turn 7 when the grid passes 50% capacity.
 
 ### Balance observations
 
-- Bridge cards (Food Truck: Food+Entertainment, Florist: Commerce+Culture) provide adjacency bonuses from multiple synergy types.
+- Bridge cards (Food Truck: Food+Entertainment, Flower Shop: Commerce+Culture) provide adjacency bonuses from multiple synergy types.
 - Two Parks provide cheap Culture filler that boosts Bookshop adjacency.
 - The player absorbs several negative incidents (Shoplifting, Power Outage, Health Inspection) without crisis.
 - **Pass criteria:** Win. Score in range 150-170. Turns in range 10-15.
@@ -200,7 +200,7 @@ Use these heuristics when evaluating card changes or rule adjustments:
 
 ### Score Distribution
 
-- **Median score (greedy/Medium):** 120-180 band (PRD §3.3); measured ~153.
+- **Median score (greedy/Medium):** 2-200 band (PRD §3.3; revised by the MS-0MUQ50I1Y000B6L3 five-turn payback rebalance); measured ~7.9 display.
 - **Fast wins** (turn <= 10): ~30% of wins -- indicates strong early draws.
 - **Late wins** (turn >= 15): ~15% of wins -- indicates tough early game.
 

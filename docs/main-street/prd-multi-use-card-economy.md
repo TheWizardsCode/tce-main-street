@@ -84,9 +84,11 @@ Staff cards are a new card family (`family: 'staff'`) that expand the player's h
 - Laid-off staff cards return to `discards.staff` (available again via the standard market refill/cycle pipeline — CG-0MT2WTN0L004JA53)
 - Insufficient coins for ongoing cost: deducts what's available (down to 0)
 - **Staff abilities** (optional fields on `StaffCard`, Group F): `reputationPerTurn`
-  (e.g. Socialite +10 rep/turn, applied in the income phase) and
-  `refreshCostDiscount` (e.g. Accountant −1 to the market refresh cost,
-  clamped at 0). Staff without abilities behave exactly as before.
+  (e.g. Socialite +10 rep/turn, applied in the income phase), `refreshCostDiscount`
+  (e.g. Accountant −100 to the market refresh cost, clamped at 0) and
+  `upgradeCostDiscount` (e.g. Financial Advisor −100 per upgrade at the
+  business where it is employed, clamped at 0 — CG-0MTKMGL66004I0PC). Staff
+  without abilities behave exactly as before.
 
 #### Market
 

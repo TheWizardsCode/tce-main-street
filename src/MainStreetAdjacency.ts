@@ -32,6 +32,7 @@ export { worldWidth, worldHeight, worldSlotCount } from './MainStreetAdjacencyGe
 // ── Scoring ─────────────────────────────────────────────────
 export {
   computeSynergyBonus,
+  synergyCoinContributionPerNeighbor,
   computeSynergyRepBonus,
   computeBusinessIncome,
   computeSingleCardReputation,
@@ -42,6 +43,7 @@ export {
   computeReputationPerTurn,
   applyIncome,
   applyCompetitiveIncome,
+  attachUpcomingDeltas,
 } from './MainStreetAdjacencyScoring';
 export type {
   SlotIncome,

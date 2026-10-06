@@ -13,6 +13,10 @@ import type { DragDropPayload } from '@ui/dragDrop';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { buyAndPlaceBusinessCommand, buyAndPlaceUpgradeCommand } from '../MainStreetCommands';
 import { canBuyAndPlaceUpgrade, canPurchaseBusiness } from '../MainStreetMarket';
+import {
+  computeEffectiveBusinessPurchaseCost,
+  computeBusinessPurchasePremium,
+} from '../MainStreetStaffBuffs';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep, isSynergyAdjacentPlacement } from '../TutorialFlow';
 import type { TutorialActionType } from '../TutorialFlow';
@@ -56,8 +60,11 @@ export function canPickUpBusinessCard(tcCtx: MainStreetTurnControllerContext, ca
     // Composite-parity buy-and-place price (CG-0MT24X0SX007RLHN): on GM
     // 2-action days the drag charges the LISTED cost (consuming 2 actions);
     // on a 1-action day it charges the +50% premium (consuming 1 action).
-    // Check affordability against the applicable price.
-    const price = s.state.actionsRemaining >= 2 ? card.cost : Math.ceil(card.cost * 1.5 * 2) / 2;
+    // Check affordability against the applicable price, after the
+    // street-wide Delivery Driver purchase discount (CG-0MUMCVH3N007KT1M).
+    const price = s.state.actionsRemaining >= 2
+      ? computeEffectiveBusinessPurchaseCost(s.state, card.cost)
+      : computeBusinessPurchasePremium(s.state, card.cost);
     if (s.state.resourceBank.coins < price) return false;
     if (!s.state.streetGrid.some((slot: any) => slot === null)) return false;
 
@@ -97,7 +104,9 @@ export function canDropBusinessCard(tcCtx: MainStreetTurnControllerContext, card
     // against the applicable price (not just the listed cost).
     const card = s.state.market.cards.find((c: any) => c.id === cardId);
     if (card && (card.family === 'business' || card.family === 'community-space')) {
-      const price = s.state.actionsRemaining >= 2 ? card.cost : Math.ceil(card.cost * 1.5 * 2) / 2;
+      const price = s.state.actionsRemaining >= 2
+        ? computeEffectiveBusinessPurchaseCost(s.state, card.cost)
+        : computeBusinessPurchasePremium(s.state, card.cost);
       if (s.state.resourceBank.coins < price) return false;
     }
 

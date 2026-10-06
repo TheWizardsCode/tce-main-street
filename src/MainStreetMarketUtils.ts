@@ -9,6 +9,7 @@
 
 import type { MainStreetState } from './MainStreetState';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard } from './MainStreetCards';
+import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
 
 /**
  * Returns the list of Business cards in the market that the player can
@@ -79,15 +80,29 @@ export function isEligibleUpgradeTarget(
  * Used by both the market logic and the UI to locate the default target
  * slot without duplicating the matching conditions.
  *
+ * Ownership-aware in competitive mode: when `ownerTaggedGrid` is present the
+ * search skips businesses owned by another seat, so default target selection
+ * can never resolve to an opponent-owned slot. Single-player states carry no
+ * `ownerTaggedGrid` and are unaffected.
+ *
  * @param state Current game state.
  * @param card  The UpgradeCard to match.
- * @returns The slot index of the first eligible business, or -1 if none.
+ * @returns The slot index of the first eligible business owned by the acting
+ *          seat, or -1 if none.
  */
 export function findTargetBusinessSlot(
   state: MainStreetState,
   card: UpgradeCard,
 ): number {
-  return state.streetGrid.findIndex(b => isEligibleUpgradeTarget(b, card));
+  const actingId = state.activePlayerId ?? 0;
+  return state.streetGrid.findIndex((b, index) => {
+    if (!isEligibleUpgradeTarget(b, card)) return false;
+    // Competitive only: never default to an opponent-owned business.
+    if (state.ownerTaggedGrid) {
+      return getSlotOwnerId(state, index) === actingId;
+    }
+    return true;
+  });
 }
 
 /**

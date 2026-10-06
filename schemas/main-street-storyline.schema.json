@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://main-street.example/schemas/main-street-storyline.schema.json",
+  "title": "Main Street Storyline Manifest",
+  "description": "Machine-readable manifest of the Main Street storyline graph, generated from src/card-data.csv by src/scripts/storyline-graph.ts (--format json). Deterministic: no timestamps.",
+  "type": "object",
+  "required": ["version", "source", "storylineIds", "nodes", "edges", "cycles"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Manifest schema version."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Generator provenance (deterministic)."
+    },
+    "storylineIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true,
+      "description": "Sorted storyline ids present in the graph."
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/edge" }
+    },
+    "cycles": {
+      "type": "array",
+      "description": "Detected cycles (first-class shape); each entry is a cycle path of base card ids.",
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 },
+        "uniqueItems": true
+      }
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "storylineId",
+        "storylineTitle",
+        "hasChoices",
+        "optionCount",
+        "coinDelta",
+        "reputationDelta"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Base card id (no instance serial)." },
+        "name": { "type": "string", "minLength": 1 },
+        "storylineId": { "type": ["string", "null"] },
+        "storylineTitle": { "type": ["string", "null"] },
+        "hasChoices": { "type": "boolean" },
+        "optionCount": { "type": "integer", "minimum": 0 },
+        "coinDelta": { "type": "number" },
+        "reputationDelta": { "type": "number" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "label", "to", "cycle"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "minLength": 1, "description": "Source base card id." },
+        "label": { "type": "string", "minLength": 1, "description": "Option label (e.g. Accept, Reject)." },
+        "to": {
+          "type": ["string", "null"],
+          "description": "Target base card id, or null when the chain ends."
+        },
+        "cycle": { "type": "boolean", "description": "True when this edge participates in a cycle." }
+      }
+    }
+  }
+}
