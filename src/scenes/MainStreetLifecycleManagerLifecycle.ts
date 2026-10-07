@@ -29,6 +29,7 @@ import { BG_COLOR, SFX_KEYS } from './MainStreetConstants';
 import { MainStreetInputManager } from './MainStreetInputManager';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
 import { MainStreetOverlayContent } from './MainStreetOverlayContent';
+import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { MainStreetRenderer } from './MainStreetRenderer';
 import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
@@ -148,6 +149,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
     s.uiPhase = 'idle';
@@ -243,6 +245,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    s.msPedestrians = new MainStreetPedestrians(s);
     s.layout = s.computeLayout();
     s.svgDebugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('msSvgDebug') === '1';
 
@@ -602,6 +605,8 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
       s.cleanupTransferAnimations();
       // Tear down the drag-drop manager (removes its scene input listeners).
       try { s.dragDropManager?.destroy(); s.dragDropManager = undefined; } catch (_) { /* ignore */ }
+      // Tear down the ambient pedestrian layer (MS-0MUYGFW7T00579Z1).
+      try { s.msPedestrians?.destroy?.(); } catch (_) { /* presentation-only */ }
       try {
         if (s.input && s.input.keyboard) {
           s.input.keyboard.off('keydown', endTurnKeyHandler);
@@ -635,6 +640,9 @@ export function handleResize(lmCtx: MainStreetLifecycleManagerContext): void {
 
     // Regenerate textures at new sizes on resize.
     s.prewarmVisibleCardTextures();
+    // Re-clamp the ambient pedestrian layer into the new street band
+    // (MS-0MUYGFW7T00579Z1). Presentation-only; failures are swallowed.
+    try { s.msPedestrians?.resize?.(); } catch (_) { /* presentation-only */ }
     s.challengeContainer.setPosition(s.layout.challengeX, s.layout.challengeY);
     s.logContainer.setPosition(s.layout.logX, s.layout.logY);
     // Centre instruction text in the main content area (between left margin and right column)

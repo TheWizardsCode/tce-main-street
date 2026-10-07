@@ -106,6 +106,27 @@ export const ROAD_MARKING_WIDTH = 3;
 export const ROAD_DASH_PERIOD = 14;
 /** Length of each dash, in pixels. */
 export const ROAD_DASH_LENGTH = 8;
+
+// ── Ambient pedestrian silhouette layer (MS-0MUYGFW7T00579Z1) ───────
+// Presentation-only wander figures drawn over the street band. The layer is
+// parented to the street container so it pans/clips with the map camera, and
+// it uses one runtime-generated texture (no authored art). All values are in
+// map-local pixels.
+
+/** Width of the shared pedestrian silhouette texture, in map-local px. */
+export const PEDESTRIAN_SILHOUETTE_W = 12;
+/** Height of the shared pedestrian silhouette texture, in map-local px. */
+export const PEDESTRIAN_SILHOUETTE_H = 22;
+/** Pedestrian walk speed, in map-local px per second. */
+export const PEDESTRIAN_WALK_SPEED = 22;
+/** Inset from the street viewport band to the pedestrian wander area, in px. */
+export const PEDESTRIAN_STREET_PADDING = 6;
+/** Vertical bob amplitude (px) applied to walking figures. */
+export const PEDESTRIAN_BOB_AMPLITUDE = 1.5;
+/** Vertical bob rate, in radians per second. */
+export const PEDESTRIAN_BOB_RATE = 8;
+/** Texture key for the runtime-generated shared silhouette texture. */
+export const PEDESTRIAN_TEXTURE_KEY = 'ms-pedestrian-silhouette';
 // Make hand slot match placeholder size as requested
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;

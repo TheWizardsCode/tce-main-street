@@ -324,6 +324,13 @@ export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     if (s.uiPhase === 'placing-from-hand' && pendingCard?.family === 'upgrade') {
       renderer.showTargetHighlights(pendingCard.id);
     }
+
+    // Ambient pedestrian layer (MS-0MUYGFW7T00579Z1): `removeAll(true)` above
+    // destroyed the layer's container along with the rest of the street, so
+    // re-attach it last — on top of the roads/slots — to keep it alive across
+    // refreshes. The figures are non-interactive, so they never intercept
+    // slot/pan input. Presentation-only; failures are swallowed.
+    try { s.msPedestrians?.attachToStreet?.(); } catch (_) { /* presentation-only */ }
   
 }
 

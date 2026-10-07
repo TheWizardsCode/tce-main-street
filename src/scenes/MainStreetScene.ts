@@ -19,6 +19,7 @@ import { MainStreetTurnController } from './MainStreetTurnController';
 import { MainStreetOverlayContent } from './MainStreetOverlayContent';
 import { MainStreetInputManager } from './MainStreetInputManager';
 import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
+import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { MainStreetLifecycleManager } from './MainStreetLifecycleManager';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
 import {
@@ -98,6 +99,7 @@ export class MainStreetScene extends CardGameScene {
   public msOverlayManager!: MainStreetOverlayContent;
   public msInputManager!: MainStreetInputManager;
   public msSvgTextureManager!: MainStreetSvgTextureManager;
+  public msPedestrians!: MainStreetPedestrians;
   public msLifecycleManager!: MainStreetLifecycleManager;
   public tutorialOverlay?: MainStreetTutorialHints;
   // Game state
@@ -394,6 +396,19 @@ export class MainStreetScene extends CardGameScene {
   }
   public handleResize(...args: any[]): any {
     return (this.msLifecycleManager as any).handleResize.apply(this.msLifecycleManager, args);
+  }
+
+  /**
+   * Per-frame animation hook. Drives the ambient pedestrian wander
+   * (MS-0MUYGFW7T00579Z1). Defensive: a throwing layer can never stall the
+   * game loop or the turn.
+   */
+  public update(_time: number, delta: number): void {
+    try {
+      this.msPedestrians?.update(delta);
+    } catch (_) {
+      // Presentation-only.
+    }
   }
 
   // ── Campaign / Meta-Progression ─────────────────────────
