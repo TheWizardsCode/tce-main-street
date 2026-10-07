@@ -15,20 +15,19 @@
 
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import type { CardTestResult } from './CardTestTypes';
+import {
+  BROWSER_RESULT_TARGETS,
+  RESULT_COLUMNS,
+  UNIT_RESULT_TARGETS,
+  type ResultColumnTargets,
+} from './ResultColumns';
 
-/** The four result columns, in the order they are appended. */
-export const RESULT_COLUMNS = [
-  'unitTestStatus',
-  'unitTestFailReason',
-  'browserTestStatus',
-  'browserTestFailReason',
-] as const;
-
-/** Column name → value, used to target a specific writer (unit vs browser). */
-export interface ResultColumnTargets {
-  readonly statusColumn: string;
-  readonly reasonColumn: string;
-}
+export {
+  BROWSER_RESULT_TARGETS,
+  RESULT_COLUMNS,
+  UNIT_RESULT_TARGETS,
+  type ResultColumnTargets,
+};
 
 /** Splits a single CSV record into unescaped field values. */
 export function splitCsvLine(line: string): string[] {

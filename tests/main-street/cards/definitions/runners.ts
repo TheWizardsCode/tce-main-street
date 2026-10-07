@@ -45,13 +45,14 @@ import {
   computeUpgradeCostDiscount,
 } from '../../../../src/MainStreetStaffBuffs';
 import { hasPeekCapableStaff } from '../../../../src/MainStreetStaffSkills';
+import type { MainStreetState } from '../../../../src/MainStreetState';
 import type { CardTestContext } from '../CardTestTypes';
 import {
   findPlacedTemplateByName,
   findPlacedTemplateBySynergy,
   getAllPlacedTemplates,
 } from '../helpers/cardFixture';
-import { clearIncidents, fundCoins, newGame, setMarket } from '../helpers/stateBuilders';
+import { clearIncidents, fundCoins, setMarket } from '../helpers/stateBuilders';
 
 /** Throws with an actionable message when `condition` is falsy. */
 function check(condition: unknown, message: string): asserts condition {
@@ -76,7 +77,7 @@ function expectEqual(actual: unknown, expected: unknown, label: string): void {
  */
 export function verifyPlaceableCard(context: CardTestContext): void {
   const card = context.card as BusinessCard | CommunitySpaceCard;
-  const state = newGame(`place-${card.id}`);
+  const state = context.createState(`place-${card.id}`);
   fundCoins(state);
   setMarket(state, [card]);
   // Challenges are orthogonal to per-card behaviour and must not end the run
@@ -129,7 +130,7 @@ export function verifyUpgradeCard(context: CardTestContext): void {
     `No placeable business template named '${card.targetBusiness}' for upgrade ${card.id}.`,
   );
 
-  const state = newGame(`upg-${card.id}`);
+  const state = context.createState(`upg-${card.id}`);
   fundCoins(state);
 
   const business = {
@@ -177,7 +178,7 @@ export function verifyUpgradeCard(context: CardTestContext): void {
 /** Hires a staff card from a controlled market and asserts its declared abilities. */
 export function verifyStaffCard(context: CardTestContext): void {
   const card = context.card as StaffCard;
-  const state = newGame(`staff-${card.id}`);
+  const state = context.createState(`staff-${card.id}`);
   fundCoins(state);
 
   const staff = { ...card };
@@ -248,7 +249,7 @@ export function verifyStaffCard(context: CardTestContext): void {
 // ── Event ───────────────────────────────────────────────────
 
 /** Places businesses so a targeted event has a non-empty population. */
-function installEventTargets(state: ReturnType<typeof newGame>, card: EventCard): number {
+function installEventTargets(state: MainStreetState, card: EventCard): number {
   if (card.target === 'SpecificSynergy' && card.targetSynergy) {
     const match = findPlacedTemplateBySynergy(card.targetSynergy);
     if (match) {
@@ -314,7 +315,7 @@ function assertEventOutcome(
  */
 export function verifyEventCard(context: CardTestContext): void {
   const card = context.card as EventCard;
-  const state = newGame(`evt-${card.id}`);
+  const state = context.createState(`evt-${card.id}`);
   fundCoins(state);
   state.resourceBank.reputation = 1000;
 

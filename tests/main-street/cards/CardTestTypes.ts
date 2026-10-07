@@ -10,6 +10,7 @@
  */
 
 import type { AnyCard, CardFamily, StaffCard } from '../../../src/MainStreetCards';
+import type { MainStreetState } from '../../../src/MainStreetState';
 
 /** A single parsed row of `src/card-data.csv` plus its family metadata. */
 export interface CardRow {
@@ -40,6 +41,12 @@ export interface CardTestContext {
   readonly row: CardRow;
   /** The resolved engine template for this card (fresh instance). */
   readonly card: AnyCard;
+  /**
+   * Factory for the controlled engine state a runner drives. The unit runner
+   * defaults to {@link newGame}; the browser suite injects a factory that also
+   * installs the state into the live `MainStreetScene`.
+   */
+  readonly createState: (seed: string) => MainStreetState;
 }
 
 /**
@@ -72,6 +79,9 @@ export interface StaffCombination {
   readonly title: string;
   /** Whether this combination applies to the given staff card. */
   readonly appliesTo: (card: StaffCard) => boolean;
-  /** Executable body (throws on failure). */
-  readonly run: (card: StaffCard) => void;
+  /** Executable body (throws on failure). Returns the state it drove. */
+  readonly run: (
+    card: StaffCard,
+    createState?: (seed: string) => MainStreetState,
+  ) => MainStreetState;
 }

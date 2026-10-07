@@ -49,8 +49,11 @@ function expectEqual(actual: unknown, expected: unknown, label: string): void {
   }
 }
 
-function comboState(seed: string): MainStreetState {
-  const state = newGame(seed);
+function comboState(
+  seed: string,
+  createState?: (seed: string) => MainStreetState,
+): MainStreetState {
+  const state = (createState ?? newGame)(seed);
   fundCoins(state);
   state.activeChallenges = [];
   return state;
@@ -66,8 +69,11 @@ function employmentTarget(staff: StaffCard) {
 
 // ── discount-stacking ───────────────────────────────────────
 
-function runPurchaseStacking(card: StaffCard): void {
-  const state = comboState(`combo-purchase-${card.id}`);
+function runPurchaseStacking(
+  card: StaffCard,
+  createState?: (seed: string) => MainStreetState,
+): MainStreetState {
+  const state = comboState(`combo-purchase-${card.id}`, createState);
   const providers = createStaffDeck(1).filter(s => (s.purchaseCostDiscount ?? 0) > 0);
   for (const provider of providers) {
     setMarket(state, [provider]);
@@ -75,10 +81,14 @@ function runPurchaseStacking(card: StaffCard): void {
   }
   const sum = providers.reduce((total, s) => total + (s.purchaseCostDiscount ?? 0), 0);
   expectEqual(computePurchaseCostDiscount(state), sum, `${card.name} purchase discount sum`);
+  return state;
 }
 
-function runRefreshStacking(card: StaffCard): void {
-  const state = comboState(`combo-refresh-${card.id}`);
+function runRefreshStacking(
+  card: StaffCard,
+  createState?: (seed: string) => MainStreetState,
+): MainStreetState {
+  const state = comboState(`combo-refresh-${card.id}`, createState);
   const providers = createStaffDeck(1).filter(s => (s.refreshCostDiscount ?? 0) > 0);
   for (const provider of providers) {
     setMarket(state, [provider]);
@@ -90,12 +100,16 @@ function runRefreshStacking(card: StaffCard): void {
     Math.max(0, REFRESH_MARKET_COST - sum),
     `${card.name} refresh discount sum`,
   );
+  return state;
 }
 
 // ── per-business-scoping ────────────────────────────────────
 
-function runUpgradeScoping(card: StaffCard): void {
-  const state = comboState(`combo-scope-${card.id}`);
+function runUpgradeScoping(
+  card: StaffCard,
+  createState?: (seed: string) => MainStreetState,
+): MainStreetState {
+  const state = comboState(`combo-scope-${card.id}`, createState);
   const target = employmentTarget(card);
   check(target, 'No business available to employ the upgrade-discount staff member.');
   const other =
@@ -119,12 +133,16 @@ function runUpgradeScoping(card: StaffCard): void {
     0,
     `${card.name} discount must not leak to another business`,
   );
+  return state;
 }
 
 // ── upgrade-interaction ─────────────────────────────────────
 
-function runUpgradeInteraction(card: StaffCard): void {
-  const state = comboState(`combo-upgrade-${card.id}`);
+function runUpgradeInteraction(
+  card: StaffCard,
+  createState?: (seed: string) => MainStreetState,
+): MainStreetState {
+  const state = comboState(`combo-upgrade-${card.id}`, createState);
   const upgrade = createUpgradeDeck(1).find(candidate => {
     const target = findPlacedTemplateByName(candidate.targetBusiness);
     return Boolean(target) && staffMatchesBusiness(card, target!);
@@ -163,6 +181,7 @@ function runUpgradeInteraction(card: StaffCard): void {
     (upgrade!.requiredLevel ?? 0) + 1,
     `${card.name} upgrade still applied`,
   );
+  return state;
 }
 
 // ── Catalogue ───────────────────────────────────────────────

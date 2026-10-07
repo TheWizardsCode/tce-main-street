@@ -10,6 +10,7 @@
 
 import { getCsvRows } from '../../../src/MainStreetCards';
 import type { CardFamily } from '../../../src/MainStreetCards';
+import type { MainStreetState } from '../../../src/MainStreetState';
 import type {
   CardDefinition,
   CardRow,
@@ -17,6 +18,7 @@ import type {
   CardTestResult,
 } from './CardTestTypes';
 import { resolveCardTemplate } from './helpers/cardFixture';
+import { newGame } from './helpers/stateBuilders';
 import { CARD_DEFINITIONS } from './definitions';
 
 /** Normalises an unknown thrown value into a concise failure note. */
@@ -90,9 +92,14 @@ export class CardTestRegistry {
   /**
    * Runs the definition for one card.
    *
-   * A missing definition is reported as a failure rather than skipped.
+   * A missing definition is reported as a failure rather than skipped. The
+   * `createState` factory defaults to the unit {@link newGame}; the browser
+   * suite injects one that also installs the state into the live scene.
    */
-  runCard(row: CardRow): CardTestResult {
+  runCard(
+    row: CardRow,
+    createState: (seed: string) => MainStreetState = newGame,
+  ): CardTestResult {
     const definition = this.definitions.get(row.id);
     if (!definition) {
       return {
@@ -104,7 +111,11 @@ export class CardTestRegistry {
 
     let context: CardTestContext;
     try {
-      context = { row, card: resolveCardTemplate(row.id, row.family) };
+      context = {
+        row,
+        card: resolveCardTemplate(row.id, row.family),
+        createState,
+      };
     } catch (error) {
       return { cardId: row.id, status: 'fail', failReason: describeError(error) };
     }

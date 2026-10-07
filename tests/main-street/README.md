@@ -16,7 +16,11 @@ framework changes.
 Run just the card suite:
 
 ```bash
+# Unit integration
 npx vitest run --project unit tests/main-street/cards/unit/CardIntegration.test.ts
+
+# Browser integration (real MainStreetScene, headless Chromium)
+npm run test:browser
 ```
 
 ## Market Offer Engine — Extraction Parity Tests

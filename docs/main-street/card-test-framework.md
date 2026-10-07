@@ -51,6 +51,32 @@ The CSV remains backward compatible: `@balance-cards` validates the known
 header prefix and ignores trailing columns, and the card-art pipeline reads
 only the columns it needs.
 
+## Browser integration suite
+
+The browser suite (`tests/main-street/cards/browser/`) runs the same explicit
+card definitions against the **real `MainStreetScene`** in headless Chromium:
+
+- Boots the scene once (`sceneHarness.ts`), installs the controlled engine
+  state into the live scene, and refreshes the HUD.
+- Asserts the player-facing HUD shows the resulting coin and reputation
+  balances (`Coins: …` / `Reputation: …`).
+- Posts the pass/fail results to the dev server, which writes the
+  `browserTestStatus` / `browserTestFailReason` columns back into the CSV
+  (browsers cannot write files directly). It also keeps
+  `public/assets/games/main-street/svg/cards/csv-checksum.json` in sync.
+
+Run it with:
+
+```bash
+npm run test:browser
+# or
+npx vitest run --project browser tests/main-street/cards/browser
+```
+
+The browser project is defined in `vite.config.ts` (Playwright, headless
+Chromium, serial execution) so it can be added to the standard smoke/dev
+workflow.
+
 ## Architecture
 
 | Path | Responsibility |
@@ -61,11 +87,16 @@ only the columns it needs.
 | `definitions/index.ts` | The explicit `cardId → definition` registry (one entry per card) |
 | `definitions/runners.ts` | Shared per-family verification bodies (placeable, upgrade, staff, event) |
 | `definitions/combinations.ts` | Up to three staff combination checks (discount stacking, per-business scoping, upgrade interaction) |
+| `ResultColumns.ts` | The result-column contract (browser-safe; shared by the writer and the browser suite) |
 | `helpers/cardFixture.ts` | Resolves fresh engine templates via the production deck factories |
 | `helpers/stateBuilders.ts` | Deterministic, applicant-free controlled-state builders |
 | `unit/CardIntegration.test.ts` | Parameterised runner over all discovered cards + CSV write-back |
 | `unit/CardCombinations.test.ts` | Staff combination runner |
 | `unit/CardTestFramework.test.ts` | Meta-tests for the framework and writer |
+| `browser/sceneHarness.ts` | Boots the real scene, installs state, reads/asserts the HUD |
+| `browser/CardIntegration.browser.test.ts` | Per-card browser runner + result write-back |
+| `browser/CardCombinations.browser.test.ts` | Staff combination browser runner |
+| `browser/CardTestFramework.browser.test.ts` | Browser meta-tests (missing definition, wrong expectation, HUD assertion) |
 
 ### Staff combination tests
 
