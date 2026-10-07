@@ -69,18 +69,24 @@ describe('buildUpgradeOverlaySpec', () => {
       expect(spec.levelBadge!.text).toBe('Lvl 2');
     });
 
-    it('positions the level badge in the top-left corner', () => {
-      const biz = makeBiz({ level: 1 });
+    it('positions the level badge in the top-left corner, left-anchored (level 1 and 2)', () => {
       const width = 200;
       const height = 280;
-      const spec = buildUpgradeOverlaySpec(biz, width, height);
-      expect(spec.levelBadge).not.toBeNull();
-      // In container-local space (0,0 = card centre), badge should be near
-      // top-left: x negative (left side, near left edge at -width/2)
-      expect(spec.levelBadge!.x).toBeLessThan(0);
-      expect(spec.levelBadge!.x).toBeGreaterThanOrEqual(-width / 2);
-      // y negative (above centre, near top at -height/2)
-      expect(spec.levelBadge!.y).toBeLessThan(0);
+      for (const level of [1, 2]) {
+        const biz = makeBiz({ level });
+        const spec = buildUpgradeOverlaySpec(biz, width, height);
+        expect(spec.levelBadge).not.toBeNull();
+        // In container-local space (0,0 = card centre), the badge sits in the
+        // top-left: x negative (left of centre) and never the mirrored
+        // top-right position.
+        expect(spec.levelBadge!.x).toBeLessThan(0);
+        expect(spec.levelBadge!.x).toBeGreaterThanOrEqual(-width / 2);
+        // Left-anchored so the text starts at the left inset.
+        expect(spec.levelBadge!.originX).toBe(0);
+        // y negative (above centre, near top at -height/2)
+        expect(spec.levelBadge!.y).toBeLessThan(0);
+        expect(spec.levelBadge!.y).toBeGreaterThanOrEqual(-height / 2);
+      }
     });
   });
 
