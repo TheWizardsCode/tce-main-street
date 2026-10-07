@@ -127,6 +127,12 @@ export const PEDESTRIAN_BOB_AMPLITUDE = 1.5;
 export const PEDESTRIAN_BOB_RATE = 8;
 /** Texture key for the runtime-generated shared silhouette texture. */
 export const PEDESTRIAN_TEXTURE_KEY = 'ms-pedestrian-silhouette';
+/**
+ * Fade duration (ms) for reconciling the live crowd: a spawn fades the figure
+ * in and a removal fades it out before the image is destroyed
+ * (MS-0MUYGFWKG008GUA5).
+ */
+export const PEDESTRIAN_FADE_MS = 220;
 // Make hand slot match placeholder size as requested
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;

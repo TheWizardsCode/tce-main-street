@@ -21,6 +21,7 @@ import type { SceneLayout } from './MainStreetConstants';
 import {
   PEDESTRIAN_BOB_AMPLITUDE,
   PEDESTRIAN_BOB_RATE,
+  PEDESTRIAN_FADE_MS,
   PEDESTRIAN_SILHOUETTE_H,
   PEDESTRIAN_SILHOUETTE_W,
   PEDESTRIAN_STREET_PADDING,
@@ -243,6 +244,8 @@ export class MainStreetPedestrians {
   private images: any[] = [];
   private boundsCache: PedestrianBounds | null = null;
   private targetCount = 0;
+  /** Images whose fade-out tween is still running (cleaned on destroy). */
+  private fadingImages: any[] = [];
 
   constructor(private readonly scene: any, rng: () => number = createPresentationRng()) {
     this.rng = rng;
@@ -398,12 +401,8 @@ export class MainStreetPedestrians {
 
     while (this.figures.length > target) {
       const image = this.images.pop();
-      try {
-        image?.destroy?.();
-      } catch (_) {
-        // ignore
-      }
       this.figures.pop();
+      this.fadeOutAndDestroy(image);
     }
 
     while (this.figures.length < target) {
@@ -414,7 +413,75 @@ export class MainStreetPedestrians {
       this.container.add(image);
       this.figures.push(figure);
       this.images.push(image);
+      this.fadeIn(image);
     }
+  }
+
+  /**
+   * Fade a newly spawned figure in. Falls back to full opacity when the scene
+   * has no tween manager (unit harnesses, headless) so the figure is still
+   * visible.
+   */
+  private fadeIn(image: any): void {
+    try {
+      if (!image) return;
+      const tweens = this.scene?.tweens;
+      if (tweens?.add) {
+        image.setAlpha?.(0);
+        tweens.add({ targets: image, alpha: 1, duration: PEDESTRIAN_FADE_MS });
+      } else {
+        image.setAlpha?.(1);
+      }
+    } catch (_) {
+      try {
+        image?.setAlpha?.(1);
+      } catch (_) {
+        // presentation-only
+      }
+    }
+  }
+
+  /**
+   * Fade a removed figure out, destroying it when the tween completes. The
+   * figure is already detached from the live arrays, so the count drops
+   * immediately while the image fades over {@link PEDESTRIAN_FADE_MS}. Falls
+   * back to an immediate destroy when the scene has no tween manager.
+   */
+  private fadeOutAndDestroy(image: any): void {
+    if (!image) return;
+    try {
+      const tweens = this.scene?.tweens;
+      if (tweens?.add) {
+        this.fadingImages.push(image);
+        tweens.add({
+          targets: image,
+          alpha: 0,
+          duration: PEDESTRIAN_FADE_MS,
+          onComplete: () => {
+            this.forgetFadingImage(image);
+            try {
+              image.destroy?.();
+            } catch (_) {
+              // presentation-only
+            }
+          },
+        });
+        return;
+      }
+    } catch (_) {
+      // fall through to an immediate destroy
+    }
+    try {
+      image.destroy?.();
+    } catch (_) {
+      // presentation-only
+    }
+  }
+
+  /** Detach an image from the fading registry once its fade-out finishes. */
+  private forgetFadingImage(image: any): void {
+    const index = this.fadingImages.indexOf(image);
+    if (index >= 0) this.fadingImages.splice(index, 1);
   }
 
   private ensureTexture(): void {
@@ -442,8 +509,16 @@ export class MainStreetPedestrians {
         // ignore
       }
     }
+    for (const image of this.fadingImages) {
+      try {
+        image?.destroy?.();
+      } catch (_) {
+        // ignore
+      }
+    }
     this.images = [];
     this.figures = [];
+    this.fadingImages = [];
     try {
       this.container?.destroy?.();
     } catch (_) {

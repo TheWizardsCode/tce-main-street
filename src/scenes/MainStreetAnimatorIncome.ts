@@ -19,6 +19,20 @@ import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
 import { resolveDeltaFlow } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
+import { pedestrianCount } from './MainStreetPedestrians';
+
+/**
+ * Reconcile the ambient street crowd to the authoritative HUD reputation
+ * value (MS-0MUYGFWKG008GUA5). Presentation-only and defensive: a throwing
+ * crowd layer can never stall the HUD update or the turn.
+ */
+function syncPedestrianPopulation(scene: MainStreetAnimatorContext['scene'], reputation: number): void {
+  try {
+    scene?.msPedestrians?.setPopulation?.(pedestrianCount(reputation));
+  } catch (_) {
+    // Presentation-only.
+  }
+}
 
 
 export function animateHudValueChanges(animator: MainStreetAnimatorContext, params: {
@@ -31,6 +45,11 @@ export function animateHudValueChanges(animator: MainStreetAnimatorContext, para
 
     const s = animator.scene;
     const { coins, reputation, coinX, repX, hudY } = params;
+
+    // Live population reconciliation (MS-0MUYGFWKG008GUA5): the same HUD
+    // update path that renders the reputation counter also reconciles the
+    // ambient crowd, so the on-street count always matches the HUD value.
+    syncPedestrianPopulation(s, reputation);
 
     if (s.previousCoins === null || s.previousReputation === null) {
       s.previousCoins = coins;
