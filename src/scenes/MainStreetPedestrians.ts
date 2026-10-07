@@ -143,6 +143,18 @@ export function pedestrianWanderBounds(layout: SceneLayout): PedestrianBounds {
   };
 }
 
+/**
+ * The street-area anchor used when no pedestrians are on screen.
+ *
+ * Centres on the street viewport band so a pedestrian-sourced coin flight is
+ * never allowed to fall back to the HUD reputation counter
+ * (MS-0MUYGFWXK003QFYB). Pure and exported for unit testing.
+ */
+export function pedestrianStreetAnchor(layout: SceneLayout): { x: number; y: number } {
+  const viewport = streetViewportRect(layout);
+  return { x: viewport.x + viewport.w / 2, y: viewport.y + viewport.h / 2 };
+}
+
 // ── Pure helper: figure model + stepping ───────────────────────────
 
 /** One wandering pedestrian, in map-local coordinates (x/y = centre). */
@@ -380,6 +392,52 @@ export class MainStreetPedestrians {
   public getWanderBounds(): PedestrianBounds {
     if (!this.boundsCache) this.boundsCache = this.computeBounds();
     return { ...this.boundsCache };
+  }
+
+  /**
+   * Dissolve the on-screen pedestrians into a coin-source pool for the
+   * reputation income phase (MS-0MUYGFWXK003QFYB).
+   *
+   * Returns one source point per supplied target, cycling through the live
+   * on-street figure centres. When no figures are on screen it falls back to
+   * a single street-area anchor — **never** the HUD reputation counter, so
+   * the conversion always reads as coming from the street.
+   */
+  public dissolveIntoCoins(
+    targets: Array<{ x: number; y: number }>,
+  ): Array<{ x: number; y: number }> {
+    try {
+      const count = Array.isArray(targets) ? targets.length : 0;
+      if (count === 0) return [];
+      const pool = this.figureSourcePool();
+      const sources: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i < count; i++) {
+        const source = pool[i % pool.length];
+        sources.push({ x: source.x, y: source.y });
+      }
+      return sources;
+    } catch (_) {
+      const anchor = this.streetAnchor();
+      return Array.isArray(targets) ? targets.map(() => ({ ...anchor })) : [];
+    }
+  }
+
+  /** Live figure centres, or a single street-area anchor when none exist. */
+  private figureSourcePool(): Array<{ x: number; y: number }> {
+    const positions = this.getFigurePositions();
+    if (positions.length > 0) return positions;
+    return [this.streetAnchor()];
+  }
+
+  /** Street-area anchor derived from the current layout (never the HUD). */
+  private streetAnchor(): { x: number; y: number } {
+    try {
+      const layout = this.scene?.layout as SceneLayout | undefined;
+      if (!layout) return { x: 0, y: 0 };
+      return pedestrianStreetAnchor(layout);
+    } catch (_) {
+      return { x: 0, y: 0 };
+    }
   }
 
   // ── internals ────────────────────────────────────────────────────

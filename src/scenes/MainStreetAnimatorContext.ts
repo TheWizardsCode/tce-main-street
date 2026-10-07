@@ -176,6 +176,13 @@ export interface MainStreetAnimatorContext {
     pendingDeltas?: PendingEndOfTurnDeltas;
   }): void;
   creditedIncomeTotal(phaseData: SlotPhaseBreakdown[]): number;
+  /**
+   * Resolve the reputation phase's coin origins from the on-street
+   * pedestrians (MS-0MUYGFWXK003QFYB). Returns one source point per target,
+   * using a street-area anchor when no figures are on screen — never the HUD
+   * reputation counter.
+   */
+  dissolveReputationCoins(targets: Array<{ x: number; y: number }>): Array<{ x: number; y: number }>;
   showIncomePhaseLabel(text: string, color: number): void;
   animateMarketDealIn(params: {
     row: 'market';

@@ -19,7 +19,30 @@ import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
 import { resolveDeltaFlow } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
-import { pedestrianCount } from './MainStreetPedestrians';
+import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
+
+/**
+ * Resolve the reputation phase's coin origins (MS-0MUYGFWXK003QFYB).
+ *
+ * Delegates to the pedestrian layer's `dissolveIntoCoins`; when the layer is
+ * absent or throws, falls back to the street-area anchor. Never returns the
+ * HUD reputation counter, so the reputation income always reads as coming
+ * from the street.
+ */
+export function dissolveReputationCoins(
+  animator: MainStreetAnimatorContext,
+  targets: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  const s = animator.scene;
+  try {
+    const sources = s?.msPedestrians?.dissolveIntoCoins?.(targets);
+    if (Array.isArray(sources) && sources.length === targets.length) return sources;
+  } catch (_) {
+    // presentation-only
+  }
+  const anchor = pedestrianStreetAnchor(s?.layout);
+  return targets.map(() => ({ ...anchor }));
+}
 
 /**
  * Reconcile the ambient street crowd to the authoritative HUD reputation
@@ -417,7 +440,14 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
       case 'reputation': {
         if (ctx.reducedMotion) return;
         if (!slots.some((sl) => iconsForAmount(roundHalf(sl.pd.repBonus)) > 0)) return;
-        const from = { x: s.layout.gameW * 0.5, y: s.layout.hudY };
+        // The reputation income is sourced from the on-street pedestrians
+        // (MS-0MUYGFWXK003QFYB): each business's coin stream dissolves out of
+        // a live wandering figure — or a street-area anchor when none are on
+        // screen — never the HUD reputation counter. The credited amounts,
+        // on-card `revealInGrid` landing and pacing are unchanged.
+        const slotCenters = slots.map((sl) => animator.getStreetSlotCenter(sl.pd.slotIndex));
+        const sources = animator.dissolveReputationCoins(slotCenters);
+        const streetAnchor = pedestrianStreetAnchor(s.layout);
         let delayOffset = 0;
         for (let si = 0; si < numSlots; si++) {
           const slot = slots[si];
@@ -426,6 +456,7 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
             delayOffset += animator.getCardDelay(numSlots, si);
             continue;
           }
+          const from = sources[si] ?? streetAnchor;
           const flightMs = animator.getFlightDuration(numSlots, si);
           animator.flyCoinsIn(slot, amount, from, delayOffset, flightMs);
           const pauseMs = INCOME_CARD_FULL_PAUSE_MULTIPLIER * animator.currentCoinStagger;
