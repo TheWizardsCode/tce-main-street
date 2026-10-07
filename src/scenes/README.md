@@ -27,6 +27,23 @@ counter, and a final `+total` pop lands when collection completes. See
 - Reduced motion: flights skipped; the HUD refresh shows the single final
   pop + income sound.
 
+## Ambient street pedestrians (reputation crowd)
+
+`MainStreetPedestrians` (MS-0MTV9AS15004AC1E) renders a presentation-only
+crowd of small solid-colour silhouettes over the street band. The population
+is a pure function of reputation (`pedestrianCount`, 1 figure per 50,
+uncapped, `#88bbff`); the crowd tracks the HUD reputation value live (fade
+in/out) and, during the phased income show, the `reputation` phase dissolves
+the on-street figures into the coin stream that lands in each business's coin
+grid (`dissolveIntoCoins`, street-anchor fallback when no figures are on
+screen — never the HUD counter). One runtime-generated texture is shared by
+every figure. See `docs/main-street/ux-visual-audio.md` for the design notes.
+
+- Presentation-only: never mutates state/transcript; every method is
+  defensive.
+- No gameplay RNG: wander motion uses a module-local seeded PRNG.
+- Reduced motion: no pedestrians or flights; replay/headless renders nothing.
+
 ## Incident reveal presentation
 
 `MainStreetAnimator.animateIncidentReveal({ cardId, incidentName, coinChange,
