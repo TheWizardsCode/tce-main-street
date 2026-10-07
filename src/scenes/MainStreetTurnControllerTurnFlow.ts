@@ -23,6 +23,7 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
+import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import {
   endCompetitiveTurnDay,
   isCompetitiveState,
@@ -315,15 +316,9 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
       return;
     }
 
-    // Show income feedback briefly then start next turn
-    if (result.income && result.income.total > 0) {
-      s.instructionText.setText(
-        `Income: +${result.income.total} coins` +
-        (result.incident ? ` | Incident: ${result.incident.name}` : ''),
-      );
-    } else if (result.incident) {
-      s.instructionText.setText(`Incident: ${result.incident.name}`);
-    }
+    // The income/incident summary text is set by the shared closing
+    // presentation primitive below, so the single-player and competitive
+    // flows cannot drift (MS-0MUYFX7Q2004JQ5R).
     // While the phased income show runs, the street cards host the
     // on-card coin grids (child 2); refresh everything EXCEPT the
     // street so those grids survive until collection completes, then
@@ -461,55 +456,17 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // delay, no state mutation — and the day advances as before.
     const inTutorial =
       (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
-    if (result.incident && !inTutorial) {
-      try {
-        // If income collection is active, wait for it to complete before
-        // starting the incident reveal (ensures distinct, non-overlapping phases).
-        if (s.incomeCollectionActive) {
-          const startAfterIncome = (): void => {
-            if (s.incomeCollectionActive) {
-              s.time.delayedCall(250, startAfterIncome);
-            } else {
-              const incident = result.incident;
-              if (!incident) {
-                advanceTurn();
-                return;
-              }
-              s.msAnimator.animateIncidentReveal({
-                cardId: incident.id,
-                incidentName: incident.name,
-                coinChange: result.incidentCoinChange,
-                repChange: result.incidentRepChange,
-                from: s.msRenderer.getFrontIncidentCardCenter(),
-                onComplete: advanceTurn,
-                pendingDeltas: deferred ? result : undefined,
-              });
-            }
-          };
-          startAfterIncome();
-        } else {
-          const incident = result.incident;
-          if (!incident) {
-            advanceTurn();
-            return;
-          }
-          s.msAnimator.animateIncidentReveal({
-            cardId: incident.id,
-            incidentName: incident.name,
-            coinChange: result.incidentCoinChange,
-            repChange: result.incidentRepChange,
-            from: s.msRenderer.getFrontIncidentCardCenter(),
-            onComplete: advanceTurn,
-            pendingDeltas: deferred ? result : undefined,
-          });
-        }
-      } catch (_) {
-        // presentation-only — never let the reveal hang the turn.
-        advanceTurn();
-      }
-    } else {
-      advanceTurn();
-    }
+    // Shared closing presentation primitive (MS-0MUYFX7Q2004JQ5R): the income
+    // summary, incident reveal (with the deferred-delta window) and the day
+    // advance are driven by one path used by both single-player and
+    // competitive. The tutorial keeps its window-safe pacing by skipping the
+    // reveal (`animateIncident: false`); reduced motion / replay delegate to the
+    // animator so its own pacing is unchanged (`delegateReducedMotionIncident`).
+    presentTurnClosing(tcCtx, result, advanceTurn, {
+      animateIncident: !inTutorial,
+      delegateReducedMotionIncident: true,
+      pendingDeltas: deferred ? result : undefined,
+    });
   
 }
 

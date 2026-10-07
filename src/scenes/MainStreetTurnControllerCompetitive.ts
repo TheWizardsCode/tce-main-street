@@ -65,6 +65,7 @@ import {
 } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
+import { closingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
 /** Default hard cap on actions a single AI seat may take in one shared day. */
@@ -359,39 +360,17 @@ function turnResultFromState(state: MainStreetState): TurnResult {
 /** Brief hold after the closing summary before the next shared day starts. */
 export const COMPETITIVE_CLOSING_HOLD_MS = 900;
 
-/** Sets the scene instruction text, ignoring presentation-only failures. */
-function setInstruction(s: any, text: string): void {
-  try { s.instructionText?.setText?.(text); } catch { /* presentation-only */ }
-}
-
 /**
  * Builds the one-line closing summary shown to the player: the shared income
  * total and, when one resolved, the incident name. Returns an empty string
  * when there is nothing to report (e.g. a turn that ended outside the closing).
  *
- * Mirrors the text feedback shown by the single-player `finishTurnPresentation`
- * (`Income: +N coins | Incident: <name>`).
+ * Delegates to the shared {@link closingSummary} used by the single-player
+ * `finishTurnPresentation`, so both flows report the closing identically
+ * (MS-0MUYFX7Q2004JQ5R).
  */
 export function competitiveClosingSummary(result: TurnResult): string {
-  const parts: string[] = [];
-  if (result.income && result.income.total > 0) {
-    parts.push(`Income: +${result.income.total} coins`);
-  }
-  if (result.incident) {
-    parts.push(`Incident: ${result.incident.name}`);
-  }
-  return parts.join(' | ');
-}
-
-/** Schedules `cb` after `delayMs` when the scene has a clock, else runs now. */
-function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
-  try {
-    if (typeof s.time?.delayedCall === 'function') {
-      s.time.delayedCall(delayMs, cb);
-      return;
-    }
-  } catch { /* fall through to immediate */ }
-  cb();
+  return closingSummary(result);
 }
 
 /**
@@ -418,47 +397,15 @@ export function presentCompetitiveClosing(
   result: TurnResult,
   onComplete: () => void,
 ): void {
-  const s = tcCtx.scene;
-  const replay = s.replayMode === true;
-  const reducedMotion = s.settingsPanel?.reducedMotion === true;
-  const animationsEnabled = !replay && !reducedMotion;
-
-  // AC3: reflect the closing phase progression in the instruction text.
-  setInstruction(s, 'Resolving end-of-turn effects...');
-
-  // AC1: income summary (shared total) + resolved incident name. Always shown
-  // as text so reduced motion / replay / headless still receive the feedback.
-  const summary = competitiveClosingSummary(result);
-  if (summary) setInstruction(s, summary);
-
-  const finish = (): void => {
-    setInstruction(s, 'End of turn complete.');
-    scheduleOrRun(s, COMPETITIVE_CLOSING_HOLD_MS, onComplete);
-  };
-
-  // AC2: incident reveal (skipped when animations are disabled — the incident
-  // name is already in the summary text). The reveal blocks the day start only
-  // for its own bounded hold; `finish` then schedules the condensed end-of-turn
-  // hold and advances.
-  const incident = result.incident;
-  if (incident && animationsEnabled) {
-    try {
-      const from = s.msRenderer?.getFrontIncidentCardCenter?.()
-        ?? { x: (s.layout?.gameW ?? 0) / 2, y: (s.layout?.gameH ?? 0) / 2 };
-      s.msAnimator?.animateIncidentReveal?.({
-        cardId: incident.id,
-        incidentName: incident.name,
-        coinChange: result.incidentCoinChange,
-        repChange: result.incidentRepChange,
-        from,
-        onComplete: finish,
-      });
-    } catch {
-      finish();
-    }
-  } else {
-    finish();
-  }
+  // Delegate to the shared closing presentation primitive (MS-0MUYFX7Q2004JQ5R)
+  // so the single-player and competitive flows cannot drift. The condensed
+  // competitive closing keeps its own status/completion text and bounded hold;
+  // the income/incident/end-of-turn/advance logic now lives in one place.
+  presentTurnClosing(tcCtx, result, onComplete, {
+    statusText: 'Resolving end-of-turn effects...',
+    completionText: 'End of turn complete.',
+    holdMs: COMPETITIVE_CLOSING_HOLD_MS,
+  });
 }
 
 /**

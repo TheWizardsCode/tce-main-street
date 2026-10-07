@@ -390,11 +390,8 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
 // primitive (MS-0MUYFX6ER000BLP3 → extracted by MS-0MUYFX7Q2004JQ5R).
 //
 // `finishTurnPresentation` (single-player) and `presentCompetitiveClosing`
-// (competitive) currently duplicate the income-summary text, the incident
-// reveal, the end-of-turn text and the advance callback. The primitive below
-// pins the contract both are expected to delegate to. Every assertion is an
-// `it.fails` until the extraction lands; MS-0MUYFX7Q2004JQ5R flips each
-// `it.fails` to a normal `it`.
+// (competitive) share this primitive. The extraction
+// (MS-0MUYFX7Q2004JQ5R) delegates both to it; these tests pin the contract.
 
 interface PrimitiveHarness {
   scene: any;
@@ -481,7 +478,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     presentTurnClosing.mockClear();
   });
 
-  it.fails(
+  it(
     'AC1 — a single-seat closing drives the income summary, incident reveal, end-of-turn text and advance callback',
     () => {
       const h = makePrimitiveHarness();
@@ -520,7 +517,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     },
   );
 
-  it.fails('AC1 — a closing with no incident advances without a reveal', () => {
+  it('AC1 — a closing with no incident advances without a reveal', () => {
     const h = makePrimitiveHarness();
     let completed = 0;
 
@@ -535,7 +532,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     expect(completed).toBe(1);
   });
 
-  it.fails('AC1 — reduced motion degrades to text and advances immediately', () => {
+  it('AC1 — reduced motion degrades to text and advances immediately', () => {
     const h = makePrimitiveHarness({ settingsPanel: { reducedMotion: true } });
     const result = makeResult({ incident: { id: 'inc-3', name: 'Fire' } as any });
     let completed = 0;
@@ -549,7 +546,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     expect(completed).toBe(1);
   });
 
-  it.fails('AC1 — replay/headless skips animation but still advances (bounded)', () => {
+  it('AC1 — replay/headless skips animation but still advances (bounded)', () => {
     const h = makePrimitiveHarness({ replayMode: true });
     let completed = 0;
 
@@ -563,7 +560,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     expect(completed).toBe(1);
   });
 
-  it.fails(
+  it(
     'AC3 — finishTurnPresentation delegates to the shared primitive and still advances the day',
     () => {
       const { tcCtx } = makeTurnFlowHarness();
@@ -581,7 +578,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     },
   );
 
-  it.fails(
+  it(
     'AC3 — presentCompetitiveClosing delegates to the shared primitive and still advances',
     () => {
       const h = makePrimitiveHarness();
