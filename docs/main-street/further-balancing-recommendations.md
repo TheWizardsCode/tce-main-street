@@ -109,6 +109,15 @@ Ownership frequency (Medium, share of runs where the card was owned):
 
 All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
 
+> **R4 AI-side follow-up (MS-0MUX8J9KJ005ZKDW).** R4 (MS-0MUR9IN7L0004TO5)
+> re-priced community spaces in the card data. The *AI decision-quality*
+> half of the same observation — the greedy AI over-selecting community spaces
+> because their zero income and running costs were invisible to the scoring
+> — is addressed separately by giving community spaces their own placement
+> value and a named business-preference penalty. See
+> [ai-strategy.md](ai-strategy.md#community-space-move-evaluation-ms-0mux8j9kj005zkdw)
+> and [community-space-ai-evidence.md](community-space-ai-evidence.md).
+
 ## 6. Non-recommendations (deliberately out of scope)
 
 - **Difficulty presets** — left unchanged by producer decision Q3 = C; the

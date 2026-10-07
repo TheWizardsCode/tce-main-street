@@ -248,11 +248,12 @@ describe('AC4 — CompetitiveGreedyStrategy validation', () => {
 
 describe('Elimination & last-standing alignment', () => {
   it('reports an eliminated seat with its own loss reason, not the run reason', () => {
-    // 'cf-elim-4-7' ends by last-standing: the AI is eliminated and the
+    // 'cf-elim-4-5' ends by last-standing: the AI is eliminated and the
     // human wins. The healthy winner must not be attributed the collapsed
-    // seat's reason. (The fixture seed was updated from 'ac1-cap-5' when the
-    // competitive Community Favour gate changed under MS-0MUVB2ZES005V83Y.)
-    const run = runCompetitiveSeed('cf-elim-4-7', 4);
+    // seat's reason. (The fixture seed was updated from 'cf-elim-4-7' when the
+    // competitive community-space scoring changed under MS-0MUX8J9KJ005ZKDW;
+    // it was previously updated from 'ac1-cap-5' under MS-0MUVB2ZES005V83Y.)
+    const run = runCompetitiveSeed('cf-elim-4-5', 4);
     expect(run.endReason).toBe('last_standing');
     expect(run.winnerId).toBe(0);
 

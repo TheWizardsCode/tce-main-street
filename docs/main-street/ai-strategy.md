@@ -124,6 +124,66 @@ calibrated on the canonical 200-seed profile after the R2 reputation re-tune;
 the before/after evidence (including the producer-approved G5 band revision)
 is in [favour-ai-evidence.md](favour-ai-evidence.md).
 
+## Community-space move evaluation (MS-0MUX8J9KJ005ZKDW)
+
+Community-space cards are **not** scored with the business formula. They have
+`baseIncome = 0` and earn no synergy income themselves — their synergy type
+only anchors neighbouring businesses — so the business formula collapsed to
+`−cost` and the AI placed a community space whenever it was the cheapest
+affordable card, ignoring the running cost it drains each turn.
+
+`scoreBusinessAction` / `scorePlayBusinessFromHandAction` (and the competitive
+mirror `competitiveBusinessScore` / `competitiveHandBusinessScore`) branch on
+`card.family`: businesses keep
+`(baseIncome + projectedSynergyBonus) × horizon − cost`, while community
+spaces use `scoreCommunitySpacePlacement`:
+
+```
+(base income + synergy anchored for neighbours + reputation per turn) × horizon
+  − placement cost − ongoing running cost × horizon
+  − COMMUNITY_SPACE_SCORE_PENALTY
+```
+
+- **Synergy for neighbours** — `neighbourSynergyGain` diffs every neighbour's
+  `computeSynergyBonus` before/after the placement, so the income a community
+  space anchors for adjacent businesses is its coin value.
+- **Reputation per turn** — counted 1:1 with coins, matching `computeScore`
+  (`coins + reputation + challenges`).
+- **Running cost × horizon** — `ongoingCost` was previously invisible to the
+  AI; it is now deducted over the planning horizon.
+
+### Business-preference threshold (AC3)
+
+`COMMUNITY_SPACE_SCORE_PENALTY = 600` is a coin-equivalent penalty subtracted
+from every community-space placement score. A community space must therefore
+beat an income-producing business by at least 600, so income takes priority
+over synergy-only value when the two are comparable. Because the greedy spend
+chain (`chooseGreedyAction` Priority 1 / Priority 4, and the competitive
+`CompetitiveGreedyStrategy` equivalent) only accepts a community space whose
+(penalised) score is **positive**, the same constant is also the minimum
+net-value bar an "empty synergy" placement must clear — which is what stops
+the AI buying a community space merely because it is the cheapest affordable
+card.
+
+### Preserved synergy placements (AC4)
+
+`bestPlacementSynergy` and the bank look-ahead (`bestVisibleBankTarget` /
+`bestPipelineBankTarget`) and Community Favour enablement
+(`bestEnabledFavourPlacement`, running cost included) all use the community
+value, so a space that anchors high-income neighbours, or that combines
+reputation output with low running cost, still clears the penalty and is
+placed. The goal is to reduce over-use, not eliminate community spaces.
+
+### Evidence (AC1/AC5)
+
+The canonical 200-seed / 60-turn greedy profile
+(`src/scripts/balance/community-space-placement-report.ts`) shows the
+community-to-business placement ratio falling from **0.219 to 0.068** overall
+(Easy 0.226→0.073, Medium 0.206→0.055, Hard 0.228→0.080) with the win-rate
+ladder Easy ≥ Medium ≥ Hard intact (0.800 ≥ 0.720 ≥ 0.435). Full before/after
+figures, tolerances and reproduce commands are in
+[community-space-ai-evidence.md](community-space-ai-evidence.md).
+
 ## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
 
 In human-vs-AI competitive play the AI seats are removed from play when they can

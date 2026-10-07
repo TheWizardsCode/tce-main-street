@@ -66,6 +66,20 @@ export interface MonteCarloRunSummary {
    */
   favourCoinsToRepUses?: number;
   /**
+   * Number of `business`-family cards placed on the street during the run
+   * (via `buy-business` or `play-business-from-hand`) — MS-0MUX8J9KJ005ZKDW.
+   * Optional for backward compatibility with stored summaries and test
+   * fixtures predating the counter; absent is treated as 0.
+   */
+  businessPlacements?: number;
+  /**
+   * Number of `community-space` cards placed on the street during the run
+   * (via `buy-business` or `play-business-from-hand`) — MS-0MUX8J9KJ005ZKDW.
+   * Optional for the same backward-compatibility reason as
+   * {@link MonteCarloRunSummary.businessPlacements}.
+   */
+  communitySpacePlacements?: number;
+  /**
    * Turn-by-turn economy history recorded after each economy mutation.
    * Each entry contains a sequence number (turn), coins, reputation, and score
    * at that point. Captured via EconomyLedger.getHistory() at run end.
@@ -401,12 +415,33 @@ function simulateSeed(
     /** Community Favour usage counters (CG-0MSTOATDQ005XDET). */
     let favourRepToCoinsUses = 0;
     let favourCoinsToRepUses = 0;
+    /** Placement counters by card family (MS-0MUX8J9KJ005ZKDW). */
+    let businessPlacements = 0;
+    let communitySpacePlacements = 0;
 
     /** Records a Community Favour exchange against the right direction. */
     const trackFavour = (action: PlayerAction): void => {
       if (action.type !== 'community-favour') return;
       if (action.direction === 'rep-to-coins') favourRepToCoinsUses++;
       else favourCoinsToRepUses++;
+    };
+
+    /**
+     * Counts a street placement by card family. Must be called *before*
+     * `executeAction`, because a `play-business-from-hand` removes the card
+     * from the hand as it places it.
+     */
+    const trackPlacement = (action: PlayerAction): void => {
+      let family: string | undefined;
+      if (action.type === 'buy-business') {
+        family = state.market.cards.find(c => c.id === action.cardId)?.family;
+      } else if (action.type === 'play-business-from-hand') {
+        family = (state.hand ?? [])[action.handIndex]?.family;
+      } else {
+        return;
+      }
+      if (family === 'business') businessPlacements++;
+      else if (family === 'community-space') communitySpacePlacements++;
     };
 
     while (state.gameResult === 'playing' && turns < maxTurns) {
@@ -428,6 +463,7 @@ function simulateSeed(
             cardsOwned.push(action.cardId);
           }
           trackFavour(action);
+          trackPlacement(action);
           executeAction(state, action);
           executedAction = true;
           // Record AI action in transcript (if recorder is present)
@@ -451,6 +487,7 @@ function simulateSeed(
           }
           try {
             trackFavour(action);
+            trackPlacement(action);
             executeAction(state, action);
             executedAction = true;
           } catch {
@@ -489,6 +526,8 @@ function simulateSeed(
       marketOffers: [...marketOfferSet],
       favourRepToCoinsUses,
       favourCoinsToRepUses,
+      businessPlacements,
+      communitySpacePlacements,
     };
   });
 
@@ -509,6 +548,8 @@ function simulateSeed(
     marketOffers: loop.marketOffers,
     favourRepToCoinsUses: loop.favourRepToCoinsUses,
     favourCoinsToRepUses: loop.favourCoinsToRepUses,
+    businessPlacements: loop.businessPlacements,
+    communitySpacePlacements: loop.communitySpacePlacements,
     economyHistory: [...state.ledger.getHistory()],
     storylineEvents: deriveStorylineEvents(events),
   };
@@ -653,6 +694,8 @@ export function toCsv(runs: readonly MonteCarloRunSummary[]): string {
     'turnWhenGridHalf',
     'turnWhenGridFull',
     'noActionTurns',
+    'businessPlacements',
+    'communitySpacePlacements',
   ];
   const rows = runs.map(run => [
     run.seed,
@@ -664,6 +707,8 @@ export function toCsv(runs: readonly MonteCarloRunSummary[]): string {
     run.turnWhenGridHalf === null ? '' : String(run.turnWhenGridHalf),
     run.turnWhenGridFull === null ? '' : String(run.turnWhenGridFull),
     String(run.noActionTurns),
+    String(run.businessPlacements ?? 0),
+    String(run.communitySpacePlacements ?? 0),
   ]);
   return [header.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
