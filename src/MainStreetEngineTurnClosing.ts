@@ -1002,24 +1002,39 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
 
   updateCompetitiveScores(state);
 
+  // The human seat index (or -1 when none). A win by any other seat is a
+  // loss for the human player (MS-0MUX6PMCE002I6HO AC1).
+  const humanIdx = findHumanSeatId(state);
+
   // Win: all challenges complete — shared milestone; lowest-index player takes it.
   if (
     state.activeChallenges.length > 0 &&
     state.activeChallenges.every(ac => ac.completed)
   ) {
-    state.gameResult = 'win';
+    const winnerIdx = 0;
+    const isHumanWin = winnerIdx === humanIdx;
+    state.gameResult = isHumanWin ? 'win' : 'loss';
     state.endReason = 'all_challenges';
-    state.competitiveWinnerId = 0;
-    addLog(state, `Victory: All challenges completed! (Player ${0})`, 'gain');
+    state.competitiveWinnerId = winnerIdx;
+    addLog(
+      state,
+      `${isHumanWin ? 'Victory' : 'Defeat'}: All challenges completed! (Player ${winnerIdx})`,
+      isHumanWin ? 'gain' : 'loss',
+    );
     return true;
   }
 
   for (let i = 0; i < state.players.length; i++) {
     if (state.players[i].score >= state.config.winThreshold) {
-      state.gameResult = 'win';
+      const isHumanWin = i === humanIdx;
+      state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'score_threshold';
       state.competitiveWinnerId = i;
-      addLog(state, `Victory: Player ${i} reached threshold (${state.players[i].score} pts)`, 'gain');
+      addLog(
+        state,
+        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${state.players[i].score} pts)`,
+        isHumanWin ? 'gain' : 'loss',
+      );
       return true;
     }
   }
@@ -1038,10 +1053,15 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
       state.players[bestIdx].reputation > 0 &&
       state.players[bestIdx].coins >= 0
     ) {
-      state.gameResult = 'win';
+      const isHumanWin = bestIdx === humanIdx;
+      state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'turn_limit_victory';
       state.competitiveWinnerId = bestIdx;
-      addLog(state, `Victory: Player ${bestIdx} survived ${state.config.maxTurns} turns (${bestScore} pts)`, 'gain');
+      addLog(
+        state,
+        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${bestIdx} survived ${state.config.maxTurns} turns (${bestScore} pts)`,
+        isHumanWin ? 'gain' : 'loss',
+      );
       return true;
     }
     state.gameResult = 'loss';
