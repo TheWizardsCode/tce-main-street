@@ -133,12 +133,14 @@ export type GameResult = 'playing' | 'win' | 'loss';
 /** Reason for game ending (or threshold continuation in endless mode). */
 export type EndReason =
   | 'score_threshold'
-  // Endless mode (CG-0MTIILU5V006GCN4): threshold reached but play continues
-  // (`config.endlessMode === true`). `gameResult` stays `playing` while
-  // `endReason` records that the threshold was crossed — winner-declared-
-  // but-still-playing. Score keeps accruing and the game only ends via
-  // the remaining conditions (bankruptcy, reputation collapse, all
-  // challenges, turn limit).
+  // Endless mode (CG-0MTIILU5V006GCN4): the score threshold was reached
+  // with `config.endlessMode === true`. The winner is declared but play is
+  // paused with an explicit opt-in to continue: `gameResult` is `'win'`
+  // (or `'loss'` for a competitive AI win) while the offer is open. Accepting
+  // it via `continueAfterThreshold` returns `gameResult` to `'playing'` and
+  // keeps this marker so later EndChecks do not re-open the offer. Score
+  // keeps accruing and the game only ends via the remaining conditions
+  // (bankruptcy, reputation collapse, all challenges, turn limit).
   | 'score_threshold_continue'
   | 'all_challenges'
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)

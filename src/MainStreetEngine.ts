@@ -107,6 +107,7 @@ export {
   checkLastStanding,
   closeEliminatedSeatBusinesses,
   continueAfterLastStanding,
+  continueAfterThreshold,
   eliminateCompetitiveSeat,
   findHumanSeatId,
   resolveCompetitiveSeatFailures,
