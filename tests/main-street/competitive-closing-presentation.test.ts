@@ -14,9 +14,29 @@
  *       motion / replay / headless
  *   AC5 single-player path untouched (asserted at the end)
  */
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The shared closing primitive (extracted by MS-0MUYFX7Q2004JQ5R) is the
+// contract under test below. It does not exist until that extraction lands, so
+// the wrapper is a call-through no-op in the red phase and forwards to the real
+// implementation once it is exported. Wrapping rather than replacing keeps the
+// pre-existing competitive tests exercising the real behaviour.
+vi.mock('../../src/scenes/MainStreetTurnControllerAnimation', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../src/scenes/MainStreetTurnControllerAnimation')
+  >();
+  return {
+    ...actual,
+    presentTurnClosing: vi.fn(
+      (actual as unknown as { presentTurnClosing?: (...args: unknown[]) => void })
+        .presentTurnClosing,
+    ),
+  };
+});
 
 import type { TurnResult } from '../../src/MainStreetEngine';
+import * as AnimationModule from '../../src/scenes/MainStreetTurnControllerAnimation';
+import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import {
   COMPETITIVE_CLOSING_HOLD_MS,
@@ -35,6 +55,15 @@ import {
 } from '../../src/MainStreetState';
 
 const OPPONENTS: CompetitiveOpponentConfig[] = [{ strategy: 'BankingGreedy', difficulty: 'Hard' }];
+
+/**
+ * The shared presentation primitive under test. Absent until the extraction
+ * item (MS-0MUYFX7Q2004JQ5R) exports it, hence the `unknown` cast — the real
+ * module type does not carry the export yet.
+ */
+const presentTurnClosing = (
+  AnimationModule as unknown as { presentTurnClosing: ReturnType<typeof vi.fn> }
+).presentTurnClosing;
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -353,4 +382,215 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
     expect(instructions).not.toContain('AI opponents are taking their turns...');
     expect(instructions).not.toContain('End of turn complete.');
   }, 30_000);
+});
+
+// ── Shared closing presentation primitive ─────────────────────────────
+//
+// Test-first contract for the single shared end-of-turn presentation
+// primitive (MS-0MUYFX6ER000BLP3 → extracted by MS-0MUYFX7Q2004JQ5R).
+//
+// `finishTurnPresentation` (single-player) and `presentCompetitiveClosing`
+// (competitive) currently duplicate the income-summary text, the incident
+// reveal, the end-of-turn text and the advance callback. The primitive below
+// pins the contract both are expected to delegate to. Every assertion is an
+// `it.fails` until the extraction lands; MS-0MUYFX7Q2004JQ5R flips each
+// `it.fails` to a normal `it`.
+
+interface PrimitiveHarness {
+  scene: any;
+  instructions: string[];
+  incidentCalls: any[];
+}
+
+/**
+ * Scene harness for the shared primitive: captures the instruction text and
+ * each `animateIncidentReveal` invocation. Its clock drains synchronously so
+ * any bounded hold the primitive (or its caller) schedules runs immediately.
+ */
+function makePrimitiveHarness(overrides: Record<string, unknown> = {}): PrimitiveHarness {
+  const instructions: string[] = [];
+  const incidentCalls: any[] = [];
+  const scene: any = {
+    replayMode: false,
+    settingsPanel: { reducedMotion: false },
+    instructionText: { setText: (t: string) => instructions.push(t) },
+    layout: { gameW: 800, gameH: 600 },
+    incidentRevealActive: false,
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+    msAnimator: {
+      animateIncidentReveal: (params: any) => {
+        incidentCalls.push(params);
+      },
+    },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => {
+        cb();
+        return {};
+      },
+    },
+    ...overrides,
+  };
+  return { scene, instructions, incidentCalls };
+}
+
+/**
+ * Turn-flow harness: enough scene surface for `finishTurnPresentation` to walk
+ * to the advance callback on the normal (non-deferred, no-incident) path.
+ */
+function makeTurnFlowHarness(): { scene: any; tcCtx: any } {
+  const scene: any = {
+    state: { resourceBank: { coins: 0, reputation: 0 } },
+    instructionText: { setText: vi.fn() },
+    incomeCollectionActive: false,
+    logDeferredUntilPhaseComplete: false,
+    endOfTurnDeltasApplied: false,
+    previousCoins: null,
+    previousReputation: null,
+    incidentRevealActive: false,
+    tutorialController: { isActive: false },
+    settingsPanel: { reducedMotion: false },
+    replayMode: false,
+    layout: { gameW: 800, gameH: 600 },
+    refreshAll: vi.fn(),
+    refreshAllExceptStreet: vi.fn(),
+    refreshLog: vi.fn(),
+    msLifecycleManager: { onTutorialActionComplete: vi.fn() },
+    msAnimator: { animateIncidentReveal: vi.fn() },
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 0, y: 0 }) },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => {
+        cb();
+        return {};
+      },
+    },
+  };
+  const tcCtx: any = {
+    scene,
+    startTurnPhase: vi.fn(),
+    handleGameOver: vi.fn(),
+    presentEventChoiceDialog: vi.fn(),
+    onSaveCheckpoint: vi.fn(),
+  };
+  return { scene, tcCtx };
+}
+
+describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it.fails(
+    'AC1 — a single-seat closing drives the income summary, incident reveal, end-of-turn text and advance callback',
+    () => {
+      const h = makePrimitiveHarness();
+      const result = makeResult({
+        income: makeIncome(12),
+        incident: { id: 'inc-9', name: 'Roadworks' } as any,
+        incidentCoinChange: -4,
+        incidentRepChange: -1,
+      });
+      let completed = 0;
+
+      presentTurnClosing(asCtx(h.scene), result, () => { completed += 1; }, {
+        completionText: 'End of turn complete.',
+      });
+
+      // Income summary text — the same format both closings use today.
+      expect(h.instructions.some((t) => t.includes('Income: +12 coins'))).toBe(true);
+
+      // Incident reveal driven once, with the closing's deltas and origin.
+      expect(h.incidentCalls).toHaveLength(1);
+      expect(h.incidentCalls[0]).toMatchObject({
+        cardId: 'inc-9',
+        incidentName: 'Roadworks',
+        coinChange: -4,
+        repChange: -1,
+        from: { x: 111, y: 222 },
+      });
+
+      // Bounded: the advance callback waits for the reveal to complete.
+      expect(completed).toBe(0);
+      h.incidentCalls[0].onComplete();
+
+      // End-of-turn text, then advance exactly once.
+      expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+      expect(completed).toBe(1);
+    },
+  );
+
+  it.fails('AC1 — a closing with no incident advances without a reveal', () => {
+    const h = makePrimitiveHarness();
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), makeResult({ income: makeIncome(3) }), () => {
+      completed += 1;
+    }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('Income: +3 coins'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+
+  it.fails('AC1 — reduced motion degrades to text and advances immediately', () => {
+    const h = makePrimitiveHarness({ settingsPanel: { reducedMotion: true } });
+    const result = makeResult({ incident: { id: 'inc-3', name: 'Fire' } as any });
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), result, () => { completed += 1; }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('Incident: Fire'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+
+  it.fails('AC1 — replay/headless skips animation but still advances (bounded)', () => {
+    const h = makePrimitiveHarness({ replayMode: true });
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), makeResult({ incident: { id: 'i', name: 'X' } as any }), () => {
+      completed += 1;
+    }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(completed).toBe(1);
+  });
+
+  it.fails(
+    'AC3 — finishTurnPresentation delegates to the shared primitive and still advances the day',
+    () => {
+      const { tcCtx } = makeTurnFlowHarness();
+
+      finishTurnPresentation(tcCtx, makeResult({ income: makeIncome(5) }), false);
+
+      expect(presentTurnClosing).toHaveBeenCalledTimes(1);
+      const args = presentTurnClosing.mock.calls[0];
+      expect(args[0]).toBe(tcCtx);
+      expect(args[1]).toMatchObject({ income: { total: 5 } });
+      expect(typeof args[2]).toBe('function');
+      // The single-player advance chain is preserved: the primitive's callback
+      // still starts the next day.
+      expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.fails(
+    'AC3 — presentCompetitiveClosing delegates to the shared primitive and still advances',
+    () => {
+      const h = makePrimitiveHarness();
+      let advanced = 0;
+
+      presentCompetitiveClosing(asCtx(h.scene), makeResult(), () => { advanced += 1; });
+
+      expect(presentTurnClosing).toHaveBeenCalledTimes(1);
+      expect(advanced).toBe(1);
+    },
+  );
 });
