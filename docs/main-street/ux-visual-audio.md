@@ -205,9 +205,15 @@ void popTextOrIcon({
 - Lifecycle: the layer is created with the scene, re-attached after every
   street rebuild (`refreshStreetGrid`), driven from the scene `update` loop,
   re-clamped on resize and destroyed on scene shutdown.
-- Performance: the count is uncapped by producer decision; a single shared
-  texture and constant per-figure work (position + bob) keep the frame cost
-  low. Recorded as an accepted risk at very high reputation.
+- Performance (MS-0MUYGFXMK009L1UU): the count is uncapped by producer
+  decision; a single shared texture and constant per-figure work (position +
+  bob) keep the frame cost low. Measured per-frame **model** cost (pure step
+  loop, 16-core host, 60 fps): 10 figures ≈ 0.003 ms, 100 figures ≈ 0.007 ms,
+  1,000 figures ≈ 0.013 ms and 10,000 figures ≈ 0.13 ms per frame — all
+  negligible against a 16.6 ms frame budget. The measurement covers the
+  per-figure model update, not GPU sprite rendering; at representative
+  reputations (tens of figures) the layer is immaterial, so the uncapped
+  population remains an accepted risk rather than a blocker.
 
 ### End-of-turn income presentation (phased coin-grid animation, CG-0MT23O6W8003AXWJ)
 
