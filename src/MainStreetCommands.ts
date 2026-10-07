@@ -71,6 +71,8 @@ interface MarketActionSnapshot {
   discardPile: any | null;
   /** Grand Opening placement gate — captured so undo restores the per-turn flag. */
   businessPlacedThisTurn: boolean | null;
+  /** Market re-roll escalation counter — captured so undo restores the inflated price (MS-0MTR6ZRF5007PWNZ). */
+  marketRefreshesThisTurn: number | null;
   /** Daily action budget — captured so undo restores the spent action. */
   actionsRemaining: number | null;  /** Banked actions — captured so undo restores the banking state. */
   bankedActions: number | null;
@@ -160,6 +162,7 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // card (the card is pushed to `discardPile` by `closeBusiness`).
     discardPile: safeClone(state.discardPile ?? []),
     businessPlacedThisTurn: (state as any).businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
     actionsRemaining: state.actionsRemaining,
     bankedActions: state.bankedActions ?? 0,
     peekUsedThisTurn: state.peekUsedThisTurn ?? false,
@@ -194,6 +197,9 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   state.discardPile = (snap.discardPile ?? []) as any;
   if (snap.businessPlacedThisTurn !== null && snap.businessPlacedThisTurn !== undefined) {
     (state as any).businessPlacedThisTurn = snap.businessPlacedThisTurn;
+  }
+  if (snap.marketRefreshesThisTurn !== null && snap.marketRefreshesThisTurn !== undefined) {
+    state.marketRefreshesThisTurn = snap.marketRefreshesThisTurn;
   }
   if (snap.actionsRemaining !== null && snap.actionsRemaining !== undefined) {
     state.actionsRemaining = snap.actionsRemaining;

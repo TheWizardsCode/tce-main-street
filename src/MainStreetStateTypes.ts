@@ -475,6 +475,14 @@ export interface MainStreetState {
    * or `buyAndPlaceBusiness`); reset to false at `WeekStart`.
    */
   businessPlacedThisTurn?: boolean;
+  /**
+   * Number of market research (re-roll) actions taken so far this turn
+   * (MS-0MTR6ZRF5007PWNZ). Drives the escalating refresh cost — the first
+   * re-roll costs `REFRESH_MARKET_COST` (500), each subsequent one 250 more —
+   * and is reset to 0 at `WeekStart` alongside the other per-turn gates.
+   * Participates in undo snapshots and save/load serialization.
+   */
+  marketRefreshesThisTurn: number;
   // ── Competitive mode (CG-0MT5X3GMA007EG30) ─────────────────
   /** Per-player records; undefined in single-player mode. */
   players?: PlayerRecord[] | null;
@@ -678,6 +686,8 @@ export interface MainStreetSerializedState {
   justMovedUpgradeCardId?: string | null;
   /** Whether a business has been placed onto the street grid this turn (CG-0MTIOCBH400970OB). Gates Grand Opening Sale. */
   businessPlacedThisTurn?: boolean;
+  /** Number of market re-rolls taken this turn (MS-0MTR6ZRF5007PWNZ); drives the escalating refresh cost. Backfilled to 0 for legacy saves. */
+  marketRefreshesThisTurn: number;
   // ── Competitive (CG-0MT5X3GMA007EG30) ───────────────────────
   /** Per-player records; undefined in single-player saves. */
   players?: PlayerRecord[] | null;

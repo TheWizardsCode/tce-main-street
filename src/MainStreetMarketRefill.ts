@@ -14,7 +14,7 @@ import { shuffleArray } from '@card-system';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect, refillSingleRowMarket } from './MainStreetState';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard, StaffCard } from './MainStreetCards';
-import { REFRESH_MARKET_COST } from './MainStreetCards';
+import { REFRESH_MARKET_COST, REFRESH_MARKET_COST_STEP } from './MainStreetCards';
 import { computeRefreshCostDiscount, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { RefreshResult } from './MainStreetMarketTypes';
 
@@ -52,10 +52,15 @@ export function canRefreshMarket(state: MainStreetState): LegalityResult {
 }
 
 /**
- * Effective cost to research (refresh) the single-row market, after staff discounts
- * (e.g. the Accountant's "refresh costs 1 less" ability — Group F,
- * CG-0MSQJ7VL9009JHF4 / CG-0MSTOATDT009BRX2). Discounts are summed across
- * hired staff and the result is clamped at 0 (never negative).
+ * Effective cost to research (refresh) the single-row market for the next
+ * re-roll, after staff discounts (e.g. the Accountant's "refresh costs 1 less"
+ * ability — Group F, CG-0MSQJ7VL9009JHF4 / CG-0MSTOATDT009BRX2). Discounts are
+ * summed across hired staff and the result is clamped at 0 (never negative).
+ *
+ * Escalating cost (MS-0MTR6ZRF5007PWNZ): the base rises by
+ * `REFRESH_MARKET_COST_STEP` (250) for every re-roll already made this turn —
+ * 500, 750, 1000, … — and is reset at `WeekStart`. Discounts are subtracted
+ * from the escalated base, so the clamp is applied last.
  */
 export function refreshMarketCost(state: MainStreetState): number {
   const discount = (state.staffCards ?? []).reduce(
@@ -64,14 +69,18 @@ export function refreshMarketCost(state: MainStreetState): number {
   );
   // Negotiator specialization skill: -1 on refreshes (I4, CG-0MT4WXV2J000M35M).
   const negotiatorDiscount = computeRefreshCostDiscount(getEmployedSpecializationSkills(state));
-  return Math.max(0, REFRESH_MARKET_COST - discount - negotiatorDiscount);
+  const escalatedBase =
+    REFRESH_MARKET_COST + REFRESH_MARKET_COST_STEP * (state.marketRefreshesThisTurn ?? 0);
+  return Math.max(0, escalatedBase - discount - negotiatorDiscount);
 }
 
 /**
  * Researches (refreshes) the single-row market: charges the player, discards all
  * currently-visible (unmoved/unpurchased) cards to their respective discard
- * piles, and refills the whole line to full composition. Unlimited per turn
- * while affordable (same cadence as the legacy per-row refreshes).
+ * piles, and refills the whole line to full composition. Each re-roll in the
+ * same turn costs 250 more than the previous one (MS-0MTR6ZRF5007PWNZ); the
+ * escalation resets at `WeekStart`. The counter is incremented after the charge
+ * so the reported and charged cost is the pre-increment (current) value.
  */
 export function refreshMarket(state: MainStreetState): RefreshResult {
   const legality = canRefreshMarket(state);
@@ -101,6 +110,12 @@ export function refreshMarket(state: MainStreetState): RefreshResult {
   // Clear the visible row and draw a fresh full line
   state.market.cards.length = 0;
   refillSingleRowMarket(state);
+
+  // Advance the per-turn escalation counter only after the re-roll succeeded:
+  // the next re-roll this turn costs 250 more (MS-0MTR6ZRF5007PWNZ). The
+  // `cost` above was computed pre-increment, so the reported/charged price is
+  // the current turn's price.
+  state.marketRefreshesThisTurn = (state.marketRefreshesThisTurn ?? 0) + 1;
 
   // Build a detailed replacement summary for the activity log
   const replacedStrings = removed.map(c => {

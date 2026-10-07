@@ -87,6 +87,7 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     justMovedEventCardId: state.justMovedEventCardId ?? null,
     justMovedUpgradeCardId: state.justMovedUpgradeCardId ?? null,
     businessPlacedThisTurn: state.businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
     players: state.players ? structuredClone(state.players) : undefined,
     ownerTaggedGrid: state.ownerTaggedGrid ? structuredClone(state.ownerTaggedGrid) : undefined,
     playerCount: state.playerCount,
@@ -314,6 +315,14 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
   // Opening starts gated for the current turn.
   if (!('businessPlacedThisTurn' in saved)) {
     (saved as Record<string, unknown>).businessPlacedThisTurn = false;
+  }
+
+  // ── marketRefreshesThisTurn (MS-0MTR6ZRF5007PWNZ): backfill default ──
+  // Legacy saves predate the escalating market re-roll cost; default to 0
+  // (no re-rolls taken this turn) so pre-existing saves load at the 500 base
+  // instead of computing `NaN`.
+  if (!('marketRefreshesThisTurn' in saved)) {
+    (saved as Record<string, unknown>).marketRefreshesThisTurn = 0;
   }
 
   // ── incidentBalance (CG-0MSL0OP040043KKZ): backfill from the queue for ──
@@ -629,6 +638,7 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     justMovedEventCardId: (saved as any).justMovedEventCardId ?? null,
     revealedPeekedCard: (saved.revealedPeekedCard as EventCard | null) ?? null,
     businessPlacedThisTurn: (saved as unknown as { businessPlacedThisTurn?: boolean })?.businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: (saved as unknown as { marketRefreshesThisTurn?: number })?.marketRefreshesThisTurn ?? 0,
     justMovedUpgradeCardId: (saved as unknown as { justMovedUpgradeCardId?: string | null })?.justMovedUpgradeCardId ?? null,
     players: (saved as unknown as { players?: PlayerRecord[] | null })?.players
       ? structuredClone((saved as unknown as { players: PlayerRecord[] })?.players)

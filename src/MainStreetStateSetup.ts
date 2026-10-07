@@ -444,6 +444,7 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     justMovedEventCardId: null,
     justMovedUpgradeCardId: null,
     businessPlacedThisTurn: false,
+    marketRefreshesThisTurn: 0,
     players: undefined,
     ownerTaggedGrid: undefined,
     playerCount: undefined,

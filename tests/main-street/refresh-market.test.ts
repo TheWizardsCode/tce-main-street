@@ -5,10 +5,11 @@
  *   AC1: exactly 3 visible cards, always ≥1 business card, drawn randomly
  *        within "1–2 business, 0–1 upgrade, 0–1 event" (2B+1U / 2B+1E /
  *        1B+1U+1E). Community-space cards count as business.
- *   AC2: one re-roll: `refreshMarket` costs `REFRESH_MARKET_COST` (500),
- *        Accountant `refreshCostDiscount` applies; discards all
- *        currently-visible cards and refills the whole line; unlimited per
- *        turn while affordable.
+ *   AC2: one re-roll: `refreshMarket` costs `REFRESH_MARKET_COST` (500) on the
+ *        first re-roll of a turn, then 750, then 1000, +250 each time
+ *        (MS-0MTR6ZRF5007PWNZ); the escalation resets at WeekStart; Accountant
+ *        `refreshCostDiscount` applies to the escalated base; discards all
+ *        currently-visible cards and refills the whole line.
  *   AC3: `moveToHand` is free of coins (bounded only by `maxHandSize`);
  *        direct buy-and-place still pays immediately.
  *   AC4: cost-at-play — business pays on placement; upgrade/event pays when
@@ -22,7 +23,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import { setupMainStreetGame, serializeMainStreetState, deserializeMainStreetState, type MainStreetState } from '../../src/MainStreetState';
+import { UndoRedoManager } from '@core-engine/UndoRedoManager';
+import { refreshMarketCommand } from '../../src/MainStreetCommands';
 import {
   MARKET_TOTAL_SLOTS,
   MARKET_BUSINESS_MIN,
@@ -30,6 +33,7 @@ import {
   MARKET_UPGRADE_MAX,
   MARKET_EVENT_MAX,
   REFRESH_MARKET_COST,
+  REFRESH_MARKET_COST_STEP,
   createStaffDeck,
   createEventDeck,
   createBusinessDeck,
@@ -104,10 +108,12 @@ describe('AC1: single-row market composition', () => {
 // ── AC2: single €5 re-roll ────────────────────────────────────
 
 describe('AC2: refreshMarket re-roll', () => {
-  it('costs REFRESH_MARKET_COST (5) with no staff discounts', () => {
+  it('costs REFRESH_MARKET_COST (500) on the first re-roll with no staff discounts', () => {
     expect(REFRESH_MARKET_COST).toBe(500);
+    expect(REFRESH_MARKET_COST_STEP).toBe(250);
     const state = createTestState('refresh-cost');
     state.phase = 'MarketPhase';
+    expect(state.marketRefreshesThisTurn).toBe(0);
     expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST);
   });
 
@@ -179,19 +185,104 @@ describe('AC2: refreshMarket re-roll', () => {
     expect(state.resourceBank.coins).toBe(coinsBefore - (REFRESH_MARKET_COST - 100));
   });
 
-  it('is unlimited per turn while affordable', () => {
-    const state = createTestState('refresh-unlimited');
+  it('escalates 500 → 750 → 1000 across re-rolls in the same turn', () => {
+    const state = createTestState('refresh-escalation');
     executeWeekStart(state);
     state.phase = 'MarketPhase';
-    state.resourceBank.coins = REFRESH_MARKET_COST * 3;
+    state.resourceBank.coins = 100000;
 
     const coinsBefore = state.resourceBank.coins;
-    refreshMarket(state);
-    refreshMarket(state);
-    refreshMarket(state);
+    expect(refreshMarket(state).cost).toBe(500);
+    expect(refreshMarketCost(state)).toBe(750);
+    expect(refreshMarket(state).cost).toBe(750);
+    expect(refreshMarketCost(state)).toBe(1000);
+    expect(refreshMarket(state).cost).toBe(1000);
+    expect(state.marketRefreshesThisTurn).toBe(3);
+    expect(refreshMarketCost(state)).toBe(1250);
 
-    expect(state.resourceBank.coins).toBe(coinsBefore - 3 * REFRESH_MARKET_COST);
+    // Total charged is the sum of the escalating costs, not 3× the base.
+    expect(state.resourceBank.coins).toBe(coinsBefore - (500 + 750 + 1000));
     expect(state.market.cards).toHaveLength(MARKET_TOTAL_SLOTS);
+  });
+
+  it('resets the escalation to the 500 base at WeekStart', () => {
+    const state = createTestState('refresh-reset');
+    state.phase = 'MarketPhase';
+    state.resourceBank.coins = 100000;
+    refreshMarket(state);
+    refreshMarket(state);
+    expect(state.marketRefreshesThisTurn).toBe(2);
+    expect(refreshMarketCost(state)).toBe(1000);
+
+    state.phase = 'WeekStart';
+    executeWeekStart(state);
+
+    expect(state.marketRefreshesThisTurn).toBe(0);
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST);
+    expect(refreshMarket(state).cost).toBe(REFRESH_MARKET_COST);
+  });
+
+  it('applies staff discounts to the escalated base', () => {
+    const state = createTestState('refresh-escalation-discount');
+    state.phase = 'MarketPhase';
+    state.resourceBank.coins = 100000;
+
+    const accountant = createStaffDeck(1).find(c => c.id.startsWith('staff-accountant'))!;
+    state.market.cards.push({ ...accountant });
+    purchaseStaffCard(state, accountant.id);
+
+    // First re-roll: 500 - 100 = 400.
+    expect(refreshMarket(state).cost).toBe(REFRESH_MARKET_COST - 100);
+    // Second re-roll: 750 - 100 = 650 (the discount applies to the escalated base).
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST + REFRESH_MARKET_COST_STEP - 100);
+    expect(refreshMarket(state).cost).toBe(REFRESH_MARKET_COST + REFRESH_MARKET_COST_STEP - 100);
+  });
+
+  it('undoes a re-roll, restoring both the coins and the escalation counter', () => {
+    const state = createTestState('refresh-undo');
+    state.phase = 'MarketPhase';
+    state.resourceBank.coins = 100000;
+
+    const coinsBefore = state.resourceBank.coins;
+    const manager = new UndoRedoManager();
+    manager.execute(refreshMarketCommand(state));
+
+    expect(state.marketRefreshesThisTurn).toBe(1);
+    expect(state.resourceBank.coins).toBe(coinsBefore - REFRESH_MARKET_COST);
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST + REFRESH_MARKET_COST_STEP);
+
+    manager.undo();
+
+    expect(state.marketRefreshesThisTurn).toBe(0);
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST);
+  });
+
+  it('persists the escalation across save/load (reloading mid-turn keeps the price)', () => {
+    const state = createTestState('refresh-save-load');
+    state.phase = 'MarketPhase';
+    state.resourceBank.coins = 100000;
+    refreshMarket(state);
+    refreshMarket(state);
+    expect(state.marketRefreshesThisTurn).toBe(2);
+
+    const restored = deserializeMainStreetState(serializeMainStreetState(state));
+    expect(restored.marketRefreshesThisTurn).toBe(2);
+    restored.phase = 'MarketPhase';
+    expect(refreshMarketCost(restored)).toBe(
+      REFRESH_MARKET_COST + 2 * REFRESH_MARKET_COST_STEP,
+    );
+  });
+
+  it('backfills the counter to 0 for legacy saves (no NaN cost)', () => {
+    const state = createTestState('refresh-legacy');
+    state.phase = 'MarketPhase';
+    const saved = serializeMainStreetState(state) as unknown as Record<string, unknown>;
+    delete saved.marketRefreshesThisTurn;
+
+    const restored = deserializeMainStreetState(saved as never);
+    expect(restored.marketRefreshesThisTurn).toBe(0);
+    expect(refreshMarketCost(restored)).toBe(REFRESH_MARKET_COST);
   });
 });
 
