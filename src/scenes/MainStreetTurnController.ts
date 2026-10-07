@@ -19,7 +19,7 @@ import { onBusinessCardClick, onEventCardClick, onRefreshMarketClick, onPeekClic
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
 import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
 import { animateMarketDealIn, animateMarketSwap, animateNewSynergyPairs } from './MainStreetTurnControllerAnimation';
-import { canHumanSeatAct, continueCompetitiveLastStanding } from './MainStreetTurnControllerCompetitive';
+import { canHumanSeatAct, continueCompetitiveLastStanding, continueEndlessMode } from './MainStreetTurnControllerCompetitive';
 
 export type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -55,6 +55,16 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
    */
   public continueCompetitiveLastStanding(): boolean {
     return continueCompetitiveLastStanding(this);
+  }
+
+  /**
+   * Resumes play after the endless-continuation offer is accepted
+   * (CG-0MTIILU5V006GCN4): the score threshold was reached with endless mode
+   * enabled and the winner declared. Delegates to the scene free function;
+   * idempotent and returns `false` when no offer is open.
+   */
+  public continueEndlessMode(): boolean {
+    return continueEndlessMode(this);
   }
 
   public presentEventChoiceDialog(): void {

@@ -356,13 +356,34 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(cycleBtn);
     s.overlayObjects.push(cycleBtn);
 
-    // Buttons (positioned relative to panel bottom). When the last-standing
-    // win offers a continue-solo option (`endReason === 'last_standing'`), an
-    // explicit [ Continue Solo ] action is presented alongside Play Again /
-    // Menu so the player can keep playing solo (MS-0MUVQRCQJ00737UV AC4).
+    // Buttons (positioned relative to panel bottom). Two continuation offers
+    // can be open at game over:
+    //   - Last-standing (`endReason === 'last_standing'`) presents
+    //     [ Continue Solo ] (MS-0MUVQRCQJ00737UV AC4).
+    //   - Endless mode (`endReason === 'score_threshold_continue'`) presents
+    //     [ Enter Endless Mode ] so the player can keep building beyond the
+    //     threshold (CG-0MTIILU5V006GCN4).
     const btnY = panelTop + panelH - 28;
     const centerX = s.layout.gameW / 2;
     const canContinueSolo = s.state.endReason === 'last_standing';
+    const canEnterEndless = s.state.endReason === 'score_threshold_continue';
+    const hasContinuationOffer = canContinueSolo || canEnterEndless;
+
+    if (canEnterEndless) {
+      const endlessBtn = createOverlayButton(
+        s, centerX - 200, btnY,
+        '[ Enter Endless Mode ]', 201,
+      );
+      endlessBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        // Resume play via the scene's turn controller. Idempotent: the
+        // controller is a no-op unless the endless offer is still open.
+        s.msTurnController?.continueEndlessMode?.();
+      });
+      if (s.hudContainer) s.hudContainer.add(endlessBtn);
+      s.overlayObjects.push(endlessBtn);
+    }
 
     if (canContinueSolo) {
       const continueBtn = createOverlayButton(
@@ -381,7 +402,7 @@ export class MainStreetOverlayContent {
     }
 
     const playAgainBtn = createOverlayButton(
-      s, canContinueSolo ? centerX : centerX - 110, btnY,
+      s, hasContinuationOffer ? centerX : centerX - 110, btnY,
       '[ Play Again ]', 201,
     );
     playAgainBtn.on('pointerdown', () => {
@@ -393,7 +414,7 @@ export class MainStreetOverlayContent {
     s.overlayObjects.push(playAgainBtn);
 
     const menuBtn = createOverlayButton(
-      s, canContinueSolo ? centerX + 200 : centerX + 110, btnY,
+      s, hasContinuationOffer ? centerX + 200 : centerX + 110, btnY,
       '[ Menu ]', 201,
     );
     menuBtn.on('pointerdown', () => {

@@ -64,7 +64,7 @@ import {
   type PlayerRecord,
 } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
-import { continueAfterLastStanding } from '../MainStreetEngineTurnClosing';
+import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
 /** Default hard cap on actions a single AI seat may take in one shared day. */
@@ -526,6 +526,28 @@ export function continueCompetitiveLastStanding(
 ): boolean {
   const state: MainStreetState = tcCtx.scene.state;
   if (!continueAfterLastStanding(state)) return false;
+  tcCtx.scene.uiPhase = 'market';
+  tcCtx.startTurnPhase();
+  return true;
+}
+
+/**
+ * Resumes play after the endless-continuation offer is accepted
+ * (CG-0MTIILU5V006GCN4): the score threshold was reached with
+ * `config.endlessMode === true`, the winner was declared, and the end-game
+ * overlay showed the "Enter Endless Mode" action. The scene calls this from
+ * that action; declining simply leaves the declared win.
+ *
+ * Idempotent: a no-op unless the offer is open (`endReason ===
+ * 'score_threshold_continue'` and `gameResult !== 'playing'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueEndlessMode(
+  tcCtx: MainStreetTurnControllerContext,
+): boolean {
+  const state: MainStreetState = tcCtx.scene.state;
+  if (!continueAfterThreshold(state)) return false;
   tcCtx.scene.uiPhase = 'market';
   tcCtx.startTurnPhase();
   return true;

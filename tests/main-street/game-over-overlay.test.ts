@@ -286,4 +286,30 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
     new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
     expect(ui.buttons.map((b) => b.label)).not.toContain('[ Continue Solo ]');
   });
+
+  it('offers an Enter Endless Mode action at the threshold and wires it to the turn controller', () => {
+    const continueFn = vi.fn();
+    const { scene } = makeScene({ endReason: 'score_threshold_continue' });
+    (scene as Record<string, unknown>).msTurnController = {
+      continueEndlessMode: continueFn,
+    };
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const labels = ui.buttons.map((b) => b.label);
+    expect(labels).toContain('[ Enter Endless Mode ]');
+    expect(labels).toEqual(expect.arrayContaining(['[ Play Again ]', '[ Menu ]']));
+
+    ui.buttons.find((b) => b.label === '[ Enter Endless Mode ]')?.emit('pointerdown');
+    expect(continueFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer Enter Endless Mode for any other end reason', () => {
+    const endReasons = ['bankruptcy', 'score_threshold', 'last_standing', 'all_challenges', null] as const;
+    for (const endReason of endReasons) {
+      ui.buttons.length = 0;
+      const { scene } = makeScene({ endReason });
+      new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+      expect(ui.buttons.map((b) => b.label)).not.toContain('[ Enter Endless Mode ]');
+    }
+  });
 });

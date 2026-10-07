@@ -319,7 +319,7 @@ describe('makeSinglePlayerGameOverState / makeCompetitiveGameOverState', () => {
 /** Expected plain-language headline per end reason (the user-facing spec). */
 const EXPECTED_HEADLINES: Record<Exclude<EndReason, null>, string> = {
   score_threshold: 'Score threshold reached',
-  score_threshold_continue: 'Score threshold reached — endless mode continues',
+  score_threshold_continue: 'Score threshold reached — enter endless mode to continue',
   all_challenges: 'All challenges completed',
   turn_limit_victory: 'Turn limit survived',
   bankruptcy: 'Bankruptcy',
