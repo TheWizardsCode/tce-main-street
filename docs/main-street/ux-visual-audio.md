@@ -156,6 +156,65 @@ void popTextOrIcon({
 });
 ```
 
+### Ambient street pedestrians (reputation crowd, MS-0MTV9AS15004AC1E)
+
+- Purpose: give reputation a persistent, diegetic on-street presence. The
+  street is always alive with a crowd of small solid-colour silhouette
+  figures ("pedestrians") whose number scales with the player's reputation.
+- Population rule (pure, uncapped): `pedestrianCount(reputation)` in
+  `src/scenes/MainStreetPedestrians.ts` = `floor(reputation / 50)`, floored
+  at 0 and **uncapped** (producer decision). The ratio is the named constant
+  `PEDESTRIAN_REP_RATIO` (50) and the silhouette colour is
+  `PEDESTRIAN_COLOR` (`#88bbff`), matching the existing reputation pip
+  language.
+- Rendering: one runtime-generated silhouette texture
+  (`PEDESTRIAN_TEXTURE_KEY`, `graphics.generateTexture`) is shared by every
+  figure; the layer is parented to the street container so it pans and clips
+  with the map camera. Figures wander freely inside
+  `pedestrianWanderBounds(layout)` (the street viewport band inset by the
+  silhouette half-size, the vertical bob and a small padding), so they never
+  overlap the market/HUD chrome or leave the playfield.
+- Live population rule: while a turn is in progress the crowd tracks the
+  authoritative HUD reputation value — the same `animateHudValueChanges`
+  reputation path that renders the HUD delta reconciles the layer to
+  `pedestrianCount(reputation)`. Gains fade a figure in and losses fade a
+  figure out (`PEDESTRIAN_FADE_MS`), and reconciliation is delta-only
+  (retained figures keep their identity — the layer never rebuilds).
+- Reputation income conversion (MS-0MUYGFWXK003QFYB): the phased income
+  show's `reputation` phase no longer starts its coin flight at the HUD
+  reputation counter. `MainStreetPedestrians.dissolveIntoCoins(targets)`
+  returns a coin origin per business from the live on-street figures (cycling
+  the figure pool); when no figures are on screen it falls back to a
+  street-area anchor (`pedestrianStreetAnchor`), **never** the HUD counter.
+  The credited amounts (`iconsForAmount(repBonus)`), the on-card
+  `revealInGrid` landing, the `+total` pop and the phase pacing
+  (`INCOME_PHASE_GAP_MS`) are unchanged — the pedestrians are a visual
+  source only, so the phase-sum invariant and the deferred-mutation economy
+  are untouched.
+- Presentation-only: the layer never mutates game state, the transcript or
+  the turn flow; every method is defensive (a throwing layer is swallowed)
+  so a bad frame can never stall the turn.
+- Determinism / no gameplay RNG: wander motion uses a module-local seeded
+  presentation PRNG (`createPresentationRng`, mulberry32,
+  `PEDESTRIAN_RNG_SEED`) — never the seeded gameplay RNG or `Math.random`;
+  seeded determinism and headless/AI parity are preserved.
+- Accessibility and non-rendering modes: with Reduced Motion enabled, or in
+  replay/headless mode (`scene.replayMode`), `shouldRenderPedestrians()`
+  returns false and the layer renders nothing (no figures, no dissolve, no
+  flights); the existing text/HUD feedback is unchanged.
+- Lifecycle: the layer is created with the scene, re-attached after every
+  street rebuild (`refreshStreetGrid`), driven from the scene `update` loop,
+  re-clamped on resize and destroyed on scene shutdown.
+- Performance (MS-0MUYGFXMK009L1UU): the count is uncapped by producer
+  decision; a single shared texture and constant per-figure work (position +
+  bob) keep the frame cost low. Measured per-frame **model** cost (pure step
+  loop, 16-core host, 60 fps): 10 figures ≈ 0.003 ms, 100 figures ≈ 0.007 ms,
+  1,000 figures ≈ 0.013 ms and 10,000 figures ≈ 0.13 ms per frame — all
+  negligible against a 16.6 ms frame budget. The measurement covers the
+  per-figure model update, not GPU sprite rendering; at representative
+  reputations (tens of figures) the layer is immaterial, so the uncapped
+  population remains an accepted risk rather than a blocker.
+
 ### End-of-turn income presentation (phased coin-grid animation, CG-0MT23O6W8003AXWJ)
 
 - Trigger: `MainStreetTurnController.endTurn()` after `processEndOfTurn()`
@@ -185,9 +244,10 @@ void popTextOrIcon({
     (`attributeSynergyShares`, split so the shares sum exactly to the
     credited bonus) and lands in the receiver's `CoinGrid` via
     `revealInGrid` with `sfx-coin-pop`.
-  - Reputation / event contributions fly in/out of the grids;
-    events also light up their `Upcoming`-panel effect lines
-    (`animateUpcomingEffectLine`).
+  - Reputation contributions fly into the grids from the on-street
+    pedestrians (see *Ambient street pedestrians* above); event contributions
+    fly in/out of the grids and also light up their `Upcoming`-panel effect
+    lines (`animateUpcomingEffectLine`).
   - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
     animates the end-of-turn Upcoming-card (incident/event) coin AND
     reputation deltas using **one uniform sign rule** for both resources
