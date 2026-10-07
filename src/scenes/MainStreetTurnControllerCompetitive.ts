@@ -329,11 +329,17 @@ export function driveAiSeatsUntilClosing(
  */
 export function runCompetitiveClosing(state: MainStreetState): TurnResult | null {
   if (state.phase !== 'InvestmentResolution') return null;
-  let result = resolveCompetitiveClosingPhases(state);
-  if (result.choicePending) {
-    result = resolveCompetitivePendingChoice(state) ?? result;
+  const closing = resolveCompetitiveClosingPhases(state);
+  if (!closing.choicePending) return closing;
+  const resolved = resolveCompetitivePendingChoice(state) ?? closing;
+  // A dual-choice incident pauses the closing *after* the income phase. The
+  // deferred continuation does not re-run income, so carry the per-owner data
+  // captured before the pause through to the presented result
+  // (MS-0MUYFX56M006RVIZ).
+  if (resolved.playerIncome === undefined) {
+    resolved.playerIncome = closing.playerIncome;
   }
-  return result;
+  return resolved;
 }
 
 /** Minimal turn result describing a state that ended outside the closing. */

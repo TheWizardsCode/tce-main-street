@@ -28,7 +28,6 @@ import type { BusinessCard, CommunitySpaceCard, EventCard, DurationEventCard, St
 import {
   applyCompetitiveIncome,
   updateNeighborsOnPlacement,
-  type OwnerIncomeResult,
 } from '../../src/MainStreetAdjacency';
 import {
   applyCompetitiveOngoingCosts,
@@ -39,8 +38,8 @@ import {
   endCompetitiveMarketTurn,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
-  type TurnResult,
 } from '../../src/MainStreetEngine';
+import { runCompetitiveClosing } from '../../src/scenes/MainStreetTurnControllerCompetitive';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -494,22 +493,14 @@ describe('AC4 — N=1 regression (CG-0MTIIL6J200291ZQ)', () => {
 
 // ── Per-owner closing income surfaced on TurnResult ──────────────
 //
-// Test-first contract for the dependent feature item "Surface per-owner
-// closing income in TurnResult" (MS-0MUYFX56M006RVIZ).
+// Contract tests for "Surface per-owner closing income in TurnResult"
+// (MS-0MUYFX56M006RVIZ).
 //
-// `resolveCompetitiveClosingPhases` already computes an authoritative
+// `resolveCompetitiveClosingPhases` computes an authoritative
 // `OwnerIncomeResult[]` via `applyCompetitiveIncome` (each entry carries a
-// full `IncomeResult.phaseBreakdown`) but currently discards it, surfacing
-// only the shared host `result.income`. The `it.fails` assertions below
-// encode the target contract and deliberately fail until that dependent
-// feature lands (red phase); the dependent item flips each `it.fails` to a
-// normal `it`. The legacy-equivalence checks (N=1 / single-player) already
-// pass today and guard against regression once the field exists.
-//
-// The optional field is typed locally so this file typechecks (and the suite
-// stays green) before `TurnResult` gains the real `playerIncome?` field.
-
-type ClosingTurnResult = TurnResult & { playerIncome?: OwnerIncomeResult[] };
+// full `IncomeResult.phaseBreakdown`); the closing surfaces it on
+// `TurnResult.playerIncome` for the non-eliminated seats, in seat order. The
+// legacy-equivalence checks (N=1 / single-player) guard against regression.
 
 /** Drives a competitive state from WeekStart to InvestmentResolution. */
 function driveToClosing(state: MainStreetState): void {
@@ -547,7 +538,7 @@ function perOwnerClosingFixture(seed: string, playerCount: number = 2): MainStre
 }
 
 describe('Per-owner closing income on TurnResult (MS-0MUYFX56M006RVIZ contract)', () => {
-  it.fails('AC1 — surfaces the applied per-owner income, not the discarded/shared total', () => {
+  it('AC1 — surfaces the applied per-owner income, not the discarded/shared total', () => {
     // Measure the exact per-owner delta `applyCompetitiveIncome` applies on an
     // identically-built, identically-driven fixture (consumes no RNG).
     const measure = perOwnerClosingFixture('per-owner-surface', 2);
@@ -564,7 +555,7 @@ describe('Per-owner closing income on TurnResult (MS-0MUYFX56M006RVIZ contract)'
     // The closing must surface that authoritative array instead of discarding
     // it. Each entry retains its full phase breakdown for the presentation.
     const closing = perOwnerClosingFixture('per-owner-surface', 2);
-    const result = resolveCompetitiveClosingPhases(closing) as ClosingTurnResult;
+    const result = resolveCompetitiveClosingPhases(closing);
     expect(result.playerIncome).toBeDefined();
     expect(result.playerIncome).toEqual(applied);
     // Presented values are the seats' own applied income — not the shared
@@ -572,12 +563,12 @@ describe('Per-owner closing income on TurnResult (MS-0MUYFX56M006RVIZ contract)'
     expect(applied.some(r => r.income.total !== result.income!.total)).toBe(true);
   });
 
-  it.fails('AC2 — one entry per non-eliminated seat, in seat order', () => {
+  it('AC2 — one entry per non-eliminated seat, in seat order', () => {
     const state = perOwnerClosingFixture('per-owner-eliminated', 3);
     // Eliminate the middle AI seat. A surviving AI seat keeps the game alive,
     // so last-standing must NOT fire before the closing resolves.
     state.players![1].eliminated = true;
-    const result = resolveCompetitiveClosingPhases(state) as ClosingTurnResult;
+    const result = resolveCompetitiveClosingPhases(state);
     expect(result.gameResult).toBe('playing');
     expect(result.playerIncome).toBeDefined();
     expect(result.playerIncome!.map(r => r.ownerId)).toEqual([0, 2]);
@@ -585,13 +576,34 @@ describe('Per-owner closing income on TurnResult (MS-0MUYFX56M006RVIZ contract)'
 
   it('AC3 — N=1 competitive closing leaves the per-owner field absent/empty', () => {
     const comp = createCompetitiveState({ seed: 'per-owner-n1', playerCount: 1 });
-    const result = executeCompetitiveTurn(comp, [[]]) as ClosingTurnResult;
+    const result = executeCompetitiveTurn(comp, [[]]);
     expect(result.playerIncome ?? []).toHaveLength(0);
   });
 
   it('AC3 — single-player closing leaves the per-owner field absent/empty', () => {
     const single = setupMainStreetGame({ seed: 'per-owner-single' });
-    const result = executeFullTurn(single, []) as ClosingTurnResult;
+    const result = executeFullTurn(single, []);
     expect(result.playerIncome ?? []).toHaveLength(0);
+  });
+
+  it('AC4 — a dual-choice pause carries the per-owner income through runCompetitiveClosing', () => {
+    // Seed chosen deterministically: the shared closing draws a dual-choice
+    // incident, so `resolveCompetitiveClosingPhases` pauses after the income
+    // phase and `runCompetitiveClosing` completes the deferred continuation.
+    // Pin that precondition on an identically-built fixture so the assertions
+    // below cannot silently pass on the non-paused path.
+    const pausedState = compState('scan-choice-9', 2);
+    driveToClosing(pausedState);
+    expect(resolveCompetitiveClosingPhases(pausedState).choicePending).toBe(true);
+
+    const state = compState('scan-choice-9', 2);
+    driveToClosing(state);
+    const result = runCompetitiveClosing(state);
+    expect(result).not.toBeNull();
+    expect(result!.choicePending).toBe(false);
+    // Income ran before the pause; the deferred tail never re-runs it, so the
+    // captured per-owner data must survive (one entry per active seat).
+    expect(result!.playerIncome).toBeDefined();
+    expect(result!.playerIncome!.map(r => r.ownerId)).toEqual([0, 1]);
   });
 });
