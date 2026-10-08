@@ -14,7 +14,7 @@ import { TooltipManager, createSingleSelectionManager } from '@ui';
 import type { HelpSection } from '@ui';
 import { getEndTurnKeybind } from '@ui/SettingsStore';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
-import { buildMainStreetHelpContent, SYNERGY_HELP_ICONS } from '../MainStreetHelpContent';
+import { buildMainStreetHelpContent, helpContentConfigFor, SYNERGY_HELP_ICONS } from '../MainStreetHelpContent';
 import { createMainStreetCheckpointManager, saveCampaignProgress } from '../MainStreetSaveLoad';
 import { setupMainStreetGame } from '../MainStreetState';
 import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
@@ -361,8 +361,11 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     // Help panel (Milestone 5: PRD-required sections). The copy lives in the
     // Phaser-free `MainStreetHelpContent` module so the content tests assert
     // the same strings the panel renders (test-review C5).
-    const cfg = s.state.config;
-    const helpSections: HelpSection[] = buildMainStreetHelpContent(cfg).map((section) => {
+    // The help panel's "Reach N points to win" copy is built from the live
+    // state so it states the effective win threshold the engine awards the
+    // win at: base / playerCount, rounded to the nearest 50, in competitive
+    // play (MS-0MUZK652V001L71C).
+    const helpSections: HelpSection[] = buildMainStreetHelpContent(helpContentConfigFor(s.state)).map((section) => {
       if (section.synergyParagraph !== undefined) {
         const paragraph = section.synergyParagraph;
         return {

@@ -21,7 +21,7 @@
 import { type IncomeResult, type SlotIncome } from '../MainStreetAdjacency';
 import { reputationCoinMultiplier, applyReputationMultiplier } from '../MainStreetDifficulty';
 import { ORDERED_TIER_DEFINITIONS } from '../MainStreetTiers';
-import { computeScore } from '../MainStreetEngine';
+import { computeScore, effectiveWinThreshold } from '../MainStreetEngine';
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
 import { t, registerLocale } from '@core-engine/I18n';
 
@@ -274,6 +274,23 @@ export function buildReputationTooltip(state: MainStreetState): string {
 }
 
 /**
+ * Builds the HUD `Score: x / y` line.
+ *
+ * The denominator is the effective win threshold: the base difficulty
+ * threshold divided by the number of seats and rounded to the nearest 50 in
+ * competitive play, or the base value unchanged in single-player
+ * (MS-0MUZK652V001L71C). Keeping this in the Phaser-free tooltip module lets
+ * the HUD string be unit-tested without booting a scene.
+ *
+ * @param state  Current game state (read-only).
+ * @param score  Optional pre-computed score estimate for the numerator.
+ * @returns The HUD score line, e.g. `Score: 1200/3350`.
+ */
+export function buildHudScoreLine(state: MainStreetState, score: number = computeScore(state)): string {
+  return `Score: ${Math.round(score)}/${effectiveWinThreshold(state)}`;
+}
+
+/**
  * Builds the tooltip content string for the Score HUD element.
  *
  * Shows:
@@ -287,7 +304,11 @@ export function buildScoreTooltip(
   campaign: MainStreetCampaignProgress | null,
 ): string {
   const score = computeScore(state);
-  const threshold = state.config.winThreshold;
+  // Competitive play races toward the effective (per-seat) win threshold
+  // (`base / playerCount`, rounded to the nearest 50) so the tooltip target
+  // always matches the value the engine awards the win at
+  // (MS-0MUZK652V001L71C). Single-player resolves to the unchanged base value.
+  const threshold = effectiveWinThreshold(state);
 
   // Score breakdown components
   const coins = state.resourceBank.coins;
