@@ -38,6 +38,15 @@ The same value drives `scoreBusinessAction`, `scorePlayBusinessFromHandAction`,
 (`competitiveBusinessScore` / `competitiveHandBusinessScore`), so the two
 scoring paths cannot diverge. Businesses are unchanged.
 
+> **Competitive mirror is now ownership-aware (MS-0MUZFVM86003IPSM).** In
+> shared-street play the neighbour-synergy term credits only the acting seat's
+> businesses and subtracts the synergy anchored for other seats
+> (`own gain − opponent gain`); an opponent-only community space scores
+> `≤ 0` and is rejected. Single-player (N=1) keeps the ownership-agnostic
+> formula documented here, so the figures on this page are unchanged. The
+> competitive before/after head-to-head evidence is in
+> [competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md).
+
 ## Method
 
 Canonical profile (matches `docs/main-street/monte-carlo-baseline.json`):

@@ -184,6 +184,68 @@ ladder Easy ≥ Medium ≥ Hard intact (0.800 ≥ 0.720 ≥ 0.435). Full before/
 figures, tolerances and reproduce commands are in
 [community-space-ai-evidence.md](community-space-ai-evidence.md).
 
+### Competitive mirror (ownership-aware)
+
+In **competitive** play the community-space placement value is the same
+formula with an ownership-aware neighbour term: it credits only the synergy
+anchored for the acting seat's own businesses and subtracts the synergy
+anchored for other seats (`own gain − opponent gain`). An opponent-only
+community space therefore scores `≤ 0` and fails the positive-score
+eligibility gate. See
+[Competitive placement: ownership-aware](#competitive-placement-ownership-aware-own--opponent)
+below and [competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md)
+for the before/after figures.
+
+## Competitive placement: ownership-aware (own − opponent)
+
+**Work item:** MS-0MUZFVM86003IPSM / MS-0MUZFVLVS007S56L (parent
+MS-0MUYODDW300690KX).
+
+In shared-street play the street holds businesses owned by the acting AI
+**and** by other seats. The ownership-agnostic neighbour-synergy sum
+(`neighbourSynergyGain`) credited every neighbouring business, so a community
+space that only anchored an opponent's businesses could still score positive
+and be bought — the AI paid coins and the ongoing running cost to enrich a
+rival.
+
+The competitive placement score is therefore **ownership-aware**:
+
+```
+placement value = own gain − opponent gain
+```
+
+- **Own gain** — the marginal synergy the placement anchors for businesses
+  owned by the acting seat (`getSlotOwnerId(state, i) === actingPlayerId`).
+  This is the only neighbour synergy credited.
+- **Opponent gain** — the marginal synergy the placement anchors for every
+  other seat's businesses. It is **subtracted** from the score (`opponent ×
+  horizon`), so a placement that helps a rival more than the acting seat
+  scores at or below zero.
+- **Community spaces** keep their separate placement value (above) with the
+  ownership-aware neighbour term; `isCompetitivePlacementEligible` gates them
+  on `score > 0`, so an opponent-only community space is never placed.
+- **Ordinary businesses** keep their own-income/synergy valuation and their
+  always-eligible gate; the opponent-benefit term is reflected in how they
+  rank against alternatives.
+- **Single-player (N = 1)** keeps the ownership-agnostic path, so
+  `scoreAction`, `scoreCommunitySpacePlacement` and `GreedyStrategy` are
+  unchanged and the Monte Carlo baselines do not move.
+
+The rule of thumb: **place a card only when the benefit to the acting seat
+exceeds the benefit handed to other seats.** The scoring stays deterministic
+(no RNG). Implementation lives in `neighbourSynergyGainByOwner` and the
+competitive branches of `communitySpacePlacementValueAt` /
+`competitiveBusinessScore` / `competitiveHandBusinessScore`
+(`src/MainStreetAiStrategy.ts`).
+
+Head-to-head evidence (200 seeds, prefix `mc-competitive`, 40 days,
+`CompetitiveGreedyStrategy`) shows the community-space net-opponent-beneficial
+rate falling from **62.4% to 0.0%**, the overall opponent-beneficial rate
+falling from **22.1% to 11.3%**, and opponent-anchored synergy falling **−48.9%**
+while own-anchored synergy rises **+22.8%** — with single-player baselines
+unchanged. Full before/after figures and commit SHAs are in
+[competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md).
+
 ## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
 
 In human-vs-AI competitive play the AI seats are removed from play when they can

@@ -1,0 +1,80 @@
+{
+  "label": "baseline",
+  "generatedAt": "2026-10-08T14:34:05.196Z",
+  "commitSha": "46a25114a102d1d7377b4c9a786ea73b7922c834",
+  "profile": {
+    "seeds": 200,
+    "seedPrefix": "mc-competitive",
+    "maxTurns": 40,
+    "playerCount": 2,
+    "strategy": "competitive-greedy"
+  },
+  "runs": 200,
+  "averageTurns": 9.275,
+  "endReasons": {
+    "score_threshold": 103,
+    "last_standing": 49,
+    "bankruptcy": 35,
+    "reputation_collapse": 11,
+    "all_challenges": 2
+  },
+  "overall": {
+    "placements": 1453,
+    "businessPlacements": 1320,
+    "communitySpacePlacements": 133,
+    "ownSynergyAnchored": 19186,
+    "opponentSynergyAnchored": 19372,
+    "opponentBeneficialPlacements": 321,
+    "opponentTouchedPlacements": 379,
+    "businessOpponentBeneficialPlacements": 238,
+    "communitySpaceOpponentBeneficialPlacements": 83,
+    "opponentBeneficialRate": 0.22092222986923607,
+    "opponentTouchedRate": 0.26083964211975225,
+    "communitySpaceOpponentBeneficialRate": 0.6240601503759399,
+    "businessOpponentBeneficialRate": 0.1803030303030303,
+    "placementsPerRun": 7.265,
+    "communitySpacePlacementsPerRun": 0.665
+  },
+  "players": [
+    {
+      "playerId": 0,
+      "winRate": 0.71,
+      "averageScore": 4180.595,
+      "placements": 952,
+      "businessPlacements": 896,
+      "communitySpacePlacements": 56,
+      "ownSynergyAnchored": 16026,
+      "opponentSynergyAnchored": 7704,
+      "opponentBeneficialPlacements": 123,
+      "opponentTouchedPlacements": 166,
+      "businessOpponentBeneficialPlacements": 103,
+      "communitySpaceOpponentBeneficialPlacements": 20,
+      "opponentBeneficialRate": 0.12920168067226892,
+      "opponentTouchedRate": 0.17436974789915966,
+      "communitySpaceOpponentBeneficialRate": 0.35714285714285715,
+      "businessOpponentBeneficialRate": 0.11495535714285714,
+      "placementsPerRun": 4.76,
+      "communitySpacePlacementsPerRun": 0.28
+    },
+    {
+      "playerId": 1,
+      "winRate": 0.06,
+      "averageScore": 2941.785,
+      "placements": 501,
+      "businessPlacements": 424,
+      "communitySpacePlacements": 77,
+      "ownSynergyAnchored": 3160,
+      "opponentSynergyAnchored": 11668,
+      "opponentBeneficialPlacements": 198,
+      "opponentTouchedPlacements": 213,
+      "businessOpponentBeneficialPlacements": 135,
+      "communitySpaceOpponentBeneficialPlacements": 63,
+      "opponentBeneficialRate": 0.39520958083832336,
+      "opponentTouchedRate": 0.4251497005988024,
+      "communitySpaceOpponentBeneficialRate": 0.8181818181818182,
+      "businessOpponentBeneficialRate": 0.31839622641509435,
+      "placementsPerRun": 2.505,
+      "communitySpacePlacementsPerRun": 0.385
+    }
+  ]
+}

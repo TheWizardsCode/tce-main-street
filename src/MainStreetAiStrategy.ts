@@ -207,6 +207,11 @@ function neighbourSynergyGain(
  * {@link communitySpacePlacementValueAt}), so no owner filter is applied
  * there.
  *
+ * Before/after competitive head-to-head evidence for this rule is recorded in
+ * `docs/main-street/competitive-placement-ai-evidence.md`
+ * (MS-0MUZFVM86003IPSM); the harness-side measurement lives in
+ * `measurePlacementBenefit` (`MainStreetMonteCarlo.ts`).
+ *
  * @param state            Current game state (read-only by convention).
  * @param grid             Street grid before the placement.
  * @param placed           Street grid with the candidate card inserted.
