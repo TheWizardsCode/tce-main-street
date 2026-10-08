@@ -591,3 +591,348 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     },
   );
 });
+
+// ── Per-seat closing animation sequencing (MS-0MUYFX8V3005VEOG) ────────────
+//
+// Tests for the per-seat animated competitive closing (AC1–AC3 of
+// MS-0MUXAQQON006XA6I). After the shared closing resolves, each
+// non-eliminated seat receives its own full income choreography, in seat
+// order, driven by that seat's authoritative `OwnerIncomeResult`.
+//
+// The presentation iterates `TurnResult.playerIncome` (surfaced by
+// MS-0MUYFX56M006RVIZ) and calls `animateIncomePhases` once per seat with that
+// seat's `income.phaseBreakdown.perSlotBreakdown`. Seats are identified in the
+// fixtures by a unique `businessName` (`Seat N Biz`) and a unique `baseIncome`.
+
+import type { OwnerIncomeResult } from '../../src/MainStreetAdjacency';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import {
+  applyCompetitiveIncome,
+  updateNeighborsOnPlacement,
+} from '../../src/MainStreetAdjacency';
+import {
+  endCompetitiveMarketTurn,
+  executeCompetitiveWeekStart,
+  resolveCompetitiveClosingPhases,
+} from '../../src/MainStreetEngineCompetitiveTurn';
+
+/**
+ * Builds a per-seat `OwnerIncomeResult` whose phase breakdown is uniquely
+ * identifiable: `Seat N Biz` at `slotIndex = ownerId` with `baseIncome = total`.
+ */
+function makeSeatIncome(ownerId: number, total: number): OwnerIncomeResult {
+  return {
+    ownerId,
+    income: {
+      total,
+      breakdown: [],
+      handSynergyTotal: 0,
+      phaseBreakdown: {
+        perSlotBreakdown: [
+          {
+            slotIndex: ownerId,
+            businessName: `Seat ${ownerId} Biz`,
+            baseIncome: total,
+            synergyBonus: 0,
+            repBonus: 0,
+            eventDeltas: [],
+            upcomingDeltas: [],
+          },
+        ],
+        handSynergyTotal: 0,
+      },
+    },
+  };
+}
+
+/** Builds an `OwnerIncomeResult[]` from `(ownerId, total)` pairs. */
+function makePlayerIncomes(entries: Array<[number, number]>): OwnerIncomeResult[] {
+  return entries.map(([ownerId, total]) => makeSeatIncome(ownerId, total));
+}
+
+/**
+ * Harness for the per-seat closing: records every `animateIncomePhases` call
+ * (its per-seat phase data) and the instruction text stream.
+ */
+interface PerSeatHarness {
+  scene: any;
+  instructions: string[];
+  /** Phase data arrays passed to `animateIncomePhases`, in call order. */
+  incomeCalls: any[][];
+}
+
+function makePerSeatHarness(overrides: Record<string, unknown> = {}): PerSeatHarness {
+  const instructions: string[] = [];
+  const incomeCalls: any[][] = [];
+  const scene: any = {
+    state: { players: [] },
+    replayMode: false,
+    settingsPanel: { reducedMotion: false },
+    instructionText: { setText: (t: string) => instructions.push(t) },
+    layout: { gameW: 800, gameH: 600 },
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+    msAnimator: {
+      animateIncomePhases: (phaseData: any[], _options: any) => {
+        incomeCalls.push(phaseData);
+      },
+      animateIncidentReveal: (params: any) => {
+        params.onComplete?.();
+      },
+    },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => cb(),
+    },
+    incomeCollectionActive: false,
+    ...overrides,
+  };
+  return { scene, instructions, incomeCalls };
+}
+
+/** Identifies a seat's choreography by the unique business name it carries. */
+const seatNameOf = (phaseData: any[]): string | undefined =>
+  phaseData?.[0]?.businessName;
+
+describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
+  // Red phase (test-first, MS-0MUYFX8V3005VEOG): the per-seat choreography is
+  // implemented by the dependent feature item MS-0MUYFXA36009EMH0, so these
+  // assertions are expected to fail until it lands. Like the shared-primitive
+  // contract item (MS-0MUYFX6ER000BLP3), red-phase assertions use `it.fails` so
+  // the suite stays green; the implementation item flips them to `it`.
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it.fails(
+    'AC1 — runs the full income choreography once per non-eliminated seat, in seat order',
+    () => {
+      const h = makePerSeatHarness();
+      const result: TurnResult = {
+        ...makeResult({ income: null }),
+        playerIncome: makePlayerIncomes([[0, 10], [1, 7], [2, 3]]),
+      };
+
+      presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+      // One full choreography per seat, in seat order.
+      expect(h.incomeCalls).toHaveLength(3);
+      expect(h.incomeCalls.map(seatNameOf)).toEqual([
+        'Seat 0 Biz',
+        'Seat 1 Biz',
+        'Seat 2 Biz',
+      ]);
+    },
+  );
+
+  it.fails('AC1 — the human seat (player 0) is included in the per-seat sequence', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 12], [1, 5]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // The first choreography belongs to the human seat 0.
+    expect(h.incomeCalls).toHaveLength(2);
+    expect(seatNameOf(h.incomeCalls[0])).toBe('Seat 0 Biz');
+  });
+
+  it.fails('AC1 — eliminated seats are skipped (only surfaced seats are presented)', () => {
+    const h = makePerSeatHarness();
+    // Seat 1 was eliminated: the engine omits it from `playerIncome`.
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [2, 4]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    expect(h.incomeCalls).toHaveLength(2);
+    expect(h.incomeCalls.map(seatNameOf)).toEqual(['Seat 0 Biz', 'Seat 2 Biz']);
+  });
+
+  it.fails('AC1 — each choreography receives that seat own phase breakdown', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 30], [1, 20], [2, 10]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // `animateIncomePhases` receives the `SlotPhaseBreakdown[]` (the array
+    // itself) for the seat, not the whole `OwnerIncomeResult`.
+    expect(h.incomeCalls).toHaveLength(3);
+    for (const phaseData of h.incomeCalls) {
+      expect(Array.isArray(phaseData)).toBe(true);
+      expect(phaseData[0]).toMatchObject({
+        businessName: expect.stringMatching(/^Seat \d Biz$/),
+      });
+    }
+    expect(h.incomeCalls[0][0].baseIncome).toBe(30);
+    expect(h.incomeCalls[1][0].baseIncome).toBe(20);
+    expect(h.incomeCalls[2][0].baseIncome).toBe(10);
+  });
+
+  it.fails('AC3 — the closing summary reports each seat income', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // Each seat's own income appears in the instruction stream.
+    expect(h.instructions.some((t) => /Player 1[:\s].*\+10 coins/.test(t))).toBe(true);
+    expect(h.instructions.some((t) => /Player 2[:\s].*\+7 coins/.test(t))).toBe(true);
+  });
+
+  it.fails('AC6 — reduced motion presents per-seat text and advances', () => {
+    const h = makePerSeatHarness({ settingsPanel: { reducedMotion: true } });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // No animation, but per-seat text is shown and the day advances.
+    expect(h.incomeCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(completed).toBe(1);
+  });
+
+  it.fails('AC6 — replay/headless skips animation but still reports per-seat text', () => {
+    const h = makePerSeatHarness({ replayMode: true });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // No animation, but the per-seat text still lands and the day advances.
+    expect(h.incomeCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+});
+
+// ── Authoritative per-seat values (AC2, integration) ────────────────────────
+//
+// Drives a real competitive state to the shared closing, resolves it, then
+// presents it. Every value the presentation animates must equal the delta the
+// engine applied to that seat's `PlayerRecord` during the income phase.
+
+/**
+ * Builds an N-seat closing fixture with one distinct business per seat, each
+ * seating zero reputation and no ongoing cost so the income-phase delta equals
+ * the presented `income.total`. Mirrors the fixture used by
+ * `competitive-income-events.test.ts`.
+ */
+function perSeatClosingState(seed: string, playerCount: number): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount });
+  state.resourceBank.coins = 100000;
+  state.resourceBank.reputation = 1000;
+  const slots = [0, 6, 3, 8];
+  const bases = [120, 80, 60, 40];
+  const synergies: Array<BusinessCard['synergyTypes']> = [
+    ['Food'],
+    ['Culture'],
+    ['Commerce'],
+    ['Service'],
+  ];
+  for (let i = 0; i < playerCount; i++) {
+    state.players![i].coins = 1000;
+    state.players![i].reputation = 0;
+    const card = {
+      family: 'business' as const,
+      id: `biz-${i}`,
+      name: `Biz ${i}`,
+      cost: 100,
+      baseIncome: bases[i],
+      synergyTypes: synergies[i],
+      maxLevel: 1,
+      description: 'test',
+      level: 0,
+      incomeBonus: 0,
+      synergyRangeBonus: 0,
+      reputationBonus: 0,
+      ongoingCost: 0,
+    } as BusinessCard;
+    state.streetGrid[slots[i]] = card;
+    updateNeighborsOnPlacement(state, slots[i]);
+    state.ownerTaggedGrid![slots[i]] = { card, ownerId: i };
+  }
+  executeCompetitiveWeekStart(state);
+  while (state.phase === 'MarketPhase') {
+    endCompetitiveMarketTurn(state);
+  }
+  return state;
+}
+
+describe('per-seat closing authoritative values (AC2)', () => {
+  // Red phase: same `it.fails` convention as the sequencing block above.
+  it.fails('presents each seat income equal to the delta applied to its PlayerRecord', () => {
+    // Measure the exact per-owner income delta on an identical fixture.
+    const measured = perSeatClosingState('per-seat-authoritative', 2);
+    const before = measured.players!.map((p) => p.coins);
+    const applied = applyCompetitiveIncome(measured);
+    const after = measured.players!.map((p) => p.coins);
+
+    // Present the closing from an identically-built, identically-driven state.
+    const state = perSeatClosingState('per-seat-authoritative', 2);
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome).toHaveLength(2);
+
+    const h = makePerSeatHarness({ state });
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // One choreography per seat, each carrying the seat's applied income.
+    expect(h.incomeCalls).toHaveLength(2);
+    for (let i = 0; i < applied.length; i++) {
+      expect(presentedTotal(h.incomeCalls[i])).toBe(after[i] - before[i]);
+      expect(presentedTotal(h.incomeCalls[i])).toBe(applied[i].income.total);
+    }
+  });
+
+  it.fails('skips an eliminated seat end-to-end (engine filters, presentation presents)', () => {
+    const state = perSeatClosingState('per-seat-eliminated', 3);
+    // Eliminate the middle seat after the day is driven to the closing. A
+    // surviving AI seat keeps the game alive, so last-standing never fires.
+    state.players![1].eliminated = true;
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome!.map((r) => r.ownerId)).toEqual([0, 2]);
+
+    const h = makePerSeatHarness({ state });
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    expect(h.incomeCalls).toHaveLength(2);
+    // The presented seats are exactly the non-eliminated ones.
+    expect(h.incomeCalls.map(seatNameOf)).toEqual([
+      result.playerIncome![0].income.phaseBreakdown.perSlotBreakdown[0].businessName,
+      result.playerIncome![1].income.phaseBreakdown.perSlotBreakdown[0].businessName,
+    ]);
+  });
+});
+
+/** Sums the presented per-slot income of a seat's phase breakdown. */
+function presentedTotal(phaseData: any[]): number {
+  return phaseData.reduce(
+    (acc, slot) =>
+      acc +
+      (slot.baseIncome ?? 0) +
+      (slot.synergyBonus ?? 0) +
+      (slot.repBonus ?? 0) +
+      (slot.eventDeltas ?? []).reduce((a: number, d: any) => a + d.delta, 0) +
+      (slot.upcomingDeltas ?? []).reduce((a: number, d: any) => a + d.delta, 0),
+    0,
+  );
+}
