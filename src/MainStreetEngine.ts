@@ -147,6 +147,7 @@ export {
   getEmploymentCapacity,
   hasFreeEmploymentSlot,
   hireApplicantAction,
+  isStaffRelocation,
   hireStaffApplicant,
   hireStaffCard,
   layoffStaffCard,

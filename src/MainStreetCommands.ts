@@ -37,6 +37,7 @@ import {
   letGoStaffAction,
   resolveEventChoice,
   placeStaffOnBusiness,
+  isStaffRelocation,
   removeStaffFromBusiness,
   layoffStaffCard,
 } from './MainStreetEngine';
@@ -732,9 +733,12 @@ export function letGoStaffCommand(state: MainStreetState, idx: number) {
 
 /**
  * Command: Place a hired staff member on a business slot
- * (CG-0MU3BTSQ8006ZRCU AC1-AC3). Free (no action/coins — the member is
- * already hired); validated by `canPlaceStaffOnBusiness` (business-type
- * match + employment capacity). Undo restores the previous employment.
+ * (CG-0MU3BTSQ8006ZRCU AC1-AC3). The initial placement of a newly-hired
+ * member is free (no action/coins — the member is already hired);
+ * **relocating** an already-employed member to another business costs exactly
+ * 1 action point (MS-0MUOSUNYR0073SI1, parent AC4). Validated by
+ * `canPlaceStaffOnBusiness` (business-type match + employment capacity).
+ * Undo restores the previous employment and any spent action.
  */
 export function placeStaffOnBusinessCommand(
   state: MainStreetState,
@@ -744,7 +748,13 @@ export function placeStaffOnBusinessCommand(
   return toCommand(
     state,
     snapshotAction(
-      (s) => { placeStaffOnBusiness(s, staffId, slotIndex); },
+      (s) => {
+        // Relocation is a player action; hire-time placement stays free.
+        if (isStaffRelocation(s, staffId, slotIndex)) {
+          consumeAction(s);
+        }
+        placeStaffOnBusiness(s, staffId, slotIndex);
+      },
       `PlaceStaff ${staffId} -> slot ${slotIndex}`,
     ),
   );

@@ -875,6 +875,32 @@ export function canPlaceStaffOnBusiness(
 }
 
 /**
+ * Reports whether placing `staffId` at `slotIndex` is a **relocation** —
+ * moving a member that is already employed at a different business
+ * (MS-0MUOSUNYR0073SI1).
+ *
+ * The distinction drives the action economy: the initial placement of a
+ * newly-hired member is part of the hire action and stays free, whereas
+ * relocating an employed member to another business costs exactly 1 action
+ * point. `placeStaffOnBusiness` itself stays action-free and reusable — the
+ * player-facing `placeStaffOnBusinessCommand` consults this predicate to
+ * decide whether to charge the action.
+ *
+ * @param state     Current game state.
+ * @param staffId   ID of the hired staff card.
+ * @param slotIndex Target street-grid slot index.
+ * @returns true when the member is currently employed somewhere else.
+ */
+export function isStaffRelocation(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+): boolean {
+  const staff = (state.staffCards ?? []).find(c => c.id === staffId);
+  return !!staff && staff.employedAtSlot != null && staff.employedAtSlot !== slotIndex;
+}
+
+/**
  * Places a hired staff member at the given street-grid slot
  * (CG-0MU3BTSQ8006ZRCU AC1-AC3). Sets the member's `employedAtSlot` and
  * registers it on the business's `employedStaff` list (the per-business

@@ -277,3 +277,66 @@ describe('AC6: placement and removal are undoable commands', () => {
     expect((state.streetGrid[0] as BusinessCard)!.employedStaff!.map(m => m.id)).toContain(chef.id);
   });
 });
+
+// ── AC4 (MS-0MUOSUNYR0073SI1): relocation costs 1 action ─────
+
+describe('AC4 (MS-0MUOSUNYR0073SI1): staff relocation costs 1 action', () => {
+  it('initial placement of a newly-hired staff member is action-free', () => {
+    const state = freshState();
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    state.actionsRemaining = 1;
+
+    const mgr = new UndoRedoManager();
+    mgr.execute(placeStaffOnBusinessCommand(state, chef.id, 0));
+
+    expect(getEmployedStaffCountAt(state, 0)).toBe(1);
+    expect(state.actionsRemaining).toBe(1); // newly-hired member: free
+  });
+
+  it('relocating an employed staff member to another business costs exactly 1 action', () => {
+    const state = freshState();
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    placeBusinessAt(state, 1, 'Diner', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    placeStaffOnBusiness(state, chef.id, 0);
+    state.actionsRemaining = 1;
+
+    const mgr = new UndoRedoManager();
+    mgr.execute(placeStaffOnBusinessCommand(state, chef.id, 1));
+
+    expect(state.staffCards.find(c => c.id === chef.id)!.employedAtSlot).toBe(1);
+    expect(state.actionsRemaining).toBe(0);
+  });
+
+  it('rejects a relocation with no actions remaining (employment unchanged)', () => {
+    const state = freshState();
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    placeBusinessAt(state, 1, 'Diner', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    placeStaffOnBusiness(state, chef.id, 0);
+    state.actionsRemaining = 0;
+
+    const mgr = new UndoRedoManager();
+    expect(() => mgr.execute(placeStaffOnBusinessCommand(state, chef.id, 1)))
+      .toThrow(/No actions remaining/);
+    expect(state.staffCards.find(c => c.id === chef.id)!.employedAtSlot).toBe(0);
+  });
+
+  it('undo of a relocation restores the spent action', () => {
+    const state = freshState();
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    placeBusinessAt(state, 1, 'Diner', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    placeStaffOnBusiness(state, chef.id, 0);
+    state.actionsRemaining = 1;
+
+    const mgr = new UndoRedoManager();
+    mgr.execute(placeStaffOnBusinessCommand(state, chef.id, 1));
+    expect(state.actionsRemaining).toBe(0);
+
+    mgr.undo();
+    expect(state.actionsRemaining).toBe(1);
+    expect(state.staffCards.find(c => c.id === chef.id)!.employedAtSlot).toBe(0);
+  });
+});
