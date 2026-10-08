@@ -18,6 +18,7 @@ import {
   purchaseUpgrade,
   purchaseEvent,
   refreshMarket,
+  useFreeMarketReroll,
   sellBusiness,
   closeBusiness,
   playBusinessFromHand,
@@ -589,6 +590,26 @@ export function refreshMarketCommand(state: MainStreetState) {
     snapshotAction(
       (s) => refreshMarket(s),
       'RefreshMarket',
+    ),
+  );
+}
+
+/**
+ * Command: Investor free market re-roll (MS-0MTISBYLS009936W / MS-0MUOSULA8005MUCY).
+ *
+ * Wraps the engine's coin-free, action-free once-per-turn `useFreeMarketReroll`
+ * in `snapshotAction` so the operation participates in undo/redo: the per-turn
+ * gate (`investorFreeRerollUsedThisTurn`), the shared escalation counter
+ * (`marketRefreshesThisTurn`) and the replaced market row are all captured
+ * before the draw and restored on undo. Without the snapshot the fields would
+ * serialise but a mid-turn free re-roll could not be reverted.
+ */
+export function freeMarketRerollCommand(state: MainStreetState) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => useFreeMarketReroll(s),
+      'FreeMarketReroll',
     ),
   );
 }
