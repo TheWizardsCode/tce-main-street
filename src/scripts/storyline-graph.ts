@@ -263,10 +263,11 @@ export function renderMermaid(manifest: StorylineManifest): string {
   lines.push('%%{ init: { "flowchart": { "curve": "basis" } } }%%');
   lines.push('flowchart TD');
 
-  // Nodes
+  // Nodes — each box shows the name/id plus a brief description and the
+  // mechanical game-state impact, so a diagram is readable on its own.
   for (const node of manifest.nodes) {
     const id = mermaidId(node.id);
-    const label = `${node.name}<br/>${node.id}`;
+    const label = nodeLabel(node);
     if (node.hasChoices) {
       lines.push(`  ${id}{"${label}"}`);
     } else {
@@ -391,6 +392,65 @@ function signed(value: number): string {
 /** Escapes a value for use in a Markdown table cell. */
 function tableCell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Formats an event's mechanical game-state impact as a compact string for a
+ * diagram box (e.g. `−300 coins · −100 rep`).
+ *
+ * @param node The event node from the manifest.
+ * @returns A compact impact string, or an empty string when there is none.
+ */
+export function describeEventImpactCompact(node: StorylineGraphNode): string {
+  const parts: string[] = [];
+  if (node.coinPercentDelta !== null) {
+    const pct = Math.round(Math.abs(node.coinPercentDelta) * 100);
+    parts.push(`${node.coinPercentDelta < 0 ? '−' : '+'}${pct}% coins`);
+  } else if (node.coinDelta !== 0) {
+    parts.push(`${signed(node.coinDelta)} coins`);
+  }
+  if (node.reputationDelta !== 0) {
+    parts.push(`${signed(node.reputationDelta)} rep`);
+  }
+  if (node.duration !== null && node.multiplier !== null) {
+    parts.push(`×${node.multiplier} income · ${node.duration} turns`);
+  }
+  if (node.targetSynergy) {
+    parts.push(`target: ${node.targetSynergy}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Returns a brief (first-sentence, length-capped) form of an event's effect
+ * text for display inside a diagram box.
+ *
+ * @param effect The card's `effect` text.
+ * @param max    Maximum length before truncation.
+ * @returns The brief description, or an empty string when there is none.
+ */
+export function briefEventDescription(effect: string, max = 64): string {
+  const trimmed = effect.trim();
+  if (!trimmed) return '';
+  const stop = trimmed.indexOf('. ');
+  const first = stop >= 0 ? trimmed.slice(0, stop + 1) : trimmed;
+  return first.length <= max ? first : `${first.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * Builds a multi-line Mermaid node label: name, id, brief description and the
+ * compact game-state impact.
+ *
+ * @param node The event node.
+ * @returns The `<br/>`-joined label.
+ */
+export function nodeLabel(node: StorylineGraphNode): string {
+  const lines = [node.name, node.id];
+  const brief = briefEventDescription(node.effect);
+  if (brief) lines.push(brief);
+  const impact = describeEventImpactCompact(node);
+  if (impact) lines.push(impact);
+  return lines.join('<br/>');
 }
 
 /**

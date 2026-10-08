@@ -7,12 +7,16 @@
  * single horizontal row, producing a ~13,000px-wide strip of tiny boxes. This
  * module instead renders:
  *
- *  - `docs/main-street/storyline-graph-<slug>.svg` — one diagram per storyline
- *    (its parent incident and chain), at a readable size; and
+ *  - `docs/main-street/assets/storyline-graph-<slug>.svg` — one diagram per
+ *    storyline (its parent incident and chain), at a readable size, with a
+ *    brief description and game-state impact in each box;
+ *  - `docs/main-street/storylines/<slug>.md` — one document per storyline
+ *    (its diagram plus a per-event detail table); and
  *  - `docs/main-street/storyline-incident-index.md` — the standalone incidents
  *    as a compact index/table rather than boxes.
  *
- * Both are derived from the committed Mermaid graph / manifest
+ * `storylines.md` keeps the canonical reference and links to the per-storyline
+ * documents. All artefacts are derived from the committed manifest
  * (`docs/main-street/storyline-graph.mmd` remains the source of truth).
  *
  * The renderer is **dev-only**: the `mermaid` package is a devDependency and
@@ -51,14 +55,23 @@ import {
 } from './storyline-graph';
 import { getEventTemplates } from '../MainStreetCards';
 
-/** Directory holding the committed rendered artefacts. */
+/** Directory holding the committed docs. */
 const DOCS_DIR = 'docs/main-street';
+
+/** Directory holding rendered SVG assets. */
+export const ASSETS_DIR = `${DOCS_DIR}/assets`;
+
+/** Directory holding the per-storyline documents. */
+export const STORYLINES_DIR = `${DOCS_DIR}/storylines`;
 
 /** Committed standalone-incident index document. */
 export const INCIDENT_INDEX_PATH = `${DOCS_DIR}/storyline-incident-index.md`;
 
-/** Canonical doc holding the generated per-event detail tables. */
+/** Canonical doc that indexes the per-storyline documents. */
 export const DOC_PATH = `${DOCS_DIR}/storylines.md`;
+
+/** Marker key for the generated storyline-document index in `DOC_PATH`. */
+export const DOC_INDEX_KEY = 'storyline-doc-index';
 
 /** One rendered storyline page. */
 export interface StorylinePage {
@@ -70,29 +83,31 @@ export interface StorylinePage {
   readonly title: string;
   /** Mermaid source for this storyline (derived from the manifest). */
   readonly mermaid: string;
-  /** Repo-relative path of the committed SVG. */
+  /** Repo-relative path of the committed SVG asset. */
   readonly svgRelPath: string;
+  /** Repo-relative path of the committed per-storyline document. */
+  readonly docRelPath: string;
 }
 
-/** Builds the BEGIN/END markers for a storyline's generated detail table. */
-function detailMarkers(slug: string): { begin: string; end: string } {
+/** Builds the BEGIN/END markers for a generated section. */
+function sectionMarkers(key: string): { begin: string; end: string } {
   return {
-    begin: `<!-- BEGIN GENERATED: storyline-details-${slug} -->`,
-    end: `<!-- END GENERATED: storyline-details-${slug} -->`,
+    begin: `<!-- BEGIN GENERATED: ${key} -->`,
+    end: `<!-- END GENERATED: ${key} -->`,
   };
 }
 
 /**
- * Replaces the content between a storyline's generated-detail markers, leaving
- * all hand-written prose untouched.
+ * Replaces the content between a generated-section's markers, leaving all
+ * hand-written prose untouched.
  *
  * @param doc     The current doc contents.
- * @param slug    The storyline slug (e.g. `tax`).
- * @param content The generated Markdown table.
+ * @param key     The generated-section key.
+ * @param content The generated Markdown.
  * @returns The updated doc.
  */
-export function spliceGeneratedDetails(doc: string, slug: string, content: string): string {
-  const { begin, end } = detailMarkers(slug);
+export function spliceGeneratedSection(doc: string, key: string, content: string): string {
+  const { begin, end } = sectionMarkers(key);
   const start = doc.indexOf(begin);
   const stop = doc.indexOf(end);
   if (start === -1 || stop === -1 || stop < start) {
@@ -129,9 +144,54 @@ export function buildStorylinePages(
       slug,
       title,
       mermaid: renderMermaid(filtered),
-      svgRelPath: `${DOCS_DIR}/storyline-graph-${slug}.svg`,
+      svgRelPath: `${ASSETS_DIR}/storyline-graph-${slug}.svg`,
+      docRelPath: `${STORYLINES_DIR}/${slug}.md`,
     };
   });
+}
+
+/**
+ * Renders the full Markdown document for one storyline: its diagram (from the
+ * assets folder) and its per-event detail table.
+ *
+ * @param page         The storyline page.
+ * @param detailsTable The generated per-event detail table.
+ * @returns The Markdown document (trailing newline).
+ */
+export function renderStorylineDoc(page: StorylinePage, detailsTable: string): string {
+  return [
+    `# ${page.title}`,
+    '',
+    `> Storyline \`${page.storylineId}\`. Part of the [Main Street storylines](../storylines.md) reference.`,
+    '',
+    `![${page.title} storyline](../assets/storyline-graph-${page.slug}.svg)`,
+    '',
+    '## Events',
+    '',
+    detailsTable.trimEnd(),
+    '',
+  ].join('\n');
+}
+
+/**
+ * Renders the generated index of per-storyline documents for `storylines.md`.
+ *
+ * @param manifest The full storyline manifest.
+ * @param pages    The storyline pages.
+ * @returns A deterministic Markdown table (trailing newline).
+ */
+export function renderStorylineDocIndex(
+  manifest: StorylineManifest,
+  pages: readonly StorylinePage[],
+): string {
+  const lines = ['| Storyline | Events | Document |', '|-----------|--------|----------|'];
+  for (const page of pages) {
+    const count = manifest.nodes.filter((node) => node.storylineId === page.storylineId).length;
+    lines.push(
+      `| ${page.title} (\`${page.storylineId}\`) | ${count} | [\`storylines/${page.slug}.md\`](./storylines/${page.slug}.md) |`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 /** Reads the local mermaid ESM build and its chunks directory. */
@@ -276,6 +336,7 @@ export async function runRenderCli(
   const manifest = buildStorylineManifest(getEventTemplates());
   const pages = buildStorylinePages(manifest);
   const indexMarkdown = renderIncidentIndexMarkdown(buildStandaloneIncidentIndex(manifest));
+  const docIndex = renderStorylineDocIndex(manifest, pages);
 
   const rendered = await renderMermaidBatch(
     Object.fromEntries(pages.map((page) => [page.slug, page.mermaid])),
@@ -283,47 +344,40 @@ export async function runRenderCli(
 
   const drift: string[] = [];
 
-  for (const page of pages) {
-    const svg = rendered[page.slug];
-    const outPath = repoPath(page.svgRelPath);
+  const writeOrCheck = (relPath: string, content: string): void => {
+    const outPath = repoPath(relPath);
     if (check) {
-      if (!existsSync(outPath) || readFileSync(outPath, 'utf-8') !== svg) {
-        drift.push(page.svgRelPath);
-      }
-    } else {
-      mkdirSync(dirname(outPath), { recursive: true });
-      writeFileSync(outPath, svg, 'utf-8');
-      process.stdout.write(`render-storyline-graph: wrote ${page.svgRelPath}\n`);
+      if (!existsSync(outPath) || readFileSync(outPath, 'utf-8') !== content) drift.push(relPath);
+      return;
     }
-  }
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, content, 'utf-8');
+    process.stdout.write(`render-storyline-graph: wrote ${relPath}\n`);
+  };
 
-  const indexPath = repoPath(INCIDENT_INDEX_PATH);
-  if (check) {
-    if (!existsSync(indexPath) || readFileSync(indexPath, 'utf-8') !== indexMarkdown) {
-      drift.push(INCIDENT_INDEX_PATH);
-    }
-  } else {
-    writeFileSync(indexPath, indexMarkdown, 'utf-8');
-    process.stdout.write(`render-storyline-graph: wrote ${INCIDENT_INDEX_PATH}\n`);
-  }
-
-  // Splice the per-event detail tables into the canonical doc (only the marked
-  // regions are replaced, so hand-written prose is preserved).
-  const docPath = repoPath(DOC_PATH);
-  const committedDoc = readFileSync(docPath, 'utf-8');
-  let expectedDoc = committedDoc;
   for (const page of pages) {
-    expectedDoc = spliceGeneratedDetails(
-      expectedDoc,
-      page.slug,
-      renderStorylineDetailsMarkdown(manifest, page.storylineId),
+    // SVG asset (viewable without a Mermaid renderer).
+    writeOrCheck(page.svgRelPath, rendered[page.slug]);
+    // Per-storyline document: diagram + per-event detail table.
+    writeOrCheck(
+      page.docRelPath,
+      renderStorylineDoc(page, renderStorylineDetailsMarkdown(manifest, page.storylineId)),
     );
   }
+
+  // Standalone-incident index.
+  writeOrCheck(INCIDENT_INDEX_PATH, indexMarkdown);
+
+  // Splice the generated per-storyline index into the canonical doc (only the
+  // marked region is replaced, so hand-written prose is preserved).
+  const docPath = repoPath(DOC_PATH);
+  const committedDoc = readFileSync(docPath, 'utf-8');
+  const expectedDoc = spliceGeneratedSection(committedDoc, DOC_INDEX_KEY, docIndex);
   if (check) {
     if (expectedDoc !== committedDoc) drift.push(DOC_PATH);
   } else if (expectedDoc !== committedDoc) {
     writeFileSync(docPath, expectedDoc, 'utf-8');
-    process.stdout.write(`render-storyline-graph: updated detail tables in ${DOC_PATH}\n`);
+    process.stdout.write(`render-storyline-graph: updated the storyline index in ${DOC_PATH}\n`);
   }
 
   if (check) {
@@ -335,7 +389,7 @@ export async function runRenderCli(
       return 1;
     }
     process.stdout.write(
-      `render-storyline-graph: ${pages.length} storyline pages and the incident index are up to date\n`,
+      `render-storyline-graph: ${pages.length} storyline pages, their documents, the incident index and the doc index are up to date\n`,
     );
   }
   return 0;
