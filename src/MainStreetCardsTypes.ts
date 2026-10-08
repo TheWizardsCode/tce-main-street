@@ -315,6 +315,22 @@ export interface UpgradeCard {
    * produce a display-name variant card face.
    */
   readonly newDisplayName?: string;
+  /**
+   * Optional relative draw weight used when the single-row market selects
+   * which upgrade card to place in a slot (MS-0MUYK08I1004I19W).
+   *
+   * The effective base weight is `drawWeight ?? 1`, clamped at `0`. Weighted
+   * selection activates only when at least one upgrade deck card declares a
+   * weight; an undecorated deck keeps the legacy plain `pop()` draw and
+   * consumes no extra RNG. At refill a declared card whose parent business is
+   * on the street at its `requiredLevel` (and below `maxLevel`) additionally
+   * receives the additive `UPGRADE_ELIGIBLE_DRAW_BONUS`, so a capstone surfaces
+   * once its prerequisite chain is ready instead of being drawn — and
+   * discarded — before it can be bought. The mechanism does NOT change the
+   * 78-card deck size or its `shuffleArray` Fisher–Yates call count, which
+   * preserves before/after attribution of seeded Monte Carlo runs.
+   */
+  readonly drawWeight?: number;
 }
 
 /**

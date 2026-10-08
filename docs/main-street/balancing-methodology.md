@@ -252,6 +252,44 @@ Guardrail tests (`monte-carlo-guardrails`, `monte-carlo-greedy-guardrail`,
 [`monte-carlo-baseline.json`](monte-carlo-baseline.json) and
 `results/main-street-monte-carlo.json/.csv` were regenerated to the new values.
 
+## Upgrade-Deck Draw Weight — Level-2 Capstone Reachability (MS-0MUYK08I1004I19W)
+
+The four level-2 capstone upgrades (`upg-grand-bakehouse`, `upg-restaurant`,
+`upg-multiplex`, `upg-luxury-retreat`, all `requiredLevel: 1`) were
+effectively unreachable in the canonical greedy profile: the market draws at
+most one upgrade per turn from a 78-card deck (39 templates × 2 copies) and
+each card is drawn at most once before the game ends, so a capstone drawn
+*before* its parent reaches level 1 is discarded and never seen again.
+
+**Mechanism.** `card-data.csv` gains an optional `drawWeight` column (default
+`1`) plumbed through `UpgradeCard.drawWeight`. At market refill
+(`refillSingleRowMarket` → `drawUpgrade`) the upgrade slot is selected from the
+already Fisher–Yates-shuffled deck by relative weight, where an upgrade whose
+parent business is currently at its `requiredLevel` (and below `maxLevel`)
+receives an additive eligibility bonus (`UPGRADE_ELIGIBLE_DRAW_BONUS = 30`).
+The deck is never resized and the `shuffleArray` call count is unchanged, so a
+seeded game keeps its deck composition and the RNG stream remains
+attributable. When no template declares a weight, the legacy plain `pop()` draw
+(and zero RNG calls) is retained. Weights: capstones `3`, level-1 prerequisites
+`2`.
+
+**Before/after M1 pick rate** (greedy/Medium, 200 seeds, prefix `mc-balance`,
+60 turns; before at commit `3056bd9`, after this change):
+
+| Capstone | Before M1 | After M1 |
+|---|---:|---:|
+| `upg-grand-bakehouse` | 0.0% | 7.5% |
+| `upg-restaurant` | 0.0% | 10.0% |
+| `upg-multiplex` | 0.0% | 7.9% |
+| `upg-luxury-retreat` | 3.1% | 8.8% |
+
+Level-1 prerequisite M1 (Medium) rose from 3.6–9.1% to 23.3–34.4%. The
+difficulty ladder is preserved (Easy 76.5% ≥ Medium 67.5% ≥ Hard 42.0%) and the
+Medium win rate moved −1.5 pp (within the ±5 pp band). `requiredLevel: 1` and
+`canPurchaseUpgrade()` are unchanged (US-19 preserved). The
+[`monte-carlo-baseline.json`](monte-carlo-baseline.json) snapshot (greedy +
+banking-greedy) was regenerated with producer approval (Q2(a)).
+
 ## See Also
 
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that build on this balancing algorithm.

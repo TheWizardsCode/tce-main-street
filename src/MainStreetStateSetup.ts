@@ -19,6 +19,7 @@ import {
   type BusinessCard,
   type CommunitySpaceCard,
   type EventCard,
+  type UpgradeCard,
   type SynergyType,
   createBusinessDeck,
   createCommunitySpaceDeck,
@@ -200,6 +201,79 @@ export function isMarketCardRelevant(
 }
 
 /**
+ * Additive eligibility bonus applied to a declared upgrade `drawWeight` at
+ * refill time when the card's parent business is on the street at the required
+ * level (MS-0MUYK08I1004I19W).
+ *
+ * A static weight alone cannot raise capstone pick rate: the market shows at
+ * most one upgrade per turn and each upgrade card is drawn from the 78-card
+ * deck at most once before the game ends, so a capstone drawn *before* its
+ * parent reaches level 1 is discarded and never seen again. The additive
+ * bonus keeps an ineligible chain card at its (low) declared base weight — so
+ * it usually stays in the deck — and makes it surface once its parent chain is
+ * ready, converting the prerequisite chain instead of stranding it. A
+ * multiplicative factor cannot express this because a base weight of 0 would
+ * stay 0 when eligible. Cards without a declared weight are never
+ * eligibility-boosted, keeping the lever targeted at the chain.
+ */
+export const UPGRADE_ELIGIBLE_DRAW_BONUS = 30;
+
+/**
+ * Effective refill draw weight for an upgrade card. Undeclared weights stay at
+ * the baseline `1` (and are never eligibility-boosted); a declared weight adds
+ * {@link UPGRADE_ELIGIBLE_DRAW_BONUS} when the card has a legal target on the
+ * street right now.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+function upgradeDrawWeight(state: MainStreetState, card: UpgradeCard): number {
+  const base = card.drawWeight;
+  if (base == null) return 1;
+  const requiredLevel = card.requiredLevel ?? 0;
+  const eligible = state.streetGrid.some(
+    business =>
+      business != null &&
+      business.name === card.targetBusiness &&
+      business.level === requiredLevel &&
+      business.level < business.maxLevel,
+  );
+  return Math.max(0, base) + (eligible ? UPGRADE_ELIGIBLE_DRAW_BONUS : 0);
+}
+
+/**
+ * Picks the index of the next upgrade card to draw from a shuffled deck by
+ * relative draw weight (MS-0MUYK08I1004I19W).
+ *
+ * Each card contributes its effective weight (>= 0) to the pool; one `rng()`
+ * call selects a point in `[0, total)` and the first card whose cumulative
+ * weight crosses that point is chosen. Because the deck is already
+ * Fisher–Yates-shuffled, the position bias is stream-position independent.
+ *
+ * Pure apart from the single `rng()` call. Returns `-1` when every card
+ * weighs 0, so callers can fall back to the legacy plain `pop()`.
+ *
+ * @param deck     Shuffled upgrade deck (never mutated).
+ * @param rng      Seeded RNG (`state.rng`) — exactly one call on a weighted pick.
+ * @param weightOf Effective weight resolver for a deck card (>= 0).
+ * @returns Index of the chosen card, or `-1` when no positive weight exists.
+ */
+function pickWeightedUpgradeIndex(
+  deck: readonly UpgradeCard[],
+  rng: () => number,
+  weightOf: (card: UpgradeCard) => number,
+): number {
+  let total = 0;
+  for (const card of deck) total += Math.max(0, weightOf(card));
+  if (total <= 0) return -1;
+  let roll = rng() * total;
+  for (let i = 0; i < deck.length; i++) {
+    roll -= Math.max(0, weightOf(deck[i]));
+    if (roll < 0) return i;
+  }
+  return deck.length - 1;
+}
+
+/**
  * Refills `state.market.cards` toward the single-row target composition
  * (CG-0MSTOATDT009BRX2):
  *   - at most `MARKET_TOTAL_SLOTS` (3) cards;
@@ -251,6 +325,9 @@ export function refillSingleRowMarket(
   // Bias is only active when a relevance key and a positive probability exist.
   const biasActive = !!relevance && relevance.bias > 0 && relevance.synergyTypes.length > 0;
 
+  // Upgrade draw weights are active when at least one deck card declares one.
+  const upgradeWeighted = decks.upgrade.some(card => card.drawWeight != null);
+
   const drawBusiness = (relevantOnly = false): boolean => {
     if (relevantOnly && biasActive) {
       const indices: number[] = [];
@@ -268,6 +345,20 @@ export function refillSingleRowMarket(
     return true;
   };
   const drawUpgrade = (): boolean => {
+    if (decks.upgrade.length === 0) return false;
+    // Upgrade draw weights (MS-0MUYK08I1004I19W): weighted selection activates
+    // only when a deck card declares a `drawWeight`; an undecorated deck keeps
+    // the legacy plain `pop()` (zero RNG calls), so unrelated configs and
+    // saved games are byte-identical to the pre-weight behaviour.
+    if (upgradeWeighted) {
+      const idx = pickWeightedUpgradeIndex(decks.upgrade, state.rng, card =>
+        upgradeDrawWeight(state, card),
+      );
+      if (idx !== -1) {
+        market.cards.push(decks.upgrade.splice(idx, 1)[0]);
+        return true;
+      }
+    }
     const card = decks.upgrade.pop();
     if (!card) return false;
     market.cards.push(card);

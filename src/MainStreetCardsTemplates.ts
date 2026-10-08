@@ -214,6 +214,12 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       requiredLevel: r.requiredLevel ? Number(r.requiredLevel) : undefined,
       reputationBonus: r.reputationBonus ? Number(r.reputationBonus) : undefined,
       newDisplayName: r.newDisplayName || undefined,
+      // Market upgrade draw weight (MS-0MUYK08I1004I19W): absent/empty ⇒
+      // undefined ⇒ baseline weight 1 at refill time.
+      drawWeight:
+        r.drawWeight !== undefined && r.drawWeight !== ''
+          ? Number(r.drawWeight)
+          : undefined,
     }));
 
   // Assign to the mutable module-level variables
