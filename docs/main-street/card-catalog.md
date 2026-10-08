@@ -231,7 +231,7 @@ Every Group A business and Group B community space gets an upgrade path (targets
 | `upg-smoothie-bar` | Upgrade to Smoothie Bar | Juice Bar | 400 | +100 | 0 | 0 | — | Turns a Juice Bar into a Smoothie Bar with higher income. |
 | `upg-wellness-retreat` | Upgrade to Wellness Retreat | Yoga Studio | 500 | +150 | +1 | 0 | — | Expands the Yoga Studio into a full Wellness Retreat. |
 | `upg-fitness-center` | Upgrade to Fitness Center | Gym | 500 | +150 | +1 | 0 | — | Expands the Gym into a full Fitness Center. |
-| `upg-dental-clinic` | Upgrade to Dental Clinic | Dentist | 700 | +200 | +1 | 0 | — | Expands the Dentist into a full Dental Clinic. |
+| `upg-dental-clinic` | Upgrade to Dental Clinic | Dentist | 600 | +200 | +1 | 0 | — | Expands the Dentist into a full Dental Clinic. |
 | `upg-bespoke-tailor` | Upgrade to Bespoke Tailor | Tailor | 400 | +100 | 0 | 0 | — | Elevates the Tailor into a Bespoke Tailor. |
 | `upg-toy-warehouse` | Upgrade to Toy Warehouse | Toy Store | 400 | +100 | +1 | 0 | — | Scales the Toy Store into a Toy Warehouse with wider reach. |
 | `upg-tea-lounge` | Upgrade to Tea Lounge | Teahouse | 400 | +100 | 0 | 0 | +10 | Turns the Teahouse into a Tea Lounge with a reputation boost. |
@@ -395,18 +395,18 @@ Each Upgrade targets a specific Business by name. Applying an upgrade increments
 | `upg-garden` | Upgrade to Garden | Park | 300 | +100 | +1 | Park -> Garden. | Completes M1 Culture upgrade / community space upgrade coverage. |
 | `upg-home-improvement` | Upgrade to Home Improvement | Hardware Store | 700 | +200 | +1 | Hardware Store -> Home Improvement. | Completes M1 Commerce upgrade. |
 | `upg-vintage-shop` | Upgrade to Vintage Shop | Pawn Shop | 300 | +100 | 0 | Pawn Shop -> Vintage Shop. | Budget upgrade; income only. |
-| `upg-designer-store` | Upgrade to Designer Store | Boutique | 700 | +200 | +1 | Boutique -> Designer Store. | Premium Commerce upgrade. |
+| `upg-designer-store` | Upgrade to Designer Store | Boutique | 600 | +200 | +1 | Boutique -> Designer Store. | Premium Commerce upgrade. |
 | `upg-dry-cleaners` | Upgrade to Dry Cleaners | Laundromat | 300 | +100 | 0 | Laundromat -> Dry Cleaners. | Service entry-level upgrade. |
 | `upg-salon` | Upgrade to Salon | Barbershop | 900 | +300 | +1 | Barbershop -> Salon. | Service upgrade with range. |
 | `upg-gaming-lounge` | Upgrade to Gaming Lounge | Arcade | 700 | +200 | +1 | Arcade -> Gaming Lounge. | Entertainment mid-tier upgrade. |
 | `upg-imax` | Upgrade to IMAX Theater | Cinema | 700 | +300 | +1 | Cinema -> IMAX Theater. | Premium upgrade; highest income bonus (tied). |
 | `upg-roastery` | Upgrade to Roastery | Cafe | 900 | +300 | +1 | Cafe -> Roastery. | Bridge card upgrade; maintains dual synergy. |
 | `upg-gourmet-truck` | Upgrade to Gourmet Truck | Food Truck | 300 | +150 | 0 | Food Truck -> Gourmet Truck. | Cheapest upgrade in the pool. |
-| `upg-museum` | Upgrade to Museum | Art Gallery | 700 | +200 | +1 | Art Gallery -> Museum. | Premium bridge upgrade. |
+| `upg-museum` | Upgrade to Museum | Art Gallery | 600 | +200 | +1 | Art Gallery -> Museum. | Premium bridge upgrade. |
 | `upg-resort-spa` | Upgrade to Resort Spa | Day Spa | 900 | +350 | +1 | Day Spa -> Resort Spa. | Tied with IMAX for highest cost/power. |
 | `upg-garden-center` | Upgrade to Garden Center | Flower Shop | 700 | +200 | +1 | Flower Shop -> Garden Center. | Budget bridge upgrade with range. |
 | `upg-medical-center` | Upgrade to Medical Center | Clinic | 300 | 0 | +1 | Clinic -> Medical Center. Provides +10 rep/turn. | Reputation bonus upgrade; no income. |
-| `upg-private-medical-center` | Upgrade to Private Medical Center | Private Clinic | 900 | +450 | +1 | Private Clinic -> Private Medical Center. | Income-focused upgrade; no range or reputation. |
+| `upg-private-medical-center` | Upgrade to Private Medical Center | Private Clinic | 700 | +450 | +1 | Private Clinic -> Private Medical Center. | Income-focused upgrade; no range or reputation. |
 
 ### M2 Branching Upgrade Templates (4)
 

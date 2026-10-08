@@ -290,6 +290,49 @@ Medium win rate moved −1.5 pp (within the ±5 pp band). `requiredLevel: 1` and
 [`monte-carlo-baseline.json`](monte-carlo-baseline.json) snapshot (greedy +
 banking-greedy) was regenerated with producer approval (Q2(a)).
 
+## Expensive-Tier Upgrade ROI Re-evaluation (MS-0MUR9I9WO004EW0M)
+
+Following the five-turn payback rebalance (MS-0MUQ50I1Y000B6L3) and the
+level-2 draw-weight change above, the remaining dead expensive upgrades were
+re-evaluated. Four level-0 upgrades whose parent businesses are built
+infrequently had **0 % M1** on the canonical `mc-balance` Medium profile purely
+because the single upgrade market slot rarely surfaced them while the parent
+was owned (co-occurrence, not affordability — prior experiments in
+MS-0MUXAL8HC005P9E4 showed that aggressive cost cuts alone left them at 0 %).
+
+**Change (card data only; no engine-rule change).** The four cards were
+discounted toward their balance-curve cost and given the
+producer-approved `drawWeight` lever (see the draw-weight section above), so
+the refill-time selection surfaces them once their parent is eligible:
+
+| Upgrade | Target (level 0) | Cost | `drawWeight` |
+|---|---|---:|---:|
+| `upg-designer-store` | Boutique | 700 → **600** | — → **3** |
+| `upg-museum` | Art Gallery | 700 → **600** | — → **3** |
+| `upg-dental-clinic` | Dentist | 700 → **600** | — → **3** |
+| `upg-private-medical-center` | Private Clinic | 900 → **700** | — → **3** |
+
+**Before/after M1 pick rate** (greedy/Medium, 200 seeds, prefix `mc-balance`,
+60 turns; before = pre-change `dev` tip, after = this change):
+
+| Upgrade | Before M1 | After M1 |
+|---|---:|---:|
+| `upg-designer-store` | 0.0 % (0/19) | **14.7 % (10/68)** |
+| `upg-museum` | 0.0 % (0/18) | **8.5 % (4/47)** |
+| `upg-dental-clinic` | 0.0 % (0/23) | **17.7 % (11/62)** |
+| `upg-private-medical-center` | 0.0 % (0/22) | **16.1 % (10/62)** |
+
+The difficulty ladder is preserved (Easy 76.0 % ≥ Medium 66.0 % ≥ Hard
+41.5 %); the Medium win rate moved −0.5 pp (within the ±5 pp band). The four
+level-2 capstones keep `requiredLevel: 1`, and their Medium pick rates remain
+non-trivial (`upg-grand-bakehouse` 11.3 %, `upg-restaurant` 10.5 %,
+`upg-multiplex` 7.7 %, `upg-luxury-retreat` 2.0 %); per-card M1 at ~50–70
+appearances is coarse, so the residual variance is small-n noise. The
+branching prerequisites `upg-drive-in` and `upg-wellness-center` remain below
+target (they compete with the standard path weighted by
+MS-0MUYK08I1004I19W); that residual is tracked separately rather than
+over-tuning the market in this item.
+
 ## See Also
 
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that build on this balancing algorithm.

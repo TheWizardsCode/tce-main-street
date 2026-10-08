@@ -274,3 +274,52 @@ describe('weighted refill invariants', () => {
     expect(run()).toEqual(run());
   });
 });
+
+// ── Expensive-tier ROI re-evaluation (MS-0MUR9I9WO004EW0M) ─────────────
+
+/**
+ * The four level-0 upgrades below were dead (0% M1 on the canonical
+ * `mc-balance` Medium profile) because their market draw was too rare
+ * relative to their parent businesses. They were re-priced (`cost` reduced)
+ * and given a `drawWeight` boost as part of the post-payback ROI
+ * re-evaluation, so the expensive tier is genuinely purchasable. This pins
+ * the shipped card-data values so a future change must consciously revisit
+ * the re-evaluation (AC2) rather than silently reverting it.
+ */
+const RE_EVALUATED_EXPENSIVE_UPGRADES = [
+  { id: 'upg-designer-store', cost: 600, drawWeight: 3, targetBusiness: 'Boutique' },
+  { id: 'upg-museum', cost: 600, drawWeight: 3, targetBusiness: 'Art Gallery' },
+  { id: 'upg-dental-clinic', cost: 600, drawWeight: 3, targetBusiness: 'Dentist' },
+  { id: 'upg-private-medical-center', cost: 700, drawWeight: 3, targetBusiness: 'Private Clinic' },
+] as const;
+
+describe('expensive-tier ROI re-evaluation (MS-0MUR9I9WO004EW0M)', () => {
+  const templates = getUpgradeTemplates();
+
+  it.each(RE_EVALUATED_EXPENSIVE_UPGRADES)(
+    '$id carries the re-derived cost and a drawWeight boost',
+    ({ id, cost, drawWeight }) => {
+      const template = templates.find(t => t.id === id);
+      expect(template, `${id} template missing`).toBeDefined();
+      expect(template!.cost).toBe(cost);
+      expect(template!.drawWeight).toBe(drawWeight);
+    },
+  );
+
+  it.each(RE_EVALUATED_EXPENSIVE_UPGRADES)(
+    '$id keeps its level-0 gate and intended parent business',
+    ({ id, targetBusiness }) => {
+      const template = templates.find(t => t.id === id);
+      expect(template!.requiredLevel).toBe(0);
+      expect(template!.targetBusiness).toBe(targetBusiness);
+    },
+  );
+
+  it('clears the opportunity cost at the AI planning-horizon floor (score > 0 at horizon 5)', () => {
+    // score = incomeBonus * horizon - cost (scoreUpgradeAction).
+    for (const { id } of RE_EVALUATED_EXPENSIVE_UPGRADES) {
+      const template = templates.find(t => t.id === id)!;
+      expect(template.incomeBonus * 5 - template.cost).toBeGreaterThan(0);
+    }
+  });
+});

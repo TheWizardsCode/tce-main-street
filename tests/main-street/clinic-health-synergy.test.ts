@@ -176,9 +176,9 @@ describe('Private Medical Center Upgrade (upg-private-medical-center)', () => {
     expect(upg!.targetBusiness).toBe('Private Clinic');
   });
 
-  it('should have cost 900, incomeBonus 450, synergyRangeBonus 1 (×100)', () => {
-    // ×100: 9 → 900, 4.5 → 450
-    expect(upg!.cost).toBe(900);
+  it('should have cost 700, incomeBonus 450, synergyRangeBonus 1 (×100)', () => {
+    // ×100: 7 → 700, 4.5 → 450. Cost re-priced 900 -> 700 by MS-0MUR9I9WO004EW0M.
+    expect(upg!.cost).toBe(700);
     expect(upg!.incomeBonus).toBe(450);
     expect(upg!.synergyRangeBonus).toBe(1);
   });
