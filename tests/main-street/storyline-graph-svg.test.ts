@@ -50,6 +50,14 @@ const STORYLINE_DOC_PATH = (slug: string): string =>
 
 const EXPECTED_SLUGS = ['economy', 'health', 'labor', 'restaurant', 'tax'];
 
+/**
+ * Shown in every drift-assertion failure so a stale artefact is trivial to
+ * fix without reading the source.
+ */
+const REGEN_DOCS_HINT =
+  'Committed storyline docs are stale — regenerate and commit them with:\n' +
+  '  npm run storylines:graph:svg';
+
 function readAsset(slug: string): string {
   return readFileSync(ASSET_PATH(slug), 'utf-8');
 }
@@ -148,7 +156,7 @@ describe('AC8 — standalone incidents are a compact index, not boxes', () => {
   it('the committed index matches the manifest and is linked from the doc', () => {
     const expected = renderIncidentIndexMarkdown(buildStandaloneIncidentIndex(manifest()));
     expect(existsSync(INCIDENT_INDEX_FILE)).toBe(true);
-    expect(readFileSync(INCIDENT_INDEX_FILE, 'utf-8')).toBe(expected);
+    expect(readFileSync(INCIDENT_INDEX_FILE, 'utf-8'), REGEN_DOCS_HINT).toBe(expected);
     expect(readFileSync(DOC_PATH, 'utf-8')).toContain('./storyline-incident-index.md');
   });
 });
@@ -227,7 +235,7 @@ describe('AC11/AC12 — detail tables and generated docs are drift-guarded', () 
     const m = manifest();
     for (const page of buildStorylinePages(m)) {
       const expected = renderStorylineDoc(page, renderStorylineDetailsMarkdown(m, page.storylineId));
-      expect(readFileSync(STORYLINE_DOC_PATH(page.slug), 'utf-8')).toBe(expected);
+      expect(readFileSync(STORYLINE_DOC_PATH(page.slug), 'utf-8'), REGEN_DOCS_HINT).toBe(expected);
     }
   });
 
@@ -235,7 +243,7 @@ describe('AC11/AC12 — detail tables and generated docs are drift-guarded', () 
     const m = manifest();
     const committed = readFileSync(DOC_PATH, 'utf-8');
     const expected = spliceGeneratedSection(committed, DOC_INDEX_KEY, renderStorylineDocIndex(m, buildStorylinePages(m)));
-    expect(expected).toBe(committed);
+    expect(expected, REGEN_DOCS_HINT).toBe(committed);
   });
 });
 
@@ -249,7 +257,7 @@ describe('AC2/AC4 — committed assets match a re-render and the render is deter
 
     for (const page of pages) {
       const committed = readFileSync(ASSET_PATH(page.slug), 'utf-8');
-      expect(first[page.slug], `drift in ${page.svgRelPath}`).toBe(committed);
+      expect(first[page.slug], `drift in ${page.svgRelPath}. ${REGEN_DOCS_HINT}`).toBe(committed);
       expect(second[page.slug], `non-deterministic render for ${page.slug}`).toBe(first[page.slug]);
     }
   }, 120_000);
