@@ -1,62 +1,62 @@
 {
   "source": "Generated from MainStreetMonteCarlo.runAllCombinations",
-  "generatedAt": "2026-10-08T17:21:03.188Z",
-  "commitSha": "aeb9cc3944750fce589487d0da6a7ecf82e57ac8",
+  "generatedAt": "2026-10-08T19:32:00.799Z",
+  "commitSha": "e7cfd6de1521fa55c3c9b1a45e21a04db88d05be",
   "seeds": 200,
   "maxTurns": 60,
   "strategy": "greedy",
   "metrics": {
-    "winRate": 0.675,
-    "averageCoinsPerTurn": 384.82695096271095
+    "winRate": 0.665,
+    "averageCoinsPerTurn": 373.4445982028334
   },
   "difficultyMatrix": [
     {
       "difficulty": "Easy",
       "winRate": 0.765,
-      "averageCoinsPerTurn": 414.210359086562,
-      "medianScore": 10766.5
+      "averageCoinsPerTurn": 409.13993268945126,
+      "medianScore": 10695.5
     },
     {
       "difficulty": "Medium",
-      "winRate": 0.675,
-      "averageCoinsPerTurn": 384.82695096271095,
-      "medianScore": 12467.5
+      "winRate": 0.665,
+      "averageCoinsPerTurn": 373.4445982028334,
+      "medianScore": 12415.5
     },
     {
       "difficulty": "Hard",
-      "winRate": 0.42,
-      "averageCoinsPerTurn": 240.91477048519153,
-      "medianScore": 684.5
+      "winRate": 0.415,
+      "averageCoinsPerTurn": 227.0699957850726,
+      "medianScore": 566.5
     }
   ],
   "bankingGreedy": {
     "source": "Generated from MainStreetMonteCarlo.runAllCombinations",
-    "generatedAt": "2026-10-08T17:21:03.198Z",
-    "commitSha": "aeb9cc3944750fce589487d0da6a7ecf82e57ac8",
+    "generatedAt": "2026-10-08T19:32:00.810Z",
+    "commitSha": "e7cfd6de1521fa55c3c9b1a45e21a04db88d05be",
     "strategy": "banking-greedy",
     "note": "Additive regression snapshot for BankingGreedyStrategy (CG-0MT3JMGA60091J8W AC5). Recorded on the same 200-seed / 60-turn canonical profile as the greedy block above; the greedy block is unchanged and is never replaced by this variant. Drift is reported, never silently accepted — see the drift-report workflow in tests/main-street/monte-carlo-guardrails.test.ts and docs/main-street/balance-guardrail-recommendations.md.",
     "metrics": {
-      "winRate": 0.675,
-      "averageCoinsPerTurn": 333.09464300432904
+      "winRate": 0.685,
+      "averageCoinsPerTurn": 331.1447277028786
     },
     "difficultyMatrix": [
       {
         "difficulty": "Easy",
-        "winRate": 0.75,
-        "averageCoinsPerTurn": 383.1193257694103,
-        "medianScore": 10508
+        "winRate": 0.745,
+        "averageCoinsPerTurn": 376.04969003693674,
+        "medianScore": 10609
       },
       {
         "difficulty": "Medium",
-        "winRate": 0.675,
-        "averageCoinsPerTurn": 333.09464300432904,
-        "medianScore": 12552
+        "winRate": 0.685,
+        "averageCoinsPerTurn": 331.1447277028786,
+        "medianScore": 12449.5
       },
       {
         "difficulty": "Hard",
-        "winRate": 0.37,
-        "averageCoinsPerTurn": 181.53064348783053,
-        "medianScore": 464.5
+        "winRate": 0.355,
+        "averageCoinsPerTurn": 164.2254077168856,
+        "medianScore": 419.5
       }
     ]
   }
