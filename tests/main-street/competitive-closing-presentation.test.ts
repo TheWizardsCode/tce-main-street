@@ -187,18 +187,26 @@ describe('competitiveClosingSummary (AC1/AC2)', () => {
 // ── AC1/AC3: income feedback + progression ───────────────────────────
 
 describe('presentCompetitiveClosing — income feedback (AC1/AC3)', () => {
-  it('shows the shared income total and the closing progression text', () => {
+  it('shows the per-seat income choreography and the closing progression text (new per-seat contract)', () => {
     const h = makeHarness();
     let completed = 0;
 
-    presentCompetitiveClosing(asCtx(h.scene), makeResult(), () => completed++);
+    // Under the new per-seat contract, the closing runs the full income
+    // choreography for each non-eliminated seat (one call here, seat 0).
+    presentCompetitiveClosing(
+      asCtx(h.scene),
+      makeResult({ playerIncome: makePlayerIncomes([[0, 12]]) }),
+      () => completed++,
+    );
 
     expect(h.instructions[0]).toBe('Resolving end-of-turn effects...');
-    expect(h.instructions).toContain('Income: +12 coins');
+    // Per-seat summary replaces the shared host total (AC3).
+    expect(h.instructions).toContain('Player 1: +12 coins');
     expect(h.instructions).toContain('End of turn complete.');
     expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
-    // Condensed/bounded: the long coin-grid choreography is deliberately not run.
-    expect(h.incomeCalls).toHaveLength(0);
+    // Per-seat contract: the full income choreography IS run for each seat.
+    expect(h.incomeCalls).toHaveLength(1);
+    expect(h.incomeCalls[0]?.phaseData?.[0]?.baseIncome).toBe(12);
     expect(completed).toBe(1);
   });
 
