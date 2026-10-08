@@ -522,9 +522,12 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
             } catch (_) { /* ignore */ }
           },
           onSkip: () => {
-            // Normal gameplay begins; play the deferred day-banner now
-            // that the player has committed to the game.
-            s.playDeferredWeekBanner();
+            // Tutorial offer skipped: present the New Game mode selector
+            // next. The deferred day-banner plays once the player confirms a
+            // mode (see showNewGameSelector), so it still fires exactly once
+            // and only after the player has committed to playing
+            // (MS-0MV0319OC002H15F).
+            lmCtx.showNewGameSelector();
           },
         },
       );

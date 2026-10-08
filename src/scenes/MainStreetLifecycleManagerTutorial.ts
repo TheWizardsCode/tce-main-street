@@ -20,28 +20,21 @@ export function showTutorialOfferOrDeferredBanner(lmCtx: MainStreetLifecycleMana
     legacySeen?: boolean,
   ): boolean {
 
-    const s = lmCtx.scene;
-    // Pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1): the first
-    // blocking boot modal, mirroring the tutorial-offer pattern. Present it
-    // once per boot (not in replay) before the tutorial offer / deferred
-    // banner; on confirm, apply the selection and continue the boot flow.
-    const newGame = (s as { newGameOverlay?: MainStreetNewGameOverlay }).newGameOverlay;
-    const flagHolder = s as NewGameSelectionFlagHolder;
-    if (newGame && !s.replayMode && !flagHolder.newGameSelectionMade) {
-      flagHolder.newGameSelectionMade = true;
-      newGame.show({
-        onConfirm: (selection) => {
-          lmCtx.applyNewGameSelection(selection);
-          showTutorialOfferOnly(lmCtx, tutorialOpts, legacySeen);
-        },
-      });
-      return true;
-    }
-    return showTutorialOfferOnly(lmCtx, tutorialOpts, legacySeen);
+    // Pre-game tutorial offer (MS-0MUTTVR5K002ZDUP): the first blocking boot
+    // modal. Present it before the "New Game" mode selector so a player who
+    // wants the guided tutorial is not forced to pick a mode the tutorial
+    // ignores (MS-0MV0319OC002H15F). The selector is presented only when the
+    // offer is ineligible, or once the player skips the offer (the modal's
+    // onSkip chains into showNewGameSelector()).
+    const shown = showTutorialOfferOnly(lmCtx, tutorialOpts, legacySeen);
+    if (shown) return true;
+    // Offer not waiting — present the mode selector next (or play the
+    // deferred banner when no selector is due).
+    return showNewGameSelector(lmCtx);
   
 }
 
-/** Shows the tutorial-offer modal, or plays the deferred banner when none. */
+/** Shows the tutorial-offer modal. Returns true when the modal is waiting. */
 function showTutorialOfferOnly(lmCtx: MainStreetLifecycleManagerContext, 
     tutorialOpts: TutorialVisibilityOptions,
     legacySeen?: boolean,
@@ -49,12 +42,41 @@ function showTutorialOfferOnly(lmCtx: MainStreetLifecycleManagerContext,
 
     const s = lmCtx.scene;
     const modal = (s as any).tutorialOfferModal as { showIfEligible?: (o: TutorialVisibilityOptions, l?: boolean) => boolean } | undefined;
-    const shown = modal?.showIfEligible?.(tutorialOpts, legacySeen) ?? false;
-    if (!shown) {
-      // No modal waiting — play the deferred banner now.
-      s.playDeferredWeekBanner();
+    return modal?.showIfEligible?.(tutorialOpts, legacySeen) ?? false;
+  
+}
+
+/**
+ * Presents the pre-game "New Game" mode selector once per boot (not in
+ * replay), the boot modal that follows the tutorial offer.
+ *
+ * On confirm it applies the selection and plays the deferred week banner
+ * exactly once — the player has now committed to playing. When no selector
+ * is due (replay mode, or it was already presented this boot) any pending
+ * deferred banner is played immediately instead.
+ */
+export function showNewGameSelector(lmCtx: MainStreetLifecycleManagerContext): boolean {
+
+    const s = lmCtx.scene;
+    // Pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1): present it
+    // once per boot (not in replay); on confirm, apply the selection and
+    // play the deferred banner before continuing the boot flow.
+    const newGame = (s as { newGameOverlay?: MainStreetNewGameOverlay }).newGameOverlay;
+    const flagHolder = s as NewGameSelectionFlagHolder;
+    if (newGame && !s.replayMode && !flagHolder.newGameSelectionMade) {
+      flagHolder.newGameSelectionMade = true;
+      newGame.show({
+        onConfirm: (selection) => {
+          lmCtx.applyNewGameSelection(selection);
+          // Player has committed to playing — fire the deferred banner once.
+          s.playDeferredWeekBanner();
+        },
+      });
+      return true;
     }
-    return shown;
+    // No selector to present — play any pending deferred banner now.
+    s.playDeferredWeekBanner();
+    return false;
   
 }
 

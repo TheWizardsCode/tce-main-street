@@ -6,11 +6,11 @@
  * first blocking modal: the Single-player/Competitive selector is presented
  * only once the offer is answered (skipped) or when the offer is ineligible.
  *
- * The reorder lands in the dependent item MS-0MV0319OC002H15F. Assertions that
- * pin the *new* ordering are written as red-phase `it.fails` (so the suite
- * stays green until the reorder lands); that item flips them to `it`.
- * Assertions that must hold both before and after the reorder are plain `it`,
- * guarding against regressions while the reorder is in flight.
+ * The reorder landed in the dependent item MS-0MV0319OC002H15F; the
+ * ordering assertions below are now plain `it` (they were red-phase
+ * `it.fails` while the reorder was in flight). All of them must hold.
+ * Assertions that hold before and after the reorder are also plain `it`,
+ * guarding against regressions.
  *
  * Mirrors the fake-scene pattern in
  * `tests/main-street/competitive-new-game-restart.test.ts`: no Phaser is
@@ -75,7 +75,7 @@ describe('tutorial-offer boot ordering (MS-0MV0319CV005O5OM)', () => {
 
   // ── Offer eligible: the offer is the first blocking modal ─────────────
 
-  it.fails('presents the tutorial offer first and never shows the mode selector', () => {
+  it('presents the tutorial offer first and never shows the mode selector', () => {
     const { scene, lmCtx } = makeHarness(true);
 
     const shown = showTutorialOfferOrDeferredBanner(lmCtx, {}, undefined);
@@ -85,7 +85,7 @@ describe('tutorial-offer boot ordering (MS-0MV0319CV005O5OM)', () => {
     expect(scene.newGameOverlay!.show).not.toHaveBeenCalled();
   });
 
-  it.fails('does not show the mode selector when the player starts the tutorial', () => {
+  it('does not show the mode selector when the player starts the tutorial', () => {
     const { scene, lmCtx } = makeHarness(true);
 
     // Starting the tutorial leaves the offer eligible (`not_seen`) and starts
@@ -107,7 +107,7 @@ describe('tutorial-offer boot ordering (MS-0MV0319CV005O5OM)', () => {
 
   // ── Skip / ineligible: the selector is presented next ─────────────────
 
-  it.fails('presents the mode selector next after the offer is skipped', () => {
+  it('presents the mode selector next after the offer is skipped', () => {
     const { scene, lmCtx } = makeHarness(true);
 
     // First boot decision: the offer is the blocking modal.
@@ -122,7 +122,7 @@ describe('tutorial-offer boot ordering (MS-0MV0319CV005O5OM)', () => {
     expect(scene.newGameOverlay!.show).toHaveBeenCalledTimes(1);
   });
 
-  it.fails('shows the mode selector first when the offer is ineligible', () => {
+  it('shows the mode selector first when the offer is ineligible', () => {
     // Ineligible covers completed / already-skipped / replay / disabled. The
     // eligibility decision itself is pinned by
     // `tests/main-street/tutorial-offer-modal.test.ts`; here the modal is
@@ -177,7 +177,7 @@ describe('tutorial-offer boot ordering (MS-0MV0319CV005O5OM)', () => {
     expect(scene.newGameOverlay!.show).toHaveBeenCalledTimes(2);
   });
 
-  it.fails('re-presents the tutorial offer after a scene restart', () => {
+  it('re-presents the tutorial offer after a scene restart', () => {
     const { scene, lmCtx } = makeHarness(true);
 
     showTutorialOfferOrDeferredBanner(lmCtx, {}, undefined);

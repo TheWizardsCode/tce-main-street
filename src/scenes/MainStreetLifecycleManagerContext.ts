@@ -20,6 +20,7 @@ export interface MainStreetLifecycleManagerContext {
     tutorialOpts: TutorialVisibilityOptions,
     legacySeen?: boolean,
   ): boolean;
+  showNewGameSelector(): boolean;
   confirmTutorialStep(): void;
   exitTutorialFlow(): void;
   showTutorialStepOverlay(): void;
