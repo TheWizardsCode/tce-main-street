@@ -38,6 +38,8 @@ import {
   resolveEventChoice,
   placeStaffOnBusiness,
   isStaffRelocation,
+  canMoveStaffOnBusiness,
+  moveStaffOnBusiness,
   removeStaffFromBusiness,
   layoffStaffCard,
 } from './MainStreetEngine';
@@ -756,6 +758,43 @@ export function placeStaffOnBusinessCommand(
         placeStaffOnBusiness(s, staffId, slotIndex);
       },
       `PlaceStaff ${staffId} -> slot ${slotIndex}`,
+    ),
+  );
+}
+
+/**
+ * Command: Move (relocate) an employed staff member to another business
+ * (MS-0MUOSUKUC004G2VO, parent AC4).
+ *
+ * The explicit player-facing relocation action: costs exactly 1 action point
+ * for all staff, is validated by `canMoveStaffOnBusiness` (the member must be
+ * employed elsewhere; destination must match `allowedBusinessTypes` and have a
+ * free employment slot), and is fully snapshotted so undo restores both the
+ * previous employment and the spent action.
+ *
+ * Distinct from `placeStaffOnBusinessCommand`, which covers the action-free
+ * initial placement at hire time; callers that move an already-employed member
+ * should prefer this command so the intent (and the action cost) is explicit.
+ */
+export function moveStaffCommand(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => {
+        // Pre-flight before any mutation or action spend so an illegal move
+        // leaves the state (and the action budget) untouched.
+        const legality = canMoveStaffOnBusiness(s, staffId, slotIndex);
+        if (!legality.legal) {
+          throw new Error(legality.reason);
+        }
+        consumeAction(s);
+        moveStaffOnBusiness(s, staffId, slotIndex);
+      },
+      `MoveStaff ${staffId} -> slot ${slotIndex}`,
     ),
   );
 }
