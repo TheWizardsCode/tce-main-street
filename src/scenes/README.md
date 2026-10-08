@@ -36,10 +36,11 @@ street cells, each keeping to one side of the road (a lane offset). The
 population is a pure function of reputation (`pedestrianCount`, 1 figure per
 50, uncapped, `#88bbff`); the crowd tracks the HUD reputation value live
 (fade in/out) and persists across street rebuilds. A figure may **walk**
-deliberately into an **occupied** business cell (where it stays; no
-teleporting). At the end of the turn the non-shoppers walk off the block and
-enough figures walk into shops; at the start of the next turn the leftovers
-clear and a fresh set enters from the block corners. During the phased income
+deliberately into an **occupied** business cell, where it spreads to its own
+random spot inside the cell and stays (no teleporting). At the end of the
+turn the non-shoppers walk off the block and enough figures walk into shops;
+at the start of the next turn the leftovers clear and a fresh set enters from
+the block corners. During the phased income
 show, the `reputation` phase first sends at least 25% of the crowd walking
 into occupied cells, then dissolves the in-shop figures into the coin stream
 that lands in each business's coin grid (`dissolveIntoCoins`, street-anchor

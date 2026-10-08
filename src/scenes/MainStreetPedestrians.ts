@@ -282,6 +282,11 @@ export interface PedestrianShop {
   captureXMax: number;
   captureYMin: number;
   captureYMax: number;
+  /** Interior of the cell, inset so a silhouette stays inside it. */
+  cellXMin: number;
+  cellXMax: number;
+  cellYMin: number;
+  cellYMax: number;
 }
 
 /**
@@ -308,6 +313,8 @@ export function occupiedShops(
     const halfW = layout.slotW / 2;
     const halfH = layout.slotH / 2;
     const reachY = halfH + roadY / 2 + lane + capturePad;
+    // Interior a shopper can occupy without the silhouette poking out.
+    const inset = PEDESTRIAN_SILHOUETTE_W / 2 + 2;
     shops.push({
       slotIndex,
       x: centre.x,
@@ -316,6 +323,10 @@ export function occupiedShops(
       captureXMax: centre.x + halfW + capturePad,
       captureYMin: centre.y - reachY,
       captureYMax: centre.y + reachY,
+      cellXMin: centre.x - halfW + inset,
+      cellXMax: centre.x + halfW - inset,
+      cellYMin: centre.y - halfH + inset,
+      cellYMax: centre.y + halfH - inset,
     });
   }
   return shops;
@@ -466,12 +477,20 @@ export function spawnPedestrianFigure(
   return figure;
 }
 
-/** Direct a figure to walk deliberately into `shop` (no teleport). */
-export function beginShopEntry(figure: PedestrianFigure, shop: PedestrianShop): void {
+/**
+ * Direct a figure to walk deliberately into `shop` (no teleport). The
+ * destination is a per-figure random point inside the cell, so a crowd in one
+ * business spreads across it instead of converging on the centre.
+ */
+export function beginShopEntry(
+  figure: PedestrianFigure,
+  shop: PedestrianShop,
+  rng: () => number,
+): void {
   figure.mode = 'entering';
   figure.shopIndex = shop.slotIndex;
-  figure.destX = shop.x;
-  figure.destY = shop.y;
+  figure.destX = shop.cellXMin + sample01(rng) * Math.max(0, shop.cellXMax - shop.cellXMin);
+  figure.destY = shop.cellYMin + sample01(rng) * Math.max(0, shop.cellYMax - shop.cellYMin);
 }
 
 /**
@@ -575,7 +594,7 @@ export function stepPedestrianFigure(
   if (shops.length > 0 && sample01(rng) < PEDESTRIAN_SHOP_ENTRY_RATE * dt) {
     const shop = shops.find((candidate) => withinShopCapture(figure, candidate));
     if (shop) {
-      beginShopEntry(figure, shop);
+      beginShopEntry(figure, shop, rng);
       figure.bobPhase = (figure.bobPhase + PEDESTRIAN_BOB_RATE * dt) % (Math.PI * 2);
       return;
     }
@@ -611,6 +630,7 @@ export function stepPedestrianFigure(
 export function assignShopShoppers(
   figures: PedestrianFigure[],
   shops: PedestrianShop[],
+  rng: () => number,
   minRatio: number = PEDESTRIAN_MIN_SHOP_RATIO,
 ): number {
   const countShoppers = (list: PedestrianFigure[]): number =>
@@ -629,7 +649,7 @@ export function assignShopShoppers(
     if (figure.mode !== 'walking') continue;
     const shop = shops[cursor % shops.length];
     cursor += 1;
-    beginShopEntry(figure, shop);
+    beginShopEntry(figure, shop, rng);
     occupancy += 1;
   }
   return occupancy;
@@ -644,9 +664,10 @@ export function beginEndOfTurnExit(
   figures: PedestrianFigure[],
   network: RoadNetwork,
   shops: PedestrianShop[],
+  rng: () => number,
   margin: number = PEDESTRIAN_OFF_BLOCK_MARGIN,
 ): void {
-  assignShopShoppers(figures, shops);
+  assignShopShoppers(figures, shops, rng);
   for (const figure of figures) {
     if (figure.mode === 'walking') directFigureOffBlock(figure, network, margin);
   }
@@ -777,7 +798,7 @@ export class MainStreetPedestrians {
       if (this.figures.length === 0) return;
       const network = this.networkCache ?? this.computeNetwork();
       this.networkCache = network;
-      beginEndOfTurnExit(this.figures, network, this.computeShops());
+      beginEndOfTurnExit(this.figures, network, this.computeShops(), this.rng);
     } catch (_) {
       // Presentation-only.
     }
@@ -927,7 +948,7 @@ export class MainStreetPedestrians {
    */
   public prepareForIncomePhase(): number {
     try {
-      return assignShopShoppers(this.figures, this.computeShops(), PEDESTRIAN_MIN_SHOP_RATIO);
+      return assignShopShoppers(this.figures, this.computeShops(), this.rng, PEDESTRIAN_MIN_SHOP_RATIO);
     } catch (_) {
       return 0;
     }

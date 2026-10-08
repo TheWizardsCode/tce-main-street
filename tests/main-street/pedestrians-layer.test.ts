@@ -372,8 +372,11 @@ describe('stepPedestrianFigure — deliberate shop entry (no teleport)', () => {
       stepPedestrianFigure(walker, network, shops, LAYOUT, 0.05, createPresentationRng(i + 1));
     }
     expect(walker.mode).toBe('inside');
-    expect(walker.x).toBeCloseTo(shop.x, 3);
-    expect(walker.y).toBeCloseTo(shop.y, 3);
+    // Arrived at a random point inside the cell (not necessarily the centre).
+    expect(walker.x).toBeGreaterThanOrEqual(shop.cellXMin - 0.01);
+    expect(walker.x).toBeLessThanOrEqual(shop.cellXMax + 0.01);
+    expect(walker.y).toBeGreaterThanOrEqual(shop.cellYMin - 0.01);
+    expect(walker.y).toBeLessThanOrEqual(shop.cellYMax + 0.01);
 
     // Once inside it stays.
     const { x, y } = walker;
@@ -411,7 +414,7 @@ describe('assignShopShoppers — reputation-phase minimum, teleport-free', () =>
     );
     const positionsBefore = figures.map((f) => ({ x: f.x, y: f.y }));
 
-    const occupancy = assignShopShoppers(figures, shops, 0.25);
+    const occupancy = assignShopShoppers(figures, shops, createPresentationRng(7), 0.25);
 
     expect(occupancy).toBeGreaterThanOrEqual(Math.ceil(0.25 * figures.length));
     const entering = figures.filter((f) => f.mode === 'entering');
@@ -426,8 +429,34 @@ describe('assignShopShoppers — reputation-phase minimum, teleport-free', () =>
   it('is a no-op when there are no occupied cells', () => {
     const network = buildRoadNetwork(LAYOUT, LATTICE);
     const figures = [spawnPedestrianFigure(network, LAYOUT, createPresentationRng(2))];
-    expect(assignShopShoppers(figures, [], 0.25)).toBe(0);
+    expect(assignShopShoppers(figures, [], createPresentationRng(1), 0.25)).toBe(0);
     expect(figures[0].mode).toBe('walking');
+  });
+
+  it('spreads shoppers bound for the same cell across distinct interior points', () => {
+    const shops = occupiedShops(
+      [{ name: 'Bakery' }, null, null, null, null, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+    const shop = shops[0];
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const figures = Array.from({ length: 6 }, () =>
+      spawnPedestrianFigure(network, LAYOUT, createPresentationRng(3)),
+    );
+
+    assignShopShoppers(figures, shops, createPresentationRng(99), 1);
+
+    const destinations = figures.map((f) => `${f.destX.toFixed(2)},${f.destY.toFixed(2)}`);
+    // Every figure walks to its own point inside the cell.
+    expect(new Set(destinations).size).toBeGreaterThan(1);
+    for (const figure of figures) {
+      expect(figure.destX).toBeGreaterThanOrEqual(shop.cellXMin - 0.01);
+      expect(figure.destX).toBeLessThanOrEqual(shop.cellXMax + 0.01);
+      expect(figure.destY).toBeGreaterThanOrEqual(shop.cellYMin - 0.01);
+      expect(figure.destY).toBeLessThanOrEqual(shop.cellYMax + 0.01);
+    }
   });
 });
 
@@ -628,7 +657,13 @@ describe('MainStreetPedestrians — Phaser adapter', () => {
 
     const sources = layer.dissolveIntoCoins([{ x: 0, y: 0, slotIndex: 0 }]);
     const shop = occupiedShops(scene.state.streetGrid, LAYOUT, LATTICE, LATTICE)[0];
-    expect(sources).toEqual([{ x: shop.x, y: shop.y }]);
+    expect(sources).toHaveLength(1);
+    // Sourced from a figure inside the cell (spread), not the cell centre.
+    expect(sources[0].x).toBeGreaterThanOrEqual(shop.cellXMin - 0.01);
+    expect(sources[0].x).toBeLessThanOrEqual(shop.cellXMax + 0.01);
+    expect(sources[0].y).toBeGreaterThanOrEqual(shop.cellYMin - 0.01);
+    expect(sources[0].y).toBeLessThanOrEqual(shop.cellYMax + 0.01);
+    expect(layer.getFigurePositions()).toContainEqual(sources[0]);
   });
 
   it('falls back to the street anchor — never the HUD counter — with no shops', () => {

@@ -178,11 +178,13 @@ void popTextOrIcon({
   the road** — a per-figure perpendicular lane offset
   (`pedestrianLaneOffset`, `lanePoint`) — so they do not walk down the
   centre-line.
-- Deliberate shop entry (MS-0MUZ6CGSV002WTYM): when a figure chooses an
-  **occupied** cell (`occupiedShops`, a truthy `streetGrid` entry) it switches
-  to `entering` and **walks** to the shop (`beginShopEntry`,
-  `stepPedestrianFigure`), becoming `inside` only on arrival — it never
-  teleports. Once inside it stays there.
+- Deliberate shop entry (MS-0MUZ6CGSV002WTYM, spread MS-0MUZ9CKT60094CXO):
+  when a figure chooses an **occupied** cell (`occupiedShops`, a truthy
+  `streetGrid` entry) it switches to `entering` and **walks** to the shop
+  (`beginShopEntry`, `stepPedestrianFigure`), becoming `inside` only on arrival
+  — it never teleports. The destination is a per-figure random point inside
+  the cell, so a crowd in one business **spreads across it** rather than
+  converging on one spot. Once inside it stays there.
 - Crowd persistence (MS-0MUZ6CGSV002WTYM): a street rebuild (e.g. a card being
   played) re-parents the layer around the **existing** figures
   (`attachToStreet`), keeping each figure's position, lane and mode; the crowd
