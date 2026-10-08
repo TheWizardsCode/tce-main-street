@@ -48,6 +48,7 @@ import {
   presentCompetitiveClosing,
   startCompetitiveDay,
 } from '../../src/scenes/MainStreetTurnControllerCompetitive';
+import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from '../../src/scenes/MainStreetAnimatorTiming';
 import {
   createCompetitiveState,
   setupMainStreetGame,
@@ -1031,11 +1032,8 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
     expect(completed).toBe(1);
   });
 
-  // Red-phase: the global fast-forward bound constant (MS-0MUYFXCJ5008K6MY)
-  // has not been authored yet. When the implementation adds
-  // `COMPETITIVE_CLOSING_MAX_TOTAL_MS` to `MainStreetAnimatorTiming.ts` and
-  // the competitive closing clamps seat delays to it, flip this to `it`.
-  it.fails(
+  // AC6 — global fast-forward bound constant (MS-0MUYFXCJ5008K6MY)
+  it(
     'AC6 — MainStreetAnimatorTiming exports a COMPETITIVE_CLOSING_MAX_TOTAL_MS bound',
     async () => {
       const timing = await import('../../src/scenes/MainStreetAnimatorTiming');
@@ -1044,6 +1042,48 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
       expect(maxTotal).toBeGreaterThan(0);
     },
   );
+
+  it('AC6 — an oversized roster is clamped to the global fast-forward bound', () => {
+    const delays: number[] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (_t: string) => {} },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (_phaseData: any[], options: any) => {
+          delays.push(options?.startDelayMs ?? 0);
+          clock.now = delays[delays.length - 1];
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    // 20 seats exceed the bound's capacity (180 s / 12 s = 15 staggered seats).
+    const seats: Array<[number, number]> = [];
+    for (let i = 0; i < 20; i++) seats.push([i, 10]);
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes(seats),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
+
+    // Every seat still gets its own choreography (none are skipped).
+    expect(delays).toHaveLength(20);
+    // Seats beyond the bound share the final bounded slot — total time capped.
+    expect(delays[15]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    expect(delays[19]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    expect(Math.max(...delays)).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    // The day still advances within the bound.
+    expect(completed).toBe(1);
+  });
 });
 
 /** Sums the presented per-slot income of a seat's phase breakdown. */

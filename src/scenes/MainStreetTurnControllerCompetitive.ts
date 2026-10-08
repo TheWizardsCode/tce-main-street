@@ -66,6 +66,7 @@ import {
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult } from '../MainStreetAdjacency';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -475,10 +476,16 @@ function presentPerSeatCompetitiveClosing(
     seats.forEach((seat, index) => {
       const phaseData = seat.income?.phaseBreakdown?.perSlotBreakdown ?? [];
       if (phaseData.length === 0) return;
+      // Clamp each seat's stagger delay to the global fast-forward bound so a
+      // very large roster cannot stall the game (AC6). Beyond the bound later
+      // seats start immediately and their choreographies overlap rather than
+      // queueing indefinitely; the day still advances.
+      const startDelayMs = Math.min(
+        index * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+        COMPETITIVE_CLOSING_MAX_TOTAL_MS,
+      );
       try {
-        s.msAnimator?.animateIncomePhases?.(phaseData, {
-          startDelayMs: index * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
-        });
+        s.msAnimator?.animateIncomePhases?.(phaseData, { startDelayMs });
       } catch {
         // presentation-only — never stall the closing on an animation failure
       }
@@ -488,10 +495,12 @@ function presentPerSeatCompetitiveClosing(
   // AC2/AC4: the shared incident reveal (once per shared day) and the day
   // advance are driven by the same primitive as single-player. The primitive's
   // shared income summary is suppressed (empty) because the per-seat lines
-  // above replace it (AC3).
+  // above replace it (AC3). No post-choreography hold is needed — the per-seat
+  // stagger already provides the pacing, so the day advances as soon as the
+  // last seat's choreography (and the incident reveal) completes (AC6).
   presentTurnClosing(tcCtx, result, onComplete, {
     completionText: 'End of turn complete.',
-    holdMs: COMPETITIVE_CLOSING_HOLD_MS,
+    holdMs: 0,
     incomeSummary: '',
   });
 }
