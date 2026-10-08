@@ -78,7 +78,7 @@ The shipped storylines are:
 | Labour Unrest (`storyline-labor`) | Service Workers Strike | General Strike |
 | Restaurant Renaissance (`storyline-restaurant`) | Popular Menu Item | Farm-to-Table Feature |
 
-Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export).
+Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export), `npm run storylines:graph:svg` (render the graph to a portable SVG).
 
 ### 1.2b Community Space Cards
 

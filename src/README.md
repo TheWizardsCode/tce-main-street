@@ -229,6 +229,7 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 > walkthrough — in [docs/main-street/storylines.md](../docs/main-street/storylines.md).
 > Tooling: `npm run validate:storylines` (static validator),
 > `npm run storylines:graph` (graph/manifest export),
+> `npm run storylines:graph:svg` (render the graph to SVG),
 > `npm run storylines:author` (safe authoring helper).
 
 All card template data is defined in a single CSV file:

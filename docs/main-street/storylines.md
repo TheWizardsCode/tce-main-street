@@ -247,6 +247,8 @@ All scripts run under `vite-node` because the card model imports
 | `npm run storylines:graph -- --format mermaid` | Regenerate `docs/main-street/storyline-graph.mmd` (choice cards as diamonds, `==>` for cycle edges). |
 | `npm run storylines:graph -- --format json` | Regenerate `docs/main-street/storyline-manifest.json` (validates against `schemas/main-street-storyline.schema.json`). |
 | `npm run storylines:graph -- --format json --check` | Drift guard: exit `1` when the committed artefact differs from `src/card-data.csv`. |
+| `npm run storylines:graph:svg` | Render the committed `storyline-graph.mmd` into `docs/main-street/storyline-graph.svg` (portable — viewable without a Mermaid renderer). |
+| `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when the committed SVG differs from a re-render of the committed `.mmd`. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
 
@@ -316,6 +318,13 @@ edit a fixture.
 
 ### 7.2 The shipped graph (documented chains)
 
+![The shipped storyline graph](./storyline-graph.svg)
+
+The image above is rendered from [`storyline-graph.mmd`](./storyline-graph.mmd) by
+`npm run storylines:graph:svg` and committed, so the graph is viewable without a
+Mermaid-aware renderer. Regenerate it whenever the `.mmd` changes (the SVG
+drift test fails otherwise).
+
 The doc-drift test parses the table below and compares it to
 `src/card-data.csv`. Keep it in sync with the shipped content.
 
@@ -347,6 +356,7 @@ Before committing a storyline change:
 - [ ] **Cycles are intentional** — a cycle is allowed, but confirm it is a designed recurring thread.
 - [ ] **`npm run validate:storylines` exits 0.**
 - [ ] **`npm run storylines:graph -- --format mermaid` and `--format json` are regenerated and committed** (the drift test fails otherwise).
+- [ ] **`npm run storylines:graph:svg` is regenerated and committed** when the graph changes (the SVG drift test fails otherwise).
 - [ ] **Balance** — run the Monte Carlo guardrail (`npm test`) if the change alters economy-affecting effects.
 - [ ] **Tests** — add/extend unit tests; the C1 regression harness must stay green.
 
@@ -403,7 +413,7 @@ Each is captured as a work item:
 | Priority | Idea | Work item |
 |----------|------|-----------|
 | Medium | Storyline coverage analytics in the Monte Carlo harness (firing frequency, chain depth, cycle counts, choice win-rate impact). | `MS-0MUNB4ZXQ0081EX7` |
-| Medium | Render the committed Mermaid graph to SVG in the docs build and link it here. | `MS-0MUNB54KU005084C` |
+| Done | Render the committed Mermaid graph to SVG in the docs build and link it here. Delivered by `MS-0MUNB54KU005084C` (see §7.2). | `MS-0MUNB54KU005084C` |
 | Low | Extend options with conditional/cost-gated effects (`StorylineOption` was designed to grow). | `MS-0MUNB58TK0025CB9` |
 | Low | Callback escape hatch: arbitrary `condition` / `successorResolver` callbacks on storyline options. | `MS-0MUPORT1Z000QX8N` |
 | Low | Visual storyline authoring editor backed by the manifest and the transactional author API. | `MS-0MUNB5D7K001GH19` |
@@ -416,6 +426,7 @@ Each is captured as a work item:
 - [`docs/main-street/content-design-and-progression.md`](./content-design-and-progression.md) — card inventory, economy and progression.
 - [`docs/main-street/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
 - [`docs/main-street/ai-strategy.md`](./ai-strategy.md) — AI strategy overview.
-- [`docs/main-street/storyline-graph.mmd`](./storyline-graph.mmd) — generated Mermaid graph.
+- [`docs/main-street/storyline-graph.mmd`](./storyline-graph.mmd) — generated Mermaid graph (source of truth).
+- [`docs/main-street/storyline-graph.svg`](./storyline-graph.svg) — rendered graph image (viewable without a Mermaid renderer).
 - [`docs/main-street/storyline-manifest.json`](./storyline-manifest.json) — generated manifest.
 - [`schemas/main-street-storyline.schema.json`](../../schemas/main-street-storyline.schema.json) — manifest JSON schema.
