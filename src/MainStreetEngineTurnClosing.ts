@@ -12,7 +12,7 @@ import { executeAction } from './MainStreetEngineActions';
 import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
-import { decideEventChoice, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
+import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
@@ -1054,8 +1054,9 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
     return true;
   }
 
+  const effectiveThreshold = effectiveWinThreshold(state);
   for (let i = 0; i < state.players.length; i++) {
-    if (state.players[i].score >= state.config.winThreshold) {
+    if (state.players[i].score >= effectiveThreshold) {
       const isHumanWin = i === humanIdx;
       // Endless mode: declare the first-to-threshold winner but pause with
       // the endless-continuation offer instead of ending the match.
@@ -1068,7 +1069,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
         state.competitiveWinnerId = i;
         addLog(
           state,
-          `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${state.players[i].score} pts) — enter endless mode to keep playing.`,
+          `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score}) — enter endless mode to keep playing.`,
           isHumanWin ? 'gain' : 'loss',
         );
         return true;
@@ -1078,7 +1079,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
       state.competitiveWinnerId = i;
       addLog(
         state,
-        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${state.players[i].score} pts)`,
+        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score})`,
         isHumanWin ? 'gain' : 'loss',
       );
       return true;

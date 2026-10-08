@@ -82,11 +82,16 @@ function setCompetitiveScores(state: MainStreetState, scores: number[]): void {
   updateCompetitiveScores(state);
 }
 
-/** A 2-seat competitive state with a small, easy-to-cross threshold. */
+/**
+ * A 2-seat competitive state with a small, easy-to-cross effective threshold.
+ *
+ * The base `threshold` is divided by `playerCount` (2) and rounded to the
+ * nearest 50 (MS-0MUZK64F8000XYO0): the default base 100 → effective 50.
+ */
 function competitiveState(
   seed: string,
   endlessMode: boolean,
-  threshold = 10,
+  threshold = 100,
 ): MainStreetState {
   const s = createCompetitiveState({ seed, playerCount: 2, endlessMode });
   s.config = { ...s.config, winThreshold: threshold };
@@ -279,7 +284,7 @@ describe('AC1 — Endless-mode opt-in flag', () => {
 describe('AC1 — Competitive first-to-threshold honours endlessMode', () => {
   it('defaults off so the competitive match still ends at the threshold', () => {
     const s = competitiveState('comp-default', false);
-    setCompetitiveScores(s, [12, 5]);
+    setCompetitiveScores(s, [60, 30]);
 
     const ended = checkCompetitiveEndConditions(s);
 
@@ -291,7 +296,7 @@ describe('AC1 — Competitive first-to-threshold honours endlessMode', () => {
 
   it('opens the continuation offer when the human wins the threshold', () => {
     const s = competitiveState('comp-human', true);
-    setCompetitiveScores(s, [12, 5]);
+    setCompetitiveScores(s, [60, 30]);
 
     const ended = checkCompetitiveEndConditions(s);
 
@@ -303,7 +308,7 @@ describe('AC1 — Competitive first-to-threshold honours endlessMode', () => {
 
   it('opens the continuation offer as a loss when an AI seat wins the threshold', () => {
     const s = competitiveState('comp-ai', true);
-    setCompetitiveScores(s, [5, 12]);
+    setCompetitiveScores(s, [30, 60]);
 
     const ended = checkCompetitiveEndConditions(s);
 
@@ -315,7 +320,7 @@ describe('AC1 — Competitive first-to-threshold honours endlessMode', () => {
 
   it('continueAfterThreshold resumes competitive play and never re-offers', () => {
     const s = competitiveState('comp-continue', true);
-    setCompetitiveScores(s, [12, 5]);
+    setCompetitiveScores(s, [60, 30]);
     checkCompetitiveEndConditions(s);
 
     expect(continueAfterThreshold(s)).toBe(true);
@@ -331,7 +336,7 @@ describe('AC1 — Competitive first-to-threshold honours endlessMode', () => {
 
   it('the competitive default path is unchanged when the flag is off', () => {
     const s = competitiveState('comp-off', false);
-    setCompetitiveScores(s, [5, 12]);
+    setCompetitiveScores(s, [30, 60]);
 
     const ended = checkCompetitiveEndConditions(s);
 
@@ -365,7 +370,7 @@ describe('AC2 — Deterministic replay of the endless-mode outcome', () => {
   it('same seed and same actions produce the same competitive outcome', () => {
     const build = (seed: string): MainStreetState => {
       const s = competitiveState(seed, true);
-      setCompetitiveScores(s, [12, 5]);
+      setCompetitiveScores(s, [60, 30]);
       checkCompetitiveEndConditions(s);
       continueAfterThreshold(s);
       return s;

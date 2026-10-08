@@ -55,6 +55,7 @@ export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
   computeScore,
   decideEventChoice,
+  effectiveWinThreshold,
   eventSeverity,
   projectEventCoinDelta,
   updateCompetitiveScores,

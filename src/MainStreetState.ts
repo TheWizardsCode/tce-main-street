@@ -56,6 +56,11 @@ export {
   syncResourceBankToLedger,
 } from './MainStreetStateLog';
 
+// ── Scoring ─────────────────────────────────────────────────
+export {
+  effectiveWinThreshold,
+} from './MainStreetEngineScoring';
+
 // ── Setup ───────────────────────────────────────────────────
 export {
   seedToNumber,

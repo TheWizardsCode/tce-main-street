@@ -34,6 +34,17 @@ function comp(seed = 'phase42', playerCount = 2): MainStreetState {
   return createCompetitiveState({ seed, playerCount });
 }
 
+/**
+ * Sets the base `winThreshold` so the effective competitive threshold
+ * for this state equals `effective` (MS-0MUZK64F8000XYO0).
+ *
+ * Effective = `round(base / playerCount / 50) * 50`.
+ */
+function setEffectiveThreshold(state: MainStreetState, effective: number): void {
+  const playerCount = state.playerCount ?? 1;
+  state.config = { ...state.config, winThreshold: effective * playerCount } as any;
+}
+
 function setScores(state: MainStreetState, scores: number[]): void {
   // score is derived as coins+rep+bonus; we set coins to achieve the desired
   // score with a small positive rep (so the per-seat reputation-collapse
@@ -209,9 +220,9 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
 describe('AC2 — First-to-threshold win', () => {
   it('first player reaching winThreshold wins and sets competitiveWinnerId', () => {
     const s = comp('ac2-first', 2);
-    s.config = { ...s.config, winThreshold: 10 } as any;
+    setEffectiveThreshold(s, 50);
     // P0 crosses, P1 does not
-    setScores(s, [12, 5]);
+    setScores(s, [60, 30]);
     const ended = checkCompetitiveEndConditions(s);
     expect(ended).toBe(true);
     expect(s.gameResult).toBe('win');
@@ -221,8 +232,8 @@ describe('AC2 — First-to-threshold win', () => {
 
   it('lowest index wins on tie when both cross in same EndCheck', () => {
     const s = comp('ac2-tie', 2);
-    s.config = { ...s.config, winThreshold: 10 } as any;
-    setScores(s, [15, 20]); // both cross, P1 higher but P0 should win
+    setEffectiveThreshold(s, 50);
+    setScores(s, [60, 80]); // both cross, P1 higher but P0 should win
     const ended = checkCompetitiveEndConditions(s);
     expect(ended).toBe(true);
     expect(s.competitiveWinnerId).toBe(0);
@@ -230,8 +241,8 @@ describe('AC2 — First-to-threshold win', () => {
 
   it('P1 wins when only P1 crosses threshold', () => {
     const s = comp('ac2-p1', 2);
-    s.config = { ...s.config, winThreshold: 10 } as any;
-    setScores(s, [5, 12]);
+    setEffectiveThreshold(s, 50);
+    setScores(s, [30, 60]);
     const ended = checkCompetitiveEndConditions(s);
     expect(ended).toBe(true);
     expect(s.competitiveWinnerId).toBe(1);
@@ -239,7 +250,7 @@ describe('AC2 — First-to-threshold win', () => {
 
   it('no win when no player reaches threshold', () => {
     const s = comp('ac2-none', 2);
-    s.config = { ...s.config, winThreshold: 100 } as any;
+    setEffectiveThreshold(s, 500); // base = 500 * 2 = 1000; effective = 500
     setScores(s, [10, 20]);
     const ended = checkCompetitiveEndConditions(s);
     expect(ended).toBe(false);
@@ -264,8 +275,8 @@ describe('AC2 — First-to-threshold win', () => {
 
   it('N=3 first-to-threshold respects index order', () => {
     const s = comp('ac2-n3', 3);
-    s.config = { ...s.config, winThreshold: 10 } as any;
-    setScores(s, [5, 11, 12]); // P1 and P2 cross, P1 should win
+    setEffectiveThreshold(s, 50);
+    setScores(s, [30, 55, 60]); // P1 and P2 cross, P1 should win
     const ended = checkCompetitiveEndConditions(s);
     expect(ended).toBe(true);
     expect(s.competitiveWinnerId).toBe(1);

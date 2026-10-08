@@ -16,12 +16,26 @@ import {
 } from './helpers/competitive-fixtures';
 import { checkEndConditions } from '../../src/MainStreetEngine';
 
+/**
+ * Effective competitive target used by these win-attribution tests
+ * (MS-0MUZK64F8000XYO0: win threshold = round(base / playerCount / 50) * 50).
+ */
+const EFFECTIVE_TARGET = 50;
+
+/**
+ * Base `winThreshold` that yields {@link EFFECTIVE_TARGET} after the
+ * per-player division and nearest-50 rounding for `playerCount` seats.
+ */
+function baseThreshold(playerCount: number): number {
+  return EFFECTIVE_TARGET * playerCount;
+}
+
 describe('AI threshold win → human sees loss (AC1)', () => {
   it('AI (seat 1) reaches threshold → gameResult is loss, winner is AI', () => {
     const state = buildHumanVsAis('ai-threshold-win', 1, [
-      [10, 1],    // human below threshold
-      [20, 10],   // AI above threshold
-    ], 15);
+      [10, 1],    // human below threshold (score 11)
+      [40, 20],   // AI above threshold (score 60)
+    ], baseThreshold(2));
 
     const result = evaluateEndConditions(state);
     expect(result.ended).toBe(true);
@@ -34,8 +48,8 @@ describe('AI threshold win → human sees loss (AC1)', () => {
     const state = buildHumanVsAis('ai-threshold-win-2ai', 2, [
       [10, 1],   // human below
       [5, 1],    // AI 1 below
-      [20, 10],  // AI 2 above
-    ], 15);
+      [40, 20],  // AI 2 above
+    ], baseThreshold(3));
 
     const result = evaluateEndConditions(state);
     expect(result.ended).toBe(true);
@@ -46,9 +60,9 @@ describe('AI threshold win → human sees loss (AC1)', () => {
 
   it('human reaches threshold → gameResult is win, winner is human', () => {
     const state = buildHumanVsAis('human-threshold-win', 1, [
-      [20, 10],   // human above threshold
+      [40, 20],   // human above threshold
       [10, 1],    // AI below threshold
-    ], 15);
+    ], baseThreshold(2));
 
     const result = evaluateEndConditions(state);
     expect(result.ended).toBe(true);
@@ -62,8 +76,8 @@ describe('AI threshold win → human sees loss (AC1)', () => {
       [5, 1],    // human below
       [5, 1],    // AI 1 below
       [5, 1],    // AI 2 below
-      [20, 10],  // AI 3 above
-    ], 15);
+      [40, 20],  // AI 3 above
+    ], baseThreshold(4));
 
     const result = evaluateEndConditions(state);
     expect(result.ended).toBe(true);
@@ -74,9 +88,9 @@ describe('AI threshold win → human sees loss (AC1)', () => {
 
   it('human wins tie (lowest index) → gameResult is win', () => {
     const state = buildHumanVsAis('human-tie-win', 1, [
-      [20, 5],   // human at tie level
-      [20, 5],   // AI at same level
-    ], 15);
+      [40, 20],   // human at tie level
+      [40, 20],   // AI at same level
+    ], baseThreshold(2));
 
     const result = evaluateEndConditions(state);
     expect(result.ended).toBe(true);
