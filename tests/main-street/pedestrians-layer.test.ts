@@ -4,8 +4,9 @@
  *
  * Covers the presentation-only road-walking layer:
  *  - `buildRoadNetwork` places intersections on the drawn road bands;
- *  - figures spawn at the block corners and walk along a road **lane** (offset
- *    from the centre-line), never down the middle;
+ *  - figures spawn spread around the four block-perimeter edges and walk
+ *    along a road **lane** (offset from the centre-line), never down the
+ *    middle;
  *  - `occupiedShops` only exposes occupied cells and `withinShopCapture`
  *    gates entry;
  *  - `stepPedestrianFigure` walks a figure deliberately into a shop (no
@@ -23,6 +24,7 @@ import { PEDESTRIAN_TEXTURE_KEY } from '../../src/scenes/MainStreetConstants';
 import { mapRoadBands, streetViewportRect } from '../../src/MainStreetMapView';
 import {
   MainStreetPedestrians,
+  PEDESTRIAN_SPAWN_EDGES,
   assignShopShoppers,
   buildRoadNetwork,
   createPresentationRng,
@@ -30,6 +32,7 @@ import {
   networkBounds,
   occupiedShops,
   pedestrianLaneOffset,
+  perimeterSpawnPoint,
   shouldRenderPedestrians,
   spawnPedestrianFigure,
   stepPedestrianFigure,
@@ -249,8 +252,8 @@ describe('buildRoadNetwork — intersections on the drawn roads', () => {
   });
 });
 
-describe('spawnPedestrianFigure — enters from a block corner', () => {
-  it('spawns near a corner node on a road lane, heading along a road', () => {
+describe('spawnPedestrianFigure — enters on a road lane', () => {
+  it('spawns on a road lane, heading along a road', () => {
     const network = buildRoadNetwork(LAYOUT, LATTICE);
     const rng = createPresentationRng(7);
     const laneOffset = pedestrianLaneOffset(LAYOUT);
@@ -297,7 +300,11 @@ describe('stepPedestrianFigure — road-lane walking', () => {
     const network = buildRoadNetwork(LAYOUT, LATTICE);
     const laneOffset = pedestrianLaneOffset(LAYOUT);
     const rng = createPresentationRng(99);
-    const walker = spawnPedestrianFigure(network, LAYOUT, rng);
+    // Start on the long top segment's lane, heading right, so the walker stays
+    // on one road segment for the whole run (spawn geometry is covered by the
+    // balanced-distribution tests below).
+    const start = network.nodes[0];
+    const walker = figure({ x: start.x, y: start.y + laneOffset, from: 0, target: 1, lane: 1 });
     for (let i = 0; i < 500; i++) {
       stepPedestrianFigure(walker, network, [], LAYOUT, 0.05, rng);
       expect(walker.mode).toBe('walking');
@@ -442,7 +449,16 @@ describe('nearest occupied cell targeting (MS-0MUZ9O1I00088JF2)', () => {
       LATTICE,
       LATTICE,
     );
-    const walker = spawnPedestrianFigure(network, LAYOUT, createPresentationRng(6));
+    const withNear = occupiedShops(
+      [{ name: 'A' }, null, null, null, { name: 'B' }, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+    const nearShop = withNear.find((shop) => shop.slotIndex === 0) as (typeof withNear)[number];
+    // An explicit walker near the cell that will be filled, so the retarget
+    // assertion is independent of the (evenly distributed) spawn geometry.
+    const walker = figure({ x: nearShop.x + 5, y: nearShop.y, target: 0, from: 0, lane: 1 });
     const rng = createPresentationRng(23);
 
     // Only the far cell exists — the figure heads for it.
@@ -450,12 +466,6 @@ describe('nearest occupied cell targeting (MS-0MUZ9O1I00088JF2)', () => {
     expect(walker.shopIndex).toBe(4);
 
     // A nearer cell is filled during the turn: the figure retargets to it.
-    const withNear = occupiedShops(
-      [{ name: 'A' }, null, null, null, { name: 'B' }, null, null, null, null, null],
-      LAYOUT,
-      LATTICE,
-      LATTICE,
-    );
     stepPedestrianFigure(walker, network, withNear, LAYOUT, 0.05, rng);
     expect(walker.shopIndex).toBe(0);
   });
@@ -547,6 +557,158 @@ describe('createPresentationRng — presentation-local determinism', () => {
     for (let i = 0; i < 50; i++) rng();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe('balanced perimeter spawn distribution (MS-0MUZH6P0M00443G0)', () => {
+  const EDGES = PEDESTRIAN_SPAWN_EDGES;
+
+  /** Distance from a point to its nearest block-corner node. */
+  const distanceToNearestCorner = (
+    network: ReturnType<typeof buildRoadNetwork>,
+    position: { x: number; y: number },
+  ): number =>
+    Math.min(
+      ...network.corners.map((corner) =>
+        Math.hypot(
+          network.nodes[corner].x - position.x,
+          network.nodes[corner].y - position.y,
+        ),
+      ),
+    );
+
+  it('covers all four edges and includes non-corner origins across a seeded run', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(1234);
+    const edges = new Set<string>();
+    const total = 40;
+    let nonCorner = 0;
+
+    for (let i = 0; i < total; i++) {
+      const spawned = spawnPedestrianFigure(network, LAYOUT, rng, i);
+      expect(spawned.mode).toBe('walking');
+      expect(spawned.spawnEdge).toBeDefined();
+      edges.add(spawned.spawnEdge as string);
+      if (distanceToNearestCorner(network, spawned) > 50) nonCorner += 1;
+      // Still on a road lane, heading along a valid road segment.
+      expect(onRoad(spawned.x, spawned.y)).toBe(true);
+      expect(
+        laneDistanceForTravel(spawned.x, spawned.y, network, spawned.from, spawned.target),
+      ).toBeCloseTo(pedestrianLaneOffset(LAYOUT), 3);
+    }
+
+    expect([...edges].sort()).toEqual([...EDGES].sort());
+    // Most figures originate part-way along an edge, not at a corner node.
+    expect(nonCorner).toBeGreaterThanOrEqual(total / 4);
+  });
+
+  it('keeps the per-edge share balanced (stratified round-robin)', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(77);
+    const total = 40;
+    const counts = new Map<string, number>();
+
+    for (let i = 0; i < total; i++) {
+      const edge = spawnPedestrianFigure(network, LAYOUT, rng, i).spawnEdge as string;
+      counts.set(edge, (counts.get(edge) ?? 0) + 1);
+    }
+
+    for (const edge of EDGES) expect(counts.get(edge) ?? 0).toBe(total / 4);
+  });
+
+  it('keeps the per-edge share within one of an equal share for a non-multiple run', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(555);
+    const total = 42;
+    const counts = new Map<string, number>();
+
+    for (let i = 0; i < total; i++) {
+      const edge = spawnPedestrianFigure(network, LAYOUT, rng, i).spawnEdge as string;
+      counts.set(edge, (counts.get(edge) ?? 0) + 1);
+    }
+
+    for (const edge of EDGES) {
+      expect(Math.abs((counts.get(edge) ?? 0) - total / 4)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('emits mid-edge spawn points on valid adjacent perimeter nodes', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(9);
+    const points = Array.from({ length: 40 }, (_, i) =>
+      perimeterSpawnPoint(network, LAYOUT, rng, i),
+    );
+
+    for (const point of points) {
+      expect(point).not.toBeNull();
+      const spawn = point as NonNullable<typeof point>;
+      expect(EDGES).toContain(spawn.edge);
+      expect(spawn.from).not.toBe(spawn.target);
+      expect(network.adjacency[spawn.from]).toContain(spawn.target);
+      expect(onRoad(spawn.x, spawn.y)).toBe(true);
+    }
+
+    const midEdge = points.filter(
+      (point) => distanceToNearestCorner(network, point as NonNullable<typeof point>) >= 50,
+    );
+    expect(midEdge.length).toBeGreaterThan(0);
+  });
+
+  it('spreads an evenly distributed crowd across more than one occupied business', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const grid: Array<unknown> = [
+      { name: 'Left' },
+      null,
+      null,
+      null,
+      { name: 'Right' },
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    const shops = occupiedShops(grid, LAYOUT, LATTICE, LATTICE);
+    const spawnRng = createPresentationRng(4242);
+    const figures = Array.from({ length: 24 }, (_, i) =>
+      spawnPedestrianFigure(network, LAYOUT, spawnRng, i),
+    );
+
+    // Even entry spread means the crowd does not all target the same shop.
+    const initialTargets = new Set(
+      figures.map((figure) => nearestShop(figure, shops)?.slotIndex ?? -1),
+    );
+    expect(initialTargets.size).toBeGreaterThanOrEqual(2);
+
+    const stepRng = createPresentationRng(99);
+    for (let frame = 0; frame < 2000; frame++) {
+      for (const figure of figures) {
+        if (figure.mode === 'walking' || figure.mode === 'entering') {
+          stepPedestrianFigure(figure, network, shops, LAYOUT, 0.05, stepRng);
+        }
+      }
+    }
+
+    const occupied = new Set(
+      figures.filter((figure) => figure.mode === 'inside').map((figure) => figure.shopIndex),
+    );
+    expect(occupied.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('uses the stratified perimeter for mid-turn population gains', () => {
+    const scene = createMockScene();
+    const layer = new MainStreetPedestrians(scene, createPresentationRng(31));
+    layer.setPopulation(2);
+    layer.update(16);
+    const before = layer.getFigureSnapshot();
+
+    layer.setPopulation(6);
+    layer.update(16);
+    const gained = layer.getFigureSnapshot().slice(before.length);
+
+    expect(gained).toHaveLength(4);
+    expect(new Set(gained.map((fig) => fig.spawnEdge)).size).toBe(4);
+    for (const fig of gained) expect(onRoad(fig.x, fig.y)).toBe(true);
   });
 });
 
@@ -677,18 +839,16 @@ describe('MainStreetPedestrians — Phaser adapter', () => {
     expect(finalModes.filter((m) => m === 'inside').length).toBeGreaterThanOrEqual(2);
     expect(layer.getFigureCount()).toBeLessThan(8);
 
-    // A new turn clears the leftovers and spawns a fresh corner crowd.
+    // A new turn clears the leftovers and spawns a fresh crowd spread around
+    // the block perimeter (not clustered at the four corners).
     layer.startNewTurn();
     expect(layer.getFigureCount()).toBe(8);
-    const network = layer.getRoadNetwork();
-    for (const position of layer.getFigurePositions()) {
-      const nearCorner = network.corners.some(
-        (c) =>
-          Math.abs(network.nodes[c].x - position.x) <= pedestrianLaneOffset(LAYOUT) + 2 &&
-          Math.abs(network.nodes[c].y - position.y) <= pedestrianLaneOffset(LAYOUT) + 2,
-      );
-      expect(nearCorner).toBe(true);
+    const snapshot = layer.getFigureSnapshot();
+    for (const fig of snapshot) {
+      expect(fig.spawnEdge).not.toBeNull();
+      expect(onRoad(fig.x, fig.y)).toBe(true);
     }
+    expect(new Set(snapshot.map((fig) => fig.spawnEdge)).size).toBeGreaterThanOrEqual(2);
   });
 
   it('sources reputation coins from a figure inside the target shop', () => {

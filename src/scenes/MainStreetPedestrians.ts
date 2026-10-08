@@ -13,8 +13,8 @@
  *  - at the end of the turn the crowd does not vanish: figures that are not
  *    spending walk **off the block** (off-screen) during the end phase, while
  *    enough figures walk into occupied shops to source the reputation income;
- *  - a fresh set wanders onto the street from the four block corners at the
- *    start of the next turn;
+ *  - a fresh set enters spread evenly around the four edges of the block
+ *    perimeter at the start of the next turn;
  *  - the crowd persists across a street rebuild (a card being played), keeping
  *    each figure's position, lane and mode.
  *
@@ -89,6 +89,21 @@ export function pedestrianLaneOffset(layout: SceneLayout): number {
   const half = PEDESTRIAN_SILHOUETTE_W / 2;
   return Math.max(0, band / 2 - half - 2);
 }
+
+// ── Pure helper: balanced perimeter spawn ──────────────────────────
+
+/**
+ * The four sides of the road-network perimeter, in the order spawns are
+ * cycled across them.
+ *
+ * Spawning is stratified by edge (round-robin on the spawn ordinal) so a
+ * crowd enters spread evenly around the block instead of clustering at the
+ * four corners (MS-0MUZH6P0M00443G0).
+ */
+export const PEDESTRIAN_SPAWN_EDGES = ['top', 'right', 'bottom', 'left'] as const;
+
+/** One edge of the road-network perimeter. */
+export type PedestrianSpawnEdge = (typeof PEDESTRIAN_SPAWN_EDGES)[number];
 
 // ── Pure helper: population count ──────────────────────────────────
 
@@ -439,6 +454,8 @@ export interface PedestrianFigure {
   destY: number;
   /** Current bob phase, in radians. */
   bobPhase: number;
+  /** Perimeter edge the figure entered from (MS-0MUZH6P0M00443G0). */
+  spawnEdge?: PedestrianSpawnEdge;
 }
 
 /** Clamp a value into `[min, max]`. */
@@ -512,20 +529,126 @@ function moveToward(
 }
 
 /**
- * Spawn a pedestrian at a block corner, on a road lane, heading onto the
- * street. Uses only the supplied RNG (presentation-local by contract).
+ * A spawn positioned along one edge of the road-network perimeter. `from`
+ * and `target` are the adjacent perimeter nodes bounding the spawn segment,
+ * so the figure is heading along a valid road (never across a business cell).
+ */
+export interface PedestrianSpawn {
+  edge: PedestrianSpawnEdge;
+  from: number;
+  target: number;
+  lane: number;
+  x: number;
+  y: number;
+}
+
+/** The node-grid index on a `cols`-wide lattice. */
+function gridNodeIndex(cols: number, i: number, j: number): number {
+  return j * cols + i;
+}
+
+/**
+ * The node indices along one perimeter edge of the road network, ordered
+ * along that edge. The block-corner nodes are the shared endpoints of
+ * adjacent edges; interior entries are the mid-edge intersections.
+ */
+export function perimeterEdgeNodes(
+  network: RoadNetwork,
+  edge: PedestrianSpawnEdge,
+): number[] {
+  const { cols, rows } = network;
+  if (cols <= 0 || rows <= 0) return [];
+  const nodes: number[] = [];
+  switch (edge) {
+    case 'top':
+      for (let i = 0; i < cols; i++) nodes.push(gridNodeIndex(cols, i, 0));
+      break;
+    case 'bottom':
+      for (let i = 0; i < cols; i++) nodes.push(gridNodeIndex(cols, i, rows - 1));
+      break;
+    case 'left':
+      for (let j = 0; j < rows; j++) nodes.push(gridNodeIndex(cols, 0, j));
+      break;
+    case 'right':
+      for (let j = 0; j < rows; j++) nodes.push(gridNodeIndex(cols, cols - 1, j));
+      break;
+  }
+  return nodes.filter((index) => index >= 0 && index < network.nodes.length);
+}
+
+/** Wrap an ordinal into `[0, length)`, tolerating non-finite input. */
+function wrapIndex(value: number, length: number): number {
+  if (!Number.isFinite(value) || length <= 0) return 0;
+  const floored = Math.floor(value) % length;
+  return floored < 0 ? floored + length : floored;
+}
+
+/**
+ * Choose a spawn point distributed along the four edges of the road-network
+ * perimeter.
+ *
+ * The edge is chosen by a stratified round-robin on `spawnOrdinal` — so
+ * consecutive spawns cycle top → right → bottom → left and the crowd stays
+ * balanced — and the position is a random point along a random segment of
+ * that edge, on a road lane and heading along a valid road segment. Because
+ * the position is interpolated along the segment (not snapped to a node),
+ * mid-edge origins are produced, not just the four corners.
+ *
+ * Pure and presentation-local: consumes only the supplied RNG. Returns `null`
+ * for a degenerate network with no walkable perimeter.
+ */
+export function perimeterSpawnPoint(
+  network: RoadNetwork,
+  layout: SceneLayout | null | undefined,
+  rng: () => number,
+  spawnOrdinal = 0,
+): PedestrianSpawn | null {
+  if (network.nodes.length === 0) return null;
+  const edge = PEDESTRIAN_SPAWN_EDGES[wrapIndex(spawnOrdinal, PEDESTRIAN_SPAWN_EDGES.length)];
+  const edgeNodes = perimeterEdgeNodes(network, edge);
+  if (edgeNodes.length < 2) return null;
+
+  const segmentCount = edgeNodes.length - 1;
+  const segment = Math.min(segmentCount - 1, Math.floor(sample01(rng) * segmentCount));
+  const a = edgeNodes[segment];
+  const b = edgeNodes[segment + 1];
+
+  // Either travel direction along the segment is valid.
+  const forward = sample01(rng) < 0.5;
+  const from = forward ? a : b;
+  const target = forward ? b : a;
+  const lane = sample01(rng) < 0.5 ? -1 : 1;
+  const t = sample01(rng);
+
+  const nodeA = network.nodes[a];
+  const nodeB = network.nodes[b];
+  const baseX = nodeA.x + (nodeB.x - nodeA.x) * t;
+  const baseY = nodeA.y + (nodeB.y - nodeA.y) * t;
+  const dir = direction(network.nodes[from], network.nodes[target]);
+  const laneOffset = layout ? pedestrianLaneOffset(layout) : 0;
+  const at = lanePoint({ x: baseX, y: baseY }, dir, laneOffset, lane);
+
+  return { edge, from, target, lane, x: at.x, y: at.y };
+}
+
+/**
+ * Spawn a pedestrian on a road lane, spread around the block perimeter,
+ * heading onto the street. Uses only the supplied RNG (presentation-local by
+ * contract). `spawnOrdinal` stratifies the spawn across the four perimeter
+ * edges so the crowd stays evenly distributed (MS-0MUZH6P0M00443G0).
  */
 export function spawnPedestrianFigure(
   network: RoadNetwork,
   layout: SceneLayout | null | undefined,
   rng: () => number,
+  spawnOrdinal = 0,
 ): PedestrianFigure {
   const figure: PedestrianFigure = {
     x: 0,
     y: 0,
     target: -1,
     from: -1,
-    lane: sample01(rng) < 0.5 ? -1 : 1,
+    lane: 1,
     mode: 'walking',
     shopIndex: null,
     destX: 0,
@@ -534,6 +657,18 @@ export function spawnPedestrianFigure(
   };
   if (network.nodes.length === 0) return figure;
 
+  const spawn = perimeterSpawnPoint(network, layout, rng, spawnOrdinal);
+  if (spawn) {
+    figure.from = spawn.from;
+    figure.target = spawn.target;
+    figure.lane = spawn.lane;
+    figure.x = spawn.x;
+    figure.y = spawn.y;
+    figure.spawnEdge = spawn.edge;
+    return figure;
+  }
+
+  // Degenerate-network fallback: a corner spawn (kept for robustness).
   const start =
     pick(network.corners, rng) ??
     network.adjacency.findIndex((neighbours) => neighbours.length > 0);
@@ -541,7 +676,6 @@ export function spawnPedestrianFigure(
   const neighbour = pick(network.adjacency[startIndex] ?? [], rng) ?? startIndex;
   figure.from = startIndex;
   figure.target = neighbour;
-
   const laneOffset = layout ? pedestrianLaneOffset(layout) : 0;
   const dir = direction(network.nodes[startIndex], network.nodes[neighbour]);
   const at = lanePoint(network.nodes[startIndex], dir, laneOffset, figure.lane);
@@ -840,7 +974,7 @@ export class MainStreetPedestrians {
       parent.add(this.container);
       this.networkCache = this.computeNetwork();
       if (this.figures.length === 0 && this.targetCount > 0) {
-        // First creation (or after a full reset): spawn from the corners.
+        // First creation (or after a full reset): spawn around the perimeter.
         this.spawnToTarget(this.targetCount);
       } else {
         // Rebuild: recreate images at the figures' current positions.
@@ -852,8 +986,9 @@ export class MainStreetPedestrians {
   }
 
   /**
-   * Clear the crowd and spawn a fresh set from the block corners. Called at
-   * the start of a new turn, after the previous turn's crowd has walked off.
+   * Clear the crowd and spawn a fresh set spread around the block perimeter.
+   * Called at the start of a new turn, after the previous turn's crowd has
+   * walked off.
    */
   public startNewTurn(): void {
     try {
@@ -995,6 +1130,7 @@ export class MainStreetPedestrians {
     from: number;
     target: number;
     shopIndex: number | null;
+    spawnEdge: PedestrianSpawnEdge | null;
   }> {
     return this.figures.map((figure) => ({
       x: figure.x,
@@ -1004,6 +1140,7 @@ export class MainStreetPedestrians {
       from: figure.from,
       target: figure.target,
       shopIndex: figure.shopIndex,
+      spawnEdge: figure.spawnEdge ?? null,
     }));
   }
 
@@ -1139,7 +1276,9 @@ export class MainStreetPedestrians {
 
     const layout = this.scene?.layout as SceneLayout | undefined;
     while (this.figures.length < target) {
-      const figure = spawnPedestrianFigure(network, layout, this.rng);
+      // The running length drives the stratified perimeter edge, so mid-turn
+      // gains continue the balanced distribution (MS-0MUZH6P0M00443G0).
+      const figure = spawnPedestrianFigure(network, layout, this.rng, this.figures.length);
       const image = this.addFigureImage(figure);
       this.figures.push(figure);
       this.images.push(image);
@@ -1154,7 +1293,7 @@ export class MainStreetPedestrians {
     this.networkCache = network;
     const layout = this.scene?.layout as SceneLayout | undefined;
     for (let i = 0; i < target; i++) {
-      const figure = spawnPedestrianFigure(network, layout, this.rng);
+      const figure = spawnPedestrianFigure(network, layout, this.rng, i);
       const image = this.addFigureImage(figure);
       this.figures.push(figure);
       this.images.push(image);

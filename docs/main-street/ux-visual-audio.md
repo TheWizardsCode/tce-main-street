@@ -200,14 +200,28 @@ void popTextOrIcon({
   `pedestrianCount(reputation)`. Gains fade a figure in and losses fade a
   figure out (`PEDESTRIAN_FADE_MS`), and reconciliation is delta-only
   (retained figures keep their identity — the layer never rebuilds). New
-  figures always enter from a block corner.
+  figures enter spread around the block perimeter (see below).
+- Balanced entry distribution (MS-0MUZH6P0M00443G0): figures no longer enter
+  only at the four block corners. `spawnPedestrianFigure` places each figure
+  with `perimeterSpawnPoint`, which cycles the four sides of the road-network
+  perimeter (`PEDESTRIAN_SPAWN_EDGES`: top → right → bottom → left) via a
+  stratified round-robin on the spawn ordinal, then picks a random segment of
+  that edge and a random position along it — including **mid-edge** positions.
+  The ordinal is the running crowd size, so the distribution stays balanced on
+  every spawn path: initial creation, `startNewTurn()` respawn, and mid-turn
+  population reconciliation (`setPopulation` gains / `reconcile`). The position
+  is interpolated along the edge's road lane, so every spawn still starts on a
+  road lane heading along a valid road segment, and figures still seek the
+  nearest occupied cell (`nearestShop`) — an evenly spread entry therefore
+  yields a crowd spread across the shops rather than clustered in one.
 - Turn lifecycle (MS-0MUZ4WB290024ZGQ, polished by MS-0MUZ6CGSV002WTYM): at the
   end of the turn `MainStreetPedestrians.beginEndOfTurn()` sends every
   non-shopping figure **walking off the block** (`directFigureOffBlock`, removed
   once clear) rather than vanishing in place, while enough figures walk into
   occupied shops. At the start of the new turn (`startTurnPhase`)
-  `startNewTurn()` clears any leftovers and spawns a fresh set that wanders
-  onto the street from the four corners of the block (`network.corners`).
+  `startNewTurn()` clears any leftovers and spawns a fresh set spread around
+  the four edges of the block perimeter (`perimeterSpawnPoint`,
+  `PEDESTRIAN_SPAWN_EDGES`) rather than only at the corners (`network.corners`).
 - Reputation income conversion (MS-0MUYGFWXK003QFYB, reworked by
   MS-0MUZ4WB290024ZGQ / MS-0MUZ6CGSV002WTYM): the phased income show's
   `reputation` phase no longer starts its coin flight at the HUD reputation
