@@ -476,7 +476,7 @@ M2 introduces two new upgrade mechanics that deepen progression decisions:
 | Cinema | IMAX (+200/+1) | Drive-In (+100/+2) | Income vs. range |
 | Day Spa | Resort Spa (+200/+1) | Wellness Center (+100/+2) | Income vs. range |
 
-**Multi-Level Upgrades** — Four Level-2 upgrades require the target business to already be at Level 1 (`requiredLevel: 1`). These apply after any Level-1 path (standard or branching), creating 2-step upgrade chains. The multi-level upgrades are the most expensive and powerful cards in the pool (cost 500-600, income +200 to +300).
+**Multi-Level Upgrades** — Four Level-2 upgrades require the target business to already be at Level 1 (`requiredLevel: 1`). These apply after any Level-1 path (standard or branching), creating 2-step upgrade chains. The multi-level upgrades are the most expensive and powerful cards in the pool (cost 900–1400, income +350 to +700). Their reachability in the canonical greedy Monte Carlo profile is supported by the per-card upgrade-deck draw weight documented in [balancing-methodology.md](balancing-methodology.md#upgrade-deck-draw-weight--level-2-capstone-reachability-ms-0muyk08i1004i19w); the level gate itself is unchanged (US-19).
 
 ### Running the Monte Carlo Balance Sweep
 
