@@ -69,6 +69,11 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
 
     s.refreshAll();
 
+    // A new turn begins: clear the previous crowd and let a fresh set wander
+    // onto the street from the block corners (MS-0MUZ4WB290024ZGQ).
+    // Presentation-only; a failure must never stall the turn.
+    try { s.msPedestrians?.startNewTurn?.(); } catch (_) { /* presentation-only */ }
+
     // Day transition banner: non-interactive "Week W · Year Y" reveal at the board
     // centre (skipped under reduced motion / replay — handled inside the
     // animator). Skipped while the tutorial is active (its step overlays

@@ -133,6 +133,23 @@ export const PEDESTRIAN_TEXTURE_KEY = 'ms-pedestrian-silhouette';
  * (MS-0MUYGFWKG008GUA5).
  */
 export const PEDESTRIAN_FADE_MS = 220;
+/**
+ * Extra capture margin (map-local px) around a business cell within which a
+ * road-walking pedestrian may decide to step off the road and enter the shop
+ * (MS-0MUZ4WB290024ZGQ).
+ */
+export const PEDESTRIAN_SHOP_CAPTURE_PAD = 4;
+/**
+ * Probability per second that a pedestrian in range of an occupied business
+ * cell enters it to spend money (MS-0MUZ4WB290024ZGQ). Presentation-only.
+ */
+export const PEDESTRIAN_SHOP_ENTRY_RATE = 0.35;
+/**
+ * Minimum fraction of the live crowd that must be inside occupied cells by
+ * the reputation income phase (MS-0MUZ4WB290024ZGQ). Enforced
+ * deterministically at phase time; presentation-only.
+ */
+export const PEDESTRIAN_MIN_SHOP_RATIO = 0.25;
 // Make hand slot match placeholder size as requested
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;

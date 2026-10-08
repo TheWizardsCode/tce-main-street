@@ -29,19 +29,24 @@ counter, and a final `+total` pop lands when collection completes. See
 
 ## Ambient street pedestrians (reputation crowd)
 
-`MainStreetPedestrians` (MS-0MTV9AS15004AC1E) renders a presentation-only
-crowd of small solid-colour silhouettes over the street band. The population
-is a pure function of reputation (`pedestrianCount`, 1 figure per 50,
-uncapped, `#88bbff`); the crowd tracks the HUD reputation value live (fade
-in/out) and, during the phased income show, the `reputation` phase dissolves
-the on-street figures into the coin stream that lands in each business's coin
-grid (`dissolveIntoCoins`, street-anchor fallback when no figures are on
-screen — never the HUD counter). One runtime-generated texture is shared by
-every figure. See `docs/main-street/ux-visual-audio.md` for the design notes.
+`MainStreetPedestrians` (MS-0MTV9AS15004AC1E, reworked MS-0MUZ4WB290024ZGQ)
+renders a presentation-only crowd of small solid-colour silhouettes that walk
+the road bands between and around the street cells. The population is a pure
+function of reputation (`pedestrianCount`, 1 figure per 50, uncapped,
+`#88bbff`); the crowd tracks the HUD reputation value live (fade in/out), a
+figure may step off the road into an **occupied** business cell (where it
+stays), and at the start of each turn the crowd clears and a fresh set enters
+from the block corners. During the phased income show, the `reputation` phase
+first guarantees at least 25% of the crowd is inside occupied cells, then
+dissolves the in-shop figures into the coin stream that lands in each
+business's coin grid (`dissolveIntoCoins`, street-anchor fallback when no
+shops/figures — never the HUD counter). One runtime-generated texture is
+shared by every figure. See `docs/main-street/ux-visual-audio.md` for the
+design notes.
 
 - Presentation-only: never mutates state/transcript; every method is
   defensive.
-- No gameplay RNG: wander motion uses a module-local seeded PRNG.
+- No gameplay RNG: road-walk randomness uses a module-local seeded PRNG.
 - Reduced motion: no pedestrians or flights; replay/headless renders nothing.
 
 ## Incident reveal presentation

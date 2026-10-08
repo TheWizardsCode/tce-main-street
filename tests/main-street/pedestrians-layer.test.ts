@@ -1,17 +1,20 @@
 /**
- * Ambient pedestrian silhouette layer — unit tests (MS-0MUYGFW7T00579Z1)
+ * Ambient pedestrian silhouette layer — unit tests (MS-0MUYGFW7T00579Z1,
+ * reworked by MS-0MUZ4WB290024ZGQ).
  *
- * Covers the presentation-only wander layer:
- *  - `pedestrianWanderBounds` keeps the crowd over the street band and inside
- *    the playfield (never over the market/HUD chrome);
+ * Covers the presentation-only road-walking layer:
+ *  - `buildRoadNetwork` places intersections on the drawn road bands;
+ *  - figures spawn at the block corners and walk along road segments;
+ *  - `occupiedShops` only exposes occupied cells and `withinShopCapture`
+ *    gates entry;
+ *  - `stepPedestrianFigure` keeps walking figures on a road, enters an
+ *    occupied shop and then keeps the figure there;
+ *  - `forceShopOccupancy` guarantees the reputation-phase minimum;
  *  - the module-local seeded presentation PRNG is deterministic and never
  *    touches `Math.random`/gameplay RNG;
- *  - `stepPedestrianFigure` reflects off the bounds and clamps long frames;
  *  - the Phaser adapter reconciles (add/remove the delta only), parents to the
- *    street container, generates one shared texture, and moves figures on
- *    update;
- *  - Reduced Motion and replay/headless modes render nothing;
- *  - every method is defensive — a throwing scene can never propagate.
+ *    street container, generates one shared texture, moves figures on update,
+ *    resets the crowd at turn start, and is defensive throughout.
  *
  * @module
  */
@@ -20,18 +23,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import type { SceneLayout } from '../../src/scenes/MainStreetConstants';
 import { PEDESTRIAN_TEXTURE_KEY } from '../../src/scenes/MainStreetConstants';
-import { streetViewportRect } from '../../src/MainStreetMapView';
+import { mapRoadBands, streetViewportRect } from '../../src/MainStreetMapView';
 import {
   MainStreetPedestrians,
+  buildRoadNetwork,
   createPresentationRng,
-  pedestrianWanderBounds,
+  forceShopOccupancy,
+  networkBounds,
+  occupiedShops,
   shouldRenderPedestrians,
   spawnPedestrianFigure,
   stepPedestrianFigure,
-  type PedestrianBounds,
+  withinShopCapture,
+  type PedestrianFigure,
 } from '../../src/scenes/MainStreetPedestrians';
 
-/** A minimal layout with the street-geometry fields the bounds maths reads. */
+/** A minimal layout with the street-geometry fields the road maths reads. */
 const LAYOUT = {
   gameW: 1280,
   gameH: 720,
@@ -46,6 +53,25 @@ const LAYOUT = {
   streetCols: 5,
 } as unknown as SceneLayout;
 
+const LATTICE = { cols: 1, rows: 1 } as const;
+
+/** True when a map-local point lies inside one of the drawn road bands. */
+function onRoad(x: number, y: number): boolean {
+  return mapRoadBands(LAYOUT, LATTICE).some(
+    (band) => x >= band.x && x <= band.x + band.w && y >= band.y && y <= band.y + band.h,
+  );
+}
+
+function figure(overrides: Partial<PedestrianFigure> = {}): PedestrianFigure {
+  return { x: 0, y: 0, target: -1, from: -1, shopIndex: null, bobPhase: 0, ...overrides };
+}
+
+/** Deterministic RNG stub returning a fixed repeating sequence. */
+function fixedRng(values: number[]): () => number {
+  let i = 0;
+  return () => values[i++ % values.length];
+}
+
 interface MockImage {
   x: number;
   y: number;
@@ -53,6 +79,7 @@ interface MockImage {
   setOrigin: ReturnType<typeof vi.fn>;
   setDepth: ReturnType<typeof vi.fn>;
   setPosition: ReturnType<typeof vi.fn>;
+  setAlpha: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
 }
 
@@ -91,17 +118,20 @@ interface MockScene {
   replayMode: boolean;
   settingsPanel: { reducedMotion: boolean } | null;
   streetContainer: MockContainer;
-  streetChildCount: number;
+  state: { streetGrid: Array<unknown> | undefined };
   images: MockImage[];
   textures: { exists: (key: string) => boolean };
   generatedTextures: string[];
-  graphicsCreated: number;
   getStreetContainer: () => MockContainer;
+  getStreetViewLattice: () => { cols: number; rows: number };
+  streetPlayableLattice: { cols: number; rows: number };
   add: {
     container: ReturnType<typeof vi.fn>;
     image: ReturnType<typeof vi.fn>;
     graphics: ReturnType<typeof vi.fn>;
   };
+  /** Omitted by default so fade-out destroys immediately (no tween manager). */
+  tweens?: { add: ReturnType<typeof vi.fn> };
 }
 
 function createMockScene(overrides: Partial<MockScene> = {}): MockScene {
@@ -115,12 +145,13 @@ function createMockScene(overrides: Partial<MockScene> = {}): MockScene {
     replayMode: false,
     settingsPanel: { reducedMotion: false },
     streetContainer,
-    streetChildCount: 0,
+    state: { streetGrid: Array.from({ length: 10 }, () => null) },
     images,
     textures: textureApi,
     generatedTextures,
-    graphicsCreated: 0,
     getStreetContainer: () => streetContainer,
+    getStreetViewLattice: () => ({ cols: 1, rows: 1 }),
+    streetPlayableLattice: { cols: 1, rows: 1 },
     add: {
       container: vi.fn(() => makeContainer()),
       image: vi.fn((x: number, y: number, textureKey: string) => {
@@ -135,59 +166,180 @@ function createMockScene(overrides: Partial<MockScene> = {}): MockScene {
             this.y = ny;
             return this;
           }),
+          setAlpha: vi.fn().mockReturnThis(),
           destroy: vi.fn(),
         };
         images.push(image);
         return image;
       }),
-      graphics: vi.fn(() => {
-        scene.graphicsCreated += 1;
-        return {
-          fillStyle: vi.fn().mockReturnThis(),
-          fillCircle: vi.fn().mockReturnThis(),
-          fillRect: vi.fn().mockReturnThis(),
-          generateTexture: vi.fn((key: string) => {
-            textures.set(key, true);
-            generatedTextures.push(key);
-          }),
-          destroy: vi.fn(),
-        };
-      }),
+      graphics: vi.fn(() => ({
+        fillStyle: vi.fn().mockReturnThis(),
+        fillCircle: vi.fn().mockReturnThis(),
+        fillRect: vi.fn().mockReturnThis(),
+        generateTexture: vi.fn((key: string) => {
+          textures.set(key, true);
+          generatedTextures.push(key);
+        }),
+        destroy: vi.fn(),
+      })),
     },
   };
   Object.assign(scene, overrides);
   return scene;
 }
 
-/** Deterministic RNG stub returning a fixed repeating sequence. */
-function fixedRng(values: number[]): () => number {
-  let i = 0;
-  return () => values[i++ % values.length];
-}
-
-describe('pedestrianWanderBounds — stays over the street band (MS-0MUYGFW7T00579Z1)', () => {
-  it('is fully contained inside the street viewport rect', () => {
-    const viewport = streetViewportRect(LAYOUT);
-    const bounds = pedestrianWanderBounds(LAYOUT);
-
-    expect(bounds.w).toBeGreaterThan(0);
-    expect(bounds.h).toBeGreaterThan(0);
-    expect(bounds.x).toBeGreaterThanOrEqual(viewport.x);
-    expect(bounds.y).toBeGreaterThanOrEqual(viewport.y);
-    expect(bounds.x + bounds.w).toBeLessThanOrEqual(viewport.x + viewport.w);
-    expect(bounds.y + bounds.h).toBeLessThanOrEqual(viewport.y + viewport.h);
+describe('buildRoadNetwork — intersections on the drawn roads', () => {
+  it('places every node on a road band', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    expect(network.nodes.length).toBeGreaterThanOrEqual(4);
+    for (const node of network.nodes) {
+      expect(onRoad(node.x, node.y)).toBe(true);
+    }
   });
 
-  it('keeps sampled figure centres inside the playfield (non-negative, within game bounds)', () => {
-    const bounds = pedestrianWanderBounds(LAYOUT);
-    const rng = createPresentationRng(1);
-    for (let i = 0; i < 200; i++) {
-      const figure = spawnPedestrianFigure(bounds, rng);
-      expect(figure.x).toBeGreaterThanOrEqual(bounds.x);
-      expect(figure.x).toBeLessThanOrEqual(bounds.x + bounds.w);
-      expect(figure.y).toBeGreaterThanOrEqual(bounds.y);
-      expect(figure.y).toBeLessThanOrEqual(bounds.y + bounds.h);
+  it('connects adjacent intersections and exposes four block corners', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    // A 1×1 lattice is a 2×2 node grid (a rectangular ring of four nodes).
+    expect(network.cols).toBe(2);
+    expect(network.rows).toBe(2);
+    expect(network.corners).toHaveLength(4);
+    for (const corner of network.corners) {
+      expect(network.adjacency[corner].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('spawnPedestrianFigure — enters from a block corner', () => {
+  it('spawns at a corner node and heads along a road', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(7);
+    for (let i = 0; i < 20; i++) {
+      const spawned = spawnPedestrianFigure(network, rng);
+      const corner = network.corners.find(
+        (c) => network.nodes[c].x === spawned.x && network.nodes[c].y === spawned.y,
+      );
+      expect(corner).toBeDefined();
+      expect(spawned.shopIndex).toBeNull();
+      expect(spawned.target).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('never consumes Math.random', () => {
+    const spy = vi.spyOn(Math, 'random');
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(11);
+    for (let i = 0; i < 30; i++) spawnPedestrianFigure(network, rng);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe('occupiedShops — only occupied cells are enterable', () => {
+  it('returns nothing when the street grid is empty', () => {
+    expect(occupiedShops([null, null], LAYOUT, LATTICE, LATTICE)).toHaveLength(0);
+    expect(occupiedShops(undefined, LAYOUT, LATTICE, LATTICE)).toHaveLength(0);
+  });
+
+  it('returns a capture zone per occupied cell only', () => {
+    const grid: Array<unknown> = [null, { name: 'Bakery' }, null, { name: 'Diner' }];
+    const shops = occupiedShops(grid, LAYOUT, LATTICE, LATTICE);
+    expect(shops.map((shop) => shop.slotIndex)).toEqual([1, 3]);
+    expect(shops.every((shop) => Number.isFinite(shop.x) && Number.isFinite(shop.y))).toBe(true);
+  });
+});
+
+describe('stepPedestrianFigure — road-only walking', () => {
+  it('keeps a walking figure on a road band across many frames', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(99);
+    const walker = spawnPedestrianFigure(network, rng);
+    for (let i = 0; i < 500; i++) {
+      stepPedestrianFigure(walker, network, [], 0.05, rng);
+      expect(walker.shopIndex).toBeNull();
+      expect(onRoad(walker.x, walker.y)).toBe(true);
+    }
+  });
+
+  it('treats a non-finite or negative delta as no movement', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(3);
+    const walker = spawnPedestrianFigure(network, rng);
+    const { x, y } = walker;
+    stepPedestrianFigure(walker, network, [], Number.NaN, rng);
+    stepPedestrianFigure(walker, network, [], -1, rng);
+    expect(walker.x).toBe(x);
+    expect(walker.y).toBe(y);
+  });
+
+  it('caps a long frame so a tab-restore cannot leap the network', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const rng = createPresentationRng(5);
+    const walker = spawnPedestrianFigure(network, rng);
+    stepPedestrianFigure(walker, network, [], 600, rng);
+    const bounds = networkBounds(network);
+    expect(walker.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(walker.x).toBeLessThanOrEqual(bounds.x + bounds.w);
+    expect(walker.y).toBeGreaterThanOrEqual(bounds.y);
+    expect(walker.y).toBeLessThanOrEqual(bounds.y + bounds.h);
+  });
+});
+
+describe('stepPedestrianFigure — entering an occupied shop', () => {
+  it('enters an occupied shop when in range and then stays there', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const shops = occupiedShops([{ name: 'Bakery' }], LAYOUT, LATTICE, LATTICE);
+    const shop = shops[0];
+    // Start a walker on the road directly above the shop.
+    const walker = figure({ x: shop.x, y: network.nodes[0].y, target: -1, from: -1 });
+    expect(withinShopCapture(walker, shop)).toBe(true);
+
+    // rng() === 0 ⇒ the entry test always fires.
+    stepPedestrianFigure(walker, network, shops, 0.05, fixedRng([0]));
+
+    expect(walker.shopIndex).toBe(shop.slotIndex);
+    const { x, y } = walker;
+    for (let i = 0; i < 50; i++) {
+      stepPedestrianFigure(walker, network, shops, 0.05, createPresentationRng(i + 1));
+      expect(walker.x).toBe(x);
+      expect(walker.y).toBe(y);
+      expect(walker.shopIndex).toBe(shop.slotIndex);
+    }
+  });
+
+  it('does not leave the road when no occupied cells exist', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const walker = spawnPedestrianFigure(network, createPresentationRng(1));
+    const rng = fixedRng([0]);
+    for (let i = 0; i < 100; i++) {
+      stepPedestrianFigure(walker, network, [], 0.05, rng);
+      expect(walker.shopIndex).toBeNull();
+      expect(onRoad(walker.x, walker.y)).toBe(true);
+    }
+  });
+});
+
+describe('forceShopOccupancy — reputation-phase minimum', () => {
+  it('moves enough figures inside so at least 25% are in shops', () => {
+    const shops = occupiedShops(
+      [{ name: 'A' }, null, { name: 'B' }, null, null, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const figures = Array.from({ length: 8 }, () => spawnPedestrianFigure(network, createPresentationRng(1)));
+
+    const occupancy = forceShopOccupancy(figures, shops, 0.25);
+
+    expect(occupancy).toBeGreaterThanOrEqual(Math.ceil(0.25 * figures.length));
+    expect(figures.filter((f) => f.shopIndex !== null).length).toBe(occupancy);
+  });
+
+  it('is a no-op when there are no occupied cells', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const figures = [spawnPedestrianFigure(network, createPresentationRng(2))];
+    expect(forceShopOccupancy(figures, [], 0.25)).toBe(0);
+    expect(figures[0].shopIndex).toBeNull();
   });
 });
 
@@ -201,19 +353,13 @@ describe('shouldRenderPedestrians — accessibility exemptions', () => {
   });
 });
 
-describe('createPresentationRng — presentation-local determinism (MS-0MUYGFW7T00579Z1)', () => {
-  it('is deterministic for a fixed seed', () => {
+describe('createPresentationRng — presentation-local determinism', () => {
+  it('is deterministic for a fixed seed and yields floats in [0, 1)', () => {
     const a = createPresentationRng(12345);
     const b = createPresentationRng(12345);
-    const seqA = Array.from({ length: 20 }, () => a());
-    const seqB = Array.from({ length: 20 }, () => b());
-    expect(seqA).toEqual(seqB);
-  });
-
-  it('produces floats in [0, 1)', () => {
-    const rng = createPresentationRng(7);
-    for (let i = 0; i < 100; i++) {
-      const value = rng();
+    for (let i = 0; i < 50; i++) {
+      const value = a();
+      expect(value).toBe(b());
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThan(1);
     }
@@ -228,35 +374,7 @@ describe('createPresentationRng — presentation-local determinism (MS-0MUYGFW7T
   });
 });
 
-describe('stepPedestrianFigure — bounded wander', () => {
-  const bounds: PedestrianBounds = { x: 0, y: 0, w: 100, h: 50 };
-
-  it('reflects a figure off the right/bottom edges and keeps it inside', () => {
-    const figure = { x: 99, y: 49, vx: 100, vy: 100, bobPhase: 0 };
-    for (let i = 0; i < 50; i++) {
-      stepPedestrianFigure(figure, bounds, 0.1);
-      expect(figure.x).toBeGreaterThanOrEqual(bounds.x);
-      expect(figure.x).toBeLessThanOrEqual(bounds.x + bounds.w);
-      expect(figure.y).toBeGreaterThanOrEqual(bounds.y);
-      expect(figure.y).toBeLessThanOrEqual(bounds.y + bounds.h);
-    }
-  });
-
-  it('caps a long frame so a tab-restore cannot teleport through the bounds', () => {
-    const figure = { x: 10, y: 10, vx: 1000, vy: 0, bobPhase: 0 };
-    stepPedestrianFigure(figure, bounds, 60);
-    expect(figure.x).toBeLessThanOrEqual(bounds.x + bounds.w);
-  });
-
-  it('treats a non-finite delta as zero', () => {
-    const figure = { x: 10, y: 10, vx: 100, vy: 0, bobPhase: 0 };
-    stepPedestrianFigure(figure, bounds, Number.NaN);
-    expect(figure.x).toBe(10);
-    expect(figure.y).toBe(10);
-  });
-});
-
-describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () => {
+describe('MainStreetPedestrians — Phaser adapter', () => {
   let mathRandomSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -275,10 +393,8 @@ describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () =>
     expect(layer.getFigureCount()).toBe(4);
     expect(scene.images).toHaveLength(4);
     expect(scene.generatedTextures).toEqual([PEDESTRIAN_TEXTURE_KEY]);
-    // One shared container, parented to the street container.
     expect(scene.add.container).toHaveBeenCalledTimes(1);
     expect(scene.streetContainer.children).toHaveLength(1);
-    // The adaptor never touches gameplay RNG.
     expect(mathRandomSpy).not.toHaveBeenCalled();
   });
 
@@ -287,41 +403,34 @@ describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () =>
     const layer = new MainStreetPedestrians(scene, createPresentationRng(3));
 
     layer.setPopulation(3);
-    expect(layer.getFigureCount()).toBe(3);
     const firstImages = [...scene.images];
 
     layer.setPopulation(5);
     expect(layer.getFigureCount()).toBe(5);
-    // Existing images are retained (no rebuild): the first three survive.
     expect(scene.images.slice(0, 3)).toEqual(firstImages);
 
     layer.setPopulation(2);
     expect(layer.getFigureCount()).toBe(2);
-    // Removed figures had their images destroyed.
     expect(firstImages[2].destroy).toHaveBeenCalled();
     expect(layer.getFigureCount()).toBe(layer.getTargetCount());
   });
 
-  it('moves figures on update and keeps them inside the wander bounds', () => {
+  it('moves walking figures along roads on update', () => {
     const scene = createMockScene();
     const layer = new MainStreetPedestrians(scene, createPresentationRng(11));
     layer.setPopulation(6);
-    const bounds = layer.getWanderBounds();
 
+    const before = layer.getFigurePositions();
     layer.update(500);
+    const after = layer.getFigurePositions();
 
-    const positions = layer.getFigurePositions();
-    expect(positions).toHaveLength(6);
-    for (const { x, y } of positions) {
-      expect(x).toBeGreaterThanOrEqual(bounds.x);
-      expect(x).toBeLessThanOrEqual(bounds.x + bounds.w);
-      expect(y).toBeGreaterThanOrEqual(bounds.y);
-      expect(y).toBeLessThanOrEqual(bounds.y + bounds.h);
-    }
-    // The rendered images track the figure centres (allowing the vertical bob).
+    expect(after).toHaveLength(6);
+    // At least one figure moved along its road segment.
+    expect(after.some((p, i) => p.x !== before[i].x || p.y !== before[i].y)).toBe(true);
+    // Rendered images track the figure centres.
     scene.images.forEach((image, i) => {
       expect(image.setPosition).toHaveBeenCalled();
-      expect(image.x).toBeCloseTo(positions[i].x, 5);
+      expect(image.x).toBeCloseTo(after[i].x, 5);
     });
   });
 
@@ -334,6 +443,57 @@ describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () =>
       return layer.getFigurePositions();
     };
     expect(run()).toEqual(run());
+  });
+
+  it('clears and respawns the crowd from the corners at the start of a new turn', () => {
+    const scene = createMockScene();
+    const layer = new MainStreetPedestrians(scene, createPresentationRng(31));
+    layer.setPopulation(4);
+
+    const firstImages = [...scene.images];
+    layer.startNewTurn();
+
+    expect(layer.getFigureCount()).toBe(4);
+    expect(layer.getTargetCount()).toBe(4);
+    // The old figures were destroyed and replaced by a fresh set.
+    expect(firstImages[0].destroy).toHaveBeenCalled();
+    expect(scene.images.length).toBe(8);
+    const network = layer.getRoadNetwork();
+    for (const position of layer.getFigurePositions()) {
+      const atCorner = network.corners.some(
+        (c) => network.nodes[c].x === position.x && network.nodes[c].y === position.y,
+      );
+      expect(atCorner).toBe(true);
+    }
+  });
+
+  it('sources reputation coins from a figure inside the target shop', () => {
+    const scene = createMockScene();
+    scene.state.streetGrid = [{ name: 'Bakery' }, null, null, null, null, null, null, null, null, null];
+    const layer = new MainStreetPedestrians(scene, createPresentationRng(2));
+    layer.setPopulation(4);
+    layer.update(16);
+
+    const occupancy = layer.prepareForIncomePhase();
+    expect(occupancy).toBeGreaterThanOrEqual(Math.ceil(0.25 * 4));
+    expect(layer.getShopOccupancy()).toContain(0);
+
+    const sources = layer.dissolveIntoCoins([{ x: 0, y: 0, slotIndex: 0 }]);
+    const shop = occupiedShops(scene.state.streetGrid, LAYOUT, LATTICE, LATTICE)[0];
+    expect(sources).toEqual([{ x: shop.x, y: shop.y }]);
+  });
+
+  it('falls back to the street anchor — never the HUD counter — with no shops', () => {
+    const scene = createMockScene();
+    const layer = new MainStreetPedestrians(scene, createPresentationRng(4));
+    layer.setPopulation(2);
+    const viewport = streetViewportRect(LAYOUT);
+
+    const sources = layer.dissolveIntoCoins([{ x: 0, y: 0, slotIndex: 0 }]);
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0].y).toBeGreaterThan(LAYOUT.hudY);
+    expect(sources[0].x).toBeCloseTo(viewport.x + viewport.w / 2, 5);
   });
 
   it('renders nothing under Reduced Motion and consumes no RNG', () => {
@@ -375,6 +535,8 @@ describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () =>
     expect(() => layer.setPopulation(5)).not.toThrow();
     expect(() => layer.update(16)).not.toThrow();
     expect(() => layer.resize()).not.toThrow();
+    expect(() => layer.startNewTurn()).not.toThrow();
+    expect(() => layer.dissolveIntoCoins([{ x: 0, y: 0 }])).not.toThrow();
     expect(() => layer.destroy()).not.toThrow();
   });
 
@@ -383,39 +545,11 @@ describe('MainStreetPedestrians — Phaser adapter (MS-0MUYGFW7T00579Z1)', () =>
     const layer = new MainStreetPedestrians(scene, createPresentationRng(8));
     layer.setPopulation(3);
 
-    // Simulate a street rebuild clearing the container, then re-attaching.
     layer.attachToStreet();
 
     expect(layer.getTargetCount()).toBe(3);
     expect(layer.getFigureCount()).toBe(3);
     expect(scene.add.container).toHaveBeenCalledTimes(2);
-  });
-
-  it('re-clamps figures into the new bounds on resize', () => {
-    const scene = createMockScene();
-    const layer = new MainStreetPedestrians(scene, createPresentationRng(17));
-    layer.setPopulation(4);
-
-    // Shrink the street enormously; every figure must be clamped inside.
-    (scene as { layout: SceneLayout }).layout = {
-      ...LAYOUT,
-      gameW: 200,
-      streetX: 0,
-      streetTop: 0,
-      slotW: 10,
-      slotH: 10,
-      slotGap: 2,
-      streetRowGap: 2,
-    } as unknown as SceneLayout;
-
-    layer.resize();
-    const bounds = layer.getWanderBounds();
-    for (const { x, y } of layer.getFigurePositions()) {
-      expect(x).toBeGreaterThanOrEqual(bounds.x);
-      expect(x).toBeLessThanOrEqual(bounds.x + bounds.w);
-      expect(y).toBeGreaterThanOrEqual(bounds.y);
-      expect(y).toBeLessThanOrEqual(bounds.y + bounds.h);
-    }
   });
 
   it('destroys the layer on shutdown', () => {

@@ -22,16 +22,19 @@ import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FL
 import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
 
 /**
- * Resolve the reputation phase's coin origins (MS-0MUYGFWXK003QFYB).
+ * Resolve the reputation phase's coin origins from the on-street
+ * pedestrians (MS-0MUYGFWXK003QFYB, reworked MS-0MUZ4WB290024ZGQ).
  *
- * Delegates to the pedestrian layer's `dissolveIntoCoins`; when the layer is
- * absent or throws, falls back to the street-area anchor. Never returns the
- * HUD reputation counter, so the reputation income always reads as coming
- * from the street.
+ * Delegates to the pedestrian layer's `dissolveIntoCoins`; the layer first
+ * ensures the reputation-phase shop-occupancy minimum, then sources each
+ * business from a figure inside it (or any shop occupant), falling back to a
+ * street-area anchor when no figures are inside a shop. Never returns the HUD
+ * reputation counter, so the reputation income always reads as coming from
+ * the street.
  */
 export function dissolveReputationCoins(
   animator: MainStreetAnimatorContext,
-  targets: Array<{ x: number; y: number }>,
+  targets: Array<{ x: number; y: number; slotIndex?: number }>,
 ): Array<{ x: number; y: number }> {
   const s = animator.scene;
   try {
@@ -441,11 +444,15 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
         if (ctx.reducedMotion) return;
         if (!slots.some((sl) => iconsForAmount(roundHalf(sl.pd.repBonus)) > 0)) return;
         // The reputation income is sourced from the on-street pedestrians
-        // (MS-0MUYGFWXK003QFYB): each business's coin stream dissolves out of
-        // a live wandering figure — or a street-area anchor when none are on
-        // screen — never the HUD reputation counter. The credited amounts,
+        // (MS-0MUYGFWXK003QFYB, reworked MS-0MUZ4WB290024ZGQ): each business's
+        // coin stream dissolves out of a figure standing inside that business
+        // — or any shop occupant / a street-area anchor when none are inside
+        // a shop — never the HUD reputation counter. The credited amounts,
         // on-card `revealInGrid` landing and pacing are unchanged.
-        const slotCenters = slots.map((sl) => animator.getStreetSlotCenter(sl.pd.slotIndex));
+        const slotCenters = slots.map((sl) => ({
+          ...animator.getStreetSlotCenter(sl.pd.slotIndex),
+          slotIndex: sl.pd.slotIndex,
+        }));
         const sources = animator.dissolveReputationCoins(slotCenters);
         const streetAnchor = pedestrianStreetAnchor(s.layout);
         let delayOffset = 0;

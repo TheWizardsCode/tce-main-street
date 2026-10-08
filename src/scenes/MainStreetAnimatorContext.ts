@@ -182,7 +182,7 @@ export interface MainStreetAnimatorContext {
    * using a street-area anchor when no figures are on screen — never the HUD
    * reputation counter.
    */
-  dissolveReputationCoins(targets: Array<{ x: number; y: number }>): Array<{ x: number; y: number }>;
+  dissolveReputationCoins(targets: Array<{ x: number; y: number; slotIndex?: number }>): Array<{ x: number; y: number }>;
   showIncomePhaseLabel(text: string, color: number): void;
   animateMarketDealIn(params: {
     row: 'market';
