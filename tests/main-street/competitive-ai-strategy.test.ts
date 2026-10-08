@@ -442,12 +442,9 @@ describe('AC4 — N=1 falls back to the legacy single-player helpers', () => {
 
 // ── Ownership-aware placement scoring (MS-0MUZFVJTK005YK48) ──
 //
-// Red phase (test-first, MS-0MUZFVJTK005YK48): the ownership-aware
-// competitive placement value is delivered by the dependent feature item
-// MS-0MUZFVLVS007S56L, so the assertions that depend on `own − opponent`
-// scoring are expected to fail until it lands. Like the per-seat closing
-// contract item (MS-0MUYFX8V3005VEOG), red-phase assertions use `it.fails` so
-// the suite stays green; the implementation item flips them to `it`.
+// Green phase: the ownership-aware competitive placement value is delivered
+// by the dependent feature item MS-0MUZFVLVS007S56L. These assertions pin the
+// `own − opponent` contract and are active (no longer `it.fails`).
 
 /** A neighbouring business that anchors synergy for a space placed at slot 3. */
 const PLACEMENT_SLOT = 3;
@@ -464,7 +461,7 @@ function anchorBusiness(id: string, synergy: BusinessCard['synergyTypes'][number
 }
 
 describe('AC2 — an opponent-only community space is rejected', () => {
-  it.fails('scores an opponent-only anchor at or below zero', () => {
+  it('scores an opponent-only anchor at or below zero', () => {
     const state = emptyCompetitiveBoard('opp-only-score');
     // The only synergy anchor is owned by another seat.
     place(state, anchorBusiness('cinema', 'Entertainment'), NEIGHBOUR_SLOT, 1);
@@ -479,7 +476,7 @@ describe('AC2 — an opponent-only community space is rejected', () => {
     expect(score).toBeLessThanOrEqual(0);
   });
 
-  it.fails('greedy does not buy or play the opponent-only space', () => {
+  it('greedy does not buy or play the opponent-only space', () => {
     const state = emptyCompetitiveBoard('opp-only-greedy');
     state.market.cards = [
       makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] }),
@@ -522,7 +519,7 @@ describe('AC3 — a self-beneficial placement is preserved', () => {
 });
 
 describe('AC3 — a mixed placement is discounted', () => {
-  it.fails('scores a mixed own/opponent anchor below the identical own-only anchor', () => {
+  it('scores a mixed own/opponent anchor below the identical own-only anchor', () => {
     const ownBiz = anchorBusiness('own-food', 'Food', 200);
     const oppBiz = anchorBusiness('opp-culture', 'Culture', 200);
     const space = makeCommunitySpace({ id: 'community-hub', synergyTypes: ['Food', 'Culture'] });
@@ -576,7 +573,7 @@ describe('AC4 — an ordinary business charges the opponent benefit it anchors',
     );
   }
 
-  it.fails('reduces the score by the synergy it anchors for an opponent', () => {
+  it('reduces the score by the synergy it anchors for an opponent', () => {
     expect(ordinaryPlacementScore(1)).toBeLessThan(ordinaryPlacementScore(0));
   });
 

@@ -194,6 +194,51 @@ function neighbourSynergyGain(
 }
 
 /**
+ * Ownership-aware counterpart of {@link neighbourSynergyGain}: splits the
+ * marginal synergy a placement confers on its neighbouring businesses by
+ * owner. Each neighbour's gain (computed exactly as in
+ * `neighbourSynergyGain`) is attributed to the acting seat when
+ * `getSlotOwnerId(state, i)` matches `actingPlayerId`, and to an opponent
+ * otherwise.
+ *
+ * The competitive placement value consumes the difference (`own − opponent`)
+ * so a placement that only enriches a rival is scored down. Single-player
+ * keeps the ownership-agnostic path (the N=1 fallback in
+ * {@link communitySpacePlacementValueAt}), so no owner filter is applied
+ * there.
+ *
+ * @param state            Current game state (read-only by convention).
+ * @param grid             Street grid before the placement.
+ * @param placed           Street grid with the candidate card inserted.
+ * @param slotIndex        Slot the candidate card is placed at (skipped).
+ * @param bonusPerNeighbor Global synergy multiplier.
+ * @param actingPlayerId   Seat whose benefit counts as `own`.
+ * @returns The marginal neighbour synergy split into `{ own, opponent }`.
+ */
+function neighbourSynergyGainByOwner(
+  state: MainStreetState,
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  placed: (BusinessCard | CommunitySpaceCard | null)[],
+  slotIndex: number,
+  bonusPerNeighbor: number,
+  actingPlayerId: number,
+): { own: number; opponent: number } {
+  let own = 0;
+  let opponent = 0;
+  for (let i = 0; i < placed.length; i++) {
+    if (i === slotIndex || !placed[i]) continue;
+    const before = computeSynergyBonus(grid, i, bonusPerNeighbor);
+    const after = computeSynergyBonus(placed, i, bonusPerNeighbor);
+    if (after > before) {
+      const gain = after - before;
+      if (getSlotOwnerId(state, i) === actingPlayerId) own += gain;
+      else opponent += gain;
+    }
+  }
+  return { own, opponent };
+}
+
+/**
  * Value of placing `card` at `slotIndex` (AC2), split into gross reward and
  * net value. Community spaces are scored on:
  *
@@ -205,6 +250,13 @@ function neighbourSynergyGain(
  * of which the business formula captured. `penalty` lets callers compare
  * against a business ({@link COMMUNITY_SPACE_SCORE_PENALTY}) or evaluate raw
  * profitability (Community Favour enablement passes 0).
+ *
+ * In competitive mode the neighbour-synergy term is ownership-aware: only the
+ * acting seat's neighbours are credited and the synergy anchored for other
+ * seats is subtracted (`own gain − opponent gain`,
+ * {@link neighbourSynergyGainByOwner}), so a placement that only enriches a
+ * rival scores negative. Single-player (N=1) keeps the ownership-agnostic sum
+ * so baselines do not move.
  */
 function communitySpacePlacementValueAt(
   state: MainStreetState,
@@ -212,6 +264,7 @@ function communitySpacePlacementValueAt(
   slotIndex: number,
   horizon: number,
   penalty: number,
+  playerId?: number,
 ): PlacementValue {
   const grid = state.streetGrid;
   const placed = [...grid];
@@ -223,7 +276,21 @@ function communitySpacePlacementValueAt(
     computeSynergyBonus(placed, slotIndex, bonusPerNeighbor);
   const ownReputation =
     (card.reputationPerTurn ?? 0) + computeSynergyRepBonus(placed, slotIndex);
-  const neighbourIncome = neighbourSynergyGain(grid, placed, slotIndex, bonusPerNeighbor);
+  // Competitive: credit only the acting seat's anchored synergy and subtract
+  // the synergy handed to other seats. N=1 falls back to the legacy sum.
+  const neighbourIncome = isCompetitiveMode(state)
+    ? (() => {
+        const { own, opponent } = neighbourSynergyGainByOwner(
+          state,
+          grid,
+          placed,
+          slotIndex,
+          bonusPerNeighbor,
+          playerId ?? state.activePlayerId ?? 0,
+        );
+        return own - opponent;
+      })()
+    : neighbourSynergyGain(grid, placed, slotIndex, bonusPerNeighbor);
   const gross = (ownIncome + neighbourIncome + ownReputation) * horizon;
   const runningCost = (card.ongoingCost ?? 0) * horizon;
   const cost = computeEffectiveBusinessPurchaseCost(state, card.cost);
@@ -254,12 +321,25 @@ function bestCommunitySpacePlacementValue(
  * Public score of placing a community space — {@link communitySpacePlacementValueAt}
  * with the business-preference penalty applied. Exported so the AC2/AC3
  * behaviour can be pinned by tests.
+ *
+ * In competitive mode the score is ownership-aware: it credits only the
+ * neighbour synergy anchored for the acting seat and subtracts the synergy
+ * anchored for other seats (`own gain − opponent gain`), so a space that only
+ * boosts a rival's businesses scores at or below zero and fails the
+ * positive-score eligibility gate. Single-player (N=1) is unchanged.
+ *
+ * @param state     Current game state (read-only by convention).
+ * @param card      Community-space card being placed.
+ * @param slotIndex Slot the card is placed into.
+ * @param horizon   Planning horizon in turns.
+ * @param playerId  Acting seat; defaults to the active player.
  */
 export function scoreCommunitySpacePlacement(
   state: MainStreetState,
   card: CommunitySpaceCard,
   slotIndex: number,
   horizon: number,
+  playerId?: number,
 ): number {
   return communitySpacePlacementValueAt(
     state,
@@ -267,6 +347,7 @@ export function scoreCommunitySpacePlacement(
     slotIndex,
     horizon,
     COMMUNITY_SPACE_SCORE_PENALTY,
+    playerId,
   ).net;
 }
 
@@ -2134,7 +2215,7 @@ export function scoreCompetitiveAction(
       return competitiveUpgradeScore(state, action.cardId, horizon, (action as { targetSlot?: number }).targetSlot);
     case 'buy-business':
     case 'buy-and-place':
-      return competitiveBusinessScore(state, action.cardId, action.slotIndex, horizon);
+      return competitiveBusinessScore(state, action.cardId, action.slotIndex, horizon, pid);
     case 'buy-event':
       return competitiveMarketEventScore(state, action.cardId, pid);
     case 'play-business-from-hand':
@@ -2217,16 +2298,19 @@ function competitiveBusinessScore(
   cardId: string,
   slotIndex: number,
   horizon: number,
+  playerId?: number,
 ): number {
   const card = state.market.cards.find(c => c.id === cardId) as
     | BusinessCard
     | CommunitySpaceCard
     | undefined;
   if (!card) return 0;
-  // Community spaces keep the separate placement value in competitive mode
-  // too, so the two scoring paths cannot diverge (AC2, competitive mirror).
+  const actingPlayerId = playerId ?? state.activePlayerId ?? 0;
+  // Community spaces keep the separate (ownership-aware) placement value in
+  // competitive mode too, so the two scoring paths cannot diverge (AC2,
+  // competitive mirror).
   if (card.family === 'community-space') {
-    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon);
+    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon, actingPlayerId);
   }
   const simulatedGrid = [...state.streetGrid];
   simulatedGrid[slotIndex] = card;
@@ -2235,7 +2319,22 @@ function competitiveBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
+  // AC4: subtract the synergy this placement anchors for neighbouring
+  // opponent businesses. The acting player's own income/synergy valuation is
+  // unchanged; only the benefit handed to rivals is netted off.
+  const { opponent } = neighbourSynergyGainByOwner(
+    state,
+    state.streetGrid,
+    simulatedGrid,
+    slotIndex,
+    state.config.synergyBonusPerNeighbor,
+    actingPlayerId,
+  );
+  return (
+    (card.baseIncome + projectedSynergy) * horizon -
+    computeEffectiveBusinessPurchaseCost(state, card.cost) -
+    opponent * horizon
+  );
 }
 
 function competitiveMarketEventScore(
@@ -2263,7 +2362,7 @@ function competitiveHandBusinessScore(
     | undefined;
   if (!card) return 0;
   if (card.family === 'community-space') {
-    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon);
+    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon, player.playerId);
   }
   const simulatedGrid = [...state.streetGrid];
   simulatedGrid[slotIndex] = card;
@@ -2272,7 +2371,20 @@ function competitiveHandBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
+  // AC4: subtract the synergy anchored for neighbouring opponent businesses.
+  const { opponent } = neighbourSynergyGainByOwner(
+    state,
+    state.streetGrid,
+    simulatedGrid,
+    slotIndex,
+    state.config.synergyBonusPerNeighbor,
+    player.playerId,
+  );
+  return (
+    (card.baseIncome + projectedSynergy) * horizon -
+    computeEffectiveBusinessPurchaseCost(state, card.cost) -
+    opponent * horizon
+  );
 }
 
 function competitiveHandUpgradeScore(
