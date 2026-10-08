@@ -211,6 +211,12 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
    * card that maps to an art-less target outside this set fails the guard, and
    * the art-less card count may never grow. Emptying this set is the final step
    * of CG-0MUBVL4H80061B1E (AC 1-5).
+   *
+   * Producer-owned art production (MS-0MTISBYLS009936W Q2): when a card lands
+   * before its 1024×1024 sprite, its mapping target is recorded here as the
+   * producer-approved pending-art entry so the drift guard still passes. Recent
+   * additions: `Charity Shop` (MS-0MUAYBAHW007RMSL) and `Investor`
+   * (MS-0MUOSUM7200624OB).
    */
   const PENDING_ART_TARGETS = new Set<string>([
     'Accountant',
