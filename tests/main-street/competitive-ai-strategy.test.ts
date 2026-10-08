@@ -17,6 +17,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createCompetitiveState,
   setupMainStreetGame,
+  effectiveWinThreshold,
   type MainStreetState,
 } from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
@@ -204,6 +205,72 @@ describe('AC1 — Ownership-aware planning horizon', () => {
     const single = createCompetitiveState({ seed, playerCount: 1 });
     expect(isCompetitiveMode(single)).toBe(false);
     expect(aiCompetitivePlanningHorizon(single)).toBe(aiPlanningHorizon(single));
+  });
+});
+
+// ── Effective-threshold AI horizon (MS-0MUZK64R5008Z8MA, parent AC4) ──
+//
+// Slice 2: both planning horizons must measure the distance to
+// `effectiveWinThreshold(state)` (base / playerCount, rounded to the nearest
+// 50), not the base `config.winThreshold`. Easy base 10 000 → P=2 5 000,
+// P=3 3 350, P=4 2 500. With a neutral (zero) score the pre-change horizons
+// use the base target (10 000 ÷ 800 → 13), whereas the effective targets give
+// 7 (P=2) and the 5-turn floor (P=3, P=4).
+
+/** A fresh Easy competitive state with a neutral (zero) shared score. */
+function easyStateWithZeroScore(seed: string, playerCount: number): MainStreetState {
+  const s = createCompetitiveState({ seed, playerCount, difficulty: 'Easy' });
+  s.resourceBank.coins = 0;
+  s.resourceBank.reputation = 0;
+  s.challengesCompleted = [];
+  return s;
+}
+
+describe('AC1 — Effective win threshold drives the AI horizon', () => {
+  it('aiPlanningHorizon measures the P=3 Easy effective target (3 350)', () => {
+    const s = easyStateWithZeroScore('eff-horizon-p3', 3);
+    expect(s.config.winThreshold).toBe(10000);
+    expect(effectiveWinThreshold(s)).toBe(3350);
+    // 3 350 / 800 → ceil(4.19) = 5 (the horizon floor); the base 10 000 would
+    // yield ceil(12.5) = 13.
+    expect(aiPlanningHorizon(s)).toBe(5);
+  });
+
+  it('aiPlanningHorizon scales with the player count (P=2 → 5 000 → 7)', () => {
+    // 5 000 / 800 → ceil(6.25) = 7 — above the floor, so this pins that the
+    // divisor is the effective target, not the base 10 000 (which gives 13).
+    expect(aiPlanningHorizon(easyStateWithZeroScore('eff-horizon-p2', 2))).toBe(7);
+    expect(aiPlanningHorizon(easyStateWithZeroScore('eff-horizon-p4', 4))).toBe(5);
+  });
+
+  it('aiCompetitivePlanningHorizon measures the P=3 Easy effective target', () => {
+    const s = createCompetitiveState({
+      seed: 'eff-comp-horizon-p3',
+      playerCount: 3,
+      difficulty: 'Easy',
+    });
+    s.players![0].score = 0;
+    expect(effectiveWinThreshold(s)).toBe(3350);
+    expect(aiCompetitivePlanningHorizon(s, 0)).toBe(5);
+  });
+
+  it('aiCompetitivePlanningHorizon scales with the player count (P=2 → 5 000 → 7)', () => {
+    const s = createCompetitiveState({
+      seed: 'eff-comp-horizon-p2',
+      playerCount: 2,
+      difficulty: 'Easy',
+    });
+    s.players![0].score = 0;
+    expect(aiCompetitivePlanningHorizon(s, 0)).toBe(7);
+  });
+
+  it('single-player horizon is unchanged (base target)', () => {
+    const single = setupMainStreetGame({ seed: 'eff-horizon-single', difficulty: 'Easy' });
+    single.resourceBank.coins = 0;
+    single.resourceBank.reputation = 0;
+    single.challengesCompleted = [];
+    // No `playerCount` → the effective target is the base 10 000 → 13 turns.
+    expect(aiPlanningHorizon(single)).toBe(13);
   });
 });
 
@@ -490,10 +557,24 @@ describe('AC2 — an opponent-only community space is rejected', () => {
   });
 });
 
+// A community space's competitive value scales with the planning horizon,
+// which now derives from the effective (per-seat) win threshold
+// (MS-0MUZK64R5008Z8MA: base / playerCount, rounded to the nearest 50). With
+// the shorter competitive horizon the original 400-income anchor left this
+// placement marginally negative, so the fixture uses a genuinely
+// self-beneficial anchor. The ownership contract under test — own-anchored
+// positive, opponent-anchored non-positive — is unchanged.
+const SELF_BENEFICIAL_ANCHOR_INCOME = 800;
+
 describe('AC3 — a self-beneficial placement is preserved', () => {
   it('scores an own-anchored community space above zero', () => {
     const state = emptyCompetitiveBoard('own-only-score');
-    place(state, anchorBusiness('cinema', 'Entertainment'), NEIGHBOUR_SLOT, 0);
+    place(
+      state,
+      anchorBusiness('cinema', 'Entertainment', SELF_BENEFICIAL_ANCHOR_INCOME),
+      NEIGHBOUR_SLOT,
+      0,
+    );
     const space = makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] });
 
     const score = scoreCommunitySpacePlacement(
@@ -510,7 +591,12 @@ describe('AC3 — a self-beneficial placement is preserved', () => {
     state.market.cards = [
       makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] }),
     ];
-    place(state, anchorBusiness('cinema', 'Entertainment'), NEIGHBOUR_SLOT, 0);
+    place(
+      state,
+      anchorBusiness('cinema', 'Entertainment', SELF_BENEFICIAL_ANCHOR_INCOME),
+      NEIGHBOUR_SLOT,
+      0,
+    );
 
     const action = CompetitiveGreedyStrategy.chooseAction(state, createSeededRng(1));
     expect(action.type).toBe('buy-business');

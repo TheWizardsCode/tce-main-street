@@ -53,7 +53,7 @@ import { isDurationEventCard } from './MainStreetCards';
 import { computeProportionalCoinLoss, computeTaxAuditRate } from './MainStreetStaffBuffs';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { computeSynergyBonus, computeSynergyRepBonus, getSlotOwnerId } from './MainStreetAdjacency';
-import { computeScore } from './MainStreetEngine';
+import { computeScore, effectiveWinThreshold } from './MainStreetEngine';
 
 // ── Scoring constants ───────────────────────────────────────
 
@@ -118,9 +118,12 @@ const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
 /**
  * Computes the AI planning horizon — the number of future turns whose
  * income a purchase is expected to yield — derived from the distance to
- * the win threshold (user Q2b decision, CG-0MSLXJCHH001DLIO):
+ * the *effective* win threshold (`effectiveWinThreshold`, i.e. the base
+ * threshold divided by the player count and rounded to the nearest 50 in
+ * competitive play; the unchanged base value in single-player) (user Q2b
+ * decision, CG-0MSLXJCHH001DLIO; MS-0MUZK64R5008Z8MA):
  *
- *   horizon = clamp(ceil((winThreshold - score) / scorePace), floor, cap)
+ *   horizon = clamp(ceil((effectiveWinThreshold - score) / scorePace), floor, cap)
  *
  * Replaces the former `remainingTurns = maxTurns - turn` (PRD Appendix A),
  * which no longer applies now that default presets are unlimited. The floor
@@ -131,7 +134,7 @@ const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
  * @returns The planning horizon in turns (always in [AI_HORIZON_FLOOR, AI_HORIZON_CAP]).
  */
 export function aiPlanningHorizon(state: MainStreetState): number {
-  const distance = state.config.winThreshold - computeScore(state);
+  const distance = effectiveWinThreshold(state) - computeScore(state);
   const raw = Math.ceil(distance / AI_SCORE_PACE);
   return Math.min(AI_HORIZON_CAP, Math.max(AI_HORIZON_FLOOR, raw));
 }
@@ -1883,13 +1886,14 @@ export function resolveSeatDifficulty(
 /**
  * Competitive planning horizon: the number of future turns a purchase is
  * expected to yield, derived from the ACTING PLAYER'S OWN score versus the
- * win threshold (not the shared `computeScore`).
+ * *effective* win threshold (`effectiveWinThreshold`; not the shared
+ * `computeScore`).
  *
- *   horizon = clamp(ceil((winThreshold - player.score) / scorePace), floor, cap)
+ *   horizon = clamp(ceil((effectiveWinThreshold - player.score) / scorePace), floor, cap)
  *
  * A player far from the threshold values future income more (larger
  * horizon) than a player about to win — the ownership-aware counterpart of
- * `aiPlanningHorizon` (CG-0MSLXJCHH001DLIO).
+ * `aiPlanningHorizon` (CG-0MSLXJCHH001DLIO; MS-0MUZK64R5008Z8MA).
  *
  * @param state    Current game state (read-only by convention).
  * @param playerId Owner index; defaults to the active player.
@@ -1904,7 +1908,7 @@ export function aiCompetitivePlanningHorizon(
   if (!isCompetitiveMode(state)) return aiPlanningHorizon(state);
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return aiPlanningHorizon(state);
-  const distance = state.config.winThreshold - (player.score ?? 0);
+  const distance = effectiveWinThreshold(state) - (player.score ?? 0);
   const raw = Math.ceil(distance / AI_SCORE_PACE);
   return Math.min(AI_HORIZON_CAP, Math.max(AI_HORIZON_FLOOR, raw));
 }
