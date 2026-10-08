@@ -9,7 +9,7 @@
  */
 
 import { computeSynergyPairs, diffNewSynergyPairs } from '../MainStreetAdjacency';
-import type { SynergyPair } from '../MainStreetAdjacency';
+import type { OwnerIncomeResult, SynergyPair } from '../MainStreetAdjacency';
 import type { PendingEndOfTurnDeltas, TurnResult } from '../MainStreetEngine';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -94,6 +94,12 @@ export interface ClosingPresentationOptions {
    * the legacy immediate path.
    */
   pendingDeltas?: PendingEndOfTurnDeltas;
+  /**
+   * When provided, overrides the shared {@link closingSummary} income text.
+   * Pass an empty string to suppress the summary entirely (e.g. the
+   * per-seat closing path replaces the shared host total with per-seat lines).
+   */
+  incomeSummary?: string;
 }
 
 /**
@@ -112,6 +118,22 @@ export function closingSummary(result: TurnResult): string {
     parts.push(`Incident: ${result.incident.name}`);
   }
   return parts.join(' | ');
+}
+
+/**
+ * Builds the per-seat closing income summary used by the animated competitive
+ * closing (MS-0MUXAQQON006XA6I AC3): one `Player N: +X coins` line per
+ * surfaced seat, joined with ` | `. `ownerId` is zero-based in `state.players`,
+ * so the display index is `ownerId + 1`.
+ *
+ * The competitive closing surfaces the authoritative per-owner income (see
+ * `applyCompetitiveIncome`); the shared host total can differ from any seat's
+ * actual income, so it is deliberately not reported here.
+ */
+export function perSeatClosingSummary(seats: OwnerIncomeResult[]): string {
+  return seats
+    .map((seat) => `Player ${seat.ownerId + 1}: +${seat.income.total} coins`)
+    .join(' | ');
 }
 
 /** Sets the scene instruction text, ignoring presentation-only failures. */
@@ -171,8 +193,10 @@ export function presentTurnClosing(
     if (options.statusText) setInstruction(s, options.statusText);
 
     // Always show the summary text so reduced motion / replay / headless still
-    // receive the feedback (the incident name is part of the summary).
-    const summary = closingSummary(result);
+    // receive the feedback (the incident name is part of the summary). The
+    // per-seat closing passes its own per-seat `incomeSummary`, replacing the
+    // shared host total; an empty string suppresses the summary.
+    const summary = options.incomeSummary ?? closingSummary(result);
     if (summary) setInstruction(s, summary);
 
     const finish = (): void => {

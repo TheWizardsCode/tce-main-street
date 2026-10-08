@@ -694,16 +694,13 @@ const seatNameOf = (phaseData: any[]): string | undefined =>
   phaseData?.[0]?.businessName;
 
 describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
-  // Red phase (test-first, MS-0MUYFX8V3005VEOG): the per-seat choreography is
-  // implemented by the dependent feature item MS-0MUYFXA36009EMH0, so these
-  // assertions are expected to fail until it lands. Like the shared-primitive
-  // contract item (MS-0MUYFX6ER000BLP3), red-phase assertions use `it.fails` so
-  // the suite stays green; the implementation item flips them to `it`.
+  // Implemented by MS-0MUYFXA36009EMH0 (which flipped the red-phase
+  // `it.fails` assertions authored by MS-0MUYFX8V3005VEOG to normal `it`).
   beforeEach(() => {
     presentTurnClosing.mockClear();
   });
 
-  it.fails(
+  it(
     'AC1 — runs the full income choreography once per non-eliminated seat, in seat order',
     () => {
       const h = makePerSeatHarness();
@@ -724,7 +721,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     },
   );
 
-  it.fails('AC1 — the human seat (player 0) is included in the per-seat sequence', () => {
+  it('AC1 — the human seat (player 0) is included in the per-seat sequence', () => {
     const h = makePerSeatHarness();
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -738,7 +735,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     expect(seatNameOf(h.incomeCalls[0])).toBe('Seat 0 Biz');
   });
 
-  it.fails('AC1 — eliminated seats are skipped (only surfaced seats are presented)', () => {
+  it('AC1 — eliminated seats are skipped (only surfaced seats are presented)', () => {
     const h = makePerSeatHarness();
     // Seat 1 was eliminated: the engine omits it from `playerIncome`.
     const result: TurnResult = {
@@ -752,7 +749,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     expect(h.incomeCalls.map(seatNameOf)).toEqual(['Seat 0 Biz', 'Seat 2 Biz']);
   });
 
-  it.fails('AC1 — each choreography receives that seat own phase breakdown', () => {
+  it('AC1 — each choreography receives that seat own phase breakdown', () => {
     const h = makePerSeatHarness();
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -775,7 +772,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     expect(h.incomeCalls[2][0].baseIncome).toBe(10);
   });
 
-  it.fails('AC3 — the closing summary reports each seat income', () => {
+  it('AC3 — the closing summary reports each seat income', () => {
     const h = makePerSeatHarness();
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -789,7 +786,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     expect(h.instructions.some((t) => /Player 2[:\s].*\+7 coins/.test(t))).toBe(true);
   });
 
-  it.fails('AC6 — reduced motion presents per-seat text and advances', () => {
+  it('AC6 — reduced motion presents per-seat text and advances', () => {
     const h = makePerSeatHarness({ settingsPanel: { reducedMotion: true } });
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -807,7 +804,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     expect(completed).toBe(1);
   });
 
-  it.fails('AC6 — replay/headless skips animation but still reports per-seat text', () => {
+  it('AC6 — replay/headless skips animation but still reports per-seat text', () => {
     const h = makePerSeatHarness({ replayMode: true });
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -879,8 +876,8 @@ function perSeatClosingState(seed: string, playerCount: number): MainStreetState
 }
 
 describe('per-seat closing authoritative values (AC2)', () => {
-  // Red phase: same `it.fails` convention as the sequencing block above.
-  it.fails('presents each seat income equal to the delta applied to its PlayerRecord', () => {
+  // Implemented by MS-0MUYFXA36009EMH0 (flipped from the red-phase `it.fails`).
+  it('presents each seat income equal to the delta applied to its PlayerRecord', () => {
     // Measure the exact per-owner income delta on an identical fixture.
     const measured = perSeatClosingState('per-seat-authoritative', 2);
     const before = measured.players!.map((p) => p.coins);
@@ -903,7 +900,7 @@ describe('per-seat closing authoritative values (AC2)', () => {
     }
   });
 
-  it.fails('skips an eliminated seat end-to-end (engine filters, presentation presents)', () => {
+  it('skips an eliminated seat end-to-end (engine filters, presentation presents)', () => {
     const state = perSeatClosingState('per-seat-eliminated', 3);
     // Eliminate the middle seat after the day is driven to the closing. A
     // surviving AI seat keeps the game alive, so last-standing never fires.
