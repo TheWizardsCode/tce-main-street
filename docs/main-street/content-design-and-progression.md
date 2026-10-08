@@ -135,8 +135,9 @@ Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG
 | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
 | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity. *(Group F.)* |
 | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
+| Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. While employed at a business, grants one coin-free, action-free market re-roll per turn, biased 75% toward that business's synergy types; it advances the paid re-roll escalation counter. Generalist — serves every synergy type. *(MS-0MTISBYLS009936W.)* |
 
-> 12-tier expansion (CG-0MT3C744B009DS84): staff cards are spread across 9 of the 12 tiers (9 cards cannot cover every tier); the tier tracks the cost ladder 200→2000.
+> 12-tier expansion (CG-0MT3C744B009DS84): the core staff card ladder is spread across 9 of the 12 tiers (the ladder alone cannot cover every tier); the tier tracks the cost ladder 200→2000. The full staff catalogue (specialization applicants, business specialists and the Investor) is listed in [card-catalog.md](./card-catalog.md).
 
 ## 2. Recipes / Blueprints
 

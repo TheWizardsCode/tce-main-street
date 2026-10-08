@@ -15,7 +15,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 | Event         | 71        | 3           | 213         |
 | Upgrade       | 39        | 2           | 78          |
 | Community Space | 8       | 3           | 24          |
-| Staff         | 9         | 3           | 27          |
+| Staff         | 26        | 1           | 26          |
 
 **Synergy types:** Food, Culture, Commerce, Service (M2), Entertainment (M2), Health (M2)
 
@@ -24,11 +24,11 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 | Snapshot | Business | Event | Upgrade | Community Space | Staff | Total templates |
 |---|---:|---:|---:|---:|---:|---:|
 | Tier 1 baseline (`docs/main-street/card-catalog-baseline.json`) | 4 | 4 | 4 | 2 | 1 | 15 |
-| Current catalog (`card-data.csv`) | 31 | 71 | 39 | 8 | 9 | 158 |
-| Net increase | +27 | +67 | +35 | +6 | +8 | +143 |
+| Current catalog (`card-data.csv`) | 31 | 71 | 39 | 8 | 26 | 175 |
+| Net increase | +27 | +67 | +35 | +6 | +25 | +160 |
 
 - 2x target from baseline: `>= 30` templates
-- Current total: `158` templates (`10.5x` baseline)
+- Current total: `175` templates (`11.7x` baseline)
 - Business family grew from 18 to 30 with the Group A expansion (CG-0MSQJ1XIB0004QVN):
   12 new cards including the first Health bridge cards (Juice Bar, Yoga Studio,
   Physiotherapist), mid-tier (T2/T3) singles, and the T5 Grand Hotel flagship.
@@ -62,6 +62,13 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   (`refreshCostDiscount = 100`) and Delivery Driver (`purchaseCostDiscount = 50`)
   cost-reduction descriptions are now data-backed and fully implemented
   (CG-0MUMCVH3N007KT1M).
+- Staff gained the market-shaping **Investor** (`staff-investor`, MS-0MTISBYLS009936W):
+  while employed at a business it grants one **coin-free, action-free market
+  re-roll per turn**, biased **75%** toward the hosting business's synergy types
+  (new `freeMarketRerollPerTurn` flag + `marketRelevanceBias = 0.75` column);
+  the free re-roll advances the paid escalation counter
+  (MS-0MTR6ZRF5007PWNZ), and relocating **any** employed staff member now costs
+  1 action point (MS-0MUOSUNYR0073SI1).
 - Non-baseline card IDs are tracked in `docs/main-street/expanded-card-manifest.json`
 
 ### Guidance: adding more cards safely
@@ -516,7 +523,7 @@ This writes per-run and aggregate metrics to:
 
 ## Staff Cards
 
-Staff cards are a separate card family (`family: 'staff'`) that expand hand capacity at an ongoing per-turn coin cost. They do not occupy hand slots and are tier-gated like every other family (rebalance CG-0MT2WU0CX005Z143; 12-tier spread CG-0MT3C744B009DS84): staff unlock as their tier is reached, so a fresh run starts with only the Tier-1 staff (Apprentice). They are hired directly from the general market row (0–1 staff per row, `MARKET_STAFF_MAX`) — there is no dedicated staff market (CG-0MT2WTN0L004JA53). A second wave of 12 specialization applicant cards (CG-0MT4WXNR80090FXZ) adds role-themed staff across tiers 2–5; none grant hand slots — they are employed-applicant cards whose effects (synergy/incident/cost bonuses) are wired by the staff-specialization epic. **Staff specialization skills** (1–3 locked skills per applicant, Town Gossip baseline, stacking caps) are documented in [specialization-skills.md](specialization-skills.md). **Business-specialist staff** (CG-0MTIOLY2A0092OT1) carry an `allowedBusinessTypes` list (specific business names and/or synergy types); they may only be employed at matching businesses and are purchasable from the general market like other staff.
+Staff cards are a separate card family (`family: 'staff'`) that expand hand capacity at an ongoing per-turn coin cost. They do not occupy hand slots and are tier-gated like every other family (rebalance CG-0MT2WU0CX005Z143; 12-tier spread CG-0MT3C744B009DS84): staff unlock as their tier is reached, so a fresh run starts with only the Tier-1 staff (Apprentice). They are hired directly from the general market row (0–1 staff per row, `MARKET_STAFF_MAX`) — there is no dedicated staff market (CG-0MT2WTN0L004JA53). A second wave of 12 specialization applicant cards (CG-0MT4WXNR80090FXZ) adds role-themed staff across tiers 2–5; none grant hand slots — they are employed-applicant cards whose effects (synergy/incident/cost bonuses) are wired by the staff-specialization epic. **Staff specialization skills** (1–3 locked skills per applicant, Town Gossip baseline, stacking caps) are documented in [specialization-skills.md](specialization-skills.md). **Business-specialist staff** (CG-0MTIOLY2A0092OT1) carry an `allowedBusinessTypes` list (specific business names and/or synergy types); they may only be employed at matching businesses and are purchasable from the general market like other staff. The **Investor** (`staff-investor`, MS-0MTISBYLS009936W) adds a market-shaping ability: while employed it grants one coin-free, action-free market re-roll per turn, biased 75% toward the hosting business's synergy types, driven by the new `freeMarketRerollPerTurn` flag and `marketRelevanceBias` fraction columns. See [core-rules-and-mechanics.md](./core-rules-and-mechanics.md) for the full mechanic. Relocating **any** employed staff member to another business now costs 1 action point (MS-0MUOSUNYR0073SI1); the initial placement at hire time remains free.
 
 | ID | Name | Cost | Ongoing/turn | Slots+ | Tier | Ability | Description | Rationale |
 |----|------|------|--------------|--------|------|---------|-------------|-----------|
@@ -545,3 +552,4 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-baker` | Baker | 400 | 80 | — | 2 | Food bonus | A master baker keeps the neighbourhood well-fed. +25 coins per turn from adjacent Food businesses. Serves Bakery, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-chef` | Chef | 600 | 100 | — | 3 | +20% Food income | An experienced chef boosts nearby Food businesses with +20% income. Serves Cafe/Diner/Delicatessen, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
 | `staff-mechanic` | Mechanic | 500 | 90 | — | 3 | +30 coins Service | A skilled mechanic keeps Service businesses running smoothly. +30 coins per turn from a Service business. Serves Hardware Store, Service. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
+| `staff-investor` | Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. Grants one free market re-roll each turn with a 75% bias toward this business's synergy types. | **NEW** market-shaping ability — one coin-free, action-free re-roll per turn; advances the paid escalation counter; generalist (`allowedBusinessTypes` = every synergy type) *(MS-0MTISBYLS009936W).* |
