@@ -46,6 +46,7 @@ type UIPhase =
   | 'market'             // Player can buy or end turn
   | 'placing-business'   // Player selected a business card, picking a slot
   | 'placing-from-hand'  // Player bought a card to hand, click a slot to place it
+  | 'moving-staff'       // Player picked a staff member to relocate, click a destination (MS-0MUOSULQ700186PP)
   | 'event-selected'     // Player selected a held event card: Play / Discard (CG-0MUEQ1BF000770B3)
   | 'animating'          // Brief pause for feedback
   | 'game-over'          // Final overlay
@@ -140,6 +141,13 @@ export class MainStreetScene extends CardGameScene {
 
   // Pending hand card for placing from hand (index into state.hand)
   public pendingHandIndex: number | null = null;
+
+  /**
+   * Staff member selected for relocation (MS-0MUOSULQ700186PP AC2). Set when
+   * the player clicks [ Move staff ] in the Manage-Card dialog; the next
+   * matching business click completes the move via `moveStaffCommand`.
+   */
+  public pendingStaffMoveId: string | null = null;
 
   // True when the pending hand card was just moved from the market this turn
   // (same-week move+place composite = 1 action). False when the card was
@@ -884,6 +892,35 @@ export class MainStreetScene extends CardGameScene {
   // Refresh market proxy (forward to turn controller)
   public onRefreshMarketClick(...args: any[]): any {
     return (this.msTurnController as any).onRefreshMarketClick.apply(this.msTurnController, args);
+  }
+
+  /**
+   * Market re-roll button entry point (MS-0MUOSULQ700186PP AC1): routes to the
+   * Investor's free re-roll handler. The button prefers this when the free
+   * re-roll is available and falls back to `onRefreshMarketClick` otherwise.
+   */
+  public onFreeMarketRerollClick(...args: any[]): any {
+    return (this.msTurnController as any).onFreeMarketRerollClick.apply(this.msTurnController, args);
+  }
+
+  /**
+   * Begins a staff relocation (MS-0MUOSULQ700186PP AC2) after the Manage-Card
+   * dialog's [ Move staff ] button is pressed. Delegates to the turn
+   * controller, which validates the move and enters the `moving-staff` phase.
+   */
+  public beginStaffMove(staffId: string): void {
+    this.pendingStaffMoveId = staffId;
+    (this.msTurnController as any).onMoveStaffClick(staffId);
+  }
+
+  /** Completes a pending staff relocation at the clicked business slot. */
+  public onMoveStaffDestination(slotIndex: number): void {
+    (this.msTurnController as any).onMoveStaffDestinationClick(slotIndex);
+  }
+
+  /** Cancels a pending staff relocation, returning to the market phase. */
+  public cancelStaffMove(): boolean {
+    return (this.msTurnController as any).cancelStaffMove();
   }
 
   /** Staff peek action proxy (forward to turn controller, CG-0MSXOW6GN008ZSMN). */

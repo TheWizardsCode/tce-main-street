@@ -15,6 +15,7 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
+import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -666,13 +667,33 @@ export class MainStreetOverlayContent {
       const names = employedStaff.map(({ member }) => member.name).join(', ');
       const staffLine = s.add.text(
         centerX, panelY + 305,
-        `Employed here: ${names}\nLay off: costs 1 turn's salary + 1 reputation.`,
+        `Employed here: ${names}\nMove: costs 1 action. Lay off: costs 1 turn's salary + 1 reputation.`,
         { fontSize: '12px', color: '#ffcc88', fontFamily: FONT_FAMILY, align: 'center' },
       ).setOrigin(0.5).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(staffLine);
       s.overlayObjects.push(staffLine);
 
-      const layOffBtn = createOverlayButton(s, centerX, panelY + 352, '[ Lay off ]', 201);
+      // Move-staff affordance (MS-0MUOSULQ700186PP AC2): begins a relocation
+      // targeting the most recently hired member (same convention as Lay off).
+      // The 1-action cost is stated on the button and in the line above.
+      const moveStaffBtn = createOverlayButton(s, centerX - 110, panelY + 352, '[ Move staff (1 action) ]', 201);
+      if (s.hudContainer) s.hudContainer.add(moveStaffBtn);
+      const moveTarget = employedStaff[employedStaff.length - 1];
+      // Hover tooltip (MS-0MUOSULQ700186PP AC2): states the 1-action cost and
+      // the legal destination businesses, from the pure affordance builder.
+      moveStaffBtn.on('pointerover', () => {
+        const affordance = buildMoveStaffAffordance(s.state, moveTarget.member.id);
+        s.tooltipManager?.show(affordance.tooltip, moveStaffBtn.x, moveStaffBtn.y);
+      });
+      moveStaffBtn.on('pointerout', () => s.tooltipManager?.hide());
+      moveStaffBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        s.beginStaffMove(moveTarget.member.id);
+      });
+      s.overlayObjects.push(moveStaffBtn);
+
+      const layOffBtn = createOverlayButton(s, centerX + 110, panelY + 352, '[ Lay off ]', 201);
       if (s.hudContainer) s.hudContainer.add(layOffBtn);
       layOffBtn.on('pointerdown', () => {
         const target = employedStaff[employedStaff.length - 1];

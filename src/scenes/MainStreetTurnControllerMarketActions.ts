@@ -13,15 +13,17 @@ import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { FONT_FAMILY } from '@ui/constants';
 import { popTextOrIcon } from '@ui/popTextOrIcon';
 import type { BusinessCard, EventCard, StaffCard, UpgradeCard } from '../MainStreetCards';
-import { discardFromHandCommand, hireStaffCardCommand, moveEventToHandCommand, moveToHandCommand, peekIncidentDeckCommand, refreshMarketCommand } from '../MainStreetCommands';
+import { discardFromHandCommand, freeMarketRerollCommand, hireStaffCardCommand, moveEventToHandCommand, moveStaffCommand, moveToHandCommand, peekIncidentDeckCommand, refreshMarketCommand } from '../MainStreetCommands';
 import { SFX_KEYS } from './MainStreetConstants';
 // Import the concrete module (not the `src/ui` barrel) so Node unit tests that
 // import this controller module do not pull in browser-only UI modules.
 import { discardCard } from '@ui/discardCard';
 import { executeAction } from '../MainStreetEngine';
 import { turnLabel } from '../MainStreetFormatting';
-import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket } from '../MainStreetMarket';
+import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, canUseFreeMarketReroll } from '../MainStreetMarket';
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
+import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
+import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { addLog } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep } from '../TutorialFlow';
@@ -314,6 +316,126 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
     s.refreshAll();
     // Market swap animation (only when the refresh actually succeeded).
     if (refreshed) tcCtx.animateMarketSwap('market', outgoingRow);
+  
+}
+
+export function onFreeMarketRerollClick(tcCtx: MainStreetTurnControllerContext): void {
+
+    const s = tcCtx.scene;
+    if (s.uiPhase !== 'market') return;
+
+    const legality = canUseFreeMarketReroll(s.state);
+    if (!legality.legal) {
+      s.instructionText.setText(`Cannot free re-roll: ${legality.reason ?? 'unknown'}`);
+      playIllegalFeedback(s.actionContainer, s);
+      return;
+    }
+
+    s.uiPhase = 'animating';
+    s.instructionText.setText('Investor free re-roll...');
+    s.refreshAll();
+
+    // Capture the outgoing row before the command replaces it — the swap
+    // animation fades these cards out from their current slot positions.
+    const outgoingRow = s.state.market.cards.slice();
+    let rerolled = false;
+    try {
+      const cmd = freeMarketRerollCommand(s.state);
+      s.undoManager.execute(cmd);
+      s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+      try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'free-market-reroll' }, description: cmd.description }); } catch (_) {}
+      s.instructionText.setText('Investor free re-roll complete (coin-free)');
+      rerolled = true;
+    } catch (e) {
+      console.error('[MS] FreeMarketReroll failed', e);
+      s.instructionText.setText(`Error: ${(e as Error).message}`);
+    }
+
+    s.uiPhase = 'market';
+    s.refreshAll();
+    // Market swap animation (only when the re-roll actually succeeded).
+    if (rerolled) tcCtx.animateMarketSwap('market', outgoingRow);
+  
+}
+
+/**
+ * Move-staff affordance (MS-0MUOSULQ700186PP AC2): begin a relocation by
+ * entering the `moving-staff` phase. The label/tooltip and the 1-action-point
+ * cost are produced by the pure {@link buildMoveStaffAffordance} builder so
+ * the UI and the tests share one source of truth. Illegal starts (no actions,
+ * no employed member, no legal destination) surface feedback and mutate
+ * nothing.
+ */
+export function onMoveStaffClick(tcCtx: MainStreetTurnControllerContext, staffId: string): void {
+
+    const s = tcCtx.scene;
+    if (s.uiPhase !== 'market') return;
+
+    const affordance = buildMoveStaffAffordance(s.state, staffId);
+    if (!affordance.enabled) {
+      s.instructionText.setText(affordance.tooltip.split('\n').slice(1).join(' '));
+      playIllegalFeedback(s.actionContainer, s);
+      return;
+    }
+
+    s.pendingStaffMoveId = affordance.staffId;
+    s.uiPhase = 'moving-staff';
+    s.instructionText.setText('Click a matching business to move the staff member (1 action).');
+    s.refreshAll();
+  
+}
+
+/**
+ * Completes a pending move-staff relocation (MS-0MUOSULQ700186PP AC2) via
+ * `moveStaffCommand` (exactly 1 action point, undoable). An illegal
+ * destination keeps the `moving-staff` phase so the player can retry, with
+ * no action spent and no state mutation.
+ */
+export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerContext, slotIndex: number): void {
+
+    const s = tcCtx.scene;
+    if (s.uiPhase !== 'moving-staff') return;
+    const staffId = s.pendingStaffMoveId as string | null;
+    if (!staffId) return;
+
+    const legality = canMoveStaffOnBusiness(s.state, staffId, slotIndex);
+    if (!legality.legal) {
+      s.instructionText.setText(legality.reason ?? 'Cannot move staff there.');
+      playIllegalFeedback(s.actionContainer, s);
+      return;
+    }
+
+    let moved = false;
+    try {
+      const cmd = moveStaffCommand(s.state, staffId, slotIndex);
+      s.undoManager.execute(cmd);
+      s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+      try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'move-staff', staffId, slotIndex }, description: cmd.description }); } catch (_) {}
+      s.instructionText.setText(`Staff moved to slot ${slotIndex} (-1 action).`);
+      moved = true;
+    } catch (e) {
+      console.error('[MS] MoveStaff failed', e);
+      s.instructionText.setText(`Error: ${(e as Error).message}`);
+    }
+
+    s.pendingStaffMoveId = null;
+    s.uiPhase = 'market';
+    s.refreshAll();
+    if (moved) s.refreshStreetGrid();
+    s.refreshActionButtons();
+  
+}
+
+/** Cancels a pending move-staff relocation, returning to the market phase. */
+export function cancelStaffMove(tcCtx: MainStreetTurnControllerContext): boolean {
+
+    const s = tcCtx.scene;
+    if (s.uiPhase !== 'moving-staff') return false;
+    s.pendingStaffMoveId = null;
+    s.uiPhase = 'market';
+    s.instructionText.setText('Staff move cancelled.');
+    s.refreshAll();
+    return true;
   
 }
 

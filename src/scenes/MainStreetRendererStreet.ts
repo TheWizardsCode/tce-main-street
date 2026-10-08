@@ -790,6 +790,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         // (CG-0MU3BTTCH001E7ZD AC2/AC3); null when none employed (AC5).
         const staffSummary = formatEmployedStaffSummary(
           (biz as { employedStaff?: StaffCard[] }).employedStaff ?? [],
+          { freeRerollUsedThisTurn: s.state.investorFreeRerollUsedThisTurn },
         ) ?? '';
         const info = `${label}: ${biz.name}\nIncome: +${biz.baseIncome + biz.incomeBonus}/turn${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
         s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
@@ -802,6 +803,15 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
       if (s.uiPhase === 'market' && !isSold) {
         tooltipZone.on('pointerdown', () => {
           s.onSellCard(_index);
+        });
+      }
+
+      // Move-staff destination (MS-0MUOSULQ700186PP AC2): while a relocation
+      // is pending, a business click is the destination — routed through the
+      // turn controller so the 1-action moveStaffCommand is charged once.
+      if (s.uiPhase === 'moving-staff' && !isSold) {
+        tooltipZone.on('pointerdown', () => {
+          s.onMoveStaffDestination(_index);
         });
       }
 
