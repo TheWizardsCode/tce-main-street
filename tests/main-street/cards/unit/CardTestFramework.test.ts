@@ -29,8 +29,8 @@ describe('CardTestRegistry discovery', () => {
   it('registers exactly one definition per discovered card', () => {
     const registry = createDefaultRegistry();
     const cards = registry.discoverCards();
-    expect(cards.length).toBe(174);
-    expect(registry.size).toBe(174);
+    expect(cards.length).toBe(175);
+    expect(registry.size).toBe(175);
     expect(registry.missingDefinitions(cards)).toEqual([]);
   });
 

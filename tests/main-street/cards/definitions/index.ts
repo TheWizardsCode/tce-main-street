@@ -177,6 +177,7 @@ export const CARD_DEFINITIONS: readonly CardDefinition[] = [
   { cardId: 'staff-pr', family: 'staff', verifies: "Hire PR Officer and assert its declared staff abilities.", run: verifyStaffCard },
   { cardId: 'staff-financial', family: 'staff', verifies: "Hire Financial Advisor and assert its declared staff abilities.", run: verifyStaffCard },
   { cardId: 'staff-maintenance', family: 'staff', verifies: "Hire Maintenance Worker and assert its declared staff abilities.", run: verifyStaffCard },
+  { cardId: 'staff-investor', family: 'staff', verifies: "Hire Investor and assert its declared staff abilities.", run: verifyStaffCard },
   { cardId: 'evt-tax-error', family: 'event', verifies: "Resolve Error in Tax Return and assert its declared coin/reputation effect.", run: verifyEventCard },
   { cardId: 'evt-tax-inquiry', family: 'event', verifies: "Resolve Inquiry Commission and assert its declared coin/reputation effect.", run: verifyEventCard },
   { cardId: 'evt-strike-service', family: 'event', verifies: "Resolve Service Workers Strike and assert its declared coin/reputation effect.", run: verifyEventCard },

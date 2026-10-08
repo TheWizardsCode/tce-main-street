@@ -175,12 +175,13 @@ describe('Meta-Progression System', () => {
       }
     });
 
-    it('Tier 12 cumulative pool covers full catalog (174 tiered templates)', () => {
-      // 174 = 154 (post-Group-D + 21 staff tiers) + 8 chain-event templates
+    it('Tier 12 cumulative pool covers full catalog (175 tiered templates)', () => {
+      // 175 = 154 (post-Group-D + 21 staff tiers) + 8 chain-event templates
       // added by content child CG-0MTT7FC7A000AA58 (producer-approved 2026-09-09)
       // + 4 business-specialist staff (CG-0MTIOLY2A0092OT1) + 7 Irish-holiday events (CG-0MTT0K9RX0004QTE)
-      // + 1 producer-added Charity Shop business (MS-0MUAYBAHW007RMSL).
-      expect(TIER_DEFINITIONS['tier-12'].cumulativeCardIds).toHaveLength(174);
+      // + 1 producer-added Charity Shop business (MS-0MUAYBAHW007RMSL)
+      // + 1 Investor staff (MS-0MTISBYLS009936W).
+      expect(TIER_DEFINITIONS['tier-12'].cumulativeCardIds).toHaveLength(175);
     });
 
     it('cumulative card IDs are actually cumulative', () => {
@@ -840,7 +841,7 @@ describe('Meta-Progression System', () => {
         ...staffDeck.map((c) => c.id.replace(/-\d+$/, '')),
       ]);
 
-      expect(allBaseIds.size).toBe(166); // 146 baseline + 8 chain events (CG-0MTT7FC7A000AA58) + 4 business-specialist staff (CG-0MTIOLY2A0092OT1) + 7 Irish-holiday events (CG-0MTT0K9RX0004QTE) + 1 Charity Shop (MS-0MUAYBAHW007RMSL); staff overlap unchanged
+      expect(allBaseIds.size).toBe(167); // 166 + 1 Investor staff (MS-0MTISBYLS009936W); 146 baseline + 8 chain events (CG-0MTT7FC7A000AA58) + 4 business-specialist staff (CG-0MTIOLY2A0092OT1) + 7 Irish-holiday events (CG-0MTT0K9RX0004QTE) + 1 Charity Shop (MS-0MUAYBAHW007RMSL) + 1 Investor (MS-0MTISBYLS009936W); staff overlap unchanged
     });
   });
 
@@ -1206,10 +1207,10 @@ describe('Meta-Progression System', () => {
       expect(ids).toHaveLength(38); // 16 (T1) + 18 (T2 new incl. Inquiry Commission + Charity Shop, CG-0MTT7FC7A000AA58) + 2 T2 specialists (Florist, Baker) + 2 Irish-holiday events (CG-0MTT0K9RX0004QTE)
     });
 
-    it('returns all 174 cards for all 12 tiers', () => {
+    it('returns all 175 cards for all 12 tiers', () => {
       const allTierIds = Array.from({ length: 12 }, (_, i) => `tier-${i + 1}`);
       const ids = deriveUnlockedCardIds(allTierIds);
-      expect(ids).toHaveLength(174); // full catalog incl. 25 staff + 8 chain events (CG-0MTT7FC7A000AA58) + 7 Irish-holiday events (CG-0MTT0K9RX0004QTE) + 1 Charity Shop (MS-0MUAYBAHW007RMSL)
+      expect(ids).toHaveLength(175); // full catalog incl. 26 staff + 8 chain events (CG-0MTT7FC7A000AA58) + 7 Irish-holiday events (CG-0MTT0K9RX0004QTE) + 1 Charity Shop (MS-0MUAYBAHW007RMSL) + 1 Investor (MS-0MTISBYLS009936W)
     });
 
     it('handles empty array', () => {

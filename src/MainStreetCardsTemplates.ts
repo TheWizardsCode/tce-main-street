@@ -269,6 +269,13 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       taxAuditRate: r.taxAuditRate !== undefined && r.taxAuditRate !== '' ? Number(r.taxAuditRate) : undefined,
       actionsPerTurn: r.actionsPerTurn ? Number(r.actionsPerTurn) : undefined,
       peekOncePerTurn: r.peekOncePerTurn ? Number(r.peekOncePerTurn) > 0 : undefined,
+      // Free market re-roll ability + relevance bias (Investor, MS-0MTISBYLS009936W).
+      freeMarketRerollPerTurn: r.freeMarketRerollPerTurn
+        ? Number(r.freeMarketRerollPerTurn) > 0
+        : undefined,
+      marketRelevanceBias: r.marketRelevanceBias !== undefined && r.marketRelevanceBias !== ''
+        ? Number(r.marketRelevanceBias)
+        : undefined,
     });
   }
 }

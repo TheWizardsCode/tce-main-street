@@ -135,8 +135,9 @@ describe('Multi-Use Card Economy Integration', () => {
     it('should complete multiple turns with mixed tableau and hand purchases', () => {
       // Seed chosen so the loop actually takes cards to hand and to the
       // tableau across 3 turns (the expanded business pool shifted the
-      // seeded market).
-      const state = createTestState('integration-test-6');
+      // seeded market). Re-picked after the Investor staff card was added
+      // (MS-0MTISBYLS009936W), which shifts every seeded draw.
+      const state = createTestState('integration-test-6x-0');
       // Coin cushion so buying the first affordable card never bankrupts the
       // player mid-test (the expanded pool shifted which card that is).
       state.resourceBank.coins = 50;

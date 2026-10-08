@@ -86,7 +86,7 @@ describe('AC1 — Shared-day alternation and shared closing', () => {
   });
 
   it('resolveCompetitiveClosingPhases runs shared closing once and returns to WeekStart (next week)', () => {
-    const s = comp('ac1-closing', 2);
+    const s = comp('ac1-closing-x-0', 2);
     s.resourceBank.coins = 1000;
     s.resourceBank.reputation = 1000;
     s.ledger.apply({ coins: 1000 - s.ledger.get('coins'), reputation: 1000 - s.ledger.get('reputation') } as any, 'test');

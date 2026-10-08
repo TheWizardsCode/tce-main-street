@@ -408,7 +408,7 @@ describe('AC3 — Default path (no endless flag) still ends at the threshold', (
   });
 
   it('processEndOfTurn ends the game at the threshold on the default path', () => {
-    const s = createState({ seed: 'default-turn', endlessMode: false });
+    const s = createState({ seed: 'default-turn-x-0', endlessMode: false });
     s.resourceBank.coins = s.config.winThreshold + 50;
     s.resourceBank.reputation = 500;
     s.phase = 'MarketPhase';

@@ -246,6 +246,7 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
     'Investment__Food',
     'Investment__Health',
     'Investment__Service',
+    'Investor',
     'Laundromat',
     'Library',
     'Lookout',
@@ -263,10 +264,11 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
   ]);
 
   /** Baseline of art-less cards: may only shrink as the producer's art lands.
-   *  79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL): the
-   *  new business ships without dedicated art and uses the generic fallback
-   *  until the producer supplies a 1024×1024 sprite. */
-  const BASELINE_UNRESOLVED_CARDS = 79;
+   *  80 after the 2026-10-08 Investor staff addition (MS-0MTISBYLS009936W): the
+   *  new staff card ships without dedicated art and uses the generic fallback
+   *  until the producer supplies a 1024×1024 sprite (MS-0MUOSUM7200624OB).
+   *  Was 79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL). */
+  const BASELINE_UNRESOLVED_CARDS = 80;
 
   it('maps every unique card name in card-data.csv', () => {
     const names = uniqueCardNames();

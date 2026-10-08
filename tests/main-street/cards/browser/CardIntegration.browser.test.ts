@@ -53,7 +53,7 @@ afterAll(async () => {
 
 describe('Main Street browser card integration definitions', () => {
   it('discovers every card in card-data.csv', () => {
-    expect(cards.length).toBe(174);
+    expect(cards.length).toBe(175);
   });
 
   for (const card of cards) {

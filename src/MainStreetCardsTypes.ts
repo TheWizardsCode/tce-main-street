@@ -406,6 +406,23 @@ export interface StaffCard {
    * face-down without resolving it (CG-0MSXOW6GN008ZSMN).
    */
   readonly peekOncePerTurn?: boolean;
+  /**
+   * Optional free market re-roll ability (the Investor, MS-0MTISBYLS009936W).
+   * While at least one staff member with this flag is employed, the player may
+   * perform one coin-free, action-free market re-roll per turn. Multiple such
+   * staff do not stack (still one per turn). Absent for staff without the
+   * ability (backward compatible).
+   */
+  readonly freeMarketRerollPerTurn?: boolean;
+  /**
+   * Optional relevance bias for the free market re-roll, as a fraction in
+   * `[0, 1]` (the Investor's `0.75`, MS-0MTISBYLS009936W). On a biased draw,
+   * each slot has this probability of being drawn from the pool relevant to
+   * the business the staff member is employed at, with the remainder drawn
+   * fully at random. Absent for staff without the ability (backward
+   * compatible).
+   */
+  readonly marketRelevanceBias?: number;
 }
 
 /** Community Space card placed on the street grid, parallel to BusinessCard. */

@@ -591,12 +591,13 @@ describe('Per-owner closing income on TurnResult (MS-0MUYFX56M006RVIZ contract)'
     // incident, so `resolveCompetitiveClosingPhases` pauses after the income
     // phase and `runCompetitiveClosing` completes the deferred continuation.
     // Pin that precondition on an identically-built fixture so the assertions
-    // below cannot silently pass on the non-paused path.
-    const pausedState = compState('scan-choice-9', 2);
+    // below cannot silently pass on the non-paused path. Re-picked after the
+    // Investor staff card was added (MS-0MTISBYLS009936W).
+    const pausedState = compState('scan-choice-x-4', 2);
     driveToClosing(pausedState);
     expect(resolveCompetitiveClosingPhases(pausedState).choicePending).toBe(true);
 
-    const state = compState('scan-choice-9', 2);
+    const state = compState('scan-choice-x-4', 2);
     driveToClosing(state);
     const result = runCompetitiveClosing(state);
     expect(result).not.toBeNull();

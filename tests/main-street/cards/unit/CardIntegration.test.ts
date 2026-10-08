@@ -24,8 +24,8 @@ const results: CardTestResult[] = [];
 
 describe('Main Street card integration definitions', () => {
   it('discovers every card in card-data.csv', () => {
-    // 174 cards: 31 business, 8 community-space, 39 upgrade, 25 staff, 71 event.
-    expect(cards.length).toBe(174);
+    // 175 cards: 31 business, 8 community-space, 39 upgrade, 26 staff, 71 event.
+    expect(cards.length).toBe(175);
     const families = cards.reduce<Record<string, number>>((acc, card) => {
       acc[card.family] = (acc[card.family] ?? 0) + 1;
       return acc;
@@ -33,7 +33,7 @@ describe('Main Street card integration definitions', () => {
     expect(families.business).toBe(31);
     expect(families['community-space']).toBe(8);
     expect(families.upgrade).toBe(39);
-    expect(families.staff).toBe(25);
+    expect(families.staff).toBe(26);
     expect(families.event).toBe(71);
   });
 

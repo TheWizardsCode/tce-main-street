@@ -721,7 +721,7 @@ describe('MainStreetEngine', () => {
     });
 
     it('should execute a turn with no purchases', () => {
-      const state = createTestState();
+      const state = createTestState('turnflow-nopurchase-x-0');
 
       const result = executeFullTurn(state, [{ type: 'end-turn' }]);
 
