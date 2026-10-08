@@ -40,6 +40,7 @@ import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControlle
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import {
   COMPETITIVE_CLOSING_HOLD_MS,
+  COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
   competitiveClosingSummary,
   driveAiSeatsUntilClosing,
   endCompetitiveTurnDay,
@@ -918,6 +919,131 @@ describe('per-seat closing authoritative values (AC2)', () => {
       result.playerIncome![1].income.phaseBreakdown.perSlotBreakdown[0].businessName,
     ]);
   });
+});
+
+// ── Global fast-forward bound (AC6, bounded fallback) ──────────────────────
+//
+// The bounded / non-blocking contract: a large roster cannot stall the game.
+// Each seat's choreography is staggered by `COMPETITIVE_CLOSING_SEAT_STAGGER_MS`
+// (12 s) so the total closing timeline is `(N-1) × stagger`. The day always
+// advances regardless of roster size (MS-0MUXAQQON006XA6I AC6).
+
+describe('global fast-forward bound (AC6, bounded fallback)', () => {
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it('AC6 — a large roster (8 seats) still advances the day (bounded)', () => {
+    const instructions: string[] = [];
+    const incomeCalls: any[][] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (t: string) => instructions.push(t) },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (phaseData: any[], options: any) => {
+          const startDelay = options?.startDelayMs ?? 0;
+          clock.now = startDelay;
+          incomeCalls.push(phaseData);
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    const seats: Array<[number, number]> = [];
+    for (let i = 0; i < 8; i++) seats.push([i, 10 - i]);
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes(seats),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
+
+    // Eight choreographies, one per seat, in seat order.
+    expect(incomeCalls).toHaveLength(8);
+    expect(incomeCalls.map(seatNameOf)).toEqual([
+      'Seat 0 Biz', 'Seat 1 Biz', 'Seat 2 Biz', 'Seat 3 Biz',
+      'Seat 4 Biz', 'Seat 5 Biz', 'Seat 6 Biz', 'Seat 7 Biz',
+    ]);
+    // Staggered timeline: seat 7 starts at 7 × 12_000 ms — deterministic and bounded.
+    expect(clock.now).toBe(7 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS);
+    // The closing still completes — the day advances.
+    expect(lastInstruction(instructions)).toBe('End of turn complete.');
+    expect(completed).toBe(1);
+  });
+
+  it('AC6 — stagger timing is deterministic (seat N starts at N × stagger)', () => {
+    const instructions: string[] = [];
+    const delays: number[] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (t: string) => instructions.push(t) },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (_phaseData: any[], options: any) => {
+          delays.push(options?.startDelayMs ?? 0);
+          clock.now = delays[delays.length - 1];
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7], [2, 3]]),
+    };
+
+    presentCompetitiveClosing(asCtx(scene), result, () => {});
+
+    // Seat delays are exactly 0, 1×stagger, 2×stagger.
+    expect(delays).toEqual([
+      0,
+      1 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+      2 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+    ]);
+  });
+
+  it('AC6 — headless (no time object) degrades immediately and advances', () => {
+    const h = makePerSeatHarness({ time: undefined });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // Headless: no `time` object → `scheduleOrRun` falls through → immediate.
+    // The closing finishes synchronously regardless of animation calls.
+    expect(completed).toBe(1);
+  });
+
+  // Red-phase: the global fast-forward bound constant (MS-0MUYFXCJ5008K6MY)
+  // has not been authored yet. When the implementation adds
+  // `COMPETITIVE_CLOSING_MAX_TOTAL_MS` to `MainStreetAnimatorTiming.ts` and
+  // the competitive closing clamps seat delays to it, flip this to `it`.
+  it.fails(
+    'AC6 — MainStreetAnimatorTiming exports a COMPETITIVE_CLOSING_MAX_TOTAL_MS bound',
+    async () => {
+      const timing = await import('../../src/scenes/MainStreetAnimatorTiming');
+      const maxTotal = (timing as any).COMPETITIVE_CLOSING_MAX_TOTAL_MS;
+      expect(typeof maxTotal).toBe('number');
+      expect(maxTotal).toBeGreaterThan(0);
+    },
+  );
 });
 
 /** Sums the presented per-slot income of a seat's phase breakdown. */
