@@ -485,6 +485,15 @@ export interface MainStreetState {
    * Participates in undo snapshots and save/load serialization.
    */
   marketRefreshesThisTurn: number;
+  /**
+   * Investor free market re-roll gate (MS-0MTISBYLS009936W): whether the
+   * once-per-turn, coin-free, action-free market re-roll granted by an
+   * employed Investor has already been used this turn. Reset to false at
+   * `WeekStart` alongside `peekUsedThisTurn` / `favourUsedThisTurn`. Multiple
+   * employed Investors still grant a single free re-roll (the flag is global,
+   * not per-card). Serialized by `MainStreetStateSerialize`.
+   */
+  investorFreeRerollUsedThisTurn: boolean;
   // ── Competitive mode (CG-0MT5X3GMA007EG30) ─────────────────
   /** Per-player records; undefined in single-player mode. */
   players?: PlayerRecord[] | null;
@@ -690,6 +699,8 @@ export interface MainStreetSerializedState {
   businessPlacedThisTurn?: boolean;
   /** Number of market re-rolls taken this turn (MS-0MTR6ZRF5007PWNZ); drives the escalating refresh cost. Backfilled to 0 for legacy saves. */
   marketRefreshesThisTurn: number;
+  /** Whether the Investor free market re-roll has been used this turn (MS-0MTISBYLS009936W). Backfilled to false for legacy saves. */
+  investorFreeRerollUsedThisTurn: boolean;
   // ── Competitive (CG-0MT5X3GMA007EG30) ───────────────────────
   /** Per-player records; undefined in single-player saves. */
   players?: PlayerRecord[] | null;

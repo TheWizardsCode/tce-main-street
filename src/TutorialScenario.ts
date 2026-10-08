@@ -406,6 +406,7 @@ export function createTutorialScenario(
     justMovedEventCardId: null,
     justMovedUpgradeCardId: null,
     marketRefreshesThisTurn: 0,
+    investorFreeRerollUsedThisTurn: false,
     pendingApplicant: null,
     pendingEventChoice: null,
   };

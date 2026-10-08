@@ -88,6 +88,7 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     justMovedUpgradeCardId: state.justMovedUpgradeCardId ?? null,
     businessPlacedThisTurn: state.businessPlacedThisTurn ?? false,
     marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
+    investorFreeRerollUsedThisTurn: state.investorFreeRerollUsedThisTurn ?? false,
     players: state.players ? structuredClone(state.players) : undefined,
     ownerTaggedGrid: state.ownerTaggedGrid ? structuredClone(state.ownerTaggedGrid) : undefined,
     playerCount: state.playerCount,
@@ -323,6 +324,13 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
   // instead of computing `NaN`.
   if (!('marketRefreshesThisTurn' in saved)) {
     (saved as Record<string, unknown>).marketRefreshesThisTurn = 0;
+  }
+
+  // ── investorFreeRerollUsedThisTurn (MS-0MTISBYLS009936W): backfill default ──
+  // Legacy saves predate the Investor free re-roll gate; default to false
+  // (available) so old saves remain loadable and the gate is not `undefined`.
+  if (!('investorFreeRerollUsedThisTurn' in saved)) {
+    (saved as Record<string, unknown>).investorFreeRerollUsedThisTurn = false;
   }
 
   // ── incidentBalance (CG-0MSL0OP040043KKZ): backfill from the queue for ──
@@ -639,6 +647,7 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     revealedPeekedCard: (saved.revealedPeekedCard as EventCard | null) ?? null,
     businessPlacedThisTurn: (saved as unknown as { businessPlacedThisTurn?: boolean })?.businessPlacedThisTurn ?? false,
     marketRefreshesThisTurn: (saved as unknown as { marketRefreshesThisTurn?: number })?.marketRefreshesThisTurn ?? 0,
+    investorFreeRerollUsedThisTurn: (saved as unknown as { investorFreeRerollUsedThisTurn?: boolean })?.investorFreeRerollUsedThisTurn ?? false,
     justMovedUpgradeCardId: (saved as unknown as { justMovedUpgradeCardId?: string | null })?.justMovedUpgradeCardId ?? null,
     players: (saved as unknown as { players?: PlayerRecord[] | null })?.players
       ? structuredClone((saved as unknown as { players: PlayerRecord[] })?.players)

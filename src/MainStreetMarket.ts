@@ -45,7 +45,16 @@ export {
   cycleMarketCards,
   replenishIncidentDeck,
   cheatReplaceMarketCard,
+  getEmployedInvestorReroll,
+  canUseFreeMarketReroll,
+  useFreeMarketReroll,
+  INVESTOR_DEFAULT_RELEVANCE_BIAS,
 } from './MainStreetMarketRefill';
+
+export type { EmployedInvestorReroll } from './MainStreetMarketRefill';
+
+export type { MarketRelevanceBias } from './MainStreetStateSetup';
+export { isMarketCardRelevant } from './MainStreetStateSetup';
 
 // ── Sell ────────────────────────────────────────────────────
 export {

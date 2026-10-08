@@ -64,12 +64,15 @@ export {
   advanceWeek,
   generateSeedString,
   refillSingleRowMarket,
+  isMarketCardRelevant,
   setupMainStreetGame,
   createCompetitiveState,
   createStateFromModeSelection,
   setIncidentBalanceLimits,
   setStreetGridLattice,
 } from './MainStreetStateSetup';
+
+export type { MarketRelevanceBias } from './MainStreetStateSetup';
 
 // ── Serialization ───────────────────────────────────────────
 export {
