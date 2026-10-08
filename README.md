@@ -32,6 +32,24 @@ every seat's final coins, reputation and score side by side, flagging bankrupt,
 collapsed and eliminated seats. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
+### Competitive end-of-turn
+
+Once every seat has taken its MarketPhase the shared day resolves a single
+closing — income → incident → end check — exactly as in single-player. In
+competitive mode the closing is then **presented per seat**: every
+non-eliminated seat, in seat order, replays the full phased income
+choreography (base → synergy → reputation → events → upcoming → grid-to-HUD
+coin collection) with that seat's own authoritative income. The closing text
+reports each seat's own gain (for example `Player 2: +7 coins`) rather than
+the shared host total, which can differ from any seat's actual income.
+Eliminated seats are skipped.
+
+The engine's shared-day contract and seeded-replay determinism are unchanged —
+this is presentation only. Reduced motion, replay and headless contexts skip
+the animations, show the per-seat text and always advance the day; a global
+fast-forward bound caps the total closing time so a large roster cannot stall
+the game.
+
 ## Prerequisites
 
 - **Node.js 20** and npm (the CI workflow pins Node 20).

@@ -348,6 +348,49 @@ void popTextOrIcon({
 - Reuse: `moveGameObject` + `SoundManager` + `popTextOrIcon`, `SFX_KEYS`
   (`COMMON_SFX_KEYS` convention); no new SFX keys or engine infrastructure.
 
+### Competitive per-seat closing presentation (MS-0MUXAQQON006XA6I)
+
+In competitive (human-vs-AI) play the shared competitive closing is presented
+**per seat** after the shared day resolves, instead of a single condensed
+text-only summary.
+
+- Trigger: `endCompetitiveTurnDay()` → `runCompetitiveClosing()` →
+  `presentCompetitiveClosing()` (`MainStreetTurnControllerCompetitive.ts`).
+- Per-seat animation: when the closing surfaces authoritative per-owner income
+  (`TurnResult.playerIncome`, from `applyCompetitiveIncome`, non-eliminated
+  seats only, in seat order) the presentation calls
+  `MainStreetAnimator.animateIncomePhases(seat.income.phaseBreakdown.perSlotBreakdown)`
+  **once per seat** — the same phased choreography documented under
+  [End-of-turn income presentation](#end-of-turn-income-presentation-phased-coin-grid-animation-cg-0mt23o6w8003axwj)
+  (base → synergy → reputation → events → upcoming → collect) — using each
+  seat's own phase data. Seats are staggered by
+  `COMPETITIVE_CLOSING_SEAT_STAGGER_MS` so they play back-to-back rather than
+  overlapping. The engine has already applied each seat's deltas to its
+  `PlayerRecord`; the shared HUD's `incomeCollectionActive` gating preserves
+  the deferred-delta window (the competitive scoreboard is not refreshed
+  during the closing).
+- Per-seat feedback text: the closing summary reports each seat's own income
+  (`Player 1: +10 coins | Player 2: +7 coins`, built by
+  `perSeatClosingSummary`), never the shared host total, which can differ from
+  any seat's actual income. The human seat is included; eliminated seats are
+  skipped.
+- Incident reveal and day advance: delegated to the shared
+  `presentTurnClosing` primitive (the **same** path used by single-player), so
+  the single shared incident reveal and the next-day advance cannot drift. The
+  shared income line is suppressed (`incomeSummary: ''`) because the per-seat
+  lines replace it.
+- Bounded / non-blocking (AC6): a global fast-forward bound
+  (`COMPETITIVE_CLOSING_MAX_TOTAL_MS`) clamps the per-seat stagger so a large
+  roster cannot stall the game — later seats start immediately and their
+  choreographies overlap rather than queueing indefinitely, and the day still
+  advances. With no per-owner data the condensed shared summary is kept.
+- Accessibility (reduced motion), replay and headless: the per-seat
+  animations are skipped, the per-seat text is still shown and the day always
+  advances.
+- Presentation-only: reads resolved state, consumes no RNG and mutates no
+  engine state, so seeded replay determinism and the shared closing order
+  (Income → Incident → EndCheck) are unchanged.
+
 ### Market deal-in (week-start refill / Discover / Research swap)
 
 - Helper: `MainStreetAnimator.animateMarketDealIn()`.

@@ -19,10 +19,12 @@
  *      under a bounded guard.
  *   4. {@link runCompetitiveClosing} runs the shared closing and completes a
  *      paused dual-choice incident so the day never stalls.
- *   5. {@link presentCompetitiveClosing} presents the closing results (income
- *      summary, incident reveal, end-of-turn text) then advances to the next
- *      day. Bounded and non-blocking, so the day never stalls even under
- *      reduced motion, replay or a headless context (MS-0MUVUPRXZ0030LUD).
+ *   5. {@link presentCompetitiveClosing} presents the closing results per seat:
+ *      one full phased income choreography per non-eliminated seat, in seat
+ *      order, with per-seat income text, then the shared incident reveal and
+ *      next-day advance via the shared `presentTurnClosing` primitive
+ *      (MS-0MUXAQQON006XA6I). Bounded and non-blocking, so the day never
+ *      stalls even under reduced motion, replay or a headless context.
  *
  * All functions are Phaser-free and operate on `MainStreetState`, so they are
  * exercised by the node integration test while the scene wires them behind a

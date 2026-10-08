@@ -27,6 +27,37 @@ counter, and a final `+total` pop lands when collection completes. See
 - Reduced motion: flights skipped; the HUD refresh shows the single final
   pop + income sound.
 
+## Shared end-of-turn closing presentation
+
+`presentTurnClosing(tcCtx, result, onComplete, options)` in
+`MainStreetTurnControllerAnimation.ts` is the single closing presentation
+primitive (MS-0MUYFX7Q2004JQ5R). It owns the closing text (`closingSummary` /
+`perSeatClosingSummary`), the incident reveal and the day-advance callback, and
+is shared by single-player (`finishTurnPresentation`,
+`MainStreetTurnControllerTurnFlow.ts`) and competitive
+(`presentCompetitiveClosing`, `MainStreetTurnControllerCompetitive.ts`) so the
+two flows cannot drift. Presentation-only: it consumes no RNG and mutates no
+engine state.
+
+In competitive mode (MS-0MUXAQQON006XA6I) the closing surfaces the
+authoritative per-owner income on `TurnResult.playerIncome`
+(`OwnerIncomeResult[]` from `applyCompetitiveIncome`, non-eliminated seats
+only, in seat order). `presentCompetitiveClosing` then runs the full phased
+`animateIncomePhases` choreography once per seat using that seat's own
+`phaseBreakdown.perSlotBreakdown`, staggered by
+`COMPETITIVE_CLOSING_SEAT_STAGGER_MS`, and reports per-seat income
+(`Player N: +X coins`). The shared incident reveal and day advance are
+delegated to the primitive with the shared income line suppressed
+(`incomeSummary: ''`).
+
+- Bounded: the per-seat stagger is clamped to
+  `COMPETITIVE_CLOSING_MAX_TOTAL_MS`, so a large roster cannot stall the day.
+- Reduced motion / replay / headless: the per-seat animations are skipped,
+  the per-seat text is still shown and the day always advances.
+- No per-owner data (single-player-free / legacy results): the condensed
+  shared summary is kept.
+- See `docs/main-street/ux-visual-audio.md` for the design notes.
+
 ## Ambient street pedestrians (reputation crowd)
 
 `MainStreetPedestrians` (MS-0MTV9AS15004AC1E; reworked MS-0MUZ4WB290024ZGQ;
