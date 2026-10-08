@@ -150,6 +150,16 @@ export const PEDESTRIAN_SHOP_ENTRY_RATE = 0.35;
  * deterministically at phase time; presentation-only.
  */
 export const PEDESTRIAN_MIN_SHOP_RATIO = 0.25;
+/**
+ * Speed multiplier applied while a pedestrian walks deliberately into a shop
+ * or off the block (MS-0MUZ6CGSV002WTYM), so the walk reads as purposeful.
+ */
+export const PEDESTRIAN_ENTER_SPEED_MULTIPLIER = 1.5;
+/**
+ * How far past the block bounds a leaving pedestrian walks before the layer
+ * removes it off-screen (MS-0MUZ6CGSV002WTYM), in map-local px.
+ */
+export const PEDESTRIAN_OFF_BLOCK_MARGIN = 60;
 // Make hand slot match placeholder size as requested
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;

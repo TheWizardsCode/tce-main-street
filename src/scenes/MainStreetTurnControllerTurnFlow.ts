@@ -215,6 +215,13 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
       return;
     }
 
+    // ── Pedestrian end-of-turn exit ────────────────────────────────
+    // The crowd does not vanish at the end of the day: figures that are not
+    // spending walk off the block during the end phase, and enough figures
+    // walk into occupied shops to source the reputation income
+    // (MS-0MUZ6CGSV002WTYM). Presentation-only; never blocks the turn.
+    try { s.msPedestrians?.beginEndOfTurn?.(); } catch (_) { /* presentation-only */ }
+
     // ── Income Phase Animation ──────────────────────────────────────
     // Presentation-only VFX (AGENTS.md rule 8 + epic CG-0MT23O6W8003AXWJ):
     // the phased income show — base → synergy → reputation → events →

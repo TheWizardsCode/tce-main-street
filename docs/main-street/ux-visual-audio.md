@@ -171,13 +171,22 @@ void popTextOrIcon({
   (`PEDESTRIAN_TEXTURE_KEY`, `graphics.generateTexture`) is shared by every
   figure; the layer is parented to the street container so it pans and clips
   with the map camera.
-- Road-walking rule (MS-0MUZ4WB290024ZGQ): figures walk **only on the road
-  bands** between and around the street cells — they follow the road network
-  (`buildRoadNetwork`) of intersections and segments, so a walking figure
-  never crosses a business cell. A figure may step off the road and enter an
-  **occupied** cell (`occupiedShops`, a truthy `streetGrid` entry) to spend
-  money; once inside it stays there (`stepPedestrianFigure`,
-  `withinShopCapture`).
+- Road-lane walking (MS-0MUZ4WB290024ZGQ, polished by MS-0MUZ6CGSV002WTYM):
+  figures walk **only on the road bands** between and around the street cells —
+  they follow the road network (`buildRoadNetwork`) of intersections and
+  segments, never crossing a business cell. Each figure keeps to **one side of
+  the road** — a per-figure perpendicular lane offset
+  (`pedestrianLaneOffset`, `lanePoint`) — so they do not walk down the
+  centre-line.
+- Deliberate shop entry (MS-0MUZ6CGSV002WTYM): when a figure chooses an
+  **occupied** cell (`occupiedShops`, a truthy `streetGrid` entry) it switches
+  to `entering` and **walks** to the shop (`beginShopEntry`,
+  `stepPedestrianFigure`), becoming `inside` only on arrival — it never
+  teleports. Once inside it stays there.
+- Crowd persistence (MS-0MUZ6CGSV002WTYM): a street rebuild (e.g. a card being
+  played) re-parents the layer around the **existing** figures
+  (`attachToStreet`), keeping each figure's position, lane and mode; the crowd
+  does not reset.
 - Live population rule: while a turn is in progress the crowd tracks the
   authoritative HUD reputation value — the same `animateHudValueChanges`
   reputation path that renders the HUD delta reconciles the layer to
@@ -185,23 +194,26 @@ void popTextOrIcon({
   figure out (`PEDESTRIAN_FADE_MS`), and reconciliation is delta-only
   (retained figures keep their identity — the layer never rebuilds). New
   figures always enter from a block corner.
-- Turn lifecycle (MS-0MUZ4WB290024ZGQ): at the start of a new turn
-  (`startTurnPhase`) `MainStreetPedestrians.startNewTurn()` clears the
-  previous turn's crowd and spawns a fresh set that wanders onto the street
-  from the four corners of the block (`network.corners`).
+- Turn lifecycle (MS-0MUZ4WB290024ZGQ, polished by MS-0MUZ6CGSV002WTYM): at the
+  end of the turn `MainStreetPedestrians.beginEndOfTurn()` sends every
+  non-shopping figure **walking off the block** (`directFigureOffBlock`, removed
+  once clear) rather than vanishing in place, while enough figures walk into
+  occupied shops. At the start of the new turn (`startTurnPhase`)
+  `startNewTurn()` clears any leftovers and spawns a fresh set that wanders
+  onto the street from the four corners of the block (`network.corners`).
 - Reputation income conversion (MS-0MUYGFWXK003QFYB, reworked by
-  MS-0MUZ4WB290024ZGQ): the phased income show's `reputation` phase no longer
-  starts its coin flight at the HUD reputation counter.
-  `MainStreetPedestrians.dissolveIntoCoins(targets)` first guarantees that at
-  least `PEDESTRIAN_MIN_SHOP_RATIO` (25%) of the live crowd is inside occupied
-  cells (`prepareForIncomePhase` → `forceShopOccupancy`), then returns a coin
-  origin per business from a figure **inside that business** (falling back to
-  any shop occupant, then to a street-area anchor
-  (`pedestrianStreetAnchor`) **never** the HUD counter). The credited amounts
-  (`iconsForAmount(repBonus)`), the on-card `revealInGrid` landing, the
-  `+total` pop and the phase pacing (`INCOME_PHASE_GAP_MS`) are unchanged —
-  the pedestrians are a visual source only, so the phase-sum invariant and
-  the deferred-mutation economy are untouched.
+  MS-0MUZ4WB290024ZGQ / MS-0MUZ6CGSV002WTYM): the phased income show's
+  `reputation` phase no longer starts its coin flight at the HUD reputation
+  counter. `MainStreetPedestrians.dissolveIntoCoins(targets)` first directs at
+  least `PEDESTRIAN_MIN_SHOP_RATIO` (25%) of the live crowd to **walk** into
+  occupied cells (`prepareForIncomePhase` → `assignShopShoppers`, teleport-free),
+  then returns a coin origin per business from a figure **inside that
+  business** (falling back to a figure walking into it, then any shopper, then
+  a street-area anchor (`pedestrianStreetAnchor`) **never** the HUD counter).
+  The credited amounts (`iconsForAmount(repBonus)`), the on-card `revealInGrid`
+  landing, the `+total` pop and the phase pacing (`INCOME_PHASE_GAP_MS`) are
+  unchanged — the pedestrians are a visual source only, so the phase-sum
+  invariant and the deferred-mutation economy are untouched.
 - Presentation-only: the layer never mutates game state, the transcript or
   the turn flow; every method is defensive (a throwing layer is swallowed)
   so a bad frame can never stall the turn.
