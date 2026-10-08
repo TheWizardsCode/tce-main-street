@@ -1054,6 +1054,11 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
     return true;
   }
 
+  // Each seat races toward the effective win threshold: the base difficulty
+  // value divided by the seat count (human + AI) and rounded to the nearest
+  // 50, so a larger roster still reaches the win in a comparable run length
+  // (MS-0MUZH6V7C0091SGE). Single-player (`playerCount` undefined) resolves
+  // to the unchanged base value, which is already a multiple of 50.
   const effectiveThreshold = effectiveWinThreshold(state);
   for (let i = 0; i < state.players.length; i++) {
     if (state.players[i].score >= effectiveThreshold) {
