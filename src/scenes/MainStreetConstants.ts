@@ -140,11 +140,6 @@ export const PEDESTRIAN_FADE_MS = 220;
  */
 export const PEDESTRIAN_SHOP_CAPTURE_PAD = 4;
 /**
- * Probability per second that a pedestrian in range of an occupied business
- * cell enters it to spend money (MS-0MUZ4WB290024ZGQ). Presentation-only.
- */
-export const PEDESTRIAN_SHOP_ENTRY_RATE = 0.35;
-/**
  * Minimum fraction of the live crowd that must be inside occupied cells by
  * the reputation income phase (MS-0MUZ4WB290024ZGQ). Enforced
  * deterministically at phase time; presentation-only.

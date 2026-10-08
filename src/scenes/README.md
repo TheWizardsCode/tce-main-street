@@ -35,8 +35,9 @@ solid-colour silhouettes that walk the road bands between and around the
 street cells, each keeping to one side of the road (a lane offset). The
 population is a pure function of reputation (`pedestrianCount`, 1 figure per
 50, uncapped, `#88bbff`); the crowd tracks the HUD reputation value live
-(fade in/out) and persists across street rebuilds. A figure may **walk**
-deliberately into an **occupied** business cell, where it spreads to its own
+(fade in/out) and persists across street rebuilds. People always walk to the
+**nearest occupied cell** (re-resolved each frame, so a cell filled mid-turn
+is picked up) and **walk** deliberately into it, where each spreads to its own
 random spot inside the cell and stays (no teleporting). At the end of the
 turn the non-shoppers walk off the block and enough figures walk into shops;
 at the start of the next turn the leftovers clear and a fresh set enters from

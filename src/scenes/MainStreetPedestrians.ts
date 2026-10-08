@@ -40,7 +40,6 @@ import {
   PEDESTRIAN_MIN_SHOP_RATIO,
   PEDESTRIAN_OFF_BLOCK_MARGIN,
   PEDESTRIAN_SHOP_CAPTURE_PAD,
-  PEDESTRIAN_SHOP_ENTRY_RATE,
   PEDESTRIAN_SILHOUETTE_H,
   PEDESTRIAN_SILHOUETTE_W,
   PEDESTRIAN_TEXTURE_KEY,
@@ -312,6 +311,9 @@ export function occupiedShops(
     const centre = playableIndexToMapCenter(slotIndex, layout, lattice, gameplay);
     const halfW = layout.slotW / 2;
     const halfH = layout.slotH / 2;
+    // Capture spans the cell plus the adjacent road (both axes) and the lane,
+    // so a figure at the nearest road intersection can enter directly.
+    const reachX = halfW + roadY / 2 + lane + capturePad;
     const reachY = halfH + roadY / 2 + lane + capturePad;
     // Interior a shopper can occupy without the silhouette poking out.
     const inset = PEDESTRIAN_SILHOUETTE_W / 2 + 2;
@@ -319,8 +321,8 @@ export function occupiedShops(
       slotIndex,
       x: centre.x,
       y: centre.y,
-      captureXMin: centre.x - halfW - capturePad,
-      captureXMax: centre.x + halfW + capturePad,
+      captureXMin: centre.x - reachX,
+      captureXMax: centre.x + reachX,
       captureYMin: centre.y - reachY,
       captureYMax: centre.y + reachY,
       cellXMin: centre.x - halfW + inset,
@@ -340,6 +342,77 @@ export function withinShopCapture(figure: { x: number; y: number }, shop: Pedest
     figure.y >= shop.captureYMin &&
     figure.y <= shop.captureYMax
   );
+}
+
+/** Squared distance from a point to a shop's cell centre. */
+function shopDistanceSq(figure: { x: number; y: number }, shop: PedestrianShop): number {
+  const dx = figure.x - shop.x;
+  const dy = figure.y - shop.y;
+  return dx * dx + dy * dy;
+}
+
+/**
+ * The occupied cell nearest to `figure` (by cell-centre distance), or `null`
+ * when no cells are occupied. This is the cell a walking figure always heads
+ * for (MS-0MUZ9O1I00088JF2).
+ */
+export function nearestShop(
+  figure: { x: number; y: number },
+  shops: PedestrianShop[],
+): PedestrianShop | null {
+  let best: PedestrianShop | null = null;
+  let bestDistance = Infinity;
+  for (const shop of shops) {
+    const distance = shopDistanceSq(figure, shop);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = shop;
+    }
+  }
+  return best;
+}
+
+/** Index of the road intersection nearest to a shop's cell (its entry point). */
+export function nearestNodeToShop(shop: PedestrianShop, network: RoadNetwork): number {
+  let best = -1;
+  let bestDistance = Infinity;
+  for (let i = 0; i < network.nodes.length; i++) {
+    const node = network.nodes[i];
+    const dx = node.x - shop.x;
+    const dy = node.y - shop.y;
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Greedy road-graph step from `current` toward `goal`. The road network is a
+ * full grid, so repeatedly stepping to the neighbour nearest the goal always
+ * reaches it. Prefers not to reverse onto `from` on an exact tie.
+ */
+function chooseNextToward(
+  network: RoadNetwork,
+  current: number,
+  goal: number,
+  from: number,
+): number {
+  const neighbours = network.adjacency[current] ?? [];
+  if (neighbours.length === 0 || goal < 0) return current;
+  const goalNode = network.nodes[goal];
+  const distanceToGoal = (nodeIndex: number): number => {
+    const node = network.nodes[nodeIndex];
+    const dx = node.x - goalNode.x;
+    const dy = node.y - goalNode.y;
+    return dx * dx + dy * dy;
+  };
+  const sorted = [...neighbours].sort((a, b) => distanceToGoal(a) - distanceToGoal(b));
+  const nearest = distanceToGoal(sorted[0]);
+  const tied = sorted.filter((n) => distanceToGoal(n) <= nearest + 1e-9);
+  return tied.find((n) => n !== from) ?? tied[0];
 }
 
 // ── Pure helper: figure model + stepping ───────────────────────────
@@ -590,14 +663,19 @@ export function stepPedestrianFigure(
     return;
   }
 
-  // Decide whether to step off the road into an occupied shop.
-  if (shops.length > 0 && sample01(rng) < PEDESTRIAN_SHOP_ENTRY_RATE * dt) {
-    const shop = shops.find((candidate) => withinShopCapture(figure, candidate));
-    if (shop) {
+  // Always head for the nearest occupied cell; re-resolved every frame so a
+  // cell filled mid-turn (and any nearer cell) is picked up
+  // (MS-0MUZ9O1I00088JF2).
+  const shop = shops.length > 0 ? nearestShop(figure, shops) : null;
+  if (shop) {
+    figure.shopIndex = shop.slotIndex;
+    if (withinShopCapture(figure, shop)) {
       beginShopEntry(figure, shop, rng);
       figure.bobPhase = (figure.bobPhase + PEDESTRIAN_BOB_RATE * dt) % (Math.PI * 2);
       return;
     }
+  } else {
+    figure.shopIndex = null;
   }
 
   const fromNode = network.nodes[figure.from] ?? network.nodes[figure.target];
@@ -607,11 +685,16 @@ export function stepPedestrianFigure(
   const at = lanePoint(toNode, dir, laneOffset, figure.lane);
 
   if (moveToward(figure, at.x, at.y, PEDESTRIAN_WALK_SPEED, dt)) {
-    // Arrived at the intersection — choose the next road segment (lane kept).
+    // Arrived at the intersection — choose the next road segment.
     const current = figure.target;
-    const neighbours = network.adjacency[current] ?? [];
-    const forward = neighbours.filter((n) => n !== figure.from);
-    const next = pick(forward.length > 0 ? forward : neighbours, rng);
+    let next: number | undefined;
+    if (shop) {
+      next = chooseNextToward(network, current, nearestNodeToShop(shop, network), figure.from);
+    } else {
+      const neighbours = network.adjacency[current] ?? [];
+      const forward = neighbours.filter((n) => n !== figure.from);
+      next = pick(forward.length > 0 ? forward : neighbours, rng);
+    }
     figure.from = current;
     figure.target = next ?? current;
   }
@@ -647,7 +730,10 @@ export function assignShopShoppers(
   for (const figure of figures) {
     if (occupancy >= required) break;
     if (figure.mode !== 'walking') continue;
-    const shop = shops[cursor % shops.length];
+    const shop =
+      (figure.shopIndex !== null
+        ? shops.find((candidate) => candidate.slotIndex === figure.shopIndex)
+        : undefined) ?? shops[cursor % shops.length];
     cursor += 1;
     beginShopEntry(figure, shop, rng);
     occupancy += 1;

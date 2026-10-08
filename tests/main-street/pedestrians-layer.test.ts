@@ -26,6 +26,7 @@ import {
   assignShopShoppers,
   buildRoadNetwork,
   createPresentationRng,
+  nearestShop,
   networkBounds,
   occupiedShops,
   pedestrianLaneOffset,
@@ -397,6 +398,66 @@ describe('stepPedestrianFigure — deliberate shop entry (no teleport)', () => {
       expect(walker.mode).toBe('walking');
       expect(onRoad(walker.x, walker.y)).toBe(true);
     }
+  });
+});
+
+describe('nearest occupied cell targeting (MS-0MUZ9O1I00088JF2)', () => {
+  const shopsGrid = () =>
+    occupiedShops(
+      [{ name: 'A' }, null, null, null, { name: 'B' }, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+
+  it('nearestShop returns the closest occupied cell', () => {
+    const shops = shopsGrid();
+    const shopA = shops.find((s) => s.slotIndex === 0) as (typeof shops)[number];
+    const shopB = shops.find((s) => s.slotIndex === 4) as (typeof shops)[number];
+    expect(nearestShop({ x: shopA.x + 5, y: shopA.y }, shops)?.slotIndex).toBe(0);
+    expect(nearestShop({ x: shopB.x - 5, y: shopB.y }, shops)?.slotIndex).toBe(4);
+    expect(nearestShop({ x: 0, y: 0 }, [])).toBeNull();
+  });
+
+  it('walks a figure to the nearest occupied cell and into it', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const shops = occupiedShops([{ name: 'Bakery' }], LAYOUT, LATTICE, LATTICE);
+    const walker = spawnPedestrianFigure(network, LAYOUT, createPresentationRng(6));
+    const rng = createPresentationRng(17);
+
+    expect(walker.shopIndex).toBeNull();
+    for (let i = 0; i < 1200 && walker.mode !== 'inside'; i++) {
+      stepPedestrianFigure(walker, network, shops, LAYOUT, 0.05, rng);
+    }
+
+    expect(walker.shopIndex).toBe(shops[0].slotIndex);
+    expect(walker.mode).toBe('inside');
+  });
+
+  it('retargets to a cell filled mid-turn when it is nearer', () => {
+    const network = buildRoadNetwork(LAYOUT, LATTICE);
+    const far = occupiedShops(
+      [null, null, null, null, { name: 'B' }, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+    const walker = spawnPedestrianFigure(network, LAYOUT, createPresentationRng(6));
+    const rng = createPresentationRng(23);
+
+    // Only the far cell exists — the figure heads for it.
+    stepPedestrianFigure(walker, network, far, LAYOUT, 0.05, rng);
+    expect(walker.shopIndex).toBe(4);
+
+    // A nearer cell is filled during the turn: the figure retargets to it.
+    const withNear = occupiedShops(
+      [{ name: 'A' }, null, null, null, { name: 'B' }, null, null, null, null, null],
+      LAYOUT,
+      LATTICE,
+      LATTICE,
+    );
+    stepPedestrianFigure(walker, network, withNear, LAYOUT, 0.05, rng);
+    expect(walker.shopIndex).toBe(0);
   });
 });
 
