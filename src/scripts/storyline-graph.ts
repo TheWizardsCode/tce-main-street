@@ -23,8 +23,9 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import type { EventCard, StorylineOption } from '../MainStreetCardsTypes';
+import type { DurationEventCard, EventCard, StorylineOption } from '../MainStreetCardsTypes';
 import { getBaseTypeId, getEventTemplates } from '../MainStreetCards';
+import { CARD_TIER_MAP } from '../MainStreetCardsTemplates';
 import { getStorylineOptions, registerStorylineOptions } from '../MainStreetStoryline';
 import { findCycles } from './validate-storylines';
 
@@ -47,6 +48,26 @@ export interface StorylineGraphNode {
   readonly coinDelta: number;
   /** Net reputation effect (informational). */
   readonly reputationDelta: number;
+  /** When the event resolves: `Incident` (auto-drawn) or `Investment`. */
+  readonly trigger: string;
+  /** Human-readable effect text shown to the player. */
+  readonly effect: string;
+  /** Effect scope (`All`, `SpecificSynergy`, `RandomBusiness`). */
+  readonly target: string;
+  /** Synergy targeted when `target` is `SpecificSynergy`, else null. */
+  readonly targetSynergy: string | null;
+  /** Card cost (informational). */
+  readonly cost: number;
+  /** Severity/availability tier, or null when unknown. */
+  readonly tier: number | null;
+  /** Signed fraction of banked coins (e.g. `-0.45`), or null when absent. */
+  readonly coinPercentDelta: number | null;
+  /** Duration in turns for duration-based events, or null. */
+  readonly duration: number | null;
+  /** Duration discriminator (e.g. `income-multiplier`), or null. */
+  readonly effectType: string | null;
+  /** Duration scalar (e.g. `0.8` for 80% income), or null. */
+  readonly multiplier: number | null;
 }
 
 export interface StorylineGraphOption {
@@ -67,6 +88,8 @@ export interface StorylineGraphEdge {
   readonly to: string | null;
   /** True when this edge participates in a cycle. */
   readonly cycle: boolean;
+  /** Whether the source event's own effect applies when this option is chosen. */
+  readonly effectPolicy: 'apply' | 'skip';
 }
 
 export interface StorylineManifest {
@@ -89,6 +112,28 @@ export interface StorylineManifest {
 /** Compares two strings for deterministic (codepoint) ordering. */
 function byString(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Reads the duration-based fields from a (possibly) `DurationEventCard`. */
+function eventDurationFields(card: EventCard): {
+  duration: number | null;
+  effectType: string | null;
+  multiplier: number | null;
+} {
+  const duration = card as DurationEventCard;
+  return {
+    duration: typeof duration.duration === 'number' ? duration.duration : null,
+    effectType: typeof duration.effectType === 'string' ? duration.effectType : null,
+    multiplier: typeof duration.multiplier === 'number' ? duration.multiplier : null,
+  };
+}
+
+/** Reads a card's numeric tier from the CSV tier map, or null when unknown. */
+function cardTier(baseId: string): number | null {
+  const raw = CARD_TIER_MAP.get(baseId);
+  if (raw === undefined) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -131,6 +176,14 @@ export function buildStorylineManifest(
       optionCount: options.length,
       coinDelta: card.coinDelta,
       reputationDelta: card.reputationDelta,
+      trigger: card.trigger,
+      effect: card.effect,
+      target: card.target,
+      targetSynergy: card.targetSynergy ?? null,
+      cost: card.cost,
+      tier: cardTier(base),
+      coinPercentDelta: card.coinPercentDelta ?? null,
+      ...eventDurationFields(card),
     });
 
     for (const option of options) {
@@ -139,6 +192,7 @@ export function buildStorylineManifest(
         label: option.label,
         to: option.successorId ? getBaseTypeId(option.successorId) : null,
         cycle: false, // marked after cycle detection below
+        effectPolicy: option.effectPolicy,
       });
     }
   }
@@ -323,6 +377,105 @@ export function renderIncidentIndexMarkdown(
   ];
   for (const incident of incidents) {
     lines.push(`| ${incident.name.replace(/\|/g, '\\|')} | \`${incident.id}\` |`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+// ── Per-event detail tables (MS-0MUNB54KU005084C reopened) ──
+
+/** Formats a signed number with a typographic minus sign. */
+function signed(value: number): string {
+  return value >= 0 ? `+${value}` : `−${Math.abs(value)}`;
+}
+
+/** Escapes a value for use in a Markdown table cell. */
+function tableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Formats an event's mechanical game-state impact as a compact, readable
+ * string (coin/reputation deltas and duration-based multipliers).
+ *
+ * @param node The event node from the manifest.
+ * @returns A human-readable impact summary.
+ */
+export function describeEventImpact(node: StorylineGraphNode): string {
+  const parts: string[] = [];
+
+  if (node.coinPercentDelta !== null) {
+    const pct = Math.round(Math.abs(node.coinPercentDelta) * 100);
+    const sign = node.coinPercentDelta < 0 ? '−' : '+';
+    const nominal = node.coinDelta !== 0 ? ` (nominal ${signed(node.coinDelta)} coins)` : '';
+    parts.push(`${sign}${pct}% of banked coins${nominal}`);
+  } else if (node.coinDelta !== 0) {
+    parts.push(`${signed(node.coinDelta)} coins`);
+  }
+
+  if (node.reputationDelta !== 0) {
+    parts.push(`${signed(node.reputationDelta)} reputation`);
+  }
+
+  if (node.duration !== null && node.multiplier !== null) {
+    const scope = node.targetSynergy ? `${node.targetSynergy} businesses` : 'all businesses';
+    const turns = node.duration === 1 ? 'turn' : 'turns';
+    parts.push(`${scope} income ×${node.multiplier} for ${node.duration} ${turns}`);
+  } else if (node.targetSynergy) {
+    parts.push(`target: ${node.targetSynergy} businesses`);
+  }
+
+  return parts.length > 0 ? parts.join('; ') : 'No direct coin/reputation change';
+}
+
+/**
+ * Describes how an event routes through its options (apply vs skip and the
+ * successor), or that it resolves immediately when it has no choice.
+ *
+ * @param node     The event node.
+ * @param edges    All manifest edges (filtered to this node's outgoing edges).
+ * @param nameById Display names for successor ids.
+ * @returns A readable routing summary.
+ */
+export function describeChoiceRouting(
+  node: StorylineGraphNode,
+  edges: readonly StorylineGraphEdge[],
+  nameById: ReadonlyMap<string, string>,
+): string {
+  const outgoing = edges.filter((edge) => edge.from === node.id);
+  if (outgoing.length === 0) return 'Resolves immediately (no choice)';
+  return outgoing
+    .map((edge) => {
+      const action = edge.effectPolicy === 'apply' ? 'effect applies' : 'effect skipped';
+      const target = edge.to ? (nameById.get(edge.to) ?? edge.to) : 'chain ends';
+      return `${edge.label}: ${action} → ${target}`;
+    })
+    .join(' · ');
+}
+
+/**
+ * Renders the per-event detail table for one storyline: one row per event with
+ * its descriptive text, trigger/tier/cost, mechanical impact and choice routing.
+ *
+ * @param manifest    The full storyline manifest.
+ * @param storylineId The storyline to render.
+ * @returns A deterministic Markdown table (trailing newline).
+ */
+export function renderStorylineDetailsMarkdown(
+  manifest: StorylineManifest,
+  storylineId: string,
+): string {
+  const nameById = new Map(manifest.nodes.map((node) => [node.id, node.name]));
+  const nodes = manifest.nodes.filter((node) => node.storylineId === storylineId);
+  const lines = [
+    '| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |',
+    '|-------|-------------|-----------------------|-------------------|----------------|',
+  ];
+  for (const node of nodes) {
+    const routing = describeChoiceRouting(node, manifest.edges, nameById);
+    const meta = `${node.trigger} · tier ${node.tier ?? '—'} · cost ${node.cost}`;
+    lines.push(
+      `| ${tableCell(`${node.name} (\`${node.id}\`)`)} | ${tableCell(node.effect)} | ${tableCell(meta)} | ${tableCell(describeEventImpact(node))} | ${tableCell(routing)} |`,
+    );
   }
   return `${lines.join('\n')}\n`;
 }

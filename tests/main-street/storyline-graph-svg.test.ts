@@ -10,6 +10,11 @@
  *       and scoped to that storyline's cards.
  * AC8 — Standalone-incident index: the non-storyline incidents are listed in a
  *       committed index/table (not boxes), drift-guarded against the manifest.
+ * AC10 — Event detail data: the manifest exposes each event's description,
+ *       trigger, tier, target, deltas (incl. proportional) and duration fields,
+ *       and the option effect policy.
+ * AC11 — Per-event detail tables: a generated table below each diagram.
+ * AC12 — Drift guard: the committed tables match the regenerated ones.
  * AC2/AC4 — Determinism and drift: re-rendering the pages reproduces the
  *       committed SVGs byte-for-byte; the render is deterministic.
  *
@@ -25,11 +30,14 @@ import {
   buildStorylinePages,
   INCIDENT_INDEX_PATH,
   renderMermaidBatch,
+  spliceGeneratedDetails,
 } from '../../src/scripts/render-storyline-graph';
 import {
   buildStandaloneIncidentIndex,
   buildStorylineManifest,
+  describeEventImpact,
   renderIncidentIndexMarkdown,
+  renderStorylineDetailsMarkdown,
 } from '../../src/scripts/storyline-graph';
 import { getEventTemplates } from '../../src/MainStreetCards';
 
@@ -140,4 +148,82 @@ describe('AC2/AC4 — committed pages match a re-render and the render is determ
       expect(second[page.slug], `non-deterministic render for ${page.slug}`).toBe(first[page.slug]);
     }
   }, 120_000);
+});
+
+describe('AC10 — the manifest exposes per-event detail', () => {
+  const manifest = () => buildStorylineManifest(getEventTemplates());
+
+  it('carries description, trigger, tier, target and proportional-coin fields', () => {
+    const tax = manifest().nodes.find((node) => node.id === 'evt-tax')!;
+    expect(tax.effect).toBe('Lose 45% of your banked coins.');
+    expect(tax.trigger).toBe('Incident');
+    expect(tax.tier).toBe(1);
+    expect(tax.coinPercentDelta).toBeCloseTo(-0.45);
+    expect(tax.coinDelta).toBe(-300);
+
+    const strike = manifest().nodes.find((node) => node.id === 'evt-strike-service')!;
+    expect(strike.target).toBe('SpecificSynergy');
+    expect(strike.targetSynergy).toBe('Service');
+  });
+
+  it('carries duration fields for duration-based events', () => {
+    const flu = manifest().nodes.find((node) => node.id === 'evt-flu-outbreak')!;
+    expect(flu.duration).toBe(5);
+    expect(flu.effectType).toBe('income-multiplier');
+    expect(flu.multiplier).toBeCloseTo(0.8);
+  });
+
+  it('marks every option edge with its effect policy', () => {
+    const edges = manifest().edges;
+    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Accept')!.effectPolicy).toBe('apply');
+    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Reject')!.effectPolicy).toBe('skip');
+  });
+
+  it('formats impact readably (percent, delta, duration, synergy)', () => {
+    const nodes = manifest().nodes;
+    expect(describeEventImpact(nodes.find((n) => n.id === 'evt-tax')!)).toContain('−45% of banked coins');
+    expect(describeEventImpact(nodes.find((n) => n.id === 'evt-flu-outbreak')!)).toBe(
+      'all businesses income ×0.8 for 5 turns',
+    );
+    expect(describeEventImpact(nodes.find((n) => n.id === 'evt-strike-service')!)).toContain(
+      'target: Service businesses',
+    );
+  });
+});
+
+describe('AC11/AC12 — per-event detail tables below each diagram', () => {
+  it('renders one row per event with description, impact and choice routing', () => {
+    const manifest = buildStorylineManifest(getEventTemplates());
+    const table = renderStorylineDetailsMarkdown(manifest, 'storyline-tax');
+    expect(table).toContain('Tax Audit (`evt-tax`)');
+    expect(table).toContain('Lose 45% of your banked coins.');
+    expect(table).toContain('−45% of banked coins (nominal −300 coins)');
+    expect(table).toContain('Reject: effect skipped → Inquiry Commission');
+  });
+
+  it('embeds a generated table below every storyline diagram', () => {
+    const doc = readFileSync(DOC_PATH, 'utf-8');
+    for (const slug of EXPECTED_SLUGS) {
+      const imageIdx = doc.indexOf(`./storyline-graph-${slug}.svg)`);
+      const beginIdx = doc.indexOf(`<!-- BEGIN GENERATED: storyline-details-${slug} -->`);
+      const endIdx = doc.indexOf(`<!-- END GENERATED: storyline-details-${slug} -->`);
+      expect(imageIdx, `missing diagram for ${slug}`).toBeGreaterThan(-1);
+      expect(beginIdx, `missing detail marker for ${slug}`).toBeGreaterThan(imageIdx);
+      expect(endIdx, `unterminated detail marker for ${slug}`).toBeGreaterThan(beginIdx);
+    }
+  });
+
+  it('the committed doc matches the regenerated tables (drift guard)', () => {
+    const manifest = buildStorylineManifest(getEventTemplates());
+    const committed = readFileSync(DOC_PATH, 'utf-8');
+    let expected = committed;
+    for (const page of buildStorylinePages(manifest)) {
+      expected = spliceGeneratedDetails(
+        expected,
+        page.slug,
+        renderStorylineDetailsMarkdown(manifest, page.storylineId),
+      );
+    }
+    expect(expected).toBe(committed);
+  });
 });

@@ -247,8 +247,8 @@ All scripts run under `vite-node` because the card model imports
 | `npm run storylines:graph -- --format mermaid` | Regenerate `docs/main-street/storyline-graph.mmd` (choice cards as diamonds, `==>` for cycle edges). |
 | `npm run storylines:graph -- --format json` | Regenerate `docs/main-street/storyline-manifest.json` (validates against `schemas/main-street-storyline.schema.json`). |
 | `npm run storylines:graph -- --format json --check` | Drift guard: exit `1` when the committed artefact differs from `src/card-data.csv`. |
-| `npm run storylines:graph:svg` | Render one SVG per storyline (`docs/main-street/storyline-graph-<slug>.svg`) plus the standalone-incident index (`docs/main-street/storyline-incident-index.md`) — portable, viewable without a Mermaid renderer. |
-| `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed page or the index differs from a re-render of the committed model. |
+| `npm run storylines:graph:svg` | Render one SVG per storyline (`docs/main-street/storyline-graph-<slug>.svg`), the standalone-incident index (`docs/main-street/storyline-incident-index.md`), and the per-event detail tables in `storylines.md` §7.2 — portable, viewable without a Mermaid renderer. |
+| `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed page, the index, or a generated detail table differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
 
@@ -326,25 +326,68 @@ tiny boxes. Each page below is generated from
 and committed, so it is viewable without a Mermaid-aware renderer. Regenerate
 after any graph change (the SVG drift test fails otherwise).
 
+Each diagram is followed by a **generated per-event detail table** — the
+event's descriptive text, trigger/tier/cost, mechanical impact on game state
+(coin/reputation deltas, proportional coin loss, duration multipliers) and its
+choice routing (which option applies or skips the effect, and where it leads).
+The tables live between `<!-- BEGIN/END GENERATED -->` markers and are
+drift-guarded against the manifest, so the prose is never hand-edited.
+
 #### Tax Troubles
 
 ![Tax Troubles storyline](./storyline-graph-tax.svg)
+
+<!-- BEGIN GENERATED: storyline-details-tax -->
+| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
+|-------|-------------|-----------------------|-------------------|----------------|
+| Tax Audit (`evt-tax`) | Lose 45% of your banked coins. | Incident · tier 1 · cost 0 | −45% of banked coins (nominal −300 coins) | Accept: effect applies → chain ends · Reject: effect skipped → Inquiry Commission |
+| Error in Tax Return (`evt-tax-error`) | Lose 200 coins to paperwork errors. | Incident · tier 1 · cost 0 | −200 coins | Accept: effect applies → chain ends · Reject: effect skipped → Tax Audit |
+| Inquiry Commission (`evt-tax-inquiry`) | Lose 600 coins and 100 reputation to the inquiry. | Incident · tier 2 · cost 0 | −600 coins; −100 reputation | Accept: effect applies → Error in Tax Return · Reject: effect skipped → chain ends |
+<!-- END GENERATED: storyline-details-tax -->
 
 #### Public Health Crisis
 
 ![Public Health Crisis storyline](./storyline-graph-health.svg)
 
+<!-- BEGIN GENERATED: storyline-details-health -->
+| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
+|-------|-------------|-----------------------|-------------------|----------------|
+| Flu Outbreak (`evt-flu-outbreak`) | All businesses generate 80% income for 5 turns. Duration reduced by Clinic/Medical Center. | Incident · tier 9 · cost 100 | all businesses income ×0.8 for 5 turns | Accept: effect applies → chain ends · Reject: effect skipped → Pandemic |
+| Pandemic (`evt-pandemic`) | All businesses generate 60% income for 7 turns. Duration reduced by Clinic/Medical Center. | Incident · tier 6 · cost 100 | all businesses income ×0.6 for 7 turns | Resolves immediately (no choice) |
+<!-- END GENERATED: storyline-details-health -->
+
 #### Economic Downturn
 
 ![Economic Downturn storyline](./storyline-graph-economy.svg)
+
+<!-- BEGIN GENERATED: storyline-details-economy -->
+| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
+|-------|-------------|-----------------------|-------------------|----------------|
+| Depression (`evt-depression`) | All businesses generate 50% income for 5 turns. | Incident · tier 9 · cost 100 | all businesses income ×0.5 for 5 turns | Resolves immediately (no choice) |
+| Economic Recession (`evt-recession`) | All businesses generate 70% income for 4 turns. Duration reduced by Clinic/Medical Center. | Incident · tier 9 · cost 100 | all businesses income ×0.7 for 4 turns | Accept: effect applies → chain ends · Reject: effect skipped → Depression |
+<!-- END GENERATED: storyline-details-economy -->
 
 #### Labour Unrest
 
 ![Labour Unrest storyline](./storyline-graph-labor.svg)
 
+<!-- BEGIN GENERATED: storyline-details-labor -->
+| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
+|-------|-------------|-----------------------|-------------------|----------------|
+| General Strike (`evt-general-strike`) | Lose 500 coins and 100 reputation from the general strike. | Incident · tier 12 · cost 0 | −500 coins; −100 reputation | Resolves immediately (no choice) |
+| Service Workers Strike (`evt-strike-service`) | Service staff strike: -200 coins per Service business. | Incident · tier 7 · cost 0 | −200 coins; target: Service businesses | Accept: effect applies → chain ends · Reject: effect skipped → General Strike |
+<!-- END GENERATED: storyline-details-labor -->
+
 #### Restaurant Renaissance
 
 ![Restaurant Renaissance storyline](./storyline-graph-restaurant.svg)
+
+<!-- BEGIN GENERATED: storyline-details-restaurant -->
+| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
+|-------|-------------|-----------------------|-------------------|----------------|
+| Farm-to-Table Feature (`evt-farm-table`) | Farm-to-table features earn 600 coins and 100 reputation. | Incident · tier 5 · cost 0 | +600 coins; +100 reputation | Resolves immediately (no choice) |
+| Popular Menu Item (`evt-popular-menu`) | A popular menu item earns 300 coins. | Incident · tier 4 · cost 0 | +300 coins | Accept: effect applies → chain ends · Reject: effect skipped → Farm-to-Table Feature |
+<!-- END GENERATED: storyline-details-restaurant -->
 
 #### Standalone incidents
 

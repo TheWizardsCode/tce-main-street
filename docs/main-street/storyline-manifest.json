@@ -17,7 +17,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Culture businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Culture",
+      "cost": 350,
+      "tier": 7,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-award",
@@ -27,7 +37,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 200
+      "reputationDelta": 200,
+      "trigger": "Incident",
+      "effect": "Gain 200 reputation from community recognition.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 1,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-block-party",
@@ -37,7 +57,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 250,
-      "reputationDelta": 350
+      "reputationDelta": 350,
+      "trigger": "Investment",
+      "effect": "+250 coins per Entertainment business and +350 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 500,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-book-fair",
@@ -47,7 +77,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 300,
-      "reputationDelta": 950
+      "reputationDelta": 950,
+      "trigger": "Investment",
+      "effect": "+300 coin to each Culture business and +950 reputation from literary events.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Culture",
+      "cost": 900,
+      "tier": 11,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-bulk-purchase",
@@ -57,7 +97,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 300,
-      "reputationDelta": 950
+      "reputationDelta": 950,
+      "trigger": "Investment",
+      "effect": "+300 coin to each Commerce business and +950 reputation from collective buying power.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 900,
+      "tier": 11,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-charity-drive",
@@ -67,7 +117,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 1350
+      "reputationDelta": 1350,
+      "trigger": "Investment",
+      "effect": "+1350 reputation from generous donations.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 900,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-christmas",
@@ -77,7 +137,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 600,
-      "reputationDelta": 650
+      "reputationDelta": 650,
+      "trigger": "Investment",
+      "effect": "+600 coins to all businesses and +650 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 1200,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-community-garden",
@@ -87,7 +157,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 350,
-      "reputationDelta": 450
+      "reputationDelta": 450,
+      "trigger": "Investment",
+      "effect": "+350 coin and +450 reputation from a new community garden project.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 700,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-community-renovation",
@@ -97,7 +177,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "All reputation income boosted to 120% for 4 turns.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 1000,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": 4,
+      "effectType": "rep-multiplier",
+      "multiplier": 1.2
     },
     {
       "id": "evt-construction",
@@ -107,7 +197,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-100 coin to all businesses from reduced foot traffic.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 6,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-cultural-grant",
@@ -117,7 +217,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 100,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 coin per Culture business and +100 reputation from a government arts grant.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Culture",
+      "cost": 100,
+      "tier": 8,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-depression",
@@ -127,7 +237,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "All businesses generate 50% income for 5 turns.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 9,
+      "coinPercentDelta": null,
+      "duration": 5,
+      "effectType": "income-multiplier",
+      "multiplier": 0.5
     },
     {
       "id": "evt-easter",
@@ -137,7 +257,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 500
+      "reputationDelta": 500,
+      "trigger": "Investment",
+      "effect": "+200 coin to all businesses and +500 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 800,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-farm-table",
@@ -147,7 +277,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 600,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "Farm-to-table features earn 600 coins and 100 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-farmers-market",
@@ -157,7 +297,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 100,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 coin per Food business and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 0,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-festival",
@@ -167,7 +317,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Culture businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Culture",
+      "cost": 300,
+      "tier": 1,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-festival-season",
@@ -177,7 +337,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 550,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "+550 coins from increased tourist spending during festival season.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 500,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-flu-outbreak",
@@ -187,7 +357,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "All businesses generate 80% income for 5 turns. Duration reduced by Clinic/Medical Center.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 9,
+      "coinPercentDelta": null,
+      "duration": 5,
+      "effectType": "income-multiplier",
+      "multiplier": 0.8
     },
     {
       "id": "evt-food-critic",
@@ -197,7 +377,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 100,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 coin per Food business and +100 reputation from a glowing review.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 0,
+      "tier": 6,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-food-tasting",
@@ -207,7 +397,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Food businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 350,
+      "tier": 7,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-general-strike",
@@ -217,7 +417,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -500,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "Lose 500 coins and 100 reputation from the general strike.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-good-press",
@@ -227,7 +437,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 reputation from a favourable news article about Main Street.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-graffiti",
@@ -237,7 +457,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-100 coin to all businesses and -100 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-graffiti-art",
@@ -247,7 +477,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-grand-opening",
@@ -257,7 +497,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 450,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "+450 coins from a Commerce promotion.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 300,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-harvest-festival",
@@ -267,7 +517,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 600,
-      "reputationDelta": 450
+      "reputationDelta": 450,
+      "trigger": "Investment",
+      "effect": "+600 coins to each Food business and +450 reputation from a bountiful harvest celebration.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 900,
+      "tier": 11,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-health-campaign",
@@ -277,7 +537,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 150,
-      "reputationDelta": 300
+      "reputationDelta": 300,
+      "trigger": "Investment",
+      "effect": "+150 coin to each Health business and +300 reputation from a wellness initiative.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Health",
+      "cost": 500,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-health-carnival",
@@ -287,7 +557,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Health businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Health",
+      "cost": 350,
+      "tier": 7,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-health-screening",
@@ -297,7 +577,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Health",
+      "cost": 0,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-heatwave",
@@ -307,7 +597,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-100 coin per Food business from spoiled goods and -100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 100,
+      "tier": 9,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-inspection",
@@ -317,7 +617,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-200 coins per Food business and -100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 0,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-labor-shortage",
@@ -327,7 +637,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "All businesses generate 90% income for 3 turns.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 7,
+      "coinPercentDelta": null,
+      "duration": 3,
+      "effectType": "income-multiplier",
+      "multiplier": 0.9
     },
     {
       "id": "evt-library-reading",
@@ -337,7 +657,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 reputation from a beloved story hour.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Culture",
+      "cost": 0,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-lughnasadh",
@@ -347,7 +677,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 500,
-      "reputationDelta": 350
+      "reputationDelta": 350,
+      "trigger": "Investment",
+      "effect": "+500 coins per Food business and +350 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 900,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-may-day",
@@ -357,7 +697,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 350,
-      "reputationDelta": 250
+      "reputationDelta": 250,
+      "trigger": "Investment",
+      "effect": "+350 coins per Entertainment business and +250 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 600,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-movie-premiere",
@@ -367,7 +717,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 100,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+100 coin per Entertainment business and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 0,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-neighborhood-watch",
@@ -377,7 +737,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "-100 coin but +100 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 5,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-noise-complaint",
@@ -387,7 +757,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-100 coin per Entertainment business and -100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 0,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-pandemic",
@@ -397,7 +777,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "All businesses generate 60% income for 7 turns. Duration reduced by Clinic/Medical Center.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 6,
+      "coinPercentDelta": null,
+      "duration": 7,
+      "effectType": "income-multiplier",
+      "multiplier": 0.6
     },
     {
       "id": "evt-parking-tickets",
@@ -407,7 +797,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-100 coin per Commerce business.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 0,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-pest-infestation",
@@ -417,7 +817,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Food business from health-related closures.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 100,
+      "tier": 10,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-pipe-burst",
@@ -427,7 +837,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Service business from water damage.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 0,
+      "tier": 9,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-popular-menu",
@@ -437,7 +857,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": 300,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "A popular menu item earns 300 coins.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-power-outage",
@@ -447,7 +877,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins from lost business during the outage.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 8,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-power-surge",
@@ -457,7 +897,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Service business from equipment damage.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 100,
+      "tier": 6,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-protest",
@@ -467,7 +917,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-200 coins from reduced foot traffic and -100 reputation from negative publicity.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 6,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-rainy",
@@ -477,7 +937,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-100 coin to all Food businesses this turn.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Food",
+      "cost": 0,
+      "tier": 1,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-recession",
@@ -487,7 +957,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "All businesses generate 70% income for 4 turns. Duration reduced by Clinic/Medical Center.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 9,
+      "coinPercentDelta": null,
+      "duration": 4,
+      "effectType": "income-multiplier",
+      "multiplier": 0.7
     },
     {
       "id": "evt-samhain",
@@ -497,7 +977,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 450,
-      "reputationDelta": 500
+      "reputationDelta": 500,
+      "trigger": "Investment",
+      "effect": "+450 coins per Entertainment business and +500 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 1000,
+      "tier": 10,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-service-week",
@@ -507,7 +997,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Service businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 400,
+      "tier": 8,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-shoplifting",
@@ -517,7 +1017,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Commerce business from theft losses.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 0,
+      "tier": 10,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-shopping-spree",
@@ -527,7 +1037,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 250,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "+250 coins to all Commerce businesses.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 350,
+      "tier": 8,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-slow-season",
@@ -537,7 +1057,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-100 coin to all businesses from reduced customer traffic.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 10,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-st-brigids",
@@ -547,7 +1077,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 450
+      "reputationDelta": 450,
+      "trigger": "Investment",
+      "effect": "+450 reputation from community celebration of renewal.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 500,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-st-patricks",
@@ -557,7 +1097,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 400,
-      "reputationDelta": 350
+      "reputationDelta": 350,
+      "trigger": "Investment",
+      "effect": "+400 coins to all Commerce businesses and +350 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 700,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-street-cleaning",
@@ -567,7 +1117,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "No effect.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-street-performer",
@@ -577,7 +1137,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 500,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "+500 coins to each Entertainment business from a popular busker drawing crowds.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 500,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-strike",
@@ -587,7 +1157,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins from work stoppages affecting the street.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 100,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-strike-service",
@@ -597,7 +1177,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "Service staff strike: -200 coins per Service business.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 0,
+      "tier": 7,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-summer-fest",
@@ -607,7 +1197,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Investment",
+      "effect": "+200 coins to all Entertainment businesses and +100 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 400,
+      "tier": 8,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-supply-chain",
@@ -617,7 +1217,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Commerce business from delayed inventory.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Commerce",
+      "cost": 100,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-tax",
@@ -627,7 +1237,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": -300,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "Lose 45% of your banked coins.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 1,
+      "coinPercentDelta": -0.45,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-tax-error",
@@ -637,7 +1257,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "Lose 200 coins to paperwork errors.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 1,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-tax-inquiry",
@@ -647,7 +1277,17 @@
       "hasChoices": true,
       "optionCount": 2,
       "coinDelta": -600,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "Lose 600 coins and 100 reputation to the inquiry.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 2,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-tourist-bus",
@@ -657,7 +1297,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "+200 coins per Entertainment business from a tour bus dropping visitors.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Entertainment",
+      "cost": 100,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-tourist-season",
@@ -667,7 +1317,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 0,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Investment",
+      "effect": "All businesses generate 115% income for 3 turns.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 1000,
+      "tier": 12,
+      "coinPercentDelta": null,
+      "duration": 3,
+      "effectType": "income-multiplier",
+      "multiplier": 1.15
     },
     {
       "id": "evt-vandalism",
@@ -677,7 +1337,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -100,
-      "reputationDelta": -100
+      "reputationDelta": -100,
+      "trigger": "Incident",
+      "effect": "-100 coin to all businesses and -100 reputation.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 11,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-viral-review",
@@ -687,7 +1357,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 100
+      "reputationDelta": 100,
+      "trigger": "Incident",
+      "effect": "+200 coins and +100 reputation from sudden online fame.",
+      "target": "All",
+      "targetSynergy": null,
+      "cost": 0,
+      "tier": 10,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-volunteer-day",
@@ -697,7 +1377,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 700,
-      "reputationDelta": 1400
+      "reputationDelta": 1400,
+      "trigger": "Investment",
+      "effect": "+700 coin to each Service business and +1400 reputation from community volunteering.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 1400,
+      "tier": 11,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-water-main",
@@ -707,7 +1397,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": -200,
-      "reputationDelta": 0
+      "reputationDelta": 0,
+      "trigger": "Incident",
+      "effect": "-200 coins per Service business.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Service",
+      "cost": 0,
+      "tier": 4,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     },
     {
       "id": "evt-wellness-fair",
@@ -717,7 +1417,17 @@
       "hasChoices": false,
       "optionCount": 0,
       "coinDelta": 200,
-      "reputationDelta": 150
+      "reputationDelta": 150,
+      "trigger": "Investment",
+      "effect": "+200 coins per Health business and +150 reputation.",
+      "target": "SpecificSynergy",
+      "targetSynergy": "Health",
+      "cost": 300,
+      "tier": 3,
+      "coinPercentDelta": null,
+      "duration": null,
+      "effectType": null,
+      "multiplier": null
     }
   ],
   "edges": [
@@ -725,85 +1435,99 @@
       "from": "evt-flu-outbreak",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-flu-outbreak",
       "label": "Reject",
       "to": "evt-pandemic",
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-popular-menu",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-popular-menu",
       "label": "Reject",
       "to": "evt-farm-table",
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-recession",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-recession",
       "label": "Reject",
       "to": "evt-depression",
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-strike-service",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-strike-service",
       "label": "Reject",
       "to": "evt-general-strike",
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-tax",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax",
       "label": "Reject",
       "to": "evt-tax-inquiry",
-      "cycle": true
+      "cycle": true,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-tax-error",
       "label": "Accept",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax-error",
       "label": "Reject",
       "to": "evt-tax",
-      "cycle": true
+      "cycle": true,
+      "effectPolicy": "skip"
     },
     {
       "from": "evt-tax-inquiry",
       "label": "Accept",
       "to": "evt-tax-error",
-      "cycle": true
+      "cycle": true,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax-inquiry",
       "label": "Reject",
       "to": null,
-      "cycle": false
+      "cycle": false,
+      "effectPolicy": "skip"
     }
   ],
   "cycles": [

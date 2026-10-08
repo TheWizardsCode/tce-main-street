@@ -46,6 +46,7 @@ import {
   filterManifestByStoryline,
   renderIncidentIndexMarkdown,
   renderMermaid,
+  renderStorylineDetailsMarkdown,
   type StorylineManifest,
 } from './storyline-graph';
 import { getEventTemplates } from '../MainStreetCards';
@@ -55,6 +56,9 @@ const DOCS_DIR = 'docs/main-street';
 
 /** Committed standalone-incident index document. */
 export const INCIDENT_INDEX_PATH = `${DOCS_DIR}/storyline-incident-index.md`;
+
+/** Canonical doc holding the generated per-event detail tables. */
+export const DOC_PATH = `${DOCS_DIR}/storylines.md`;
 
 /** One rendered storyline page. */
 export interface StorylinePage {
@@ -68,6 +72,33 @@ export interface StorylinePage {
   readonly mermaid: string;
   /** Repo-relative path of the committed SVG. */
   readonly svgRelPath: string;
+}
+
+/** Builds the BEGIN/END markers for a storyline's generated detail table. */
+function detailMarkers(slug: string): { begin: string; end: string } {
+  return {
+    begin: `<!-- BEGIN GENERATED: storyline-details-${slug} -->`,
+    end: `<!-- END GENERATED: storyline-details-${slug} -->`,
+  };
+}
+
+/**
+ * Replaces the content between a storyline's generated-detail markers, leaving
+ * all hand-written prose untouched.
+ *
+ * @param doc     The current doc contents.
+ * @param slug    The storyline slug (e.g. `tax`).
+ * @param content The generated Markdown table.
+ * @returns The updated doc.
+ */
+export function spliceGeneratedDetails(doc: string, slug: string, content: string): string {
+  const { begin, end } = detailMarkers(slug);
+  const start = doc.indexOf(begin);
+  const stop = doc.indexOf(end);
+  if (start === -1 || stop === -1 || stop < start) {
+    throw new Error(`render-storyline-graph: missing ${begin} / ${end} markers in ${DOC_PATH}`);
+  }
+  return `${doc.slice(0, start + begin.length)}\n${content}${doc.slice(stop)}`;
 }
 
 /** Resolves a path relative to the repository root (this file lives in src/scripts). */
@@ -274,6 +305,25 @@ export async function runRenderCli(
   } else {
     writeFileSync(indexPath, indexMarkdown, 'utf-8');
     process.stdout.write(`render-storyline-graph: wrote ${INCIDENT_INDEX_PATH}\n`);
+  }
+
+  // Splice the per-event detail tables into the canonical doc (only the marked
+  // regions are replaced, so hand-written prose is preserved).
+  const docPath = repoPath(DOC_PATH);
+  const committedDoc = readFileSync(docPath, 'utf-8');
+  let expectedDoc = committedDoc;
+  for (const page of pages) {
+    expectedDoc = spliceGeneratedDetails(
+      expectedDoc,
+      page.slug,
+      renderStorylineDetailsMarkdown(manifest, page.storylineId),
+    );
+  }
+  if (check) {
+    if (expectedDoc !== committedDoc) drift.push(DOC_PATH);
+  } else if (expectedDoc !== committedDoc) {
+    writeFileSync(docPath, expectedDoc, 'utf-8');
+    process.stdout.write(`render-storyline-graph: updated detail tables in ${DOC_PATH}\n`);
   }
 
   if (check) {
