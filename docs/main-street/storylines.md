@@ -247,8 +247,8 @@ All scripts run under `vite-node` because the card model imports
 | `npm run storylines:graph -- --format mermaid` | Regenerate `docs/main-street/storyline-graph.mmd` (choice cards as diamonds, `==>` for cycle edges). |
 | `npm run storylines:graph -- --format json` | Regenerate `docs/main-street/storyline-manifest.json` (validates against `schemas/main-street-storyline.schema.json`). |
 | `npm run storylines:graph -- --format json --check` | Drift guard: exit `1` when the committed artefact differs from `src/card-data.csv`. |
-| `npm run storylines:graph:svg` | Render the committed `storyline-graph.mmd` into `docs/main-street/storyline-graph.svg` (portable — viewable without a Mermaid renderer). |
-| `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when the committed SVG differs from a re-render of the committed `.mmd`. |
+| `npm run storylines:graph:svg` | Render one SVG per storyline (`docs/main-street/storyline-graph-<slug>.svg`) plus the standalone-incident index (`docs/main-street/storyline-incident-index.md`) — portable, viewable without a Mermaid renderer. |
+| `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed page or the index differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
 
@@ -318,12 +318,39 @@ edit a fixture.
 
 ### 7.2 The shipped graph (documented chains)
 
-![The shipped storyline graph](./storyline-graph.svg)
+The storyline graph is rendered **one diagram per storyline** (one parent box
+per page). The combined graph was unreadable: most incidents are standalone
+(not part of any chain) and Mermaid laid them out in a single ~13,000px row of
+tiny boxes. Each page below is generated from
+[`storyline-graph.mmd`](./storyline-graph.mmd) by `npm run storylines:graph:svg`
+and committed, so it is viewable without a Mermaid-aware renderer. Regenerate
+after any graph change (the SVG drift test fails otherwise).
 
-The image above is rendered from [`storyline-graph.mmd`](./storyline-graph.mmd) by
-`npm run storylines:graph:svg` and committed, so the graph is viewable without a
-Mermaid-aware renderer. Regenerate it whenever the `.mmd` changes (the SVG
-drift test fails otherwise).
+#### Tax Troubles
+
+![Tax Troubles storyline](./storyline-graph-tax.svg)
+
+#### Public Health Crisis
+
+![Public Health Crisis storyline](./storyline-graph-health.svg)
+
+#### Economic Downturn
+
+![Economic Downturn storyline](./storyline-graph-economy.svg)
+
+#### Labour Unrest
+
+![Labour Unrest storyline](./storyline-graph-labor.svg)
+
+#### Restaurant Renaissance
+
+![Restaurant Renaissance storyline](./storyline-graph-restaurant.svg)
+
+#### Standalone incidents
+
+Incidents that belong to no storyline chain are listed in the
+[standalone-incident index](./storyline-incident-index.md) rather than drawn as
+boxes.
 
 The doc-drift test parses the table below and compares it to
 `src/card-data.csv`. Keep it in sync with the shipped content.
@@ -427,6 +454,7 @@ Each is captured as a work item:
 - [`docs/main-street/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
 - [`docs/main-street/ai-strategy.md`](./ai-strategy.md) — AI strategy overview.
 - [`docs/main-street/storyline-graph.mmd`](./storyline-graph.mmd) — generated Mermaid graph (source of truth).
-- [`docs/main-street/storyline-graph.svg`](./storyline-graph.svg) — rendered graph image (viewable without a Mermaid renderer).
+- [`docs/main-street/storyline-graph-tax.svg`](./storyline-graph-tax.svg) (and `-health`, `-economy`, `-labor`, `-restaurant`) — rendered per-storyline graph images (viewable without a Mermaid renderer).
+- [`docs/main-street/storyline-incident-index.md`](./storyline-incident-index.md) — standalone-incident index (incidents not in any storyline).
 - [`docs/main-street/storyline-manifest.json`](./storyline-manifest.json) — generated manifest.
 - [`schemas/main-street-storyline.schema.json`](../../schemas/main-street-storyline.schema.json) — manifest JSON schema.

@@ -249,6 +249,84 @@ export function renderMermaid(manifest: StorylineManifest): string {
   return lines.join('\n');
 }
 
+// ── Per-storyline views (MS-0MUNB54KU005084C reopened) ───────
+
+/**
+ * Restricts a manifest to a single storyline's cards (its parent incident and
+ * the chain it links to). Used to render one readable diagram per storyline
+ * (one parent box per page) instead of the unreadable combined graph.
+ *
+ * @param manifest    The full storyline manifest.
+ * @param storylineId The storyline id to keep (e.g. `storyline-tax`).
+ * @returns A manifest containing only that storyline's nodes, edges and cycles.
+ */
+export function filterManifestByStoryline(
+  manifest: StorylineManifest,
+  storylineId: string,
+): StorylineManifest {
+  const nodeIds = new Set(
+    manifest.nodes.filter((node) => node.storylineId === storylineId).map((node) => node.id),
+  );
+  const nodes = manifest.nodes.filter((node) => nodeIds.has(node.id));
+  const edges = manifest.edges.filter(
+    (edge) => nodeIds.has(edge.from) && (edge.to === null || nodeIds.has(edge.to)),
+  );
+  const cycles = manifest.cycles.filter((cycle) => cycle.every((id) => nodeIds.has(id)));
+  return { ...manifest, storylineIds: [storylineId], nodes, edges, cycles };
+}
+
+/** A standalone incident (not part of any storyline chain). */
+export interface StandaloneIncident {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Returns the incidents that belong to no storyline chain (no storyline id and
+ * no graph edges). These are listed as a compact index rather than drawn as
+ * boxes — the box layout is what made the combined graph unreadable.
+ *
+ * @param manifest The full storyline manifest.
+ * @returns The standalone incidents, in manifest (sorted) order.
+ */
+export function buildStandaloneIncidentIndex(
+  manifest: StorylineManifest,
+): StandaloneIncident[] {
+  const linked = new Set<string>();
+  for (const edge of manifest.edges) {
+    linked.add(edge.from);
+    if (edge.to) linked.add(edge.to);
+  }
+  return manifest.nodes
+    .filter((node) => !node.storylineId && !linked.has(node.id))
+    .map((node) => ({ id: node.id, name: node.name }));
+}
+
+/**
+ * Renders the standalone-incident index as a committed Markdown document.
+ *
+ * @param incidents The standalone incidents (from `buildStandaloneIncidentIndex`).
+ * @returns A deterministic Markdown document (trailing newline).
+ */
+export function renderIncidentIndexMarkdown(
+  incidents: readonly StandaloneIncident[],
+): string {
+  const lines = [
+    '# Main Street: standalone incidents',
+    '',
+    '> Generated from `src/card-data.csv` by `npm run storylines:graph:svg`. These',
+    '> incidents are not part of any storyline chain, so they are listed here as a',
+    '> compact index rather than drawn as boxes in the storyline diagrams.',
+    '',
+    '| Incident | Card id |',
+    '|----------|---------|',
+  ];
+  for (const incident of incidents) {
+    lines.push(`| ${incident.name.replace(/\|/g, '\\|')} | \`${incident.id}\` |`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 // ── CLI ─────────────────────────────────────────────────────
 
 export interface StorylineGraphCliOptions {
