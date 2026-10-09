@@ -52,7 +52,15 @@ import {
   cardPackClientFromWindow,
   type CardPackClient,
 } from '@ui/card-pack-client';
+import {
+  contentUnlockClientFromWindow,
+  type ContentUnlockClient,
+} from '@ui/content-unlock-client';
 import { readContentDirFromWindow } from '@ui/game-plugin-boot';
+import {
+  MAIN_STREET_GAME_ID,
+  composeContentUnlockEntitlement,
+} from './MainStreetContentUnlockGate';
 import {
   getEnabledCardPackIds,
   setEnabledCardPackIds,
@@ -74,8 +82,13 @@ import type { MainStreetState } from './MainStreetStateTypes';
 
 export type { ActiveMainStreetPack };
 
-/** The `gameId` Main Street pack manifests must declare. */
-export const MAIN_STREET_GAME_ID = 'main-street';
+/**
+ * The `gameId` Main Street pack manifests must declare.
+ *
+ * Re-exported from {@link ./MainStreetContentUnlockGate} so the content-unlock
+ * gating declaration and the loader share one source of truth.
+ */
+export { MAIN_STREET_GAME_ID };
 
 /** A merged Main Street card pool ready to apply to the templates. */
 export interface MainStreetCardPool {
@@ -134,6 +147,12 @@ export interface MainStreetPackLoadOptions {
   readonly importer?: CardPackLoaderOptions['importer'];
   /** Entitlement client; defaults to the total `window.tce` client. */
   readonly client?: CardPackClient;
+  /**
+   * Unified content-unlock read client; defaults to the total
+   * `window.tce.contentUnlocks` client. A missing/malformed client leaves
+   * content-unlock gated packs locked.
+   */
+  readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
   /** Warning sink; defaults to `console`. */
@@ -306,7 +325,10 @@ export async function loadMainStreetCardPacks(
       fetchManifest: options.fetchManifest,
       fetchCsv: options.fetchCsv,
       importer: options.importer,
-      resolveEntitlement: (refs) => client.listStatus(refs),
+      resolveEntitlement: composeContentUnlockEntitlement({
+        steam: (refs) => client.listStatus(refs),
+        contentUnlocks: options.contentUnlocks ?? contentUnlockClientFromWindow(),
+      }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -466,6 +488,11 @@ export interface BootstrapMainStreetCardPacksOptions {
   readonly importer?: MainStreetPackLoadOptions['importer'];
   /** Entitlement client override; defaults to the `window.tce` client. */
   readonly client?: CardPackClient;
+  /**
+   * Unified content-unlock read client override; defaults to the
+   * `window.tce.contentUnlocks` client.
+   */
+  readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
   /** Warning sink; defaults to `console`. */
@@ -517,6 +544,7 @@ export async function bootstrapMainStreetCardPacks(
     fetchCsv: options.fetchCsv,
     importer: options.importer,
     client: options.client,
+    contentUnlocks: options.contentUnlocks,
     loader: options.loader,
     logger: options.logger,
   });
