@@ -1,6 +1,6 @@
 {
   "name": "tce-main-street",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "private": true,
   "description": "Single-game Tableau Card Engine launcher for \"main-street\". Composes the engine checkout at ./core and builds web + Electron renderer bundles.",
   "type": "module",
