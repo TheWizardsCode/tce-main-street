@@ -28,6 +28,7 @@
     "transcripts:export": "tsx scripts/export-transcripts.ts",
     "save-load-smoke": "vite-node src/scripts/save-load-smoke.ts",
     "tf:generate": "scripts/tf-generate-synths.sh",
+    "build:card-pack": "tsx ./core/scripts/build-card-pack.mjs --input packs",
     "build:electron-main": "node scripts/build-electron-main.mjs",
     "start:electron": "npm run build:electron && npm run build:electron-main && electron .",
     "package": "npm run build:electron && npm run build:electron-main && electron-builder --publish never",
