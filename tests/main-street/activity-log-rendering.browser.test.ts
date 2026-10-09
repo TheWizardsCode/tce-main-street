@@ -787,20 +787,18 @@ describe('MainStreet Activity Log scroll bounds', () => {
  *
  * The producer-reported regression is a blank Activity Log: the panel and its
  * title render but the content area is empty and never fills. The root cause
- * is the scene-instance `logDeferredUntilPhaseComplete` flag: it is set during
- * the end-of-turn closing and cleared on flush, but it is **not** reset on
+ * is the scene-instance `logDeferredUntilPhaseComplete` flag. It is set during
+ * the end-of-turn closing and cleared on flush, but it was **not** reset on
  * scene creation. Because Phaser reuses the scene instance across
  * `scene.restart()` / `scene.start()` (and `state` replacements), a flag left
  * set suppresses every subsequent `refreshLog` render for the rest of the
  * session. The flag was introduced by commit `7441311`
  * (MS-0MURBOD2E009SOM2) without a matching reset (identified by commit-diff
  * inspection: `logDeferredUntilPhaseComplete` appears only in that commit's
- * source diff, and the `create()` log-state reset never clears it).
+ * source diff, and the `create()` log-state reset never cleared it).
  *
- * RED PHASE: the blank-log repro below is `it.fails` until the fix child
- * (MS-0MV1BMMO900824N9) resets the flag on scene creation, at which point it
- * must be flipped to a plain `it` — mirroring the project's established
- * red-phase convention (`it.fails` while the dependent fix is in flight).
+ * Fix (MS-0MV1BMMO900824N9): `createScene()` now resets the flag, so the
+ * blank-log repro below passes as a plain `it`.
  */
 describe('MainStreet Activity Log content regression (MS-0MV14JDUG000E1V6)', () => {
   let game: Phaser.Game | null = null;
@@ -907,9 +905,9 @@ describe('MainStreet Activity Log content regression (MS-0MV14JDUG000E1V6)', () 
     expect(texts.some((t) => t.startsWith('Turn '))).toBe(true);
   }, 60_000);
 
-  // RED PHASE: fails until MS-0MV1BMMO900824N9 resets
-  // `logDeferredUntilPhaseComplete` on scene creation — then flip to `it`.
-  it.fails('renders the log after a scene restart even when the deferred-render flag was left set', async () => {
+  // Blank-log repro (fix MS-0MV1BMMO900824N9): `createScene` resets
+  // `logDeferredUntilPhaseComplete` on scene creation.
+  it('renders the log after a scene restart even when the deferred-render flag was left set', async () => {
     // Blank-log regression: the scene-instance deferral flag must be reset on
     // scene creation, otherwise a flag left set across `scene.restart()` keeps
     // `refreshLog` suppressed and the Activity Log stays blank. This test

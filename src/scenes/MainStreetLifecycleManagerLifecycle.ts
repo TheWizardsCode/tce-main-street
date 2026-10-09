@@ -218,11 +218,17 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.marketSelectionManager = createSingleSelectionManager(s);
 
     // Reset activity-log panel state in case this scene instance is restarted.
+    // Phaser reuses the scene instance across `scene.restart()` / `scene.start()`
+    // and state replacements, so every log field — including the deferral gate —
+    // must be reset here. A `logDeferredUntilPhaseComplete` left set would keep
+    // `refreshLog` early-returning and leave the Activity Log blank for the rest
+    // of the session (MS-0MV14JDUG000E1V6).
     s.logScrollOffset = 0;
     s.logMaxScroll = 0;
     s.logTotalContentH = 0;
     s.logAutoScroll = true;
     s.logPrevEntryCount = 0;
+    s.logDeferredUntilPhaseComplete = false;
 
     s.detectReplayMode();
     s.initEventSystem();
