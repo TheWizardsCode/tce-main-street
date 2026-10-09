@@ -57,6 +57,33 @@ function placeLibrary(state: MainStreetState): CommunitySpaceCard {
   return library;
 }
 
+/**
+ * Creates a synthetic zero-cost community-space card for testing the
+ * "no ongoing cost" path (all shipped community spaces now have a
+ * non-zero `ongoingCost`).
+ */
+function makeZeroCostSpace(name: string, synergyType: 'Food' | 'Culture' | 'Commerce' | 'Service' | 'Entertainment' | 'Health'): CommunitySpaceCard {
+  return {
+    family: 'community-space',
+    id: `cs-synthetic-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    cost: 200,
+    baseIncome: 0,
+    ongoingCost: 0,
+    synergyTypes: [synergyType],
+    maxLevel: 0,
+    description: 'Synthetic zero-cost card.',
+    level: 0,
+    incomeBonus: 0,
+    synergyRangeBonus: 0,
+    reputationBonus: 0,
+    reputationPerTurn: 10,
+    appliedUpgrades: [],
+    currentIncome: 0,
+    currentReputationPerTurn: 10,
+  };
+}
+
 // ── AC: Library stats (reputation asset) ────────────────────
 
 describe('Library card stats (reputation asset)', () => {
@@ -180,17 +207,161 @@ describe('Community space ongoing-cost deduction', () => {
 
   it('should do nothing when no community space has an ongoing cost', () => {
     const state = createTestState();
-    // Playground has no ongoing cost (Park was given a 40/turn cost by
-    // CG-0MU9NW9EP003B1AK).
-    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
-    playground.currentIncome = playground.baseIncome;
-    playground.currentReputationPerTurn = playground.reputationPerTurn ?? 0;
-    state.streetGrid[0] = playground;
+    // All shipped community spaces now have a non-zero ongoingCost;
+    // use a synthetic zero-cost card for this edge case.
+    const zeroCost = makeZeroCostSpace('ZeroCost Space', 'Entertainment');
+    zeroCost.currentIncome = zeroCost.baseIncome;
+    zeroCost.currentReputationPerTurn = zeroCost.reputationPerTurn ?? 0;
+    state.streetGrid[0] = zeroCost;
 
     state.resourceBank.coins = 5;
     applyCommunitySpaceOngoingCosts(state);
 
     expect(state.resourceBank.coins).toBe(5);
+  });
+
+  it('should deduct 20 coins per turn for a placed Playground (MS-0MUMC6IVF0098WRL)', () => {
+    const state = createTestState('playground-ongoing-cost');
+    state.resourceBank.coins = 1000;
+
+    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    playground.currentIncome = playground.baseIncome;
+    playground.currentReputationPerTurn = playground.reputationPerTurn ?? 0;
+    state.streetGrid[0] = playground;
+
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(980);
+    const log = state.activityLog.find(l => l.text.includes('Community space costs'));
+    expect(log).toBeDefined();
+    expect(log!.text).toContain('-20');
+  });
+
+  it('should clamp a Playground deduction at 0 coins and log insufficient funds', () => {
+    const state = createTestState('playground-clamped');
+    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    playground.currentIncome = playground.baseIncome;
+    playground.currentReputationPerTurn = playground.reputationPerTurn ?? 0;
+    state.streetGrid[0] = playground;
+
+    state.resourceBank.coins = 15;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(0);
+    const log = state.activityLog.find(l => l.text.includes('Insufficient coins for community space costs'));
+    expect(log).toBeDefined();
+  });
+
+  it('should NOT deduct ongoingCost for a sold Playground', () => {
+    const state = createTestState('sold-playground-no-cost');
+    state.resourceBank.coins = 1000;
+
+    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    playground.currentIncome = playground.baseIncome;
+    playground.currentReputationPerTurn = playground.reputationPerTurn ?? 0;
+    state.streetGrid[0] = playground;
+    state.soldSlots[0] = true;
+
+    const coinsBefore = state.resourceBank.coins;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+  });
+
+  it('should deduct 25 coins per turn for a placed Town Fountain (MS-0MUMC6IVF0098WRL)', () => {
+    const state = createTestState('fountain-ongoing-cost');
+    state.resourceBank.coins = 1000;
+
+    const fountain = createCommunitySpaceDeck(1).find(c => c.name === 'Town Fountain')!;
+    fountain.currentIncome = fountain.baseIncome;
+    fountain.currentReputationPerTurn = fountain.reputationPerTurn ?? 0;
+    state.streetGrid[0] = fountain;
+
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(975);
+    const log = state.activityLog.find(l => l.text.includes('Community space costs'));
+    expect(log).toBeDefined();
+    expect(log!.text).toContain('-25');
+  });
+
+  it('should clamp a Town Fountain deduction at 0 coins and log insufficient funds', () => {
+    const state = createTestState('fountain-clamped');
+    const fountain = createCommunitySpaceDeck(1).find(c => c.name === 'Town Fountain')!;
+    fountain.currentIncome = fountain.baseIncome;
+    fountain.currentReputationPerTurn = fountain.reputationPerTurn ?? 0;
+    state.streetGrid[0] = fountain;
+
+    state.resourceBank.coins = 20;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(0);
+    const log = state.activityLog.find(l => l.text.includes('Insufficient coins for community space costs'));
+    expect(log).toBeDefined();
+  });
+
+  it('should NOT deduct ongoingCost for a sold Town Fountain', () => {
+    const state = createTestState('sold-fountain-no-cost');
+    state.resourceBank.coins = 1000;
+
+    const fountain = createCommunitySpaceDeck(1).find(c => c.name === 'Town Fountain')!;
+    fountain.currentIncome = fountain.baseIncome;
+    fountain.currentReputationPerTurn = fountain.reputationPerTurn ?? 0;
+    state.streetGrid[0] = fountain;
+    state.soldSlots[0] = true;
+
+    const coinsBefore = state.resourceBank.coins;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+  });
+
+  it('should deduct 30 coins per turn for a placed Community Shelter (MS-0MUMC6IVF0098WRL)', () => {
+    const state = createTestState('shelter-ongoing-cost');
+    state.resourceBank.coins = 1000;
+
+    const shelter = createCommunitySpaceDeck(1).find(c => c.name === 'Community Shelter')!;
+    shelter.currentIncome = shelter.baseIncome;
+    shelter.currentReputationPerTurn = shelter.reputationPerTurn ?? 0;
+    state.streetGrid[0] = shelter;
+
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(970);
+    const log = state.activityLog.find(l => l.text.includes('Community space costs'));
+    expect(log).toBeDefined();
+    expect(log!.text).toContain('-30');
+  });
+
+  it('should clamp a Community Shelter deduction at 0 coins and log insufficient funds', () => {
+    const state = createTestState('shelter-clamped');
+    const shelter = createCommunitySpaceDeck(1).find(c => c.name === 'Community Shelter')!;
+    shelter.currentIncome = shelter.baseIncome;
+    shelter.currentReputationPerTurn = shelter.reputationPerTurn ?? 0;
+    state.streetGrid[0] = shelter;
+
+    state.resourceBank.coins = 25;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(0);
+    const log = state.activityLog.find(l => l.text.includes('Insufficient coins for community space costs'));
+    expect(log).toBeDefined();
+  });
+
+  it('should NOT deduct ongoingCost for a sold Community Shelter', () => {
+    const state = createTestState('sold-shelter-no-cost');
+    state.resourceBank.coins = 1000;
+
+    const shelter = createCommunitySpaceDeck(1).find(c => c.name === 'Community Shelter')!;
+    shelter.currentIncome = shelter.baseIncome;
+    shelter.currentReputationPerTurn = shelter.reputationPerTurn ?? 0;
+    state.streetGrid[0] = shelter;
+    state.soldSlots[0] = true;
+
+    const coinsBefore = state.resourceBank.coins;
+    applyCommunitySpaceOngoingCosts(state);
+
+    expect(state.resourceBank.coins).toBe(coinsBefore);
   });
 
   it('should deduct 40 coins per turn for a placed Park (CG-0MU9NW9EP003B1AK)', () => {

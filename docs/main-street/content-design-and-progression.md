@@ -86,14 +86,16 @@ Community-space cards are placed on the street grid like businesses but generate
 
 | Name | Cost (coins) | Ongoing/turn | Synergy | Tier | Rep/turn | Description |
 |------|--------------|--------------|---------|------|----------|-------------|
-| Park | 300 | 40 | Entertainment | 1 | 0 | Offers leisure space. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK.)* |
-| Playground | 400 | 0 | Entertainment | 3 | 5 | A safe place for kids to play. *(Group B.)* |
-| Community Garden | 500 | 10 | Entertainment | 4 | 10 | A shared community garden that hosts seasonal flower festivals. *(Group B; Food→Entertainment retag, CG-0MUNAQL870015WKF.)* |
-| Town Fountain | 500 | 0 | Culture | 5 | 10 | A gathering spot around the fountain. *(Group B.)* |
-| Health Kiosk | 600 | 15 | Health | 8 | 15 | A walk-up health advice kiosk. *(Group B.)* |
-| Community Shelter | 600 | 0 | Service | 3 | 15 | A warm shelter for those in need. *(Group B; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg.)* |
-| Library | 700 | 25 | Culture | 1 | 10 | Quiet community space for reading and learning. |
-| Public Art | 800 | 25 | Culture, Entertainment | 12 | 20 | A vibrant public sculpture. Bridges Culture and Entertainment community spaces. *(Group B.)* |
+| Park | 150 | 40 | Entertainment | 1 | 0 | Offers leisure space. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK; re-priced 300→150 by MS-0MUR9IN7L0004TO5.)* |
+| Playground | 300 | 20 | Entertainment | 3 | 20 | A safe place for kids to play. Costs 20 coins per turn to run. *(Group B; 20/turn running cost per MS-0MUMC6IVF0098WRL.)* |
+| Community Garden | 350 | 10 | Entertainment | 4 | 40 | A shared community garden that hosts seasonal flower festivals. Costs 10 coins per turn to run. *(Group B; Food→Entertainment retag, CG-0MUNAQL870015WKF.)* |
+| Town Fountain | 350 | 25 | Culture | 5 | 40 | A gathering spot around the fountain. Costs 25 coins per turn to run. *(Group B; 25/turn running cost per MS-0MUMC6IVF0098WRL.)* |
+| Health Kiosk | 450 | 15 | Health | 8 | 60 | A walk-up health advice kiosk. Costs 15 coins per turn to run. *(Group B.)* |
+| Community Shelter | 400 | 30 | Service | 3 | 60 | A warm shelter for those in need. Costs 30 coins per turn to run. *(Group B; retiered T6→T3 (CG-0MT5VZJLS000B8KI) as the neighbourhood amenity anchoring T3's Service leg; 30/turn running cost per MS-0MUMC6IVF0098WRL.)* |
+| Library | 400 | 25 | Culture | 1 | 40 | Quiet community space for reading and learning. Costs 25 coins per turn to run. |
+| Public Art | 600 | 25 | Culture, Entertainment | 12 | 80 | A vibrant public sculpture. Costs 25 coins per turn to run. Bridges Culture and Entertainment community spaces. *(Group B.)* |
+
+> Costs above reflect the MS-0MUR9IN7L0004TO5 community-space repricing; reputation values reflect the ×4 retune (MS-0MUR9IMN60093HIE). Playground, Town Fountain and Community Shelter gained their running costs in MS-0MUMC6IVF0098WRL so every shipped community space now carries a non-zero `ongoingCost`.
 
 > 12-tier expansion (CG-0MT3C744B009DS84): community-space cards are spread across 6 of the 12 tiers (8 cards cannot cover every tier; the Community Shelter retiered T6→T3, CG-0MT5VZJLS000B8KI); Park and Library are Tier-1 because the tutorial requires them in the tier-1 card pool.
 

@@ -77,13 +77,36 @@ describe('buildCardTooltipInfo — always shows ongoing cost (AC1)', () => {
   });
 
   it('community space card with zero ongoingCost shows "Ongoing cost: -0/turn"', () => {
-    // Park (deck[0]) now costs 40/turn (CG-0MU9NW9EP003B1AK), so pick a
-    // community space that still has no running cost (e.g. Playground).
-    const card = createCommunitySpaceDeck(1).find(c => c.ongoingCost === 0)!;
-    expect(card).toBeDefined();
-    expect(card.ongoingCost).toBe(0);
+    // All shipped community spaces now have a non-zero ongoingCost
+    // (MS-0MUMC6IVF0098WRL), so use a synthetic zero-cost card.
+    const card: CommunitySpaceCard = {
+      ...createCommunitySpaceDeck(1)[0],
+      id: 'cs-test-zero-ongoing',
+      ongoingCost: 0,
+    };
     const tip = tooltipFor(card);
     expect(tip).toContain('Ongoing cost: -0/turn');
+  });
+
+  it('Playground tooltip shows its 20/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const card = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    expect(card.ongoingCost).toBe(20);
+    const tip = tooltipFor(card);
+    expect(tip).toContain('Ongoing cost: -20/turn');
+  });
+
+  it('Town Fountain tooltip shows its 25/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const card = createCommunitySpaceDeck(1).find(c => c.name === 'Town Fountain')!;
+    expect(card.ongoingCost).toBe(25);
+    const tip = tooltipFor(card);
+    expect(tip).toContain('Ongoing cost: -25/turn');
+  });
+
+  it('Community Shelter tooltip shows its 30/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const card = createCommunitySpaceDeck(1).find(c => c.name === 'Community Shelter')!;
+    expect(card.ongoingCost).toBe(30);
+    const tip = tooltipFor(card);
+    expect(tip).toContain('Ongoing cost: -30/turn');
   });
 
   it('community space card with non-zero ongoingCost shows the value', () => {
