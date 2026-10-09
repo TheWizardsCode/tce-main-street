@@ -527,6 +527,20 @@ export interface CommunitySpaceCard {
 /** Union of all card types in Main Street. */
 export type AnyCard = BusinessCard | CommunitySpaceCard | EventCard | DurationEventCard | UpgradeCard | StaffCard;
 
+/**
+ * A card pack that contributed rows to the active Main Street pool.
+ *
+ * Persisted in saves (ids + versions) so a load can detect a pack that is
+ * now missing or disabled and degrade gracefully. See
+ * `MainStreetCardPacks.ts` for the single merge entry point.
+ */
+export interface ActiveMainStreetPack {
+  /** Pack id from the pack manifest. */
+  readonly id: string;
+  /** Pack content version from the pack manifest. */
+  readonly version: string;
+}
+
 // ── Incident Balance Types ──────────────────────────────────
 
 /**

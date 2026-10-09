@@ -24,7 +24,7 @@ import type {
   StaffCard,
   IncidentBalanceState,
 } from './MainStreetCards';
-import type { StorylineOption } from './MainStreetCardsTypes';
+import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
 
@@ -669,9 +669,19 @@ export interface MainStreetSerializedState {
    * Stored as a raw string so that if the game's card-data.csv changes
    * between save and load, the original CSV data can be recovered and
    * used to reconstruct card templates that match the saved state.
+   * When card packs were active this holds the merged `base + packs` CSV.
    * Empty string indicates a legacy save before this field was added.
    */
   csvData: string;
+  /**
+   * Card packs that were active when this save was created (ids + versions).
+   * Empty for base-content saves. On load, a pack recorded here that is no
+   * longer installed/disabled produces a degradation warning; the game
+   * refuses to resume only when a live card instance needs a missing template
+   * (see `MainStreetCardPacks.findMissingLiveTemplateIds`).
+   * Empty array indicates a legacy save before this field was added.
+   */
+  activePacks: ActiveMainStreetPack[];
   /**
    * Tracks which street grid slots have been sold. Length = GRID_SIZE.
    * true = card in this slot has been sold (non-functional).

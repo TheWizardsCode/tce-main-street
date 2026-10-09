@@ -37,7 +37,7 @@ import {
   MARKET_STAFF_MAX,
   createIncidentBalanceState,
   isCardAvailableInWeek,
-  resetTemplatesToDefault,
+  resetTemplatesToActivePool,
   type IncidentBalanceState,
 } from './MainStreetCards';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
@@ -501,8 +501,10 @@ export function refillSingleRowMarket(
  * @returns A fully initialised MainStreetState ready for turn 1.
  */
 export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainStreetState {
-  // Ensure templates use the bundled CSV data (reset any previous saved-CSV override)
-  resetTemplatesToDefault();
+  // Ensure templates use the active pool (bundled base, or the merged
+  // base + active card packs applied at boot) rather than a saved-CSV
+  // override left behind by a previous load.
+  resetTemplatesToActivePool();
 
   const seed = options.seed ?? generateSeedString();
   const numericSeed = seedToNumber(seed);

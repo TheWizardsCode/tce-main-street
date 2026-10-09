@@ -40,6 +40,53 @@ export const CARD_DATA_RAW: string = cardDataRaw;
  */
 export const CSV_CHECKSUM: string = computeCsvChecksum(cardDataRaw);
 
+/**
+ * The CSV text currently backing the template arrays.
+ *
+ * Equal to {@link CARD_DATA_RAW} for the bundled base pool. When an entitled
+ * card pack is active, `loadTemplatesFromCsv()` replaces it with the merged
+ * `base + packs` CSV produced by the single merge entry point
+ * (`mergeMainStreetCardPool`). Persisted as the save's `csvData` so a load
+ * restores the exact same pool.
+ */
+let _activeCsv: string = cardDataRaw;
+
+/**
+ * Checksum of {@link _activeCsv}: the base {@link CSV_CHECKSUM} when no pack
+ * is active, or the merged checksum when packs contribute rows.
+ */
+let _activeChecksum: string = CSV_CHECKSUM;
+
+/**
+ * Returns the CSV text currently backing the template arrays.
+ *
+ * Defaults to the bundled `card-data.csv`; returns the merged `base + packs`
+ * CSV once a pack pool has been applied.
+ */
+export function getActiveCsvData(): string {
+  return _activeCsv;
+}
+
+/**
+ * Returns the checksum of {@link getActiveCsvData} (the merged checksum when
+ * packs are active). Persisted as the save's `csvChecksum`.
+ */
+export function getActiveCsvChecksum(): string {
+  return _activeChecksum;
+}
+
+/**
+ * Replaces the active pool's csv text + checksum. Called by
+ * `loadTemplatesFromCsv()` / `resetTemplatesToDefault()`; not part of the
+ * public card-pack API.
+ *
+ * @internal
+ */
+export function setActiveCsv(csvData: string): void {
+  _activeCsv = csvData;
+  _activeChecksum = computeCsvChecksum(csvData);
+}
+
 // ── Mutable CSV Rows Container ──────────────────────────────
 
 /** Mutable CSV rows container, initialized from the module-level import. */
@@ -91,6 +138,7 @@ let _CARD_TIER_MAP: Map<string, string> = new Map();
  * @param csvData  Raw CSV string (same format as card-data.csv).
  */
 export function loadTemplatesFromCsv(csvData: string): void {
+  setActiveCsv(csvData);
   _csvRows = parseCsv(csvData);
   rebuildTemplateArrays(_csvRows);
 }
@@ -100,7 +148,22 @@ export function loadTemplatesFromCsv(csvData: string): void {
  * values from the bundled card-data.csv import.
  */
 export function resetTemplatesToDefault(): void {
+  setActiveCsv(cardDataRaw);
   _csvRows = parseCsv(cardDataRaw);
+  rebuildTemplateArrays(_csvRows);
+}
+
+/**
+ * Rebuilds the template arrays from the currently active pool CSV.
+ *
+ * Equivalent to {@link resetTemplatesToDefault} when no card pack is active;
+ * when a merged `base + packs` pool has been applied, it keeps that pool
+ * instead of dropping back to the bundled base. `setupMainStreetGame()` calls
+ * this so a fresh run still deals cards from the active pack pool after a
+ * previous load overrode the bundled CSV.
+ */
+export function resetTemplatesToActivePool(): void {
+  _csvRows = parseCsv(_activeCsv);
   rebuildTemplateArrays(_csvRows);
 }
 

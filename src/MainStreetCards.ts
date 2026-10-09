@@ -68,6 +68,7 @@ export type {
   IncidentPolarity,
   IncidentPolarityRun,
   IncidentBalanceState,
+  ActiveMainStreetPack,
 } from './MainStreetCardsTypes';
 
 export {
@@ -82,9 +83,12 @@ export {
 export {
   CARD_DATA_RAW,
   CSV_CHECKSUM,
+  getActiveCsvData,
+  getActiveCsvChecksum,
   getCsvRows,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
+  resetTemplatesToActivePool,
   getBusinessTemplates,
   getCommunitySpaceTemplates,
   getEventTemplates,

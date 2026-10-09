@@ -17,13 +17,19 @@ import {
   type EventCard,
   type StaffCard,
   CSV_CHECKSUM,
-  CARD_DATA_RAW,
+  getActiveCsvData,
+  getActiveCsvChecksum,
   GRID_SIZE,
   MARKET_TOTAL_SLOTS,
   loadTemplatesFromCsv,
+  resetTemplatesToDefault,
   createIncidentBalanceState,
   createIncidentBalanceFromQueue,
 } from './MainStreetCards';
+import {
+  getActiveMainStreetPacks,
+  setActiveMainStreetPacks,
+} from './MainStreetCardPacks';
 import { CHALLENGE_TEMPLATES } from './MainStreetChallenges';
 import { attachMainStreetAchievements } from './MainStreetAchievements';
 import type { StreetCameraState } from './MainStreetMapView';
@@ -77,8 +83,9 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     discardPile: structuredClone(state.discardPile),
     staffCards: structuredClone(state.staffCards),
     soldSlots: resizeSoldSlots(state.soldSlots, state.streetGrid.length),
-    csvChecksum: CSV_CHECKSUM,
-    csvData: CARD_DATA_RAW,
+    csvChecksum: getActiveCsvChecksum(),
+    csvData: getActiveCsvData(),
+    activePacks: getActiveMainStreetPacks(),
     actionsRemaining: state.actionsRemaining,
     bankedActions: state.bankedActions,
     peekUsedThisTurn: state.peekUsedThisTurn,
@@ -267,6 +274,11 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
   // ── csvData: add missing field (defaults to '' for legacy saves) ─
   if (!('csvData' in saved)) {
     (saved as Record<string, unknown>).csvData = '';
+  }
+
+  // ── activePacks: add missing field (defaults to [] for legacy saves) ─
+  if (!('activePacks' in saved) || !Array.isArray((saved as Record<string, unknown>).activePacks)) {
+    (saved as Record<string, unknown>).activePacks = [];
   }
 
   // ── soldSlots: add missing field (defaults to all false for legacy saves) ─
@@ -549,19 +561,31 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
   // If the saved checkpoint was created with a different card-data.csv,
   // detect the mismatch and either use the embedded CSV data or reject
   // legacy saves that lack it.
-  if (saved.csvChecksum && saved.csvChecksum !== CSV_CHECKSUM) {
-    if (saved.csvData && saved.csvData.length > 0) {
-      // Use the saved CSV data to reconstruct card templates
-      loadTemplatesFromCsv(saved.csvData);
-    } else {
-      // Legacy save without embedded CSV data — reject gracefully
-      throw new Error(
-        'This saved state was created with a different version of card-data.csv ' +
-        'and does not include the embedded card data required for compatibility. ' +
-        'Starting a fresh game instead.',
-      );
+  if (saved.csvChecksum) {
+    if (saved.csvChecksum !== getActiveCsvChecksum()) {
+      if (saved.csvData && saved.csvData.length > 0) {
+        // Use the saved CSV data to reconstruct card templates
+        loadTemplatesFromCsv(saved.csvData);
+      } else {
+        // Save without embedded CSV data — reject gracefully
+        throw new Error(
+          'This saved state was created with a different version of card-data.csv ' +
+          'and does not include the embedded card data required for compatibility. ' +
+          'Starting a fresh game instead.',
+        );
+      }
     }
+  } else if (getActiveCsvChecksum() !== CSV_CHECKSUM) {
+    // Legacy save (no recorded checksum). Ensure a previously-applied pack
+    // pool cannot leak into it by restoring the bundled base pool.
+    resetTemplatesToDefault();
   }
+
+  // Restore the active pack set recorded in the save. The templates were
+  // restored from the merged `csvData` above (a pack-aware save's merged
+  // checksum differs from the base CSV_CHECKSUM), so this only keeps the
+  // metadata consistent for the next save and for missing-pack detection.
+  setActiveMainStreetPacks(saved.activePacks);
 
   const baseRng = createSeededRng(saved.numericSeed);
   for (let i = 0; i < saved.rngCalls; i++) {
