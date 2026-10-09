@@ -14,6 +14,18 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 > [Card Packs](../../core/docs/DEVELOPER.md#card-packs) docs (and the
 > `docs/dev/card-packs-runbook.md` lifecycle runbook) for authoring, building
 > and gating a pack.
+>
+> **Production pack:** `main-street-residential-pack` adds ten
+> residential-themed cards (three business, three event, two upgrade, one
+> staff, one community-space). Its source is
+> [`packs/main-street/main-street-residential-pack/`](../../packs/README.md);
+> build and install it with
+> `npm run build:card-pack -- --input packs` and copy the emitted
+> `build/card-packs/packs/` into `<contentDir>/packs/`. The pack is gated on
+> the launcher's unified content-unlock store
+> (`dlc:main-street:main-street-residential-pack`); the locked row in the Card
+> Packs panel offers a scoped dev/QA simulated purchase. These cards are **not**
+> part of the base catalogue or its tier progression.
 
 **Deck sizes (default copies):**
 

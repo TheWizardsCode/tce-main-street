@@ -244,6 +244,15 @@ All card template data is defined in a single CSV file:
 > [Card Packs](../core/docs/DEVELOPER.md#card-packs) docs (and the
 > `docs/dev/card-packs-runbook.md` lifecycle runbook they link) for authoring,
 > building and gating a pack.
+>
+> The production pack is `main-street-residential-pack` (source under
+> [`packs/`](../packs/README.md)). It is gated on the launcher's unified
+> content-unlock store via `src/MainStreetContentUnlockGate.ts` — a
+> `dlc:main-street:main-street-residential-pack` unlock entitles it in addition
+> to the Steam-DLC status. `purchaseMainStreetCardPack()` performs the scoped
+> dev/QA simulated purchase (`main-street-residential-pack-purchase`) and
+> re-discovers the pool; the Card Packs listing wires it to a `[ Purchase ]`
+> control on the locked row.
 
 ### How it works
 

@@ -71,6 +71,20 @@ degrades gracefully (a warning, base content) when a pack is missing. The game
 refuses to resume only when a live card instance needs a template from a
 missing/disabled pack.
 
+The first production pack is **Main Street Residential**
+(`main-street-residential-pack`): ten residential-themed cards spanning the
+business, event, upgrade, staff and community-space families. It is gated on the
+launcher's **unified content-unlock store** (a
+`dlc:main-street:main-street-residential-pack` unlock) rather than a Steam DLC
+app id. For dev/QA there is a **simulated purchase** control on the locked pack
+row in the Card Packs panel: it performs a rule-scoped purchase
+(`main-street-residential-pack-purchase`) through `window.tce.contentUnlocks`,
+re-discovers the packs and makes the pack enable-able — no storefront required.
+
+The pack source lives under [`packs/`](packs/README.md); build it with
+`npm run build:card-pack -- --input packs` and install the emitted root under
+`<contentDir>/packs/`.
+
 Authoring, building, installing and gating a pack — with the reference pack as
 a worked example — is documented in the core repo's
 [Card Packs](core/docs/DEVELOPER.md#card-packs) section (which links the

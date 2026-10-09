@@ -44,12 +44,27 @@ install the pack.
 - **Version:** 1.0.0
 - **Core engine version:** ^0.1.0
 - **Cards:** 10 residential-themed cards (business, event, upgrade, staff,
-  community-space)
+  community-space) — see `cards.csv`
+- **Assets:** `assets/<cardId>.png` (one per card)
 - **Unlock key:** `dlc:main-street:main-street-residential-pack`
+- **Purchase rule:** `main-street-residential-pack-purchase` (platform-action
+  `dev` / `simulate-purchase`, resolved to the `simulated-purchase` verifier in
+  `core/electron/action-rewards.json`)
 
-The pack is gated on the launcher's unified content-unlock store. While locked
-its cards stay out of play; a scoped simulated purchase unlocks it and its
-cards merge into the pool.
+The pack is gated on the launcher's unified content-unlock store
+(`src/MainStreetContentUnlockGate.ts`). While locked its cards stay out of play;
+a scoped simulated purchase — the `[ Purchase ]` control on the locked row in
+the in-game Card Packs panel — unlocks it and its cards merge into the pool. The
+purchase is **rule-scoped**, so it never collateral-unlocks another reward (for
+example the itch.io golf follow).
+
+Build and install it with:
+
+```bash
+npm run build:card-pack -- --input packs
+# copy the emitted root into the launcher's content directory:
+#   build/card-packs/packs/  ->  <contentDir>/packs/
+```
 
 ## Constraints
 
