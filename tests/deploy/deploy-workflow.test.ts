@@ -52,9 +52,10 @@ describe('deploy workflow contract', () => {
     expect(source).not.toMatch(/workflow_dispatch\s*:/);
   });
 
-  it('orders install -> test -> build -> configure -> upload -> deploy', () => {
+  it('orders install -> playwright browsers -> test -> build -> configure -> upload -> deploy', () => {
     const order = [
       'Install dependencies',
+      'Install Playwright browsers',
       'Test',
       'Build',
       'Configure Pages',
@@ -85,6 +86,21 @@ describe('deploy workflow contract', () => {
     const upload = stepIndexByName(steps, 'Upload artifact');
     expect(upload).toBeGreaterThan(stepIndexByName(steps, 'Test'));
     expect(upload).toBeGreaterThan(stepIndexByName(steps, 'Build'));
+  });
+
+  it('install the Playwright Chromium browsers before the test gate', () => {
+    // `storyline-graph-svg.test.ts` runs in the unit project and launches
+    // Playwright Chromium directly. Without this step the CI runner has no
+    // browser binary and `npm test` fails before the build/deploy can run
+    // (MS-0MV0SUA5J002AZ40).
+    const install = steps.find((s) => s.name === 'Install Playwright browsers');
+    expect(install, 'no Playwright browser install step').toBeDefined();
+    expect(install!.body).toMatch(/run:\s*npx playwright install\b/);
+    expect(install!.body).toMatch(/chromium\b/);
+    // The browser install must precede the Test step or the gate still fails.
+    expect(stepIndexByName(steps, 'Install Playwright browsers')).toBeLessThan(
+      stepIndexByName(steps, 'Test'),
+    );
   });
 
   it('composes the ./core submodule over HTTPS with no stored secret', () => {
