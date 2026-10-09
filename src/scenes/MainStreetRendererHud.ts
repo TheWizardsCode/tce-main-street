@@ -703,6 +703,12 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     // the upcoming/phase UI updates have been displayed to the player.
     // Do NOT update logPrevEntryCount while deferred — the next render
     // after deferral is cleared must see a count change and re-render.
+    //
+    // Reset contract (MS-0MV14JDUG000E1V6): the flag is scene-instance
+    // state, so `createScene()` resets it on every scene creation. Without
+    // that reset a flag left set across a `scene.restart()` kept this branch
+    // early-returning and the Activity Log stayed blank for the rest of the
+    // session (regression introduced by 7441311 / MS-0MURBOD2E009SOM2).
     if (s.logDeferredUntilPhaseComplete) {
       // Compute scroll bounds from existing content only (no re-render).
       if (s.logTotalContentH <= visibleH) {

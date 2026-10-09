@@ -341,7 +341,10 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // refresh fully once the choreography finishes.
     // Defer log rendering until after startTurnPhase has displayed
     // upcoming cards (MS-0MURBOD2E009SOM2). The deferred flag suppresses
-    // the log render; it is cleared in finalizeTurn after startTurnPhase.
+    // the log render; it is cleared in finalizeTurn after startTurnPhase,
+    // and reset unconditionally by createScene() on every scene creation so
+    // an interrupted closing cannot leave the log blank across a restart
+    // (MS-0MV14JDUG000E1V6).
     s.logDeferredUntilPhaseComplete = true;
     if (s.incomeCollectionActive) {
       s.msRenderer.refreshAllExceptStreet();
