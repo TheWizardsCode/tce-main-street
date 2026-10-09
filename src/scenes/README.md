@@ -27,6 +27,64 @@ counter, and a final `+total` pop lands when collection completes. See
 - Reduced motion: flights skipped; the HUD refresh shows the single final
   pop + income sound.
 
+## Shared end-of-turn closing presentation
+
+`presentTurnClosing(tcCtx, result, onComplete, options)` in
+`MainStreetTurnControllerAnimation.ts` is the single closing presentation
+primitive (MS-0MUYFX7Q2004JQ5R). It owns the closing text (`closingSummary` /
+`perSeatClosingSummary`), the incident reveal and the day-advance callback, and
+is shared by single-player (`finishTurnPresentation`,
+`MainStreetTurnControllerTurnFlow.ts`) and competitive
+(`presentCompetitiveClosing`, `MainStreetTurnControllerCompetitive.ts`) so the
+two flows cannot drift. Presentation-only: it consumes no RNG and mutates no
+engine state.
+
+In competitive mode (MS-0MUXAQQON006XA6I) the closing surfaces the
+authoritative per-owner income on `TurnResult.playerIncome`
+(`OwnerIncomeResult[]` from `applyCompetitiveIncome`, non-eliminated seats
+only, in seat order). `presentCompetitiveClosing` then runs the full phased
+`animateIncomePhases` choreography once per seat using that seat's own
+`phaseBreakdown.perSlotBreakdown`, staggered by
+`COMPETITIVE_CLOSING_SEAT_STAGGER_MS`, and reports per-seat income
+(`Player N: +X coins`). The shared incident reveal and day advance are
+delegated to the primitive with the shared income line suppressed
+(`incomeSummary: ''`).
+
+- Bounded: the per-seat stagger is clamped to
+  `COMPETITIVE_CLOSING_MAX_TOTAL_MS`, so a large roster cannot stall the day.
+- Reduced motion / replay / headless: the per-seat animations are skipped,
+  the per-seat text is still shown and the day always advances.
+- No per-owner data (single-player-free / legacy results): the condensed
+  shared summary is kept.
+- See `docs/main-street/ux-visual-audio.md` for the design notes.
+
+## Ambient street pedestrians (reputation crowd)
+
+`MainStreetPedestrians` (MS-0MTV9AS15004AC1E; reworked MS-0MUZ4WB290024ZGQ;
+polished MS-0MUZ6CGSV002WTYM) renders a presentation-only crowd of small
+solid-colour silhouettes that walk the road bands between and around the
+street cells, each keeping to one side of the road (a lane offset). The
+population is a pure function of reputation (`pedestrianCount`, 1 figure per
+50, uncapped, `#88bbff`); the crowd tracks the HUD reputation value live
+(fade in/out) and persists across street rebuilds. People always walk to the
+**nearest occupied cell** (re-resolved each frame, so a cell filled mid-turn
+is picked up) and **walk** deliberately into it, where each spreads to its own
+random spot inside the cell and stays (no teleporting). At the end of the
+turn the non-shoppers walk off the block and enough figures walk into shops;
+at the start of the next turn the leftovers clear and a fresh set enters from
+the block corners. During the phased income
+show, the `reputation` phase first sends at least 25% of the crowd walking
+into occupied cells, then dissolves the in-shop figures into the coin stream
+that lands in each business's coin grid (`dissolveIntoCoins`, street-anchor
+fallback when no shops/figures — never the HUD counter). One runtime-generated
+texture is shared by every figure. See `docs/main-street/ux-visual-audio.md`
+for the design notes.
+
+- Presentation-only: never mutates state/transcript; every method is
+  defensive.
+- No gameplay RNG: road-walk randomness uses a module-local seeded PRNG.
+- Reduced motion: no pedestrians or flights; replay/headless renders nothing.
+
 ## Incident reveal presentation
 
 `MainStreetAnimator.animateIncidentReveal({ cardId, incidentName, coinChange,

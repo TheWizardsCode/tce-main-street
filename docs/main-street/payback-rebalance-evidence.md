@@ -100,3 +100,9 @@ revised to the measured after-state:
 The tighter economy shifts the relative value of community spaces, events and
 upgrades, and changes the loss-mode mix. Those are recorded as prioritised
 follow-up recommendations (MS-0MUQUBKNE007NYR8) rather than absorbed here.
+
+> **Follow-up landed (R2, MS-0MUR9IMN60093HIE).** The reputation-source re-tune
+> (positive business / community-space `reputationPerTurn` ×4) addresses the
+> dominant Medium reputation-collapse loss mode. It regenerates
+> `docs/main-street/monte-carlo-baseline.json` (new commit stamp) as documented
+> in [reputation-retune-evidence.md](reputation-retune-evidence.md).

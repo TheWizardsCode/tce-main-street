@@ -144,7 +144,8 @@ describe('End-condition evaluation — smoke against pre-fix engine', () => {
     const state = buildCompetitiveState({
       seed: 'end-win',
       playerCount: 2,
-      winThreshold: 10,
+      // Base 100 → effective 50 (MS-0MUZK64F8000XYO0).
+      winThreshold: 100,
       seatWallets: [
         { playerId: 0, coins: 100, reputation: 10 },
         { playerId: 1, coins: 1, reputation: 1 },
@@ -160,7 +161,8 @@ describe('End-condition evaluation — smoke against pre-fix engine', () => {
     const state = buildCompetitiveState({
       seed: 'end-p1',
       playerCount: 2,
-      winThreshold: 10,
+      // Base 100 → effective 50 (MS-0MUZK64F8000XYO0).
+      winThreshold: 100,
       seatWallets: [
         { playerId: 0, coins: 1, reputation: 1 },
         { playerId: 1, coins: 100, reputation: 10 },
@@ -189,10 +191,11 @@ describe('End-condition evaluation — smoke against pre-fix engine', () => {
     const state = buildCompetitiveState({
       seed: 'end-tie',
       playerCount: 2,
-      winThreshold: 10,
+      // Base 100 → effective 50 (MS-0MUZK64F8000XYO0).
+      winThreshold: 100,
       seatWallets: [
-        { playerId: 0, coins: 20, reputation: 5 },
-        { playerId: 1, coins: 30, reputation: 10 },
+        { playerId: 0, coins: 100, reputation: 5 },
+        { playerId: 1, coins: 100, reputation: 10 },
       ],
     });
     result = evaluateEndConditions(state);

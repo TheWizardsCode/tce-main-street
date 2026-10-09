@@ -13,7 +13,7 @@ import { applyReputationMultiplier } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { eventCoinDeltaFor } from './MainStreetEngineEvents';
 import type { MainStreetState } from './MainStreetState';
-import { syncResourceBankToLedger } from './MainStreetState';
+import { syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
  * Computes the final score.
@@ -29,6 +29,28 @@ export function computeScore(state: MainStreetState): number {
     state.ledger.get('reputation') +
     state.challengesCompleted.length * state.config.challengeBonusPoints
   );
+}
+
+/**
+ * Computes the effective win threshold for competitive play.
+ *
+ * In competitive mode with `P` players (human + AI), the win target is
+ * `Math.round(baseWinThreshold / P / 50) * 50` — i.e. the base threshold
+ * divided by player count, rounded to the nearest 50.
+ *
+ * When `state.playerCount` is absent (single-player / legacy save), the
+ * effective threshold equals the base `winThreshold` (the division by 1 is
+ * a no-op, and the base is already a multiple of 50).
+ *
+ * Worked values (Easy base 10 000 → effective):
+ *   P=2 → 5 000, P=3 → 3 350, P=4 → 2 500
+ *
+ * @param state  Current game state (read-only).
+ * @returns The rounded effective win threshold.
+ */
+export function effectiveWinThreshold(state: MainStreetState): number {
+  const playerCount = state.playerCount ?? 1;
+  return Math.round(state.config.winThreshold / playerCount / 50) * 50;
 }
 
 /**

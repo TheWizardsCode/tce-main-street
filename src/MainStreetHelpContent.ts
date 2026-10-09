@@ -9,6 +9,8 @@
  * @module
  */
 
+import { effectiveWinThreshold, type MainStreetState } from './MainStreetState';
+
 /** The PRD-required help section headings, in order (PRD milestone 5 §6). */
 export const REQUIRED_HELP_SECTION_HEADINGS = [
   'How to Play',
@@ -44,6 +46,25 @@ export const SYNERGY_HELP_ICONS = [
   { key: 'ms-icon-service', label: 'Service' },
   { key: 'ms-icon-entertainment', label: 'Entertainment' },
 ] as const;
+
+/**
+ * Builds the help content config from the live game state.
+ *
+ * The win target is the *effective* threshold — the base difficulty value
+ * divided by the number of seats and rounded to the nearest 50 in competitive
+ * play, and the unchanged base value in single-player — so the "Reach N
+ * points to win" copy matches the value the engine awards the win at
+ * (MS-0MUZK652V001L71C). Challenges remain the unchanged run constant.
+ *
+ * @param state  Current game state (read-only).
+ * @returns The interpolated help content configuration.
+ */
+export function helpContentConfigFor(state: MainStreetState): HelpContentConfig {
+  return {
+    winThreshold: effectiveWinThreshold(state),
+    challengesPerRun: state.config.challengesPerRun,
+  };
+}
 
 /**
  * Builds the ordered Main Street help/rules sections.

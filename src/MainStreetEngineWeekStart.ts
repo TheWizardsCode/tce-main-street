@@ -56,6 +56,12 @@ export function executeWeekStart(state: MainStreetState, skipMarketRefill: boole
   state.justMovedUpgradeCardId = null;
   // Grand Opening placement gate (CG-0MTIOCBH400970OB): new day resets the flag.
   (state as any).businessPlacedThisTurn = false;
+  // Market re-roll escalation (MS-0MTR6ZRF5007PWNZ): a new turn restarts the
+  // escalating refresh cost at the 500 base.
+  state.marketRefreshesThisTurn = 0;
+  // Investor free market re-roll gate (MS-0MTISBYLS009936W): a new turn
+  // restores the once-per-turn coin-free re-roll.
+  state.investorFreeRerollUsedThisTurn = false;
 
   // Day-start snapshot for the per-turn net summary row (CG-0MT5W7UJJ0065MEZ
   // AC3): resources exactly as the player's turn begins. Persisted with the

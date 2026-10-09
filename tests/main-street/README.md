@@ -1,5 +1,28 @@
 # Main Street test notes
 
+## Card test framework (unit integration)
+
+`tests/main-street/cards/` verifies every card in `src/card-data.csv` against
+real engine play states and records per-card pass/fail results back into the
+CSV (`unitTestStatus` / `unitTestFailReason`). Adding a card requires only a
+definition entry in `tests/main-street/cards/definitions/index.ts` — no
+framework changes.
+
+- Registry / runner: `tests/main-street/cards/CardTestRegistry.ts`
+- Definitions: `tests/main-street/cards/definitions/`
+- Meta-tests: `tests/main-street/cards/unit/CardTestFramework.test.ts`
+- Full documentation: [`docs/main-street/card-test-framework.md`](../../docs/main-street/card-test-framework.md)
+
+Run just the card suite:
+
+```bash
+# Unit integration
+npx vitest run --project unit tests/main-street/cards/unit/CardIntegration.test.ts
+
+# Browser integration (real MainStreetScene, headless Chromium)
+npm run test:browser
+```
+
 ## Market Offer Engine — Extraction Parity Tests
 
 `market-extraction-parity.test.ts` (CG-0MPWZ5R1M001MZ3B) locks in current Main Street

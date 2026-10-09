@@ -309,12 +309,16 @@ describe('Delivery Driver: click purchase (purchaseBusiness)', () => {
     state.phase = 'MarketPhase';
     state.resourceBank.coins = 0;
 
-    // Hire enough Delivery Drivers to discount the cheapest business to 0.
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
+    // Hire a Delivery Driver whose 50-coin discount covers the listed cost.
+    state.staffCards.push(makeDeliveryDriver());
 
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
+    // Inject a deterministic business card at or below the discount so the
+    // test never depends on the seeded market composition. (The previous
+    // version read the first business from the seeded market and silently
+    // returned when none was present, making the assertion vacuous — and it
+    // broke once the upgrade draw-weight change shifted the seeded stream.)
+    const biz = makeBiz({ id: 'biz-dd-floor', cost: DELIVERY_PURCHASE_DISCOUNT - 10 });
+    state.market.cards = [biz];
 
     const slot = state.streetGrid.findIndex(s => s === null);
     expect(canPurchaseBusiness(state, biz.id, slot).legal).toBe(true);

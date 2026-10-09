@@ -56,6 +56,13 @@ function makeCommunitySpace(overrides: Partial<CommunitySpaceCard> = {}): Commun
   };
 }
 
+/** Extract the level-badge `<text>` element from a generated card SVG. */
+function extractLevelBadgeText(svg: string): string {
+  const match = svg.match(/<text[^>]*>Lvl \d+<\/text>/);
+  if (!match) throw new Error('level badge <text> element not found');
+  return match[0];
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -135,10 +142,15 @@ describe('generateBusinessCardSvg - upgraded cards (level > 0)', () => {
     expect(svg).toContain('Patisserie');
   });
 
-  it('should show level badge for upgraded cards', () => {
+  it('should show level badge for upgraded cards at the top-left', () => {
     const biz = makeBiz({ level: 2 });
     const svg = generateBusinessCardSvg(biz, CARD_W, CARD_H);
-    expect(svg).toContain('Lvl 2');
+    const badge = extractLevelBadgeText(svg);
+    expect(badge).toContain('Lvl 2');
+    // Top-left contract: left inset (x="8") and left-anchored text.
+    expect(badge).toMatch(/x="8"/);
+    expect(badge).toContain('text-anchor="start"');
+    expect(badge).not.toContain('text-anchor="end"');
   });
 
   it('should show combined income (base + bonus)', () => {
@@ -179,10 +191,14 @@ describe('generateBusinessCardSvg - community space cards', () => {
     expect(svg).toContain('+10/turn');
   });
 
-  it('should show level badge when upgraded', () => {
+  it('should show the level badge at the top-left when upgraded', () => {
     const cs = makeCommunitySpace({ level: 1, baseIncome: 1 });
     const svg = generateBusinessCardSvg(cs, CARD_W, CARD_H);
-    expect(svg).toContain('Lvl 1');
+    const badge = extractLevelBadgeText(svg);
+    expect(badge).toContain('Lvl 1');
+    expect(badge).toMatch(/x="8"/);
+    expect(badge).toContain('text-anchor="start"');
+    expect(badge).not.toContain('text-anchor="end"');
   });
 });
 

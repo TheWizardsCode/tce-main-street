@@ -53,6 +53,20 @@ Loss-only split:
 - **One run in 200 hits the 60-turn harness cap** — negligible, but the first
   appearance of a stall; worth monitoring, not acting on.
 
+> **Addressed by R2 (MS-0MUR9IMN60093HIE).** The reputation-source re-tune
+> (all positive business / community-space `reputationPerTurn` ×4) restores the
+> PRD §G5 loss-mode band. On the canonical after-state profile Medium is now
+> **32% reputation collapse / 68% bankruptcy** (loss-only). See
+> [reputation-retune-evidence.md](reputation-retune-evidence.md).
+>
+> **Follow-up (MS-0MUVB2ZES005V83Y).** The greedy AI's Community Favour
+> `rep→coins` heuristic was subsequently tightened to an enablement +
+> value/timing gate, so the AI stops bleeding reputation for liquidity it
+> cannot use well. Combined with R2, Medium moves to **12% reputation collapse
+> / 88% bankruptcy**, and `rep→coins` usage falls materially on every
+> difficulty. The producer approved widening the G5 band to the combined
+> design. See [favour-ai-evidence.md](favour-ai-evidence.md).
+
 ## 3. Synergy utilisation & diversity
 
 - Synergy adjacency continues to be the main income amplifier: with base
@@ -88,12 +102,21 @@ Ownership frequency (Medium, share of runs where the card was owned):
 | # | Priority | Recommendation | Evidence | Follow-up |
 |---|---|---|---|---|
 | R1 | High | Re-evaluate **upgrade costs / incomeBonus** so upgrades clear the ~5-turn payback opportunity cost (reduce upgrade cost and/or raise `incomeBonus`). | Upgrades appear in ≤1% of runs. | MS-0MUR9I9WO004EW0M |
-| R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE |
+| R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE — **done**: positive rep/turn ×4; Medium now 32% / 68% (see reputation-retune-evidence.md). |
 | R3 | Medium | Confirm **win thresholds / run length** are the intended difficulty lever now that liquidity is slack (net liquidity 2–4 coins/turn, runs ~10–12 turns). Consider raising `winThreshold` or capping turns if "tighter" should mean harder. | avgTurns 10–12; liquidity ≪ band. | MS-0MUR9IMXE0090WIV |
 | R4 | Medium | Re-price **community spaces / events** relative to the slower business payback (community spaces are now relatively stronger value per coin). | Intake risk note; distribution shift to cheap cards. | MS-0MUR9IN7L0004TO5 |
 | R5 | Low | Track **synergy-diversity (G4/HHI)** and placement dominance in the next re-baseline to confirm no single synergy type crowds out the others. | Intake synergy-distortion risk. | MS-0MUR9INHX001QCSE |
 
 All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
+
+> **R4 AI-side follow-up (MS-0MUX8J9KJ005ZKDW).** R4 (MS-0MUR9IN7L0004TO5)
+> re-priced community spaces in the card data. The *AI decision-quality*
+> half of the same observation — the greedy AI over-selecting community spaces
+> because their zero income and running costs were invisible to the scoring
+> — is addressed separately by giving community spaces their own placement
+> value and a named business-preference penalty. See
+> [ai-strategy.md](ai-strategy.md#community-space-move-evaluation-ms-0mux8j9kj005zkdw)
+> and [community-space-ai-evidence.md](community-space-ai-evidence.md).
 
 ## 6. Non-recommendations (deliberately out of scope)
 

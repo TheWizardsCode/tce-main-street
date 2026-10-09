@@ -36,6 +36,8 @@ import {
   createCompetitiveState,
 } from '../../src/MainStreetState';
 import type { BusinessCard } from '../../src/MainStreetCards';
+import { enumerateCompetitiveLegalActions } from '../../src/MainStreetAiStrategy';
+import { applyCompetitiveIncome } from '../../src/MainStreetAdjacencyScoring';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -202,6 +204,32 @@ describe('AC4/AC5/AC6 — owned businesses are closed', () => {
     expect(stillOwned).toBe(false);
     expect(state.streetGrid[1]).toBeNull();
   });
+
+  it('after elimination the closed business no longer contributes income or synergy (functional)', () => {
+    const biz = makeBusiness({
+      id: 'fn-income-biz',
+      baseIncome: 100,
+      currentIncome: 100,
+      synergyTypes: ['Food'],
+    });
+    const state = buildCompetitiveState({
+      seed: 'elim-income-fn',
+      playerCount: 2,
+      slotOverrides: [{ slotIndex: 1, ownerId: 1, card: biz }],
+    });
+
+    // Baseline: the owned business contributes income to the AI seat.
+    const before = applyCompetitiveIncome(state).find(r => r.ownerId === 1);
+    expect(before?.income.total ?? 0).toBeGreaterThan(0);
+    expect(before?.income.breakdown.length ?? 0).toBeGreaterThan(0);
+
+    // Eliminate: the closed business is removed from the grid/ownership, so
+    // it contributes no income or synergy to the (now eliminated) seat.
+    closeEliminatedSeatBusinesses(state, 1);
+    const after = applyCompetitiveIncome(state).find(r => r.ownerId === 1);
+    expect(after?.income.total ?? 0).toBe(0);
+    expect(after?.income.breakdown ?? []).toHaveLength(0);
+  });
 });
 
 // ── AC3: rotation skip ──────────────────────────────────────
@@ -246,6 +274,21 @@ describe('AC3 — eliminated seats are skipped in rotation', () => {
     state.players![1].eliminated = true;
     expect(getFirstActivePlayerId(state)).toBe(-1);
     expect(getNextActivePlayerId(state, 0)).toBe(-1);
+  });
+});
+
+// ── AC3: AI action-enumeration skip ─────────────────────────
+
+describe('AC3 — eliminated seats are excluded from AI action enumeration', () => {
+  it('enumerateCompetitiveLegalActions returns no actions for an eliminated seat', () => {
+    const state = buildCompetitiveState({ seed: 'enum-skip', playerCount: 3 });
+    state.players![1].eliminated = true;
+    expect(enumerateCompetitiveLegalActions(state, 1)).toEqual([]);
+  });
+
+  it('a live seat still enumerates legal actions', () => {
+    const state = buildCompetitiveState({ seed: 'enum-live', playerCount: 3 });
+    expect(enumerateCompetitiveLegalActions(state, 0).length).toBeGreaterThan(0);
   });
 });
 

@@ -328,7 +328,7 @@ describe('processEndOfTurn (deferResourceApplication)', () => {
 
 describe('endTurnHeadless (AI/sim contract preserved — AC6)', () => {
   it('still mutates state and produces deterministic results', () => {
-    const state = createTestState('headless-1');
+    const state = createTestState('headless-x-0');
     placeIncomeBusiness(state, 0, 10);
     state.resourceBank.coins = 100;
     const coinsBefore = state.resourceBank.coins;

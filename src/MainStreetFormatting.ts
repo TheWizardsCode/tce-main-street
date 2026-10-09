@@ -237,6 +237,12 @@ export function buildCardTooltipInfo(
       if ((st.taxAuditRate ?? 0) > 0) lines.push(`Tax Audit: losses reduced to ${Math.round((st.taxAuditRate ?? 0) * 100)}%`);
       if ((st.actionsPerTurn ?? 0) > 0) lines.push(`Actions: +${st.actionsPerTurn}/week`);
       if (st.peekOncePerTurn) lines.push('Ability: peek the incident deck once per turn');
+      // Investor free market re-roll (MS-0MUOSULQ700186PP AC1): surface the
+      // ability and the relevance bias (default 75%) on the applicant card.
+      if (st.freeMarketRerollPerTurn) {
+        const biasPct = Math.round((st.marketRelevanceBias ?? 0.75) * 100);
+        lines.push(`Ability: free market re-roll once per turn (${biasPct}% relevance bias)`);
+      }
       // Specialization skills (CG-0MT1CIWSD003VBPK): the applicant card's
       // locked skill set (1-3 skills incl. the Town Gossip baseline). Legacy
       // cards without specializationSkillIds show no skills line.
@@ -266,10 +272,19 @@ export function buildCardTooltipInfo(
  * description. Returns null when no staff are employed (empty state — AC5:
  * the tooltip keeps showing only the business's own info).
  *
- * @param staff The staff members employed at the slot.
+ * Staff carrying the Investor's free market re-roll ability additionally
+ * surface whether the free re-roll is still available this turn and the
+ * relevance bias (default 75%) — MS-0MUOSULQ700186PP AC1. The caller passes
+ * the state's once-per-turn flag through `options`.
+ *
+ * @param staff   The staff members employed at the slot.
+ * @param options Optional state context (free-reroll availability).
  * @returns A \n-prefixed bulleted section, or null when empty.
  */
-export function formatEmployedStaffSummary(staff: readonly StaffCard[]): string | null {
+export function formatEmployedStaffSummary(
+  staff: readonly StaffCard[],
+  options?: { freeRerollUsedThisTurn?: boolean },
+): string | null {
   if (!Array.isArray(staff) || staff.length === 0) return null;
   const lines = staff.map((member) => {
     const types =
@@ -277,7 +292,12 @@ export function formatEmployedStaffSummary(staff: readonly StaffCard[]): string 
         ? member.allowedBusinessTypes.join('/')
         : 'Generalist';
     const effect = member.description ? ` — ${member.description}` : '';
-    return `• ${member.name} (${types})${effect}`;
+    // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
+    // this turn plus the relevance bias alongside the member's own effect.
+    const reroll = member.freeMarketRerollPerTurn
+      ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
+      : '';
+    return `• ${member.name} (${types})${effect}${reroll}`;
   });
   return `\nEmployed staff (${staff.length}):\n${lines.join('\n')}`;
 }

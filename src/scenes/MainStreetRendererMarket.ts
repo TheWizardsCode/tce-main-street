@@ -14,7 +14,8 @@ import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter
 import type { BusinessCard, CommunitySpaceCard, EventCard, StaffCard, UpgradeCard } from '../MainStreetCards';
 import { MARKET_TOTAL_SLOTS } from '../MainStreetCards';
 import { buildCardTooltipInfo } from '../MainStreetFormatting';
-import { canRefreshMarket, refreshMarketCost } from '../MainStreetMarket';
+import { canRefreshMarket } from '../MainStreetMarket';
+import { buildMarketRerollControl } from './MainStreetHudTooltips';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill } from '../MainStreetStaffSkills';
 import { BOX_FILL, BOX_RADIUS, BOX_STROKE, CARD_BACK_TEMPLATE } from './MainStreetConstants';
@@ -155,33 +156,40 @@ export function drawMarketRow(renderer: MainStreetRendererContext,
     }).setOrigin(0, 0);
     s.marketContainer.add(deckText);
 
-    // Research button (single market refresh, Accountant discount applies).
+    // Market re-roll control (MS-0MUOSULQ700186PP AC1): one button drives
+    // both the Investor's free re-roll (when available) and the paid
+    // Research path. The label/tooltip come from the pure builder so they
+    // stay consistent with the HUD tooltip copy and are unit-tested without
+    // booting a scene.
     try {
-      const refreshResult = canRefreshMarket(s.state);
-      const canRefresh = refreshResult.legal;
-      const refreshCost = refreshMarketCost(s.state);
+      const control = buildMarketRerollControl(s.state);
       const btnW = Math.max(s.layout.smallButtonW, 110);
       const labelCenter = 40 + s.layout.marketLabelW / 2;
       const btnX = Math.round(labelCenter - btnW / 2);
       const btnY = deckY + 22;
 
-      const labelText = `Research (${refreshCost})`;
+      const labelText = control.label;
+      const onActivate = control.freeRerollAvailable
+        ? () => { s.onFreeMarketRerollClick(); }
+        : () => { s.onRefreshMarketClick(); };
 
-      const btn = createActionButton(s, btnX, btnY, btnW, labelText, canRefresh ? () => { s.onRefreshMarketClick(); } : () => {}, {
-        disabled: !canRefresh,
-        ...(canRefresh ? {} : { fillColor: 0x333333, fillAlpha: 0.6 }),
+      const btn = createActionButton(s, btnX, btnY, btnW, labelText, control.enabled ? onActivate : () => {}, {
+        disabled: !control.enabled,
+        ...(control.enabled ? {} : { fillColor: 0x333333, fillAlpha: 0.6 }),
       });
       // Dim visual when not allowed, but keep interactive so tooltip can show
       try {
         const bg = (btn.list && btn.list[0]) as Phaser.GameObjects.Rectangle | undefined;
         if (bg) {
-          if (!canRefresh && typeof bg.setFillStyle === 'function') {
+          if (!control.enabled && typeof bg.setFillStyle === 'function') {
             bg.setFillStyle(0x333333, 0.6);
           }
 
-          // Tooltip for the Research button
-          const reasonSuffix = !canRefresh && refreshResult.reason ? `\n\n${refreshResult.reason}` : '';
-          const info = `Invest in researching new opportunities.\n\nPay €${refreshCost} to research the market and replace all visible cards. Removed cards go to their discard piles. Available only during Market phase.${reasonSuffix}`;
+          // Tooltip for the market re-roll button
+          const refreshLegality = canRefreshMarket(s.state);
+          const reason = refreshLegality.legal ? undefined : refreshLegality.reason;
+          const reasonSuffix = !control.enabled && reason ? `\n\n${reason}` : '';
+          const info = `${control.tooltip}${reasonSuffix}`;
           try {
             bg.on('pointerover', (pointer: any) => {
               if (s.tooltipManager) {

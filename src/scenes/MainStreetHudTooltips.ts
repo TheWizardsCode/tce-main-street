@@ -21,7 +21,13 @@
 import { type IncomeResult, type SlotIncome } from '../MainStreetAdjacency';
 import { reputationCoinMultiplier, applyReputationMultiplier } from '../MainStreetDifficulty';
 import { ORDERED_TIER_DEFINITIONS } from '../MainStreetTiers';
-import { computeScore } from '../MainStreetEngine';
+import { computeScore, effectiveWinThreshold, canMoveStaffOnBusiness } from '../MainStreetEngine';
+import {
+  canUseFreeMarketReroll,
+  getEmployedInvestorReroll,
+  refreshMarketCost,
+  canRefreshMarket,
+} from '../MainStreetMarket';
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
 import { t, registerLocale } from '@core-engine/I18n';
 
@@ -64,6 +70,23 @@ export const HUD_TOOLTIP_I18N_KEYS = {
   favourGate: 'hud.tooltip.favour.gate',
   favourUsedThisTurn: 'hud.tooltip.favour.usedThisTurn',
   favourInsufficient: 'hud.tooltip.favour.insufficient',
+  // Market re-roll control (MS-0MUOSULQ700186PP): the Research / free-reroll
+  // button label and tooltip, and the move-staff affordance copy.
+  marketRerollTitle: 'hud.tooltip.marketReroll.title',
+  marketRerollFreeLabel: 'hud.tooltip.marketReroll.freeLabel',
+  marketRerollPaidLabel: 'hud.tooltip.marketReroll.paidLabel',
+  marketRerollFreeBody: 'hud.tooltip.marketReroll.freeBody',
+  marketRerollPaidBody: 'hud.tooltip.marketReroll.paidBody',
+  marketRerollGate: 'hud.tooltip.marketReroll.gate',
+  marketRerollUsedBody: 'hud.tooltip.marketReroll.usedBody',
+  marketRerollNoInvestorBody: 'hud.tooltip.marketReroll.noInvestorBody',
+  moveStaffTitle: 'hud.tooltip.moveStaff.title',
+  moveStaffLabel: 'hud.tooltip.moveStaff.label',
+  moveStaffBody: 'hud.tooltip.moveStaff.body',
+  moveStaffDestinations: 'hud.tooltip.moveStaff.destinations',
+  moveStaffNoDestination: 'hud.tooltip.moveStaff.noDestination',
+  moveStaffNoStaff: 'hud.tooltip.moveStaff.noStaff',
+  moveStaffNoActions: 'hud.tooltip.moveStaff.noActions',
 } as const;
 
 /** ARIA label i18n keys (for screen-reader accessibility). */
@@ -126,6 +149,22 @@ export const HUD_TOOLTIP_STRINGS = {
   favourGate: 'Once per turn.',
   favourUsedThisTurn: 'Already used this turn.',
   favourInsufficient: 'Not enough {resource} (need {cost}).',
+  marketRerollTitle: 'Market Re-roll',
+  marketRerollFreeLabel: 'Free re-roll (Investor)',
+  marketRerollPaidLabel: 'Research ({cost})',
+  marketRerollFreeBody:
+    "Investor ability: one coin-free, action-free re-roll per turn.\n75% of drawn cards are biased toward this business's synergy types ({types}).",
+  marketRerollPaidBody: 'Pay {cost} coins to research the market and replace all visible cards.',
+  marketRerollGate: 'Available only during Market phase.',
+  marketRerollUsedBody: 'The Investor free re-roll has already been used this turn.',
+  marketRerollNoInvestorBody: 'No employed Investor grants a free re-roll.',
+  moveStaffTitle: 'Move Staff',
+  moveStaffLabel: 'Move staff ({cost} action)',
+  moveStaffBody: 'Relocating an employed staff member to another matching business costs {cost} action point.',
+  moveStaffDestinations: 'Move to: {names}.',
+  moveStaffNoDestination: 'No matching business has a free employment slot.',
+  moveStaffNoStaff: 'No employed staff member can be moved.',
+  moveStaffNoActions: 'No actions remaining this week — end your turn first.',
 } as const;
 
 /** ARIA label default English strings. Registered as the `en` locale bundle. */
@@ -274,6 +313,23 @@ export function buildReputationTooltip(state: MainStreetState): string {
 }
 
 /**
+ * Builds the HUD `Score: x / y` line.
+ *
+ * The denominator is the effective win threshold: the base difficulty
+ * threshold divided by the number of seats and rounded to the nearest 50 in
+ * competitive play, or the base value unchanged in single-player
+ * (MS-0MUZK652V001L71C). Keeping this in the Phaser-free tooltip module lets
+ * the HUD string be unit-tested without booting a scene.
+ *
+ * @param state  Current game state (read-only).
+ * @param score  Optional pre-computed score estimate for the numerator.
+ * @returns The HUD score line, e.g. `Score: 1200/3350`.
+ */
+export function buildHudScoreLine(state: MainStreetState, score: number = computeScore(state)): string {
+  return `Score: ${Math.round(score)}/${effectiveWinThreshold(state)}`;
+}
+
+/**
  * Builds the tooltip content string for the Score HUD element.
  *
  * Shows:
@@ -287,7 +343,11 @@ export function buildScoreTooltip(
   campaign: MainStreetCampaignProgress | null,
 ): string {
   const score = computeScore(state);
-  const threshold = state.config.winThreshold;
+  // Competitive play races toward the effective (per-seat) win threshold
+  // (`base / playerCount`, rounded to the nearest 50) so the tooltip target
+  // always matches the value the engine awards the win at
+  // (MS-0MUZK652V001L71C). Single-player resolves to the unchanged base value.
+  const threshold = effectiveWinThreshold(state);
 
   // Score breakdown components
   const coins = state.resourceBank.coins;
@@ -427,6 +487,166 @@ export function buildCoinsToRepTooltip(state: MainStreetState): string {
 /** Tooltip for the reputation→coins Community Favour button. */
 export function buildRepToCoinsTooltip(state: MainStreetState): string {
   return buildFavourTooltip(state, 'rep-to-coins');
+}
+
+// ── Market re-roll control (MS-0MUOSULQ700186PP) ─────────────
+
+/**
+ * Resolved label/tooltip/state for the market re-roll button.
+ *
+ * The button is the single affordance for both the Investor's free re-roll
+ * and the paid Research action: when the free re-roll is available it reads
+ * `Free re-roll (Investor)`, otherwise it reads `Research ({escalated cost})`
+ * (wording matches the MS-0MTIS895Y008XGQ1 rename).
+ */
+export interface MarketRerollControlSpec {
+  /** Button label — free-state or escalated paid cost. */
+  readonly label: string;
+  /** Full hover tooltip text (availability + 75% relevance bias / paid cost). */
+  readonly tooltip: string;
+  /** True when the Investor's free re-roll may be used right now. */
+  readonly freeRerollAvailable: boolean;
+  /** Current escalated paid Research cost (0 when the free re-roll is used). */
+  readonly paidCost: number;
+  /** True when either re-roll path is currently possible. */
+  readonly enabled: boolean;
+}
+
+/**
+ * Builds the market re-roll button spec (MS-0MUOSULQ700186PP AC1).
+ *
+ * Surfaces whether the Investor's free re-roll is still available this turn
+ * and the relevance bias (default 75%) when it is. When it is not available
+ * the label/tooltip fall back to the escalated paid Research cost so the
+ * player always sees the coin price they will actually pay.
+ */
+export function buildMarketRerollControl(state: MainStreetState): MarketRerollControlSpec {
+  const investor = getEmployedInvestorReroll(state);
+  const freeRerollAvailable = canUseFreeMarketReroll(state).legal;
+  const paidCost = refreshMarketCost(state);
+  const paidAvailable = canRefreshMarket(state).legal;
+
+  if (freeRerollAvailable && investor) {
+    const biasPct = Math.round(investor.bias * 100);
+    const types = investor.synergyTypes.length > 0 ? investor.synergyTypes.join('/') : 'none';
+    const tooltip = [
+      t(HUD_TOOLTIP_I18N_KEYS.marketRerollTitle),
+      t(HUD_TOOLTIP_I18N_KEYS.marketRerollFreeBody, { bias: biasPct, types }),
+      t(HUD_TOOLTIP_I18N_KEYS.marketRerollGate),
+    ].join('\n');
+    return {
+      label: t(HUD_TOOLTIP_I18N_KEYS.marketRerollFreeLabel),
+      tooltip,
+      freeRerollAvailable: true,
+      paidCost,
+      enabled: true,
+    };
+  }
+
+  const status = state.investorFreeRerollUsedThisTurn
+    ? t(HUD_TOOLTIP_I18N_KEYS.marketRerollUsedBody)
+    : investor
+      ? ''
+      : t(HUD_TOOLTIP_I18N_KEYS.marketRerollNoInvestorBody);
+  const lines = [
+    t(HUD_TOOLTIP_I18N_KEYS.marketRerollTitle),
+    t(HUD_TOOLTIP_I18N_KEYS.marketRerollPaidBody, { cost: paidCost }),
+    t(HUD_TOOLTIP_I18N_KEYS.marketRerollGate),
+  ];
+  if (status) lines.push(status);
+
+  return {
+    label: t(HUD_TOOLTIP_I18N_KEYS.marketRerollPaidLabel, { cost: paidCost }),
+    tooltip: lines.join('\n'),
+    freeRerollAvailable: false,
+    paidCost,
+    enabled: paidAvailable,
+  };
+}
+
+// ── Move-staff affordance (MS-0MUOSULQ700186PP) ──────────────
+
+/**
+ * Resolved label/tooltip/state for the move-staff affordance.
+ *
+ * The 1-action-point cost is always surfaced (label + tooltip); `enabled`
+ * additionally requires a targeted employed member, at least one legal
+ * destination, and a remaining action.
+ */
+export interface MoveStaffAffordance {
+  /** Button label, e.g. `Move staff (1 action)`. */
+  readonly label: string;
+  /** Full hover tooltip text (cost + legal destinations). */
+  readonly tooltip: string;
+  /** Action points charged for the relocation (always 1). */
+  readonly actionCost: number;
+  /** True when the targeted member can be relocated right now. */
+  readonly enabled: boolean;
+  /** The targeted employed staff id, or null when none can move. */
+  readonly staffId: string | null;
+  /** Legal destination street-grid slots for the targeted member. */
+  readonly destinationSlots: readonly number[];
+}
+
+/**
+ * Builds the move-staff affordance spec (MS-0MUOSULQ700186PP AC2).
+ *
+ * Relocation costs exactly 1 action point for every staff member; this helper
+ * exposes that cost alongside the legal destination businesses so the UI can
+ * present the affordance without re-deriving the rule. When `staffId` is
+ * omitted the first employed member is targeted (the Manage-Card dialog
+ * passes the member the player chose).
+ *
+ * @param state   Current game state (read-only).
+ * @param staffId Optional employed member to target; defaults to the first.
+ */
+export function buildMoveStaffAffordance(
+  state: MainStreetState,
+  staffId?: string | null,
+): MoveStaffAffordance {
+  const actionCost = 1;
+  const employed = (state.staffCards ?? []).filter(
+    m => m.employedAtSlot !== undefined && m.employedAtSlot !== null,
+  );
+  const targetId = staffId ?? (employed.length > 0 ? employed[0].id : null);
+  const target = targetId ? employed.find(m => m.id === targetId) ?? null : null;
+
+  const destinationSlots: number[] = [];
+  if (target) {
+    for (let slot = 0; slot < state.streetGrid.length; slot++) {
+      if (!state.streetGrid[slot]) continue;
+      if ((state.soldSlots ?? [])[slot]) continue;
+      if (canMoveStaffOnBusiness(state, target.id, slot).legal) destinationSlots.push(slot);
+    }
+  }
+
+  const noActions = state.actionsRemaining <= 0;
+  const lines = [
+    t(HUD_TOOLTIP_I18N_KEYS.moveStaffTitle),
+    t(HUD_TOOLTIP_I18N_KEYS.moveStaffBody, { cost: actionCost }),
+  ];
+  if (target) {
+    const names = destinationSlots
+      .map(slot => (state.streetGrid[slot] as { name?: string } | null)?.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0);
+    lines.push(
+      names.length > 0
+        ? t(HUD_TOOLTIP_I18N_KEYS.moveStaffDestinations, { names: names.join(', ') })
+        : t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoDestination),
+    );
+  } else {
+    lines.push(t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoStaff));
+  }
+  if (noActions) lines.push(t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoActions));
+
+  return {
+    label: t(HUD_TOOLTIP_I18N_KEYS.moveStaffLabel, { cost: actionCost }),
+    tooltip: lines.join('\n'),
+    actionCost,
+    enabled: !!target && !noActions && destinationSlots.length > 0,
+    staffId: target?.id ?? null,
+    destinationSlots,
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────

@@ -15,11 +15,11 @@ import type { SynergyPair } from '../MainStreetAdjacency';
 import type { TurnResult } from '../MainStreetEngine';
 import type { DragDropPayload } from '@ui/dragDrop';
 import { startTurnPhase, endTurn, finishTurnPresentation, handleGameOver, presentEventChoiceDialog, onEventChoice, onPlayHeldEvent, performUndo, performRedo } from './MainStreetTurnControllerTurnFlow';
-import { onBusinessCardClick, onEventCardClick, onRefreshMarketClick, onPeekClick, onCommunityFavourClick, onUpgradeCardClick, onHandUpgradeCardClick, onStaffCardClick, onHandBusinessCardClick, onHandEventCardClick, onDiscardHandCard } from './MainStreetTurnControllerMarketActions';
+import { onBusinessCardClick, onEventCardClick, onFreeMarketRerollClick, onMoveStaffClick, onMoveStaffDestinationClick, cancelStaffMove, onRefreshMarketClick, onPeekClick, onCommunityFavourClick, onUpgradeCardClick, onHandUpgradeCardClick, onStaffCardClick, onHandBusinessCardClick, onHandEventCardClick, onDiscardHandCard } from './MainStreetTurnControllerMarketActions';
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
 import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
 import { animateMarketDealIn, animateMarketSwap, animateNewSynergyPairs } from './MainStreetTurnControllerAnimation';
-import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { canHumanSeatAct, continueCompetitiveLastStanding, continueEndlessMode } from './MainStreetTurnControllerCompetitive';
 
 export type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
@@ -46,6 +46,25 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
 
   public handleGameOver(result: TurnResult): void {
     handleGameOver(this, result);
+  }
+
+  /**
+   * Resumes play after a last-standing win when the player accepts the
+   * continue-solo offer (MS-0MUVQRCQJ00737UV). Delegates to the competitive
+   * free function; idempotent and returns `false` when no offer is open.
+   */
+  public continueCompetitiveLastStanding(): boolean {
+    return continueCompetitiveLastStanding(this);
+  }
+
+  /**
+   * Resumes play after the endless-continuation offer is accepted
+   * (CG-0MTIILU5V006GCN4): the score threshold was reached with endless mode
+   * enabled and the winner declared. Delegates to the scene free function;
+   * idempotent and returns `false` when no offer is open.
+   */
+  public continueEndlessMode(): boolean {
+    return continueEndlessMode(this);
   }
 
   public presentEventChoiceDialog(): void {
@@ -128,6 +147,29 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   public onRefreshMarketClick(): void {
     if (!canHumanSeatAct(this.scene.state)) return;
     onRefreshMarketClick(this);
+  }
+
+  /** Investor free market re-roll (MS-0MUOSULQ700186PP AC1). */
+  public onFreeMarketRerollClick(): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
+    onFreeMarketRerollClick(this);
+  }
+
+  /** Move-staff affordance — begin a relocation (MS-0MUOSULQ700186PP AC2). */
+  public onMoveStaffClick(staffId: string): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
+    onMoveStaffClick(this, staffId);
+  }
+
+  /** Move-staff affordance — complete a relocation at the chosen business. */
+  public onMoveStaffDestinationClick(slotIndex: number): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
+    onMoveStaffDestinationClick(this, slotIndex);
+  }
+
+  /** Cancel a pending move-staff relocation. */
+  public cancelStaffMove(): boolean {
+    return cancelStaffMove(this);
   }
 
   public onPeekClick(): void {

@@ -1,0 +1,80 @@
+{
+  "label": "after",
+  "generatedAt": "2026-10-08T14:34:45.504Z",
+  "commitSha": "6a369e4566f0bd0ca6bd77290d1e4ed40433e9a6",
+  "profile": {
+    "seeds": 200,
+    "seedPrefix": "mc-competitive",
+    "maxTurns": 40,
+    "playerCount": 2,
+    "strategy": "competitive-greedy"
+  },
+  "runs": 200,
+  "averageTurns": 9.29,
+  "endReasons": {
+    "score_threshold": 101,
+    "last_standing": 45,
+    "bankruptcy": 38,
+    "reputation_collapse": 12,
+    "all_challenges": 4
+  },
+  "overall": {
+    "placements": 1423,
+    "businessPlacements": 1363,
+    "communitySpacePlacements": 60,
+    "ownSynergyAnchored": 23570,
+    "opponentSynergyAnchored": 9900,
+    "opponentBeneficialPlacements": 161,
+    "opponentTouchedPlacements": 207,
+    "businessOpponentBeneficialPlacements": 161,
+    "communitySpaceOpponentBeneficialPlacements": 0,
+    "opponentBeneficialRate": 0.11314125087842586,
+    "opponentTouchedRate": 0.14546732255797612,
+    "communitySpaceOpponentBeneficialRate": 0,
+    "businessOpponentBeneficialRate": 0.11812179016874541,
+    "placementsPerRun": 7.115,
+    "communitySpacePlacementsPerRun": 0.3
+  },
+  "players": [
+    {
+      "playerId": 0,
+      "winRate": 0.7,
+      "averageScore": 4183.29,
+      "placements": 948,
+      "businessPlacements": 912,
+      "communitySpacePlacements": 36,
+      "ownSynergyAnchored": 19042,
+      "opponentSynergyAnchored": 5045,
+      "opponentBeneficialPlacements": 74,
+      "opponentTouchedPlacements": 114,
+      "businessOpponentBeneficialPlacements": 74,
+      "communitySpaceOpponentBeneficialPlacements": 0,
+      "opponentBeneficialRate": 0.07805907172995781,
+      "opponentTouchedRate": 0.12025316455696203,
+      "communitySpaceOpponentBeneficialRate": 0,
+      "businessOpponentBeneficialRate": 0.08114035087719298,
+      "placementsPerRun": 4.74,
+      "communitySpacePlacementsPerRun": 0.18
+    },
+    {
+      "playerId": 1,
+      "winRate": 0.05,
+      "averageScore": 3001.445,
+      "placements": 475,
+      "businessPlacements": 451,
+      "communitySpacePlacements": 24,
+      "ownSynergyAnchored": 4528,
+      "opponentSynergyAnchored": 4855,
+      "opponentBeneficialPlacements": 87,
+      "opponentTouchedPlacements": 93,
+      "businessOpponentBeneficialPlacements": 87,
+      "communitySpaceOpponentBeneficialPlacements": 0,
+      "opponentBeneficialRate": 0.1831578947368421,
+      "opponentTouchedRate": 0.1957894736842105,
+      "communitySpaceOpponentBeneficialRate": 0,
+      "businessOpponentBeneficialRate": 0.19290465631929046,
+      "placementsPerRun": 2.375,
+      "communitySpacePlacementsPerRun": 0.12
+    }
+  ]
+}

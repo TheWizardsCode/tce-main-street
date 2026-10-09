@@ -619,7 +619,7 @@ describe('enumerateAndScoreActions', () => {
 // ── Greedy vs Random win rate ───────────────────────────────
 
 describe('GreedyStrategy vs RandomStrategy win rates', () => {
-  it('Greedy achieves a comparable or higher win rate than Random across 200 seeds (community space cards dilute the market)', () => {
+  it('Greedy achieves a comparable or higher win rate than Random across 200 seeds', () => {
     let greedyWins = 0;
     let randomWins = 0;
 
@@ -637,7 +637,12 @@ describe('GreedyStrategy vs RandomStrategy win rates', () => {
       if (randomState.gameResult === 'win') randomWins++;
     }
 
-    // With community space cards in the development row, greedy's advantage is reduced.
+    // Community-space cards once diluted greedy's edge (they were scored with
+    // the business formula and bought as cheap filler). MS-0MUX8J9KJ005ZKDW
+    // gave them their own placement value with a business-preference penalty,
+    // so the market dilution is smaller — but the guardrail stays deliberately
+    // loose so it only catches a genuine strategy regression (a greedy that
+    // falls far below random).
     // CG-0MTCP7F9S009HARC (banked actions now deplete) removed greedy's ability to
     // stack a non-depleting bank reserve as free future actions, narrowing its edge:
     // deterministic post-fix snapshot is greedy 86 / random 98 over 200 seeds (~1.2σ,

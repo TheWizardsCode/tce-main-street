@@ -211,6 +211,12 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
    * card that maps to an art-less target outside this set fails the guard, and
    * the art-less card count may never grow. Emptying this set is the final step
    * of CG-0MUBVL4H80061B1E (AC 1-5).
+   *
+   * Producer-owned art production (MS-0MTISBYLS009936W Q2): when a card lands
+   * before its 1024×1024 sprite, its mapping target is recorded here as the
+   * producer-approved pending-art entry so the drift guard still passes. Recent
+   * additions: `Charity Shop` (MS-0MUAYBAHW007RMSL) and `Investor`
+   * (MS-0MUOSUM7200624OB).
    */
   const PENDING_ART_TARGETS = new Set<string>([
     'Accountant',
@@ -246,6 +252,7 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
     'Investment__Food',
     'Investment__Health',
     'Investment__Service',
+    'Investor',
     'Laundromat',
     'Library',
     'Lookout',
@@ -263,10 +270,11 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
   ]);
 
   /** Baseline of art-less cards: may only shrink as the producer's art lands.
-   *  79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL): the
-   *  new business ships without dedicated art and uses the generic fallback
-   *  until the producer supplies a 1024×1024 sprite. */
-  const BASELINE_UNRESOLVED_CARDS = 79;
+   *  80 after the 2026-10-08 Investor staff addition (MS-0MTISBYLS009936W): the
+   *  new staff card ships without dedicated art and uses the generic fallback
+   *  until the producer supplies a 1024×1024 sprite (MS-0MUOSUM7200624OB).
+   *  Was 79 after the 2026-09-29 Charity Shop addition (MS-0MUAYBAHW007RMSL). */
+  const BASELINE_UNRESOLVED_CARDS = 80;
 
   it('maps every unique card name in card-data.csv', () => {
     const names = uniqueCardNames();

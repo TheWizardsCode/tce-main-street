@@ -15,7 +15,7 @@ import type { SlotIncome, SlotPhaseBreakdown, SynergyPair } from '../MainStreetA
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, SynergyPhaseFlight } from './MainStreetAnimatorContext';
 import { resetCoinStaggerForTurn, reduceCoinStaggerAfterCard, getCardDelay, getFlightDuration, getIconStagger, eventSourcePoint, synergyPhaseFlights, popSynergyText, findStreetCardContainer, localSlotCentre, getStreetSlotCenter, getMarketCardCenter, getHandCardCenter, creditedIncomeTotal } from './MainStreetAnimatorUtils';
-import { animateHudValueChanges, animateCelebration, animateIncomeCollection, animateIncomePhases, runIncomePhase, eventDeltaEffects, countOutCoins, revealInGrid, flyCoinsIn, flyCoinsAlongLine, flyCoinsOut, flyCoinsToPoint, flyRepPips, applyPendingDeltasOnce, collectIncomeGrids, showIncomePhaseLabel } from './MainStreetAnimatorIncome';
+import { animateHudValueChanges, animateCelebration, animateIncomeCollection, animateIncomePhases, runIncomePhase, eventDeltaEffects, countOutCoins, revealInGrid, flyCoinsIn, flyCoinsAlongLine, flyCoinsOut, flyCoinsToPoint, flyRepPips, applyPendingDeltasOnce, collectIncomeGrids, showIncomePhaseLabel, dissolveReputationCoins } from './MainStreetAnimatorIncome';
 import { animateIncidentReveal, animateIncidentDeltaBubbles, animatePeekReveal } from './MainStreetAnimatorIncident';
 import { animateMarketDealIn, createTransferCardVisual, cleanupTransferAnimations, animateTransferFromMarket, animateApplicantWalkOn, animateApplicantWalkOff, animateApplicantWalkIn } from './MainStreetAnimatorMarket';
 import { animateSynergyFormation, animateWeekBanner, animateGameOver, animateUndoRedo, animateLevelUp, animateSell, animateClose, animateEventPlayed } from './MainStreetAnimatorBoard';
@@ -175,6 +175,12 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
 
   public creditedIncomeTotal(phaseData: SlotPhaseBreakdown[]): number {
     return creditedIncomeTotal(this, phaseData);
+  }
+
+  public dissolveReputationCoins(
+    targets: Array<{ x: number; y: number }>,
+  ): Array<{ x: number; y: number }> {
+    return dissolveReputationCoins(this, targets);
   }
 
   public showIncomePhaseLabel(text: string, color: number): void {

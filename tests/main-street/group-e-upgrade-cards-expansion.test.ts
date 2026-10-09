@@ -48,7 +48,9 @@ const NEW_UPGRADE_CONTRACTS: NewUpgradeContract[] = [
   { id: 'upg-smoothie-bar', name: 'Upgrade to Smoothie Bar', target: 'Juice Bar', cost: 400, incomeBonus: 100, synergyRangeBonus: 0, requiredLevel: 0, tier: '5' },
   { id: 'upg-wellness-retreat', name: 'Upgrade to Wellness Retreat', target: 'Yoga Studio', cost: 500, incomeBonus: 150, synergyRangeBonus: 1, requiredLevel: 0, tier: '9' },
   { id: 'upg-fitness-center', name: 'Upgrade to Fitness Center', target: 'Gym', cost: 500, incomeBonus: 150, synergyRangeBonus: 1, requiredLevel: 0, tier: '9' },
-  { id: 'upg-dental-clinic', name: 'Upgrade to Dental Clinic', target: 'Dentist', cost: 700, incomeBonus: 200, synergyRangeBonus: 1, requiredLevel: 0, tier: '11' },
+  // Re-priced 700 -> 600 and given drawWeight 3 by MS-0MUR9I9WO004EW0M
+  // (expensive-tier upgrade ROI re-evaluation).
+  { id: 'upg-dental-clinic', name: 'Upgrade to Dental Clinic', target: 'Dentist', cost: 600, incomeBonus: 200, synergyRangeBonus: 1, requiredLevel: 0, tier: '11' },
   { id: 'upg-bespoke-tailor', name: 'Upgrade to Bespoke Tailor', target: 'Tailor', cost: 400, incomeBonus: 100, synergyRangeBonus: 0, requiredLevel: 0, tier: '6' },
   { id: 'upg-toy-warehouse', name: 'Upgrade to Toy Warehouse', target: 'Toy Store', cost: 400, incomeBonus: 100, synergyRangeBonus: 1, requiredLevel: 0, tier: '6' },
   { id: 'upg-tea-lounge', name: 'Upgrade to Tea Lounge', target: 'Teahouse', cost: 400, incomeBonus: 100, synergyRangeBonus: 0, requiredLevel: 0, tier: '7', reputationBonus: 10 },

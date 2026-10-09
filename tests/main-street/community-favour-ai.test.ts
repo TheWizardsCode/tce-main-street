@@ -1,25 +1,42 @@
 /**
  * Community Favour (CG-0MSTOATDQ005XDET): AI strategy tests.
  *
- * Covers:
- * - AC1: enumerateLegalActions includes both directions when affordable,
- *   gate unused, and in MarketPhase
- * - AC1: excludes when resource insufficient, gate spent, or not in
- *   MarketPhase
- * - AC2: scoreAction gives a sensible heuristic (higher when cash-strapped)
- * - AC3/AC4: AI can execute a free favour action when the market is
- *   unaffordable, so the turn never stalls
+ * Contract (MS-0MUVB2ZES005V83Y): the greedy rep→coins heuristic is an
+ * **enablement + value/timing** gate, replacing the old "stalled + any
+ * buffer" fallback:
+ *  - AC2 — the exchange fires only when the gained coins enable affording a
+ *    placement with positive greedy value that was unaffordable beforehand;
+ *  - AC3 — that placement's reward (income + projected synergy over the
+ *    planning horizon) must clear `FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO` ×
+ *    the reputation spent;
+ *  - AC4 — the reputation buffer after the exchange is preserved
+ *    (`FAVOUR_REP_TO_COINS_MIN_REP_BUFFER`); the same shared gate drives the
+ *    competitive mirror so the two heuristics cannot diverge.
+ *
+ * AC1 (enumerateLegalActions) is unchanged and still covered: favour remains
+ * a free, once-per-turn, MarketPhase-only exchange.
  */
 import { describe, it, expect } from 'vitest';
 
-import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
-import { executeWeekStart, executeAction } from '../../src/MainStreetEngine';
+import {
+  setupMainStreetGame,
+  createCompetitiveState,
+  type MainStreetState,
+} from '../../src/MainStreetState';
+import {
+  executeWeekStart,
+  executeCompetitiveWeekStart,
+  executeAction,
+} from '../../src/MainStreetEngine';
 import type { PlayerAction } from '../../src/MainStreetEngine';
 import {
   enumerateLegalActions,
   scoreAction,
+  scoreCompetitiveAction,
   GreedyStrategy,
   MainStreetAiPlayer,
+  FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO,
+  FAVOUR_REP_TO_COINS_MIN_REP_BUFFER,
 } from '../../src/MainStreetAiStrategy';
 import { createSeededRng } from '@core-engine/SeededRng';
 
@@ -31,6 +48,31 @@ function createTestState(seed: string = 'cf-ai-test'): MainStreetState {
 
 function favourActions(actions: PlayerAction[]): Array<{ type: 'community-favour'; direction: 'coins-to-rep' | 'rep-to-coins' }> {
   return actions.filter(a => a.type === 'community-favour') as Array<{ type: 'community-favour'; direction: 'coins-to-rep' | 'rep-to-coins' }>;
+}
+
+const REP_TO_COINS: PlayerAction = { type: 'community-favour', direction: 'rep-to-coins' };
+const COINS_TO_REP: PlayerAction = { type: 'community-favour', direction: 'coins-to-rep' };
+
+/**
+ * Overrides every market card's cost, and every placeable
+ * (business/community-space) card's base income, so the enablement and
+ * value/timing gates can be exercised in isolation from the seeded market.
+ */
+function setMarketCards(
+  state: MainStreetState,
+  overrides: { cost?: number; baseIncome?: number },
+): void {
+  for (const card of state.market.cards) {
+    if (overrides.cost !== undefined) {
+      (card as { cost: number }).cost = overrides.cost;
+    }
+    if (
+      overrides.baseIncome !== undefined &&
+      (card.family === 'business' || card.family === 'community-space')
+    ) {
+      (card as { baseIncome: number }).baseIncome = overrides.baseIncome;
+    }
+  }
 }
 
 // ── AC1: Enumerated when legal ──────────────────────────────
@@ -95,8 +137,7 @@ describe('enumerateLegalActions: Community Favour', () => {
     state.actionsRemaining = 0;
 
     // Community Favour is a FREE once-per-turn exchange (CG-0MSTOATDQ005XDET),
-    // so it stays available at zero remaining actions — the player's fallback
-    // when they cannot afford a market purchase.
+    // so it stays available at zero remaining actions.
     const favs = favourActions(enumerateLegalActions(state));
     expect(favs.length).toBeGreaterThan(0);
     expect(favs.some(f => f.direction === 'coins-to-rep')).toBe(true);
@@ -106,45 +147,79 @@ describe('enumerateLegalActions: Community Favour', () => {
   });
 });
 
-// ── AC2: scoreAction heuristic ──────────────────────────────
+// ── AC2/AC3/AC4: scoreAction heuristic ──────────────────────
 
 describe('scoreAction: Community Favour', () => {
-  it('scores rep-to-coins above the default when cash-strapped with rep to spare', () => {
+  it('scores rep-to-coins above the default when the exchange enables a high-value placement', () => {
     const state = createTestState();
-    // Make every market card unaffordable (stalled turn) and provide a
-    // reputation buffer, so the rep→coins fallback is genuinely valuable.
     state.resourceBank.coins = 0;
-    state.market.cards.forEach(c => { (c as { cost: number }).cost = 10; });
-    state.resourceBank.reputation = state.config.favourRepToCoinsRepCost + 1; // safe buffer
+    // Every placeable market card becomes affordable after the +300 coins and
+    // carries an income that clears the value/timing ratio.
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
+    state.resourceBank.reputation = state.config.favourRepToCoinsRepCost + 100;
     state.favourUsedThisTurn = false;
 
-    const score = scoreAction(state, { type: 'community-favour', direction: 'rep-to-coins' });
-    expect(score).toBeGreaterThan(1);
+    expect(scoreAction(state, REP_TO_COINS)).toBeGreaterThan(1);
   });
 
-  it('scores rep-to-coins at the low default when the player can afford a market card', () => {
+  it('scores rep-to-coins at the default when the gained coins still cannot afford a profitable placement (AC2)', () => {
     const state = createTestState();
-    // Cheapest card costs 1 and the player has 5 coins — not stalled.
-    state.market.cards.forEach(c => { (c as { cost: number }).cost = 1; });
-    state.resourceBank.coins = state.config.favourCoinsToRepCost + 1; // enough to buy
+    state.resourceBank.coins = 0;
+    // The placement is enormously valuable but still unaffordable after the
+    // exchange, so the exchange enables nothing.
+    setMarketCards(state, { cost: 100_000, baseIncome: 1000 });
     state.resourceBank.reputation = 1000;
     state.favourUsedThisTurn = false;
 
-    const score = scoreAction(state, { type: 'community-favour', direction: 'rep-to-coins' });
-    expect(score).toBe(1);
+    expect(scoreAction(state, REP_TO_COINS)).toBe(1);
   });
 
-  it('scores rep-to-coins at the low default when converting would leave no reputation buffer', () => {
+  it('scores rep-to-coins at the default when the enabled placement is not early/high-value (AC3)', () => {
     const state = createTestState();
     state.resourceBank.coins = 0;
-    state.market.cards.forEach(c => { (c as { cost: number }).cost = 10; });
-    // Exactly the rep cost: converting would drop reputation to 0 and
-    // trigger reputation-collapse loss — must NOT be recommended.
+    // Affordable after the exchange, but the placement's reward is tiny
+    // relative to the reputation spent.
+    setMarketCards(state, { cost: 10, baseIncome: 1 });
+    state.resourceBank.reputation = 1000;
+    state.favourUsedThisTurn = false;
+
+    expect(scoreAction(state, REP_TO_COINS)).toBe(1);
+  });
+
+  it('scores rep-to-coins at the low default when no placement is newly enabled', () => {
+    const state = createTestState();
+    // Cheapest card costs 1 and the player already has enough coins — the
+    // exchange enables nothing (it is not a stalled turn).
+    setMarketCards(state, { cost: 1 });
+    state.resourceBank.coins = state.config.favourCoinsToRepCost + 1;
+    state.resourceBank.reputation = 1000;
+    state.favourUsedThisTurn = false;
+
+    expect(scoreAction(state, REP_TO_COINS)).toBe(1);
+  });
+
+  it('preserves the reputation buffer: declines when the exchange would leave no reserve (AC4)', () => {
+    const state = createTestState();
+    state.resourceBank.coins = 0;
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
+    // Exactly the rep cost: converting would drop reputation to 0 and trigger
+    // reputation-collapse loss — must NOT be recommended.
     state.resourceBank.reputation = state.config.favourRepToCoinsRepCost;
     state.favourUsedThisTurn = false;
 
-    const score = scoreAction(state, { type: 'community-favour', direction: 'rep-to-coins' });
-    expect(score).toBe(1);
+    expect(FAVOUR_REP_TO_COINS_MIN_REP_BUFFER).toBeGreaterThanOrEqual(1);
+    expect(scoreAction(state, REP_TO_COINS)).toBe(1);
+  });
+
+  it('takes the exchange when exactly the minimum buffer remains (AC4 boundary)', () => {
+    const state = createTestState();
+    state.resourceBank.coins = 0;
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
+    state.resourceBank.reputation =
+      state.config.favourRepToCoinsRepCost + FAVOUR_REP_TO_COINS_MIN_REP_BUFFER;
+    state.favourUsedThisTurn = false;
+
+    expect(scoreAction(state, REP_TO_COINS)).toBeGreaterThan(1);
   });
 
   it('scores coins-to-rep at the low default', () => {
@@ -153,18 +228,7 @@ describe('scoreAction: Community Favour', () => {
     state.resourceBank.reputation = 1000;
     state.favourUsedThisTurn = false;
 
-    const score = scoreAction(state, { type: 'community-favour', direction: 'coins-to-rep' });
-    expect(score).toBe(1);
-  });
-
-  it('rep-to-coins scores at default when coins are not low', () => {
-    const state = createTestState();
-    state.resourceBank.coins = state.config.startingCoins + 10;
-    state.resourceBank.reputation = state.config.favourRepToCoinsRepCost; // barely legal, converting leaves 0 rep → unattractive
-    state.favourUsedThisTurn = false;
-
-    const score = scoreAction(state, { type: 'community-favour', direction: 'rep-to-coins' });
-    expect(score).toBe(1);
+    expect(scoreAction(state, COINS_TO_REP)).toBe(1);
   });
 
   it('the hint action is legal and scoreable in an unaffordable market', () => {
@@ -174,55 +238,108 @@ describe('scoreAction: Community Favour', () => {
     state.favourUsedThisTurn = false;
     state.actionsRemaining = 1;
 
-    // With no coins the market is unaffordable; a legal non-end-turn action
-    // must exist (AC4 — no stall).
     const legal = enumerateLegalActions(state);
     expect(legal.some(a => a.type === 'end-turn')).toBe(true);
     expect(legal.some(a => a.type === 'community-favour' && a.direction === 'rep-to-coins')).toBe(true);
   });
 });
 
-// ── AC3/AC4: AI executes the favour fallback without stalling ──
+// ── AC2/AC3/AC4: competitive mirror uses the same gate ──────
+
+describe('scoreCompetitiveAction: Community Favour mirror', () => {
+  function competitiveState(): MainStreetState {
+    const state = createCompetitiveState({ seed: 'cf-competitive', playerCount: 2 });
+    executeCompetitiveWeekStart(state);
+    return state;
+  }
+
+  it('takes rep-to-coins when the exchange enables a high-value placement', () => {
+    const state = competitiveState();
+    const player = state.players![0];
+    player.coins = 0;
+    player.reputation = state.config.favourRepToCoinsRepCost + 100;
+    state.favourUsedThisTurn = false;
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
+
+    expect(scoreCompetitiveAction(state, REP_TO_COINS, 0)).toBeGreaterThan(1);
+  });
+
+  it('declines rep-to-coins under the same enablement and buffer gates', () => {
+    const state = competitiveState();
+    const player = state.players![0];
+    player.coins = 0;
+    player.reputation = state.config.favourRepToCoinsRepCost + 100;
+    state.favourUsedThisTurn = false;
+
+    // Unaffordable after the exchange ⇒ no enablement.
+    setMarketCards(state, { cost: 100_000, baseIncome: 1000 });
+    expect(scoreCompetitiveAction(state, REP_TO_COINS, 0)).toBe(1);
+
+    // Enabled but no reputation buffer ⇒ decline.
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
+    player.reputation = state.config.favourRepToCoinsRepCost;
+    expect(scoreCompetitiveAction(state, REP_TO_COINS, 0)).toBe(1);
+  });
+});
+
+// ── AC2/AC4: AI executes the favour decision end-to-end ─────
 
 describe('AI Community Favour integration', () => {
-  it('an AI turn in an unaffordable market makes progress via Community Favour', () => {
+  it('takes a free Community Favour exchange when it enables a high-value placement', () => {
     const state = createTestState();
-    // Deplete coins so no market purchase is affordable, but keep reputation.
     state.resourceBank.coins = 0;
     state.resourceBank.reputation = 1000;
+    setMarketCards(state, { cost: 10, baseIncome: 1000 });
     state.favourUsedThisTurn = false;
-    state.actionsRemaining = 1;
+    state.actionsRemaining = 0; // only the free exchange remains
+
+    const aiPlayer = new MainStreetAiPlayer(GreedyStrategy, createSeededRng(1234));
+    const action = aiPlayer.chooseAction(state);
+    expect(action).toEqual(REP_TO_COINS);
 
     const beforeCoins = state.resourceBank.coins;
-    const aiPlayer = new MainStreetAiPlayer(GreedyStrategy, createSeededRng(1234));
+    const beforeActions = state.actionsRemaining;
+    executeAction(state, action);
 
-    let action: PlayerAction = aiPlayer.chooseAction(state);
-    let executedFavour = false;
-    // Tracks that executing the favour itself left the daily budget untouched.
-    let favourLeftBudgetUntouched = false;
-    let safety = 0;
-    while (action.type !== 'end-turn' && state.gameResult === 'playing' && safety < 5) {
-      const actionsBeforeStep = state.actionsRemaining;
-      if (action.type === 'community-favour') {
-        executedFavour = true;
-      }
-      executeAction(state, action);
-      if (executedFavour) {
-        favourLeftBudgetUntouched = state.actionsRemaining === actionsBeforeStep;
-        break; // gate now spent; stop to assert a single exchange
-      }
-      action = aiPlayer.chooseAction(state);
-      safety += 1;
-    }
-
-    // The AI should have used Community Favour to gain coins (free once-per-turn
-    // fallback), setting the gate, rather than stalling with nothing productive.
     expect(state.favourUsedThisTurn).toBe(true);
-    expect(state.resourceBank.coins).toBeGreaterThan(beforeCoins);
     expect(state.resourceBank.coins).toBe(
       beforeCoins + state.config.favourRepToCoinsCoinGain,
     );
-    // Free action: the exchange itself does not touch the daily budget.
-    expect(favourLeftBudgetUntouched).toBe(true);
+    // Free action: the exchange does not touch the daily budget.
+    expect(state.actionsRemaining).toBe(beforeActions);
+  });
+
+  it('declines the exchange and ends the turn when it enables no profitable placement', () => {
+    const state = createTestState();
+    state.resourceBank.coins = 0;
+    state.resourceBank.reputation = 1000;
+    setMarketCards(state, { cost: 100_000, baseIncome: 1000 });
+    state.favourUsedThisTurn = false;
+    state.actionsRemaining = 0;
+
+    const aiPlayer = new MainStreetAiPlayer(GreedyStrategy, createSeededRng(1234));
+    expect(aiPlayer.chooseAction(state).type).toBe('end-turn');
+    expect(state.favourUsedThisTurn).toBe(false);
+  });
+
+  it('is deterministic for a given seed and state', () => {
+    const build = (): { action: PlayerAction; state: MainStreetState } => {
+      const state = createTestState();
+      state.resourceBank.coins = 0;
+      state.resourceBank.reputation = 1000;
+      setMarketCards(state, { cost: 10, baseIncome: 1000 });
+      state.favourUsedThisTurn = false;
+      state.actionsRemaining = 0;
+      const aiPlayer = new MainStreetAiPlayer(GreedyStrategy, createSeededRng(1234));
+      return { action: aiPlayer.chooseAction(state), state };
+    };
+
+    const first = build();
+    const second = build();
+    expect(second.action).toEqual(first.action);
+  });
+
+  it('exposes the calibrated value/timing ratio as a positive constant (AC3)', () => {
+    expect(FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO).toBeGreaterThan(1);
   });
 });

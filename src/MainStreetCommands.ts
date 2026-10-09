@@ -18,6 +18,7 @@ import {
   purchaseUpgrade,
   purchaseEvent,
   refreshMarket,
+  useFreeMarketReroll,
   sellBusiness,
   closeBusiness,
   playBusinessFromHand,
@@ -36,6 +37,9 @@ import {
   letGoStaffAction,
   resolveEventChoice,
   placeStaffOnBusiness,
+  isStaffRelocation,
+  canMoveStaffOnBusiness,
+  moveStaffOnBusiness,
   removeStaffFromBusiness,
   layoffStaffCard,
 } from './MainStreetEngine';
@@ -71,6 +75,10 @@ interface MarketActionSnapshot {
   discardPile: any | null;
   /** Grand Opening placement gate — captured so undo restores the per-turn flag. */
   businessPlacedThisTurn: boolean | null;
+  /** Market re-roll escalation counter — captured so undo restores the inflated price (MS-0MTR6ZRF5007PWNZ). */
+  marketRefreshesThisTurn: number | null;
+  /** Investor free re-roll gate — captured so undo restores availability (MS-0MTISBYLS009936W). */
+  investorFreeRerollUsedThisTurn: boolean | null;
   /** Daily action budget — captured so undo restores the spent action. */
   actionsRemaining: number | null;  /** Banked actions — captured so undo restores the banking state. */
   bankedActions: number | null;
@@ -160,6 +168,8 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // card (the card is pushed to `discardPile` by `closeBusiness`).
     discardPile: safeClone(state.discardPile ?? []),
     businessPlacedThisTurn: (state as any).businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
+    investorFreeRerollUsedThisTurn: state.investorFreeRerollUsedThisTurn ?? false,
     actionsRemaining: state.actionsRemaining,
     bankedActions: state.bankedActions ?? 0,
     peekUsedThisTurn: state.peekUsedThisTurn ?? false,
@@ -194,6 +204,15 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   state.discardPile = (snap.discardPile ?? []) as any;
   if (snap.businessPlacedThisTurn !== null && snap.businessPlacedThisTurn !== undefined) {
     (state as any).businessPlacedThisTurn = snap.businessPlacedThisTurn;
+  }
+  if (snap.marketRefreshesThisTurn !== null && snap.marketRefreshesThisTurn !== undefined) {
+    state.marketRefreshesThisTurn = snap.marketRefreshesThisTurn;
+  }
+  if (
+    snap.investorFreeRerollUsedThisTurn !== null &&
+    snap.investorFreeRerollUsedThisTurn !== undefined
+  ) {
+    state.investorFreeRerollUsedThisTurn = snap.investorFreeRerollUsedThisTurn;
   }
   if (snap.actionsRemaining !== null && snap.actionsRemaining !== undefined) {
     state.actionsRemaining = snap.actionsRemaining;
@@ -578,6 +597,26 @@ export function refreshMarketCommand(state: MainStreetState) {
   );
 }
 
+/**
+ * Command: Investor free market re-roll (MS-0MTISBYLS009936W / MS-0MUOSULA8005MUCY).
+ *
+ * Wraps the engine's coin-free, action-free once-per-turn `useFreeMarketReroll`
+ * in `snapshotAction` so the operation participates in undo/redo: the per-turn
+ * gate (`investorFreeRerollUsedThisTurn`), the shared escalation counter
+ * (`marketRefreshesThisTurn`) and the replaced market row are all captured
+ * before the draw and restored on undo. Without the snapshot the fields would
+ * serialise but a mid-turn free re-roll could not be reverted.
+ */
+export function freeMarketRerollCommand(state: MainStreetState) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => useFreeMarketReroll(s),
+      'FreeMarketReroll',
+    ),
+  );
+}
+
 /** Command: Sell Business (free) */
 export function sellBusinessCommand(
   state: MainStreetState,
@@ -696,9 +735,12 @@ export function letGoStaffCommand(state: MainStreetState, idx: number) {
 
 /**
  * Command: Place a hired staff member on a business slot
- * (CG-0MU3BTSQ8006ZRCU AC1-AC3). Free (no action/coins — the member is
- * already hired); validated by `canPlaceStaffOnBusiness` (business-type
- * match + employment capacity). Undo restores the previous employment.
+ * (CG-0MU3BTSQ8006ZRCU AC1-AC3). The initial placement of a newly-hired
+ * member is free (no action/coins — the member is already hired);
+ * **relocating** an already-employed member to another business costs exactly
+ * 1 action point (MS-0MUOSUNYR0073SI1, parent AC4). Validated by
+ * `canPlaceStaffOnBusiness` (business-type match + employment capacity).
+ * Undo restores the previous employment and any spent action.
  */
 export function placeStaffOnBusinessCommand(
   state: MainStreetState,
@@ -708,8 +750,51 @@ export function placeStaffOnBusinessCommand(
   return toCommand(
     state,
     snapshotAction(
-      (s) => { placeStaffOnBusiness(s, staffId, slotIndex); },
+      (s) => {
+        // Relocation is a player action; hire-time placement stays free.
+        if (isStaffRelocation(s, staffId, slotIndex)) {
+          consumeAction(s);
+        }
+        placeStaffOnBusiness(s, staffId, slotIndex);
+      },
       `PlaceStaff ${staffId} -> slot ${slotIndex}`,
+    ),
+  );
+}
+
+/**
+ * Command: Move (relocate) an employed staff member to another business
+ * (MS-0MUOSUKUC004G2VO, parent AC4).
+ *
+ * The explicit player-facing relocation action: costs exactly 1 action point
+ * for all staff, is validated by `canMoveStaffOnBusiness` (the member must be
+ * employed elsewhere; destination must match `allowedBusinessTypes` and have a
+ * free employment slot), and is fully snapshotted so undo restores both the
+ * previous employment and the spent action.
+ *
+ * Distinct from `placeStaffOnBusinessCommand`, which covers the action-free
+ * initial placement at hire time; callers that move an already-employed member
+ * should prefer this command so the intent (and the action cost) is explicit.
+ */
+export function moveStaffCommand(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => {
+        // Pre-flight before any mutation or action spend so an illegal move
+        // leaves the state (and the action budget) untouched.
+        const legality = canMoveStaffOnBusiness(s, staffId, slotIndex);
+        if (!legality.legal) {
+          throw new Error(legality.reason);
+        }
+        consumeAction(s);
+        moveStaffOnBusiness(s, staffId, slotIndex);
+      },
+      `MoveStaff ${staffId} -> slot ${slotIndex}`,
     ),
   );
 }

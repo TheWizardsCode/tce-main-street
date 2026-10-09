@@ -20,7 +20,7 @@
  *
  * @remarks
  * Library card design (CG-0MRXYGM9B006I3PE rebalance — reputation asset with running cost):
- * - Library: cost 7, baseIncome 0, ongoingCost 0.25, reputationPerTurn 0.1, Culture
+ * - Library: cost 7, baseIncome 0, ongoingCost 0.25, reputationPerTurn 0.4, Culture
  *   synergy, no synergy bonus (synergy-neutral), maxLevel 1
  * - Library upgrade (Community Hub): cost 4, reputationBonus 0.1, no income/range bonus
  */
@@ -344,14 +344,15 @@ describe('Library card design and stats (AC5)', () => {
     expect(libraryUpgrade!.family).toBe('upgrade');
   });
 
-  it('Library should be a reputation asset: cost 4, no income, ongoing cost, +0.1 rep/turn', () => {
+  it('Library should be a reputation asset: cost 4, no income, ongoing cost, +0.4 rep/turn', () => {
     const library = communitySpaceDeck.find(c => c.name === 'Library');
     expect(library).toBeDefined();
     // Cost re-priced 700 -> 400 by MS-0MUR9IN7L0004TO5.
     expect(library!.cost).toBe(400);
     expect(library!.baseIncome).toBe(0);
     expect(library!.ongoingCost).toBe(25);
-    expect(library!.reputationPerTurn).toBe(10);
+    // re-tuned ×4 (0.1 → 0.4) by MS-0MUR9IMN60093HIE
+    expect(library!.reputationPerTurn).toBe(40);
   });
 
   it('Library should participate in Culture synergy (Park model, default rates)', () => {
@@ -368,7 +369,7 @@ describe('Library card design and stats (AC5)', () => {
     const library = communitySpaceDeck.find(c => c.name === 'Library');
     expect(library).toBeDefined();
     expect(library!.description).toMatch(/25/);
-    expect(library!.description).toMatch(/10/);
+    expect(library!.description).toMatch(/40/);
   });
 });
 

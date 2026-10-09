@@ -266,7 +266,7 @@ describe('AC4 · staff actions never bank', () => {
   });
 
   it('banked 2 + GM idle → banks 1 more, stays at cap 2', () => {
-    const state = setupMainStreetGame({ seed: 'ac4-gm-cap' });
+    const state = setupMainStreetGame({ seed: 'ac4-gm-cap-x-0' });
     state.staffCards.push({ ...gmTemplate() });
     // Bank 2
     for (let i = 0; i < 2; i++) {

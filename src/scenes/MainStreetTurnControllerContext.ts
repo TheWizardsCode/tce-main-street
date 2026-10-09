@@ -40,6 +40,10 @@ export interface MainStreetTurnControllerContext {
   onSlotClick(slotIndex: number): void;
   onEventCardClick(card: EventCard): void;
   onRefreshMarketClick(): void;
+  onFreeMarketRerollClick(): void;
+  onMoveStaffClick(staffId: string): void;
+  onMoveStaffDestinationClick(slotIndex: number): void;
+  cancelStaffMove(): boolean;
   onPeekClick(): void;
   onCommunityFavourClick(direction: 'coins-to-rep' | 'rep-to-coins'): void;
   animateMarketDealIn(row: 'market'): void;

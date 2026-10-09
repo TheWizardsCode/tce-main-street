@@ -16,7 +16,7 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Hardware Store | 300 | 230 | Service | Hardware Store → Home Improvement | Supplies tools. Gains 50% of base income per adjacent Service business. *(Commerce→Service retag, CG-0MT3IPFSF005KEFB — tool supply is a Service, gives T2 a second type.)* |
 | Juice Bar | 500 | 350 | Food, Health | — | Fresh juices and smoothies. Bridges Food and Health synergies. *(Group A: first Health bridge.)* |
 | Yoga Studio | 800 | 580 | Culture, Health | — | Calm practice space for mind and body. Bridges Culture and Health synergies. *(Group A.)* |
-| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +10 rep/turn. *(Group A.)* |
+| Physiotherapist | 1000 | 700 | Health, Service | — | Recovery and rehabilitation care. Bridges Health and Service synergies; +60 rep/turn. *(Group A.)* |
 | Tailor | 500 | 375 | Service | — | Custom tailoring and repairs. Gains 50% of base income per adjacent Service business. *(Group A.)* |
 | Gym | 800 | 580 | Health | — | Fitness training for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
 | Dentist | 1200 | 870 | Health | — | Smiles for the whole street. Gains 50% of base income per adjacent Health business. *(Group A.)* |
@@ -24,8 +24,8 @@ The **Main Street** game uses three distinct card families. Below is the current
 | Music Store | 800 | 580 | Entertainment | — | Records and instruments for every taste. Gains 50% of base income per adjacent Entertainment business. *(Group A.)* |
 | Delicatessen | 500 | 375 | Food | — | Fine meats and cheeses. Gains 50% of base income per adjacent Food business. *(Group A.)* |
 | Craft Shop | 500 | 375 | Culture | — | Handmade goods by local makers. Gains 50% of base income per adjacent Culture business. *(Group A.)* |
-| Charity Shop | 300 | 150 | Culture | — | Sells donated goods. Provides +15 reputation per turn. Gains 50% of base income per adjacent Culture business. *(Producer-added, MS-0MUAYBAHW007RMSL; tier 2, standalone, ongoing −75/turn.)* |
-| Grand Hotel | 1600 | 1210 | Service | — | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business; +10 rep/turn. *(Group A T5 flagship.)* |
+| Charity Shop | 300 | 150 | Culture | — | Sells donated goods. Provides +60 reputation per turn. Gains 50% of base income per adjacent Culture business. *(Producer-added, MS-0MUAYBAHW007RMSL; tier 2, standalone, ongoing −75/turn.)* |
+| Grand Hotel | 1600 | 1210 | Service | — | Premier lodging on Main Street. Gains 50% of base income per adjacent Service business; +120 rep/turn. *(Group A T5 flagship.)* |
 | Teahouse | 700 | 495 | Food, Culture | — | Loose-leaf teas and quiet corners. Bridges Food and Culture synergies. *(Group A.)* |
 
 ### 1.2 Event Cards
@@ -78,7 +78,7 @@ The shipped storylines are:
 | Labour Unrest (`storyline-labor`) | Service Workers Strike | General Strike |
 | Restaurant Renaissance (`storyline-restaurant`) | Popular Menu Item | Farm-to-Table Feature |
 
-Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export).
+Authoring and validation: `npm run storylines:author` (safe add/link), `npm run validate:storylines` (static validator), `npm run storylines:graph` (graph/manifest export), `npm run storylines:graph:svg` (render the graph to a portable SVG).
 
 ### 1.2b Community Space Cards
 
@@ -135,8 +135,9 @@ Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG
 | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
 | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity. *(Group F.)* |
 | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
+| Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. While employed at a business, grants one coin-free, action-free market re-roll per turn, biased 75% toward that business's synergy types; it advances the paid re-roll escalation counter. Generalist — serves every synergy type. *(MS-0MTISBYLS009936W.)* |
 
-> 12-tier expansion (CG-0MT3C744B009DS84): staff cards are spread across 9 of the 12 tiers (9 cards cannot cover every tier); the tier tracks the cost ladder 200→2000.
+> 12-tier expansion (CG-0MT3C744B009DS84): the core staff card ladder is spread across 9 of the 12 tiers (the ladder alone cannot cover every tier); the tier tracks the cost ladder 200→2000. The full staff catalogue (specialization applicants, business specialists and the Investor) is listed in [card-catalog.md](./card-catalog.md).
 
 ## 2. Recipes / Blueprints
 

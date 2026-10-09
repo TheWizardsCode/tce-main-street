@@ -17,13 +17,19 @@ import {
   type EventCard,
   type StaffCard,
   CSV_CHECKSUM,
-  CARD_DATA_RAW,
+  getActiveCsvData,
+  getActiveCsvChecksum,
   GRID_SIZE,
   MARKET_TOTAL_SLOTS,
   loadTemplatesFromCsv,
+  resetTemplatesToDefault,
   createIncidentBalanceState,
   createIncidentBalanceFromQueue,
 } from './MainStreetCards';
+import {
+  getActiveMainStreetPacks,
+  setActiveMainStreetPacks,
+} from './MainStreetCardPacks';
 import { CHALLENGE_TEMPLATES } from './MainStreetChallenges';
 import { attachMainStreetAchievements } from './MainStreetAchievements';
 import type { StreetCameraState } from './MainStreetMapView';
@@ -77,8 +83,9 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     discardPile: structuredClone(state.discardPile),
     staffCards: structuredClone(state.staffCards),
     soldSlots: resizeSoldSlots(state.soldSlots, state.streetGrid.length),
-    csvChecksum: CSV_CHECKSUM,
-    csvData: CARD_DATA_RAW,
+    csvChecksum: getActiveCsvChecksum(),
+    csvData: getActiveCsvData(),
+    activePacks: getActiveMainStreetPacks(),
     actionsRemaining: state.actionsRemaining,
     bankedActions: state.bankedActions,
     peekUsedThisTurn: state.peekUsedThisTurn,
@@ -87,6 +94,8 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     justMovedEventCardId: state.justMovedEventCardId ?? null,
     justMovedUpgradeCardId: state.justMovedUpgradeCardId ?? null,
     businessPlacedThisTurn: state.businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
+    investorFreeRerollUsedThisTurn: state.investorFreeRerollUsedThisTurn ?? false,
     players: state.players ? structuredClone(state.players) : undefined,
     ownerTaggedGrid: state.ownerTaggedGrid ? structuredClone(state.ownerTaggedGrid) : undefined,
     playerCount: state.playerCount,
@@ -267,6 +276,11 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
     (saved as Record<string, unknown>).csvData = '';
   }
 
+  // ── activePacks: add missing field (defaults to [] for legacy saves) ─
+  if (!('activePacks' in saved) || !Array.isArray((saved as Record<string, unknown>).activePacks)) {
+    (saved as Record<string, unknown>).activePacks = [];
+  }
+
   // ── soldSlots: add missing field (defaults to all false for legacy saves) ─
   if (!('soldSlots' in saved)) {
     const grid = (saved as Record<string, unknown>).streetGrid as unknown[] | undefined;
@@ -314,6 +328,21 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
   // Opening starts gated for the current turn.
   if (!('businessPlacedThisTurn' in saved)) {
     (saved as Record<string, unknown>).businessPlacedThisTurn = false;
+  }
+
+  // ── marketRefreshesThisTurn (MS-0MTR6ZRF5007PWNZ): backfill default ──
+  // Legacy saves predate the escalating market re-roll cost; default to 0
+  // (no re-rolls taken this turn) so pre-existing saves load at the 500 base
+  // instead of computing `NaN`.
+  if (!('marketRefreshesThisTurn' in saved)) {
+    (saved as Record<string, unknown>).marketRefreshesThisTurn = 0;
+  }
+
+  // ── investorFreeRerollUsedThisTurn (MS-0MTISBYLS009936W): backfill default ──
+  // Legacy saves predate the Investor free re-roll gate; default to false
+  // (available) so old saves remain loadable and the gate is not `undefined`.
+  if (!('investorFreeRerollUsedThisTurn' in saved)) {
+    (saved as Record<string, unknown>).investorFreeRerollUsedThisTurn = false;
   }
 
   // ── incidentBalance (CG-0MSL0OP040043KKZ): backfill from the queue for ──
@@ -532,19 +561,31 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
   // If the saved checkpoint was created with a different card-data.csv,
   // detect the mismatch and either use the embedded CSV data or reject
   // legacy saves that lack it.
-  if (saved.csvChecksum && saved.csvChecksum !== CSV_CHECKSUM) {
-    if (saved.csvData && saved.csvData.length > 0) {
-      // Use the saved CSV data to reconstruct card templates
-      loadTemplatesFromCsv(saved.csvData);
-    } else {
-      // Legacy save without embedded CSV data — reject gracefully
-      throw new Error(
-        'This saved state was created with a different version of card-data.csv ' +
-        'and does not include the embedded card data required for compatibility. ' +
-        'Starting a fresh game instead.',
-      );
+  if (saved.csvChecksum) {
+    if (saved.csvChecksum !== getActiveCsvChecksum()) {
+      if (saved.csvData && saved.csvData.length > 0) {
+        // Use the saved CSV data to reconstruct card templates
+        loadTemplatesFromCsv(saved.csvData);
+      } else {
+        // Save without embedded CSV data — reject gracefully
+        throw new Error(
+          'This saved state was created with a different version of card-data.csv ' +
+          'and does not include the embedded card data required for compatibility. ' +
+          'Starting a fresh game instead.',
+        );
+      }
     }
+  } else if (getActiveCsvChecksum() !== CSV_CHECKSUM) {
+    // Legacy save (no recorded checksum). Ensure a previously-applied pack
+    // pool cannot leak into it by restoring the bundled base pool.
+    resetTemplatesToDefault();
   }
+
+  // Restore the active pack set recorded in the save. The templates were
+  // restored from the merged `csvData` above (a pack-aware save's merged
+  // checksum differs from the base CSV_CHECKSUM), so this only keeps the
+  // metadata consistent for the next save and for missing-pack detection.
+  setActiveMainStreetPacks(saved.activePacks);
 
   const baseRng = createSeededRng(saved.numericSeed);
   for (let i = 0; i < saved.rngCalls; i++) {
@@ -629,6 +670,8 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     justMovedEventCardId: (saved as any).justMovedEventCardId ?? null,
     revealedPeekedCard: (saved.revealedPeekedCard as EventCard | null) ?? null,
     businessPlacedThisTurn: (saved as unknown as { businessPlacedThisTurn?: boolean })?.businessPlacedThisTurn ?? false,
+    marketRefreshesThisTurn: (saved as unknown as { marketRefreshesThisTurn?: number })?.marketRefreshesThisTurn ?? 0,
+    investorFreeRerollUsedThisTurn: (saved as unknown as { investorFreeRerollUsedThisTurn?: boolean })?.investorFreeRerollUsedThisTurn ?? false,
     justMovedUpgradeCardId: (saved as unknown as { justMovedUpgradeCardId?: string | null })?.justMovedUpgradeCardId ?? null,
     players: (saved as unknown as { players?: PlayerRecord[] | null })?.players
       ? structuredClone((saved as unknown as { players: PlayerRecord[] })?.players)

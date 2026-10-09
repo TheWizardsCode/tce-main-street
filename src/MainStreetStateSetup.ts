@@ -15,9 +15,12 @@ import { shuffleArray } from '@card-system';
 import { createSeededRng } from '@core-engine';
 import { createEconomyLedger } from '@rule-engine/EconomyLedger';
 import {
+  type AnyCard,
   type BusinessCard,
   type CommunitySpaceCard,
   type EventCard,
+  type UpgradeCard,
+  type SynergyType,
   createBusinessDeck,
   createCommunitySpaceDeck,
   createEventDeck,
@@ -34,7 +37,7 @@ import {
   MARKET_STAFF_MAX,
   createIncidentBalanceState,
   isCardAvailableInWeek,
-  resetTemplatesToDefault,
+  resetTemplatesToActivePool,
   type IncidentBalanceState,
 } from './MainStreetCards';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
@@ -146,6 +149,131 @@ function forceReshuffleFromDiscards<T>(state: MainStreetState, deck: T[], discar
 }
 
 /**
+ * Descriptor for a biased market draw (the Investor's free re-roll,
+ * MS-0MTISBYLS009936W): `bias` is the per-slot probability that a slot is
+ * drawn from the pool of cards relevant to the hosting business's synergy
+ * types, with the remainder drawn fully at random. An empty `synergyTypes`
+ * list (or a zero bias) disables the bias so every draw falls back to the
+ * fully random pool.
+ */
+export interface MarketRelevanceBias {
+  /** Per-slot probability (0..1) of drawing from the relevant pool. */
+  readonly bias: number;
+  /** Synergy types shared with the hosting business (the relevance key). */
+  readonly synergyTypes: readonly SynergyType[];
+}
+
+/**
+ * Returns whether a market card is "relevant" to a hosting business with the
+ * given synergy types (MS-0MTISBYLS009936W). Relevance is a shared synergy
+ * type, resolved per family:
+ * - business / community-space: any of the card's `synergyTypes` is in the set;
+ * - event: the event has no `targetSynergy` (it applies to all businesses, so
+ *   it is universally relevant) or its `targetSynergy` is in the set;
+ * - staff: the card's `allowedBusinessTypes` intersect the set (generalist
+ *   staff list every synergy type, so they are relevant to any hosting
+ *   business);
+ * - upgrade: never relevant — upgrades target a specific business by name and
+ *   carry no synergy type, so they are always drawn from the random pool.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function isMarketCardRelevant(
+  card: AnyCard,
+  synergyTypes: readonly SynergyType[],
+): boolean {
+  if (synergyTypes.length === 0) return false;
+  switch (card.family) {
+    case 'business':
+    case 'community-space':
+      return (card.synergyTypes ?? []).some(t => synergyTypes.includes(t));
+    case 'event':
+      return card.targetSynergy == null || synergyTypes.includes(card.targetSynergy);
+    case 'staff': {
+      const allowed = card.allowedBusinessTypes;
+      if (!allowed || allowed.length === 0) return false;
+      return allowed.some(t => (synergyTypes as readonly string[]).includes(t));
+    }
+    case 'upgrade':
+    default:
+      return false;
+  }
+}
+
+/**
+ * Additive eligibility bonus applied to a declared upgrade `drawWeight` at
+ * refill time when the card's parent business is on the street at the required
+ * level (MS-0MUYK08I1004I19W).
+ *
+ * A static weight alone cannot raise capstone pick rate: the market shows at
+ * most one upgrade per turn and each upgrade card is drawn from the 78-card
+ * deck at most once before the game ends, so a capstone drawn *before* its
+ * parent reaches level 1 is discarded and never seen again. The additive
+ * bonus keeps an ineligible chain card at its (low) declared base weight — so
+ * it usually stays in the deck — and makes it surface once its parent chain is
+ * ready, converting the prerequisite chain instead of stranding it. A
+ * multiplicative factor cannot express this because a base weight of 0 would
+ * stay 0 when eligible. Cards without a declared weight are never
+ * eligibility-boosted, keeping the lever targeted at the chain.
+ */
+export const UPGRADE_ELIGIBLE_DRAW_BONUS = 30;
+
+/**
+ * Effective refill draw weight for an upgrade card. Undeclared weights stay at
+ * the baseline `1` (and are never eligibility-boosted); a declared weight adds
+ * {@link UPGRADE_ELIGIBLE_DRAW_BONUS} when the card has a legal target on the
+ * street right now.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+function upgradeDrawWeight(state: MainStreetState, card: UpgradeCard): number {
+  const base = card.drawWeight;
+  if (base == null) return 1;
+  const requiredLevel = card.requiredLevel ?? 0;
+  const eligible = state.streetGrid.some(
+    business =>
+      business != null &&
+      business.name === card.targetBusiness &&
+      business.level === requiredLevel &&
+      business.level < business.maxLevel,
+  );
+  return Math.max(0, base) + (eligible ? UPGRADE_ELIGIBLE_DRAW_BONUS : 0);
+}
+
+/**
+ * Picks the index of the next upgrade card to draw from a shuffled deck by
+ * relative draw weight (MS-0MUYK08I1004I19W).
+ *
+ * Each card contributes its effective weight (>= 0) to the pool; one `rng()`
+ * call selects a point in `[0, total)` and the first card whose cumulative
+ * weight crosses that point is chosen. Because the deck is already
+ * Fisher–Yates-shuffled, the position bias is stream-position independent.
+ *
+ * Pure apart from the single `rng()` call. Returns `-1` when every card
+ * weighs 0, so callers can fall back to the legacy plain `pop()`.
+ *
+ * @param deck     Shuffled upgrade deck (never mutated).
+ * @param rng      Seeded RNG (`state.rng`) — exactly one call on a weighted pick.
+ * @param weightOf Effective weight resolver for a deck card (>= 0).
+ * @returns Index of the chosen card, or `-1` when no positive weight exists.
+ */
+function pickWeightedUpgradeIndex(
+  deck: readonly UpgradeCard[],
+  rng: () => number,
+  weightOf: (card: UpgradeCard) => number,
+): number {
+  let total = 0;
+  for (const card of deck) total += Math.max(0, weightOf(card));
+  if (total <= 0) return -1;
+  let roll = rng() * total;
+  for (let i = 0; i < deck.length; i++) {
+    roll -= Math.max(0, weightOf(deck[i]));
+    if (roll < 0) return i;
+  }
+  return deck.length - 1;
+}
+
+/**
  * Refills `state.market.cards` toward the single-row target composition
  * (CG-0MSTOATDT009BRX2):
  *   - at most `MARKET_TOTAL_SLOTS` (3) cards;
@@ -163,9 +291,22 @@ function forceReshuffleFromDiscards<T>(state: MainStreetState, deck: T[], discar
  * cards survive into the next week. Callers that want a full re-draw must clear
  * the row first (refreshMarket discards + clears; cycleMarketCards empties the row).
  *
- * @param state Current game state (mutated in-place).
+ * When `relevance` is supplied (the Investor's free re-roll,
+ * MS-0MTISBYLS009936W) each drawn slot has a `bias` chance of being drawn from
+ * the pool of cards relevant to the hosting business's synergy types (see
+ * {@link isMarketCardRelevant}), falling back to the fully random draw when
+ * that pool is exhausted. The ≥1-business invariant is preserved on both
+ * paths. When `relevance` is omitted the draw is identical to the legacy
+ * fully random refill (same RNG consumption), so the paid
+ * `refreshMarket` / `cycleMarketCards` paths stay fully random.
+ *
+ * @param state      Current game state (mutated in-place).
+ * @param relevance  Optional relevance bias for the Investor free re-roll.
  */
-export function refillSingleRowMarket(state: MainStreetState): void {
+export function refillSingleRowMarket(
+  state: MainStreetState,
+  relevance?: MarketRelevanceBias,
+): void {
   const { market, decks } = state;
 
   // Combined business + community-space pool (community-space counts as business).
@@ -181,13 +322,43 @@ export function refillSingleRowMarket(state: MainStreetState): void {
   reshuffleIfNeeded(state, decks.event, state.discards.event, 'event');
   reshuffleIfNeeded(state, decks.staff, state.discards.staff, 'staff');
 
-  const drawBusiness = (): boolean => {
+  // Bias is only active when a relevance key and a positive probability exist.
+  const biasActive = !!relevance && relevance.bias > 0 && relevance.synergyTypes.length > 0;
+
+  // Upgrade draw weights are active when at least one deck card declares one.
+  const upgradeWeighted = decks.upgrade.some(card => card.drawWeight != null);
+
+  const drawBusiness = (relevantOnly = false): boolean => {
+    if (relevantOnly && biasActive) {
+      const indices: number[] = [];
+      for (let i = 0; i < businessPool.length; i++) {
+        if (isMarketCardRelevant(businessPool[i], relevance!.synergyTypes)) indices.push(i);
+      }
+      if (indices.length === 0) return false;
+      const pick = indices[Math.floor(state.rng() * indices.length)];
+      market.cards.push(businessPool.splice(pick, 1)[0]);
+      return true;
+    }
     const card = businessPool.pop();
     if (!card) return false;
     market.cards.push(card);
     return true;
   };
   const drawUpgrade = (): boolean => {
+    if (decks.upgrade.length === 0) return false;
+    // Upgrade draw weights (MS-0MUYK08I1004I19W): weighted selection activates
+    // only when a deck card declares a `drawWeight`; an undecorated deck keeps
+    // the legacy plain `pop()` (zero RNG calls), so unrelated configs and
+    // saved games are byte-identical to the pre-weight behaviour.
+    if (upgradeWeighted) {
+      const idx = pickWeightedUpgradeIndex(decks.upgrade, state.rng, card =>
+        upgradeDrawWeight(state, card),
+      );
+      if (idx !== -1) {
+        market.cards.push(decks.upgrade.splice(idx, 1)[0]);
+        return true;
+      }
+    }
     const card = decks.upgrade.pop();
     if (!card) return false;
     market.cards.push(card);
@@ -199,7 +370,20 @@ export function refillSingleRowMarket(state: MainStreetState): void {
   const isOfferableInvestment = (e: EventCard): boolean =>
     e.trigger === 'Investment' && isCardAvailableInWeek(e, state.week);
 
-  const drawEvent = (): boolean => {
+  const drawEvent = (relevantOnly = false): boolean => {
+    if (relevantOnly && biasActive) {
+      const candidates: number[] = [];
+      for (let i = 0; i < decks.event.length; i++) {
+        const e = decks.event[i];
+        if (isOfferableInvestment(e) && isMarketCardRelevant(e, relevance!.synergyTypes)) {
+          candidates.push(i);
+        }
+      }
+      if (candidates.length === 0) return false;
+      const pick = candidates[Math.floor(state.rng() * candidates.length)];
+      market.cards.push(decks.event.splice(pick, 1)[0]);
+      return true;
+    }
     let idx = decks.event.findIndex(isOfferableInvestment);
     if (idx === -1) {
       forceReshuffleFromDiscards(state, decks.event, state.discards.event, 'event');
@@ -212,7 +396,17 @@ export function refillSingleRowMarket(state: MainStreetState): void {
 
   // Staff cards are drawn from the staff deck into the market row (CG-0MT3KZNQB0053K55),
   // exactly like the other non-business families.
-  const drawStaff = (): boolean => {
+  const drawStaff = (relevantOnly = false): boolean => {
+    if (relevantOnly && biasActive) {
+      const candidates: number[] = [];
+      for (let i = 0; i < decks.staff.length; i++) {
+        if (isMarketCardRelevant(decks.staff[i], relevance!.synergyTypes)) candidates.push(i);
+      }
+      if (candidates.length === 0) return false;
+      const pick = candidates[Math.floor(state.rng() * candidates.length)];
+      market.cards.push(decks.staff.splice(pick, 1)[0]);
+      return true;
+    }
     const card = decks.staff.pop();
     if (!card) return false;
     market.cards.push(card);
@@ -228,33 +422,60 @@ export function refillSingleRowMarket(state: MainStreetState): void {
     const staffCount = market.cards.filter(c => c.family === 'staff').length;
 
     // The ≥1-business rule is absolute: with no business visible, only a
-    // business may be drawn next.
+    // business may be drawn next. On a biased draw, prefer a relevant business
+    // (falling back to any business when the relevant pool is empty).
     if (businessCount < MARKET_BUSINESS_MIN) {
-      if (!drawBusiness()) break;
+      const biased = biasActive && state.rng() < relevance!.bias;
+      const drawn = biased
+        ? drawBusiness(true) || drawBusiness(false)
+        : drawBusiness(false);
+      if (!drawn) break;
       continue;
     }
 
-    // Otherwise pick a random family among the legal options within bounds.
-    // A pick that fails (e.g. no Investment events left) is retried against
-    // the remaining legal options instead of aborting the whole refill.
+    // Biased attempt (Investor free re-roll, MS-0MTISBYLS009936W): with
+    // probability `bias`, draw a relevant card that is legal for the current
+    // composition. Falls through to the fully random draw when the relevant
+    // pool is exhausted — preserving the ≥1-business invariant.
     let picked = false;
-    const legal: (() => boolean)[] = [];
-    if (businessCount < MARKET_BUSINESS_MAX) legal.push(drawBusiness);
-    if (upgradeCount < MARKET_UPGRADE_MAX && decks.upgrade.length > 0) legal.push(drawUpgrade);
-    if (eventCount < MARKET_EVENT_MAX) legal.push(drawEvent);
-    if (staffCount < MARKET_STAFF_MAX && decks.staff.length > 0) legal.push(drawStaff);
-    while (legal.length > 0) {
-      const idx = Math.floor(state.rng() * legal.length);
-      const fn = legal.splice(idx, 1)[0];
-      if (fn()) {
-        picked = true;
-        break;
+    if (biasActive && state.rng() < relevance!.bias) {
+      const relevant: (() => boolean)[] = [];
+      if (businessCount < MARKET_BUSINESS_MAX) relevant.push(() => drawBusiness(true));
+      if (eventCount < MARKET_EVENT_MAX) relevant.push(() => drawEvent(true));
+      if (staffCount < MARKET_STAFF_MAX && decks.staff.length > 0) {
+        relevant.push(() => drawStaff(true));
+      }
+      while (relevant.length > 0) {
+        const idx = Math.floor(state.rng() * relevant.length);
+        const fn = relevant.splice(idx, 1)[0];
+        if (fn()) {
+          picked = true;
+          break;
+        }
       }
     }
+
+    // Fully random draw (the paid paths always take this branch).
+    if (!picked) {
+      const legal: (() => boolean)[] = [];
+      if (businessCount < MARKET_BUSINESS_MAX) legal.push(() => drawBusiness(false));
+      if (upgradeCount < MARKET_UPGRADE_MAX && decks.upgrade.length > 0) legal.push(drawUpgrade);
+      if (eventCount < MARKET_EVENT_MAX) legal.push(() => drawEvent(false));
+      if (staffCount < MARKET_STAFF_MAX && decks.staff.length > 0) legal.push(() => drawStaff(false));
+      while (legal.length > 0) {
+        const idx = Math.floor(state.rng() * legal.length);
+        const fn = legal.splice(idx, 1)[0];
+        if (fn()) {
+          picked = true;
+          break;
+        }
+      }
+    }
+
     if (!picked) {
       // Every legal option failed (deck exhaustion elsewhere): fall back to
       // any business remaining, then give up.
-      if (!drawBusiness()) break;
+      if (!drawBusiness(false)) break;
     }
   }
 
@@ -280,8 +501,10 @@ export function refillSingleRowMarket(state: MainStreetState): void {
  * @returns A fully initialised MainStreetState ready for turn 1.
  */
 export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainStreetState {
-  // Ensure templates use the bundled CSV data (reset any previous saved-CSV override)
-  resetTemplatesToDefault();
+  // Ensure templates use the active pool (bundled base, or the merged
+  // base + active card packs applied at boot) rather than a saved-CSV
+  // override left behind by a previous load.
+  resetTemplatesToActivePool();
 
   const seed = options.seed ?? generateSeedString();
   const numericSeed = seedToNumber(seed);
@@ -444,6 +667,8 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     justMovedEventCardId: null,
     justMovedUpgradeCardId: null,
     businessPlacedThisTurn: false,
+    marketRefreshesThisTurn: 0,
+    investorFreeRerollUsedThisTurn: false,
     players: undefined,
     ownerTaggedGrid: undefined,
     playerCount: undefined,

@@ -56,10 +56,10 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 | Card | Handling |
 |------|----------|
 | **Pawn Shop** | No synergy bonuses (contributes/receives none); negative reputation per turn (−10) trades reputation for a below-tier price (200) |
-| **Clinic** | reputationPerTurn = +20 factored into cost calculation (weight × 30) |
+| **Clinic** | reputationPerTurn = +160 factored into cost calculation (weight × 30) |
 | **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. **Re-priced to 400 by MS-0MUR9IN7L0004TO5**: the curve result was materially over-priced relative to the ~4.87-turn business payback (net drain of 10/turn even at the rep-converted value); see [analysis/community-space-event-repricing.md](analysis/community-space-event-repricing.md). |
 | **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam. The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. **Re-priced 300 → 150 by MS-0MUR9IN7L0004TO5**: Park provides zero reputation, so at 300 it was a pure net drain and over-priced even as a Tier-1 synergy anchor. |
-| **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 15` is still factored into the curve for reference. |
+| **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 60` is still factored into the curve for reference. |
 
 ## Per-Family Strategy
 
@@ -107,6 +107,7 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 - **`refreshCostDiscount`** (staff ability, e.g. Accountant): recognized and validated as a numeric CSV column (CG-0MSREC65T004J5SS), but **excluded from the cost curve** — like `reputationPerTurn` for staff, it is an ability field tracked outside the curve model.
 - **`upgradeCostDiscount`** (staff ability, e.g. Financial Advisor, CG-0MTKMGL66004I0PC): a numeric CSV column on staff cards, **excluded from the cost curve** — the same treatment as `refreshCostDiscount` and `reputationPerTurn`. It applies per-business (only to upgrades bought for the business where the advisor is employed).
 - **`actionsPerTurn`** (staff ability, e.g. General Manager, CG-0MSTOF1N5005PK2R): a numeric CSV column on staff cards, **excluded from the cost curve** — the same treatment as `refreshCostDiscount` and `reputationPerTurn`. The action economy is a **game-design lever**, not part of the standard cost formula: the General Manager's +1 action/week is balanced by its high cost (20) and ongoing cost (5), and is never priced into `ongoingCost * 5 + handSlotsAdded * 5`.
+- **`freeMarketRerollPerTurn` / `marketRelevanceBias`** (staff ability, e.g. the Investor, MS-0MTISBYLS009936W): a boolean flag plus a `0–1` fraction, both **excluded from the cost curve** — the same treatment as the other ability fields. The free, once-per-turn, 75%-biased market re-roll is a **game-design lever** (like `actionsPerTurn`), balanced by its tier-5 cost and ongoing cost rather than priced into `ongoingCost * 5 + handSlotsAdded * 5`.
 
 ## Rationale Codes
 
@@ -190,7 +191,7 @@ all net incomes positive.
 
 | Card | Handling |
 |------|----------|
-| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+40 rep/turn), so payback is n/a. |
+| **Clinic** (`biz-clinic`) | 0 base income by design — a reputation generator (+160 rep/turn), so payback is n/a. |
 | **Charity Shop** (`biz-charity-shop`) | Producer-set cost override (MS-0MUAYBAHW007RMSL); low-income reputation-leaning card, payback not representative. |
 | **0-cost incident events** | Not income businesses; excluded. |
 | **Community spaces** | 0 income by design; excluded. |
@@ -250,6 +251,87 @@ Guardrail tests (`monte-carlo-guardrails`, `monte-carlo-greedy-guardrail`,
 `monte-carlo-balance`) pass on the re-tuned presets; the committed baseline in
 [`monte-carlo-baseline.json`](monte-carlo-baseline.json) and
 `results/main-street-monte-carlo.json/.csv` were regenerated to the new values.
+
+## Upgrade-Deck Draw Weight — Level-2 Capstone Reachability (MS-0MUYK08I1004I19W)
+
+The four level-2 capstone upgrades (`upg-grand-bakehouse`, `upg-restaurant`,
+`upg-multiplex`, `upg-luxury-retreat`, all `requiredLevel: 1`) were
+effectively unreachable in the canonical greedy profile: the market draws at
+most one upgrade per turn from a 78-card deck (39 templates × 2 copies) and
+each card is drawn at most once before the game ends, so a capstone drawn
+*before* its parent reaches level 1 is discarded and never seen again.
+
+**Mechanism.** `card-data.csv` gains an optional `drawWeight` column (default
+`1`) plumbed through `UpgradeCard.drawWeight`. At market refill
+(`refillSingleRowMarket` → `drawUpgrade`) the upgrade slot is selected from the
+already Fisher–Yates-shuffled deck by relative weight, where an upgrade whose
+parent business is currently at its `requiredLevel` (and below `maxLevel`)
+receives an additive eligibility bonus (`UPGRADE_ELIGIBLE_DRAW_BONUS = 30`).
+The deck is never resized and the `shuffleArray` call count is unchanged, so a
+seeded game keeps its deck composition and the RNG stream remains
+attributable. When no template declares a weight, the legacy plain `pop()` draw
+(and zero RNG calls) is retained. Weights: capstones `3`, level-1 prerequisites
+`2`.
+
+**Before/after M1 pick rate** (greedy/Medium, 200 seeds, prefix `mc-balance`,
+60 turns; before at commit `3056bd9`, after this change):
+
+| Capstone | Before M1 | After M1 |
+|---|---:|---:|
+| `upg-grand-bakehouse` | 0.0% | 7.5% |
+| `upg-restaurant` | 0.0% | 10.0% |
+| `upg-multiplex` | 0.0% | 7.9% |
+| `upg-luxury-retreat` | 3.1% | 8.8% |
+
+Level-1 prerequisite M1 (Medium) rose from 3.6–9.1% to 23.3–34.4%. The
+difficulty ladder is preserved (Easy 76.5% ≥ Medium 67.5% ≥ Hard 42.0%) and the
+Medium win rate moved −1.5 pp (within the ±5 pp band). `requiredLevel: 1` and
+`canPurchaseUpgrade()` are unchanged (US-19 preserved). The
+[`monte-carlo-baseline.json`](monte-carlo-baseline.json) snapshot (greedy +
+banking-greedy) was regenerated with producer approval (Q2(a)).
+
+## Expensive-Tier Upgrade ROI Re-evaluation (MS-0MUR9I9WO004EW0M)
+
+Following the five-turn payback rebalance (MS-0MUQ50I1Y000B6L3) and the
+level-2 draw-weight change above, the remaining dead expensive upgrades were
+re-evaluated. Four level-0 upgrades whose parent businesses are built
+infrequently had **0 % M1** on the canonical `mc-balance` Medium profile purely
+because the single upgrade market slot rarely surfaced them while the parent
+was owned (co-occurrence, not affordability — prior experiments in
+MS-0MUXAL8HC005P9E4 showed that aggressive cost cuts alone left them at 0 %).
+
+**Change (card data only; no engine-rule change).** The four cards were
+discounted toward their balance-curve cost and given the
+producer-approved `drawWeight` lever (see the draw-weight section above), so
+the refill-time selection surfaces them once their parent is eligible:
+
+| Upgrade | Target (level 0) | Cost | `drawWeight` |
+|---|---|---:|---:|
+| `upg-designer-store` | Boutique | 700 → **600** | — → **3** |
+| `upg-museum` | Art Gallery | 700 → **600** | — → **3** |
+| `upg-dental-clinic` | Dentist | 700 → **600** | — → **3** |
+| `upg-private-medical-center` | Private Clinic | 900 → **700** | — → **3** |
+
+**Before/after M1 pick rate** (greedy/Medium, 200 seeds, prefix `mc-balance`,
+60 turns; before = pre-change `dev` tip, after = this change):
+
+| Upgrade | Before M1 | After M1 |
+|---|---:|---:|
+| `upg-designer-store` | 0.0 % (0/19) | **14.7 % (10/68)** |
+| `upg-museum` | 0.0 % (0/18) | **8.5 % (4/47)** |
+| `upg-dental-clinic` | 0.0 % (0/23) | **17.7 % (11/62)** |
+| `upg-private-medical-center` | 0.0 % (0/22) | **16.1 % (10/62)** |
+
+The difficulty ladder is preserved (Easy 76.0 % ≥ Medium 66.0 % ≥ Hard
+41.5 %); the Medium win rate moved −0.5 pp (within the ±5 pp band). The four
+level-2 capstones keep `requiredLevel: 1`, and their Medium pick rates remain
+non-trivial (`upg-grand-bakehouse` 11.3 %, `upg-restaurant` 10.5 %,
+`upg-multiplex` 7.7 %, `upg-luxury-retreat` 2.0 %); per-card M1 at ~50–70
+appearances is coarse, so the residual variance is small-n noise. The
+branching prerequisites `upg-drive-in` and `upg-wellness-center` remain below
+target (they compete with the standard path weighted by
+MS-0MUYK08I1004I19W); that residual is tracked separately rather than
+over-tuning the market in this item.
 
 ## See Also
 

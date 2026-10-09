@@ -736,7 +736,11 @@ The following tasks represent a suggested implementation order. Each task should
 > distance to the win threshold — `aiPlanningHorizon(state)` computes
 > `clamp(ceil((winThreshold - score) / scorePace), floor, cap)` with floor 5,
 > cap 25, scorePace 8 — and `config.maxTurns` is `undefined` for all default
-> presets (turn limits are opt-in). See `example-games/main-street/MainStreetAiStrategy.ts`.
+> presets (turn limits are opt-in). In competitive play the horizon measures
+> the distance to the **effective** win threshold (base / player count,
+> rounded to the nearest 50) so each seat plans toward the target it actually
+> races (MS-0MUZH6V7C0091SGE). See
+> `example-games/main-street/MainStreetAiStrategy.ts`.
 
 ### A.1 Action Scoring Functions
 

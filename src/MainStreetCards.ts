@@ -43,6 +43,7 @@ export {
   MARKET_STAFF_MAX,
   INCIDENT_QUEUE_SIZE,
   REFRESH_MARKET_COST,
+  REFRESH_MARKET_COST_STEP,
   SYNERGY_BONUS_PER_NEIGHBOR,
   PLACE_COST_RATIO,
   SELL_VALUE_RATIO,
@@ -67,6 +68,7 @@ export type {
   IncidentPolarity,
   IncidentPolarityRun,
   IncidentBalanceState,
+  ActiveMainStreetPack,
 } from './MainStreetCardsTypes';
 
 export {
@@ -81,9 +83,12 @@ export {
 export {
   CARD_DATA_RAW,
   CSV_CHECKSUM,
+  getActiveCsvData,
+  getActiveCsvChecksum,
   getCsvRows,
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
+  resetTemplatesToActivePool,
   getBusinessTemplates,
   getCommunitySpaceTemplates,
   getEventTemplates,

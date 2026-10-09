@@ -24,7 +24,7 @@ import type {
   StaffCard,
   IncidentBalanceState,
 } from './MainStreetCards';
-import type { StorylineOption } from './MainStreetCardsTypes';
+import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
 
@@ -133,12 +133,14 @@ export type GameResult = 'playing' | 'win' | 'loss';
 /** Reason for game ending (or threshold continuation in endless mode). */
 export type EndReason =
   | 'score_threshold'
-  // Endless mode (CG-0MTIILU5V006GCN4): threshold reached but play continues
-  // (`config.endlessMode === true`). `gameResult` stays `playing` while
-  // `endReason` records that the threshold was crossed — winner-declared-
-  // but-still-playing. Score keeps accruing and the game only ends via
-  // the remaining conditions (bankruptcy, reputation collapse, all
-  // challenges, turn limit).
+  // Endless mode (CG-0MTIILU5V006GCN4): the score threshold was reached
+  // with `config.endlessMode === true`. The winner is declared but play is
+  // paused with an explicit opt-in to continue: `gameResult` is `'win'`
+  // (or `'loss'` for a competitive AI win) while the offer is open. Accepting
+  // it via `continueAfterThreshold` returns `gameResult` to `'playing'` and
+  // keeps this marker so later EndChecks do not re-open the offer. Score
+  // keeps accruing and the game only ends via the remaining conditions
+  // (bankruptcy, reputation collapse, all challenges, turn limit).
   | 'score_threshold_continue'
   | 'all_challenges'
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
@@ -475,6 +477,23 @@ export interface MainStreetState {
    * or `buyAndPlaceBusiness`); reset to false at `WeekStart`.
    */
   businessPlacedThisTurn?: boolean;
+  /**
+   * Number of market research (re-roll) actions taken so far this turn
+   * (MS-0MTR6ZRF5007PWNZ). Drives the escalating refresh cost — the first
+   * re-roll costs `REFRESH_MARKET_COST` (500), each subsequent one 250 more —
+   * and is reset to 0 at `WeekStart` alongside the other per-turn gates.
+   * Participates in undo snapshots and save/load serialization.
+   */
+  marketRefreshesThisTurn: number;
+  /**
+   * Investor free market re-roll gate (MS-0MTISBYLS009936W): whether the
+   * once-per-turn, coin-free, action-free market re-roll granted by an
+   * employed Investor has already been used this turn. Reset to false at
+   * `WeekStart` alongside `peekUsedThisTurn` / `favourUsedThisTurn`. Multiple
+   * employed Investors still grant a single free re-roll (the flag is global,
+   * not per-card). Serialized by `MainStreetStateSerialize`.
+   */
+  investorFreeRerollUsedThisTurn: boolean;
   // ── Competitive mode (CG-0MT5X3GMA007EG30) ─────────────────
   /** Per-player records; undefined in single-player mode. */
   players?: PlayerRecord[] | null;
@@ -650,9 +669,19 @@ export interface MainStreetSerializedState {
    * Stored as a raw string so that if the game's card-data.csv changes
    * between save and load, the original CSV data can be recovered and
    * used to reconstruct card templates that match the saved state.
+   * When card packs were active this holds the merged `base + packs` CSV.
    * Empty string indicates a legacy save before this field was added.
    */
   csvData: string;
+  /**
+   * Card packs that were active when this save was created (ids + versions).
+   * Empty for base-content saves. On load, a pack recorded here that is no
+   * longer installed/disabled produces a degradation warning; the game
+   * refuses to resume only when a live card instance needs a missing template
+   * (see `MainStreetCardPacks.findMissingLiveTemplateIds`).
+   * Empty array indicates a legacy save before this field was added.
+   */
+  activePacks: ActiveMainStreetPack[];
   /**
    * Tracks which street grid slots have been sold. Length = GRID_SIZE.
    * true = card in this slot has been sold (non-functional).
@@ -678,6 +707,10 @@ export interface MainStreetSerializedState {
   justMovedUpgradeCardId?: string | null;
   /** Whether a business has been placed onto the street grid this turn (CG-0MTIOCBH400970OB). Gates Grand Opening Sale. */
   businessPlacedThisTurn?: boolean;
+  /** Number of market re-rolls taken this turn (MS-0MTR6ZRF5007PWNZ); drives the escalating refresh cost. Backfilled to 0 for legacy saves. */
+  marketRefreshesThisTurn: number;
+  /** Whether the Investor free market re-roll has been used this turn (MS-0MTISBYLS009936W). Backfilled to false for legacy saves. */
+  investorFreeRerollUsedThisTurn: boolean;
   // ── Competitive (CG-0MT5X3GMA007EG30) ───────────────────────
   /** Per-player records; undefined in single-player saves. */
   players?: PlayerRecord[] | null;

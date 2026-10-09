@@ -5,7 +5,20 @@ import type { EventCard, StaffCard } from '../MainStreetCards';
 import { SFX_KEYS } from './MainStreetConstants';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import type { TurnResult } from '../MainStreetEngine';
-import { FONT_FAMILY, createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
+import {
+  FONT_FAMILY,
+  CardPackListing,
+  createOverlayBackground,
+  createOverlayButton,
+  dismissOverlay,
+  enabledCardPackIds,
+} from '@ui';
+import {
+  applyEnabledMainStreetPacks,
+  getMainStreetCardPackLoadResult,
+  resolveEnabledPackIds,
+  toCardPackListingInput,
+} from '../MainStreetCardPacks';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
 import { buildJournal, journalIsEmpty, journalTitle, choiceClarityLabels } from '../MainStreetStorylineJournal';
@@ -15,6 +28,7 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
+import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -356,10 +370,53 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(cycleBtn);
     s.overlayObjects.push(cycleBtn);
 
-    // Buttons (positioned relative to panel bottom)
+    // Buttons (positioned relative to panel bottom). Two continuation offers
+    // can be open at game over:
+    //   - Last-standing (`endReason === 'last_standing'`) presents
+    //     [ Continue Solo ] (MS-0MUVQRCQJ00737UV AC4).
+    //   - Endless mode (`endReason === 'score_threshold_continue'`) presents
+    //     [ Enter Endless Mode ] so the player can keep building beyond the
+    //     threshold (CG-0MTIILU5V006GCN4).
     const btnY = panelTop + panelH - 28;
+    const centerX = s.layout.gameW / 2;
+    const canContinueSolo = s.state.endReason === 'last_standing';
+    const canEnterEndless = s.state.endReason === 'score_threshold_continue';
+    const hasContinuationOffer = canContinueSolo || canEnterEndless;
+
+    if (canEnterEndless) {
+      const endlessBtn = createOverlayButton(
+        s, centerX - 200, btnY,
+        '[ Enter Endless Mode ]', 201,
+      );
+      endlessBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        // Resume play via the scene's turn controller. Idempotent: the
+        // controller is a no-op unless the endless offer is still open.
+        s.msTurnController?.continueEndlessMode?.();
+      });
+      if (s.hudContainer) s.hudContainer.add(endlessBtn);
+      s.overlayObjects.push(endlessBtn);
+    }
+
+    if (canContinueSolo) {
+      const continueBtn = createOverlayButton(
+        s, centerX - 200, btnY,
+        '[ Continue Solo ]', 201,
+      );
+      continueBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        // Resume play via the scene's turn controller. Idempotent: the
+        // controller is a no-op unless the last-standing offer is still open.
+        s.msTurnController?.continueCompetitiveLastStanding?.();
+      });
+      if (s.hudContainer) s.hudContainer.add(continueBtn);
+      s.overlayObjects.push(continueBtn);
+    }
+
     const playAgainBtn = createOverlayButton(
-      s, s.layout.gameW / 2 - 110, btnY,
+      s, hasContinuationOffer ? centerX : centerX - 110, btnY,
       '[ Play Again ]', 201,
     );
     playAgainBtn.on('pointerdown', () => {
@@ -371,7 +428,7 @@ export class MainStreetOverlayContent {
     s.overlayObjects.push(playAgainBtn);
 
     const menuBtn = createOverlayButton(
-      s, s.layout.gameW / 2 + 110, btnY,
+      s, hasContinuationOffer ? centerX + 200 : centerX + 110, btnY,
       '[ Menu ]', 201,
     );
     menuBtn.on('pointerdown', () => {
@@ -623,13 +680,33 @@ export class MainStreetOverlayContent {
       const names = employedStaff.map(({ member }) => member.name).join(', ');
       const staffLine = s.add.text(
         centerX, panelY + 305,
-        `Employed here: ${names}\nLay off: costs 1 turn's salary + 1 reputation.`,
+        `Employed here: ${names}\nMove: costs 1 action. Lay off: costs 1 turn's salary + 1 reputation.`,
         { fontSize: '12px', color: '#ffcc88', fontFamily: FONT_FAMILY, align: 'center' },
       ).setOrigin(0.5).setDepth(201);
       if (s.hudContainer) s.hudContainer.add(staffLine);
       s.overlayObjects.push(staffLine);
 
-      const layOffBtn = createOverlayButton(s, centerX, panelY + 352, '[ Lay off ]', 201);
+      // Move-staff affordance (MS-0MUOSULQ700186PP AC2): begins a relocation
+      // targeting the most recently hired member (same convention as Lay off).
+      // The 1-action cost is stated on the button and in the line above.
+      const moveStaffBtn = createOverlayButton(s, centerX - 110, panelY + 352, '[ Move staff (1 action) ]', 201);
+      if (s.hudContainer) s.hudContainer.add(moveStaffBtn);
+      const moveTarget = employedStaff[employedStaff.length - 1];
+      // Hover tooltip (MS-0MUOSULQ700186PP AC2): states the 1-action cost and
+      // the legal destination businesses, from the pure affordance builder.
+      moveStaffBtn.on('pointerover', () => {
+        const affordance = buildMoveStaffAffordance(s.state, moveTarget.member.id);
+        s.tooltipManager?.show(affordance.tooltip, moveStaffBtn.x, moveStaffBtn.y);
+      });
+      moveStaffBtn.on('pointerout', () => s.tooltipManager?.hide());
+      moveStaffBtn.on('pointerdown', () => {
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        s.beginStaffMove(moveTarget.member.id);
+      });
+      s.overlayObjects.push(moveStaffBtn);
+
+      const layOffBtn = createOverlayButton(s, centerX + 110, panelY + 352, '[ Lay off ]', 201);
       if (s.hudContainer) s.hudContainer.add(layOffBtn);
       layOffBtn.on('pointerdown', () => {
         const target = employedStaff[employedStaff.length - 1];
@@ -1099,5 +1176,71 @@ export class MainStreetOverlayContent {
       onClose?.();
     });
     s.overlayObjects.push(closeBtn);
+  }
+
+  /**
+   * Shows the **Card Packs** overlay (F9 / CG-0MUZIS4KZ003R1HP).
+   *
+   * Renders the reusable, SLL-positioned core `CardPackListing` over the packs
+   * discovered at boot ({@link getMainStreetCardPackLoadResult}). Each row shows
+   * its installed/unlocked/locked state; locked and incompatible packs are
+   * read-only, entitled packs carry an enable/disable control.
+   *
+   * Toggling re-merges and re-applies the game's card pool immediately
+   * ({@link applyEnabledMainStreetPacks}) and persists the enabled set as the
+   * new-game preference — so the pool refreshes consistently rather than
+   * requiring a restart. A toggle that would strand a card currently in play
+   * is refused in place with an explanatory hint. The overlay adds no
+   * animation, so reduced motion is honoured by construction, and every
+   * interaction plays through `safePlaySound` so mute/volume still apply.
+   */
+  public showCardPacksDialog(): void {
+    const s = this.scene;
+    if (s.replayMode) return;
+
+    const load = getMainStreetCardPackLoadResult();
+    let enabledIds = resolveEnabledPackIds(load);
+
+    // Modal backdrop (depth 199). The listing draws its own SLL panel and is
+    // parented above it (depth 201), matching the overlay depth convention.
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 });
+    s.overlayObjects.push(...overlay.objects);
+
+    const listing = new CardPackListing(s, {
+      result: toCardPackListingInput(load, enabledIds),
+      onToggle: (state) => {
+        const nextIds = enabledCardPackIds(state);
+        const outcome = applyEnabledMainStreetPacks(load, nextIds, {
+          state: s.state,
+        });
+        if (!outcome.applied) {
+          // Refused (a live card needs the pack): revert the rendered toggle
+          // and explain the refusal without changing the pool.
+          safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
+          listing.setResult(toCardPackListingInput(load, enabledIds));
+          s.instructionText?.setText?.(
+            outcome.reason ?? 'That pack cannot be disabled right now.',
+          );
+          return;
+        }
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        enabledIds = outcome.enabledPackIds;
+      },
+      onClose: () => this.closeCardPacksDialog(listing),
+    });
+
+    const container = listing.gameObject;
+    container.setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(container);
+    s.overlayObjects.push(container);
+  }
+
+  /** Dismiss the Card Packs overlay and release its listing objects. */
+  private closeCardPacksDialog(listing: CardPackListing): void {
+    const s = this.scene;
+    safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+    listing.destroy();
+    dismissOverlay(s.overlayObjects);
+    s.overlayObjects = [];
   }
 }

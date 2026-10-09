@@ -6,7 +6,9 @@ import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlay
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { getBaseTypeId, getEventTemplates } from './MainStreetCards';
-import type { EventCard } from './MainStreetCardsTypes';
+import type { BusinessCard, CommunitySpaceCard, EventCard } from './MainStreetCardsTypes';
+import { computeSynergyBonus } from './MainStreetAdjacencyScoring';
+import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
 import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
@@ -52,6 +54,33 @@ export interface MonteCarloRunSummary {
   cardsOwned: string[];
   /** Card IDs that appeared in the market (offered for purchase) across all turns. */
   marketOffers: string[];
+  /**
+   * Count of Community Favour `rep-to-coins` exchanges taken during the run
+   * (CG-0MSTOATDQ005XDET / MS-0MUVB2ZES005V83Y). Optional for backward
+   * compatibility with stored summaries and test fixtures predating the
+   * counter; absent is treated as 0.
+   */
+  favourRepToCoinsUses?: number;
+  /**
+   * Count of Community Favour `coins-to-rep` exchanges taken during the run.
+   * Optional for the same backward-compatibility reason as
+   * {@link MonteCarloRunSummary.favourRepToCoinsUses}.
+   */
+  favourCoinsToRepUses?: number;
+  /**
+   * Number of `business`-family cards placed on the street during the run
+   * (via `buy-business` or `play-business-from-hand`) — MS-0MUX8J9KJ005ZKDW.
+   * Optional for backward compatibility with stored summaries and test
+   * fixtures predating the counter; absent is treated as 0.
+   */
+  businessPlacements?: number;
+  /**
+   * Number of `community-space` cards placed on the street during the run
+   * (via `buy-business` or `play-business-from-hand`) — MS-0MUX8J9KJ005ZKDW.
+   * Optional for the same backward-compatibility reason as
+   * {@link MonteCarloRunSummary.businessPlacements}.
+   */
+  communitySpacePlacements?: number;
   /**
    * Turn-by-turn economy history recorded after each economy mutation.
    * Each entry contains a sequence number (turn), coins, reputation, and score
@@ -385,6 +414,37 @@ function simulateSeed(
     const cardsOwned: string[] = [];
     /** Set of card IDs seen in the market (across all turns). No duplicates. */
     const marketOfferSet = new Set<string>();
+    /** Community Favour usage counters (CG-0MSTOATDQ005XDET). */
+    let favourRepToCoinsUses = 0;
+    let favourCoinsToRepUses = 0;
+    /** Placement counters by card family (MS-0MUX8J9KJ005ZKDW). */
+    let businessPlacements = 0;
+    let communitySpacePlacements = 0;
+
+    /** Records a Community Favour exchange against the right direction. */
+    const trackFavour = (action: PlayerAction): void => {
+      if (action.type !== 'community-favour') return;
+      if (action.direction === 'rep-to-coins') favourRepToCoinsUses++;
+      else favourCoinsToRepUses++;
+    };
+
+    /**
+     * Counts a street placement by card family. Must be called *before*
+     * `executeAction`, because a `play-business-from-hand` removes the card
+     * from the hand as it places it.
+     */
+    const trackPlacement = (action: PlayerAction): void => {
+      let family: string | undefined;
+      if (action.type === 'buy-business') {
+        family = state.market.cards.find(c => c.id === action.cardId)?.family;
+      } else if (action.type === 'play-business-from-hand') {
+        family = (state.hand ?? [])[action.handIndex]?.family;
+      } else {
+        return;
+      }
+      if (family === 'business') businessPlacements++;
+      else if (family === 'community-space') communitySpacePlacements++;
+    };
 
     while (state.gameResult === 'playing' && turns < maxTurns) {
       executeWeekStart(state);
@@ -404,6 +464,8 @@ function simulateSeed(
           if (action.type === 'buy-business' || action.type === 'buy-upgrade' || action.type === 'buy-event') {
             cardsOwned.push(action.cardId);
           }
+          trackFavour(action);
+          trackPlacement(action);
           executeAction(state, action);
           executedAction = true;
           // Record AI action in transcript (if recorder is present)
@@ -426,6 +488,8 @@ function simulateSeed(
             cardsOwned.push(action.cardId);
           }
           try {
+            trackFavour(action);
+            trackPlacement(action);
             executeAction(state, action);
             executedAction = true;
           } catch {
@@ -455,7 +519,18 @@ function simulateSeed(
       }
     }
 
-    return { turns, noActionTurns, turnWhenGridHalf, turnWhenGridFull, cardsOwned, marketOffers: [...marketOfferSet] };
+    return {
+      turns,
+      noActionTurns,
+      turnWhenGridHalf,
+      turnWhenGridFull,
+      cardsOwned,
+      marketOffers: [...marketOfferSet],
+      favourRepToCoinsUses,
+      favourCoinsToRepUses,
+      businessPlacements,
+      communitySpacePlacements,
+    };
   });
 
   const result = state.gameResult === 'playing' ? 'loss' : state.gameResult;
@@ -473,6 +548,10 @@ function simulateSeed(
     noActionTurns: loop.noActionTurns,
     cardsOwned: loop.cardsOwned,
     marketOffers: loop.marketOffers,
+    favourRepToCoinsUses: loop.favourRepToCoinsUses,
+    favourCoinsToRepUses: loop.favourCoinsToRepUses,
+    businessPlacements: loop.businessPlacements,
+    communitySpacePlacements: loop.communitySpacePlacements,
     economyHistory: [...state.ledger.getHistory()],
     storylineEvents: deriveStorylineEvents(events),
   };
@@ -617,6 +696,8 @@ export function toCsv(runs: readonly MonteCarloRunSummary[]): string {
     'turnWhenGridHalf',
     'turnWhenGridFull',
     'noActionTurns',
+    'businessPlacements',
+    'communitySpacePlacements',
   ];
   const rows = runs.map(run => [
     run.seed,
@@ -628,6 +709,8 @@ export function toCsv(runs: readonly MonteCarloRunSummary[]): string {
     run.turnWhenGridHalf === null ? '' : String(run.turnWhenGridHalf),
     run.turnWhenGridFull === null ? '' : String(run.turnWhenGridFull),
     String(run.noActionTurns),
+    String(run.businessPlacements ?? 0),
+    String(run.communitySpacePlacements ?? 0),
   ]);
   return [header.join(','), ...rows.map(row => row.join(','))].join('\n');
 }
@@ -672,6 +755,144 @@ export interface CompetitivePlayerRunSummary {
   eliminated: boolean;
   /** Card IDs the player acquired (buy-business / buy-upgrade / buy-event). */
   cardsOwned: string[];
+  /**
+   * Opponent-benefit tally for this player's street placements
+   * (MS-0MUZFVM86003IPSM). Records how much marginal synergy each placement
+   * anchored for the acting seat versus other seats, so the ownership-aware
+   * change can be measured before/after. Optional for backward compatibility
+   * with stored summaries and fixtures predating the counter.
+   */
+  placementStats?: CompetitivePlacementStats;
+}
+
+/**
+ * Per-player tally of the synergy a player's street placements anchored,
+ * split by owner (MS-0MUZFVM86003IPSM).
+ *
+ * A placement "confers net benefit on opponents" when the marginal synergy it
+ * anchors for other seats' businesses exceeds the synergy it anchors for the
+ * acting seat's own businesses (`opponentSynergyAnchored > ownSynergyAnchored`
+ * for that placement). The headline evidence metric is the rate of such
+ * placements, overall and for community spaces specifically.
+ */
+export interface CompetitivePlacementStats {
+  /** Total street placements (business-family + community-space). */
+  placements: number;
+  /** Business-family placements. */
+  businessPlacements: number;
+  /** Community-space placements. */
+  communitySpacePlacements: number;
+  /** Total marginal synergy anchored for the acting seat's own businesses. */
+  ownSynergyAnchored: number;
+  /** Total marginal synergy anchored for other seats' businesses. */
+  opponentSynergyAnchored: number;
+  /** Placements whose anchored opponent synergy exceeded their own synergy. */
+  opponentBeneficialPlacements: number;
+  /** Placements whose anchored opponent synergy was positive. */
+  opponentTouchedPlacements: number;
+  /** Business-family placements with `opponent > own`. */
+  businessOpponentBeneficialPlacements: number;
+  /** Community-space placements with `opponent > own`. */
+  communitySpaceOpponentBeneficialPlacements: number;
+}
+
+/** A zeroed {@link CompetitivePlacementStats} tally. */
+export function emptyCompetitivePlacementStats(): CompetitivePlacementStats {
+  return {
+    placements: 0,
+    businessPlacements: 0,
+    communitySpacePlacements: 0,
+    ownSynergyAnchored: 0,
+    opponentSynergyAnchored: 0,
+    opponentBeneficialPlacements: 0,
+    opponentTouchedPlacements: 0,
+    businessOpponentBeneficialPlacements: 0,
+    communitySpaceOpponentBeneficialPlacements: 0,
+  };
+}
+
+/** Marginal synergy a single placement anchors, split by owner. */
+export interface PlacementBenefit {
+  /** Synergy anchored for the acting seat's own businesses. */
+  own: number;
+  /** Synergy anchored for every other seat's businesses. */
+  opponent: number;
+}
+
+/**
+ * Measures the marginal synergy a just-executed placement anchors for its
+ * neighbouring businesses, attributed to the acting seat or to another seat.
+ *
+ * `beforeGrid` must be a shallow copy of the street taken *before* the
+ * placement; `state.streetGrid` must already contain the placed card. Each
+ * neighbour's `computeSynergyBonus` is diffed before/after — exactly the
+ * ownership-agnostic delta the competitive scores net against — and the gain
+ * is bucketed with `getSlotOwnerId(state, i)` so only the acting seat counts
+ * as `own` (MS-0MUZFVM86003IPSM evidence instrumentation; no RNG, pure read).
+ *
+ * @param state          Current state (post-placement; read-only).
+ * @param beforeGrid     Street grid before the placement.
+ * @param slotIndex      Slot the card was placed into (excluded from the diff).
+ * @param actingPlayerId Seat that made the placement.
+ * @returns `{ own, opponent }` marginal anchored synergy.
+ */
+export function measurePlacementBenefit(
+  state: MainStreetState,
+  beforeGrid: (BusinessCard | CommunitySpaceCard | null)[],
+  slotIndex: number,
+  actingPlayerId: number,
+): PlacementBenefit {
+  const afterGrid = state.streetGrid;
+  const soldSlots = state.soldSlots ?? [];
+  const gridDims =
+    state.streetGridCols && state.streetGridRows
+      ? { cols: state.streetGridCols, rows: state.streetGridRows }
+      : undefined;
+  const bonusPerNeighbor = state.config.synergyBonusPerNeighbor;
+
+  let own = 0;
+  let opponent = 0;
+  for (let i = 0; i < afterGrid.length; i++) {
+    if (i === slotIndex || !afterGrid[i]) continue;
+    const before = computeSynergyBonus(beforeGrid, i, bonusPerNeighbor, soldSlots, gridDims);
+    const after = computeSynergyBonus(afterGrid, i, bonusPerNeighbor, soldSlots, gridDims);
+    const gain = after - before;
+    if (gain <= 0) continue;
+    if (getSlotOwnerId(state, i) === actingPlayerId) own += gain;
+    else opponent += gain;
+  }
+  return { own, opponent };
+}
+
+/**
+ * Folds one measured placement into a player's {@link CompetitivePlacementStats}.
+ * Internal harness helper; shared by the competitive head-to-head loop.
+ */
+function recordPlacementBenefit(
+  stats: CompetitivePlacementStats,
+  state: MainStreetState,
+  beforeGrid: (BusinessCard | CommunitySpaceCard | null)[],
+  slotIndex: number,
+  actingPlayerId: number,
+  family: 'business' | 'community-space',
+): void {
+  const { own, opponent } = measurePlacementBenefit(
+    state,
+    beforeGrid,
+    slotIndex,
+    actingPlayerId,
+  );
+  stats.placements++;
+  if (family === 'community-space') stats.communitySpacePlacements++;
+  else stats.businessPlacements++;
+  stats.ownSynergyAnchored += own;
+  stats.opponentSynergyAnchored += opponent;
+  if (opponent > 0) stats.opponentTouchedPlacements++;
+  if (opponent > own) {
+    stats.opponentBeneficialPlacements++;
+    if (family === 'community-space') stats.communitySpaceOpponentBeneficialPlacements++;
+    else stats.businessOpponentBeneficialPlacements++;
+  }
 }
 
 /** Summary of a single competitive head-to-head run. */
@@ -751,6 +972,7 @@ function playCompetitiveMarketPhases(
   strategies: readonly MainStreetAiStrategy[],
   rngs: readonly (() => number)[],
   cardsOwnedByPlayer: string[][],
+  placementStatsByPlayer: CompetitivePlacementStats[],
 ): void {
   executeCompetitiveWeekStart(state);
   const n = state.players!.length;
@@ -777,10 +999,36 @@ function playCompetitiveMarketPhases(
       ) {
         cardsOwnedByPlayer[pid].push(action.cardId);
       }
+      // Snapshot the street before a placement so the marginal synergy it
+      // anchors can be attributed to owners after execution (MS-0MUZFVM86003IPSM).
+      let placementFamily: 'business' | 'community-space' | null = null;
+      let placementSlot = -1;
+      let beforeGrid: (BusinessCard | CommunitySpaceCard | null)[] | null = null;
+      if (action.type === 'buy-business' || action.type === 'play-business-from-hand') {
+        const family =
+          action.type === 'buy-business'
+            ? state.market.cards.find(c => c.id === action.cardId)?.family
+            : (state.hand ?? [])[action.handIndex]?.family;
+        if (family === 'business' || family === 'community-space') {
+          placementFamily = family;
+          placementSlot = action.slotIndex;
+          beforeGrid = [...state.streetGrid];
+        }
+      }
       try {
         executeAction(state, action);
       } catch {
         break; // illegal action — end this player's MarketPhase
+      }
+      if (placementFamily !== null && beforeGrid !== null) {
+        recordPlacementBenefit(
+          placementStatsByPlayer[pid],
+          state,
+          beforeGrid,
+          placementSlot,
+          pid,
+          placementFamily,
+        );
       }
       restoreCompetitiveSeat(state, pid);
       if (state.gameResult !== 'playing') break;
@@ -819,10 +1067,14 @@ export function runCompetitiveSeed(
     createSeededRng(seedToNumber(`${seed}-comp-p${pid}`)),
   );
   const cardsOwnedByPlayer: string[][] = Array.from({ length: playerCount }, () => []);
+  const placementStatsByPlayer: CompetitivePlacementStats[] = Array.from(
+    { length: playerCount },
+    () => emptyCompetitivePlacementStats(),
+  );
   let turns = 0;
 
   while (state.gameResult === 'playing' && turns < maxTurns) {
-    playCompetitiveMarketPhases(state, resolvedStrategies, rngs, cardsOwnedByPlayer);
+    playCompetitiveMarketPhases(state, resolvedStrategies, rngs, cardsOwnedByPlayer, placementStatsByPlayer);
     const closing = resolveCompetitiveClosingPhases(state);
     if (closing.choicePending) {
       // Dual-choice incident: apply the AI policy and finish the shared-day
@@ -884,6 +1136,7 @@ export function runCompetitiveSeed(
       lossReason,
       eliminated,
       cardsOwned: cardsOwnedByPlayer[pid],
+      placementStats: placementStatsByPlayer[pid],
     };
   });
 

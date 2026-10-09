@@ -8,7 +8,7 @@
  */
 
 import { finishDeferredTurnClosing, processEndOfTurn } from './MainStreetEngineTurnClosing';
-import type { IncomeResult } from './MainStreetAdjacency';
+import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
 
 export interface BuyBusinessAction {
@@ -205,6 +205,17 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * Absent/false for the legacy path and headless/AI results.
    */
   requiresDeferredClosing?: boolean;
+  /**
+   * Authoritative per-seat income applied during a competitive shared closing
+   * (N >= 2, MS-0MUYFX56M006RVIZ). Each entry is an `OwnerIncomeResult` from
+   * `applyCompetitiveIncome`, whose `income.phaseBreakdown` drives the per-seat
+   * income choreography. Only the non-eliminated seats are surfaced, in seat
+   * order; absent for single-player / N=1 closings.
+   *
+   * Presentation-only data: it mirrors deltas already applied to each
+   * `PlayerRecord`, so reading it consumes no RNG and mutates no state.
+   */
+  playerIncome?: OwnerIncomeResult[];
 }
 
 /**

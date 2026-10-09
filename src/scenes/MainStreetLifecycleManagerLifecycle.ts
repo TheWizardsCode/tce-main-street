@@ -14,7 +14,7 @@ import { TooltipManager, createSingleSelectionManager } from '@ui';
 import type { HelpSection } from '@ui';
 import { getEndTurnKeybind } from '@ui/SettingsStore';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
-import { buildMainStreetHelpContent, SYNERGY_HELP_ICONS } from '../MainStreetHelpContent';
+import { buildMainStreetHelpContent, helpContentConfigFor, SYNERGY_HELP_ICONS } from '../MainStreetHelpContent';
 import { createMainStreetCheckpointManager, saveCampaignProgress } from '../MainStreetSaveLoad';
 import { setupMainStreetGame } from '../MainStreetState';
 import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
@@ -29,6 +29,7 @@ import { BG_COLOR, SFX_KEYS } from './MainStreetConstants';
 import { MainStreetInputManager } from './MainStreetInputManager';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
 import { MainStreetOverlayContent } from './MainStreetOverlayContent';
+import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { MainStreetRenderer } from './MainStreetRenderer';
 import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
@@ -37,6 +38,11 @@ import { MainStreetTutorialHints } from './MainStreetTutorialHints';
 import { StatsOverlay } from './StatsOverlay';
 import { TutorialOfferModal } from './TutorialOfferModal';
 import { MainStreetNewGameOverlay, resetNewGameSelectionFlag } from './MainStreetNewGameOverlay';
+import {
+  bootstrapMainStreetCardPacks,
+  isMainStreetCardPacksBootstrapped,
+} from '../MainStreetCardPacks';
+import { readContentDirFromWindow } from '@ui/game-plugin-boot';
 
 export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 
@@ -113,6 +119,38 @@ export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 }
 
 export function create(lmCtx: MainStreetLifecycleManagerContext): void {
+    const s = lmCtx.scene;
+
+    // Card packs (F9 / CG-0MUZIS4KZ003R1HP): when the launcher starts this
+    // scene directly (the game's own `main.ts` did not run), discover the
+    // installed packs and only then set the game up, so the first deal can
+    // include pack cards. In a plain browser / test run there is no content
+    // directory, so this gate is skipped and the synchronous path below is
+    // byte-for-byte unchanged. Discovery never throws and degrades to base
+    // content, so the scene still boots when the manifest is missing.
+    if (shouldBootstrapPacks(s)) {
+      void bootstrapMainStreetCardPacks().then(
+        () => createScene(lmCtx),
+        () => createScene(lmCtx),
+      );
+      return;
+    }
+
+    createScene(lmCtx);
+}
+
+/** Whether the scene must await pack discovery before setting up. */
+function shouldBootstrapPacks(s: MainStreetLifecycleManagerContext['scene']): boolean {
+    if (s?.replayMode) return false;
+    if (isMainStreetCardPacksBootstrapped()) return false;
+    try {
+      return readContentDirFromWindow() !== null;
+    } catch {
+      return false;
+    }
+}
+
+function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
 
     const s = lmCtx.scene;
     markSceneValid(s);
@@ -148,6 +186,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
     s.uiPhase = 'idle';
@@ -243,6 +282,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    s.msPedestrians = new MainStreetPedestrians(s);
     s.layout = s.computeLayout();
     s.svgDebugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('msSvgDebug') === '1';
 
@@ -358,8 +398,11 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     // Help panel (Milestone 5: PRD-required sections). The copy lives in the
     // Phaser-free `MainStreetHelpContent` module so the content tests assert
     // the same strings the panel renders (test-review C5).
-    const cfg = s.state.config;
-    const helpSections: HelpSection[] = buildMainStreetHelpContent(cfg).map((section) => {
+    // The help panel's "Reach N points to win" copy is built from the live
+    // state so it states the effective win threshold the engine awards the
+    // win at: base / playerCount, rounded to the nearest 50, in competitive
+    // play (MS-0MUZK652V001L71C).
+    const helpSections: HelpSection[] = buildMainStreetHelpContent(helpContentConfigFor(s.state)).map((section) => {
       if (section.synergyParagraph !== undefined) {
         const paragraph = section.synergyParagraph;
         return {
@@ -457,8 +500,9 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     }
 
     // Create the pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1).
-    // It is shown by showTutorialOfferOrDeferredBanner as the first blocking
-    // boot modal, before the tutorial offer / deferred banner.
+    // It is shown by showTutorialOfferOrDeferredBanner as the **second**
+    // blocking boot modal, after the tutorial offer has been answered (skipped)
+    // or when the offer is ineligible (MS-0MV0319OC002H15F).
     try {
       (s as any).newGameOverlay = new MainStreetNewGameOverlay(s);
     } catch (_) { /* ignore if overlay cannot be created (headless) */ }
@@ -506,7 +550,7 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
               // flag since we are not going to play the deferred banner.
               s.deferredWeekBanner = false;
               s.startTurnPhase(false, true);
-              // Start the action-gated tutorial flow (T1-T17)
+              // Start the action-gated tutorial flow (T1-T25)
               const controller = (s as any).tutorialController as TutorialControllerState | undefined;
               if (controller) {
                 Object.assign(s, { tutorialController: startTutorial(controller) });
@@ -516,9 +560,12 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
             } catch (_) { /* ignore */ }
           },
           onSkip: () => {
-            // Normal gameplay begins; play the deferred day-banner now
-            // that the player has committed to the game.
-            s.playDeferredWeekBanner();
+            // Tutorial offer skipped: present the New Game mode selector
+            // next. The deferred day-banner plays once the player confirms a
+            // mode (see showNewGameSelector), so it still fires exactly once
+            // and only after the player has committed to playing
+            // (MS-0MV0319OC002H15F).
+            lmCtx.showNewGameSelector();
           },
         },
       );
@@ -602,6 +649,8 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
       s.cleanupTransferAnimations();
       // Tear down the drag-drop manager (removes its scene input listeners).
       try { s.dragDropManager?.destroy(); s.dragDropManager = undefined; } catch (_) { /* ignore */ }
+      // Tear down the ambient pedestrian layer (MS-0MUYGFW7T00579Z1).
+      try { s.msPedestrians?.destroy?.(); } catch (_) { /* presentation-only */ }
       try {
         if (s.input && s.input.keyboard) {
           s.input.keyboard.off('keydown', endTurnKeyHandler);
@@ -614,8 +663,10 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     });
 
     // Start first turn — suppress the day-banner at boot so it does not
-    // fire while the tutorial offer modal is visible or before any player
-    // choice is made (deferred banner will play on skip/start/tutorial).
+    // fire while the tutorial offer or mode selector is waiting for a choice.
+    // The deferred banner plays once the player confirms a mode (see
+    // showNewGameSelector) and is suppressed for the tutorial path
+    // (MS-0MV0319OC002H15F).
     s.deferredWeekBanner = true;
     s.startTurnPhase(false, true);
   
@@ -635,6 +686,9 @@ export function handleResize(lmCtx: MainStreetLifecycleManagerContext): void {
 
     // Regenerate textures at new sizes on resize.
     s.prewarmVisibleCardTextures();
+    // Re-clamp the ambient pedestrian layer into the new street band
+    // (MS-0MUYGFW7T00579Z1). Presentation-only; failures are swallowed.
+    try { s.msPedestrians?.resize?.(); } catch (_) { /* presentation-only */ }
     s.challengeContainer.setPosition(s.layout.challengeX, s.layout.challengeY);
     s.logContainer.setPosition(s.layout.logX, s.layout.logY);
     // Centre instruction text in the main content area (between left margin and right column)

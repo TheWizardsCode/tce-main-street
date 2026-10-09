@@ -66,9 +66,10 @@ As a first-time player, I want Main Street to offer a guided tutorial the first 
 **Acceptance Criteria**
 - AC-1.1: On first launch of Main Street, a modal prompt appears before turn interactions begin.
 - AC-1.2: Prompt options include: `Start Tutorial`, `Skip for Now`.
-- AC-1.3: Selecting `Start Tutorial` begins the scripted tutorial flow.
-- AC-1.4: Selecting `Skip for Now` starts normal gameplay and marks tutorial as skipped (not completed).
+- AC-1.3: Selecting `Start Tutorial` begins the scripted tutorial flow as a single-player game and suppresses the New Game mode selector for that boot (the tutorial is single-player only).
+- AC-1.4: Selecting `Skip for Now` marks tutorial as skipped (not completed) and presents the New Game mode selector next; confirming a mode starts normal gameplay.
 - AC-1.5: The prompt is not auto-shown again once tutorial is completed.
+- AC-1.6: On boot, when the tutorial offer is eligible, it is presented before the New Game Single-player/Competitive mode selector; the selector is not visible while the offer is waiting.
 
 ### US-2: Guided Tutorial Flow
 
@@ -166,10 +167,25 @@ This script is the canonical onboarding sequence. Steps are intentionally short 
 1. Player opens app and sees `GameSelectorScene`.
 2. Player chooses Main Street card.
 3. `MainStreetScene` starts.
-4. Game checks tutorial state:
-   - `not_seen` / `skipped`: show tutorial offer modal.
-   - `completed`: start normal run.
-5. Player either completes tutorial or starts regular play.
+4. Game checks tutorial eligibility and presents the blocking boot modals in
+   order, tutorial offer first:
+   1. **Tutorial offer (first boot modal).** When the offer is eligible
+      (`not_seen`, or forced via `forceShowOffer`) the tutorial offer modal is
+      presented **before** the New Game mode selector, and the selector is not
+      visible while the offer is waiting.
+      - `Start Tutorial`: begins the scripted single-player tutorial and the
+        New Game mode selector is not shown for that boot (the tutorial is
+        single-player only).
+      - `Skip for now`: marks the tutorial as skipped and presents the New
+        Game mode selector next.
+   2. **New Game mode selector (second boot modal).** When the offer is
+      ineligible (`completed`, already skipped, replay mode, or tutorial
+      disabled) or has been answered with `Skip for now`, the Single-player vs
+      Competitive selector is presented once per boot. Confirming a mode
+      applies the selection and starts the selected game exactly as before.
+5. The deferred week banner fires exactly once, only after the player has
+   committed to playing (when a mode is confirmed). It is suppressed for the
+   tutorial path and never fires while any boot modal is waiting.
 
 ### Selector Card Content (Main Street)
 

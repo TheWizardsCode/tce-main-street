@@ -62,14 +62,47 @@ function findStaff(deck: readonly StaffCard[], id: string): StaffCard | undefine
 // ── AC1: Template count ───────────────────────────────────────────────
 
 describe('Group F staff expansion: template count (AC1)', () => {
-  it('grows staff templates to exactly 25 (incl. General Manager + Lookout + 12 specialization applicants + 4 business specialists)', () => {
-    expect(createStaffDeck(1)).toHaveLength(25);
+  it('grows staff templates to exactly 26 (incl. General Manager + Lookout + 12 specialization applicants + 4 business specialists + Investor)', () => {
+    expect(createStaffDeck(1)).toHaveLength(26);
   });
 
   it('adds exactly the 4 contracted card IDs', () => {
     const existingIds = new Set(getCsvRows().filter(r => r.family === 'staff').map(r => r.id));
     for (const c of NEW_STAFF_CONTRACTS) {
       expect(existingIds.has(c.id), `${c.id} missing from card-data.csv`).toBe(true);
+    }
+  });
+});
+
+// ── Investor catalog entry (MS-0MTISBYLS009936W) ─────────────────────────
+
+describe('Investor staff card catalog entry (MS-0MTISBYLS009936W)', () => {
+  it('parses the free re-roll flag and 75% relevance bias into the StaffCard template', () => {
+    const card = findStaff(createStaffDeck(1), 'staff-investor');
+    expect(card, 'staff-investor missing from the staff deck').toBeDefined();
+    expect(card!.family).toBe('staff');
+    expect(card!.name).toBe('Investor');
+    expect(card!.cost).toBe(1000);
+    expect(card!.ongoingCost).toBe(125);
+    expect(card!.handSlotsAdded).toBe(0);
+    expect(card!.freeMarketRerollPerTurn).toBe(true);
+    expect(card!.marketRelevanceBias).toBe(0.75);
+    expect(card!.description.length).toBeGreaterThan(0);
+  });
+
+  it('is a generalist tier-5 card (all synergy types allowed)', () => {
+    const card = findStaff(createStaffDeck(1), 'staff-investor')!;
+    expect(card.allowedBusinessTypes).toEqual([
+      'Food', 'Culture', 'Service', 'Commerce', 'Entertainment', 'Health',
+    ]);
+    expect(CARD_TIER_MAP.get('staff-investor')).toBe('5');
+  });
+
+  it('does not grant the free re-roll or bias on staff without the ability', () => {
+    for (const id of ['staff-assistant', 'staff-manager', 'staff-lookout']) {
+      const card = findStaff(createStaffDeck(1), id)!;
+      expect(card.freeMarketRerollPerTurn).toBeUndefined();
+      expect(card.marketRelevanceBias).toBeUndefined();
     }
   });
 });
@@ -89,12 +122,12 @@ describe('Group F staff expansion: uniqueness & tier convention (AC4)', () => {
   });
 
   it('staff cards are tier-registered like other families (12-tier, CG-0MT3C744B009DS84)', () => {
-    // All 21 staff cards are tier-assigned and spread across tiers 1-12
-    // (apprentice T1, assistant T2, manager T3, socialite T4, accountant T6,
-    // lookout T7, director T9, executive T10, general-manager T12, plus the 12
-    // specialization applicants across T2-T5, CG-0MT4WXNR80090FXZ).
+    // All 26 staff cards are tier-assigned and spread across tiers 1-12
+    // (apprentice T1, assistant T2, manager T3, socialite T4, investor T5,
+    // accountant T6, lookout T7, director T9, executive T10, general-manager T12,
+    // plus the 12 specialization applicants across T2-T5, CG-0MT4WXNR80090FXZ).
     const staffIds = getCsvRows().filter(r => r.family === 'staff').map(r => r.id);
-    expect(staffIds).toHaveLength(25);
+    expect(staffIds).toHaveLength(26);
     const staffTiers = staffIds.map(id => CARD_TIER_MAP.get(id));
     const validTiers = Array.from({ length: 12 }, (_, i) => String(i + 1));
     for (const t of staffTiers) {

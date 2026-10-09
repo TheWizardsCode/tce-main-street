@@ -6,10 +6,39 @@
  * boot, then applies a Competitive selection through the lifecycle manager and
  * asserts the resulting state is competitive with the chosen seats.
  *
+ * The tutorial offer is now the first blocking boot modal
+ * (MS-0MV0319OC002H15F); the selector is presented first only when the offer is
+ * ineligible. Each test seeds the tutorial state as already seen so it exercises
+ * the selector-first path.
+ *
  * Runs inside Chromium via Vitest browser mode + Playwright.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
+
+/** Key used by TutorialState for the tutorial-offer eligibility flag. */
+const TUTORIAL_STATE_KEY = 'tce-main-street-tutorial-state';
+
+/**
+ * Seeds the persisted tutorial state as "skipped" so the boot flow skips the
+ * tutorial offer and presents the New Game mode selector first.
+ */
+function markTutorialSeen(): void {
+  try {
+    (window as any).localStorage?.setItem(
+      TUTORIAL_STATE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        status: 'skipped',
+        completedAt: null,
+        lastStepId: null,
+        bankingHintShownAt: null,
+      }),
+    );
+  } catch (_) {
+    // ignore in constrained environments
+  }
+}
 
 async function bootGame(): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -33,6 +62,20 @@ function destroyGame(game: Phaser.Game | null): void {
   if (container) container.remove();
 }
 
+/**
+ * Clears persisted run checkpoints/campaign progress. The SaveLoadStore lives
+ * in IndexedDB, which is origin-scoped and shared across browser test files;
+ * without this a confirmed game in one test suppresses the tutorial offer (via
+ * a saved checkpoint) in a later file.
+ */
+async function clearSaveStore(scene: any): Promise<void> {
+  try {
+    await scene?.saveStore?.clear?.();
+  } catch (_) {
+    // ignore in constrained environments
+  }
+}
+
 async function waitForCondition(
   predicate: () => boolean,
   timeoutMs = 10_000,
@@ -49,16 +92,22 @@ async function waitForCondition(
 describe('New Game overlay (browser)', () => {
   let game: Phaser.Game | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
+    const scene = game?.scene.getScene('MainStreetScene') as any;
+    await clearSaveStore(scene);
+    try { (window as any).localStorage?.clear(); } catch (_) { /* ignore */ }
     destroyGame(game);
     game = null;
   });
 
   it('presents the blocking selector at boot and starts a competitive game on confirm', async () => {
+    markTutorialSeen();
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as any;
 
-    // Blocking selector is visible before the first interactive day.
+    // Blocking selector is visible before the first interactive day (the
+    // tutorial offer is ineligible because the state is already "skipped").
+    await waitForCondition(() => scene.newGameOverlay?.isVisible === true);
     expect(scene.newGameOverlay.isVisible).toBe(true);
     expect(scene.newGameOverlay.getSelection().mode).toBe('single-player');
 
@@ -78,8 +127,12 @@ describe('New Game overlay (browser)', () => {
   });
 
   it('presents the selector again after a scene restart (Play Again)', async () => {
+    markTutorialSeen();
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as any;
+
+    // The selector is presented first because the tutorial offer is ineligible.
+    await waitForCondition(() => scene.newGameOverlay?.isVisible === true);
 
     // Complete a boot: confirm a selection, which sets the guard flag.
     scene.msLifecycleManager.applyNewGameSelection({

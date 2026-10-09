@@ -91,8 +91,8 @@ function partitionIntoWeeks() {
 }
 
 describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
-  it('has exactly 26 unified steps after the Day 2/4/8 fixes', () => {
-    expect(UNIFIED_TUTORIAL_STEPS.length).toBe(26);
+  it('has exactly 25 unified steps after the Day 2/4/8 fixes and the favour/bookshop merge', () => {
+    expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25);
   });
 
   it('no day requires more than one action-consuming step (Easy base = 1, no prior bank)', () => {
@@ -115,6 +115,45 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
         ? `Days overbooked (at most 1 consumer per day on Easy):\n${violations.join('\n')}`
         : undefined,
     ).toEqual([]);
+  });
+
+  it('MS-0MT3JK16W006A66P: every day spends exactly one action (no day closes with an unused action)', () => {
+    // Producer review rejected the original flow because the free Community
+    // Favour landed on its own day that then ended without spending the day's
+    // action. The favour day now also places the Bookshop (T16) before ending
+    // (T17), so every day has exactly one consuming action.
+    const days = partitionIntoWeeks();
+    const violations: string[] = [];
+    for (const day of days) {
+      const consumers = day.steps.filter(
+        (s) => s.gate === 'action' && consumesAction(s.requiredAction),
+      );
+      if (consumers.length !== 1) {
+        violations.push(
+          `Day ${day.index} (${day.steps.map((s) => s.id).join(', ')}): ${consumers.length} consumers`,
+        );
+      }
+    }
+    expect(
+      violations,
+      violations.length
+        ? `Days without exactly one spent action:\n${violations.join('\n')}`
+        : undefined,
+    ).toEqual([]);
+  });
+
+  it('MS-0MT3JK16W006A66P: the Community Favour is followed by the Bookshop placement before the day ends', () => {
+    const idxFavour = UNIFIED_TUTORIAL_STEPS.findIndex((s) => s.requiredAction === 'community-favour');
+    expect(idxFavour).toBeGreaterThanOrEqual(0);
+    const next = UNIFIED_TUTORIAL_STEPS[idxFavour + 1];
+    const afterNext = UNIFIED_TUTORIAL_STEPS[idxFavour + 2];
+    // The free favour leaves the day's action available — the Bookshop is
+    // placed next, then the day is closed.
+    expect(next.gate).toBe('action');
+    expect(next.requiredAction).toBe('place-business');
+    expect(next.referencedCardId).toBe('biz-bookshop-0');
+    expect(afterNext.gate).toBe('action');
+    expect(afterNext.requiredAction).toBe('end-turn');
   });
 
   it('simulated run with banking (cap 2) never exceeds available actions', () => {
@@ -169,9 +208,9 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     expect(weekOf('T10')).toBe(3);
   });
 
-  it('eight End Turns delimit nine days (T6, T8, T11, T14, T16, T18, T20, T22)', () => {
+  it('seven End Turns delimit eight days (T6, T8, T11, T14, T17, T19, T21)', () => {
     const endTurnIds = UNIFIED_TUTORIAL_STEPS.filter((s) => s.requiredAction === 'end-turn').map((s) => s.id);
-    expect(endTurnIds).toEqual(['T6', 'T8', 'T11', 'T14', 'T16', 'T18', 'T20', 'T22']);
-    expect(partitionIntoWeeks()).toHaveLength(9);
+    expect(endTurnIds).toEqual(['T6', 'T8', 'T11', 'T14', 'T17', 'T19', 'T21']);
+    expect(partitionIntoWeeks()).toHaveLength(8);
   });
 });

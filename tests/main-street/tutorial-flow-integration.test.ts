@@ -76,10 +76,10 @@ describe('Tutorial Flow Integration - Business Selection', () => {
     expect(getCurrentStep(ctrl)?.id).toBe('T13');
   });
 
-  it('T23 play-event is required after T22', () => {
+  it('T22 play-event is required after T21', () => {
     let ctrl = startTutorial(createTutorialControllerState());
-    for (let i = 0; i < 22; i++) ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T23');
+    for (let i = 0; i < 21; i++) ctrl = completeCurrentStep(ctrl).newState;
+    expect(getCurrentStep(ctrl)?.id).toBe('T22');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('play-event');
     expect(isRequiredAction(ctrl, 'play-event')).toBe(true);
   });
@@ -109,7 +109,7 @@ describe('Tutorial Flow Integration - Business Selection', () => {
   });
 
   // ── Place-business step completion (CG-0MTMYI6YP0040NT5) ──
-  // During place-business steps (T7/T15/T19), select-hand-card is allowed
+  // During place-business steps (T7/T16/T20), select-hand-card is allowed
   // (isRequiredAction returns true) but does NOT complete the step.
   // Only place-business completes the step.
 
@@ -135,32 +135,33 @@ describe('Tutorial Flow Integration - Business Selection', () => {
     expect(getCurrentStep(ctrl)?.gate).toBe('action');
   });
 
-  it('T17 place-business: select-hand-card is allowed but does NOT complete the step', () => {
+  it('T16 place-business: select-hand-card is allowed but does NOT complete the step', () => {
     let ctrl = startTutorial(createTutorialControllerState());
-    for (let i = 0; i < 16; i++) ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T17');
+    for (let i = 0; i < 15; i++) ctrl = completeCurrentStep(ctrl).newState;
+    expect(getCurrentStep(ctrl)?.id).toBe('T16');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('place-business');
 
     expect(isRequiredAction(ctrl, 'select-hand-card')).toBe(true);
     expect(isRequiredAction(ctrl, 'place-business')).toBe(true);
 
-    // Complete the step — should advance to T16
+    // Complete the step — should advance to T17 (the day's end-turn)
     ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T18');
+    expect(getCurrentStep(ctrl)?.id).toBe('T17');
+    expect(getCurrentStep(ctrl)?.requiredAction).toBe('end-turn');
   });
 
-  it('T21 place-business: select-hand-card is allowed but does NOT complete the step', () => {
+  it('T20 place-business: select-hand-card is allowed but does NOT complete the step', () => {
     let ctrl = startTutorial(createTutorialControllerState());
-    for (let i = 0; i < 20; i++) ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T21');
+    for (let i = 0; i < 19; i++) ctrl = completeCurrentStep(ctrl).newState;
+    expect(getCurrentStep(ctrl)?.id).toBe('T20');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('place-business');
 
     expect(isRequiredAction(ctrl, 'select-hand-card')).toBe(true);
     expect(isRequiredAction(ctrl, 'place-business')).toBe(true);
 
-    // Complete the step — should advance to T20
+    // Complete the step — should advance to T21 (the day's end-turn)
     ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T22');
+    expect(getCurrentStep(ctrl)?.id).toBe('T21');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('end-turn');
   });
 });

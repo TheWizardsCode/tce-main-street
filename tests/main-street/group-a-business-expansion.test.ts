@@ -53,18 +53,18 @@ interface NewBusinessContract {
 const NEW_BUSINESS_CONTRACTS: NewBusinessContract[] = [
   // Income values re-derived by the 5-turn payback rebalance (MS-0MUQUBJFL0076RT6):
   // baseIncome = cost / targetPayback + ongoingCost (cost-graded targets).
-  { id: 'biz-juice-bar', name: 'Juice Bar', cost: 500, baseIncome: 225, synergyTypes: ['Food', 'Health'], tier: '5', reputationPerTurn: 8 },
-  { id: 'biz-yoga-studio', name: 'Yoga Studio', cost: 800, baseIncome: 345, synergyTypes: ['Culture', 'Health'], tier: '9', reputationPerTurn: 12 },
-  { id: 'biz-physio', name: 'Physiotherapist', cost: 1000, baseIncome: 432, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 15 },
-  { id: 'biz-tailor', name: 'Tailor', cost: 500, baseIncome: 225, synergyTypes: ['Service'], tier: '6', reputationPerTurn: 8 },
-  { id: 'biz-gym', name: 'Gym', cost: 800, baseIncome: 345, synergyTypes: ['Health'], tier: '9', reputationPerTurn: 12 },
-  { id: 'biz-dentist', name: 'Dentist', cost: 1200, baseIncome: 485, synergyTypes: ['Health'], tier: '11', reputationPerTurn: 20 },
-  { id: 'biz-toy-store', name: 'Toy Store', cost: 500, baseIncome: 225, synergyTypes: ['Commerce'], tier: '6', reputationPerTurn: 8 },
-  { id: 'biz-music-store', name: 'Music Store', cost: 800, baseIncome: 345, synergyTypes: ['Entertainment'], tier: '10', reputationPerTurn: 12 },
-  { id: 'biz-delicatessen', name: 'Delicatessen', cost: 500, baseIncome: 225, synergyTypes: ['Food'], tier: '7', reputationPerTurn: 8 },
-  { id: 'biz-craft-shop', name: 'Craft Shop', cost: 500, baseIncome: 225, synergyTypes: ['Culture'], tier: '7', reputationPerTurn: 8 },
-  { id: 'biz-hotel', name: 'Grand Hotel', cost: 1600, baseIncome: 629, synergyTypes: ['Service'], tier: '12', reputationPerTurn: 30 },
-  { id: 'biz-teahouse', name: 'Teahouse', cost: 700, baseIncome: 315, synergyTypes: ['Food', 'Culture'], tier: '7', reputationPerTurn: 10 },
+  { id: 'biz-juice-bar', name: 'Juice Bar', cost: 500, baseIncome: 225, synergyTypes: ['Food', 'Health'], tier: '5', reputationPerTurn: 32 },
+  { id: 'biz-yoga-studio', name: 'Yoga Studio', cost: 800, baseIncome: 345, synergyTypes: ['Culture', 'Health'], tier: '9', reputationPerTurn: 48 },
+  { id: 'biz-physio', name: 'Physiotherapist', cost: 1000, baseIncome: 432, synergyTypes: ['Health', 'Service'], tier: '11', reputationPerTurn: 60 },
+  { id: 'biz-tailor', name: 'Tailor', cost: 500, baseIncome: 225, synergyTypes: ['Service'], tier: '6', reputationPerTurn: 32 },
+  { id: 'biz-gym', name: 'Gym', cost: 800, baseIncome: 345, synergyTypes: ['Health'], tier: '9', reputationPerTurn: 48 },
+  { id: 'biz-dentist', name: 'Dentist', cost: 1200, baseIncome: 485, synergyTypes: ['Health'], tier: '11', reputationPerTurn: 80 },
+  { id: 'biz-toy-store', name: 'Toy Store', cost: 500, baseIncome: 225, synergyTypes: ['Commerce'], tier: '6', reputationPerTurn: 32 },
+  { id: 'biz-music-store', name: 'Music Store', cost: 800, baseIncome: 345, synergyTypes: ['Entertainment'], tier: '10', reputationPerTurn: 48 },
+  { id: 'biz-delicatessen', name: 'Delicatessen', cost: 500, baseIncome: 225, synergyTypes: ['Food'], tier: '7', reputationPerTurn: 32 },
+  { id: 'biz-craft-shop', name: 'Craft Shop', cost: 500, baseIncome: 225, synergyTypes: ['Culture'], tier: '7', reputationPerTurn: 32 },
+  { id: 'biz-hotel', name: 'Grand Hotel', cost: 1600, baseIncome: 629, synergyTypes: ['Service'], tier: '12', reputationPerTurn: 120 },
+  { id: 'biz-teahouse', name: 'Teahouse', cost: 700, baseIncome: 315, synergyTypes: ['Food', 'Culture'], tier: '7', reputationPerTurn: 40 },
 ];
 
 function byId(templates: readonly { id: string }[], id: string): BusinessCard | undefined {
@@ -246,6 +246,6 @@ describe('Group A business expansion: balance guardrails (AC4)', () => {
     expect(createCommunitySpaceDeck(1).length).toBe(8); // +6 Group B community-space cards
     expect(createEventDeck(1, undefined, createSeededRng(42), 1).length).toBe(71); // +8 chain + 7 Irish-holiday (CG-0MTT0K9RX0004QTE)
     expect(createUpgradeDeck(1).length).toBe(39); // +12 Group E upgrades
-    expect(createStaffDeck(1).length).toBe(25); // +4 Group F staff, +1 General Manager (CG-0MSTOF1N5005PK2R), +1 Lookout (CG-0MSXOW6GN008ZSMN), +12 specialization applicants (CG-0MT4WXNR80090FXZ), +4 business specialists (CG-0MTIOLY2A0092OT1)
+    expect(createStaffDeck(1).length).toBe(26); // +4 Group F staff, +1 General Manager (CG-0MSTOF1N5005PK2R), +1 Lookout (CG-0MSXOW6GN008ZSMN), +12 specialization applicants (CG-0MT4WXNR80090FXZ), +4 business specialists (CG-0MTIOLY2A0092OT1), +1 Investor (MS-0MTISBYLS009936W)
   });
 });

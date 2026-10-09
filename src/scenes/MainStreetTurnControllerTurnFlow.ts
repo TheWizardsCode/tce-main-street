@@ -23,6 +23,7 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
+import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import {
   endCompetitiveTurnDay,
   isCompetitiveState,
@@ -67,6 +68,11 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     s.hintedSlotIndex = null;
 
     s.refreshAll();
+
+    // A new turn begins: clear the previous crowd and let a fresh set wander
+    // onto the street from the block corners (MS-0MUZ4WB290024ZGQ).
+    // Presentation-only; a failure must never stall the turn.
+    try { s.msPedestrians?.startNewTurn?.(); } catch (_) { /* presentation-only */ }
 
     // Day transition banner: non-interactive "Week W · Year Y" reveal at the board
     // centre (skipped under reduced motion / replay — handled inside the
@@ -209,6 +215,13 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
       return;
     }
 
+    // ── Pedestrian end-of-turn exit ────────────────────────────────
+    // The crowd does not vanish at the end of the day: figures that are not
+    // spending walk off the block during the end phase, and enough figures
+    // walk into occupied shops to source the reputation income
+    // (MS-0MUZ6CGSV002WTYM). Presentation-only; never blocks the turn.
+    try { s.msPedestrians?.beginEndOfTurn?.(); } catch (_) { /* presentation-only */ }
+
     // ── Income Phase Animation ──────────────────────────────────────
     // Presentation-only VFX (AGENTS.md rule 8 + epic CG-0MT23O6W8003AXWJ):
     // the phased income show — base → synergy → reputation → events →
@@ -315,15 +328,9 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
       return;
     }
 
-    // Show income feedback briefly then start next turn
-    if (result.income && result.income.total > 0) {
-      s.instructionText.setText(
-        `Income: +${result.income.total} coins` +
-        (result.incident ? ` | Incident: ${result.incident.name}` : ''),
-      );
-    } else if (result.incident) {
-      s.instructionText.setText(`Incident: ${result.incident.name}`);
-    }
+    // The income/incident summary text is set by the shared closing
+    // presentation primitive below, so the single-player and competitive
+    // flows cannot drift (MS-0MUYFX7Q2004JQ5R).
     // While the phased income show runs, the street cards host the
     // on-card coin grids (child 2); refresh everything EXCEPT the
     // street so those grids survive until collection completes, then
@@ -461,55 +468,17 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // delay, no state mutation — and the day advances as before.
     const inTutorial =
       (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
-    if (result.incident && !inTutorial) {
-      try {
-        // If income collection is active, wait for it to complete before
-        // starting the incident reveal (ensures distinct, non-overlapping phases).
-        if (s.incomeCollectionActive) {
-          const startAfterIncome = (): void => {
-            if (s.incomeCollectionActive) {
-              s.time.delayedCall(250, startAfterIncome);
-            } else {
-              const incident = result.incident;
-              if (!incident) {
-                advanceTurn();
-                return;
-              }
-              s.msAnimator.animateIncidentReveal({
-                cardId: incident.id,
-                incidentName: incident.name,
-                coinChange: result.incidentCoinChange,
-                repChange: result.incidentRepChange,
-                from: s.msRenderer.getFrontIncidentCardCenter(),
-                onComplete: advanceTurn,
-                pendingDeltas: deferred ? result : undefined,
-              });
-            }
-          };
-          startAfterIncome();
-        } else {
-          const incident = result.incident;
-          if (!incident) {
-            advanceTurn();
-            return;
-          }
-          s.msAnimator.animateIncidentReveal({
-            cardId: incident.id,
-            incidentName: incident.name,
-            coinChange: result.incidentCoinChange,
-            repChange: result.incidentRepChange,
-            from: s.msRenderer.getFrontIncidentCardCenter(),
-            onComplete: advanceTurn,
-            pendingDeltas: deferred ? result : undefined,
-          });
-        }
-      } catch (_) {
-        // presentation-only — never let the reveal hang the turn.
-        advanceTurn();
-      }
-    } else {
-      advanceTurn();
-    }
+    // Shared closing presentation primitive (MS-0MUYFX7Q2004JQ5R): the income
+    // summary, incident reveal (with the deferred-delta window) and the day
+    // advance are driven by one path used by both single-player and
+    // competitive. The tutorial keeps its window-safe pacing by skipping the
+    // reveal (`animateIncident: false`); reduced motion / replay delegate to the
+    // animator so its own pacing is unchanged (`delegateReducedMotionIncident`).
+    presentTurnClosing(tcCtx, result, advanceTurn, {
+      animateIncident: !inTutorial,
+      delegateReducedMotionIncident: true,
+      pendingDeltas: deferred ? result : undefined,
+    });
   
 }
 
@@ -685,7 +654,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
 
     // Tutorial gating: only allow play-event if it's the required action or
-    // the tutorial is inactive (T14 "Triggering Events" uses this gate).
+    // the tutorial is inactive (T22 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);
     if (check && !check.allowed) {
       s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');

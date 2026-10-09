@@ -12,7 +12,7 @@ import { executeAction } from './MainStreetEngineActions';
 import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
-import { decideEventChoice, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
+import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
@@ -628,35 +628,24 @@ export function checkEndConditions(state: MainStreetState): boolean {
   // Score threshold — endless-mode branch (CG-0MTIILU5V006GCN4)
   if (state.finalScore >= state.config.winThreshold) {
     if (state.config.endlessMode) {
-      // Record the crossing (idempotent: the first crossing sets the
-      // winner-declared signal; subsequent turns keep it).
-      if (state.endReason === null) {
-        // First time the threshold is crossed in this run
-        state.endReason = 'score_threshold_continue';
-        addLog(
-          state,
-          `Threshold crossed (${state.finalScore} pts) — endless mode continues.`,
-          'gain',
-        );
-      } else if (state.endReason === 'score_threshold_continue') {
-        // Already beyond threshold — keep the signal and continue.
-        addLog(
-          state,
-          `Endless mode: score ${state.finalScore} pts (threshold ${state.config.winThreshold}).`,
-          'gain',
-        );
-      } else {
-        // A terminal reason was already set (e.g. all_challenges) —
-        // let that earlier terminal reason stand; no additional log.
+      // Already declared and accepted: keep playing. `score_threshold_continue`
+      // is the "winner declared but still playing" marker; once the player
+      // accepts the offer `gameResult` is `'playing'` and scoring continues.
+      if (state.endReason === 'score_threshold_continue') {
+        return false;
       }
-      // Do NOT end the game when endless mode is on — play continues.
-      // Return false so the caller (processEndOfTurn) proceeds to the
-      // next turn instead of reporting game over.
-      // Exception: if a terminal reason was already set, treat as terminal.
-      // But at this point we only reach here with endReason being null or
-      // score_threshold_continue — any other terminal reason was handled
-      // above (all_challenges). So we keep playing.
-      return false;
+      // First crossing: declare the win and open the endless-continuation
+      // offer. Play pauses here so the end-game overlay can present the
+      // "Enter Endless Mode" action; accepting it calls
+      // `continueAfterThreshold`, declining leaves the declared win.
+      state.gameResult = 'win';
+      state.endReason = 'score_threshold_continue';
+      addLog(
+        state,
+        `Victory: Score threshold reached (${state.finalScore} pts) — enter endless mode to keep playing.`,
+        'gain',
+      );
+      return true;
     }
     // Non-endless (default): threshold wins end the game.
     state.gameResult = 'win';
@@ -917,6 +906,37 @@ export function continueAfterLastStanding(state: MainStreetState): boolean {
 }
 
 /**
+ * Accepts the endless-continuation offer after the score threshold is
+ * reached with `config.endlessMode === true` (CG-0MTIILU5V006GCN4).
+ *
+ * Resumes play at the next shared week with `gameResult = 'playing'` while
+ * keeping `endReason = 'score_threshold_continue'` as the winner-declared
+ * marker so later EndChecks do not re-open the offer. Mirrors
+ * {@link continueAfterLastStanding} (the continue-solo path).
+ *
+ * Idempotent — a no-op unless the offer is open (`endReason ===
+ * 'score_threshold_continue'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueAfterThreshold(state: MainStreetState): boolean {
+  if (state.endReason !== 'score_threshold_continue') return false;
+  // Idempotent: once accepted `gameResult` is `'playing'`; never advance twice.
+  if (state.gameResult === 'playing') return false;
+  state.gameResult = 'playing';
+  // Advance to the next shared week so the resumed day starts cleanly
+  // (mirrors continueAfterLastStanding).
+  state.turn += 1;
+  advanceWeek(state);
+  const bankable = Math.min(state.actionsRemaining, 1);
+  state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
+  state.phase = 'WeekStart';
+  state.activePlayerId = Math.max(0, findHumanSeatId(state));
+  addLog(state, 'Continuing in endless mode after the threshold win.', 'neutral');
+  return true;
+}
+
+/**
  * Applies the competitive per-seat failure evaluation to the game result.
  *
  * A failing **human** seat keeps the existing single-player loss semantics
@@ -963,10 +983,12 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * Win conditions (checked in order):
  * 1. All challenges complete (activeChallenges.length > 0 and all completed)
  * 2. Score threshold: finalScore >= config.winThreshold — unless endless
- *    mode is enabled (`config.endlessMode === true`, CG-0MTIILU5V006GCN4),
- *    in which case the threshold sets `endReason` to
- *    `score_threshold_continue` but keeps `gameResult` as `playing` so
- *    the player (or players in competitive mode) may continue building.
+ *    mode is enabled (`config.endlessMode === true`, CG-0MTIILU5V006GCN4).
+ *    In endless mode the threshold declares the win and opens the endless-
+ *    continuation offer: `gameResult` is `'win'` and `endReason` is
+ *    `score_threshold_continue` until the player accepts the offer via
+ *    {@link continueAfterThreshold}, at which point `gameResult` returns to
+ *    `'playing'` and scoring continues.
  * 3. Turn limit (opt-in): turn >= config.maxTurns with positive reputation and
  *    coins >= 0 — only fires when a config explicitly sets `maxTurns`
  *    (default presets impose no turn limit, CG-0MSLXJCHH001DLIO).
@@ -977,8 +999,9 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * 3. Turn exhaustion (opt-in): turn >= config.maxTurns and no win condition
  *    met — only fires when a config explicitly sets `maxTurns`.
  *
- * @returns true if a game-ending condition was detected (false in endless
- *          continuation when the score threshold is crossed but play continues).
+ * @returns true when the game ends, or when endless mode pauses at the
+ *          threshold to offer continuation; false while play continues
+ *          after the offer is accepted.
  */
 
 /**
@@ -991,6 +1014,13 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * wins on a tie in the same EndCheck). The winner is stored as
  * `competitiveWinnerId`.
  *
+ * Endless mode (`config.endlessMode === true`, CG-0MTIILU5V006GCN4): the first
+ * player to reach the threshold is declared the winner but the game pauses
+ * with the endless-continuation offer (`endReason = 'score_threshold_continue'`)
+ * instead of ending. Accepting via {@link continueAfterThreshold} returns
+ * `gameResult` to `'playing'` and scoring continues; the marker is kept so
+ * later EndChecks do not re-open the offer.
+ *
  * In single-player (no players[]), delegates to the legacy checkEndConditions.
  */
 export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
@@ -1002,24 +1032,61 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
 
   updateCompetitiveScores(state);
 
+  // The human seat index (or -1 when none). A win by any other seat is a
+  // loss for the human player (MS-0MUX6PMCE002I6HO AC1).
+  const humanIdx = findHumanSeatId(state);
+
   // Win: all challenges complete — shared milestone; lowest-index player takes it.
   if (
     state.activeChallenges.length > 0 &&
     state.activeChallenges.every(ac => ac.completed)
   ) {
-    state.gameResult = 'win';
+    const winnerIdx = 0;
+    const isHumanWin = winnerIdx === humanIdx;
+    state.gameResult = isHumanWin ? 'win' : 'loss';
     state.endReason = 'all_challenges';
-    state.competitiveWinnerId = 0;
-    addLog(state, `Victory: All challenges completed! (Player ${0})`, 'gain');
+    state.competitiveWinnerId = winnerIdx;
+    addLog(
+      state,
+      `${isHumanWin ? 'Victory' : 'Defeat'}: All challenges completed! (Player ${winnerIdx})`,
+      isHumanWin ? 'gain' : 'loss',
+    );
     return true;
   }
 
+  // Each seat races toward the effective win threshold: the base difficulty
+  // value divided by the seat count (human + AI) and rounded to the nearest
+  // 50, so a larger roster still reaches the win in a comparable run length
+  // (MS-0MUZH6V7C0091SGE). Single-player (`playerCount` undefined) resolves
+  // to the unchanged base value, which is already a multiple of 50.
+  const effectiveThreshold = effectiveWinThreshold(state);
   for (let i = 0; i < state.players.length; i++) {
-    if (state.players[i].score >= state.config.winThreshold) {
-      state.gameResult = 'win';
+    if (state.players[i].score >= effectiveThreshold) {
+      const isHumanWin = i === humanIdx;
+      // Endless mode: declare the first-to-threshold winner but pause with
+      // the endless-continuation offer instead of ending the match.
+      if (state.config.endlessMode) {
+        if (state.endReason === 'score_threshold_continue') {
+          return false;
+        }
+        state.gameResult = isHumanWin ? 'win' : 'loss';
+        state.endReason = 'score_threshold_continue';
+        state.competitiveWinnerId = i;
+        addLog(
+          state,
+          `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score}) — enter endless mode to keep playing.`,
+          isHumanWin ? 'gain' : 'loss',
+        );
+        return true;
+      }
+      state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'score_threshold';
       state.competitiveWinnerId = i;
-      addLog(state, `Victory: Player ${i} reached threshold (${state.players[i].score} pts)`, 'gain');
+      addLog(
+        state,
+        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score})`,
+        isHumanWin ? 'gain' : 'loss',
+      );
       return true;
     }
   }
@@ -1038,10 +1105,15 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
       state.players[bestIdx].reputation > 0 &&
       state.players[bestIdx].coins >= 0
     ) {
-      state.gameResult = 'win';
+      const isHumanWin = bestIdx === humanIdx;
+      state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'turn_limit_victory';
       state.competitiveWinnerId = bestIdx;
-      addLog(state, `Victory: Player ${bestIdx} survived ${state.config.maxTurns} turns (${bestScore} pts)`, 'gain');
+      addLog(
+        state,
+        `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${bestIdx} survived ${state.config.maxTurns} turns (${bestScore} pts)`,
+        isHumanWin ? 'gain' : 'loss',
+      );
       return true;
     }
     state.gameResult = 'loss';

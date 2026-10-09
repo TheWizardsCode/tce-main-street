@@ -65,7 +65,7 @@ describe('Library card stats (reputation asset)', () => {
     expect(library).toBeDefined();
     expect(library!.baseIncome).toBe(0);
     expect(library!.ongoingCost).toBe(25);
-    expect(library!.reputationPerTurn).toBe(10);
+    expect(library!.reputationPerTurn).toBe(40);
     // Empty synergy fields (Park pattern) default to a 0.5 coin synergy rate,
     // so the Library participates in neighbours' Culture synergy (reversed by
     // CG-0MSKS963N000ZSTU).
@@ -364,8 +364,9 @@ describe('Community Hub upgrade (upg-community-hub)', () => {
     expect(library.incomeBonus).toBe(0);
     expect(library.synergyRangeBonus).toBe(0);
     expect(library.reputationBonus).toBe(10);
-    // Effective reputation per turn = base 10 + upgrade bonus 10
-    expect((library.reputationPerTurn ?? 0) + library.reputationBonus).toBeCloseTo(20, 5);
+    // Effective reputation per turn = base 40 (re-tuned ×4 by
+    // MS-0MUR9IMN60093HIE) + upgrade bonus 10
+    expect((library.reputationPerTurn ?? 0) + library.reputationBonus).toBeCloseTo(50, 5);
   });
 
   it('should have a rebalanced cost per the upgrade formula', () => {
