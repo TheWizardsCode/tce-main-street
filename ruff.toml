@@ -1,0 +1,14 @@
+# Ruff configuration for the Main Street game repository.
+#
+# This is the game repo's own ruff config (the TypeScript engine config lives
+# in the `core/` submodule at `core/ruff.toml`). Ruff discovers configuration
+# relative to the file being checked, so root-level Python files such as the
+# ephemeral `tmp_*.py` harnesses only see this file — the submodule config
+# under `core/` never applies to them.
+[lint.per-file-ignores]
+# `tmp_*.py` scripts are ephemeral harnesses that are never intended to be
+# run directly. They carry a shebang for readability but are invoked as
+# `python3 tmp_*.py`, so the missing executable bit is expected and EXE001
+# ("shebang is present but file is not executable") is a false positive.
+# Confirmed by the producer in MS-0MURO5BCA003DNVB.
+"tmp_*.py" = ["EXE001"]
