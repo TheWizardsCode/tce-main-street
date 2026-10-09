@@ -4,10 +4,18 @@
  * Verifies that the Activity Log scrollable content area computes
  * correct scroll bounds using actual rendered content heights,
  * accounting for word-wrapped entries.
+ *
+ * Also carries the Activity Log content regression coverage
+ * (MS-0MV14JDUG000E1V6): the log must render non-empty content on scene load
+ * and after a completed turn in single-player, tutorial and competitive modes,
+ * and must never be left blank by a deferral flag that survived a scene
+ * restart. See the `content regression` describe block at the end.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
+import { getEventTemplates } from '../../src/MainStreetCards';
 
 async function bootGame(): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -54,6 +62,34 @@ function waitFrames(n: number, fallbackMs = 2000): Promise<void> {
 
     requestAnimationFrame(tick);
   });
+}
+
+/**
+ * The rendered Activity Log text strings.
+ *
+ * A Phaser `Text` game object stores its rendered string in `.text` directly
+ * (there is no nested `.text.text`, which is always `undefined`). Filtering to
+ * `Text` objects also excludes the `Graphics` turn-header bars, which carry no
+ * text.
+ */
+function renderedLogTexts(scene: any): string[] {
+  return (scene.logContentContainer.list as any[])
+    .filter((child) => child instanceof Phaser.GameObjects.Text)
+    .map((child: any) => child.text as string);
+}
+
+/** Poll until `predicate` is true, or reject after `timeoutMs`. */
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs = 10_000,
+  intervalMs = 100,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out waiting for condition after ${timeoutMs}ms`);
 }
 
 describe('MainStreet Activity Log scroll bounds', () => {
@@ -715,7 +751,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     scene.msRenderer.refreshLog();
     await waitFrames(3);
 
-    const texts = scene.logContentContainer.list.map((c: any) => c.text?.text);
+    const texts = renderedLogTexts(scene);
     expect(texts).toContain('Deferred entry');
   });
 
@@ -736,7 +772,7 @@ describe('MainStreet Activity Log scroll bounds', () => {
     scene.msRenderer.refreshLog();
     await waitFrames(3);
 
-    const texts = scene.logContentContainer.list.map((c: any) => c.text?.text);
+    const texts = renderedLogTexts(scene);
     const a = texts.indexOf('Order A');
     const b = texts.indexOf('Order B');
     const c = texts.indexOf('Order C');
@@ -744,4 +780,156 @@ describe('MainStreet Activity Log scroll bounds', () => {
     expect(a).toBeLessThan(b);
     expect(b).toBeLessThan(c);
   });
+});
+
+/**
+ * Activity Log content regression (MS-0MV14JDUG000E1V6).
+ *
+ * The producer-reported regression is a blank Activity Log: the panel and its
+ * title render but the content area is empty and never fills. The root cause
+ * is the scene-instance `logDeferredUntilPhaseComplete` flag: it is set during
+ * the end-of-turn closing and cleared on flush, but it is **not** reset on
+ * scene creation. Because Phaser reuses the scene instance across
+ * `scene.restart()` / `scene.start()` (and `state` replacements), a flag left
+ * set suppresses every subsequent `refreshLog` render for the rest of the
+ * session. The flag was introduced by commit `7441311`
+ * (MS-0MURBOD2E009SOM2) without a matching reset (identified by commit-diff
+ * inspection: `logDeferredUntilPhaseComplete` appears only in that commit's
+ * source diff, and the `create()` log-state reset never clears it).
+ *
+ * RED PHASE: the blank-log repro below is `it.fails` until the fix child
+ * (MS-0MV1BMMO900824N9) resets the flag on scene creation, at which point it
+ * must be flipped to a plain `it` — mirroring the project's established
+ * red-phase convention (`it.fails` while the dependent fix is in flight).
+ */
+describe('MainStreet Activity Log content regression (MS-0MV14JDUG000E1V6)', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  /** Force non-choice incidents so a completed turn never pauses on a dialog. */
+  function forceSafeIncidents(scene: any): void {
+    const safeTemplates = getEventTemplates().filter((t) =>
+      ['evt-award', 'evt-good-press', 'evt-graffiti-art', 'evt-street-cleaning'].includes(t.id),
+    );
+    scene.state.incidentDeck.length = 0;
+    scene.state.incidentDeck.push(
+      ...safeTemplates.map((t, i) => ({ ...t, id: `${t.id}-${i}` })),
+      ...safeTemplates.map((t, i) => ({ ...t, id: `${t.id}-${i + 10}` })),
+    );
+  }
+
+  it('renders non-empty log content on load and after a completed turn (single-player)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    await waitFrames(10);
+
+    // On load the week-start turn header is rendered.
+    expect(renderedLogTexts(scene).length).toBeGreaterThan(0);
+    expect(renderedLogTexts(scene)).toContain('Turn 1');
+
+    // Complete a turn through the real scene end-turn path.
+    forceSafeIncidents(scene);
+    const beforeTurn = scene.state.turn;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await waitForCondition(() => scene.state.turn > beforeTurn, 15_000);
+
+    // The deferred flush renders the accumulated entries once the closing
+    // presentation completes.
+    await waitForCondition(
+      () =>
+        scene.logDeferredUntilPhaseComplete === false &&
+        renderedLogTexts(scene).includes(`Turn ${scene.state.turn}`),
+      15_000,
+    );
+
+    const texts = renderedLogTexts(scene);
+    expect(texts.length).toBeGreaterThan(1);
+    expect(texts).toContain(`Turn ${scene.state.turn}`);
+  }, 60_000);
+
+  it('renders non-empty log content on load and after a completed turn (tutorial)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    await waitFrames(5);
+
+    // Start the tutorial exactly as the tutorial offer does: replace the state
+    // with the deterministic tutorial scenario and start the day.
+    const { createTutorialScenario } = await import('../../src/TutorialScenario');
+    scene.selectedDifficulty = 'Easy';
+    scene.state = createTutorialScenario();
+    scene.startTurnPhase(false, true);
+    scene.refreshAll();
+    await waitFrames(5);
+
+    expect(renderedLogTexts(scene).length).toBeGreaterThan(0);
+    expect(renderedLogTexts(scene)).toContain('Turn 1');
+
+    // Complete a turn at the engine level (the tutorial gates the interactive
+    // End Turn), then refresh the renderer.
+    const beforeCount = renderedLogTexts(scene).length;
+    endTurnHeadless(scene.state);
+    executeWeekStart(scene.state);
+    scene.refreshAll();
+    await waitFrames(5);
+
+    const texts = renderedLogTexts(scene);
+    expect(texts.length).toBeGreaterThan(beforeCount);
+    expect(texts.some((t) => t.startsWith('Turn '))).toBe(true);
+  }, 60_000);
+
+  it('renders non-empty log content on load and after a completed turn (competitive)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    await waitFrames(5);
+
+    scene.msLifecycleManager.applyNewGameSelection({
+      mode: 'competitive',
+      opponents: [{ strategy: 'Greedy', difficulty: 'Medium' }],
+    });
+    await waitForCondition(() => (scene.state.players?.length ?? 0) === 2, 20_000);
+    await waitFrames(5);
+
+    expect(renderedLogTexts(scene).length).toBeGreaterThan(0);
+    expect(renderedLogTexts(scene)).toContain('Turn 1');
+
+    const beforeCount = renderedLogTexts(scene).length;
+    endTurnHeadless(scene.state);
+    executeWeekStart(scene.state);
+    scene.refreshAll();
+    await waitFrames(5);
+
+    const texts = renderedLogTexts(scene);
+    expect(texts.length).toBeGreaterThan(beforeCount);
+    expect(texts.some((t) => t.startsWith('Turn '))).toBe(true);
+  }, 60_000);
+
+  // RED PHASE: fails until MS-0MV1BMMO900824N9 resets
+  // `logDeferredUntilPhaseComplete` on scene creation — then flip to `it`.
+  it.fails('renders the log after a scene restart even when the deferred-render flag was left set', async () => {
+    // Blank-log regression: the scene-instance deferral flag must be reset on
+    // scene creation, otherwise a flag left set across `scene.restart()` keeps
+    // `refreshLog` suppressed and the Activity Log stays blank. This test
+    // FAILS on the pre-fix revision (introduced by 7441311) and passes once
+    // the flag is reset in `create()`.
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    await waitFrames(10);
+
+    // Simulate a closing presentation interrupted before its flush.
+    scene.logDeferredUntilPhaseComplete = true;
+
+    scene.scene.restart();
+    await waitForScene(game, 'MainStreetScene');
+    const restarted = game.scene.getScene('MainStreetScene') as any;
+    await waitFrames(10);
+
+    expect(restarted.logDeferredUntilPhaseComplete).toBe(false);
+    const texts = renderedLogTexts(restarted);
+    expect(texts.length).toBeGreaterThan(0);
+    expect(texts).toContain('Turn 1');
+  }, 60_000);
 });
