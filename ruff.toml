@@ -11,4 +11,11 @@
 # `python3 tmp_*.py`, so the missing executable bit is expected and EXE001
 # ("shebang is present but file is not executable") is a false positive.
 # Confirmed by the producer in MS-0MURO5BCA003DNVB.
-"tmp_*.py" = ["EXE001"]
+#
+# I001 ("import block is un-sorted or un-formatted") is likewise a cosmetic
+# style rule with no functional impact; on throwaway `tmp_*.py` harnesses the
+# import order is irrelevant, so it is suppressed here too. Confirmed by the
+# same `tmp_*.py` false-positive decision (producer-confirmed in
+# MS-0MURO5BCA003DNVB) that these scripts are ephemeral and exempt from
+# lint-worthy style; see MS-0MURO5B1M00279E0.
+"tmp_*.py" = ["EXE001", "I001"]
