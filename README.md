@@ -128,7 +128,7 @@ npm run preview   # http://localhost:4173/tce-main-street/
 | `public/assets/` | Card art, audio and other static assets bundled into the build. |
 | `configs/game.json` | The single-game preset: the core-owned Gym plus Main Street. |
 | `core/` | Git submodule pointing at the Tableau Card Engine (shared engine + toolchain). |
-| `docs/` | Design and balance documentation. |
+| `docs/` | Design, balance and localization documentation — including `docs/main-street/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). |
 | `.github/workflows/deploy.yml` | GitHub Pages build-and-deploy workflow. |
 
 The `./core` submodule is pinned to a specific engine commit; update it with
