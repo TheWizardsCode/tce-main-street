@@ -481,35 +481,38 @@ describe('BrowserLocalStorageAdapter', () => {
   });
 });
 
-// ── shouldTriggerBankingHint (CG-0MUACDDMX004KWY8) ──────────
+// ── shouldTriggerBankingHint (MS-0MT3JK16W006A66P) ──────────
 
 describe('shouldTriggerBankingHint', () => {
-  it('does NOT trigger while the tutorial is active', () => {
-    // Regression: the banking hint previously fired mid-tutorial and
-    // dead-ended tutorial progression (CG-0MUACDDMX004KWY8).
+  it('triggers when the tutorial is active with unused actions (first bank)', () => {
+    // The banking hint fires during the tutorial on the first end-turn
+    // with remaining actions so the player learns about action banking
+    // (MS-0MT3JK16W006A66P — producer clarification 2026-10-09).
     expect(
       shouldTriggerBankingHint({
         tutorialActive: true,
         actionsRemaining: 2,
         alreadyShown: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('triggers in normal play with an unused action and no prior hint', () => {
+  it('does NOT trigger in normal play (hint is tutorial-only)', () => {
+    // The banking hint is scoped to the tutorial flow; normal play has
+    // no hint overlay (MS-0MT3JK16W006A66P).
     expect(
       shouldTriggerBankingHint({
         tutorialActive: false,
         actionsRemaining: 1,
         alreadyShown: false,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('does NOT trigger when there are no bankable actions remaining', () => {
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: false,
+        tutorialActive: true,
         actionsRemaining: 0,
         alreadyShown: false,
       }),
@@ -519,7 +522,7 @@ describe('shouldTriggerBankingHint', () => {
   it('does NOT trigger once the hint has already been shown (one-shot)', () => {
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: false,
+        tutorialActive: true,
         actionsRemaining: 2,
         alreadyShown: true,
       }),

@@ -129,13 +129,17 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.instructionText.setText('Processing end of turn...');
     s.refreshActionButtons();
 
-    // ── Banking hint trigger (CG-0MT3JK16W006A66P) ────────────────
-    // Contextual one-shot hint: when the tutorial is NOT active, the player
+    // ── Banking hint trigger (MS-0MT3JK16W006A66P) ────────────────
+    // Contextual one-shot hint: when the tutorial is active, the player
     // ends a turn with at least one unused action (a bankable action), and
     // the hint has not yet been shown, remember the candidate and fire the
     // HUD-highlighting hint AFTER the non-blocking `processEndOfTurn` runs.
     // The flag is persisted via TutorialState so a restart does not replay
     // it; legacy saves default to "not shown" (AC2).
+    //
+    // When the hint fires mid-tutorial the end-turn step completion is
+    // deferred (see `finishTurnPresentation`) so the hint overlay can be
+    // dismissed back into the flow instead of dead-ending it.
     let pendingBankingHint = false;
     try {
       const tut = (s as any).tutorialController as any;
@@ -347,8 +351,16 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
 
     // Tutorial: mark end-turn step complete if active. Unchanged — the
     // step completes when the turn action resolves, not when the
-    // closing presentation finishes.
-    (s.msLifecycleManager as any).onTutorialActionComplete?.('end-turn' as TutorialActionType);
+    // closing presentation finishes. However, if a banking hint is pending
+    // during the tutorial, defer step completion until the hint is dismissed
+    // (MS-0MT3JK16W006A66P) — the hint overlay advances the tutorial on
+    // dismiss so the player is not left stuck on an untaught step.
+    const inTutorialWithBankingHint =
+      pendingBankingHint &&
+      (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
+    if (!inTutorialWithBankingHint) {
+      (s.msLifecycleManager as any).onTutorialActionComplete?.('end-turn' as TutorialActionType);
+    }
 
     // ── Closing presentation → day start ─────────────────────────
     // Advance the day once the closing presentation is done: present

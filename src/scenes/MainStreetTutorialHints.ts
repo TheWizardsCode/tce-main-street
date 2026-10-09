@@ -30,6 +30,7 @@ import {
   UNIFIED_TUTORIAL_STEP_COUNT,
   UNIFIED_TUTORIAL_STEPS,
   advanceTutorialStep,
+  completeCurrentStep,
   resolveTutorialStepText,
   type TutorialControllerState,
   type TutorialHighlightZone,
@@ -322,7 +323,7 @@ export class MainStreetTutorialHints {
   }
 
   // ── Banking hint (CG-0MT3JK16W006A66P) ─────────────────────
-  // Contextual first-bank overlay: not part of the fixed 26-step count.
+  // Contextual first-bank overlay: not part of the fixed 25-step count.
   // Mutually exclusive with the main flow — callers must not show both at once.
 
   /**
@@ -339,19 +340,29 @@ export class MainStreetTutorialHints {
     const overlay = this as any;
     if (!overlay || typeof overlay.clearObjects !== 'function') return false;
     try {
-      // Coerce rendering through showStep's confirmed path by temporarily injecting the hint step.
-      // Store/restore currentStep so the 26-step flow is unaffected.
+      // Store/restore currentStep so the unified flow is unaffected.
       const saved = this.currentStep;
       const wasVisible = this.visible;
       this.clearObjects();
       this.visible = true;
-      // Render as if it were a confirm step at a synthetic index
+      // Render as if it were a confirm step at a synthetic index.
       this.renderStepOverlay(BANKING_HINT_STEP, () => {
-        // On dismiss: tear down just the overlay, do not advance the main flow
+        // On dismiss: tear down the hint overlay.
         this.clearObjects();
         this.visible = false;
-        // Restore flow visibility/stale step to whatever was active before
-        if (wasVisible && saved >= 0 && saved < UNIFIED_TUTORIAL_STEP_COUNT) {
+        const scene = this.scene as any;
+        const controller = scene?.tutorialController as TutorialControllerState | undefined;
+        if (controller?.isActive) {
+          // Tutorial: complete the deferred end-turn step and advance. The
+          // step completion was deferred while the hint was pending
+          // (MS-0MT3JK16W006A66P), so this is the call that moves the flow on.
+          try {
+            const { newState } = completeCurrentStep(controller);
+            Object.assign(scene, { tutorialController: newState });
+            try { scene.showTutorialStepOverlay?.(); } catch (_) { /* ignore */ }
+          } catch (_) { /* ignore */ }
+        } else if (wasVisible && saved >= 0 && saved < UNIFIED_TUTORIAL_STEP_COUNT) {
+          // Normal play: restore the overlay to the step it was on before.
           try { this.showStep(saved); } catch (_) { /* ignore */ }
         }
       });
