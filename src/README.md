@@ -26,7 +26,7 @@ Upgrade cards follow the business-card action economy — they are never a free 
 - When the action budget is spent the upgrade is dimmed and buying/playing it is rejected (unless a same-week composite is still pending).
 - **Escape** cancels an in-progress upgrade (or business) targeting phase — the card stays in hand and the same-week composite stays free. Escape only opens Settings when nothing is being targeted.
 
-Event cards moved the same way (each of move-to-hand / play-from-hand costs 1 action, CG-0MTFWBNL30043ZBM); refresh, sell, hint, community favour and end-turn remain non-action operations.
+Event cards moved the same way (each of move-to-hand / play-from-hand costs 1 action, CG-0MTFWBNL30043ZBM); refresh, sell, hint, community favour and end-turn remain non-action operations. Market refresh is action-free but its coin cost **escalates within a turn** — 500, 750, 1000, then +250 each re-roll, reset at `WeekStart` (MS-0MTR6ZRF5007PWNZ); staff/specialization discounts apply to the escalated base, clamped at 0. While an **Investor** is employed, one re-roll per turn is **free** (`freeMarketRerollPerTurn`): coin-free and action-free, but it still advances the escalation counter, and the free draw is biased 75% toward the employing business's synergy types (`marketRelevanceBias`, MS-0MTISBYLS009936W). Relocating an employed staff member to another business costs 1 action point; initial placement at hire time stays free.
 
 **Discarding from hand** is **action-free but not free of reputation** (CG-0MTQ7KUVF009ELQK): select a hand card and click **[Discard]** (in the End Turn slot) to send it to its family discard pile. The discard deducts the card's listed coin `cost` from reputation, clamped at 0 (reputation never goes negative), applies to every family, and is not gated on affordability — a player may discard down to 0 reputation. 0-cost cards cost nothing. There is no confirmation dialog, and the discard is undoable.
 
@@ -229,11 +229,21 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 > walkthrough — in [docs/main-street/storylines.md](../docs/main-street/storylines.md).
 > Tooling: `npm run validate:storylines` (static validator),
 > `npm run storylines:graph` (graph/manifest export),
+> `npm run storylines:graph:svg` (render the graph to SVG),
 > `npm run storylines:author` (safe authoring helper).
 
 All card template data is defined in a single CSV file:
 
 - **File:** `src/card-data.csv`
+
+> **Card packs (DLC).** The pool can be extended at runtime by installed card
+> packs: a pack contributes extra rows in this **exact** header schema, merged
+> into the base CSV before parsing (see `src/MainStreetCardPacks.ts`). The merge
+> entry point is `mergeMainStreetCardPool()` → `loadTemplatesFromCsv()`; a pack
+> whose header differs or whose card ids collide is rejected whole. See the core
+> [Card Packs](../core/docs/DEVELOPER.md#card-packs) docs (and the
+> `docs/dev/card-packs-runbook.md` lifecycle runbook they link) for authoring,
+> building and gating a pack.
 
 ### How it works
 
@@ -322,6 +332,8 @@ Duration events (e.g. Flu Outbreak) also use:
 | `cost` | number | Coin cost to acquire |
 | `ongoingCost` | number | Per-turn coin cost after hiring |
 | `handSlotsAdded` | number | Additional hand slots provided |
+| `freeMarketRerollPerTurn` | boolean (`1`/empty) | When set, the staff member grants one coin-free, action-free market re-roll per turn while employed (the Investor, MS-0MTISBYLS009936W). Multiple such staff do not stack. |
+| `marketRelevanceBias` | number (0–1) | Probability (per drawn slot) that the free re-roll's draw comes from cards relevant to the employing business's synergy types (the Investor's `0.75`). Only meaningful with `freeMarketRerollPerTurn`. |
 
 ### Job-applicant mechanic (CG-0MSTOATDU006UGAX)
 
@@ -416,7 +428,7 @@ Main Street Milestone 5 (CG-0MOY5TOJK008JFJM) adds a first-time player onboardin
 
 ### Action-Gated Tutorial Flow
 
-- **Module:** `TutorialFlow.ts` — T1-T26 step definitions with pure progression controller (CG-0MTNMBX5Z002U0MH).
+- **Module:** `TutorialFlow.ts` — T1-T25 step definitions with pure progression controller (MS-0MT3JK16W006A66P merged the favour/bookshop day).
 - Each step gates on a specific player action (confirm, select-business, place-business, end-turn, etc.)
 - Invalid actions show: "Complete the highlighted step first."
 

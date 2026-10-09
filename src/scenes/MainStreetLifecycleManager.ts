@@ -12,7 +12,7 @@ import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleMan
 import type { TutorialActionType } from '../TutorialFlow';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import { preload, create, handleResize } from './MainStreetLifecycleManagerLifecycle';
-import { showTutorialOfferOrDeferredBanner, confirmTutorialStep, exitTutorialFlow, showTutorialStepOverlay, isTutorialActionAllowed, onTutorialActionComplete } from './MainStreetLifecycleManagerTutorial';
+import { showTutorialOfferOrDeferredBanner, showNewGameSelector, confirmTutorialStep, exitTutorialFlow, showTutorialStepOverlay, isTutorialActionAllowed, onTutorialActionComplete } from './MainStreetLifecycleManagerTutorial';
 import { loadCampaignAndSetup, applyNewGameSelection, updateCampaignProgress, updateStats, loadBoardState, checkForCsvMismatchAndRegenerate, checkForSavedCheckpoint } from './MainStreetLifecycleManagerCampaign';
 import type { NewGameSelection } from './MainStreetNewGameSelection';
 
@@ -38,6 +38,10 @@ export class MainStreetLifecycleManager implements MainStreetLifecycleManagerCon
     legacySeen?: boolean,
   ): boolean {
     return showTutorialOfferOrDeferredBanner(this, tutorialOpts, legacySeen);
+  }
+
+  public showNewGameSelector(): boolean {
+    return showNewGameSelector(this);
   }
 
   public confirmTutorialStep(): void {

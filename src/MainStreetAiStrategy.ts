@@ -52,8 +52,8 @@ import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, StaffCar
 import { isDurationEventCard } from './MainStreetCards';
 import { computeProportionalCoinLoss, computeTaxAuditRate } from './MainStreetStaffBuffs';
 import type { DifficultyName } from './MainStreetDifficulty';
-import { computeSynergyBonus, getSlotOwnerId } from './MainStreetAdjacency';
-import { computeScore } from './MainStreetEngine';
+import { computeSynergyBonus, computeSynergyRepBonus, getSlotOwnerId } from './MainStreetAdjacency';
+import { computeScore, effectiveWinThreshold } from './MainStreetEngine';
 
 // ── Scoring constants ───────────────────────────────────────
 
@@ -84,12 +84,46 @@ const AI_HORIZON_CAP = 25;
  */
 const AI_SCORE_PACE = 800;
 
+// ── Community Favour rep→coins heuristic (MS-0MUVB2ZES005V83Y) ──
+
+/**
+ * Minimum reputation that must remain *after* a rep→coins Community Favour
+ * exchange (AC4). The exchange spends `favourRepToCoinsRepCost` reputation;
+ * keeping at least this many points back guarantees the exchange itself never
+ * triggers the `reputation <= 0` collapse loss condition. Retained from the
+ * original heuristic and named so tests can assert it directly.
+ */
+const FAVOUR_REP_TO_COINS_MIN_REP_BUFFER = 1;
+
+/**
+ * Value/timing gate for the rep→coins Community Favour exchange (AC3).
+ *
+ * The exchange is only worthwhile when the placement it enables returns a
+ * gross reward (base income + projected synergy over the planning horizon)
+ * of at least this many multiples of the reputation spent. A high multiple
+ * restricts the exchange to early, high-value placements — when the horizon
+ * is long and/or the placement secures a strong synergy slot — instead of
+ * paying 200 reputation for a late-game or low-value liquidity top-up.
+ *
+ * Calibrated against the canonical 200-seed profile (AC1/AC5) **on the
+ * post-R2 dev base** (MS-0MUR9IMN60093HIE reputation re-tune): the ratio
+ * sweep (4–24) is recorded in work item MS-0MUVB2ZES005V83Y. The chosen
+ * value keeps the per-difficulty committed-baseline tolerances (winRate
+ * ±0.25, coins ±30%) and the Easy ≥ Medium ≥ Hard ladder intact while
+ * materially lowering rep→coins usage. See `docs/main-street/` for the
+ * before/after evidence artefacts.
+ */
+const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
+
 /**
  * Computes the AI planning horizon — the number of future turns whose
  * income a purchase is expected to yield — derived from the distance to
- * the win threshold (user Q2b decision, CG-0MSLXJCHH001DLIO):
+ * the *effective* win threshold (`effectiveWinThreshold`, i.e. the base
+ * threshold divided by the player count and rounded to the nearest 50 in
+ * competitive play; the unchanged base value in single-player) (user Q2b
+ * decision, CG-0MSLXJCHH001DLIO; MS-0MUZK64R5008Z8MA):
  *
- *   horizon = clamp(ceil((winThreshold - score) / scorePace), floor, cap)
+ *   horizon = clamp(ceil((effectiveWinThreshold - score) / scorePace), floor, cap)
  *
  * Replaces the former `remainingTurns = maxTurns - turn` (PRD Appendix A),
  * which no longer applies now that default presets are unlimited. The floor
@@ -100,9 +134,229 @@ const AI_SCORE_PACE = 800;
  * @returns The planning horizon in turns (always in [AI_HORIZON_FLOOR, AI_HORIZON_CAP]).
  */
 export function aiPlanningHorizon(state: MainStreetState): number {
-  const distance = state.config.winThreshold - computeScore(state);
+  const distance = effectiveWinThreshold(state) - computeScore(state);
   const raw = Math.ceil(distance / AI_SCORE_PACE);
   return Math.min(AI_HORIZON_CAP, Math.max(AI_HORIZON_FLOOR, raw));
+}
+
+// ── Community-space placement value (MS-0MUX8J9KJ005ZKDW) ──────
+
+/**
+ * Coin-equivalent penalty subtracted from a community-space placement score
+ * before it competes with an income-producing business (AC3).
+ *
+ * Community spaces have zero base income, so their only coin value is the
+ * synergy they anchor for neighbouring businesses (plus any reputation they
+ * generate and minus their ongoing running cost). That is strategically
+ * useful but never a substitute for income, so a community space must beat a
+ * business by at least this margin before the greedy AI prefers it. Because
+ * the spend chain only accepts a community space whose score is positive, the
+ * penalty doubles as the minimum net-value bar an "empty synergy" placement
+ * must clear — which is what stops the AI buying a community space merely
+ * because it is the cheapest affordable card.
+ *
+ * Calibrated on the canonical 200-seed / 60-turn greedy profile
+ * (`src/scripts/balance/community-space-placement-report.ts`); the committed
+ * before/after figures are in
+ * `docs/main-street/community-space-ai-evidence.md`.
+ */
+export const COMMUNITY_SPACE_SCORE_PENALTY = 600;
+
+/** Gross and net horizon value of a placement ({@link communitySpacePlacementValueAt}). */
+interface PlacementValue {
+  /** Gross value over the horizon: income + neighbour synergy + reputation. */
+  gross: number;
+  /** Net value: gross − placement cost − running cost × horizon − penalty. */
+  net: number;
+}
+
+/**
+ * Marginal coin synergy a card placed at `slotIndex` confers on every other
+ * card on the grid — the "synergy anchor" value. A community space earns no
+ * income itself (base income 0), so this neighbour benefit is where its coin
+ * value comes from.
+ *
+ * Diffs the per-card synergy before/after the placement, so upgrades that
+ * extend a neighbour's synergy range and the engine's rounding are both
+ * reflected exactly.
+ */
+function neighbourSynergyGain(
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  placed: (BusinessCard | CommunitySpaceCard | null)[],
+  slotIndex: number,
+  bonusPerNeighbor: number,
+): number {
+  let gain = 0;
+  for (let i = 0; i < placed.length; i++) {
+    if (i === slotIndex || !placed[i]) continue;
+    const before = computeSynergyBonus(grid, i, bonusPerNeighbor);
+    const after = computeSynergyBonus(placed, i, bonusPerNeighbor);
+    if (after > before) gain += after - before;
+  }
+  return gain;
+}
+
+/**
+ * Ownership-aware counterpart of {@link neighbourSynergyGain}: splits the
+ * marginal synergy a placement confers on its neighbouring businesses by
+ * owner. Each neighbour's gain (computed exactly as in
+ * `neighbourSynergyGain`) is attributed to the acting seat when
+ * `getSlotOwnerId(state, i)` matches `actingPlayerId`, and to an opponent
+ * otherwise.
+ *
+ * The competitive placement value consumes the difference (`own − opponent`)
+ * so a placement that only enriches a rival is scored down. Single-player
+ * keeps the ownership-agnostic path (the N=1 fallback in
+ * {@link communitySpacePlacementValueAt}), so no owner filter is applied
+ * there.
+ *
+ * Before/after competitive head-to-head evidence for this rule is recorded in
+ * `docs/main-street/competitive-placement-ai-evidence.md`
+ * (MS-0MUZFVM86003IPSM); the harness-side measurement lives in
+ * `measurePlacementBenefit` (`MainStreetMonteCarlo.ts`).
+ *
+ * @param state            Current game state (read-only by convention).
+ * @param grid             Street grid before the placement.
+ * @param placed           Street grid with the candidate card inserted.
+ * @param slotIndex        Slot the candidate card is placed at (skipped).
+ * @param bonusPerNeighbor Global synergy multiplier.
+ * @param actingPlayerId   Seat whose benefit counts as `own`.
+ * @returns The marginal neighbour synergy split into `{ own, opponent }`.
+ */
+function neighbourSynergyGainByOwner(
+  state: MainStreetState,
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  placed: (BusinessCard | CommunitySpaceCard | null)[],
+  slotIndex: number,
+  bonusPerNeighbor: number,
+  actingPlayerId: number,
+): { own: number; opponent: number } {
+  let own = 0;
+  let opponent = 0;
+  for (let i = 0; i < placed.length; i++) {
+    if (i === slotIndex || !placed[i]) continue;
+    const before = computeSynergyBonus(grid, i, bonusPerNeighbor);
+    const after = computeSynergyBonus(placed, i, bonusPerNeighbor);
+    if (after > before) {
+      const gain = after - before;
+      if (getSlotOwnerId(state, i) === actingPlayerId) own += gain;
+      else opponent += gain;
+    }
+  }
+  return { own, opponent };
+}
+
+/**
+ * Value of placing `card` at `slotIndex` (AC2), split into gross reward and
+ * net value. Community spaces are scored on:
+ *
+ *   (base income + neighbour synergy + reputation per turn) × horizon
+ *     − placement cost − ongoing running cost × horizon − penalty
+ *
+ * accounting for their zero base income, the synergy they anchor for
+ * neighbours, their reputation output and their ongoing running cost — none
+ * of which the business formula captured. `penalty` lets callers compare
+ * against a business ({@link COMMUNITY_SPACE_SCORE_PENALTY}) or evaluate raw
+ * profitability (Community Favour enablement passes 0).
+ *
+ * In competitive mode the neighbour-synergy term is ownership-aware: only the
+ * acting seat's neighbours are credited and the synergy anchored for other
+ * seats is subtracted (`own gain − opponent gain`,
+ * {@link neighbourSynergyGainByOwner}), so a placement that only enriches a
+ * rival scores negative. Single-player (N=1) keeps the ownership-agnostic sum
+ * so baselines do not move.
+ */
+function communitySpacePlacementValueAt(
+  state: MainStreetState,
+  card: CommunitySpaceCard,
+  slotIndex: number,
+  horizon: number,
+  penalty: number,
+  playerId?: number,
+): PlacementValue {
+  const grid = state.streetGrid;
+  const placed = [...grid];
+  placed[slotIndex] = card;
+  const bonusPerNeighbor = state.config.synergyBonusPerNeighbor;
+  const ownIncome =
+    card.baseIncome +
+    (card.incomeBonus ?? 0) +
+    computeSynergyBonus(placed, slotIndex, bonusPerNeighbor);
+  const ownReputation =
+    (card.reputationPerTurn ?? 0) + computeSynergyRepBonus(placed, slotIndex);
+  // Competitive: credit only the acting seat's anchored synergy and subtract
+  // the synergy handed to other seats. N=1 falls back to the legacy sum.
+  const neighbourIncome = isCompetitiveMode(state)
+    ? (() => {
+        const { own, opponent } = neighbourSynergyGainByOwner(
+          state,
+          grid,
+          placed,
+          slotIndex,
+          bonusPerNeighbor,
+          playerId ?? state.activePlayerId ?? 0,
+        );
+        return own - opponent;
+      })()
+    : neighbourSynergyGain(grid, placed, slotIndex, bonusPerNeighbor);
+  const gross = (ownIncome + neighbourIncome + ownReputation) * horizon;
+  const runningCost = (card.ongoingCost ?? 0) * horizon;
+  const cost = computeEffectiveBusinessPurchaseCost(state, card.cost);
+  return { gross, net: gross - cost - runningCost - penalty };
+}
+
+/**
+ * Best net value of placing `card` into any empty street slot (used by the
+ * banking look-ahead and Community Favour enablement, which weigh a card
+ * before a slot has been chosen). Returns `null` when the street is full.
+ */
+function bestCommunitySpacePlacementValue(
+  state: MainStreetState,
+  card: CommunitySpaceCard,
+  horizon: number,
+  penalty: number,
+): PlacementValue | null {
+  let best: PlacementValue | null = null;
+  for (let slot = 0; slot < state.streetGrid.length; slot++) {
+    if (state.streetGrid[slot] !== null) continue;
+    const value = communitySpacePlacementValueAt(state, card, slot, horizon, penalty);
+    if (!best || value.net > best.net) best = value;
+  }
+  return best;
+}
+
+/**
+ * Public score of placing a community space — {@link communitySpacePlacementValueAt}
+ * with the business-preference penalty applied. Exported so the AC2/AC3
+ * behaviour can be pinned by tests.
+ *
+ * In competitive mode the score is ownership-aware: it credits only the
+ * neighbour synergy anchored for the acting seat and subtracts the synergy
+ * anchored for other seats (`own gain − opponent gain`), so a space that only
+ * boosts a rival's businesses scores at or below zero and fails the
+ * positive-score eligibility gate. Single-player (N=1) is unchanged.
+ *
+ * @param state     Current game state (read-only by convention).
+ * @param card      Community-space card being placed.
+ * @param slotIndex Slot the card is placed into.
+ * @param horizon   Planning horizon in turns.
+ * @param playerId  Acting seat; defaults to the active player.
+ */
+export function scoreCommunitySpacePlacement(
+  state: MainStreetState,
+  card: CommunitySpaceCard,
+  slotIndex: number,
+  horizon: number,
+  playerId?: number,
+): number {
+  return communitySpacePlacementValueAt(
+    state,
+    card,
+    slotIndex,
+    horizon,
+    COMMUNITY_SPACE_SCORE_PENALTY,
+    playerId,
+  ).net;
 }
 
 // ── Banking heuristic (CG-0MT3JMGA60091J8W) ──────────────────
@@ -202,12 +456,23 @@ export function bestVisibleBankTarget(
   // the effective (discounted) cost for affordability checks.
   const purchaseDiscount = computePurchaseCostDiscount(state);
   for (const card of hand) {
-    const c = card as BusinessCard & { cost: number; family: string };
-    if (c.family !== 'business' && c.family !== 'community-space') continue;
-    const effectiveCost = Math.max(0, c.cost - purchaseDiscount);
+    if (card.family !== 'business' && card.family !== 'community-space') continue;
+    const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
     if (effectiveCost <= coins) continue; // already affordable — not a banking target
-    const synergy = bestPlacementSynergy(state, c);
-    consider((c.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
+    if (card.family === 'community-space') {
+      // Community spaces use their own placement value (AC2): neighbour synergy
+      // and reputation minus running cost, then the business-preference penalty.
+      const value = bestCommunitySpacePlacementValue(
+        state,
+        card as CommunitySpaceCard,
+        horizon,
+        COMMUNITY_SPACE_SCORE_PENALTY,
+      );
+      if (value) consider(value.net, effectiveCost);
+    } else {
+      const synergy = bestPlacementSynergy(state, card);
+      consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
+    }
   }
 
   // Hand: upgrade cards whose effective cost exceeds coins
@@ -233,9 +498,19 @@ export function bestVisibleBankTarget(
     const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
     if (effectiveCost <= coins) continue;
     if (emptyCount === 0) continue;
-    const biz = card as BusinessCard;
-    const synergy = bestPlacementSynergy(state, biz);
-    consider((biz.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
+    if (card.family === 'community-space') {
+      const value = bestCommunitySpacePlacementValue(
+        state,
+        card as CommunitySpaceCard,
+        horizon,
+        COMMUNITY_SPACE_SCORE_PENALTY,
+      );
+      if (value) consider(value.net, effectiveCost);
+    } else {
+      const biz = card as BusinessCard;
+      const synergy = bestPlacementSynergy(state, biz);
+      consider((biz.baseIncome + synergy) * horizon - effectiveCost, effectiveCost);
+    }
   }
 
   // Market: upgrade cards that are unaffordable. Even without an immediate
@@ -311,8 +586,15 @@ function bestPipelineBankTarget(
     const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
     if (effectiveCost <= coins) return;
     if (emptyCount === 0) return;
-    const synergy = bestPlacementSynergy(state, card);
-    consider((card.baseIncome + synergy) * horizon - effectiveCost, effectiveCost, weight);
+    // Community spaces use their own placement value (AC2/AC3): neighbour
+    // synergy + reputation − running cost − the business-preference penalty.
+    const value = bestCommunitySpacePlacementValue(
+      state,
+      card,
+      horizon,
+      COMMUNITY_SPACE_SCORE_PENALTY,
+    );
+    if (value) consider(value.net, effectiveCost, weight);
   });
 
   eachTopCard(state.decks?.upgrade, (card, weight) => {
@@ -623,34 +905,105 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
 
 // ── RandomStrategy ──────────────────────────────────────────
 
+export { FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO, FAVOUR_REP_TO_COINS_MIN_REP_BUFFER };
+
 /**
- * Returns the cheapest purchasable MARKET card cost (business/community-
- * space/upgrade/event/staff), or Infinity when the market is empty.
+ * Best placement newly enabled by a rep→coins Community Favour exchange
+ * (AC2).
  *
- * Used by the Community Favour heuristic to detect a STALLED turn — a
- * player who cannot afford the cheapest market card cannot advance the
- * economy with normal purchases, so the free rep→coins exchange is the
- * right fallback. Staff cards are part of the general market row
- * (CG-0MT3KZNQB0053K55), so they are included like any other family.
+ * Considers every market and handheld business / community-space card that is
+ * *unaffordable* at `coinsBefore` but affordable at `coinsAfter`, skips
+ * value-negative placements, and returns the one with the highest positive
+ * net greedy value. Businesses use `(base income + projected synergy) ×
+ * horizon − effective cost`; community spaces use
+ * {@link bestCommunitySpacePlacementValue}, which factors in their zero base
+ * income, the synergy they anchor for neighbours, their reputation output and
+ * their ongoing running cost (AC2), plus the business-preference penalty.
+ * `reward` is the gross income + synergy + reputation over the horizon used
+ * by the value/timing gate (AC3).
+ *
+ * Returns `null` when the exchange cannot enable any positive-value placement
+ * (including when the street has no empty slot to place into).
  */
-function getCheapestMarketCost(state: MainStreetState): number {
-  const marketCards = state.market?.cards ?? [];
-  let cheapest = Infinity;
-  for (const card of marketCards) {
-    if (typeof card !== 'object' || card === null) continue;
-    let cost = (card as { cost?: number }).cost;
-    // Business/community-space purchases benefit from the street-wide
-    // Delivery Driver discount (CG-0MUMCVH3N007KT1M), so a stalled-turn check
-    // must compare against the effective price.
-    if (
-      (card.family === 'business' || card.family === 'community-space') &&
-      typeof cost === 'number'
-    ) {
-      cost = computeEffectiveBusinessPurchaseCost(state, cost);
+function bestEnabledFavourPlacement(
+  state: MainStreetState,
+  coinsBefore: number,
+  coinsAfter: number,
+  horizon: number,
+): { netValue: number; reward: number } | null {
+  // No empty slot ⇒ nothing can be placed, so the exchange enables nothing.
+  if (!state.streetGrid.some(slot => slot === null)) return null;
+
+  let bestNet = Number.NEGATIVE_INFINITY;
+  let bestReward = 0;
+  let found = false;
+  const consider = (card: BusinessCard | CommunitySpaceCard): void => {
+    const effectiveCost = computeEffectiveBusinessPurchaseCost(state, card.cost);
+    // Only placements the exchange *enables*: unaffordable before, affordable after.
+    if (effectiveCost <= coinsBefore || effectiveCost > coinsAfter) return;
+    let reward: number;
+    let netValue: number;
+    if (card.family === 'community-space') {
+      const value = bestCommunitySpacePlacementValue(
+        state,
+        card,
+        horizon,
+        COMMUNITY_SPACE_SCORE_PENALTY,
+      );
+      if (!value) return;
+      reward = value.gross;
+      netValue = value.net;
+    } else {
+      reward = (card.baseIncome + bestPlacementSynergy(state, card)) * horizon;
+      netValue = reward - effectiveCost;
     }
-    if (typeof cost === 'number' && cost >= 0 && cost < cheapest) cheapest = cost;
+    if (netValue <= 0) return;
+    if (netValue > bestNet) {
+      bestNet = netValue;
+      bestReward = reward;
+      found = true;
+    }
+  };
+
+  for (const card of state.market?.cards ?? []) {
+    if (card.family === 'business' || card.family === 'community-space') {
+      consider(card as BusinessCard | CommunitySpaceCard);
+    }
   }
-  return cheapest;
+  for (const card of state.hand ?? []) {
+    if (card.family === 'business' || card.family === 'community-space') {
+      consider(card as BusinessCard | CommunitySpaceCard);
+    }
+  }
+  return found ? { netValue: bestNet, reward: bestReward } : null;
+}
+
+/**
+ * Decides whether a rep→coins Community Favour exchange is worth taking,
+ * shared by the single-player `scoreAction` and the competitive
+ * `competitiveFavourScore` so the two heuristics cannot diverge (AC2/AC3/AC4).
+ *
+ * The exchange must survive the reputation buffer (AC4), then enable a
+ * positive-value placement (AC2), and that placement's gross reward over the
+ * horizon must clear
+ * {@link FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO} × the reputation spent (AC3).
+ */
+function isRepToCoinsFavourWorthwhile(
+  state: MainStreetState,
+  coins: number,
+  reputation: number,
+  horizon: number,
+): boolean {
+  const repCost = state.config.favourRepToCoinsRepCost;
+  // AC4: never spend into (or toward) reputation collapse.
+  if (reputation < repCost + FAVOUR_REP_TO_COINS_MIN_REP_BUFFER) return false;
+
+  const coinsAfter = coins + state.config.favourRepToCoinsCoinGain;
+  const enabled = bestEnabledFavourPlacement(state, coins, coinsAfter, horizon);
+  // AC2: no profitable placement becomes affordable ⇒ decline the exchange.
+  if (!enabled) return false;
+  // AC3: only early, high-value placements justify the reputation spent.
+  return enabled.reward >= FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO * repCost;
 }
 
 // ── RandomStrategy ──────────────────────────────────────────
@@ -807,6 +1160,32 @@ function bestMarketAcquisitionValue(state: MainStreetState): number {
 }
 
 /**
+ * Whether a business / community-space placement action is worth taking
+ * (AC2/AC3).
+ *
+ * Income-producing businesses are always eligible — the greedy chain's
+ * behaviour for them is unchanged. A community space is only eligible when
+ * its score is positive, i.e. its genuine value (synergy anchored for
+ * neighbours + reputation − running cost × horizon) clears
+ * {@link COMMUNITY_SPACE_SCORE_PENALTY}. This is what stops the AI spending
+ * on a community space merely because it is the cheapest affordable card.
+ */
+function isPlacementEligible(
+  state: MainStreetState,
+  action: BuyBusinessAction | PlayBusinessFromHandAction,
+  score: number,
+): boolean {
+  let family: string | undefined;
+  if (action.type === 'buy-business') {
+    family = state.market.cards.find(c => c.id === action.cardId)?.family;
+  } else {
+    family = (state.hand ?? [])[action.handIndex]?.family;
+  }
+  if (family !== 'community-space') return true;
+  return score > 0;
+}
+
+/**
  * Selects a uniformly random legal action each turn.
  *
  * Baseline strategy used for Monte Carlo balance testing and as a
@@ -894,10 +1273,13 @@ const chooseGreedyAction = (
     }
 
     // Priority 1: play an affordable business from hand (cost-at-play) with
-    // the best synergy placement score.
-    const handBusinessActions = legalActions.filter(
+    // the best synergy placement score. Community spaces only qualify when
+    // their score clears the business-preference penalty (AC2/AC3).
+    const handBusinessActions = (legalActions.filter(
       a => a.type === 'play-business-from-hand',
-    ) as PlayBusinessFromHandAction[];
+    ) as PlayBusinessFromHandAction[]).filter(a =>
+      isPlacementEligible(state, a, scorePlayBusinessFromHandAction(state, a)),
+    );
     if (handBusinessActions.length > 0) {
       return pickBest(handBusinessActions, a => scorePlayBusinessFromHandAction(state, a), rng);
     }
@@ -915,8 +1297,11 @@ const chooseGreedyAction = (
       return pickBest(upgradeActions, a => scoreUpgradeAction(state, a), rng);
     }
 
-    // Priority 4: buy business for best synergy placement (direct, immediate pay)
-    const businessActions = legalActions.filter(a => a.type === 'buy-business') as BuyBusinessAction[];
+    // Priority 4: buy business for best synergy placement (direct, immediate
+    // pay). Community spaces only qualify when their score clears the
+    // business-preference penalty (AC2/AC3).
+    const businessActions = (legalActions.filter(a => a.type === 'buy-business') as BuyBusinessAction[])
+      .filter(a => isPlacementEligible(state, a, scoreBusinessAction(state, a)));
     if (businessActions.length > 0) {
       return pickBest(businessActions, a => scoreBusinessAction(state, a), rng);
     }
@@ -1179,7 +1564,9 @@ function scoreUpgradeAction(
 }
 
 /**
- * Score a business placement.
+ * Score a business or community-space placement.
+ *
+ * Income-producing businesses:
  *
  *   score = (baseIncome + projectedSynergyBonus) * horizon - cost
  *
@@ -1187,13 +1574,27 @@ function scoreUpgradeAction(
  * were already placed there. `horizon` is the AI planning horizon derived
  * from the distance to the win threshold (`aiPlanningHorizon`,
  * CG-0MSLXJCHH001DLIO). Higher scores favour early high-synergy placements.
+ *
+ * Community spaces are scored separately (AC2) via
+ * {@link scoreCommunitySpacePlacement}: zero base income, the synergy they
+ * anchor for neighbours, their reputation output, the placement cost, the
+ * ongoing running cost × horizon, and the business-preference penalty
+ * ({@link COMMUNITY_SPACE_SCORE_PENALTY}).
  */
 function scoreBusinessAction(
   state: MainStreetState,
   action: BuyBusinessAction,
 ): number {
-  const card = state.market.cards.find(c => c.id === action.cardId) as BusinessCard | undefined;
+  const card = state.market.cards.find(c => c.id === action.cardId) as
+    | BusinessCard
+    | CommunitySpaceCard
+    | undefined;
   if (!card) return 0;
+
+  const horizon = aiPlanningHorizon(state);
+  if (card.family === 'community-space') {
+    return scoreCommunitySpacePlacement(state, card, action.slotIndex, horizon);
+  }
 
   // Simulate placement: shallow-clone the grid and insert the new card
   const simulatedGrid = [...state.streetGrid];
@@ -1206,7 +1607,6 @@ function scoreBusinessAction(
     state.config.synergyBonusPerNeighbor,
   );
 
-  const horizon = aiPlanningHorizon(state);
   return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
@@ -1239,16 +1639,25 @@ function scoreEventAction(
 }
 
 /**
- * Scores playing a business from hand: same placement heuristic as
- * `scoreBusinessAction` (income + synergy over the horizon), with the card
- * located in the hand instead of the market.
+ * Scores playing a business or community space from hand: the same placement
+ * heuristics as `scoreBusinessAction` (income + synergy over the horizon for
+ * businesses; {@link scoreCommunitySpacePlacement} for community spaces),
+ * with the card located in the hand instead of the market.
  */
 function scorePlayBusinessFromHandAction(
   state: MainStreetState,
   action: PlayBusinessFromHandAction,
 ): number {
-  const card = (state.hand ?? [])[action.handIndex] as BusinessCard | undefined;
+  const card = (state.hand ?? [])[action.handIndex] as
+    | BusinessCard
+    | CommunitySpaceCard
+    | undefined;
   if (!card) return 0;
+
+  const horizon = aiPlanningHorizon(state);
+  if (card.family === 'community-space') {
+    return scoreCommunitySpacePlacement(state, card, action.slotIndex, horizon);
+  }
 
   const simulatedGrid = [...state.streetGrid];
   simulatedGrid[action.slotIndex] = card;
@@ -1257,7 +1666,6 @@ function scorePlayBusinessFromHandAction(
     action.slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  const horizon = aiPlanningHorizon(state);
   return (card.baseIncome + projectedSynergyBonus) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
 }
 
@@ -1362,26 +1770,20 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
       return 1;
     case 'community-favour':
       // Community Favour (CG-0MSTOATDQ005XDET): a free fallback when the
-      // player cannot afford purchases. rep-to-coins is genuinely valuable
-      // only when the player is STALLED (cannot afford the cheapest market
-      // card) AND the conversion leaves a reputation buffer (reputation
-      // after the exchange stays >= 1) — burning the last reputation would
-      // trigger reputation-collapse loss. Otherwise the exchange is a
-      // low-value (score 1) legal fallback that never outranks purchases.
+      // player cannot afford purchases. rep-to-coins only scores above the
+      // neutral default when the exchange passes the shared enablement +
+      // value/timing gate (AC2/AC3) and leaves the reputation buffer intact
+      // (AC4). Otherwise it stays a neutral (score 1) legal fallback that
+      // never outranks purchases.
       if (action.direction === 'rep-to-coins') {
-        const cheapestCardCost = getCheapestMarketCost(state);
-        // Convert only when genuinely stalled (cannot afford the cheapest
-        // market card) AND the conversion leaves a reputation buffer
-        // (reputation after the exchange stays >= 1) — burning the last
-        // reputation would trigger reputation-collapse loss.
-        if (
-          Number.isFinite(cheapestCardCost) &&
-          state.resourceBank.coins < cheapestCardCost &&
-          state.resourceBank.reputation >= state.config.favourRepToCoinsRepCost + 1
-        ) {
-          return 3; // useful fallback when stalled with rep to spare
-        }
-        return 1;
+        return isRepToCoinsFavourWorthwhile(
+          state,
+          state.resourceBank.coins,
+          state.resourceBank.reputation,
+          aiPlanningHorizon(state),
+        )
+          ? 3
+          : 1;
       }
       // coins-to-rep: spending scarce coins on reputation is rarely better
       // than buying cards; stays as a legal fallback at the low default.
@@ -1484,13 +1886,14 @@ export function resolveSeatDifficulty(
 /**
  * Competitive planning horizon: the number of future turns a purchase is
  * expected to yield, derived from the ACTING PLAYER'S OWN score versus the
- * win threshold (not the shared `computeScore`).
+ * *effective* win threshold (`effectiveWinThreshold`; not the shared
+ * `computeScore`).
  *
- *   horizon = clamp(ceil((winThreshold - player.score) / scorePace), floor, cap)
+ *   horizon = clamp(ceil((effectiveWinThreshold - player.score) / scorePace), floor, cap)
  *
  * A player far from the threshold values future income more (larger
  * horizon) than a player about to win — the ownership-aware counterpart of
- * `aiPlanningHorizon` (CG-0MSLXJCHH001DLIO).
+ * `aiPlanningHorizon` (CG-0MSLXJCHH001DLIO; MS-0MUZK64R5008Z8MA).
  *
  * @param state    Current game state (read-only by convention).
  * @param playerId Owner index; defaults to the active player.
@@ -1505,7 +1908,7 @@ export function aiCompetitivePlanningHorizon(
   if (!isCompetitiveMode(state)) return aiPlanningHorizon(state);
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return aiPlanningHorizon(state);
-  const distance = state.config.winThreshold - (player.score ?? 0);
+  const distance = effectiveWinThreshold(state) - (player.score ?? 0);
   const raw = Math.ceil(distance / AI_SCORE_PACE);
   return Math.min(AI_HORIZON_CAP, Math.max(AI_HORIZON_FLOOR, raw));
 }
@@ -1639,6 +2042,10 @@ export function enumerateCompetitiveLegalActions(
   if (!isCompetitiveMode(state)) return enumerateLegalActions(state);
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return enumerateLegalActions(state);
+
+  // Eliminated seats take no further MarketPhase and contribute no legal
+  // actions (AC3 action-enumeration skip; rotation already skips them).
+  if (player.eliminated) return [];
 
   const pid = player.playerId;
   const coins = player.coins ?? 0;
@@ -1817,7 +2224,7 @@ export function scoreCompetitiveAction(
       return competitiveUpgradeScore(state, action.cardId, horizon, (action as { targetSlot?: number }).targetSlot);
     case 'buy-business':
     case 'buy-and-place':
-      return competitiveBusinessScore(state, action.cardId, action.slotIndex, horizon);
+      return competitiveBusinessScore(state, action.cardId, action.slotIndex, horizon, pid);
     case 'buy-event':
       return competitiveMarketEventScore(state, action.cardId, pid);
     case 'play-business-from-hand':
@@ -1900,9 +2307,20 @@ function competitiveBusinessScore(
   cardId: string,
   slotIndex: number,
   horizon: number,
+  playerId?: number,
 ): number {
-  const card = state.market.cards.find(c => c.id === cardId) as BusinessCard | undefined;
+  const card = state.market.cards.find(c => c.id === cardId) as
+    | BusinessCard
+    | CommunitySpaceCard
+    | undefined;
   if (!card) return 0;
+  const actingPlayerId = playerId ?? state.activePlayerId ?? 0;
+  // Community spaces keep the separate (ownership-aware) placement value in
+  // competitive mode too, so the two scoring paths cannot diverge (AC2,
+  // competitive mirror).
+  if (card.family === 'community-space') {
+    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon, actingPlayerId);
+  }
   const simulatedGrid = [...state.streetGrid];
   simulatedGrid[slotIndex] = card;
   const projectedSynergy = computeSynergyBonus(
@@ -1910,7 +2328,22 @@ function competitiveBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
+  // AC4: subtract the synergy this placement anchors for neighbouring
+  // opponent businesses. The acting player's own income/synergy valuation is
+  // unchanged; only the benefit handed to rivals is netted off.
+  const { opponent } = neighbourSynergyGainByOwner(
+    state,
+    state.streetGrid,
+    simulatedGrid,
+    slotIndex,
+    state.config.synergyBonusPerNeighbor,
+    actingPlayerId,
+  );
+  return (
+    (card.baseIncome + projectedSynergy) * horizon -
+    computeEffectiveBusinessPurchaseCost(state, card.cost) -
+    opponent * horizon
+  );
 }
 
 function competitiveMarketEventScore(
@@ -1932,8 +2365,14 @@ function competitiveHandBusinessScore(
   slotIndex: number,
   horizon: number,
 ): number {
-  const card = (player.hand ?? [])[handIndex] as BusinessCard | undefined;
+  const card = (player.hand ?? [])[handIndex] as
+    | BusinessCard
+    | CommunitySpaceCard
+    | undefined;
   if (!card) return 0;
+  if (card.family === 'community-space') {
+    return scoreCommunitySpacePlacement(state, card, slotIndex, horizon, player.playerId);
+  }
   const simulatedGrid = [...state.streetGrid];
   simulatedGrid[slotIndex] = card;
   const projectedSynergy = computeSynergyBonus(
@@ -1941,7 +2380,20 @@ function competitiveHandBusinessScore(
     slotIndex,
     state.config.synergyBonusPerNeighbor,
   );
-  return (card.baseIncome + projectedSynergy) * horizon - computeEffectiveBusinessPurchaseCost(state, card.cost);
+  // AC4: subtract the synergy anchored for neighbouring opponent businesses.
+  const { opponent } = neighbourSynergyGainByOwner(
+    state,
+    state.streetGrid,
+    simulatedGrid,
+    slotIndex,
+    state.config.synergyBonusPerNeighbor,
+    player.playerId,
+  );
+  return (
+    (card.baseIncome + projectedSynergy) * horizon -
+    computeEffectiveBusinessPurchaseCost(state, card.cost) -
+    opponent * horizon
+  );
 }
 
 function competitiveHandUpgradeScore(
@@ -1981,15 +2433,14 @@ function competitiveFavourScore(
   direction: 'coins-to-rep' | 'rep-to-coins',
 ): number {
   if (direction === 'coins-to-rep') return 1;
-  const cheapest = getCheapestMarketCost(state);
-  if (
-    Number.isFinite(cheapest) &&
-    (player.coins ?? 0) < cheapest &&
-    (player.reputation ?? 0) >= state.config.favourRepToCoinsRepCost + 1
-  ) {
-    return 3;
-  }
-  return 1;
+  return isRepToCoinsFavourWorthwhile(
+    state,
+    player.coins ?? 0,
+    player.reputation ?? 0,
+    aiCompetitivePlanningHorizon(state, player.playerId),
+  )
+    ? 3
+    : 1;
 }
 
 // ── Competitive seat binding (headless / harness driving) ─────
@@ -2050,6 +2501,27 @@ export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number
 // ── CompetitiveGreedyStrategy ───────────────────────────────
 
 /**
+ * Competitive counterpart of {@link isPlacementEligible}: a community-space
+ * placement is only eligible when its score is positive; income-producing
+ * businesses are always eligible (AC2/AC3 competitive mirror).
+ */
+function isCompetitivePlacementEligible(
+  state: MainStreetState,
+  player: PlayerRecord,
+  action: BuyBusinessAction | PlayBusinessFromHandAction,
+  score: number,
+): boolean {
+  let family: string | undefined;
+  if (action.type === 'buy-business') {
+    family = state.market.cards.find(c => c.id === action.cardId)?.family;
+  } else {
+    family = (player.hand ?? [])[action.handIndex]?.family;
+  }
+  if (family !== 'community-space') return true;
+  return score > 0;
+}
+
+/**
  * Ownership-aware, staff-free greedy strategy for competitive play.
  *
  * Mirrors the single-player {@link GreedyStrategy} priority chain but
@@ -2065,10 +2537,13 @@ export const CompetitiveGreedyStrategy: MainStreetAiStrategy = {
     const playerId = state.activePlayerId ?? 0;
     const legalActions = enumerateCompetitiveLegalActions(state, playerId);
     const score = (a: PlayerAction): number => scoreCompetitiveAction(state, a, playerId);
+    const player = getCompetitivePlayer(state, playerId);
 
-    const handBusinessActions = legalActions.filter(
+    const handBusinessActions = (legalActions.filter(
       a => a.type === 'play-business-from-hand',
-    ) as PlayBusinessFromHandAction[];
+    ) as PlayBusinessFromHandAction[]).filter(
+      a => player != null && isCompetitivePlacementEligible(state, player, a, score(a)),
+    );
     const handUpgradeActions = legalActions.filter(
       a => a.type === 'play-upgrade-from-hand',
     ) as PlayUpgradeFromHandAction[];
@@ -2077,7 +2552,6 @@ export const CompetitiveGreedyStrategy: MainStreetAiStrategy = {
     ) as PlayEventFromHandAction[];
 
     // Priority 0: free same-week composite plays cost no action.
-    const player = getCompetitivePlayer(state, playerId);
     const freeCompositePlays: PlayerAction[] = [
       ...handUpgradeActions.filter(
         a => player != null &&
@@ -2110,8 +2584,10 @@ export const CompetitiveGreedyStrategy: MainStreetAiStrategy = {
       return pickBest(upgradeActions, score, rng);
     }
 
-    // Priority 4: buy business for best synergy placement.
-    const businessActions = legalActions.filter(a => a.type === 'buy-business') as BuyBusinessAction[];
+    // Priority 4: buy business for best synergy placement. Community spaces
+    // only qualify when their score clears the business-preference penalty.
+    const businessActions = (legalActions.filter(a => a.type === 'buy-business') as BuyBusinessAction[])
+      .filter(a => player != null && isCompetitivePlacementEligible(state, player, a, score(a)));
     if (businessActions.length > 0) {
       return pickBest(businessActions, score, rng);
     }

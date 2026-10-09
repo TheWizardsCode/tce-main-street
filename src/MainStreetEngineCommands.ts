@@ -875,6 +875,93 @@ export function canPlaceStaffOnBusiness(
 }
 
 /**
+ * Reports whether placing `staffId` at `slotIndex` is a **relocation** —
+ * moving a member that is already employed at a different business
+ * (MS-0MUOSUNYR0073SI1).
+ *
+ * The distinction drives the action economy: the initial placement of a
+ * newly-hired member is part of the hire action and stays free, whereas
+ * relocating an employed member to another business costs exactly 1 action
+ * point. `placeStaffOnBusiness` itself stays action-free and reusable — the
+ * player-facing `placeStaffOnBusinessCommand` consults this predicate to
+ * decide whether to charge the action.
+ *
+ * @param state     Current game state.
+ * @param staffId   ID of the hired staff card.
+ * @param slotIndex Target street-grid slot index.
+ * @returns true when the member is currently employed somewhere else.
+ */
+export function isStaffRelocation(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+): boolean {
+  const staff = (state.staffCards ?? []).find(c => c.id === staffId);
+  return !!staff && staff.employedAtSlot != null && staff.employedAtSlot !== slotIndex;
+}
+
+/**
+ * Validates whether a hired staff member may be **moved** (relocated) from
+ * its current business to `slotIndex` (MS-0MUOSUKUC004G2VO, parent AC4).
+ *
+ * A move is a specific case of placement: the member must already be
+ * employed at a *different* business, and the target must satisfy the normal
+ * placement rules (business-type match + free employment capacity) via
+ * `canPlaceStaffOnBusiness`. The initial placement of a newly-hired member
+ * is not a move — use `canPlaceStaffOnBusiness` for that path.
+ *
+ * @param state     Current game state.
+ * @param staffId   ID of the hired staff card to move.
+ * @param slotIndex Target street-grid slot index.
+ * @returns LegalityResult — legal when the relocation may proceed.
+ */
+export function canMoveStaffOnBusiness(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+): import('@rule-engine').LegalityResult {
+  const staff = (state.staffCards ?? []).find(c => c.id === staffId);
+  if (!staff) {
+    return { legal: false, reason: `Staff card ${staffId} is not hired.` };
+  }
+  if (staff.employedAtSlot == null) {
+    return { legal: false, reason: `${staff.name} is not currently employed — nothing to move.` };
+  }
+  if (staff.employedAtSlot === slotIndex) {
+    return { legal: false, reason: `${staff.name} is already employed at that business.` };
+  }
+  return canPlaceStaffOnBusiness(state, staffId, slotIndex);
+}
+
+/**
+ * Moves (relocates) an employed staff member from its current business to
+ * `slotIndex` (MS-0MUOSUKUC004G2VO, parent AC4).
+ *
+ * Reuses `placeStaffOnBusiness` so `allowedBusinessTypes`, employment
+ * capacity and the `business.employedStaff` / `staff.employedAtSlot`
+ * invariants are enforced by the single shared placement path. Engine-level
+ * and therefore action-free: the 1-action-point relocation cost is charged
+ * by the player-facing `moveStaffCommand`.
+ *
+ * @param state     Current game state (mutated in-place).
+ * @param staffId   ID of the hired, employed staff card to move.
+ * @param slotIndex Destination street-grid slot index.
+ * @throws Error when the relocation is illegal (not employed, same slot,
+ *         type mismatch, full destination, empty slot).
+ */
+export function moveStaffOnBusiness(
+  state: MainStreetState,
+  staffId: string,
+  slotIndex: number,
+): void {
+  const legality = canMoveStaffOnBusiness(state, staffId, slotIndex);
+  if (!legality.legal) {
+    throw new Error(legality.reason);
+  }
+  placeStaffOnBusiness(state, staffId, slotIndex);
+}
+
+/**
  * Places a hired staff member at the given street-grid slot
  * (CG-0MU3BTSQ8006ZRCU AC1-AC3). Sets the member's `employedAtSlot` and
  * registers it on the business's `employedStaff` list (the per-business

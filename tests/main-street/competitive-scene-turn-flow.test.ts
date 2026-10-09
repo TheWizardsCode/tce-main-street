@@ -336,7 +336,7 @@ describe('Competitive action banking', () => {
   });
 
   it('AC1 — an idle shared day banks exactly one action, regardless of seat', () => {
-    const state = bankedState('bank-idle-day', 0);
+    const state = bankedState('bank-idle-day-x-1', 0);
     expect(state.bankedActions).toBe(0);
     expect(state.actionsRemaining).toBe(1); // P0 base only
 

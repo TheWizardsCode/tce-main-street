@@ -721,17 +721,17 @@ describe('MainStreetEngine', () => {
     });
 
     it('should execute a turn with no purchases', () => {
-      const state = createTestState();
+      const state = createTestState('turnflow-nopurchase-x-0');
 
       const result = executeFullTurn(state, [{ type: 'end-turn' }]);
 
       expect(result.gameResult).toBe('playing');
       // Coins may change due to Incident event resolution (seed-dependent;
       // card pool changes affect seeded shuffle). The upper bound allows the
-      // largest single positive Incident coin delta (evt-farm-table, +600)
+      // largest single positive Incident coin delta (evt-farm-table, +400)
       // plus the starting bank — a dual-choice incident can apply it on Accept.
       expect(state.resourceBank.coins).toBeGreaterThanOrEqual(0);
-      expect(state.resourceBank.coins).toBeLessThanOrEqual(STARTING_COINS + 600);
+      expect(state.resourceBank.coins).toBeLessThanOrEqual(STARTING_COINS + 400);
       expect(state.turn).toBe(2);
     });
 

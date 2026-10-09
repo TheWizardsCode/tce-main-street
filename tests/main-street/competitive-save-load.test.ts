@@ -16,6 +16,7 @@ import {
   serializeMainStreetState,
   seedToNumber,
   setupMainStreetGame,
+  effectiveWinThreshold,
   type CompetitiveOpponentConfig,
   type MainStreetState,
 } from '../../src/MainStreetState';
@@ -130,6 +131,44 @@ describe('Competitive save/load — mid-day round-trip', () => {
 
     expect(restored.gameResult).not.toBe('playing');
     expect(days).toBeLessThan(200);
+  });
+});
+
+describe('Competitive save/load — effective win threshold re-derivation (MS-0MUZK64F8000XYO0)', () => {
+  it('a P=3 Easy round-trip re-derives 3 350 from the persisted playerCount', () => {
+    const state = createCompetitiveState({ seed: 'eff-threshold-p3', playerCount: 3 });
+    state.config = { ...state.config, winThreshold: 10000 } as typeof state.config;
+    expect(effectiveWinThreshold(state)).toBe(3350);
+
+    const restored = roundTrip(state);
+
+    expect(restored.playerCount).toBe(3);
+    expect(effectiveWinThreshold(restored)).toBe(3350);
+  });
+
+  it('a P=2 Medium round-trip re-derives 6 000 from the persisted playerCount', () => {
+    const state = createCompetitiveState({ seed: 'eff-threshold-p2', playerCount: 2 });
+    state.config = { ...state.config, winThreshold: 12000 } as typeof state.config;
+    expect(effectiveWinThreshold(state)).toBe(6000);
+
+    const restored = roundTrip(state);
+
+    expect(restored.playerCount).toBe(2);
+    expect(effectiveWinThreshold(restored)).toBe(6000);
+  });
+
+  it('a legacy save with no playerCount yields the base threshold', () => {
+    const state = createCompetitiveState({ seed: 'eff-threshold-legacy', playerCount: 2 });
+    state.config = { ...state.config, winThreshold: 10000 } as typeof state.config;
+
+    // Simulate a legacy save: strip the playerCount field.
+    const saved = JSON.parse(JSON.stringify(serializeMainStreetState(state))) as Record<string, unknown>;
+    delete saved.playerCount;
+
+    const restored = deserializeMainStreetState(saved as never);
+    expect(restored.playerCount).toBeUndefined();
+    // Without playerCount the helper falls back to P=1 → base threshold.
+    expect(effectiveWinThreshold(restored)).toBe(10000);
   });
 });
 

@@ -6,6 +6,12 @@ This document records the quantitative ROI comparison that drove the re-pricing
 of community spaces and investment events, and the guardrail evidence for the
 after-state.
 
+> **Note (MS-0MUR9IMN60093HIE, R2).** The reputation-source re-tune later
+> multiplied every positive business / community-space `reputationPerTurn` ×4
+> (see [../reputation-retune-evidence.md](../reputation-retune-evidence.md)).
+> The ROI figures below reflect the pre-R2 reputation values; the re-pricing
+> decisions (costs) are unchanged by the re-tune.
+
 ## 1. Methodology
 
 ### Assumptions

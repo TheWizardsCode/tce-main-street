@@ -15,6 +15,8 @@ import {
   gameDiscoveryPlugin,
   resolveCoreAliases,
 } from './core/scripts/vite-game-discovery-plugin';
+import { writeCardTestResults } from './tests/main-street/cards/CardTestResultWriter';
+import { computeCsvChecksum } from './src/CsvChecksum';
 
 const coreRoot = path.resolve(__dirname, './core');
 const pkg = JSON.parse(
@@ -47,6 +49,63 @@ const presetEnv = {
   GAMES_CONFIG: process.env.GAMES_CONFIG ?? 'game',
 };
 
+/**
+ * Dev-server middleware that persists browser card-test results into
+ * `src/card-data.csv`.
+ *
+ * Browser tests run in Chromium and cannot write files directly, so they POST
+ * their results to `/__card-results`; this Node-side handler does the
+ * idempotent, atomic write via the shared result writer.
+ */
+function cardResultsWriterPlugin() {
+  return {
+    name: 'card-results-writer',
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use('/__card-results', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end('POST only');
+          return;
+        }
+        let body = '';
+        req.on('data', (chunk: Buffer | string) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const payload = JSON.parse(body) as {
+              results: Parameters<typeof writeCardTestResults>[1];
+              targets?: Parameters<typeof writeCardTestResults>[2];
+            };
+            const csvPath = path.resolve(__dirname, 'src/card-data.csv');
+            const result = writeCardTestResults(
+              csvPath,
+              payload.results,
+              payload.targets,
+            );
+            // Keep the SVG change-detection checksum in sync with the CSV so
+            // the committed artifacts agree (the checksum covers the whole file).
+            const checksum = computeCsvChecksum(fs.readFileSync(csvPath, 'utf-8'));
+            const checksumPath = path.resolve(
+              __dirname,
+              'public/assets/games/main-street/svg/cards/csv-checksum.json',
+            );
+            if (fs.existsSync(path.dirname(checksumPath))) {
+              fs.writeFileSync(checksumPath, JSON.stringify({ checksum }) + '\n', 'utf8');
+            }
+            res.statusCode = 200;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ ...result, checksum }));
+          } catch (error) {
+            res.statusCode = 500;
+            res.end(String(error));
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -60,6 +119,7 @@ export default defineConfig(({ mode }) => ({
     // Reads ./configs/game.json and generates
     // 'virtual:game-registry' (Gym from the core + this one game).
     gameDiscoveryPlugin({ projectRoot: __dirname, coreRoot, env: presetEnv }),
+    cardResultsWriterPlugin(),
   ],
   resolve: {
     alias: resolveCoreAliases(coreRoot),
@@ -89,6 +149,29 @@ export default defineConfig(({ mode }) => ({
           exclude: ['tests/**/*.browser.test.ts'],
           testTimeout: 15_000,
           maxWorkers: 4,
+        },
+      },
+      // Browser integration project: real Phaser MainStreetScene in headless
+      // Chromium (Playwright). Runs serially because the browser/GPU context is
+      // shared and sensitive. Includes the card-level browser suite under
+      // tests/main-street/cards/browser/.
+      {
+        extends: true,
+        test: {
+          name: 'browser',
+          globals: true,
+          include: ['tests/**/*.browser.test.ts'],
+          fileParallelism: false,
+          sequence: { concurrent: false },
+          testTimeout: 60_000,
+          browser: {
+            enabled: true,
+            provider: 'playwright',
+            headless: true,
+            instances: [{ browser: 'chromium' }],
+            viewport: { width: 900, height: 700 },
+            isolate: true,
+          },
         },
       },
     ],

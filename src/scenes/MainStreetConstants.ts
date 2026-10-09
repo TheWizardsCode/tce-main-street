@@ -106,6 +106,55 @@ export const ROAD_MARKING_WIDTH = 3;
 export const ROAD_DASH_PERIOD = 14;
 /** Length of each dash, in pixels. */
 export const ROAD_DASH_LENGTH = 8;
+
+// ── Ambient pedestrian silhouette layer (MS-0MUYGFW7T00579Z1) ───────
+// Presentation-only wander figures drawn over the street band. The layer is
+// parented to the street container so it pans/clips with the map camera, and
+// it uses one runtime-generated texture (no authored art). All values are in
+// map-local pixels.
+
+/** Width of the shared pedestrian silhouette texture, in map-local px. */
+export const PEDESTRIAN_SILHOUETTE_W = 12;
+/** Height of the shared pedestrian silhouette texture, in map-local px. */
+export const PEDESTRIAN_SILHOUETTE_H = 22;
+/** Pedestrian walk speed, in map-local px per second. */
+export const PEDESTRIAN_WALK_SPEED = 22;
+/** Inset from the street viewport band to the pedestrian wander area, in px. */
+export const PEDESTRIAN_STREET_PADDING = 6;
+/** Vertical bob amplitude (px) applied to walking figures. */
+export const PEDESTRIAN_BOB_AMPLITUDE = 1.5;
+/** Vertical bob rate, in radians per second. */
+export const PEDESTRIAN_BOB_RATE = 8;
+/** Texture key for the runtime-generated shared silhouette texture. */
+export const PEDESTRIAN_TEXTURE_KEY = 'ms-pedestrian-silhouette';
+/**
+ * Fade duration (ms) for reconciling the live crowd: a spawn fades the figure
+ * in and a removal fades it out before the image is destroyed
+ * (MS-0MUYGFWKG008GUA5).
+ */
+export const PEDESTRIAN_FADE_MS = 220;
+/**
+ * Extra capture margin (map-local px) around a business cell within which a
+ * road-walking pedestrian may decide to step off the road and enter the shop
+ * (MS-0MUZ4WB290024ZGQ).
+ */
+export const PEDESTRIAN_SHOP_CAPTURE_PAD = 4;
+/**
+ * Minimum fraction of the live crowd that must be inside occupied cells by
+ * the reputation income phase (MS-0MUZ4WB290024ZGQ). Enforced
+ * deterministically at phase time; presentation-only.
+ */
+export const PEDESTRIAN_MIN_SHOP_RATIO = 0.25;
+/**
+ * Speed multiplier applied while a pedestrian walks deliberately into a shop
+ * or off the block (MS-0MUZ6CGSV002WTYM), so the walk reads as purposeful.
+ */
+export const PEDESTRIAN_ENTER_SPEED_MULTIPLIER = 1.5;
+/**
+ * How far past the block bounds a leaving pedestrian walks before the layer
+ * removes it off-screen (MS-0MUZ6CGSV002WTYM), in map-local px.
+ */
+export const PEDESTRIAN_OFF_BLOCK_MARGIN = 60;
 // Make hand slot match placeholder size as requested
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;

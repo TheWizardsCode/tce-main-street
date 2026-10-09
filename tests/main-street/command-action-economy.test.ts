@@ -18,7 +18,6 @@ import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import {
   buyBusinessCommand,
   moveToHandCommand,
-  moveEventToHandCommand,
   playBusinessFromHandCommand,
   buyAndPlaceBusinessCommand,
   hireStaffCardCommand,
@@ -164,16 +163,6 @@ describe('action-type commands spend the daily action', () => {
 });
 
 describe('free (non-action) commands leave the budget untouched', () => {
-  it('moveEventToHandCommand (buy event) does not spend an action', () => {
-    const state = setupMarketState();
-    const evt = state.market.cards.find((c: any) => c.family === 'event');
-    if (!evt) return; // market may have no event — skip gracefully
-    const mgr = new UndoRedoManager();
-    mgr.execute(moveEventToHandCommand(state, evt.id));
-    expect(state.actionsRemaining).toBe(1);
-    expect(state.hand?.some((c: any) => c.id === evt.id)).toBe(true);
-  });
-
   it('buyUpgradeCommand does not spend an action', () => {
     const state = setupMarketState();
     const upgrade = state.market.cards.find(

@@ -92,10 +92,48 @@ function spyOnWeekBanner(scene: Phaser.Scene & Record<string, unknown>): { calls
   return { calls };
 }
 
+/**
+ * Finds a Phaser.Text overlay button by its label. Overlay buttons live on the
+ * scene display list and/or inside the HUD container, so search all three
+ * locations (they may be parented into `hudContainer`).
+ */
+function findTextButton(
+  scene: Phaser.Scene & Record<string, unknown>,
+  matcher: (text: string) => boolean,
+): Phaser.GameObjects.Text | undefined {
+  const allTexts: Phaser.GameObjects.Text[] = [];
+  const displayList = (scene as any).displayList?.getAll?.() ?? [];
+  const children = (scene as any).children?.getAll?.() ?? [];
+  const hud = (scene as any).hudContainer?.list ?? (scene as any).hudContainer?.getAll?.() ?? [];
+  for (const obj of [...displayList, ...children, ...hud]) {
+    if (obj instanceof Phaser.GameObjects.Text) allTexts.push(obj as Phaser.GameObjects.Text);
+  }
+  return allTexts.find((t) => matcher(t.text ?? ''));
+}
+
+/**
+ * Clears persisted run checkpoints/campaign progress. The SaveLoadStore lives
+ * in IndexedDB, which is origin-scoped and shared across browser test files;
+ * without this a confirmed game here suppresses the tutorial offer (via a
+ * saved checkpoint) in a later file.
+ */
+async function clearSaveStore(scene: Phaser.Scene & Record<string, unknown>): Promise<void> {
+  try {
+    await (scene as any).saveStore?.clear?.();
+  } catch (_) {
+    // ignore in constrained environments
+  }
+}
+
 describe('MainStreet week banner', () => {
   let game: Phaser.Game | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (game) {
+      const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+      await clearSaveStore(scene);
+    }
+
     const moduleUrl = (globalThis as unknown as Record<string, unknown>).__MAIN_STREET_TF_MODULE_URL__;
     if (typeof moduleUrl === 'string' && moduleUrl.startsWith('blob:')) {
       URL.revokeObjectURL(moduleUrl);
@@ -181,7 +219,7 @@ describe('MainStreet week banner', () => {
     expect((scene as unknown as { deferredWeekBanner: boolean }).deferredWeekBanner).toBe(true);
   }, 30_000);
 
-  it('fires the deferred banner only once the player skips the tutorial offer', async () => {
+  it('keeps the banner deferred while the mode selector waits, then fires it exactly once on mode confirm', async () => {
     resetTutorialState();
     try { (window as any).localStorage?.clear(); } catch (_) { /* ignore */ }
     game = await bootGame();
@@ -190,34 +228,40 @@ describe('MainStreet week banner', () => {
     // Spy AFTER boot so we measure only post-boot banner triggers.
     const { calls } = spyOnWeekBanner(scene);
 
+    // The tutorial offer is the first blocking modal.
     await waitForCondition(() => {
       const modal = (scene as unknown as { tutorialOfferModal?: { isVisible: boolean } }).tutorialOfferModal;
       return modal?.isVisible === true;
     }, { timeoutMs: 5000, intervalMs: 25, label: 'tutorial offer modal visible' });
-
-    // The deferred banner should NOT have fired while the modal is up.
     expect(calls).toHaveLength(0);
 
-    // Locate the Skip button text object. It is a Phaser.Text created via
-    // the modal's createOverlayButton; search the scene's display list and
-    // children (it may be parented into hudContainer). Emit pointerdown
-    // exactly like a real click — this exercises the modal's actual onSkip
-    // wiring (dismiss → onSkip → playDeferredWeekBanner).
-    const skipLabel = '[ ' + 'Skip' + ' ]';
-    const allTexts: Phaser.GameObjects.Text[] = [];
-    const displayList = (scene as any).displayList?.getAll?.() ?? [];
-    const children = (scene as any).children?.getAll?.() ?? [];
-    const hud = (scene as any).hudContainer?.list ?? (scene as any).hudContainer?.getAll?.() ?? [];
-    for (const obj of [...displayList, ...children, ...hud]) {
-      if (obj instanceof Phaser.GameObjects.Text) allTexts.push(obj as Phaser.GameObjects.Text);
-    }
-    const skipBtn = allTexts.find((t) => t.text === skipLabel)
-      ?? allTexts.find((t) => t.text?.toLowerCase().includes('skip'));
+    // Skip the offer through the modal's real onSkip wiring. Under the
+    // reordered boot flow (MS-0MV0319OC002H15F) this presents the New Game
+    // mode selector next — it no longer plays the banner directly.
+    const skipBtn = findTextButton(scene, (text) => text.toLowerCase().includes('skip'));
     expect(skipBtn).toBeTruthy();
     if (!skipBtn) return;
     skipBtn.emit('pointerdown');
 
-    await waitForCondition(() => calls.length >= 1, { timeoutMs: 5000, label: 'deferred week banner after skip' });
+    await waitForCondition(() => {
+      const overlay = (scene as unknown as { newGameOverlay?: { isVisible: boolean } }).newGameOverlay;
+      return overlay?.isVisible === true;
+    }, { timeoutMs: 5000, intervalMs: 25, label: 'new game selector visible after skip' });
+
+    // The banner must stay deferred while the selector waits for a choice.
+    // Give any straggling async boot callbacks a chance to fire it.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls).toHaveLength(0);
+    expect((scene as unknown as { deferredWeekBanner: boolean }).deferredWeekBanner).toBe(true);
+
+    // Confirm the default (single-player) mode: the player has now committed
+    // to playing, so the deferred banner fires exactly once.
+    const startBtn = findTextButton(scene, (text) => text.toLowerCase().includes('start game'));
+    expect(startBtn).toBeTruthy();
+    if (!startBtn) return;
+    startBtn.emit('pointerdown');
+
+    await waitForCondition(() => calls.length >= 1, { timeoutMs: 5000, label: 'deferred week banner after mode confirm' });
     expect(calls).toHaveLength(1);
     expect(calls[0].turn).toBe((scene.state as { turn: number }).turn);
     // The flag is cleared after firing (fires exactly once).

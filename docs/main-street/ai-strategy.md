@@ -85,6 +85,167 @@ The banking-aware variant is guarded like any other strategy, **additively** —
 
 - **Bank consumption fix (CG-0MTCP7F9S009HARC):** This behaviour depends on the bank consumption fix that decrements `bankedActions` on every `consumeAction` call, so the hoarded reserve actually depletes as the AI spends.
 
+## Community Favour: enablement + value/timing heuristic (MS-0MUVB2ZES005V83Y)
+
+Community Favour (CG-0MSTOATDQ005XDET) is a free, once-per-turn resource
+exchange (MarketPhase only): `coins→rep` (200 coins → 1 reputation) or
+`rep→coins` (200 reputation → 300 coins). The greedy AI only ever takes
+`rep→coins`; the reverse is scored 1 and never outranks a purchase.
+
+The `rep→coins` fallback is **not** a blanket stall-breaker. `scoreAction`
+(`case 'community-favour'`) routes through `isRepToCoinsFavourWorthwhile` — the
+same gate used by the competitive `competitiveFavourScore`, so the two
+heuristics cannot diverge. The exchange is taken (score 3) only when **all** of
+the following hold:
+
+1. **Enablement (AC2)** — the `favourRepToCoinsCoinGain` coins enable affording
+   at least one business / community-space placement that was unaffordable
+   before and whose greedy value is positive after the exchange
+   (`bestEnabledFavourPlacement`, evaluated with `bestPlacementSynergy` and
+   `computeEffectiveBusinessPurchaseCost`). Candidates come from the market row
+   and the hand, exactly as `scoreBusinessAction` /
+   `scorePlayBusinessFromHandAction` value them.
+2. **Value/timing (AC3)** — the enabled placement's gross reward
+   `(baseIncome + projected synergy) × aiPlanningHorizon` is at least
+   `FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO` (= 12) × the reputation spent
+   (`favourRepToCoinsRepCost`). This restricts the exchange to early,
+   high-value placements (long horizon and/or a strong synergy slot) rather
+   than a late-game or low-value liquidity top-up.
+3. **Reputation buffer (AC4)** — reputation after the exchange stays
+   `≥ FAVOUR_REP_TO_COINS_MIN_REP_BUFFER` (= 1), so the exchange can never
+   itself trigger the `reputation <= 0` collapse loss.
+
+Otherwise the action scores the neutral default (1) and, because
+`chooseGreedyAction` only takes a favour action when its score is `> 1`, the
+AI ends the turn instead.
+
+Both thresholds are constants in `MainStreetAiStrategy.ts`. Ratio 12 was
+calibrated on the canonical 200-seed profile after the R2 reputation re-tune;
+the before/after evidence (including the producer-approved G5 band revision)
+is in [favour-ai-evidence.md](favour-ai-evidence.md).
+
+## Community-space move evaluation (MS-0MUX8J9KJ005ZKDW)
+
+Community-space cards are **not** scored with the business formula. They have
+`baseIncome = 0` and earn no synergy income themselves — their synergy type
+only anchors neighbouring businesses — so the business formula collapsed to
+`−cost` and the AI placed a community space whenever it was the cheapest
+affordable card, ignoring the running cost it drains each turn.
+
+`scoreBusinessAction` / `scorePlayBusinessFromHandAction` (and the competitive
+mirror `competitiveBusinessScore` / `competitiveHandBusinessScore`) branch on
+`card.family`: businesses keep
+`(baseIncome + projectedSynergyBonus) × horizon − cost`, while community
+spaces use `scoreCommunitySpacePlacement`:
+
+```
+(base income + synergy anchored for neighbours + reputation per turn) × horizon
+  − placement cost − ongoing running cost × horizon
+  − COMMUNITY_SPACE_SCORE_PENALTY
+```
+
+- **Synergy for neighbours** — `neighbourSynergyGain` diffs every neighbour's
+  `computeSynergyBonus` before/after the placement, so the income a community
+  space anchors for adjacent businesses is its coin value.
+- **Reputation per turn** — counted 1:1 with coins, matching `computeScore`
+  (`coins + reputation + challenges`).
+- **Running cost × horizon** — `ongoingCost` was previously invisible to the
+  AI; it is now deducted over the planning horizon.
+
+### Business-preference threshold (AC3)
+
+`COMMUNITY_SPACE_SCORE_PENALTY = 600` is a coin-equivalent penalty subtracted
+from every community-space placement score. A community space must therefore
+beat an income-producing business by at least 600, so income takes priority
+over synergy-only value when the two are comparable. Because the greedy spend
+chain (`chooseGreedyAction` Priority 1 / Priority 4, and the competitive
+`CompetitiveGreedyStrategy` equivalent) only accepts a community space whose
+(penalised) score is **positive**, the same constant is also the minimum
+net-value bar an "empty synergy" placement must clear — which is what stops
+the AI buying a community space merely because it is the cheapest affordable
+card.
+
+### Preserved synergy placements (AC4)
+
+`bestPlacementSynergy` and the bank look-ahead (`bestVisibleBankTarget` /
+`bestPipelineBankTarget`) and Community Favour enablement
+(`bestEnabledFavourPlacement`, running cost included) all use the community
+value, so a space that anchors high-income neighbours, or that combines
+reputation output with low running cost, still clears the penalty and is
+placed. The goal is to reduce over-use, not eliminate community spaces.
+
+### Evidence (AC1/AC5)
+
+The canonical 200-seed / 60-turn greedy profile
+(`src/scripts/balance/community-space-placement-report.ts`) shows the
+community-to-business placement ratio falling from **0.219 to 0.068** overall
+(Easy 0.226→0.073, Medium 0.206→0.055, Hard 0.228→0.080) with the win-rate
+ladder Easy ≥ Medium ≥ Hard intact (0.800 ≥ 0.720 ≥ 0.435). Full before/after
+figures, tolerances and reproduce commands are in
+[community-space-ai-evidence.md](community-space-ai-evidence.md).
+
+### Competitive mirror (ownership-aware)
+
+In **competitive** play the community-space placement value is the same
+formula with an ownership-aware neighbour term: it credits only the synergy
+anchored for the acting seat's own businesses and subtracts the synergy
+anchored for other seats (`own gain − opponent gain`). An opponent-only
+community space therefore scores `≤ 0` and fails the positive-score
+eligibility gate. See
+[Competitive placement: ownership-aware](#competitive-placement-ownership-aware-own--opponent)
+below and [competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md)
+for the before/after figures.
+
+## Competitive placement: ownership-aware (own − opponent)
+
+**Work item:** MS-0MUZFVM86003IPSM / MS-0MUZFVLVS007S56L (parent
+MS-0MUYODDW300690KX).
+
+In shared-street play the street holds businesses owned by the acting AI
+**and** by other seats. The ownership-agnostic neighbour-synergy sum
+(`neighbourSynergyGain`) credited every neighbouring business, so a community
+space that only anchored an opponent's businesses could still score positive
+and be bought — the AI paid coins and the ongoing running cost to enrich a
+rival.
+
+The competitive placement score is therefore **ownership-aware**:
+
+```
+placement value = own gain − opponent gain
+```
+
+- **Own gain** — the marginal synergy the placement anchors for businesses
+  owned by the acting seat (`getSlotOwnerId(state, i) === actingPlayerId`).
+  This is the only neighbour synergy credited.
+- **Opponent gain** — the marginal synergy the placement anchors for every
+  other seat's businesses. It is **subtracted** from the score (`opponent ×
+  horizon`), so a placement that helps a rival more than the acting seat
+  scores at or below zero.
+- **Community spaces** keep their separate placement value (above) with the
+  ownership-aware neighbour term; `isCompetitivePlacementEligible` gates them
+  on `score > 0`, so an opponent-only community space is never placed.
+- **Ordinary businesses** keep their own-income/synergy valuation and their
+  always-eligible gate; the opponent-benefit term is reflected in how they
+  rank against alternatives.
+- **Single-player (N = 1)** keeps the ownership-agnostic path, so
+  `scoreAction`, `scoreCommunitySpacePlacement` and `GreedyStrategy` are
+  unchanged and the Monte Carlo baselines do not move.
+
+The rule of thumb: **place a card only when the benefit to the acting seat
+exceeds the benefit handed to other seats.** The scoring stays deterministic
+(no RNG). Implementation lives in `neighbourSynergyGainByOwner` and the
+competitive branches of `communitySpacePlacementValueAt` /
+`competitiveBusinessScore` / `competitiveHandBusinessScore`
+(`src/MainStreetAiStrategy.ts`).
+
+Head-to-head evidence (200 seeds, prefix `mc-competitive`, 40 days,
+`CompetitiveGreedyStrategy`) shows the community-space net-opponent-beneficial
+rate falling from **62.4% to 0.0%**, the overall opponent-beneficial rate
+falling from **22.1% to 11.3%**, and opponent-anchored synergy falling **−48.9%**
+while own-anchored synergy rises **+22.8%** — with single-player baselines
+unchanged. Full before/after figures and commit SHAs are in
+[competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md).
+
 ## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
 
 In human-vs-AI competitive play the AI seats are removed from play when they can

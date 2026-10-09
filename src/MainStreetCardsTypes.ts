@@ -315,6 +315,22 @@ export interface UpgradeCard {
    * produce a display-name variant card face.
    */
   readonly newDisplayName?: string;
+  /**
+   * Optional relative draw weight used when the single-row market selects
+   * which upgrade card to place in a slot (MS-0MUYK08I1004I19W).
+   *
+   * The effective base weight is `drawWeight ?? 1`, clamped at `0`. Weighted
+   * selection activates only when at least one upgrade deck card declares a
+   * weight; an undecorated deck keeps the legacy plain `pop()` draw and
+   * consumes no extra RNG. At refill a declared card whose parent business is
+   * on the street at its `requiredLevel` (and below `maxLevel`) additionally
+   * receives the additive `UPGRADE_ELIGIBLE_DRAW_BONUS`, so a capstone surfaces
+   * once its prerequisite chain is ready instead of being drawn — and
+   * discarded — before it can be bought. The mechanism does NOT change the
+   * 78-card deck size or its `shuffleArray` Fisher–Yates call count, which
+   * preserves before/after attribution of seeded Monte Carlo runs.
+   */
+  readonly drawWeight?: number;
 }
 
 /**
@@ -406,6 +422,23 @@ export interface StaffCard {
    * face-down without resolving it (CG-0MSXOW6GN008ZSMN).
    */
   readonly peekOncePerTurn?: boolean;
+  /**
+   * Optional free market re-roll ability (the Investor, MS-0MTISBYLS009936W).
+   * While at least one staff member with this flag is employed, the player may
+   * perform one coin-free, action-free market re-roll per turn. Multiple such
+   * staff do not stack (still one per turn). Absent for staff without the
+   * ability (backward compatible).
+   */
+  readonly freeMarketRerollPerTurn?: boolean;
+  /**
+   * Optional relevance bias for the free market re-roll, as a fraction in
+   * `[0, 1]` (the Investor's `0.75`, MS-0MTISBYLS009936W). On a biased draw,
+   * each slot has this probability of being drawn from the pool relevant to
+   * the business the staff member is employed at, with the remainder drawn
+   * fully at random. Absent for staff without the ability (backward
+   * compatible).
+   */
+  readonly marketRelevanceBias?: number;
 }
 
 /** Community Space card placed on the street grid, parallel to BusinessCard. */
@@ -493,6 +526,20 @@ export interface CommunitySpaceCard {
 
 /** Union of all card types in Main Street. */
 export type AnyCard = BusinessCard | CommunitySpaceCard | EventCard | DurationEventCard | UpgradeCard | StaffCard;
+
+/**
+ * A card pack that contributed rows to the active Main Street pool.
+ *
+ * Persisted in saves (ids + versions) so a load can detect a pack that is
+ * now missing or disabled and degrade gracefully. See
+ * `MainStreetCardPacks.ts` for the single merge entry point.
+ */
+export interface ActiveMainStreetPack {
+  /** Pack id from the pack manifest. */
+  readonly id: string;
+  /** Pack content version from the pack manifest. */
+  readonly version: string;
+}
 
 // ── Incident Balance Types ──────────────────────────────────
 

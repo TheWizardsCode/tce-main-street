@@ -82,3 +82,17 @@ export const INCIDENT_REVEAL_HOLD_MS = 1920;
 
 /** Phase keys for the phased income animation (base → … → collect). */
 
+// ── Competitive closing bounds (MS-0MUXAQQON006XA6I / MS-0MUYFXCJ5008K6MY) ──
+/**
+ * Global maximum total closing time for the per-seat competitive closing.
+ * The stagger delay for each seat is clamped to this bound so a very large
+ * roster cannot stall the game — the closing always advances within this
+ * window regardless of player count.
+ *
+ * Default: 180 s — comfortably fits 15 seats at 12 s stagger (168 s) with
+ * headroom. Once a seat's stagger would exceed this bound, later seats clamp
+ * to the bound and their choreographies overlap rather than queueing
+ * indefinitely; the closing (and the day) still completes.
+ */
+export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
+

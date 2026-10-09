@@ -15,7 +15,7 @@ import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resol
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
-import type { IncomeResult } from './MainStreetAdjacency';
+import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
@@ -232,6 +232,7 @@ function finishCompetitiveClosingTail(
   incidentCoinChange: number,
   incidentRepChange: number,
   turnEnded: number,
+  playerIncome?: OwnerIncomeResult[],
 ): TurnResult {
   if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
@@ -244,6 +245,7 @@ function finishCompetitiveClosingTail(
       finalScore: state.finalScore,
       newlyCompletedChallenges: [],
       choicePending: false,
+      playerIncome,
     };
   }
   state.phase = 'EndCheck';
@@ -289,6 +291,7 @@ function finishCompetitiveClosingTail(
     finalScore: state.finalScore,
     newlyCompletedChallenges,
     choicePending: false,
+    playerIncome,
   };
 }
 
@@ -339,8 +342,15 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
   // N=1 never reaches this function via the convenience flow
   // (executeCompetitiveTurn collapses to the legacy single-player path); the
   // guard keeps direct N=1 calls legacy-identical (AC4). Consumes no RNG.
+  let playerIncome: OwnerIncomeResult[] | undefined;
   if ((state.players?.length ?? 0) > 1) {
-    applyCompetitiveIncome(state);
+    // Surface the authoritative per-owner income instead of discarding it, so
+    // the presentation layer can replay one seat at a time (MS-0MUYFX56M006RVIZ).
+    // Eliminated seats are out of the shared closing and are omitted from the
+    // surfaced array (in seat order). The engine economy is unchanged — this
+    // only captures the values already applied to each `PlayerRecord`.
+    playerIncome = applyCompetitiveIncome(state)
+      .filter(r => !state.players![r.ownerId]?.eliminated);
     applyCompetitiveOngoingCosts(state);
   }
   state.phase = 'IncidentPhase';
@@ -366,9 +376,10 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
       finalScore: state.finalScore,
       newlyCompletedChallenges: [],
       choicePending: true,
+      playerIncome,
     };
   }
-  return finishCompetitiveClosingTail(state, income, incident, incidentCoinChange, incidentRepChange, turnEnded);
+  return finishCompetitiveClosingTail(state, income, incident, incidentCoinChange, incidentRepChange, turnEnded, playerIncome);
 }
 
 /**

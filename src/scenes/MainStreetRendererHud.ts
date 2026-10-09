@@ -21,12 +21,13 @@ import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import type { PendingApplicant } from '../MainStreetState';
 import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H } from './MainStreetConstants';
-import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
+import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { createActionButton, createSceneTitle } from '@ui/Renderer';
 import Phaser from 'phaser';
+import { mainStreetAnchorPoint } from './MainStreetLayoutAdapter';
 import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
 import { renderCompetitiveScoreboard } from './MainStreetRendererCompetitiveHud';
 
@@ -40,7 +41,38 @@ export function createHeader(renderer: MainStreetRendererContext): void {
 
     const s = renderer.scene;
     createSceneTitle(s, 'Main Street');
+    createCardPacksButton(s);
   
+}
+
+/**
+ * Create the always-visible **Card Packs** entry point (F9 /
+ * CG-0MUZIS4KZ003R1HP) in the top-right header area beside the engine
+ * Help/Settings buttons.
+ *
+ * Positioned entirely via SLL (the `cardPacksButton` zone anchor), so no pixel
+ * coordinates are hard-coded. Opening it shows the reusable core
+ * `CardPackListing` overlay. Skipped in replay mode (the overlay is UI-only).
+ */
+function createCardPacksButton(s: MainStreetRendererContext['scene']): void {
+  if (s?.replayMode) return;
+  try {
+    const center = mainStreetAnchorPoint('cardPacksButton', 'center');
+    const buttonW = 92;
+    const buttonH = 30;
+    const button = createActionButton(
+      s,
+      Math.round(center.x - buttonW / 2),
+      Math.round(center.y - buttonH / 2),
+      buttonW,
+      'Card Packs',
+      () => s.showCardPacks(),
+      { height: buttonH, depth: 1102, fontSize: '12px' },
+    );
+    if (s.hudContainer) s.hudContainer.add(button);
+  } catch {
+    // Non-fatal: a missing HUD container must never block scene creation.
+  }
 }
 
 export function createInstructions(renderer: MainStreetRendererContext): void {
@@ -217,8 +249,10 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Centre of the reputation text — used for the +/- delta pop position.
     const repX = repText.x + repText.width / 2;
 
-    // Score - right-aligned at the strip's right edge (shows x / y where y is the win threshold)
-    const scoreText = markHudTransient(s.add.text(hudRight - 10, hudY, `Score: ${Math.round(score)}/${s.state.config.winThreshold}`, {
+    // Score - right-aligned at the strip's right edge (shows x / y where y is
+    // the effective win threshold — the per-seat target in competitive play,
+    // MS-0MUZK652V001L71C).
+    const scoreText = markHudTransient(s.add.text(hudRight - 10, hudY, buildHudScoreLine(s.state, score), {
       fontSize: '16px', fontStyle: 'bold', color: '#ff8844', fontFamily: FONT_FAMILY,
     }).setOrigin(1, 0.5));
     s.hudContainer.add(scoreText);

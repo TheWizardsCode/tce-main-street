@@ -32,6 +32,50 @@ every seat's final coins, reputation and score side by side, flagging bankrupt,
 collapsed and eliminated seats. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
+### Competitive end-of-turn
+
+Once every seat has taken its MarketPhase the shared day resolves a single
+closing — income → incident → end check — exactly as in single-player. In
+competitive mode the closing is then **presented per seat**: every
+non-eliminated seat, in seat order, replays the full phased income
+choreography (base → synergy → reputation → events → upcoming → grid-to-HUD
+coin collection) with that seat's own authoritative income. The closing text
+reports each seat's own gain (for example `Player 2: +7 coins`) rather than
+the shared host total, which can differ from any seat's actual income.
+Eliminated seats are skipped.
+
+The engine's shared-day contract and seeded-replay determinism are unchanged —
+this is presentation only. Reduced motion, replay and headless contexts skip
+the animations, show the per-seat text and always advance the day; a global
+fast-forward bound caps the total closing time so a large roster cannot stall
+the game.
+
+## Card packs (DLC)
+
+Main Street supports **card packs** — extra cards delivered as DLC and merged
+into the card pool at startup, without rebuilding the game or the launcher. A
+pack is a manifest plus a CSV fragment in Main Street's `card-data.csv`
+schema (and optional art), installed under the launcher's content directory at
+`<contentDir>/packs/main-street/<packId>/`. Pack rows are merged into the base
+pool through the engine's deterministic
+[`mergeCardPackCsv`](core/src/core-engine/CardPackMerge.ts) seam; a fragment
+must reuse the base header exactly, and a duplicate card id or mismatched
+header rejects that pack **whole**.
+
+Installed packs are listed in the in-game **Card Packs** panel (top-right HUD
+button). Entitled packs are enabled by default and can be toggled; a
+present-but-unowned pack is listed **locked** with a reason and its cards stay
+out of play. The enabled set is remembered for new games, and saves record the
+active pack set plus the merged checksum, so a load restores the same pool and
+degrades gracefully (a warning, base content) when a pack is missing. The game
+refuses to resume only when a live card instance needs a template from a
+missing/disabled pack.
+
+Authoring, building, installing and gating a pack — with the reference pack as
+a worked example — is documented in the core repo's
+[Card Packs](core/docs/DEVELOPER.md#card-packs) section (which links the
+step-by-step `docs/dev/card-packs-runbook.md`).
+
 ## Prerequisites
 
 - **Node.js 20** and npm (the CI workflow pins Node 20).

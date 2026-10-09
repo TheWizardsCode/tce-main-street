@@ -1,0 +1,66 @@
+{
+  "label": "after",
+  "generatedAt": "2026-10-07T15:23:34.174Z",
+  "commitSha": "a6cf23b27e2090f02f62a5dfb1dfdaf8edec63eb",
+  "profile": {
+    "seeds": 200,
+    "seedPrefix": "mc-balance",
+    "maxTurns": 60,
+    "strategy": "greedy",
+    "difficulties": [
+      "Easy",
+      "Medium",
+      "Hard"
+    ]
+  },
+  "perDifficulty": {
+    "Easy": {
+      "runs": 200,
+      "wins": 160,
+      "winRate": 0.8,
+      "businessPlacements": 1438,
+      "businessPlacementsPerRun": 7.19,
+      "communitySpacePlacements": 105,
+      "communitySpacePlacementsPerRun": 0.525,
+      "communityToBusinessRatio": 0.07301808066759388,
+      "averageCoinsPerTurn": 420.6317927636091,
+      "medianScore": 10772.5
+    },
+    "Medium": {
+      "runs": 200,
+      "wins": 144,
+      "winRate": 0.72,
+      "businessPlacements": 1433,
+      "businessPlacementsPerRun": 7.165,
+      "communitySpacePlacements": 79,
+      "communitySpacePlacementsPerRun": 0.395,
+      "communityToBusinessRatio": 0.05512909979064899,
+      "averageCoinsPerTurn": 378.8704418426613,
+      "medianScore": 12508
+    },
+    "Hard": {
+      "runs": 200,
+      "wins": 87,
+      "winRate": 0.435,
+      "businessPlacements": 1015,
+      "businessPlacementsPerRun": 5.075,
+      "communitySpacePlacements": 81,
+      "communitySpacePlacementsPerRun": 0.405,
+      "communityToBusinessRatio": 0.07980295566502463,
+      "averageCoinsPerTurn": 228.0182031815929,
+      "medianScore": 775
+    }
+  },
+  "overall": {
+    "businessPlacements": 3886,
+    "communitySpacePlacements": 265,
+    "businessPlacementsPerRun": 6.476666666666667,
+    "communitySpacePlacementsPerRun": 0.44166666666666665,
+    "communityToBusinessRatio": 0.06819351518270715
+  },
+  "ladder": {
+    "easyAtLeastMedium": true,
+    "mediumAtLeastHard": true,
+    "monotone": true
+  }
+}

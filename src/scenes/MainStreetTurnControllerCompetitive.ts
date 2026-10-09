@@ -19,10 +19,12 @@
  *      under a bounded guard.
  *   4. {@link runCompetitiveClosing} runs the shared closing and completes a
  *      paused dual-choice incident so the day never stalls.
- *   5. {@link presentCompetitiveClosing} presents the closing results (income
- *      summary, incident reveal, end-of-turn text) then advances to the next
- *      day. Bounded and non-blocking, so the day never stalls even under
- *      reduced motion, replay or a headless context (MS-0MUVUPRXZ0030LUD).
+ *   5. {@link presentCompetitiveClosing} presents the closing results per seat:
+ *      one full phased income choreography per non-eliminated seat, in seat
+ *      order, with per-seat income text, then the shared incident reveal and
+ *      next-day advance via the shared `presentTurnClosing` primitive
+ *      (MS-0MUXAQQON006XA6I). Bounded and non-blocking, so the day never
+ *      stalls even under reduced motion, replay or a headless context.
  *
  * All functions are Phaser-free and operate on `MainStreetState`, so they are
  * exercised by the node integration test while the scene wires them behind a
@@ -64,7 +66,10 @@ import {
   type PlayerRecord,
 } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
-import { continueAfterLastStanding } from '../MainStreetEngineTurnClosing';
+import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
+import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
+import type { OwnerIncomeResult } from '../MainStreetAdjacency';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 
 /** Default hard cap on actions a single AI seat may take in one shared day. */
@@ -329,11 +334,17 @@ export function driveAiSeatsUntilClosing(
  */
 export function runCompetitiveClosing(state: MainStreetState): TurnResult | null {
   if (state.phase !== 'InvestmentResolution') return null;
-  let result = resolveCompetitiveClosingPhases(state);
-  if (result.choicePending) {
-    result = resolveCompetitivePendingChoice(state) ?? result;
+  const closing = resolveCompetitiveClosingPhases(state);
+  if (!closing.choicePending) return closing;
+  const resolved = resolveCompetitivePendingChoice(state) ?? closing;
+  // A dual-choice incident pauses the closing *after* the income phase. The
+  // deferred continuation does not re-run income, so carry the per-owner data
+  // captured before the pause through to the presented result
+  // (MS-0MUYFX56M006RVIZ).
+  if (resolved.playerIncome === undefined) {
+    resolved.playerIncome = closing.playerIncome;
   }
-  return result;
+  return resolved;
 }
 
 /** Minimal turn result describing a state that ended outside the closing. */
@@ -353,39 +364,26 @@ function turnResultFromState(state: MainStreetState): TurnResult {
 /** Brief hold after the closing summary before the next shared day starts. */
 export const COMPETITIVE_CLOSING_HOLD_MS = 900;
 
-/** Sets the scene instruction text, ignoring presentation-only failures. */
-function setInstruction(s: any, text: string): void {
-  try { s.instructionText?.setText?.(text); } catch { /* presentation-only */ }
-}
+/**
+ * Approximate duration of one seat's full phased income choreography. Used to
+ * stagger each non-eliminated seat's `animateIncomePhases` call so the seats
+ * play back-to-back in seat order rather than overlapping
+ * (MS-0MUXAQQON006XA6I AC1). The bounded/fast-forward child
+ * (MS-0MUYFXCJ5008K6MY) may cap this so a large roster cannot stall the game.
+ */
+export const COMPETITIVE_CLOSING_SEAT_STAGGER_MS = 12_000;
 
 /**
  * Builds the one-line closing summary shown to the player: the shared income
  * total and, when one resolved, the incident name. Returns an empty string
  * when there is nothing to report (e.g. a turn that ended outside the closing).
  *
- * Mirrors the text feedback shown by the single-player `finishTurnPresentation`
- * (`Income: +N coins | Incident: <name>`).
+ * Delegates to the shared {@link closingSummary} used by the single-player
+ * `finishTurnPresentation`, so both flows report the closing identically
+ * (MS-0MUYFX7Q2004JQ5R).
  */
 export function competitiveClosingSummary(result: TurnResult): string {
-  const parts: string[] = [];
-  if (result.income && result.income.total > 0) {
-    parts.push(`Income: +${result.income.total} coins`);
-  }
-  if (result.incident) {
-    parts.push(`Incident: ${result.incident.name}`);
-  }
-  return parts.join(' | ');
-}
-
-/** Schedules `cb` after `delayMs` when the scene has a clock, else runs now. */
-function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
-  try {
-    if (typeof s.time?.delayedCall === 'function') {
-      s.time.delayedCall(delayMs, cb);
-      return;
-    }
-  } catch { /* fall through to immediate */ }
-  cb();
+  return closingSummary(result);
 }
 
 /**
@@ -394,12 +392,24 @@ function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
  * contexts skip the animation and advance immediately, so the next day always
  * starts.
  *
- *  - AC1: income summary (shared total), matching the single-player text
- *         feedback ("and/or income phase labels" — the total is the required
- *         half of that disjunction; the full coin-grid choreography is
- *         deliberately omitted so the AI closing stays condensed/bounded).
- *  - AC2: incident reveal (name + deltas) when an incident resolved.
- *  - AC3: instruction text reflects the closing progression.
+ * Two paths share the one closing primitive (`presentTurnClosing`):
+ *
+ *  - **Per-seat (AC1–AC3):** when the closing surfaced authoritative
+ *    per-owner income (`result.playerIncome`, from
+ *    `applyCompetitiveIncome`), the presentation runs the full phased income
+ *    choreography once per non-eliminated seat, in seat order, using that
+ *    seat's own `phaseBreakdown.perSlotBreakdown`. The engine already filtered
+ *    eliminated seats, so iterating `playerIncome` skips them. The closing
+ *    summary reports each seat's own income (`Player N: +X coins`), never the
+ *    shared host total, which can differ from any seat's actual income.
+ *  - **Legacy/shared:** with no per-owner data, it keeps the condensed shared
+ *    summary used by single-player-free callers.
+ *
+ *  - AC1: full per-seat income choreography (or per-seat text when animations
+ *         are disabled).
+ *  - AC2: incident reveal (name + deltas) when an incident resolved, once per
+ *         shared day.
+ *  - AC3: instruction text reports each seat's income.
  *  - AC4: the next day always starts (bounded); text feedback survives reduced
  *         motion, replay and headless contexts.
  *
@@ -412,47 +422,89 @@ export function presentCompetitiveClosing(
   result: TurnResult,
   onComplete: () => void,
 ): void {
+  const seats = result.playerIncome ?? [];
+  if (seats.length === 0) {
+    // Legacy/shared path (no per-owner data): condensed shared summary.
+    presentTurnClosing(tcCtx, result, onComplete, {
+      statusText: 'Resolving end-of-turn effects...',
+      completionText: 'End of turn complete.',
+      holdMs: COMPETITIVE_CLOSING_HOLD_MS,
+    });
+    return;
+  }
+  presentPerSeatCompetitiveClosing(tcCtx, result, seats, onComplete);
+}
+
+/**
+ * Per-seat competitive closing presentation (MS-0MUXAQQON006XA6I): one full
+ * income choreography per non-eliminated seat, in seat order, followed by the
+ * shared incident reveal and the day advance.
+ *
+ * Presentation-only and Phaser-free-by-contract: it reads `result.playerIncome`
+ * and the scene's animator surface, mutates no engine state and consumes no
+ * RNG. Reduced motion / replay / headless skip the animations but still show
+ * the per-seat text and advance the day (bounded).
+ */
+function presentPerSeatCompetitiveClosing(
+  tcCtx: MainStreetTurnControllerContext,
+  result: TurnResult,
+  seats: OwnerIncomeResult[],
+  onComplete: () => void,
+): void {
   const s = tcCtx.scene;
   const replay = s.replayMode === true;
   const reducedMotion = s.settingsPanel?.reducedMotion === true;
   const animationsEnabled = !replay && !reducedMotion;
 
-  // AC3: reflect the closing phase progression in the instruction text.
-  setInstruction(s, 'Resolving end-of-turn effects...');
-
-  // AC1: income summary (shared total) + resolved incident name. Always shown
-  // as text so reduced motion / replay / headless still receive the feedback.
-  const summary = competitiveClosingSummary(result);
-  if (summary) setInstruction(s, summary);
-
-  const finish = (): void => {
-    setInstruction(s, 'End of turn complete.');
-    scheduleOrRun(s, COMPETITIVE_CLOSING_HOLD_MS, onComplete);
-  };
-
-  // AC2: incident reveal (skipped when animations are disabled — the incident
-  // name is already in the summary text). The reveal blocks the day start only
-  // for its own bounded hold; `finish` then schedules the condensed end-of-turn
-  // hold and advances.
-  const incident = result.incident;
-  if (incident && animationsEnabled) {
-    try {
-      const from = s.msRenderer?.getFrontIncidentCardCenter?.()
-        ?? { x: (s.layout?.gameW ?? 0) / 2, y: (s.layout?.gameH ?? 0) / 2 };
-      s.msAnimator?.animateIncidentReveal?.({
-        cardId: incident.id,
-        incidentName: incident.name,
-        coinChange: result.incidentCoinChange,
-        repChange: result.incidentRepChange,
-        from,
-        onComplete: finish,
-      });
-    } catch {
-      finish();
-    }
-  } else {
-    finish();
+  // AC3: per-seat income feedback from each seat's own authoritative total.
+  // Set before the choreography so reduced motion / replay / headless still
+  // receive the text; the shared host total is never shown.
+  try { s.instructionText?.setText?.('Resolving end-of-turn effects...'); } catch { /* presentation-only */ }
+  const summary = perSeatClosingSummary(seats);
+  if (summary) {
+    try { s.instructionText?.setText?.(summary); } catch { /* presentation-only */ }
   }
+
+  // AC1: one full choreography per surfaced seat, in seat order. Each seat's
+  // phase data is staggered by a per-seat budget so the seats play
+  // back-to-back instead of overlapping. The engine has already applied the
+  // per-owner deltas to each `PlayerRecord` during the shared closing, so no
+  // deferred-delta payload is forwarded here (re-sending the shared result
+  // would double-apply it). The deferred-delta window is preserved by the
+  // existing HUD gating instead: the competitive scoreboard is not refreshed
+  // during the closing, and the shared HUD is gated by `incomeCollectionActive`
+  // while the choreography runs, so numbers update only once play resumes.
+  if (animationsEnabled) {
+    seats.forEach((seat, index) => {
+      const phaseData = seat.income?.phaseBreakdown?.perSlotBreakdown ?? [];
+      if (phaseData.length === 0) return;
+      // Clamp each seat's stagger delay to the global fast-forward bound so a
+      // very large roster cannot stall the game (AC6). Beyond the bound later
+      // seats start immediately and their choreographies overlap rather than
+      // queueing indefinitely; the day still advances.
+      const startDelayMs = Math.min(
+        index * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+        COMPETITIVE_CLOSING_MAX_TOTAL_MS,
+      );
+      try {
+        s.msAnimator?.animateIncomePhases?.(phaseData, { startDelayMs });
+      } catch {
+        // presentation-only — never stall the closing on an animation failure
+      }
+    });
+  }
+
+  // AC2/AC4: the shared incident reveal (once per shared day) and the day
+  // advance are driven by the same primitive as single-player. The primitive's
+  // shared income summary is suppressed (empty) because the per-seat lines
+  // above replace it (AC3). No post-choreography hold is needed — the per-seat
+  // stagger already provides the pacing, so the day advances as soon as the
+  // last seat's choreography (and the incident reveal) completes (AC6).
+  presentTurnClosing(tcCtx, result, onComplete, {
+    completionText: 'End of turn complete.',
+    holdMs: 0,
+    incomeSummary: '',
+  });
 }
 
 /**
@@ -520,6 +572,28 @@ export function continueCompetitiveLastStanding(
 ): boolean {
   const state: MainStreetState = tcCtx.scene.state;
   if (!continueAfterLastStanding(state)) return false;
+  tcCtx.scene.uiPhase = 'market';
+  tcCtx.startTurnPhase();
+  return true;
+}
+
+/**
+ * Resumes play after the endless-continuation offer is accepted
+ * (CG-0MTIILU5V006GCN4): the score threshold was reached with
+ * `config.endlessMode === true`, the winner was declared, and the end-game
+ * overlay showed the "Enter Endless Mode" action. The scene calls this from
+ * that action; declining simply leaves the declared win.
+ *
+ * Idempotent: a no-op unless the offer is open (`endReason ===
+ * 'score_threshold_continue'` and `gameResult !== 'playing'`).
+ *
+ * @returns `true` when play resumed, `false` when no offer was open.
+ */
+export function continueEndlessMode(
+  tcCtx: MainStreetTurnControllerContext,
+): boolean {
+  const state: MainStreetState = tcCtx.scene.state;
+  if (!continueAfterThreshold(state)) return false;
   tcCtx.scene.uiPhase = 'market';
   tcCtx.startTurnPhase();
   return true;

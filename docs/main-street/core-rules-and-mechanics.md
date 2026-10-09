@@ -62,7 +62,7 @@ committing changes to player-facing text or docs.
 | **Synergy Types** | string[] | One or more tags that interact with adjacent cards (e.g., `Food`). |
 | **Upgrade Path** | string (optional) | Identifier of the Upgrade card that can transform this business. |
 | **Max Level** | number (optional) | Number of upgrade steps (default 1). |
-| **Reputation Per Turn** | number (optional) | Reputation contributed each turn during IncomePhase (e.g., Clinic provides +20 rep/turn). Default 0. |
+| **Reputation Per Turn** | number (optional) | Reputation contributed each turn during IncomePhase (e.g., Clinic provides +160 rep/turn). Default 0. |
 | **Ongoing Cost** | number (coins per turn) | Per‑turn running cost deducted each **IncomePhase** for business cards placed on the street grid. Cards held in hand are not charged (CG-0MTC31LN3000UHDY); sold cards are not charged either (CG-0MU3VH7QW006A2XA). Defaults to 0 for cards without a CSV value. Mirrors the StaffCard/CommunitySpaceCard `ongoingCost` mechanic. |
 | **Description** | string | Flavor text and any special rules. |
 
@@ -135,7 +135,7 @@ Community space cards (e.g. Park, Library) are a separate card family (`communit
 | **Cost** | number (coins) | Purchase price from the market. |
 | **Base Income** | number (coins per turn) | Income generated each **IncomePhase** before synergy. Some community spaces earn no income at all (e.g. Library `baseIncome = 0`). |
 | **Ongoing Cost** | number (coins per turn) | Per‑turn running cost deducted each **IncomePhase** (e.g. Library costs 25 coins/turn to run). Defaults to 0. Mirrors the StaffCard `ongoingCost` mechanic. |
-| **Reputation Per Turn** | number (optional) | Reputation contributed each turn during IncomePhase (e.g. Library provides +10 rep/turn). Default 0. |
+| **Reputation Per Turn** | number (optional) | Reputation contributed each turn during IncomePhase (e.g. Library provides +40 rep/turn). Default 0. |
 | **Synergy Types** | string[] | One or more tags that interact with adjacent cards (e.g., `Culture`). |
 | **Upgrade Path** | string (optional) | Identifier of the Upgrade card that can transform this community space. |
 | **Max Level** | number (optional) | Number of upgrade steps (default 1). |
@@ -171,6 +171,8 @@ interface GameState {
   hand: (BusinessCard | CommunitySpaceCard | UpgradeCard | EventCard)[]; // merged hand: any mix, up to maxHandSize
   maxHandSize: number;                 // starts at 3, growable via staff handSlotsAdded (no hard cap)
   challengesCompleted: string[]; // IDs of achieved challenges
+  marketRefreshesThisTurn: number;     // re-rolls made this turn; drives the escalating paid cost, reset at WeekStart (MS-0MTR6ZRF5007PWNZ)
+  investorFreeRerollUsedThisTurn: boolean; // per-turn Investor free re-roll gate, reset at WeekStart (MS-0MTISBYLS009936W)
 }
 ```
 
@@ -180,7 +182,7 @@ interface GameState {
 - **Market** – a single row of 3 face‑up cards drawn from the Business, Community Space, Upgrade, and Event (Investment‑trigger) decks, always with ≥1 Business/Community‑Space card. The row is refilled at week start; taking a card to hand costs **1 action** (CG-0MSTOF1N5005PK2R businesses, CG-0MTFWBNL30043ZBM events) but no coins, and the listed cost is paid when the card is played or placed.
 - **Incident Deck** – hidden face-down deck of Incident cards, order rebuilt constraint-aware at build/reshuffle (CG-0MSTOATDP000JNHH). The top card reveals and resolves each turn during IncidentPhase; when the deck runs out, resolved events are shuffled back in.
 - **ActiveEffect System** – some events (e.g. `evt-flu-outbreak`) create duration-based modifiers instead of one-shot deltas. ActiveEffects are tracked in `state.activeEffects: ActiveEffect[]` and decay each turn during EndCheck. See [ActiveEffect System](#-activeeffect-system) below.
-- **ResourceBank** – tracks `coins` (start 8) and `reputation` (start 3). Reputation can increase during the IncomePhase via `reputationPerTurn` from certain Health-synergy cards (e.g. Clinic provides +20 rep/turn). Reputation also counts 1:1 toward the final score (`finalScore = coins + reputation + challengeBonuses`).
+- **ResourceBank** – tracks `coins` (start 8) and `reputation` (start 3). Reputation can increase during the IncomePhase via `reputationPerTurn` from certain Health-synergy cards (e.g. Clinic provides +160 rep/turn). Reputation also counts 1:1 toward the final score (`finalScore = coins + reputation + challengeBonuses`).
 
 ### Spatial API migration note
 
@@ -213,7 +215,7 @@ stateDiagram-v2
 ```
 
 **Phase details**
-1. **WeekStart** – Increment `turn` counter, reset temporary flags, refill the single market row.
+1. **WeekStart** – Increment `turn` counter, reset the per-turn flags — including the Investor free-re-roll gate (`investorFreeRerollUsedThisTurn`) and the re-roll escalation counter (`marketRefreshesThisTurn`) — and refill the single market row.
 2. **MarketPhase** – The market shows one 3‑card row (1–2 Business/Community‑Space, 0–1 Upgrade, 0–1 Investment event). Taking a card to hand costs **1 action** (bounded additionally by hand capacity); the card's cost is paid when placed/played (cost‑at‑play).
 3. **ActionPhase** – The player resolves purchases:
    - **Buy Business** → `resourceBank.coins -= cost` → place card into a chosen empty slot.
@@ -285,6 +287,9 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
 | Hire a staff card | 1 action | From the general market row. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
+| Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
+
+> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
 
 > **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
 > validated by a **non-mutating legality predicate before any mutation**, and
@@ -311,11 +316,20 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 **Free operations (never consume an action):**
 
-- Market research/refresh
+- Market research/refresh — costs coins (see the escalating cost note below).
+- **Investor free market re-roll** — while an Investor is employed and its once-per-turn free re-roll is unused, this re-roll is coin-free and action-free (MS-0MTISBYLS009936W). It advances the paid escalation counter and does not stack across multiple Investors.
 - Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
   The sell dialog and activity log show the breakdown (base, synergy income, synergy rep).
 - Hint (still 1/week)
 - Ending the turn
+
+> **Market research (re-roll) cost (MS-0MTR6ZRF5007PWNZ).** Researching the market is action-free but costs coins. The first re-roll of a turn costs **500**, the second **750**, the third **1000**, and each subsequent re-roll 250 more. The escalation **resets at WeekStart** alongside the other per-turn gates. Any staff or specialization refresh-cost discount (Accountant / IT Specialist `refreshCostDiscount`, Negotiator specialization skill) is subtracted from the escalated base and the total is clamped at 0, so a re-roll can never cost less than zero. The **Research** button label, its tooltip and the `canRefreshMarket()` legality check all read the same centralised `refreshMarketCost()`, and the button is disabled with the "not enough coins" reason when the current escalated price is unaffordable. The per-turn re-roll count participates in undo/redo and save/load, so reloading mid-turn preserves the escalated price.
+
+> **Investor: free market re-roll and 75% relevance bias (MS-0MTISBYLS009936W).** While at least one **Investor** (`staff-investor`) is **employed** at a business, the player may perform **one coin-free, action-free market re-roll per turn** — the *free re-roll*. It discards the visible row and refills it exactly like a paid research, but charges no coins and consumes no action. It is gated by a per-turn flag (`investorFreeRerollUsedThisTurn`) reset at **WeekStart** alongside the other per-turn gates. Once used, further re-rolls fall back to the normal **paid** `refreshMarket` path.
+>
+> **Relevance bias.** The free re-roll is **biased**: each drawn slot has a **75% chance** (the Investor's `marketRelevanceBias = 0.75`) of being drawn from the pool of cards *relevant* to the business the Investor is employed at, with the remaining probability drawn fully at random. Relevance is a **shared synergy type**: businesses and community spaces match on any of their `synergyTypes`; an Investment event matches when it has no `targetSynergy` (it applies to all businesses) or its `targetSynergy` is in the set; staff match when their `allowedBusinessTypes` intersect the set (generalist staff, including the Investor, are relevant to every hosting business); upgrades are never relevant (they target a business by name) and are always drawn at random. The bias applies **per drawn slot**, not as a single row-level roll, and falls back to the fully random pool when the relevant pool is exhausted. The market's **≥1 business** composition rule is preserved on both paths. Only the free re-roll is biased — the paid `refreshMarket` and end-of-week `cycleMarketCards` paths stay fully random.
+>
+> **Single source of truth for cost; no stacking; determinism.** `refreshMarketCost()` remains authoritative for the **paid** path, and the free re-roll does **not** bypass it: it **advances the shared per-turn escalation counter** (`marketRefreshesThisTurn`), so the next paid re-roll of the turn costs the escalated price (500 → 750 → 1000 → …). Multiple employed Investors do **not** stack — still exactly one free re-roll per turn. The free re-roll is undoable, and the gate plus the escalation counter participate in save/load, so reloading mid-turn preserves both availability and the escalated next price. The biased draw uses the seeded `state.rng`, so the same seed produces the same row (determinism holds).
 
 > Discarding from hand (CG-0MTQ7KUVF009ELQK): **action-free, but not free of reputation.** Select a hand card and click **[Discard]** (in the End Turn slot) to discard it to its family discard pile. The discard deducts the card's listed coin `cost` from reputation, **clamped at 0** (reputation never goes negative). It applies to every family — business, community-space, upgrade and event — and a 0-cost card costs nothing. The discard is **not** gated on affordability: a player with less reputation than the card's cost may still discard, down to 0. There is no confirmation dialog. The discard is undoable (hand, discard pile and reputation are all restored).
 
@@ -360,11 +374,36 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 The game is considered **won** when **any** of the following conditions are satisfied **at the end of a week end**:
 
-1. **Score Threshold** – `finalScore >= winThreshold` where winThreshold is difficulty-scaled (100 Easy / 120 Medium / 150 Hard):
+1. **Score Threshold** – `finalScore >= winThreshold` where `winThreshold` is difficulty-scaled (**10 000** Easy / **12 000** Medium / **15 000** Hard):
    ```ts
    finalScore = resourceBank.coins + resourceBank.reputation + challengeBonus;
    // challengeBonus = sum of 10 points per completed Challenge.
    ```
+
+   > **Competitive effective win threshold (MS-0MUZH6V7C0091SGE).** In a
+   > human-vs-AI game each seat races toward the **effective win threshold**:
+   > the base difficulty value above divided by the number of seats
+   > (`state.playerCount`, human + AI) and rounded to the **nearest 50** —
+   > `effectiveWinThreshold(state) = Math.round(baseWinThreshold / playerCount / 50) * 50`.
+   > The first seat whose per-owner score reaches it is declared the winner
+   > (`competitiveWinnerId`, `endReason = 'score_threshold'`); the endless
+   > continuation (`score_threshold_continue`) and both AI planning horizons
+   > (`aiPlanningHorizon` / `aiCompetitivePlanningHorizon`) use the same
+   > derived value, so the AI plans toward the target it is actually racing.
+   > Worked values for the Easy base (10 000):
+   >
+   > | Players (P, human + AI) | Effective target |
+   > |---:|---:|
+   > | 2 | 5 000 |
+   > | 3 | 3 350 |
+   > | 4 | 2 500 |
+   >
+   > The Medium base (12 000) scales to 6 000 / 4 000 / 3 000 and the Hard
+   > base (15 000) to 7 500 / 5 000 / 3 750 for P = 2 / 3 / 4. **Single-player
+   > is unchanged**: with no `playerCount` the divisor is 1 and every base
+   > preset is already a multiple of 50, so the effective target is the base
+   > value. The base difficulty presets themselves are never modified; the
+   > effective value is derived at consumption time.
 2. **Challenge Completion** – All **Primary Challenges** (defined in `docs/games/the-build/challenges.md`) are completed, granting an automatic win regardless of numeric score.
 3. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
 4. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.

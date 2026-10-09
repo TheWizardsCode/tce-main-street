@@ -13,8 +13,8 @@
  * highlight zones must match these targets, otherwise the highlights land on
  * empty space instead of on their target element.
  *
- * * Unified step mapping for the alignment checks (26 steps, two-turn flow,
- * * CG-0MTNMBX5Z002U0MH inserted T8 End this turn):
+ * * Unified step mapping for the alignment checks (25 steps, two-turn flow,
+ * * MS-0MT3JK16W006A66P merged the favour/bookshop day):
  *   T2 (developmentRow, index 1)  T3 (laundromatCard, index 2)
  *   T4 (hand, index 3)  T5 (incidentQueue, index 4)
  *   T6 (endTurnButton, index 5)  T7 (streetGrid, index 6)
@@ -23,12 +23,13 @@
  *     (CG-0MSTOATDT009BRX2 — the two market rows were merged)
  *   T10 (festivalCard, index 9)  T11 (endTurnButton, index 10)
  *   T12 (developmentRow, index 11 — Bookshop move)
- *   T13 (developmentRow, index 12)  T14 (actionButtons, index 13)
- *   T15 (endTurnButton, index 14)  T16 (streetGrid, index 15 — Bookshop place)
+ *   T13 (developmentRow, index 12)  T14 (endTurnButton, index 13)
+ *   T15 (actionButtons, index 14)  T16 (streetGrid, index 15 — Bookshop place)
  *   T17 (endTurnButton, index 16)  T18 (developmentRow, index 17 — Library move)
  *   T19 (endTurnButton, index 18)  T20 (streetGrid, index 19 — Library place)
- *   T21 (hand, index 20)  T22 (hud, index 21)
- *   T25 (challengePanel, index 24)  T26 (completionModal, index 25)
+ *   T21 (endTurnButton, index 20)  T22 (hand, index 21)
+ *   T23 (hud, index 22)  T24 (challengePanel, index 23)
+ *   T25 (completionModal, index 24)
  *
  * Screenshots are still captured for visual regression review (red reference
  * rects are drawn at depth 250 as diagnostics), but geometry is now asserted.
@@ -429,7 +430,7 @@ describe('Tutorial overlay highlight alignment (renderer geometry)', () => {
     60_000,
   );
 
-  it('completionModal (T26) draws no highlight', async () => {
+  it('completionModal (T25) draws no highlight', async () => {
     const mgr = scene.tutorialOverlay as {
       showStep?: (index: number) => void;
       dismiss?: () => void;
@@ -439,7 +440,7 @@ describe('Tutorial overlay highlight alignment (renderer geometry)', () => {
       if (typeof mgr.dismiss === 'function') {
         mgr.dismiss();
       }
-      mgr.showStep(25); // T26 = completionModal (confirm gate, CG-0MTNMBX5Z002U0MH)
+      mgr.showStep(24); // T25 = completionModal (confirm gate)
       await new Promise((r) => setTimeout(r, 50));
 
       const highlights = scene.children.list.filter(

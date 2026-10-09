@@ -37,6 +37,15 @@ const VITE_NODE_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'vite-node
 const GRAPH_CLI = 'src/scripts/storyline-graph-cli.ts';
 const MERMAID_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-graph.mmd');
 const JSON_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-manifest.json');
+
+/**
+ * Shown in every drift-assertion failure so a stale graph/manifest is trivial
+ * to fix without reading the source.
+ */
+const REGEN_GRAPH_HINT =
+  'Committed storyline graph/manifest is stale — regenerate and commit it with:\n' +
+  '  npm run storylines:graph -- --format mermaid\n' +
+  '  npm run storylines:graph -- --format json';
 const SCHEMA_PATH = path.join(PROJECT_ROOT, 'schemas/main-street-storyline.schema.json');
 
 function makeEvent(overrides: Partial<EventCard> = {}): EventCard {
@@ -191,14 +200,14 @@ describe('AC2/AC5 — committed artefacts match the regenerated output', () => {
     expect(fs.existsSync(MERMAID_ARTEFACT)).toBe(true);
     const committed = fs.readFileSync(MERMAID_ARTEFACT, 'utf-8');
     const regenerated = renderMermaid(buildStorylineManifest(getEventTemplates()));
-    expect(regenerated).toBe(committed);
+    expect(regenerated, REGEN_GRAPH_HINT).toBe(committed);
   });
 
   it('the committed JSON manifest matches regeneration', () => {
     expect(fs.existsSync(JSON_ARTEFACT)).toBe(true);
     const committed = fs.readFileSync(JSON_ARTEFACT, 'utf-8');
     const regenerated = serializeManifest(buildStorylineManifest(getEventTemplates()));
-    expect(regenerated).toBe(committed);
+    expect(regenerated, REGEN_GRAPH_HINT).toBe(committed);
   });
 
   it('the committed manifest parses and carries the expected shape', () => {

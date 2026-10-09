@@ -7,10 +7,13 @@
  * win (score threshold / all challenges) or lose (bankruptcy /
  * reputation collapse) — default presets impose no turn limit
  * (CG-0MSLXJCHH001DLIO).
+ *
+ * Boot awaits card-pack discovery before scene setup so installed pack cards
+ * are available from the first deal (F9 / CG-0MUZIS4KZ003R1HP).
  */
-import { createMainStreetGame } from './createMainStreetGame';
+import { createMainStreetGameWithPacks } from './createMainStreetGame';
 
-const game = createMainStreetGame();
-
-// Expose game instance for browser testing and debugging
-(window as unknown as Record<string, unknown>).__PHASER_GAME__ = game;
+void createMainStreetGameWithPacks().then((game) => {
+  // Expose game instance for browser testing and debugging
+  (window as unknown as Record<string, unknown>).__PHASER_GAME__ = game;
+});

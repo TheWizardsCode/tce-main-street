@@ -1,62 +1,62 @@
 {
   "source": "Generated from MainStreetMonteCarlo.runAllCombinations",
-  "generatedAt": "2026-10-02T17:27:33.618Z",
-  "commitSha": "8b8fe4633d15d4c2faa4c847a8a253d1ca17cfb7",
+  "generatedAt": "2026-10-08T17:21:03.188Z",
+  "commitSha": "aeb9cc3944750fce589487d0da6a7ecf82e57ac8",
   "seeds": 200,
   "maxTurns": 60,
   "strategy": "greedy",
   "metrics": {
-    "winRate": 0.325,
-    "averageCoinsPerTurn": 240.47171584937365
+    "winRate": 0.675,
+    "averageCoinsPerTurn": 384.82695096271095
   },
   "difficultyMatrix": [
     {
       "difficulty": "Easy",
-      "winRate": 0.62,
-      "averageCoinsPerTurn": 375.61784885907446,
-      "medianScore": 10069
+      "winRate": 0.765,
+      "averageCoinsPerTurn": 414.210359086562,
+      "medianScore": 10766.5
     },
     {
       "difficulty": "Medium",
-      "winRate": 0.325,
-      "averageCoinsPerTurn": 240.47171584937365,
-      "medianScore": 788
+      "winRate": 0.675,
+      "averageCoinsPerTurn": 384.82695096271095,
+      "medianScore": 12467.5
     },
     {
       "difficulty": "Hard",
-      "winRate": 0.11,
-      "averageCoinsPerTurn": 82.94221773984647,
-      "medianScore": 190.5
+      "winRate": 0.42,
+      "averageCoinsPerTurn": 240.91477048519153,
+      "medianScore": 684.5
     }
   ],
   "bankingGreedy": {
     "source": "Generated from MainStreetMonteCarlo.runAllCombinations",
-    "generatedAt": "2026-10-02T17:27:33.639Z",
-    "commitSha": "8b8fe4633d15d4c2faa4c847a8a253d1ca17cfb7",
+    "generatedAt": "2026-10-08T17:21:03.198Z",
+    "commitSha": "aeb9cc3944750fce589487d0da6a7ecf82e57ac8",
     "strategy": "banking-greedy",
     "note": "Additive regression snapshot for BankingGreedyStrategy (CG-0MT3JMGA60091J8W AC5). Recorded on the same 200-seed / 60-turn canonical profile as the greedy block above; the greedy block is unchanged and is never replaced by this variant. Drift is reported, never silently accepted — see the drift-report workflow in tests/main-street/monte-carlo-guardrails.test.ts and docs/main-street/balance-guardrail-recommendations.md.",
     "metrics": {
-      "winRate": 0.495,
-      "averageCoinsPerTurn": 274.3000545620565
+      "winRate": 0.675,
+      "averageCoinsPerTurn": 333.09464300432904
     },
     "difficultyMatrix": [
       {
         "difficulty": "Easy",
-        "winRate": 0.625,
-        "averageCoinsPerTurn": 367.44959268657846,
-        "medianScore": 10190
+        "winRate": 0.75,
+        "averageCoinsPerTurn": 383.1193257694103,
+        "medianScore": 10508
       },
       {
         "difficulty": "Medium",
-        "winRate": 0.495,
-        "averageCoinsPerTurn": 274.3000545620565,
-        "medianScore": 7843
+        "winRate": 0.675,
+        "averageCoinsPerTurn": 333.09464300432904,
+        "medianScore": 12552
       },
       {
         "difficulty": "Hard",
-        "winRate": 0.17,
-        "averageCoinsPerTurn": 98.34621323172452,
-        "medianScore": 205
+        "winRate": 0.37,
+        "averageCoinsPerTurn": 181.53064348783053,
+        "medianScore": 464.5
       }
     ]
   }

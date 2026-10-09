@@ -111,11 +111,24 @@ export const MARKET_STAFF_MAX = 1;
 export const INCIDENT_QUEUE_SIZE = 2;
 
 /**
- * Fixed coin cost to research (refresh) the single-row market (CG-0MSTOATDT009BRX2),
+ * Base coin cost to research (refresh) the single-row market (CG-0MSTOATDT009BRX2),
  * replacing the legacy per-row refresh costs (€200 each).
  * The Accountant's `refreshCostDiscount` (Group F) applies to this cost.
+ *
+ * Each successive re-roll within the same turn costs `REFRESH_MARKET_COST_STEP`
+ * more than the previous one (MS-0MTR6ZRF5007PWNZ): 500, 750, 1000, … The
+ * escalation is reset at WeekStart; see `refreshMarketCost()`.
  */
 export const REFRESH_MARKET_COST = 500;
+
+/**
+ * Escalation added to the market research (refresh) cost for every re-roll
+ * already made this turn (MS-0MTR6ZRF5007PWNZ). The first re-roll of a turn
+ * costs `REFRESH_MARKET_COST` (500), the second 750, the third 1000, and so on
+ * (+250 each). Reset to zero at WeekStart; staff refresh-cost discounts are
+ * subtracted from the escalated base and the result is clamped at 0.
+ */
+export const REFRESH_MARKET_COST_STEP = 250;
 
 /**
  * @deprecated Synergy is now percentage-based. Each BusinessCard and

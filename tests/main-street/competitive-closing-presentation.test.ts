@@ -14,12 +14,33 @@
  *       motion / replay / headless
  *   AC5 single-player path untouched (asserted at the end)
  */
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The shared closing primitive (extracted by MS-0MUYFX7Q2004JQ5R) is the
+// contract under test below. It does not exist until that extraction lands, so
+// the wrapper is a call-through no-op in the red phase and forwards to the real
+// implementation once it is exported. Wrapping rather than replacing keeps the
+// pre-existing competitive tests exercising the real behaviour.
+vi.mock('../../src/scenes/MainStreetTurnControllerAnimation', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../src/scenes/MainStreetTurnControllerAnimation')
+  >();
+  return {
+    ...actual,
+    presentTurnClosing: vi.fn(
+      (actual as unknown as { presentTurnClosing?: (...args: unknown[]) => void })
+        .presentTurnClosing,
+    ),
+  };
+});
 
 import type { TurnResult } from '../../src/MainStreetEngine';
+import * as AnimationModule from '../../src/scenes/MainStreetTurnControllerAnimation';
+import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import {
   COMPETITIVE_CLOSING_HOLD_MS,
+  COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
   competitiveClosingSummary,
   driveAiSeatsUntilClosing,
   endCompetitiveTurnDay,
@@ -27,6 +48,7 @@ import {
   presentCompetitiveClosing,
   startCompetitiveDay,
 } from '../../src/scenes/MainStreetTurnControllerCompetitive';
+import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from '../../src/scenes/MainStreetAnimatorTiming';
 import {
   createCompetitiveState,
   setupMainStreetGame,
@@ -35,6 +57,15 @@ import {
 } from '../../src/MainStreetState';
 
 const OPPONENTS: CompetitiveOpponentConfig[] = [{ strategy: 'BankingGreedy', difficulty: 'Hard' }];
+
+/**
+ * The shared presentation primitive under test. Absent until the extraction
+ * item (MS-0MUYFX7Q2004JQ5R) exports it, hence the `unknown` cast — the real
+ * module type does not carry the export yet.
+ */
+const presentTurnClosing = (
+  AnimationModule as unknown as { presentTurnClosing: ReturnType<typeof vi.fn> }
+).presentTurnClosing;
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -156,18 +187,26 @@ describe('competitiveClosingSummary (AC1/AC2)', () => {
 // ── AC1/AC3: income feedback + progression ───────────────────────────
 
 describe('presentCompetitiveClosing — income feedback (AC1/AC3)', () => {
-  it('shows the shared income total and the closing progression text', () => {
+  it('shows the per-seat income choreography and the closing progression text (new per-seat contract)', () => {
     const h = makeHarness();
     let completed = 0;
 
-    presentCompetitiveClosing(asCtx(h.scene), makeResult(), () => completed++);
+    // Under the new per-seat contract, the closing runs the full income
+    // choreography for each non-eliminated seat (one call here, seat 0).
+    presentCompetitiveClosing(
+      asCtx(h.scene),
+      makeResult({ playerIncome: makePlayerIncomes([[0, 12]]) }),
+      () => completed++,
+    );
 
     expect(h.instructions[0]).toBe('Resolving end-of-turn effects...');
-    expect(h.instructions).toContain('Income: +12 coins');
+    // Per-seat summary replaces the shared host total (AC3).
+    expect(h.instructions).toContain('Player 1: +12 coins');
     expect(h.instructions).toContain('End of turn complete.');
     expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
-    // Condensed/bounded: the long coin-grid choreography is deliberately not run.
-    expect(h.incomeCalls).toHaveLength(0);
+    // Per-seat contract: the full income choreography IS run for each seat.
+    expect(h.incomeCalls).toHaveLength(1);
+    expect(h.incomeCalls[0]?.phaseData?.[0]?.baseIncome).toBe(12);
     expect(completed).toBe(1);
   });
 
@@ -354,3 +393,717 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
     expect(instructions).not.toContain('End of turn complete.');
   }, 30_000);
 });
+
+// ── Shared closing presentation primitive ─────────────────────────────
+//
+// Test-first contract for the single shared end-of-turn presentation
+// primitive (MS-0MUYFX6ER000BLP3 → extracted by MS-0MUYFX7Q2004JQ5R).
+//
+// `finishTurnPresentation` (single-player) and `presentCompetitiveClosing`
+// (competitive) share this primitive. The extraction
+// (MS-0MUYFX7Q2004JQ5R) delegates both to it; these tests pin the contract.
+
+interface PrimitiveHarness {
+  scene: any;
+  instructions: string[];
+  incidentCalls: any[];
+}
+
+/**
+ * Scene harness for the shared primitive: captures the instruction text and
+ * each `animateIncidentReveal` invocation. Its clock drains synchronously so
+ * any bounded hold the primitive (or its caller) schedules runs immediately.
+ */
+function makePrimitiveHarness(overrides: Record<string, unknown> = {}): PrimitiveHarness {
+  const instructions: string[] = [];
+  const incidentCalls: any[] = [];
+  const scene: any = {
+    replayMode: false,
+    settingsPanel: { reducedMotion: false },
+    instructionText: { setText: (t: string) => instructions.push(t) },
+    layout: { gameW: 800, gameH: 600 },
+    incidentRevealActive: false,
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+    msAnimator: {
+      animateIncidentReveal: (params: any) => {
+        incidentCalls.push(params);
+      },
+    },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => {
+        cb();
+        return {};
+      },
+    },
+    ...overrides,
+  };
+  return { scene, instructions, incidentCalls };
+}
+
+/**
+ * Turn-flow harness: enough scene surface for `finishTurnPresentation` to walk
+ * to the advance callback on the normal (non-deferred, no-incident) path.
+ */
+function makeTurnFlowHarness(): { scene: any; tcCtx: any } {
+  const scene: any = {
+    state: { resourceBank: { coins: 0, reputation: 0 } },
+    instructionText: { setText: vi.fn() },
+    incomeCollectionActive: false,
+    logDeferredUntilPhaseComplete: false,
+    endOfTurnDeltasApplied: false,
+    previousCoins: null,
+    previousReputation: null,
+    incidentRevealActive: false,
+    tutorialController: { isActive: false },
+    settingsPanel: { reducedMotion: false },
+    replayMode: false,
+    layout: { gameW: 800, gameH: 600 },
+    refreshAll: vi.fn(),
+    refreshAllExceptStreet: vi.fn(),
+    refreshLog: vi.fn(),
+    msLifecycleManager: { onTutorialActionComplete: vi.fn() },
+    msAnimator: { animateIncidentReveal: vi.fn() },
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 0, y: 0 }) },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => {
+        cb();
+        return {};
+      },
+    },
+  };
+  const tcCtx: any = {
+    scene,
+    startTurnPhase: vi.fn(),
+    handleGameOver: vi.fn(),
+    presentEventChoiceDialog: vi.fn(),
+    onSaveCheckpoint: vi.fn(),
+  };
+  return { scene, tcCtx };
+}
+
+describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it(
+    'AC1 — a single-seat closing drives the income summary, incident reveal, end-of-turn text and advance callback',
+    () => {
+      const h = makePrimitiveHarness();
+      const result = makeResult({
+        income: makeIncome(12),
+        incident: { id: 'inc-9', name: 'Roadworks' } as any,
+        incidentCoinChange: -4,
+        incidentRepChange: -1,
+      });
+      let completed = 0;
+
+      presentTurnClosing(asCtx(h.scene), result, () => { completed += 1; }, {
+        completionText: 'End of turn complete.',
+      });
+
+      // Income summary text — the same format both closings use today.
+      expect(h.instructions.some((t) => t.includes('Income: +12 coins'))).toBe(true);
+
+      // Incident reveal driven once, with the closing's deltas and origin.
+      expect(h.incidentCalls).toHaveLength(1);
+      expect(h.incidentCalls[0]).toMatchObject({
+        cardId: 'inc-9',
+        incidentName: 'Roadworks',
+        coinChange: -4,
+        repChange: -1,
+        from: { x: 111, y: 222 },
+      });
+
+      // Bounded: the advance callback waits for the reveal to complete.
+      expect(completed).toBe(0);
+      h.incidentCalls[0].onComplete();
+
+      // End-of-turn text, then advance exactly once.
+      expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+      expect(completed).toBe(1);
+    },
+  );
+
+  it('AC1 — a closing with no incident advances without a reveal', () => {
+    const h = makePrimitiveHarness();
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), makeResult({ income: makeIncome(3) }), () => {
+      completed += 1;
+    }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('Income: +3 coins'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+
+  it('AC1 — reduced motion degrades to text and advances immediately', () => {
+    const h = makePrimitiveHarness({ settingsPanel: { reducedMotion: true } });
+    const result = makeResult({ incident: { id: 'inc-3', name: 'Fire' } as any });
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), result, () => { completed += 1; }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('Incident: Fire'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+
+  it('AC1 — replay/headless skips animation but still advances (bounded)', () => {
+    const h = makePrimitiveHarness({ replayMode: true });
+    let completed = 0;
+
+    presentTurnClosing(asCtx(h.scene), makeResult({ incident: { id: 'i', name: 'X' } as any }), () => {
+      completed += 1;
+    }, {
+      completionText: 'End of turn complete.',
+    });
+
+    expect(h.incidentCalls).toHaveLength(0);
+    expect(completed).toBe(1);
+  });
+
+  it(
+    'AC3 — finishTurnPresentation delegates to the shared primitive and still advances the day',
+    () => {
+      const { tcCtx } = makeTurnFlowHarness();
+
+      finishTurnPresentation(tcCtx, makeResult({ income: makeIncome(5) }), false);
+
+      expect(presentTurnClosing).toHaveBeenCalledTimes(1);
+      const args = presentTurnClosing.mock.calls[0];
+      expect(args[0]).toBe(tcCtx);
+      expect(args[1]).toMatchObject({ income: { total: 5 } });
+      expect(typeof args[2]).toBe('function');
+      // The single-player advance chain is preserved: the primitive's callback
+      // still starts the next day.
+      expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it(
+    'AC3 — presentCompetitiveClosing delegates to the shared primitive and still advances',
+    () => {
+      const h = makePrimitiveHarness();
+      let advanced = 0;
+
+      presentCompetitiveClosing(asCtx(h.scene), makeResult(), () => { advanced += 1; });
+
+      expect(presentTurnClosing).toHaveBeenCalledTimes(1);
+      expect(advanced).toBe(1);
+    },
+  );
+});
+
+// ── Per-seat closing animation sequencing (MS-0MUYFX8V3005VEOG) ────────────
+//
+// Tests for the per-seat animated competitive closing (AC1–AC3 of
+// MS-0MUXAQQON006XA6I). After the shared closing resolves, each
+// non-eliminated seat receives its own full income choreography, in seat
+// order, driven by that seat's authoritative `OwnerIncomeResult`.
+//
+// The presentation iterates `TurnResult.playerIncome` (surfaced by
+// MS-0MUYFX56M006RVIZ) and calls `animateIncomePhases` once per seat with that
+// seat's `income.phaseBreakdown.perSlotBreakdown`. Seats are identified in the
+// fixtures by a unique `businessName` (`Seat N Biz`) and a unique `baseIncome`.
+
+import type { OwnerIncomeResult } from '../../src/MainStreetAdjacency';
+import type { BusinessCard } from '../../src/MainStreetCards';
+import {
+  applyCompetitiveIncome,
+  updateNeighborsOnPlacement,
+} from '../../src/MainStreetAdjacency';
+import {
+  endCompetitiveMarketTurn,
+  executeCompetitiveWeekStart,
+  resolveCompetitiveClosingPhases,
+} from '../../src/MainStreetEngineCompetitiveTurn';
+
+/**
+ * Builds a per-seat `OwnerIncomeResult` whose phase breakdown is uniquely
+ * identifiable: `Seat N Biz` at `slotIndex = ownerId` with `baseIncome = total`.
+ */
+function makeSeatIncome(ownerId: number, total: number): OwnerIncomeResult {
+  return {
+    ownerId,
+    income: {
+      total,
+      breakdown: [],
+      handSynergyTotal: 0,
+      phaseBreakdown: {
+        perSlotBreakdown: [
+          {
+            slotIndex: ownerId,
+            businessName: `Seat ${ownerId} Biz`,
+            baseIncome: total,
+            synergyBonus: 0,
+            repBonus: 0,
+            eventDeltas: [],
+            upcomingDeltas: [],
+          },
+        ],
+        handSynergyTotal: 0,
+      },
+    },
+  };
+}
+
+/** Builds an `OwnerIncomeResult[]` from `(ownerId, total)` pairs. */
+function makePlayerIncomes(entries: Array<[number, number]>): OwnerIncomeResult[] {
+  return entries.map(([ownerId, total]) => makeSeatIncome(ownerId, total));
+}
+
+/**
+ * Harness for the per-seat closing: records every `animateIncomePhases` call
+ * (its per-seat phase data) and the instruction text stream.
+ */
+interface PerSeatHarness {
+  scene: any;
+  instructions: string[];
+  /** Phase data arrays passed to `animateIncomePhases`, in call order. */
+  incomeCalls: any[][];
+}
+
+function makePerSeatHarness(overrides: Record<string, unknown> = {}): PerSeatHarness {
+  const instructions: string[] = [];
+  const incomeCalls: any[][] = [];
+  const scene: any = {
+    state: { players: [] },
+    replayMode: false,
+    settingsPanel: { reducedMotion: false },
+    instructionText: { setText: (t: string) => instructions.push(t) },
+    layout: { gameW: 800, gameH: 600 },
+    msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+    msAnimator: {
+      animateIncomePhases: (phaseData: any[], _options: any) => {
+        incomeCalls.push(phaseData);
+      },
+      animateIncidentReveal: (params: any) => {
+        params.onComplete?.();
+      },
+    },
+    time: {
+      now: 0,
+      delayedCall: (_ms: number, cb: () => void) => cb(),
+    },
+    incomeCollectionActive: false,
+    ...overrides,
+  };
+  return { scene, instructions, incomeCalls };
+}
+
+/** Identifies a seat's choreography by the unique business name it carries. */
+const seatNameOf = (phaseData: any[]): string | undefined =>
+  phaseData?.[0]?.businessName;
+
+describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
+  // Implemented by MS-0MUYFXA36009EMH0 (which flipped the red-phase
+  // `it.fails` assertions authored by MS-0MUYFX8V3005VEOG to normal `it`).
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it(
+    'AC1 — runs the full income choreography once per non-eliminated seat, in seat order',
+    () => {
+      const h = makePerSeatHarness();
+      const result: TurnResult = {
+        ...makeResult({ income: null }),
+        playerIncome: makePlayerIncomes([[0, 10], [1, 7], [2, 3]]),
+      };
+
+      presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+      // One full choreography per seat, in seat order.
+      expect(h.incomeCalls).toHaveLength(3);
+      expect(h.incomeCalls.map(seatNameOf)).toEqual([
+        'Seat 0 Biz',
+        'Seat 1 Biz',
+        'Seat 2 Biz',
+      ]);
+    },
+  );
+
+  it('AC1 — the human seat (player 0) is included in the per-seat sequence', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 12], [1, 5]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // The first choreography belongs to the human seat 0.
+    expect(h.incomeCalls).toHaveLength(2);
+    expect(seatNameOf(h.incomeCalls[0])).toBe('Seat 0 Biz');
+  });
+
+  it('AC1 — eliminated seats are skipped (only surfaced seats are presented)', () => {
+    const h = makePerSeatHarness();
+    // Seat 1 was eliminated: the engine omits it from `playerIncome`.
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [2, 4]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    expect(h.incomeCalls).toHaveLength(2);
+    expect(h.incomeCalls.map(seatNameOf)).toEqual(['Seat 0 Biz', 'Seat 2 Biz']);
+  });
+
+  it('AC1 — each choreography receives that seat own phase breakdown', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 30], [1, 20], [2, 10]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // `animateIncomePhases` receives the `SlotPhaseBreakdown[]` (the array
+    // itself) for the seat, not the whole `OwnerIncomeResult`.
+    expect(h.incomeCalls).toHaveLength(3);
+    for (const phaseData of h.incomeCalls) {
+      expect(Array.isArray(phaseData)).toBe(true);
+      expect(phaseData[0]).toMatchObject({
+        businessName: expect.stringMatching(/^Seat \d Biz$/),
+      });
+    }
+    expect(h.incomeCalls[0][0].baseIncome).toBe(30);
+    expect(h.incomeCalls[1][0].baseIncome).toBe(20);
+    expect(h.incomeCalls[2][0].baseIncome).toBe(10);
+  });
+
+  it('AC3 — the closing summary reports each seat income', () => {
+    const h = makePerSeatHarness();
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // Each seat's own income appears in the instruction stream.
+    expect(h.instructions.some((t) => /Player 1[:\s].*\+10 coins/.test(t))).toBe(true);
+    expect(h.instructions.some((t) => /Player 2[:\s].*\+7 coins/.test(t))).toBe(true);
+  });
+
+  it('AC6 — reduced motion presents per-seat text and advances', () => {
+    const h = makePerSeatHarness({ settingsPanel: { reducedMotion: true } });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // No animation, but per-seat text is shown and the day advances.
+    expect(h.incomeCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(completed).toBe(1);
+  });
+
+  it('AC6 — replay/headless skips animation but still reports per-seat text', () => {
+    const h = makePerSeatHarness({ replayMode: true });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // No animation, but the per-seat text still lands and the day advances.
+    expect(h.incomeCalls).toHaveLength(0);
+    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(completed).toBe(1);
+  });
+});
+
+// ── Authoritative per-seat values (AC2, integration) ────────────────────────
+//
+// Drives a real competitive state to the shared closing, resolves it, then
+// presents it. Every value the presentation animates must equal the delta the
+// engine applied to that seat's `PlayerRecord` during the income phase.
+
+/**
+ * Builds an N-seat closing fixture with one distinct business per seat, each
+ * seating zero reputation and no ongoing cost so the income-phase delta equals
+ * the presented `income.total`. Mirrors the fixture used by
+ * `competitive-income-events.test.ts`.
+ */
+function perSeatClosingState(seed: string, playerCount: number): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount });
+  state.resourceBank.coins = 100000;
+  state.resourceBank.reputation = 1000;
+  const slots = [0, 6, 3, 8];
+  const bases = [120, 80, 60, 40];
+  const synergies: Array<BusinessCard['synergyTypes']> = [
+    ['Food'],
+    ['Culture'],
+    ['Commerce'],
+    ['Service'],
+  ];
+  for (let i = 0; i < playerCount; i++) {
+    state.players![i].coins = 1000;
+    state.players![i].reputation = 0;
+    const card = {
+      family: 'business' as const,
+      id: `biz-${i}`,
+      name: `Biz ${i}`,
+      cost: 100,
+      baseIncome: bases[i],
+      synergyTypes: synergies[i],
+      maxLevel: 1,
+      description: 'test',
+      level: 0,
+      incomeBonus: 0,
+      synergyRangeBonus: 0,
+      reputationBonus: 0,
+      ongoingCost: 0,
+    } as BusinessCard;
+    state.streetGrid[slots[i]] = card;
+    updateNeighborsOnPlacement(state, slots[i]);
+    state.ownerTaggedGrid![slots[i]] = { card, ownerId: i };
+  }
+  executeCompetitiveWeekStart(state);
+  while (state.phase === 'MarketPhase') {
+    endCompetitiveMarketTurn(state);
+  }
+  return state;
+}
+
+describe('per-seat closing authoritative values (AC2)', () => {
+  // Implemented by MS-0MUYFXA36009EMH0 (flipped from the red-phase `it.fails`).
+  it('presents each seat income equal to the delta applied to its PlayerRecord', () => {
+    // Measure the exact per-owner income delta on an identical fixture.
+    const measured = perSeatClosingState('per-seat-authoritative', 2);
+    const before = measured.players!.map((p) => p.coins);
+    const applied = applyCompetitiveIncome(measured);
+    const after = measured.players!.map((p) => p.coins);
+
+    // Present the closing from an identically-built, identically-driven state.
+    const state = perSeatClosingState('per-seat-authoritative', 2);
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome).toHaveLength(2);
+
+    const h = makePerSeatHarness({ state });
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    // One choreography per seat, each carrying the seat's applied income.
+    expect(h.incomeCalls).toHaveLength(2);
+    for (let i = 0; i < applied.length; i++) {
+      expect(presentedTotal(h.incomeCalls[i])).toBe(after[i] - before[i]);
+      expect(presentedTotal(h.incomeCalls[i])).toBe(applied[i].income.total);
+    }
+  });
+
+  it('skips an eliminated seat end-to-end (engine filters, presentation presents)', () => {
+    const state = perSeatClosingState('per-seat-eliminated', 3);
+    // Eliminate the middle seat after the day is driven to the closing. A
+    // surviving AI seat keeps the game alive, so last-standing never fires.
+    state.players![1].eliminated = true;
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome!.map((r) => r.ownerId)).toEqual([0, 2]);
+
+    const h = makePerSeatHarness({ state });
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+    expect(h.incomeCalls).toHaveLength(2);
+    // The presented seats are exactly the non-eliminated ones.
+    expect(h.incomeCalls.map(seatNameOf)).toEqual([
+      result.playerIncome![0].income.phaseBreakdown.perSlotBreakdown[0].businessName,
+      result.playerIncome![1].income.phaseBreakdown.perSlotBreakdown[0].businessName,
+    ]);
+  });
+});
+
+// ── Global fast-forward bound (AC6, bounded fallback) ──────────────────────
+//
+// The bounded / non-blocking contract: a large roster cannot stall the game.
+// Each seat's choreography is staggered by `COMPETITIVE_CLOSING_SEAT_STAGGER_MS`
+// (12 s) so the total closing timeline is `(N-1) × stagger`. The day always
+// advances regardless of roster size (MS-0MUXAQQON006XA6I AC6).
+
+describe('global fast-forward bound (AC6, bounded fallback)', () => {
+  beforeEach(() => {
+    presentTurnClosing.mockClear();
+  });
+
+  it('AC6 — a large roster (8 seats) still advances the day (bounded)', () => {
+    const instructions: string[] = [];
+    const incomeCalls: any[][] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (t: string) => instructions.push(t) },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (phaseData: any[], options: any) => {
+          const startDelay = options?.startDelayMs ?? 0;
+          clock.now = startDelay;
+          incomeCalls.push(phaseData);
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    const seats: Array<[number, number]> = [];
+    for (let i = 0; i < 8; i++) seats.push([i, 10 - i]);
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes(seats),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
+
+    // Eight choreographies, one per seat, in seat order.
+    expect(incomeCalls).toHaveLength(8);
+    expect(incomeCalls.map(seatNameOf)).toEqual([
+      'Seat 0 Biz', 'Seat 1 Biz', 'Seat 2 Biz', 'Seat 3 Biz',
+      'Seat 4 Biz', 'Seat 5 Biz', 'Seat 6 Biz', 'Seat 7 Biz',
+    ]);
+    // Staggered timeline: seat 7 starts at 7 × 12_000 ms — deterministic and bounded.
+    expect(clock.now).toBe(7 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS);
+    // The closing still completes — the day advances.
+    expect(lastInstruction(instructions)).toBe('End of turn complete.');
+    expect(completed).toBe(1);
+  });
+
+  it('AC6 — stagger timing is deterministic (seat N starts at N × stagger)', () => {
+    const instructions: string[] = [];
+    const delays: number[] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (t: string) => instructions.push(t) },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (_phaseData: any[], options: any) => {
+          delays.push(options?.startDelayMs ?? 0);
+          clock.now = delays[delays.length - 1];
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7], [2, 3]]),
+    };
+
+    presentCompetitiveClosing(asCtx(scene), result, () => {});
+
+    // Seat delays are exactly 0, 1×stagger, 2×stagger.
+    expect(delays).toEqual([
+      0,
+      1 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+      2 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
+    ]);
+  });
+
+  it('AC6 — headless (no time object) degrades immediately and advances', () => {
+    const h = makePerSeatHarness({ time: undefined });
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // Headless: no `time` object → `scheduleOrRun` falls through → immediate.
+    // The closing finishes synchronously regardless of animation calls.
+    expect(completed).toBe(1);
+  });
+
+  // AC6 — global fast-forward bound constant (MS-0MUYFXCJ5008K6MY)
+  it(
+    'AC6 — MainStreetAnimatorTiming exports a COMPETITIVE_CLOSING_MAX_TOTAL_MS bound',
+    async () => {
+      const timing = await import('../../src/scenes/MainStreetAnimatorTiming');
+      const maxTotal = (timing as any).COMPETITIVE_CLOSING_MAX_TOTAL_MS;
+      expect(typeof maxTotal).toBe('number');
+      expect(maxTotal).toBeGreaterThan(0);
+    },
+  );
+
+  it('AC6 — an oversized roster is clamped to the global fast-forward bound', () => {
+    const delays: number[] = [];
+    const clock = makeFakeClock();
+    const scene: any = {
+      state: { players: [] },
+      replayMode: false,
+      settingsPanel: { reducedMotion: false },
+      instructionText: { setText: (_t: string) => {} },
+      layout: { gameW: 800, gameH: 600 },
+      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
+      msAnimator: {
+        animateIncomePhases: (_phaseData: any[], options: any) => {
+          delays.push(options?.startDelayMs ?? 0);
+          clock.now = delays[delays.length - 1];
+        },
+        animateIncidentReveal: (params: any) => {
+          params.onComplete?.();
+        },
+      },
+      time: clock,
+    };
+    // 20 seats exceed the bound's capacity (180 s / 12 s = 15 staggered seats).
+    const seats: Array<[number, number]> = [];
+    for (let i = 0; i < 20; i++) seats.push([i, 10]);
+    const result: TurnResult = {
+      ...makeResult({ income: null }),
+      playerIncome: makePlayerIncomes(seats),
+    };
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
+
+    // Every seat still gets its own choreography (none are skipped).
+    expect(delays).toHaveLength(20);
+    // Seats beyond the bound share the final bounded slot — total time capped.
+    expect(delays[15]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    expect(delays[19]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    expect(Math.max(...delays)).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
+    // The day still advances within the bound.
+    expect(completed).toBe(1);
+  });
+});
+
+/** Sums the presented per-slot income of a seat's phase breakdown. */
+function presentedTotal(phaseData: any[]): number {
+  return phaseData.reduce(
+    (acc, slot) =>
+      acc +
+      (slot.baseIncome ?? 0) +
+      (slot.synergyBonus ?? 0) +
+      (slot.repBonus ?? 0) +
+      (slot.eventDeltas ?? []).reduce((a: number, d: any) => a + d.delta, 0) +
+      (slot.upcomingDeltas ?? []).reduce((a: number, d: any) => a + d.delta, 0),
+    0,
+  );
+}

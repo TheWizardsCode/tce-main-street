@@ -324,6 +324,13 @@ export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     if (s.uiPhase === 'placing-from-hand' && pendingCard?.family === 'upgrade') {
       renderer.showTargetHighlights(pendingCard.id);
     }
+
+    // Ambient pedestrian layer (MS-0MUYGFW7T00579Z1): `removeAll(true)` above
+    // destroyed the layer's container along with the rest of the street, so
+    // re-attach it last — on top of the roads/slots — to keep it alive across
+    // refreshes. The figures are non-interactive, so they never intercept
+    // slot/pan input. Presentation-only; failures are swallowed.
+    try { s.msPedestrians?.attachToStreet?.(); } catch (_) { /* presentation-only */ }
   
 }
 
@@ -783,6 +790,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         // (CG-0MU3BTTCH001E7ZD AC2/AC3); null when none employed (AC5).
         const staffSummary = formatEmployedStaffSummary(
           (biz as { employedStaff?: StaffCard[] }).employedStaff ?? [],
+          { freeRerollUsedThisTurn: s.state.investorFreeRerollUsedThisTurn },
         ) ?? '';
         const info = `${label}: ${biz.name}\nIncome: +${biz.baseIncome + biz.incomeBonus}/turn${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
         s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
@@ -795,6 +803,15 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
       if (s.uiPhase === 'market' && !isSold) {
         tooltipZone.on('pointerdown', () => {
           s.onSellCard(_index);
+        });
+      }
+
+      // Move-staff destination (MS-0MUOSULQ700186PP AC2): while a relocation
+      // is pending, a business click is the destination — routed through the
+      // turn controller so the 1-action moveStaffCommand is charged once.
+      if (s.uiPhase === 'moving-staff' && !isSold) {
+        tooltipZone.on('pointerdown', () => {
+          s.onMoveStaffDestination(_index);
         });
       }
 

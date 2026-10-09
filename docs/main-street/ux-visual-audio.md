@@ -156,6 +156,109 @@ void popTextOrIcon({
 });
 ```
 
+### Ambient street pedestrians (reputation crowd, MS-0MTV9AS15004AC1E)
+
+- Purpose: give reputation a persistent, diegetic on-street presence. The
+  street is always alive with a crowd of small solid-colour silhouette
+  figures ("pedestrians") whose number scales with the player's reputation.
+- Population rule (pure, uncapped): `pedestrianCount(reputation)` in
+  `src/scenes/MainStreetPedestrians.ts` = `floor(reputation / 50)`, floored
+  at 0 and **uncapped** (producer decision). The ratio is the named constant
+  `PEDESTRIAN_REP_RATIO` (50) and the silhouette colour is
+  `PEDESTRIAN_COLOR` (`#88bbff`), matching the existing reputation pip
+  language.
+- Rendering: one runtime-generated silhouette texture
+  (`PEDESTRIAN_TEXTURE_KEY`, `graphics.generateTexture`) is shared by every
+  figure; the layer is parented to the street container so it pans and clips
+  with the map camera.
+- Road-lane walking (MS-0MUZ4WB290024ZGQ, polished by MS-0MUZ6CGSV002WTYM):
+  figures walk **only on the road bands** between and around the street cells —
+  they follow the road network (`buildRoadNetwork`) of intersections and
+  segments, never crossing a business cell. Each figure keeps to **one side of
+  the road** — a per-figure perpendicular lane offset
+  (`pedestrianLaneOffset`, `lanePoint`) — so they do not walk down the
+  centre-line.
+- Deliberate shop entry (MS-0MUZ6CGSV002WTYM, spread MS-0MUZ9CKT60094CXO,
+  nearest-cell targeting MS-0MUZ9O1I00088JF2): a walking figure always
+  resolves the **nearest occupied cell** (`nearestShop`, by cell-centre
+  distance) — re-resolved every frame, so a cell filled mid-turn or any nearer
+  cell is picked up — and walks the road network toward that cell's entry
+  intersection (`nearestNodeToShop`, greedy `chooseNextToward`). On reaching it
+  (`withinShopCapture`) it switches to `entering` and **walks** to a
+  per-figure random point inside the cell (`beginShopEntry`,
+  `stepPedestrianFigure`), becoming `inside` only on arrival — it never
+  teleports. The random interior destination means a crowd in one business
+  **spreads across it** rather than converging on one spot. Once inside it
+  stays there.
+- Crowd persistence (MS-0MUZ6CGSV002WTYM): a street rebuild (e.g. a card being
+  played) re-parents the layer around the **existing** figures
+  (`attachToStreet`), keeping each figure's position, lane and mode; the crowd
+  does not reset.
+- Live population rule: while a turn is in progress the crowd tracks the
+  authoritative HUD reputation value — the same `animateHudValueChanges`
+  reputation path that renders the HUD delta reconciles the layer to
+  `pedestrianCount(reputation)`. Gains fade a figure in and losses fade a
+  figure out (`PEDESTRIAN_FADE_MS`), and reconciliation is delta-only
+  (retained figures keep their identity — the layer never rebuilds). New
+  figures enter spread around the block perimeter (see below).
+- Balanced entry distribution (MS-0MUZH6P0M00443G0): figures no longer enter
+  only at the four block corners. `spawnPedestrianFigure` places each figure
+  with `perimeterSpawnPoint`, which cycles the four sides of the road-network
+  perimeter (`PEDESTRIAN_SPAWN_EDGES`: top → right → bottom → left) via a
+  stratified round-robin on the spawn ordinal, then picks a random segment of
+  that edge and a random position along it — including **mid-edge** positions.
+  The ordinal is the running crowd size, so the distribution stays balanced on
+  every spawn path: initial creation, `startNewTurn()` respawn, and mid-turn
+  population reconciliation (`setPopulation` gains / `reconcile`). The position
+  is interpolated along the edge's road lane, so every spawn still starts on a
+  road lane heading along a valid road segment, and figures still seek the
+  nearest occupied cell (`nearestShop`) — an evenly spread entry therefore
+  yields a crowd spread across the shops rather than clustered in one.
+- Turn lifecycle (MS-0MUZ4WB290024ZGQ, polished by MS-0MUZ6CGSV002WTYM): at the
+  end of the turn `MainStreetPedestrians.beginEndOfTurn()` sends every
+  non-shopping figure **walking off the block** (`directFigureOffBlock`, removed
+  once clear) rather than vanishing in place, while enough figures walk into
+  occupied shops. At the start of the new turn (`startTurnPhase`)
+  `startNewTurn()` clears any leftovers and spawns a fresh set spread around
+  the four edges of the block perimeter (`perimeterSpawnPoint`,
+  `PEDESTRIAN_SPAWN_EDGES`) rather than only at the corners (`network.corners`).
+- Reputation income conversion (MS-0MUYGFWXK003QFYB, reworked by
+  MS-0MUZ4WB290024ZGQ / MS-0MUZ6CGSV002WTYM): the phased income show's
+  `reputation` phase no longer starts its coin flight at the HUD reputation
+  counter. `MainStreetPedestrians.dissolveIntoCoins(targets)` first directs at
+  least `PEDESTRIAN_MIN_SHOP_RATIO` (25%) of the live crowd to **walk** into
+  occupied cells (`prepareForIncomePhase` → `assignShopShoppers`, teleport-free),
+  then returns a coin origin per business from a figure **inside that
+  business** (falling back to a figure walking into it, then any shopper, then
+  a street-area anchor (`pedestrianStreetAnchor`) **never** the HUD counter).
+  The credited amounts (`iconsForAmount(repBonus)`), the on-card `revealInGrid`
+  landing, the `+total` pop and the phase pacing (`INCOME_PHASE_GAP_MS`) are
+  unchanged — the pedestrians are a visual source only, so the phase-sum
+  invariant and the deferred-mutation economy are untouched.
+- Presentation-only: the layer never mutates game state, the transcript or
+  the turn flow; every method is defensive (a throwing layer is swallowed)
+  so a bad frame can never stall the turn.
+- Determinism / no gameplay RNG: wander motion uses a module-local seeded
+  presentation PRNG (`createPresentationRng`, mulberry32,
+  `PEDESTRIAN_RNG_SEED`) — never the seeded gameplay RNG or `Math.random`;
+  seeded determinism and headless/AI parity are preserved.
+- Accessibility and non-rendering modes: with Reduced Motion enabled, or in
+  replay/headless mode (`scene.replayMode`), `shouldRenderPedestrians()`
+  returns false and the layer renders nothing (no figures, no dissolve, no
+  flights); the existing text/HUD feedback is unchanged.
+- Lifecycle: the layer is created with the scene, re-attached after every
+  street rebuild (`refreshStreetGrid`), driven from the scene `update` loop,
+  re-clamped on resize and destroyed on scene shutdown.
+- Performance (MS-0MUYGFXMK009L1UU): the count is uncapped by producer
+  decision; a single shared texture and constant per-figure work (position +
+  bob) keep the frame cost low. Measured per-frame **model** cost (pure step
+  loop, 16-core host, 60 fps): 10 figures ≈ 0.003 ms, 100 figures ≈ 0.007 ms,
+  1,000 figures ≈ 0.013 ms and 10,000 figures ≈ 0.13 ms per frame — all
+  negligible against a 16.6 ms frame budget. The measurement covers the
+  per-figure model update, not GPU sprite rendering; at representative
+  reputations (tens of figures) the layer is immaterial, so the uncapped
+  population remains an accepted risk rather than a blocker.
+
 ### End-of-turn income presentation (phased coin-grid animation, CG-0MT23O6W8003AXWJ)
 
 - Trigger: `MainStreetTurnController.endTurn()` after `processEndOfTurn()`
@@ -185,9 +288,10 @@ void popTextOrIcon({
     (`attributeSynergyShares`, split so the shares sum exactly to the
     credited bonus) and lands in the receiver's `CoinGrid` via
     `revealInGrid` with `sfx-coin-pop`.
-  - Reputation / event contributions fly in/out of the grids;
-    events also light up their `Upcoming`-panel effect lines
-    (`animateUpcomingEffectLine`).
+  - Reputation contributions fly into the grids from the on-street
+    pedestrians (see *Ambient street pedestrians* above); event contributions
+    fly in/out of the grids and also light up their `Upcoming`-panel effect
+    lines (`animateUpcomingEffectLine`).
   - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
     animates the end-of-turn Upcoming-card (incident/event) coin AND
     reputation deltas using **one uniform sign rule** for both resources
@@ -257,6 +361,49 @@ void popTextOrIcon({
   infrastructure.
 - Reuse: `moveGameObject` + `SoundManager` + `popTextOrIcon`, `SFX_KEYS`
   (`COMMON_SFX_KEYS` convention); no new SFX keys or engine infrastructure.
+
+### Competitive per-seat closing presentation (MS-0MUXAQQON006XA6I)
+
+In competitive (human-vs-AI) play the shared competitive closing is presented
+**per seat** after the shared day resolves, instead of a single condensed
+text-only summary.
+
+- Trigger: `endCompetitiveTurnDay()` → `runCompetitiveClosing()` →
+  `presentCompetitiveClosing()` (`MainStreetTurnControllerCompetitive.ts`).
+- Per-seat animation: when the closing surfaces authoritative per-owner income
+  (`TurnResult.playerIncome`, from `applyCompetitiveIncome`, non-eliminated
+  seats only, in seat order) the presentation calls
+  `MainStreetAnimator.animateIncomePhases(seat.income.phaseBreakdown.perSlotBreakdown)`
+  **once per seat** — the same phased choreography documented under
+  [End-of-turn income presentation](#end-of-turn-income-presentation-phased-coin-grid-animation-cg-0mt23o6w8003axwj)
+  (base → synergy → reputation → events → upcoming → collect) — using each
+  seat's own phase data. Seats are staggered by
+  `COMPETITIVE_CLOSING_SEAT_STAGGER_MS` so they play back-to-back rather than
+  overlapping. The engine has already applied each seat's deltas to its
+  `PlayerRecord`; the shared HUD's `incomeCollectionActive` gating preserves
+  the deferred-delta window (the competitive scoreboard is not refreshed
+  during the closing).
+- Per-seat feedback text: the closing summary reports each seat's own income
+  (`Player 1: +10 coins | Player 2: +7 coins`, built by
+  `perSeatClosingSummary`), never the shared host total, which can differ from
+  any seat's actual income. The human seat is included; eliminated seats are
+  skipped.
+- Incident reveal and day advance: delegated to the shared
+  `presentTurnClosing` primitive (the **same** path used by single-player), so
+  the single shared incident reveal and the next-day advance cannot drift. The
+  shared income line is suppressed (`incomeSummary: ''`) because the per-seat
+  lines replace it.
+- Bounded / non-blocking (AC6): a global fast-forward bound
+  (`COMPETITIVE_CLOSING_MAX_TOTAL_MS`) clamps the per-seat stagger so a large
+  roster cannot stall the game — later seats start immediately and their
+  choreographies overlap rather than queueing indefinitely, and the day still
+  advances. With no per-owner data the condensed shared summary is kept.
+- Accessibility (reduced motion), replay and headless: the per-seat
+  animations are skipped, the per-seat text is still shown and the day always
+  advances.
+- Presentation-only: reads resolved state, consumes no RNG and mutates no
+  engine state, so seeded replay determinism and the shared closing order
+  (Income → Incident → EndCheck) are unchanged.
 
 ### Market deal-in (week-start refill / Discover / Research swap)
 

@@ -112,7 +112,8 @@ describe('generateHint', () => {
   it('hint score matches the best enumerateAndScoreActions entry', () => {
     // Seed chosen so the greedy priority-chain action is also the global
     // max-score action (staff-deck changes re-shuffled the seeded market).
-    const state = makeMarketState('hint-1');
+    // Re-picked after the Investor staff card was added (MS-0MTISBYLS009936W).
+    const state = makeMarketState('hint-x-5');
     const hint = generateHint(state);
     expect(hint).not.toBeNull();
 

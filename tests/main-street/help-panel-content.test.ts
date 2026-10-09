@@ -11,10 +11,12 @@ import { describe, it, expect } from 'vitest';
 
 import {
   buildMainStreetHelpContent,
+  helpContentConfigFor,
   REQUIRED_HELP_SECTION_HEADINGS,
   SYNERGY_HELP_ICONS,
   type HelpSectionContent,
 } from '../../src/MainStreetHelpContent';
+import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
 
 const CFG = { winThreshold: 120, challengesPerRun: 3 };
 const helpContent = buildMainStreetHelpContent(CFG);
@@ -158,5 +160,40 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(body).toContain('hint');
     expect(body).toContain('undo');
     expect(body).toContain('research');
+  });
+});
+
+// ── Effective competitive win target (MS-0MUZK652V001L71C) ──
+//
+// Parent AC2/AC3: the help panel's "Reach N points to win" copy is built from
+// the live state and must state the effective win threshold — base /
+// playerCount, rounded to the nearest 50 — so it matches the engine.
+
+describe('effective competitive win target in the help panel copy', () => {
+  function winLossBody(state: Parameters<typeof helpContentConfigFor>[0]): string {
+    const sections = buildMainStreetHelpContent(helpContentConfigFor(state));
+    return normalise(bodyOf(sections.find((s) => s.heading === 'Win / Loss Conditions')!));
+  }
+
+  it('states the P=3 Easy effective target (3 350) rather than the base', () => {
+    const state = createCompetitiveState({ seed: 'help-eff-p3', playerCount: 3, difficulty: 'Easy' });
+    expect(helpContentConfigFor(state).winThreshold).toBe(3350);
+
+    const body = winLossBody(state);
+    expect(body).toContain('reach 3350 points to win');
+    expect(body).not.toContain('reach 10000 points to win');
+  });
+
+  it('scales the stated target with the player count', () => {
+    const p2 = createCompetitiveState({ seed: 'help-eff-p2', playerCount: 2, difficulty: 'Easy' });
+    const p4 = createCompetitiveState({ seed: 'help-eff-p4', playerCount: 4, difficulty: 'Easy' });
+    expect(helpContentConfigFor(p2).winThreshold).toBe(5000);
+    expect(helpContentConfigFor(p4).winThreshold).toBe(2500);
+  });
+
+  it('keeps the unchanged base target in single-player', () => {
+    const single = setupMainStreetGame({ seed: 'help-eff-single', difficulty: 'Easy' });
+    expect(helpContentConfigFor(single).winThreshold).toBe(10000);
+    expect(winLossBody(single)).toContain('reach 10000 points to win');
   });
 });

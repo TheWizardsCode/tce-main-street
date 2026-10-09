@@ -73,13 +73,17 @@ export interface GameConfig extends DifficultyConfig {
 
   // ── Endless Mode ────────────────────────────────────────
   /**
-   * When true, reaching the score threshold does NOT end the game.
+   * When true, reaching the score threshold opens the endless-continuation
+   * offer instead of ending the game.
    *
-   * The engine sets `endReason` to `'score_threshold_continue'` when the
-   * threshold is first reached, but keeps `gameResult` as `'playing'` so
-   * the player (or players in competitive mode) can continue building.
-   * The game only ends via other conditions (bankruptcy, reputation
-   * collapse, all challenges complete, or turn limit).
+   * The engine declares the win (`gameResult = 'win'`, or `'loss'` for a
+   * competitive AI win) and sets `endReason` to `'score_threshold_continue'`
+   * when the threshold is first reached. The player may accept the offer
+   * (`continueAfterThreshold`), which returns `gameResult` to `'playing'` so
+   * the player (or players in competitive mode) can keep building; declining
+   * leaves the declared win. After continuing, the game only ends via other
+   * conditions (bankruptcy, reputation collapse, all challenges complete, or
+   * turn limit).
    *
    * Default: `false` — the game ends at the threshold (existing behaviour,
    * CG-0MTIILU5V006GCN4). This is the producer's opt-in "endless mode".

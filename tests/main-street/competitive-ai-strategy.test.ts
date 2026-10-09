@@ -17,6 +17,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createCompetitiveState,
   setupMainStreetGame,
+  effectiveWinThreshold,
   type MainStreetState,
 } from '../../src/MainStreetState';
 import { createSeededRng } from '@core-engine';
@@ -28,6 +29,7 @@ import {
   aiCompetitivePlanningHorizon,
   aiPlanningHorizon,
   computeCompetitiveEventValue,
+  scoreCommunitySpacePlacement,
   isCompetitiveMode,
   bindCompetitiveSeat,
   restoreCompetitiveSeat,
@@ -46,6 +48,7 @@ import type {
   UpgradeCard,
   EventCard,
   StaffCard,
+  CommunitySpaceCard,
 } from '../../src/MainStreetCards';
 
 // ── Fixtures ─────────────────────────────────────────────────
@@ -128,6 +131,47 @@ function padWallets(state: MainStreetState, amount: number): void {
   for (const p of state.players ?? []) p.coins += amount;
 }
 
+function makeCommunitySpace(
+  overrides: Partial<CommunitySpaceCard> = {},
+): CommunitySpaceCard {
+  return {
+    family: 'community-space' as const,
+    id: overrides.id ?? 'test-space',
+    name: overrides.name ?? 'Test Community Space',
+    cost: overrides.cost ?? 300,
+    baseIncome: 0,
+    synergyTypes: overrides.synergyTypes ?? [],
+    maxLevel: overrides.maxLevel ?? 1,
+    description: overrides.description ?? 'A test community space',
+    level: overrides.level ?? 0,
+    incomeBonus: overrides.incomeBonus ?? 0,
+    synergyRangeBonus: overrides.synergyRangeBonus ?? 0,
+    reputationBonus: overrides.reputationBonus ?? 0,
+    ongoingCost: overrides.ongoingCost ?? 0,
+    ...overrides,
+  } as CommunitySpaceCard;
+}
+
+/**
+ * Competitive state with an empty street, empty market/hand and funded seats.
+ * `activePlayerId` is seat 0, so the acting seat's owned slots are the ones
+ * tagged `0` with `place(...)`.
+ */
+function emptyCompetitiveBoard(seed: string, playerCount = 2): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount });
+  executeCompetitiveWeekStart(state);
+  state.streetGrid = new Array(state.streetGrid.length).fill(null);
+  state.ownerTaggedGrid = state.ownerTaggedGrid!.map(() => ({
+    card: null,
+    ownerId: null,
+  }));
+  state.market.cards = [];
+  state.hand = [];
+  state.activePlayerId = 0;
+  padWallets(state, 2000);
+  return state;
+}
+
 // ── AC1: Ownership-aware scoring ─────────────────────────────
 
 describe('AC1 — Ownership-aware planning horizon', () => {
@@ -161,6 +205,72 @@ describe('AC1 — Ownership-aware planning horizon', () => {
     const single = createCompetitiveState({ seed, playerCount: 1 });
     expect(isCompetitiveMode(single)).toBe(false);
     expect(aiCompetitivePlanningHorizon(single)).toBe(aiPlanningHorizon(single));
+  });
+});
+
+// ── Effective-threshold AI horizon (MS-0MUZK64R5008Z8MA, parent AC4) ──
+//
+// Slice 2: both planning horizons must measure the distance to
+// `effectiveWinThreshold(state)` (base / playerCount, rounded to the nearest
+// 50), not the base `config.winThreshold`. Easy base 10 000 → P=2 5 000,
+// P=3 3 350, P=4 2 500. With a neutral (zero) score the pre-change horizons
+// use the base target (10 000 ÷ 800 → 13), whereas the effective targets give
+// 7 (P=2) and the 5-turn floor (P=3, P=4).
+
+/** A fresh Easy competitive state with a neutral (zero) shared score. */
+function easyStateWithZeroScore(seed: string, playerCount: number): MainStreetState {
+  const s = createCompetitiveState({ seed, playerCount, difficulty: 'Easy' });
+  s.resourceBank.coins = 0;
+  s.resourceBank.reputation = 0;
+  s.challengesCompleted = [];
+  return s;
+}
+
+describe('AC1 — Effective win threshold drives the AI horizon', () => {
+  it('aiPlanningHorizon measures the P=3 Easy effective target (3 350)', () => {
+    const s = easyStateWithZeroScore('eff-horizon-p3', 3);
+    expect(s.config.winThreshold).toBe(10000);
+    expect(effectiveWinThreshold(s)).toBe(3350);
+    // 3 350 / 800 → ceil(4.19) = 5 (the horizon floor); the base 10 000 would
+    // yield ceil(12.5) = 13.
+    expect(aiPlanningHorizon(s)).toBe(5);
+  });
+
+  it('aiPlanningHorizon scales with the player count (P=2 → 5 000 → 7)', () => {
+    // 5 000 / 800 → ceil(6.25) = 7 — above the floor, so this pins that the
+    // divisor is the effective target, not the base 10 000 (which gives 13).
+    expect(aiPlanningHorizon(easyStateWithZeroScore('eff-horizon-p2', 2))).toBe(7);
+    expect(aiPlanningHorizon(easyStateWithZeroScore('eff-horizon-p4', 4))).toBe(5);
+  });
+
+  it('aiCompetitivePlanningHorizon measures the P=3 Easy effective target', () => {
+    const s = createCompetitiveState({
+      seed: 'eff-comp-horizon-p3',
+      playerCount: 3,
+      difficulty: 'Easy',
+    });
+    s.players![0].score = 0;
+    expect(effectiveWinThreshold(s)).toBe(3350);
+    expect(aiCompetitivePlanningHorizon(s, 0)).toBe(5);
+  });
+
+  it('aiCompetitivePlanningHorizon scales with the player count (P=2 → 5 000 → 7)', () => {
+    const s = createCompetitiveState({
+      seed: 'eff-comp-horizon-p2',
+      playerCount: 2,
+      difficulty: 'Easy',
+    });
+    s.players![0].score = 0;
+    expect(aiCompetitivePlanningHorizon(s, 0)).toBe(7);
+  });
+
+  it('single-player horizon is unchanged (base target)', () => {
+    const single = setupMainStreetGame({ seed: 'eff-horizon-single', difficulty: 'Easy' });
+    single.resourceBank.coins = 0;
+    single.resourceBank.reputation = 0;
+    single.challengesCompleted = [];
+    // No `playerCount` → the effective target is the base 10 000 → 13 turns.
+    expect(aiPlanningHorizon(single)).toBe(13);
   });
 });
 
@@ -291,8 +401,13 @@ describe('AC3 — Deterministic competitive replay', () => {
    * action signatures. Stops before the shared closing phases so the
    * comparison isolates the AI decision sequence.
    */
-  function playSharedMarketWeek(state: MainStreetState, rng: () => number): string[] {
+  function playSharedMarketWeek(
+    state: MainStreetState,
+    rng: () => number,
+    configureAfterWeekStart?: (state: MainStreetState) => void,
+  ): string[] {
     executeCompetitiveWeekStart(state);
+    configureAfterWeekStart?.(state);
     const recorded: string[] = [];
     const n = state.players!.length;
 
@@ -319,6 +434,32 @@ describe('AC3 — Deterministic competitive replay', () => {
     return playSharedMarketWeek(state, createSeededRng(987654321));
   }
 
+  /**
+   * Like {@link run}, but seeds the street with one owner-tagged business per
+   * seat so the competitive placement path queries `getSlotOwnerId` while it
+   * decides. Determinism must not depend on ownership lookups.
+   */
+  function runWithOwnerTaggedStreet(seed: string): string[] {
+    const state = createCompetitiveState({ seed, playerCount: 2 });
+    padWallets(state, 2000);
+    return playSharedMarketWeek(state, createSeededRng(987654321), s => {
+      s.streetGrid = new Array(s.streetGrid.length).fill(null);
+      s.ownerTaggedGrid = s.ownerTaggedGrid!.map(() => ({ card: null, ownerId: null }));
+      place(
+        s,
+        makeBiz({ id: 'det-p0-food', name: 'P0 Food', baseIncome: 120, synergyTypes: ['Food'] }),
+        4,
+        0,
+      );
+      place(
+        s,
+        makeBiz({ id: 'det-p1-food', name: 'P1 Food', baseIncome: 120, synergyTypes: ['Food'] }),
+        6,
+        1,
+      );
+    });
+  }
+
   it('same seed + same strategy produces identical action sequences', () => {
     const a = run('det-competitive-42');
     const b = run('det-competitive-42');
@@ -334,6 +475,14 @@ describe('AC3 — Deterministic competitive replay', () => {
     const actions = run('det-competitive-other');
     expect(actions.length).toBeGreaterThan(0);
     expect(actions.filter(sig => sig.includes('end-turn')).length).toBe(2);
+  });
+
+  it('an owner-tagged street produces identical sequences for the same seed', () => {
+    const a = runWithOwnerTaggedStreet('det-ownership-42');
+    const b = runWithOwnerTaggedStreet('det-ownership-42');
+
+    expect(a.length).toBeGreaterThan(0);
+    expect(a).toEqual(b);
   });
 });
 
@@ -355,5 +504,195 @@ describe('AC4 — N=1 falls back to the legacy single-player helpers', () => {
     for (const action of legal) {
       expect(scoreCompetitiveAction(state, action, 0)).toBe(scoreAction(state, action));
     }
+  });
+});
+
+// ── Ownership-aware placement scoring (MS-0MUZFVJTK005YK48) ──
+//
+// Green phase: the ownership-aware competitive placement value is delivered
+// by the dependent feature item MS-0MUZFVLVS007S56L. These assertions pin the
+// `own − opponent` contract and are active (no longer `it.fails`).
+
+/** A neighbouring business that anchors synergy for a space placed at slot 3. */
+const PLACEMENT_SLOT = 3;
+const NEIGHBOUR_SLOT = 4;
+
+/** An income-producing neighbouring business with one synergy type. */
+function anchorBusiness(id: string, synergy: BusinessCard['synergyTypes'][number], baseIncome = 400): BusinessCard {
+  return makeBiz({
+    id,
+    name: id,
+    baseIncome,
+    synergyTypes: [synergy],
+  });
+}
+
+describe('AC2 — an opponent-only community space is rejected', () => {
+  it('scores an opponent-only anchor at or below zero', () => {
+    const state = emptyCompetitiveBoard('opp-only-score');
+    // The only synergy anchor is owned by another seat.
+    place(state, anchorBusiness('cinema', 'Entertainment'), NEIGHBOUR_SLOT, 1);
+    const space = makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] });
+
+    const score = scoreCommunitySpacePlacement(
+      state,
+      space,
+      PLACEMENT_SLOT,
+      aiCompetitivePlanningHorizon(state, 0),
+    );
+    expect(score).toBeLessThanOrEqual(0);
+  });
+
+  it('greedy does not buy or play the opponent-only space', () => {
+    const state = emptyCompetitiveBoard('opp-only-greedy');
+    state.market.cards = [
+      makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] }),
+    ];
+    place(state, anchorBusiness('cinema', 'Entertainment'), NEIGHBOUR_SLOT, 1);
+
+    const action = CompetitiveGreedyStrategy.chooseAction(state, createSeededRng(1));
+    // Acquiring the card into hand is allowed; spending coins to place it on
+    // the street is not.
+    expect(action.type).not.toBe('buy-business');
+  });
+});
+
+// A community space's competitive value scales with the planning horizon,
+// which now derives from the effective (per-seat) win threshold
+// (MS-0MUZK64R5008Z8MA: base / playerCount, rounded to the nearest 50). With
+// the shorter competitive horizon the original 400-income anchor left this
+// placement marginally negative, so the fixture uses a genuinely
+// self-beneficial anchor. The ownership contract under test — own-anchored
+// positive, opponent-anchored non-positive — is unchanged.
+const SELF_BENEFICIAL_ANCHOR_INCOME = 800;
+
+describe('AC3 — a self-beneficial placement is preserved', () => {
+  it('scores an own-anchored community space above zero', () => {
+    const state = emptyCompetitiveBoard('own-only-score');
+    place(
+      state,
+      anchorBusiness('cinema', 'Entertainment', SELF_BENEFICIAL_ANCHOR_INCOME),
+      NEIGHBOUR_SLOT,
+      0,
+    );
+    const space = makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] });
+
+    const score = scoreCommunitySpacePlacement(
+      state,
+      space,
+      PLACEMENT_SLOT,
+      aiCompetitivePlanningHorizon(state, 0),
+    );
+    expect(score).toBeGreaterThan(0);
+  });
+
+  it('greedy still selects the own-anchored community space', () => {
+    const state = emptyCompetitiveBoard('own-only-greedy');
+    state.market.cards = [
+      makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] }),
+    ];
+    place(
+      state,
+      anchorBusiness('cinema', 'Entertainment', SELF_BENEFICIAL_ANCHOR_INCOME),
+      NEIGHBOUR_SLOT,
+      0,
+    );
+
+    const action = CompetitiveGreedyStrategy.chooseAction(state, createSeededRng(1));
+    expect(action.type).toBe('buy-business');
+    expect((action as { cardId: string }).cardId).toBe('park');
+  });
+});
+
+describe('AC3 — a mixed placement is discounted', () => {
+  it('scores a mixed own/opponent anchor below the identical own-only anchor', () => {
+    const ownBiz = anchorBusiness('own-food', 'Food', 200);
+    const oppBiz = anchorBusiness('opp-culture', 'Culture', 200);
+    const space = makeCommunitySpace({ id: 'community-hub', synergyTypes: ['Food', 'Culture'] });
+
+    // Two anchors adjacent to the placement slot, one per synergy type so the
+    // neighbours do not interact with each other.
+    const ownOnly = emptyCompetitiveBoard('mixed-anchor');
+    place(ownOnly, ownBiz, NEIGHBOUR_SLOT, 0);
+    place(ownOnly, oppBiz, 8, 0);
+    const ownOnlyScore = scoreCommunitySpacePlacement(
+      ownOnly,
+      space,
+      PLACEMENT_SLOT,
+      aiCompetitivePlanningHorizon(ownOnly, 0),
+    );
+
+    const mixed = emptyCompetitiveBoard('mixed-anchor');
+    place(mixed, ownBiz, NEIGHBOUR_SLOT, 0);
+    place(mixed, oppBiz, 8, 1);
+    const mixedScore = scoreCommunitySpacePlacement(
+      mixed,
+      space,
+      PLACEMENT_SLOT,
+      aiCompetitivePlanningHorizon(mixed, 0),
+    );
+
+    expect(mixedScore).toBeLessThan(ownOnlyScore);
+  });
+});
+
+describe('AC4 — an ordinary business charges the opponent benefit it anchors', () => {
+  /**
+   * Scores the same ordinary business placement at slot 3 next to an identical
+   * neighbour whose only difference is the owner tag.
+   */
+  function ordinaryPlacementScore(neighbourOwnerId: number): number {
+    const state = emptyCompetitiveBoard('ordinary-diff');
+    const card = makeBiz({
+      id: 'shop',
+      name: 'Shop',
+      baseIncome: 100,
+      cost: 50,
+      synergyTypes: ['Food'],
+    });
+    state.market.cards = [card];
+    place(state, anchorBusiness('diner', 'Food', 200), NEIGHBOUR_SLOT, neighbourOwnerId);
+    return scoreCompetitiveAction(
+      state,
+      { type: 'buy-business', cardId: card.id, slotIndex: PLACEMENT_SLOT } as PlayerAction,
+      0,
+    );
+  }
+
+  it('reduces the score by the synergy it anchors for an opponent', () => {
+    expect(ordinaryPlacementScore(1)).toBeLessThan(ordinaryPlacementScore(0));
+  });
+
+  it('keeps the ordinary business action positive (still eligible)', () => {
+    expect(ordinaryPlacementScore(1)).toBeGreaterThan(0);
+  });
+});
+
+describe('AC5 — single-player scoring is unchanged (N=1)', () => {
+  it('ignores owner tags when the state is not competitive', () => {
+    const seed = 'n1-ownership';
+    const neighbour = anchorBusiness('cinema', 'Entertainment');
+    const space = makeCommunitySpace({ id: 'park', synergyTypes: ['Entertainment'] });
+
+    // N=1 competitive states carry an `ownerTaggedGrid` but are not
+    // competitive; the ownership-aware branch must not trigger. The neighbour
+    // is deliberately tagged to a non-acting seat.
+    const n1 = createCompetitiveState({ seed, playerCount: 1 });
+    executeWeekStart(n1);
+    n1.streetGrid = new Array(n1.streetGrid.length).fill(null);
+    n1.market.cards = [];
+    place(n1, neighbour, NEIGHBOUR_SLOT, 1);
+
+    // The equivalent state built through the single-player setup (no tags).
+    const single = setupMainStreetGame({ seed });
+    executeWeekStart(single);
+    single.streetGrid = new Array(single.streetGrid.length).fill(null);
+    single.streetGrid[NEIGHBOUR_SLOT] = neighbour;
+
+    const horizon = aiPlanningHorizon(single);
+    expect(isCompetitiveMode(n1)).toBe(false);
+    expect(scoreCommunitySpacePlacement(n1, space, PLACEMENT_SLOT, horizon)).toBe(
+      scoreCommunitySpacePlacement(single, space, PLACEMENT_SLOT, horizon),
+    );
   });
 });

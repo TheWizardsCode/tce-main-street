@@ -122,9 +122,14 @@ Genuinely-unknown/future cards still fall back to `Fallback` via
 (see [MS-0MTSAWSME004BH6S](https://github.com/TheWizardsCode/tce-main-street/issues)
 — "Add images for all cards"); until they land, cards whose mapping target
 has no sprite render `Fallback`. Running the generator prints the coverage and
-the pending target list, and the `card-art.csv` drift guard in
+the pending target list, and the card-art drift guard in
 `tests/main-street/card-art.test.ts` locks the pending set so a new card can
 never silently reintroduce generic art (the set may only shrink).
+
+A card that ships ahead of its art (producer-owned, e.g. the `Investor` staff
+card, MS-0MUOSUM7200624OB) is recorded in that pending set as its
+producer-approved pending-art entry until the 1024×1024 sprite is supplied,
+so the drift guard passes without a dedicated sprite.
 
 ## Synergy icons
 

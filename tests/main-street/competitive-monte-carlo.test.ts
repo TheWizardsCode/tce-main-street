@@ -248,10 +248,14 @@ describe('AC4 — CompetitiveGreedyStrategy validation', () => {
 
 describe('Elimination & last-standing alignment', () => {
   it('reports an eliminated seat with its own loss reason, not the run reason', () => {
-    // 'ac1-cap-5' ends by last-standing: the AI is eliminated and the human
-    // wins. The healthy winner must not be attributed the collapsed seat's
-    // reason.
-    const run = runCompetitiveSeed('ac1-cap-5', 5);
+    // 'cf-elim-4-3' ends by last-standing: the AI is eliminated and the
+    // human wins. The healthy winner must not be attributed the collapsed
+    // seat's reason. (The fixture seed was updated from 'cf-elim-4-x-4' when the
+    // upgrade draw-weight mechanism (MS-0MUYK08I1004I19W) shifted every seeded
+    // draw; earlier updates: 'cf-elim-4-x-4' when the Investor staff card was
+    // added (MS-0MTISBYLS009936W), 'cf-elim-4-7' under MS-0MUX8J9KJ005ZKDW,
+    // 'ac1-cap-5' under MS-0MUVB2ZES005V83Y.)
+    const run = runCompetitiveSeed('cf-elim-4-3', 4);
     expect(run.endReason).toBe('last_standing');
     expect(run.winnerId).toBe(0);
 

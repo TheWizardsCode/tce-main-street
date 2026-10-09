@@ -3,16 +3,16 @@
  *
  * Validates that the highlight rectangles drawn by showStep
  * cover the correct UI areas for each TutorialHighlightZone in the
- * unified T1–T18 tutorial system.
+ * unified T1–T25 tutorial system.
  *
- * Unified step mapping (26 steps, CG-0MTNMBX5Z002U0MH — see TutorialFlow.ts T1-T26
- * for the authoritative mapping: T1 centerModal, T2 developmentRow, T3
+ * Unified step mapping (25 steps, MS-0MT3JK16W006A66P — see TutorialFlow.ts
+ * T1-T25 for the authoritative mapping: T1 centerModal, T2 developmentRow, T3
  * laundromatCard, T4 hand, T5 incidentQueue, T6 endTurnButton, T7
  * streetGrid, T8 endTurnButton, T9 investmentsRow, T10 festivalCard,
  * T11 endTurnButton, T12 developmentRow, T13 developmentRow, T14
- * endTurnButton, T15 actionButtons, T16 endTurnButton, T17 streetGrid,
- * T18 endTurnButton, T19 developmentRow, T20 endTurnButton, T21 streetGrid,
- * T22 endTurnButton, T23 hand, T24 hud, T25 challengePanel, T26 completionModal).
+ * endTurnButton, T15 actionButtons, T16 streetGrid, T17 endTurnButton,
+ * T18 developmentRow, T19 endTurnButton, T20 streetGrid, T21 endTurnButton,
+ * T22 hand, T23 hud, T24 challengePanel, T25 completionModal).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
@@ -145,9 +145,9 @@ describe('TutorialOverlayManager highlight zones', () => {
     return null;
   }
 
-  // ── AC 1: HUD highlight (T24, Success and Failure) ─────────
+  // ── AC 1: HUD highlight (T23, Success and Failure) ─────────
 
-  it('HUD highlight (T24) starts at hudY and covers the HUD strip', async () => {
+  it('HUD highlight (T23) starts at hudY and covers the HUD strip', async () => {
     const layout = scene.layout as {
       hudY: number;
       gameW: number;
@@ -157,7 +157,7 @@ describe('TutorialOverlayManager highlight zones', () => {
     expect(layout).toBeTruthy();
     expect(layout!.hudY).toBeGreaterThan(0);
 
-    const highlight = showStepAndGetHighlight('T24'); // T24 = confirm, hud zone
+    const highlight = showStepAndGetHighlight('T23'); // T23 = confirm, hud zone
     expect(highlight).toBeTruthy();
 
     const bounds = getHighlightBounds(highlight!);
@@ -319,7 +319,7 @@ describe('TutorialOverlayManager highlight zones', () => {
     } | undefined;
     expect(layout).toBeTruthy();
 
-    const highlight = showStepAndGetHighlight('T18'); // T18 = action (day-5 End Turn), endTurnButton zone
+    const highlight = showStepAndGetHighlight('T17'); // T17 = action (day-5 End Turn), endTurnButton zone
     expect(highlight).toBeTruthy();
 
     const bounds = getHighlightBounds(highlight!);
@@ -432,13 +432,13 @@ describe('TutorialOverlayManager highlight zones', () => {
     expect(bounds!.h).toBeGreaterThanOrEqual(layout!.favourButtonH);
   });
 
-  // ── AC 11c: Move the Library dev row highlight (T19) ───────
+  // ── AC 11c: Move the Library dev row highlight (T18) ───────
 
-  it('Development Row highlight (T19) covers the dev row (Move the Library to hand)', async () => {
+  it('Development Row highlight (T18) covers the dev row (Move the Library to hand)', async () => {
     const layout = scene.layout as { marketTop: number; marketRowH: number } | undefined;
     expect(layout).toBeTruthy();
 
-    const highlight = showStepAndGetHighlight('T19'); // T19 = action (Library move-to-hand), developmentRow zone
+    const highlight = showStepAndGetHighlight('T18'); // T18 = action (Library move-to-hand), developmentRow zone
     expect(highlight).toBeTruthy();
 
     const bounds = getHighlightBounds(highlight!);
@@ -447,13 +447,13 @@ describe('TutorialOverlayManager highlight zones', () => {
     expect(bounds!.y).toBeGreaterThanOrEqual(layout!.marketTop - 10);
   });
 
-  // ── AC 12: Hand highlight (T23, Triggering Events) ─────────
+  // ── AC 12: Hand highlight (T22, Triggering Events) ─────────
 
-  it('Hand highlight (T23) covers the hand area (Triggering Events)', async () => {
+  it('Hand highlight (T22) covers the hand area (Triggering Events)', async () => {
     const layout = scene.layout as { handY: number; gameH: number } | undefined;
     expect(layout).toBeTruthy();
 
-    const highlight = showStepAndGetHighlight('T23'); // T23 = action, hand zone
+    const highlight = showStepAndGetHighlight('T22'); // T22 = action, hand zone
     expect(highlight).toBeTruthy();
 
     const bounds = getHighlightBounds(highlight!);
@@ -481,9 +481,9 @@ describe('TutorialOverlayManager highlight zones', () => {
     }
   });
 
-  // ── AC 14: completionModal zone (T18, null anchor) ─────────
+  // ── AC 14: completionModal zone (T25, null anchor) ─────────
 
-  it('completionModal zone (T26) returns null anchor (no highlight graphics drawn)', async () => {
+  it('completionModal zone (T25) returns null anchor (no highlight graphics drawn)', async () => {
     const mgr = scene.tutorialOverlay as { showStep?: (index: number) => void; dismiss?: () => void };
 
     if (mgr && typeof mgr.showStep === 'function') {
@@ -491,7 +491,7 @@ describe('TutorialOverlayManager highlight zones', () => {
         mgr.dismiss();
       }
 
-      mgr.showStep(stepIdToIndex('T26'));
+      mgr.showStep(stepIdToIndex('T25'));
 
       // completionModal should not draw any highlight graphics at depth 199
       const highlights = findHighlightGraphics(scene);
@@ -499,9 +499,9 @@ describe('TutorialOverlayManager highlight zones', () => {
     }
   });
 
-  // ── AC 15: Challenge panel highlight (T25) ─────────────────
+  // ── AC 15: Challenge panel highlight (T24) ─────────────────
 
-  it('challengePanel highlight (T25) covers the challenge panel area', async () => {
+  it('challengePanel highlight (T24) covers the challenge panel area', async () => {
     const layout = scene.layout as {
       challengeX: number;
       challengeY: number;
@@ -509,7 +509,7 @@ describe('TutorialOverlayManager highlight zones', () => {
     } | undefined;
     expect(layout).toBeTruthy();
 
-    const highlight = showStepAndGetHighlight('T25'); // T25 = confirm, challengePanel zone
+    const highlight = showStepAndGetHighlight('T24'); // T24 = confirm, challengePanel zone
     expect(highlight).toBeTruthy();
 
     const bounds = getHighlightBounds(highlight!);

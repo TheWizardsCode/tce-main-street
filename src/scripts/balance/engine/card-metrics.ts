@@ -11,6 +11,7 @@
  */
 
 import type { MonteCarloRunSummary } from '../../../MainStreetMonteCarlo';
+import { getBaseTypeId } from '../../../MainStreetCardsUtils';
 
 // =========================================================================
 // Shared Types
@@ -91,9 +92,11 @@ export function computePickRate(
     const offers = (run as any).marketOffers as string[] | undefined;
     const owned = (run as any).cardsOwned as string[] | undefined;
 
-    if (offers && offers.includes(cardId)) {
+    // Monte Carlo runs record instance-suffixed card IDs (e.g. `biz-bakery-0`).
+    // Compare on the base template ID so callers can query with either form.
+    if (offers && offers.some(id => getBaseTypeId(id) === cardId)) {
       appearances++;
-      if (owned && owned.includes(cardId)) {
+      if (owned && owned.some(id => getBaseTypeId(id) === cardId)) {
         purchases++;
       }
     }
@@ -420,8 +423,10 @@ export function computeUpgradeAdoption(
     const owned = (run as any).cardsOwned as string[] | undefined;
     if (!owned) continue;
 
-    const hasParent = owned.includes(parentCardId);
-    const hasUpgrade = owned.includes(upgradeCardId);
+    // Monte Carlo runs record instance-suffixed card IDs (e.g. `biz-bakery-0`).
+    // Compare on the base template ID so callers can query with either form.
+    const hasParent = owned.some(id => getBaseTypeId(id) === parentCardId);
+    const hasUpgrade = owned.some(id => getBaseTypeId(id) === upgradeCardId);
 
     if (hasParent) parentPurchases++;
     if (hasUpgrade) upgrades++;

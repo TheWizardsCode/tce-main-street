@@ -3,7 +3,7 @@
  *
  * Validates the spreadsheet source of truth for tutorial copy:
  * - Header is `key,text`
- * - Every required key is present (67 total)
+ * - Every required key is present (65 total)
  * - No duplicate or orphan/unknown keys
  * - No value is empty
  * - Embedded commas and double quotes round-trip
@@ -40,8 +40,8 @@ const REQUIRED_KEYS = [
   'tutorial.steamFollow.openedBrowser',
   'tutorial.steamFollow.unavailable',
   'tutorial.steamFollow.unlocked',
-  // Tutorial steps T1–T26 (52 = 26 × 2)
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].flatMap(n => [
+  // Tutorial steps T1–T25 (50 = 25 × 2)
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].flatMap(n => [
     `tutorial.T${n}.title`,
     `tutorial.T${n}.body`,
   ]),
@@ -56,9 +56,9 @@ describe('Tutorial CSV integrity', () => {
     expect(parts).toEqual(['key', 'text']);
   });
 
-  it('contains exactly 67 data rows (keys)', () => {
+  it('contains exactly 65 data rows (keys)', () => {
     const rows = parseCsv(rawCsv);
-    expect(rows.length).toBe(67);
+    expect(rows.length).toBe(65);
   });
 
   it('every required key is present', () => {
@@ -138,14 +138,14 @@ describe('Tutorial CSV integrity', () => {
     expect(t3!.text).toContain('{cost}');
   });
 
-  it('T21 body preserves synergyCardName placeholder', () => {
+  it('T20 body preserves synergyCardName placeholder', () => {
     const rows = parseCsv(rawCsv);
-    const t21 = rows.find(r => r.key === 'tutorial.T21.body');
-    expect(t21!.text).toContain('{cardName}');
-    expect(t21!.text).toContain('{synergyCardName}');
+    const t20 = rows.find(r => r.key === 'tutorial.T20.body');
+    expect(t20!.text).toContain('{cardName}');
+    expect(t20!.text).toContain('{synergyCardName}');
   });
 
-  it('loader bundle has all 67 keys (CSV loads correctly)', () => {
-    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(67);
+  it('loader bundle has all 65 keys (CSV loads correctly)', () => {
+    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(65);
   });
 });

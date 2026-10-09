@@ -53,7 +53,7 @@ describe('STANDARD_TUTORIAL_SCENARIO definition', () => {
     // The two-turn tutorial (CG-0MT53NXGZ004H5AE) buys Laundromat $400 +
     // Bookshop $300 + Library $700 + Local Festival $300 at LISTED cost (every
     // placement follows an End Turn, so no +50% premium is charged); income
-    // across the five end-turn steps keeps every balance positive. 1200 is
+    // across the seven end-turn steps keeps every balance positive. 1200 is
     // higher than Easy's 500 so the tutorial survives holding a card until next week.
     expect(STANDARD_TUTORIAL_SCENARIO.resourceBank.coins).toBe(1200);
     const preset = getPreset('Easy');
@@ -86,10 +86,11 @@ describe('STANDARD_TUTORIAL_SCENARIO definition', () => {
     expect(STANDARD_TUTORIAL_SCENARIO.market.cards.length).toBe(MARKET_TOTAL_SLOTS);
   });
 
-  it('defines exactly 8 incident deck cards (one per End Turn, two-turn flow)', () => {
-    // CG-0MTNMBX5Z002U0MH: the 26-step tutorial runs 9 days with 8 End Turns
-    // (T6, T8, T11, T14, T16, T18, T20, T22), so the deterministic deck holds 8 incidents.
-    expect(STANDARD_TUTORIAL_SCENARIO.incidentDeck.length).toBe(8);
+  it('defines exactly 7 incident deck cards (one per End Turn, two-turn flow)', () => {
+    // MS-0MT3JK16W006A66P: the merged favour/bookshop day leaves the 25-step
+    // tutorial with 8 days and 7 End Turns (T6, T8, T11, T14, T17, T19, T21),
+    // so the deterministic deck holds 7 incidents.
+    expect(STANDARD_TUTORIAL_SCENARIO.incidentDeck.length).toBe(7);
   });
 
   it('all development row card template IDs are from Tier-1 pool', () => {
@@ -168,9 +169,9 @@ describe('createTutorialScenario', () => {
     expect(events.length).toBe(1);
   });
 
-  it('has exactly 8 cards in incident deck (one per End Turn)', () => {
+  it('has exactly 7 cards in incident deck (one per End Turn)', () => {
     const state = createTutorialScenario();
-    expect(state.incidentDeck.length).toBe(8);
+    expect(state.incidentDeck.length).toBe(7);
   });
 
   it('has all incident cards as Incident-trigger events', () => {
@@ -214,13 +215,13 @@ describe('createTutorialScenario', () => {
 
   // ── Coin budget verification (AC5: 12-coin flow + required conversion) ──
 
-  it('provides sufficient coin budget for the 26-step two-turn flow (listed-cost placements, positive balances)', () => {
+  it('provides sufficient coin budget for the 25-step two-turn flow (listed-cost placements, positive balances)', () => {
     const state = createTutorialScenario();
     // Scenario starts with 1200 coins (higher than Easy's 500 so holding a card
     // until next week overhead (−100/−75/−25 ongoing costs) never goes negative).
     expect(state.resourceBank.coins).toBe(1200);
 
-    // 26-step flow (CG-0MTNMBX5Z002U0MH): 9 days, 8 End Turns, budget verified
+    // 25-step flow (MS-0MT3JK16W006A66P): 8 days, 7 End Turns, budget verified
     // in tutorial-action-economy.test.ts as well.
     // The Laundromat referenced in T3 must exist and cost ≤ 400
     const t3 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T3')!;
@@ -231,26 +232,25 @@ describe('createTutorialScenario', () => {
     expect(laundromat!.cost).toBeLessThanOrEqual(400);
 
     // The two-turn flow places each card the day AFTER its move at listed
-    // cost (no same-turn premium): Laundromat $400 (T7), Bookshop $300 (T17),
-    // Library $700 (T21). Income accrues across eight end-turns and the T15
+    // cost (no same-turn premium): Laundromat $400 (T7), Bookshop $300 (T16),
+    // Library $700 (T20). Income accrues across seven end-turns and the T15
     // Community Favour exchange tops up the wallet; the deterministic
-    // 8-incident deck (award ×4, rainy ×4 — all non-negative on the tutorial
+    // 7-incident deck (award ×4, rainy ×3 — all non-negative on the tutorial
     // street) never drains it.
     expect(1200 - 400 - 300 - 700).toBe(-200); // pre-income, covered by end-turn income
   });
 
-  it('ensureTutorialMarketForUpcomingSteps puts the Library in the row when T19 is upcoming', () => {
-    // Day-1 state has no Library (3-slot single row). Before T19 (the Library
-    // move-to-hand step, CG-0MTNMBX5Z002U0MH) the day-start hook forces
-    // cs-library into the line.
+  it('ensureTutorialMarketForUpcomingSteps puts the Library in the row when T18 is upcoming', () => {
+    // Day-1 state has no Library (3-slot single row). Before T18 (the Library
+    // move-to-hand step) the day-start hook forces cs-library into the line.
     const state = createTutorialScenario();
     expect(state.market.cards.some(c => matchesTemplate(c.id, 'cs-library'))).toBe(false);
 
-    const t18Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T19');
+    const t18Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T18');
     const controller = {
       isActive: true,
       currentStepIndex: t18Index,
-      lastCompletedStepId: 'T18',
+      lastCompletedStepId: 'T17',
       exited: false,
     };
     ensureTutorialMarketForUpcomingSteps(state, controller);

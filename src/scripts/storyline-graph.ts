@@ -23,8 +23,9 @@
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import type { EventCard, StorylineOption } from '../MainStreetCardsTypes';
+import type { DurationEventCard, EventCard, StorylineOption } from '../MainStreetCardsTypes';
 import { getBaseTypeId, getEventTemplates } from '../MainStreetCards';
+import { CARD_TIER_MAP } from '../MainStreetCardsTemplates';
 import { getStorylineOptions, registerStorylineOptions } from '../MainStreetStoryline';
 import { findCycles } from './validate-storylines';
 
@@ -47,6 +48,26 @@ export interface StorylineGraphNode {
   readonly coinDelta: number;
   /** Net reputation effect (informational). */
   readonly reputationDelta: number;
+  /** When the event resolves: `Incident` (auto-drawn) or `Investment`. */
+  readonly trigger: string;
+  /** Human-readable effect text shown to the player. */
+  readonly effect: string;
+  /** Effect scope (`All`, `SpecificSynergy`, `RandomBusiness`). */
+  readonly target: string;
+  /** Synergy targeted when `target` is `SpecificSynergy`, else null. */
+  readonly targetSynergy: string | null;
+  /** Card cost (informational). */
+  readonly cost: number;
+  /** Severity/availability tier, or null when unknown. */
+  readonly tier: number | null;
+  /** Signed fraction of banked coins (e.g. `-0.45`), or null when absent. */
+  readonly coinPercentDelta: number | null;
+  /** Duration in turns for duration-based events, or null. */
+  readonly duration: number | null;
+  /** Duration discriminator (e.g. `income-multiplier`), or null. */
+  readonly effectType: string | null;
+  /** Duration scalar (e.g. `0.8` for 80% income), or null. */
+  readonly multiplier: number | null;
 }
 
 export interface StorylineGraphOption {
@@ -67,6 +88,8 @@ export interface StorylineGraphEdge {
   readonly to: string | null;
   /** True when this edge participates in a cycle. */
   readonly cycle: boolean;
+  /** Whether the source event's own effect applies when this option is chosen. */
+  readonly effectPolicy: 'apply' | 'skip';
 }
 
 export interface StorylineManifest {
@@ -89,6 +112,28 @@ export interface StorylineManifest {
 /** Compares two strings for deterministic (codepoint) ordering. */
 function byString(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Reads the duration-based fields from a (possibly) `DurationEventCard`. */
+function eventDurationFields(card: EventCard): {
+  duration: number | null;
+  effectType: string | null;
+  multiplier: number | null;
+} {
+  const duration = card as DurationEventCard;
+  return {
+    duration: typeof duration.duration === 'number' ? duration.duration : null,
+    effectType: typeof duration.effectType === 'string' ? duration.effectType : null,
+    multiplier: typeof duration.multiplier === 'number' ? duration.multiplier : null,
+  };
+}
+
+/** Reads a card's numeric tier from the CSV tier map, or null when unknown. */
+function cardTier(baseId: string): number | null {
+  const raw = CARD_TIER_MAP.get(baseId);
+  if (raw === undefined) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -131,6 +176,14 @@ export function buildStorylineManifest(
       optionCount: options.length,
       coinDelta: card.coinDelta,
       reputationDelta: card.reputationDelta,
+      trigger: card.trigger,
+      effect: card.effect,
+      target: card.target,
+      targetSynergy: card.targetSynergy ?? null,
+      cost: card.cost,
+      tier: cardTier(base),
+      coinPercentDelta: card.coinPercentDelta ?? null,
+      ...eventDurationFields(card),
     });
 
     for (const option of options) {
@@ -139,6 +192,7 @@ export function buildStorylineManifest(
         label: option.label,
         to: option.successorId ? getBaseTypeId(option.successorId) : null,
         cycle: false, // marked after cycle detection below
+        effectPolicy: option.effectPolicy,
       });
     }
   }
@@ -209,10 +263,11 @@ export function renderMermaid(manifest: StorylineManifest): string {
   lines.push('%%{ init: { "flowchart": { "curve": "basis" } } }%%');
   lines.push('flowchart TD');
 
-  // Nodes
+  // Nodes — each box shows the name/id plus a brief description and the
+  // mechanical game-state impact, so a diagram is readable on its own.
   for (const node of manifest.nodes) {
     const id = mermaidId(node.id);
-    const label = `${node.name}<br/>${node.id}`;
+    const label = nodeLabel(node);
     if (node.hasChoices) {
       lines.push(`  ${id}{"${label}"}`);
     } else {
@@ -247,6 +302,242 @@ export function renderMermaid(manifest: StorylineManifest): string {
 
   lines.push('');
   return lines.join('\n');
+}
+
+// ── Per-storyline views (MS-0MUNB54KU005084C reopened) ───────
+
+/**
+ * Restricts a manifest to a single storyline's cards (its parent incident and
+ * the chain it links to). Used to render one readable diagram per storyline
+ * (one parent box per page) instead of the unreadable combined graph.
+ *
+ * @param manifest    The full storyline manifest.
+ * @param storylineId The storyline id to keep (e.g. `storyline-tax`).
+ * @returns A manifest containing only that storyline's nodes, edges and cycles.
+ */
+export function filterManifestByStoryline(
+  manifest: StorylineManifest,
+  storylineId: string,
+): StorylineManifest {
+  const nodeIds = new Set(
+    manifest.nodes.filter((node) => node.storylineId === storylineId).map((node) => node.id),
+  );
+  const nodes = manifest.nodes.filter((node) => nodeIds.has(node.id));
+  const edges = manifest.edges.filter(
+    (edge) => nodeIds.has(edge.from) && (edge.to === null || nodeIds.has(edge.to)),
+  );
+  const cycles = manifest.cycles.filter((cycle) => cycle.every((id) => nodeIds.has(id)));
+  return { ...manifest, storylineIds: [storylineId], nodes, edges, cycles };
+}
+
+/** A standalone incident (not part of any storyline chain). */
+export interface StandaloneIncident {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Returns the incidents that belong to no storyline chain (no storyline id and
+ * no graph edges). These are listed as a compact index rather than drawn as
+ * boxes — the box layout is what made the combined graph unreadable.
+ *
+ * @param manifest The full storyline manifest.
+ * @returns The standalone incidents, in manifest (sorted) order.
+ */
+export function buildStandaloneIncidentIndex(
+  manifest: StorylineManifest,
+): StandaloneIncident[] {
+  const linked = new Set<string>();
+  for (const edge of manifest.edges) {
+    linked.add(edge.from);
+    if (edge.to) linked.add(edge.to);
+  }
+  return manifest.nodes
+    .filter((node) => !node.storylineId && !linked.has(node.id))
+    .map((node) => ({ id: node.id, name: node.name }));
+}
+
+/**
+ * Renders the standalone-incident index as a committed Markdown document.
+ *
+ * @param incidents The standalone incidents (from `buildStandaloneIncidentIndex`).
+ * @returns A deterministic Markdown document (trailing newline).
+ */
+export function renderIncidentIndexMarkdown(
+  incidents: readonly StandaloneIncident[],
+): string {
+  const lines = [
+    '# Main Street: standalone incidents',
+    '',
+    '> Generated from `src/card-data.csv` by `npm run storylines:graph:svg`. These',
+    '> incidents are not part of any storyline chain, so they are listed here as a',
+    '> compact index rather than drawn as boxes in the storyline diagrams.',
+    '',
+    '| Incident | Card id |',
+    '|----------|---------|',
+  ];
+  for (const incident of incidents) {
+    lines.push(`| ${incident.name.replace(/\|/g, '\\|')} | \`${incident.id}\` |`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+// ── Per-event detail tables (MS-0MUNB54KU005084C reopened) ──
+
+/** Formats a signed number with a typographic minus sign. */
+function signed(value: number): string {
+  return value >= 0 ? `+${value}` : `−${Math.abs(value)}`;
+}
+
+/** Escapes a value for use in a Markdown table cell. */
+function tableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Formats an event's mechanical game-state impact as a compact string for a
+ * diagram box (e.g. `−300 coins · −100 rep`).
+ *
+ * @param node The event node from the manifest.
+ * @returns A compact impact string, or an empty string when there is none.
+ */
+export function describeEventImpactCompact(node: StorylineGraphNode): string {
+  const parts: string[] = [];
+  if (node.coinPercentDelta !== null) {
+    const pct = Math.round(Math.abs(node.coinPercentDelta) * 100);
+    parts.push(`${node.coinPercentDelta < 0 ? '−' : '+'}${pct}% coins`);
+  } else if (node.coinDelta !== 0) {
+    parts.push(`${signed(node.coinDelta)} coins`);
+  }
+  if (node.reputationDelta !== 0) {
+    parts.push(`${signed(node.reputationDelta)} rep`);
+  }
+  if (node.duration !== null && node.multiplier !== null) {
+    parts.push(`×${node.multiplier} income · ${node.duration} turns`);
+  }
+  if (node.targetSynergy) {
+    parts.push(`target: ${node.targetSynergy}`);
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Returns a brief (first-sentence, length-capped) form of an event's effect
+ * text for display inside a diagram box.
+ *
+ * @param effect The card's `effect` text.
+ * @param max    Maximum length before truncation.
+ * @returns The brief description, or an empty string when there is none.
+ */
+export function briefEventDescription(effect: string, max = 64): string {
+  const trimmed = effect.trim();
+  if (!trimmed) return '';
+  const stop = trimmed.indexOf('. ');
+  const first = stop >= 0 ? trimmed.slice(0, stop + 1) : trimmed;
+  return first.length <= max ? first : `${first.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * Builds a multi-line Mermaid node label: name, id, brief description and the
+ * compact game-state impact.
+ *
+ * @param node The event node.
+ * @returns The `<br/>`-joined label.
+ */
+export function nodeLabel(node: StorylineGraphNode): string {
+  const lines = [node.name, node.id];
+  const brief = briefEventDescription(node.effect);
+  if (brief) lines.push(brief);
+  const impact = describeEventImpactCompact(node);
+  if (impact) lines.push(impact);
+  return lines.join('<br/>');
+}
+
+/**
+ * Formats an event's mechanical game-state impact as a compact, readable
+ * string (coin/reputation deltas and duration-based multipliers).
+ *
+ * @param node The event node from the manifest.
+ * @returns A human-readable impact summary.
+ */
+export function describeEventImpact(node: StorylineGraphNode): string {
+  const parts: string[] = [];
+
+  if (node.coinPercentDelta !== null) {
+    const pct = Math.round(Math.abs(node.coinPercentDelta) * 100);
+    const sign = node.coinPercentDelta < 0 ? '−' : '+';
+    const nominal = node.coinDelta !== 0 ? ` (nominal ${signed(node.coinDelta)} coins)` : '';
+    parts.push(`${sign}${pct}% of banked coins${nominal}`);
+  } else if (node.coinDelta !== 0) {
+    parts.push(`${signed(node.coinDelta)} coins`);
+  }
+
+  if (node.reputationDelta !== 0) {
+    parts.push(`${signed(node.reputationDelta)} reputation`);
+  }
+
+  if (node.duration !== null && node.multiplier !== null) {
+    const scope = node.targetSynergy ? `${node.targetSynergy} businesses` : 'all businesses';
+    const turns = node.duration === 1 ? 'turn' : 'turns';
+    parts.push(`${scope} income ×${node.multiplier} for ${node.duration} ${turns}`);
+  } else if (node.targetSynergy) {
+    parts.push(`target: ${node.targetSynergy} businesses`);
+  }
+
+  return parts.length > 0 ? parts.join('; ') : 'No direct coin/reputation change';
+}
+
+/**
+ * Describes how an event routes through its options (apply vs skip and the
+ * successor), or that it resolves immediately when it has no choice.
+ *
+ * @param node     The event node.
+ * @param edges    All manifest edges (filtered to this node's outgoing edges).
+ * @param nameById Display names for successor ids.
+ * @returns A readable routing summary.
+ */
+export function describeChoiceRouting(
+  node: StorylineGraphNode,
+  edges: readonly StorylineGraphEdge[],
+  nameById: ReadonlyMap<string, string>,
+): string {
+  const outgoing = edges.filter((edge) => edge.from === node.id);
+  if (outgoing.length === 0) return 'Resolves immediately (no choice)';
+  return outgoing
+    .map((edge) => {
+      const action = edge.effectPolicy === 'apply' ? 'effect applies' : 'effect skipped';
+      const target = edge.to ? (nameById.get(edge.to) ?? edge.to) : 'chain ends';
+      return `${edge.label}: ${action} → ${target}`;
+    })
+    .join(' · ');
+}
+
+/**
+ * Renders the per-event detail table for one storyline: one row per event with
+ * its descriptive text, trigger/tier/cost, mechanical impact and choice routing.
+ *
+ * @param manifest    The full storyline manifest.
+ * @param storylineId The storyline to render.
+ * @returns A deterministic Markdown table (trailing newline).
+ */
+export function renderStorylineDetailsMarkdown(
+  manifest: StorylineManifest,
+  storylineId: string,
+): string {
+  const nameById = new Map(manifest.nodes.map((node) => [node.id, node.name]));
+  const nodes = manifest.nodes.filter((node) => node.storylineId === storylineId);
+  const lines = [
+    '| Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |',
+    '|-------|-------------|-----------------------|-------------------|----------------|',
+  ];
+  for (const node of nodes) {
+    const routing = describeChoiceRouting(node, manifest.edges, nameById);
+    const meta = `${node.trigger} · tier ${node.tier ?? '—'} · cost ${node.cost}`;
+    lines.push(
+      `| ${tableCell(`${node.name} (\`${node.id}\`)`)} | ${tableCell(node.effect)} | ${tableCell(meta)} | ${tableCell(describeEventImpact(node))} | ${tableCell(routing)} |`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 // ── CLI ─────────────────────────────────────────────────────

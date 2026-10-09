@@ -16,6 +16,7 @@ import {
   buildActionTooltip,
   buildCoinsToRepTooltip,
   buildRepToCoinsTooltip,
+  buildHudScoreLine,
   findNextLockedTier,
   HUD_TOOLTIP_I18N_KEYS,
   HUD_ARIA_I18N_KEYS,
@@ -26,8 +27,11 @@ import {
 import { t, setLocale, registerLocale, resetI18n } from '@core-engine/I18n';
 
 import {
+  createCompetitiveState,
   setupMainStreetGame,
+  effectiveWinThreshold,
   type MainStreetCampaignProgress,
+  type MainStreetState,
 } from '../../src/MainStreetState';
 import { getStaffCardTemplates } from '../../src/MainStreetCards';
 
@@ -621,6 +625,57 @@ describe('buildScoreTooltip', () => {
 
     // The score estimate should show rounded "score / threshold"
     expect(tooltip).toContain(`${Math.round(score)}/${threshold}`);
+  });
+});
+
+// ── Effective competitive win threshold in HUD strings (MS-0MUZK652V001L71C) ──
+//
+// Parent AC2: the HUD `Score: x / y` line and the score tooltip must show the
+// same effective threshold the engine awards the win at — base / playerCount,
+// rounded to the nearest 50. Easy base 10 000 → P=2 5 000, P=3 3 350,
+// P=4 2 500. Single-player (no `playerCount`) keeps the base value.
+
+/** A fresh Easy competitive state whose shared score is zeroed. */
+function easyCompetitiveState(seed: string, playerCount: number): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount, difficulty: 'Easy' });
+  state.resourceBank.coins = 0;
+  state.resourceBank.reputation = 0;
+  state.challengesCompleted = [];
+  return state;
+}
+
+describe('effective competitive win threshold in HUD strings', () => {
+  it('HUD score line shows the P=3 Easy effective target (3 350)', () => {
+    const state = easyCompetitiveState('hud-eff-p3', 3);
+    expect(effectiveWinThreshold(state)).toBe(3350);
+    expect(buildHudScoreLine(state)).toBe('Score: 0/3350');
+  });
+
+  it('HUD score line scales with the player count', () => {
+    expect(buildHudScoreLine(easyCompetitiveState('hud-eff-p2', 2))).toBe('Score: 0/5000');
+    expect(buildHudScoreLine(easyCompetitiveState('hud-eff-p4', 4))).toBe('Score: 0/2500');
+  });
+
+  it('score tooltip shows the effective target and remaining-to-win', () => {
+    const state = easyCompetitiveState('tooltip-eff-p3', 3);
+    const tooltip = buildScoreTooltip(state, null);
+
+    // Estimate line `x / y` uses the effective target, not the base 10 000.
+    expect(tooltip).toContain('/3350');
+    expect(tooltip).not.toContain('/10000');
+    // Remaining line is measured against the effective target.
+    expect(tooltip).toContain(`3350 ${HUD_TOOLTIP_STRINGS.scoreRemainingToWin}`);
+  });
+
+  it('single-player HUD strings keep the unchanged base target (10 000)', () => {
+    const single = setupMainStreetGame({ seed: 'hud-eff-single', difficulty: 'Easy' });
+    single.resourceBank.coins = 0;
+    single.resourceBank.reputation = 0;
+    single.challengesCompleted = [];
+
+    expect(effectiveWinThreshold(single)).toBe(10000);
+    expect(buildHudScoreLine(single)).toBe('Score: 0/10000');
+    expect(buildScoreTooltip(single, null)).toContain('/10000');
   });
 });
 

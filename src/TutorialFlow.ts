@@ -1,7 +1,7 @@
 /**
  * Main Street: Unified Tutorial Flow
  *
- * Defines the unified T1-T26 tutorial steps (26 steps) that teach the core
+ * Defines the unified T1-T25 tutorial steps (25 steps) that teach the core
  * Main Street loop (buy → hand → end turn → place; invest → optimize →
  * trigger). Each step has a gate type:
  *
@@ -23,18 +23,19 @@
  *
  * Day map: T1-T6 (day 1: move Laundromat), T7 (day 2: place Laundromat),
  * T8 (day 2 end), T9-T10 (day 3: More than Businesses, buy Local Festival),
- * T11 (day 3 end), T12-T14 (day 4: move Bookshop, Costs, new end),
- * T15-T16 (day 5: Community Favour, end), T17-T18 (day 6: place Bookshop),
- * T19-T20 (day 7: move Library, end), T21 (day 8: place Library),
- * T22 (day 8 end), T23 (day 9: play Local Festival), T24-T26 (day 9: confirmations).
+ * T11 (day 3 end), T12-T14 (day 4: move Bookshop, Costs, end),
+ * T15-T17 (day 5: Community Favour, place Bookshop, end),
+ * T18-T19 (day 6: move Library, end), T20-T21 (day 7: place Library, end),
+ * T22 (day 8: play Local Festival), T23-T25 (day 8: confirmations).
  *
  * CG-0MTNMBX5Z002U0MH: inserted T8 (end-turn) before More than Businesses so
  * T7 place-business and T10 buy-event no longer share a single daily action
- * (1 base on Easy), plus T14 and T22 to keep each action day at most one
- * costed action. (Community Favour at T15 is a FREE action —
- * CG-0MSTOATDQ005XDET — so it does not consume a day's action; the T14/T22
- * boundaries are retained as natural day markers.) Per-day budget audit lives
- * in `tests/main-street/tutorial-action-economy.test.ts`.
+ * (1 base on Easy), plus the later end-turns to keep each action day at most
+ * one costed action. Community Favour (T15) is a FREE action
+ * (CG-0MSTOATDQ005XDET), so the Bookshop is placed on the same day (T16)
+ * BEFORE that day's end-turn (T17) — no day is closed without spending its
+ * action (MS-0MT3JK16W006A66P producer review). Per-day budget audit lives in
+ * `tests/main-street/tutorial-action-economy.test.ts`.
  *
  * ## Coin Budget Analysis (TutorialScenario, Easy difficulty)
  *
@@ -57,8 +58,8 @@
  * Event steps follow the same economy as business steps
  * (CG-0MTFWBNL30043ZBM): **taking an Investment event to hand costs 1
  * action** (T10, on day 3) and **playing a held event costs 1 action**
- * (T23, on day 9). Each event step is the only action-consuming step on
- * its day — T8 and T22 end the preceding days so both start with a fresh
+ * (T22, on day 8). Each event step is the only action-consuming step on
+ * its day — T8 and T21 end the preceding days so both start with a fresh
  * action, so no step ever overbooks its daily budget.
  *
  * @module
@@ -99,7 +100,7 @@ export type TutorialHighlightZone =
   | 'actionButtons'    // Community Favour button band (relocated into the HUD strip, CG-0MUFAITED0088AGN)
   | 'actionCounter'    // actions-remaining + banked count (right above action row, CG-0MT3JK16W006A66P)
   | 'laundromatCard'   // card-level: Laundromat on the market row (T3)
-  | 'festivalCard';    // card-level: Local Festival on the market row (T9)
+  | 'festivalCard';    // card-level: Local Festival on the market row (T10)
 
 /**
  * The type of player action expected to complete an action-gated step.
@@ -136,7 +137,7 @@ export const COMPOSITE_BUY_AND_PLACE = 'buy-and-place' as TutorialActionType;
 export type TutorialGateType = 'confirm' | 'action';
 
 /**
- * A single unified tutorial step definition (18 steps total T1-T18).
+ * A single unified tutorial step definition (25 steps total T1-T25).
  *
  * Confirm steps only need `gate: 'confirm'`; they do not have a
  * `requiredAction` field because the only way to advance is by
@@ -146,7 +147,7 @@ export type TutorialGateType = 'confirm' | 'action';
  * specifies the in-game action the player must perform.
  */
 export interface UnifiedTutorialStepDef {
-  /** Step identifier (T1, T2, ..., T17). */
+  /** Step identifier (T1, T2, ..., T25). */
   id: string;
   /**
    * i18n key for the short title shown in the overlay.
@@ -169,7 +170,7 @@ export interface UnifiedTutorialStepDef {
   requiredAction?: TutorialActionType;
   /**
    * If set, only this specific card ID can be used to complete the step.
-   * Used for tutorial steps that require buying a specific card (e.g., T3, T7).
+   * Used for tutorial steps that require buying a specific card (e.g., T3, T10).
    * When set, the player must click/purchase exactly this card to advance;
    * clicking any other card shows an error message.
    */
@@ -181,7 +182,7 @@ export interface UnifiedTutorialStepDef {
    *
    * Used for steps whose body references a card purchased earlier or guaranteed
    * by the tutorial scenario without requiring that purchase here (e.g. T7
-   * references the Local Festival; T9 references the Bookshop bought in T8).
+   * references the Laundromat; T13 references the Library).
    */
   referencedCardId?: string;
   /**
@@ -191,8 +192,8 @@ export interface UnifiedTutorialStepDef {
    *
    * Used for steps whose body references TWO cards — the purchased card (via
    * `requiredCardId`, feeding `{cardName}`) and the synergy partner card (via
-   * `synergyCardId`, feeding `{synergyCardName}`). E.g. T19 builds the Library
-   * next to the Bookshop for a Culture adjacency bonus.
+   * `synergyCardId`, feeding `{synergyCardName}`). E.g. T20 builds the Library
+   * next to the Bookshop for a Culture adjacency bonus (T20).
    */
   synergyCardId?: string;
   /**
@@ -204,7 +205,7 @@ export interface UnifiedTutorialStepDef {
 }
 
 /**
- * The unified set of 26 tutorial steps, in sequential order.
+ * The unified set of 25 tutorial steps, in sequential order.
  *
  * The flow teaches one concept per step: move → hand → end turn → place
  * (plan-ahead); invest → optimize → trigger. Every purchase is a two-turn
@@ -213,9 +214,12 @@ export interface UnifiedTutorialStepDef {
  * step places it on day N+1 at listed cost. There are no same-turn
  * composite `buy-and-place` steps.
  *
- * Gate type distribution (26 steps, CG-0MTNMBX5Z002U0MH):
- * 8 consuming actions + 8 end-turns + 10 confirm = 26 steps.
- * (action steps: T3, T6, T7, T10, T11, T12, T15, T17, T19, T21, T23 plus T8, T14, T16, T18, T20, T22 end-turns).
+ * Gate type distribution (25 steps):
+ * 8 consuming actions + 7 end-turns + 1 free Community Favour + 9 confirm = 25.
+ * (consuming: T3, T7, T10, T12, T16, T18, T20, T22; end-turns: T6, T8, T11,
+ * T14, T17, T19, T21; free favour: T15; confirms: T1, T2, T4, T5, T9, T13,
+ * T23, T24, T25.) MS-0MT3JK16W006A66P merged the former day-5 favour day into
+ * the Bookshop-placement day so no day ends without spending its action.
  */
 export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
   {
@@ -349,7 +353,7 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     // Informative cost-vs-reputation step: highlights the market row (like T2)
     // and references cs-library so {cardName}/{cost} resolve from live card
     // data. No action required and NO synergy mention — the placement
-    // action and the synergy rule live on T19.
+    // action and the synergy rule live on T20.
     highlightZone: 'developmentRow',
     gate: 'confirm',
     referencedCardId: 'cs-library',
@@ -385,50 +389,41 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     id: 'T16',
     titleKey: tutorialKey('T16', 'title'),
     bodyKey: tutorialKey('T16', 'body'),
-    // Day-3 End Turn: ends the day in which the Bookshop was moved to hand;
-    // resolves the third (safe) incident. Body references the Bookshop
-    // ({cardName}) via referencedCardId — no gate here.
-    highlightZone: 'endTurnButton',
-    gate: 'action',
-    requiredAction: 'end-turn',
-    referencedCardId: 'biz-bookshop-0',
-  },
-  {
-    id: 'T17',
-    titleKey: tutorialKey('T17', 'title'),
-    bodyKey: tutorialKey('T17', 'body'),
-    // Day 4, split 2 of the Bookshop purchase: place from hand at LISTED $300
-    // (plan-ahead — no premium). Body references the Bookshop
-    // ({cardName}/{cost}) via referencedCardId — no gate here.
+    // Day 5, split 2 of the Bookshop purchase: T15 Community Favour is a FREE
+    // action (CG-0MSTOATDQ005XDET), so the player still holds the day's
+    // action — place the held Bookshop at LISTED $300 (plan-ahead, no
+    // premium) BEFORE ending the turn. Body references the Bookshop
+    // ({cardName}/{cost}) via referencedCardId.
     highlightZone: 'streetGrid',
     gate: 'action',
     requiredAction: 'place-business',
     referencedCardId: 'biz-bookshop-0',
   },
   {
-    id: 'T18',
-    titleKey: tutorialKey('T18', 'title'),
-    bodyKey: tutorialKey('T18', 'body'),
-    // Day-4 End Turn: resolves the fourth (safe) incident.
+    id: 'T17',
+    titleKey: tutorialKey('T17', 'title'),
+    bodyKey: tutorialKey('T17', 'body'),
+    // Day-5 End Turn: closes the day that placed the Bookshop (T16) and
+    // resolves the fourth (safe) incident.
     highlightZone: 'endTurnButton',
     gate: 'action',
     requiredAction: 'end-turn',
   },
   {
-    id: 'T19',
-    titleKey: tutorialKey('T19', 'title'),
-    bodyKey: tutorialKey('T19', 'body'),
-    // Day 5, split 1 of the Library purchase: move cs-library to hand.
+    id: 'T18',
+    titleKey: tutorialKey('T18', 'title'),
+    bodyKey: tutorialKey('T18', 'body'),
+    // Day 6, split 1 of the Library purchase: move cs-library to hand.
     highlightZone: 'developmentRow',
     gate: 'action',
     requiredAction: 'select-business',
     requiredCardId: 'cs-library',
   },
   {
-    id: 'T20',
-    titleKey: tutorialKey('T20', 'title'),
-    bodyKey: tutorialKey('T20', 'body'),
-    // Day-5 End Turn: resolves the fifth (safe) incident. Body references
+    id: 'T19',
+    titleKey: tutorialKey('T19', 'title'),
+    bodyKey: tutorialKey('T19', 'body'),
+    // Day-6 End Turn: resolves the fifth (safe) incident. Body references
     // the Library ({cardName}) via referencedCardId — no gate here.
     highlightZone: 'endTurnButton',
     gate: 'action',
@@ -436,10 +431,10 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     referencedCardId: 'cs-library',
   },
   {
-    id: 'T21',
-    titleKey: tutorialKey('T21', 'title'),
-    bodyKey: tutorialKey('T21', 'body'),
-    // Day 6, split 2 of the Library purchase: place from hand at LISTED $700
+    id: 'T20',
+    titleKey: tutorialKey('T20', 'title'),
+    bodyKey: tutorialKey('T20', 'body'),
+    // Day 7, split 2 of the Library purchase: place from hand at LISTED $700
     // NEXT TO the Bookshop (synergyCardId) for the Culture adjacency bonus —
     // see isSynergyAdjacentPlacement(). referencedCardId feeds the
     // {cardName}/{cost} placeholders from live card data (no market gate).
@@ -450,21 +445,20 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     synergyCardId: 'biz-bookshop-0',
   },
   {
-    id: 'T22',
-    // CG-0MTNMBX5Z002U0MH: inserted end-turn to split Day 8 so T21
-    // (place-library) on day 8 and the festival on day 9 never share a
-    // single daily action. T22 ends day 8; day 9 starts with a fresh action.
-    titleKey: tutorialKey('T22', 'title'),
-    bodyKey: tutorialKey('T22', 'body'),
+    id: 'T21',
+    // End-turn to split the Library placement (day 7) from the festival
+    // (day 8). T21 ends day 7; day 8 starts with a fresh action.
+    titleKey: tutorialKey('T21', 'title'),
+    bodyKey: tutorialKey('T21', 'body'),
     highlightZone: 'endTurnButton',
     gate: 'action',
     requiredAction: 'end-turn',
     referencedCardId: 'cs-library',
   },
   {
-    id: 'T23',
-    titleKey: tutorialKey('T23', 'title'),
-    bodyKey: tutorialKey('T23', 'body'),
+    id: 'T22',
+    titleKey: tutorialKey('T22', 'title'),
+    bodyKey: tutorialKey('T22', 'body'),
     // Triggering Events: play the held Local Festival from the hand.
     highlightZone: 'hand',
     gate: 'action',
@@ -472,24 +466,24 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     referencedCardId: 'evt-festival-0',
   },
   {
+    id: 'T23',
+    titleKey: tutorialKey('T23', 'title'),
+    bodyKey: tutorialKey('T23', 'body'),
+    // Success and Failure: the scoring bar (HUD).
+    highlightZone: 'hud',
+    gate: 'confirm',
+  },
+  {
     id: 'T24',
     titleKey: tutorialKey('T24', 'title'),
     bodyKey: tutorialKey('T24', 'body'),
-    // Success and Failure: the scoring bar (HUD).
-    highlightZone: 'hud',
+    highlightZone: 'challengePanel',
     gate: 'confirm',
   },
   {
     id: 'T25',
     titleKey: tutorialKey('T25', 'title'),
     bodyKey: tutorialKey('T25', 'body'),
-    highlightZone: 'challengePanel',
-    gate: 'confirm',
-  },
-  {
-    id: 'T26',
-    titleKey: tutorialKey('T26', 'title'),
-    bodyKey: tutorialKey('T26', 'body'),
     highlightZone: 'completionModal',
     gate: 'confirm',
     // F5 (CG-0MSMAJQQT004SDCC): the final completion step carries the Steam
@@ -500,7 +494,7 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
 ] as const;
 
 /** Contextual first-bank hint (CG-0MT3JK16W006A66P). Not part of the fixed
- * 23-step count: triggered once from `MainStreetTurnController.endTurn()` when
+ * 25-step flow: triggered once from `MainStreetTurnController.endTurn()` when
  * `actionsRemaining > 0` at turn end, exactly when a bank would occur. */
 export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
   id: 'BANKING',
@@ -511,7 +505,7 @@ export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
 };
 
 /** Total number of unified tutorial steps. */
-export const UNIFIED_TUTORIAL_STEP_COUNT = UNIFIED_TUTORIAL_STEPS.length; // 26
+export const UNIFIED_TUTORIAL_STEP_COUNT = UNIFIED_TUTORIAL_STEPS.length; // 25
 
 export const INVALID_ACTION_MESSAGE = 'Complete the highlighted step first.';
 
@@ -623,7 +617,7 @@ export function shouldAllowAction(
 }
 
 /**
- * Pure placement rule for the Library's synergy-adjacent placement (T19:
+ * Pure placement rule for the Library's synergy-adjacent placement (T20:
  * the Library must be built next to the Bookshop for the Culture adjacency
  * bonus). Applies to the tutorial step that declares a `synergyCardId` —
  * both the old composite gate and the current place-business split step.
@@ -650,8 +644,8 @@ export function shouldAllowAction(
  * template (copy-suffix stripped) so any copy of the synergy template
  * satisfies the rule. If the synergy card is NOT on the street, the rule
  * cannot be enforced and returns `true` (allowed) — the partner is
- * guaranteed to be present when T19 is reached (T15's placement completes
- * the Bookshop on day 4), but the helper stays robust regardless.
+ * guaranteed to be present when T20 is reached (T16's placement completes
+ * the Bookshop on day 5), but the helper stays robust regardless.
  */
 export function isSynergyAdjacentPlacement(
   step: UnifiedTutorialStepDef,
@@ -735,7 +729,7 @@ export function resolveTutorialCardParams(
   };
 
   // Resolve the synergy-partner card ({synergyCardName}) when the step
-  // references a second card (e.g. T19 builds the Library next to the Bookshop).
+  // references a second card (e.g. T20 builds the Library next to the Bookshop).
   if (step.synergyCardId) {
     const synergyBaseId = getBaseTypeId(step.synergyCardId);
     const synergyRow = getCsvRows().find(r => r.id === synergyBaseId);

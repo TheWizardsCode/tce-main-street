@@ -46,6 +46,22 @@ if (!parsedLayout.valid) {
 
 const MAIN_STREET_SLL_LAYOUT = parsedLayout.layout;
 
+/** The canonical Main Street viewport used to resolve SLL anchors. */
+const MAIN_STREET_VIEWPORT = { width: 1280, height: 720 } as const;
+
+/**
+ * Resolve an SLL zone anchor to screen pixels using the Main Street layout.
+ *
+ * Exposed so Main Street UI added outside the main layout computation (e.g. the
+ * Card Packs entry button) is positioned via SLL rather than hard-coded pixels.
+ */
+export function mainStreetAnchorPoint(
+  zone: string,
+  anchor: string,
+): { x: number; y: number } {
+  return anchorPoint(MAIN_STREET_SLL_LAYOUT, zone, anchor, MAIN_STREET_VIEWPORT, 1);
+}
+
 /**
  * Compute Main Street layout using SLL zones as the single source of truth for positioning.
  * Card dimensions, gaps, and other non-positioning values come from shared constants.
