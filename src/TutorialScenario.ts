@@ -155,24 +155,24 @@ export interface TutorialScenario {
  * upg-garden) are no longer scenario-placed; upgrades may appear in the
  * line randomly but no tutorial step requires them.
  *
- * **Incident Deck (face-down, 7 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH):**
- * The 25-step flow runs 8 days with 7 End Turns (T6, T8, T11, T14, T17, T19, T21),
- * so the deterministic deck holds exactly 7 incidents. All are budget-safe
+ * **Incident Deck (face-down, 8 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH, MS-0MT3JK16W006A66P):**
+ * The 26-step flow runs 9 days with 8 End Turns (T6, T8, T11, T14, T17, T19, T21, T22),
+ * so the deterministic deck holds exactly 8 incidents. All are budget-safe
  * on the tutorial street (no Food businesses are placed):
  *   - `evt-award` (Community Award, +200 reputation) ×4
- *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×3
+ *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×4
  *
  * **Coin Budget:** 1200 starting coins; payments happen at play time
  * (cost-at-play, listed cost — every placement follows an End Turn, so no
  * same-turn premium is requested): Laundromat placement $400 (T7) + Bookshop
  * placement $300 (T16) + Library placement $700 (T20) + Local Festival play $300
- * (T22, net +100 with the two Culture cards) — all covered by 1200 + income
- * across the seven end-turn steps + the T15 Community Favour exchange.
+ * (T23, net +100 with the two Culture cards) — all covered by 1200 + income
+ * across the eight end-turn steps + the T15 Community Favour exchange.
  * RNG-independent. See the budget table in the module docs.
  */
 export const STANDARD_TUTORIAL_SCENARIO: TutorialScenario = {
   difficulty: 'Easy',
-  // 1200 starting coins: the 25-step flow places four cards (Laundromat $400 +
+  // 1200 starting coins: the 26-step flow places four cards (Laundromat $400 +
   // Bookshop $300 + Library $700 + Local Festival $300) and earns ~260 income +
   // one Community Favour conversion (200 rep → 300 coins) at T15, which is
   // REQUIRED to afford the $700 Library (770 + 300 = 1070 ≥ 700). Reputation
@@ -194,6 +194,7 @@ export const STANDARD_TUTORIAL_SCENARIO: TutorialScenario = {
     'evt-award',
     'evt-rainy',
     'evt-award',
+    'evt-rainy',
   ],
   seed: 'tutorial-scenario',
 };
@@ -260,9 +261,9 @@ export function createTutorialScenario(
       'TutorialScenario: incident deck must not be empty.',
     );
   }
-  // The tutorial's 25-step flow spans 8 days with 7 End Turns (T6, T8, T11,
-  // T14, T17, T19, T21), so the scenario declares a deterministic incident card
-  // per resolution. INCIDENT_QUEUE_SIZE (the
+  // The tutorial's 26-step flow spans 9 days with 8 End Turns (T6, T8, T11,
+  // T14, T17, T19, T21, T22), so the scenario declares a deterministic incident
+  // card per resolution. INCIDENT_QUEUE_SIZE (the
   // legacy face-down-queue size, still 2 for the real game) no longer constrains
   // the scripted scenario deck — the scenario's own list is authoritative.
 
@@ -293,7 +294,7 @@ export function createTutorialScenario(
 
   // Incident deck (face-down, CG-0MSTOATDP000JNHH): scenario-placed
   // incidents at the deck front (next to resolve). The tutorial flow now runs
-  // 7 End Turns (8 days) so the scenario declares exactly 7 deterministic,
+  // 8 End Turns (9 days) so the scenario declares exactly 8 deterministic,
   // budget-safe incidents (see STANDARD_TUTORIAL_SCENARIO).
   // All are non-negative on the tutorial street (no Food businesses are
   // placed), so the tight coin budget stays deterministic — a larger random

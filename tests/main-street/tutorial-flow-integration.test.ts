@@ -76,10 +76,16 @@ describe('Tutorial Flow Integration - Business Selection', () => {
     expect(getCurrentStep(ctrl)?.id).toBe('T13');
   });
 
-  it('T22 play-event is required after T21', () => {
+  it('T22 is the banking end-turn and T23 is play-event after T21', () => {
     let ctrl = startTutorial(createTutorialControllerState());
     for (let i = 0; i < 21; i++) ctrl = completeCurrentStep(ctrl).newState;
     expect(getCurrentStep(ctrl)?.id).toBe('T22');
+    expect(getCurrentStep(ctrl)?.requiredAction).toBe('end-turn');
+    expect(isRequiredAction(ctrl, 'end-turn')).toBe(true);
+
+    // T22 (the banking day) completes to T23 (play-event).
+    ctrl = completeCurrentStep(ctrl).newState;
+    expect(getCurrentStep(ctrl)?.id).toBe('T23');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('play-event');
     expect(isRequiredAction(ctrl, 'play-event')).toBe(true);
   });

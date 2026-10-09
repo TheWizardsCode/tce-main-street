@@ -22,8 +22,8 @@ describe('Steam follow CTA step wiring', () => {
   it('sets showSteamFollowCta on the final completion step only', () => {
     const flagged = UNIFIED_TUTORIAL_STEPS.filter((s) => s.showSteamFollowCta);
     expect(flagged).toHaveLength(1);
-    expect(flagged[0].id).toBe('T25');
-    expect(UNIFIED_TUTORIAL_STEPS[UNIFIED_TUTORIAL_STEP_COUNT - 1].id).toBe('T25');
+    expect(flagged[0].id).toBe('T26');
+    expect(UNIFIED_TUTORIAL_STEPS[UNIFIED_TUTORIAL_STEP_COUNT - 1].id).toBe('T26');
   });
 
   it('keeps the final step a plain confirm step (CTA never blocks finishing)', () => {
@@ -32,8 +32,10 @@ describe('Steam follow CTA step wiring', () => {
     expect(last.highlightZone).toBe('completionModal');
   });
 
-  it('does not add a step for the CTA', () => {
-    expect(UNIFIED_TUTORIAL_STEPS.some((s) => s.id === 'T26')).toBe(false);
+  it('does not add a step for the CTA (it is a flag on the final completion step)', () => {
+    const last = UNIFIED_TUTORIAL_STEPS[UNIFIED_TUTORIAL_STEP_COUNT - 1];
+    expect(last.showSteamFollowCta).toBe(true);
+    expect(UNIFIED_TUTORIAL_STEPS.filter((s) => s.showSteamFollowCta)).toHaveLength(1);
   });
 });
 

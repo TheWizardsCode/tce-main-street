@@ -60,7 +60,7 @@ describe('Scenario Validation: requiredCardId references', () => {
     expect(stepsWithRequiredCardId.length).toBeGreaterThan(0);
 
     // The single-row market (CG-0MSTOATDT009BRX2) holds only 3 cards. The
-    // two-turn tutorial (MS-0MT3JK16W006A66P, 25 steps) places each card the
+    // two-turn tutorial (MS-0MT3JK16W006A66P, 26 steps) places each card the
     // day after its move: day-1/3 targets (T3 Laundromat, T10 Local Festival)
     // are scenario-placed / market-refillable; the Bookshop (T12) and Library
     // (T18) move-to-hand targets are forced into the visible line at day

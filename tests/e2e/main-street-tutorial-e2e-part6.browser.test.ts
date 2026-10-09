@@ -1,12 +1,14 @@
 /**
- * Main Street Tutorial E2E test — T22 Triggering Events → T25 Tutorial
- * Complete.
+ * Main Street Tutorial E2E test — T22 banking day → T23 Triggering Events →
+ * T26 Tutorial Complete.
  *
- * Walks the finale of the 25-step two-turn tutorial (CG-0MT53NXGZ004H5AE
+ * Walks the finale of the 26-step two-turn tutorial (CG-0MT53NXGZ004H5AE
  * + MS-0MT3JK16W006A66P): after building the Library (T20), the player ends
- * the day (T21), plays the held Local Festival from the hand (T22,
- * play-event gate), then confirms Success and Failure (T23), Challenges
- * (T24), and completes (T25) with the "Let's play!" button.
+ * the day (T21), then ends the deliberate banking day (T22 — a week with
+ * nothing to build, so the spare action banks and the banking hint fires),
+ * plays the held Local Festival from the hand (T23, play-event gate), then
+ * confirms Success and Failure (T24), Challenges (T25), and completes (T26)
+ * with the "Let's play!" button.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Phaser from 'phaser';
@@ -22,6 +24,7 @@ import {
   clickRequiredEventCard,
   clickStreetSlot,
   clickEndTurn,
+  clickEndTurnBankingHint,
   clickCommunityFavour,
   clickPlayHeldEvent,
   saveScreenshot,
@@ -41,8 +44,8 @@ async function waitForStartButton(scene: Phaser.Scene, timeoutMs = 8_000): Promi
 }
 
 /**
- * Walk from T1 to the end of T21 (arrives on T22 Triggering Events).
- * Covers the full 25-step flow including the end-turns (T6/T8/T11/T14/T17/
+ * Walk from T1 to the end of T21 (arrives on T22, the banking end-turn).
+ * Covers the full 26-step flow including the end-turns (T6/T8/T11/T14/T17/
  * T19/T21).
  */
 async function walkToT22(scene: Phaser.Scene): Promise<void> {
@@ -85,11 +88,11 @@ async function walkToT22(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(10_000);
   await clickStreetSlot(scene, 2);         // T20 place Library (next to Bookshop) -> T21
   await waitForOverlayVisible(5_000);
-  await clickEndTurn(scene);               // T21 end -> T22
+  await clickEndTurn(scene, false);         // T21 end -> T22 (banking day); do NOT auto-advance past T22
   await waitForOverlayVisible(10_000);
 }
 
-describe('Main Street Tutorial E2E — T22-T25', () => {
+describe('Main Street Tutorial E2E — T22-T26', () => {
   beforeEach(async () => {
     game = await bootGameWithTutorial();
     const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
@@ -106,35 +109,40 @@ describe('Main Street Tutorial E2E — T22-T25', () => {
     game = null;
   });
 
-  it('T22: Triggering Events — play the held Local Festival from the hand', async () => {
+  it('T22: banking day — ending the turn with a spare action shows the banking hint', async () => {
     const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
     await walkToT22(scene);
-    expect(getStepIndex(scene)).toBe(21); // T22
+    expect(getStepIndex(scene)).toBe(21); // T22 banking end-turn
+
+    // Ending T22 with the day's action unspent banks it and fires the hint;
+    // dismissing the hint completes the step and advances to T23.
+    await clickEndTurnBankingHint(scene);
+    expect(getStepIndex(scene)).toBe(22); // T23 Triggering Events
+    await saveScreenshot('t22-t23');
+  }, 60_000);
+
+  it('T23-T26: Triggering Events, Success and Failure, Challenges, and Tutorial Complete ("Let\'s play!")', async () => {
+    const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
+    await walkToT22(scene);
+    await clickEndTurnBankingHint(scene);       // T22 -> T23
+    await waitForOverlayVisible(5_000);
+    expect(getStepIndex(scene)).toBe(22); // T23 Triggering Events
 
     // The held event (Local Festival) is in the hand
     const s = scene as any;
     const heldEvent = s.state.hand.find((c: any) => c.family === 'event');
     expect(heldEvent).toBeTruthy();
 
-    await clickPlayHeldEvent(scene);
+    await clickPlayHeldEvent(scene);            // T23 -> T24
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(22); // T23 Success and Failure
-    await saveScreenshot('t22-t23');
-  }, 60_000);
-
-  it('T23-T25: Success and Failure, Challenges, and Tutorial Complete ("Let\'s play!")', async () => {
-    const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
-    await walkToT22(scene);
-    await clickPlayHeldEvent(scene);             // T22 -> T23
+    expect(getStepIndex(scene)).toBe(23); // T24 Success and Failure
+    await clickOverlayButtonByText('Next >'); // T24 -> T25 Challenges
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(22);
-    await clickOverlayButtonByText('Next >'); // T23 -> T24
+    expect(getStepIndex(scene)).toBe(24); // T25 Challenges
+    await clickOverlayButtonByText('Next >'); // T25 -> T26 Tutorial Complete
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(23);
-    await clickOverlayButtonByText('Next >'); // T24 -> T25
-    await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(24);
-    await saveScreenshot('t24-t25');
+    expect(getStepIndex(scene)).toBe(25); // T26 Tutorial Complete
+    await saveScreenshot('t25-t26');
     // The completion button is now "Let's play!"
     await clickOverlayButtonByText('Let\'s play!');
     await new Promise((r) => setTimeout(r, 500));

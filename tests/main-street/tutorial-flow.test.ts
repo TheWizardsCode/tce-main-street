@@ -20,8 +20,8 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
     registerLocale('en', TUTORIAL_EN_BUNDLE);
   });
 
-  it('defines exactly 25 steps', () => { expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25); expect(UNIFIED_TUTORIAL_STEP_COUNT).toBe(25); });
-  it('steps have sequential T1-T25 IDs', () => { for(let i=0;i<25;i++) expect(UNIFIED_TUTORIAL_STEPS[i].id).toBe(`T${i+1}`); });
+  it('defines exactly 26 steps', () => { expect(UNIFIED_TUTORIAL_STEPS.length).toBe(26); expect(UNIFIED_TUTORIAL_STEP_COUNT).toBe(26); });
+  it('steps have sequential T1-T26 IDs', () => { for(let i=0;i<26;i++) expect(UNIFIED_TUTORIAL_STEPS[i].id).toBe(`T${i+1}`); });
   it('each step has non-empty titleKey and bodyKey', () => { for(const step of UNIFIED_TUTORIAL_STEPS){ expect(step.titleKey.length).toBeGreaterThan(0); expect(step.bodyKey.length).toBeGreaterThan(0); } });
   it('each step resolves to non-empty text via i18n', () => {
     for(const step of UNIFIED_TUTORIAL_STEPS){
@@ -32,10 +32,11 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
   });
   it('each step has valid highlightZone', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['centerModal','hud','marketBusinessRow','developmentRow','streetGrid','endTurnButton','incidentQueue','investmentsRow','challengePanel','helpButton','completionModal','hand','actionButtons','actionCounter','laundromatCard','festivalCard']).toContain(step.highlightZone); });
   it('each step has gate confirm or action', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['confirm','action']).toContain(step.gate); });
-  // MS-0MT3JK16W006A66P: 9 confirm + 16 action (the free Community Favour day
-  // merged into the Bookshop-placement day; one end-turn removed).
+  // MS-0MT3JK16W006A66P: 9 confirm + 17 action (the free Community Favour day
+  // merged into the Bookshop-placement day; the deliberate banking day added
+  // one end-turn).
   // Distribution is enforced independently by `tutorial-action-economy.test.ts` per-day audit.
-  it('has correct distribution: 9 confirm + 16 action', () => { expect(UNIFIED_TUTORIAL_STEPS.filter(s=>s.gate==='confirm').length).toBe(9); expect(UNIFIED_TUTORIAL_STEPS.filter(s=>s.gate==='action').length).toBe(16); });
+  it('has correct distribution: 9 confirm + 17 action', () => { expect(UNIFIED_TUTORIAL_STEPS.filter(s=>s.gate==='confirm').length).toBe(9); expect(UNIFIED_TUTORIAL_STEPS.filter(s=>s.gate==='action').length).toBe(17); });
   it('confirm steps do not have requiredAction', () => { for(const step of UNIFIED_TUTORIAL_STEPS) if(step.gate==='confirm') expect(step.requiredAction).toBeUndefined(); });
   it('confirm steps do not have requiredCardId', () => { for(const step of UNIFIED_TUTORIAL_STEPS) if(step.gate==='confirm') expect(step.requiredCardId).toBeUndefined(); });
   it('action steps have requiredAction', () => { for(const step of UNIFIED_TUTORIAL_STEPS) if(step.gate==='action') expect(step.requiredAction).toBeDefined(); });
@@ -48,9 +49,9 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
   it('T8 is action gate with end-turn and endTurnButton highlight (CG-0MTNMBX5Z002U0MH day 2 end)', () => { const t=findStep('T8'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('end-turn'); expect(t.highlightZone).toBe('endTurnButton'); });
   it('T9 is confirm gate with investmentsRow highlight (More than Businesses)', () => { expect(findStep('T9').gate).toBe('confirm'); expect(findStep('T9').highlightZone).toBe('investmentsRow'); });
   it('T13 is confirm gate with developmentRow highlight (informative Costs and Reputation)', () => { const t=findStep('T13'); expect(t.gate).toBe('confirm'); expect(t.highlightZone).toBe('developmentRow'); expect(t.referencedCardId).toBe('cs-library'); expect(t.requiredCardId).toBeUndefined(); expect(t.requiredAction).toBeUndefined(); expect(t.synergyCardId).toBeUndefined(); });
-  it('T23 is confirm gate with hud highlight (scoring bar)', () => { const t=findStep('T23'); expect(t.gate).toBe('confirm'); expect(t.highlightZone).toBe('hud'); });
-  it('T24 is confirm gate with challengePanel highlight', () => { expect(findStep('T24').gate).toBe('confirm'); expect(findStep('T24').highlightZone).toBe('challengePanel'); });
-  it('T25 is confirm gate with completionModal highlight', () => { expect(findStep('T25').gate).toBe('confirm'); expect(findStep('T25').highlightZone).toBe('completionModal'); });
+  it('T24 is confirm gate with hud highlight (scoring bar)', () => { const t=findStep('T24'); expect(t.gate).toBe('confirm'); expect(t.highlightZone).toBe('hud'); });
+  it('T25 is confirm gate with challengePanel highlight', () => { expect(findStep('T25').gate).toBe('confirm'); expect(findStep('T25').highlightZone).toBe('challengePanel'); });
+  it('T26 is confirm gate with completionModal highlight', () => { expect(findStep('T26').gate).toBe('confirm'); expect(findStep('T26').highlightZone).toBe('completionModal'); });
 
   // ── Action-step mapping ─────────────────────────────────────
   it('T3 is action gate with select-business, laundromatCard highlight and requiredCardId', () => { const t=findStep('T3'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('select-business'); expect(t.requiredCardId).toBe('biz-laundromat-0'); expect(t.highlightZone).toBe('laundromatCard'); });
@@ -66,7 +67,8 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
   it('T19 is action gate with end-turn and endTurnButton highlight (day 6 End Turn)', () => { const t=findStep('T19'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('end-turn'); expect(t.highlightZone).toBe('endTurnButton'); });
   it('T20 is action gate with place-business, streetGrid highlight, cs-library referencedCardId and Bookshop synergyCardId (Library split 2/2)', () => { const t=findStep('T20'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('place-business'); expect(t.referencedCardId).toBe('cs-library'); expect(t.highlightZone).toBe('streetGrid'); expect(t.synergyCardId).toBe('biz-bookshop-0'); });
   it('T21 is action gate with end-turn and endTurnButton highlight (day 7 End Turn)', () => { const t=findStep('T21'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('end-turn'); expect(t.highlightZone).toBe('endTurnButton'); });
-  it('T22 is action gate with play-event and hand highlight', () => { const t=findStep('T22'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('play-event'); expect(t.highlightZone).toBe('hand'); });
+  it('T22 is the banking day: action gate with end-turn and endTurnButton highlight', () => { const t=findStep('T22'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('end-turn'); expect(t.highlightZone).toBe('endTurnButton'); });
+  it('T23 is action gate with play-event and hand highlight', () => { const t=findStep('T23'); expect(t.gate).toBe('action'); expect(t.requiredAction).toBe('play-event'); expect(t.highlightZone).toBe('hand'); });
 
   // ── No composite steps (two-turn plan-ahead) ────────────────
   it('has no buy-and-place composite steps', () => {
@@ -138,8 +140,8 @@ describe('exitTutorial', () => {
 describe('completeCurrentStep', () => {
   it('completes T1 and advances to step 1', () => { const s=startTutorial(createTutorialControllerState()); const {newState,completedStepId}=completeCurrentStep(s); expect(completedStepId).toBe('T1'); expect(newState.currentStepIndex).toBe(1); expect(newState.lastCompletedStepId).toBe('T1'); });
   it('returns null completedStepId when not active', () => { const {completedStepId}=completeCurrentStep(createTutorialControllerState()); expect(completedStepId).toBeNull(); });
-  it('returns null completedStepId when past end (index 25)', () => { let s=startTutorial(createTutorialControllerState()); for(let i=0;i<25;i++) s=advanceTutorialStep(s); const {completedStepId}=completeCurrentStep(s); expect(completedStepId).toBeNull(); });
-  it('completes all 25 steps sequentially', () => { let s=startTutorial(createTutorialControllerState()); const ids=[]; for(let i=0;i<25;i++){ const r=completeCurrentStep(s); ids.push(r.completedStepId); s=r.newState; }; expect(ids).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13','T14','T15','T16','T17','T18','T19','T20','T21','T22','T23','T24','T25']); expect(s.currentStepIndex).toBe(25); expect(s.lastCompletedStepId).toBe('T25'); });
+  it('returns null completedStepId when past end (index 26)', () => { let s=startTutorial(createTutorialControllerState()); for(let i=0;i<26;i++) s=advanceTutorialStep(s); const {completedStepId}=completeCurrentStep(s); expect(completedStepId).toBeNull(); });
+  it('completes all 26 steps sequentially', () => { let s=startTutorial(createTutorialControllerState()); const ids=[]; for(let i=0;i<26;i++){ const r=completeCurrentStep(s); ids.push(r.completedStepId); s=r.newState; }; expect(ids).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13','T14','T15','T16','T17','T18','T19','T20','T21','T22','T23','T24','T25','T26']); expect(s.currentStepIndex).toBe(26); expect(s.lastCompletedStepId).toBe('T26'); });
   it('returns a new state (does not mutate)', () => { const s=startTutorial(createTutorialControllerState()); const r=completeCurrentStep(s); expect(r.newState).not.toBe(s); });
 });
 
@@ -153,7 +155,7 @@ describe('isOnStep', () => {
 describe('getCurrentStep', () => {
   it('returns the first step when just started', () => { const s=startTutorial(createTutorialControllerState()); const step=getCurrentStep(s); expect(step).not.toBeNull(); expect(step!.id).toBe('T1'); });
   it('returns null when tutorial is not active', () => { expect(getCurrentStep(createTutorialControllerState())).toBeNull(); });
-  it('returns null when past end (index 25)', () => { let s=startTutorial(createTutorialControllerState()); for(let i=0;i<25;i++) s=advanceTutorialStep(s); expect(getCurrentStep(s)).toBeNull(); });
+  it('returns null when past end (index 26)', () => { let s=startTutorial(createTutorialControllerState()); for(let i=0;i<26;i++) s=advanceTutorialStep(s); expect(getCurrentStep(s)).toBeNull(); });
 });
 
 describe('isRequiredAction', () => {
@@ -207,10 +209,17 @@ describe('isRequiredAction', () => {
     expect(isRequiredAction(s,'place-business')).toBe(true);
     expect(isRequiredAction(s,'select-hand-card')).toBe(true);
   });
-  it('returns true for play-event on T22', () => {
+  it('returns true for end-turn on T22 (the banking day)', () => {
     let s=startTutorial(createTutorialControllerState());
     for(let i=0;i<21;i++) s=advanceTutorialStep(s);
     expect(getCurrentStep(s)!.id).toBe('T22');
+    expect(isRequiredAction(s,'end-turn')).toBe(true);
+    expect(isRequiredAction(s,'play-event')).toBe(false);
+  });
+  it('returns true for play-event on T23', () => {
+    let s=startTutorial(createTutorialControllerState());
+    for(let i=0;i<22;i++) s=advanceTutorialStep(s);
+    expect(getCurrentStep(s)!.id).toBe('T23');
     expect(isRequiredAction(s,'play-event')).toBe(true);
   });
   it('returns false when tutorial is not active', () => { const s=createTutorialControllerState(); expect(isRequiredAction(s,'confirm')).toBe(false); });

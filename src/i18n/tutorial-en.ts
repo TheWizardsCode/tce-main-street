@@ -16,7 +16,7 @@
  * - Overlay: `tutorial.overlay.<field>`
  * - Banking hint: `tutorial.bankingHint.<field>`
  *
- * ## Editorial rules (25-step flow, two-turn plan-ahead)
+ * ## Editorial rules (26-step flow, two-turn plan-ahead)
  *
  * - **≤3 sentences per text box** (titles and bodies), exactly one point per box.
  * - Do NOT mention time-limited play (the "25 turns" sentence was removed).

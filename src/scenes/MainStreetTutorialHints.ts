@@ -323,7 +323,7 @@ export class MainStreetTutorialHints {
   }
 
   // ── Banking hint (CG-0MT3JK16W006A66P) ─────────────────────
-  // Contextual first-bank overlay: not part of the fixed 25-step count.
+  // Contextual first-bank overlay: not part of the fixed 26-step count.
   // Mutually exclusive with the main flow — callers must not show both at once.
 
   /**
