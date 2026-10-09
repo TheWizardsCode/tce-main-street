@@ -16,6 +16,8 @@ import {
 import {
   applyEnabledMainStreetPacks,
   getMainStreetCardPackLoadResult,
+  getMainStreetPurchasablePackIds,
+  purchaseMainStreetCardPack,
   resolveEnabledPackIds,
   toCardPackListingInput,
 } from '../MainStreetCardPacks';
@@ -1198,7 +1200,7 @@ export class MainStreetOverlayContent {
     const s = this.scene;
     if (s.replayMode) return;
 
-    const load = getMainStreetCardPackLoadResult();
+    let load = getMainStreetCardPackLoadResult();
     let enabledIds = resolveEnabledPackIds(load);
 
     // Modal backdrop (depth 199). The listing draws its own SLL panel and is
@@ -1206,8 +1208,31 @@ export class MainStreetOverlayContent {
     const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 });
     s.overlayObjects.push(...overlay.objects);
 
+    const purchasablePackIds = getMainStreetPurchasablePackIds();
+
     const listing = new CardPackListing(s, {
       result: toCardPackListingInput(load, enabledIds),
+      purchasablePackIds,
+      onPurchase: (packId) => {
+        // Dev/QA simulated purchase — scoped to the pack's own reward rule, so
+        // no other reward is collateral-unlocked. Re-discover and re-render so
+        // the newly unlocked pack becomes enable-able.
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        void purchaseMainStreetCardPack(packId).then((outcome) => {
+          if (!outcome.purchased) {
+            s.instructionText?.setText?.(
+              outcome.reason ?? 'That pack could not be unlocked.',
+            );
+            return;
+          }
+          const freshLoad = outcome.load ?? getMainStreetCardPackLoadResult();
+          // Refresh the captured discovery result so a subsequent toggle merges
+          // against the *unlocked* pool, not the stale locked one.
+          if (freshLoad) load = freshLoad;
+          enabledIds = resolveEnabledPackIds(freshLoad);
+          listing.setResult(toCardPackListingInput(freshLoad, enabledIds));
+        });
+      },
       onToggle: (state) => {
         const nextIds = enabledCardPackIds(state);
         const outcome = applyEnabledMainStreetPacks(load, nextIds, {

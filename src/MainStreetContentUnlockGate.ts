@@ -55,6 +55,12 @@ export interface ContentUnlockGatedPack {
   readonly dlcId?: string;
   /** Human-readable lock reason; defaults to {@link CONTENT_UNLOCK_LOCK_REASON}. */
   readonly lockReason?: string;
+  /**
+   * Id of the launcher reward rule that performs the scoped simulated purchase
+   * for this pack (see `core/electron/action-rewards.json`). Absent → the pack
+   * offers no purchase affordance.
+   */
+  readonly purchaseRuleId?: string;
 }
 
 /** Default lock reason shown when a gated pack is not unlocked. */
@@ -68,7 +74,11 @@ export const CONTENT_UNLOCK_LOCK_REASON =
  * entitled by the `dlc:main-street:main-street-residential-pack` unlock.
  */
 export const MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS: readonly ContentUnlockGatedPack[] = [
-  { gameId: MAIN_STREET_GAME_ID, packId: 'main-street-residential-pack' },
+  {
+    gameId: MAIN_STREET_GAME_ID,
+    packId: 'main-street-residential-pack',
+    purchaseRuleId: 'main-street-residential-pack-purchase',
+  },
 ];
 
 /**

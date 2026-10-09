@@ -58,8 +58,10 @@ import {
 } from '@ui/content-unlock-client';
 import { readContentDirFromWindow } from '@ui/game-plugin-boot';
 import {
+  MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS,
   MAIN_STREET_GAME_ID,
   composeContentUnlockEntitlement,
+  findContentUnlockGatedPack,
 } from './MainStreetContentUnlockGate';
 import {
   getEnabledCardPackIds,
@@ -443,6 +445,13 @@ export function resetMainStreetCardPacks(): void {
  */
 let _lastLoadResult: MainStreetPackLoadResult | null = null;
 
+/**
+ * The options the last {@link bootstrapMainStreetCardPacks} ran with, captured
+ * so {@link purchaseMainStreetCardPack} can re-discover with the same
+ * transports (the launcher passes none and reads the window; tests inject).
+ */
+let _lastBootstrapOptions: BootstrapMainStreetCardPacksOptions = {};
+
 /** Whether {@link bootstrapMainStreetCardPacks} has completed (success or not). */
 let _bootstrapped = false;
 
@@ -552,7 +561,112 @@ export async function bootstrapMainStreetCardPacks(
   applyMainStreetCardPool(result.pool);
   _lastLoadResult = result;
   _bootstrapped = true;
+  // Remember the options so a later purchase can re-discover with the same
+  // transports (the browser test injects them; the launcher uses the window).
+  _lastBootstrapOptions = { ...options };
   return result;
+}
+
+/**
+ * The pack ids that may be purchased (content-unlock gated with a purchase
+ * rule). Passed to the reusable listing as its `purchasablePackIds` so the
+ * purchase affordance is offered only for declared packs.
+ */
+export function getMainStreetPurchasablePackIds(): string[] {
+  return MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS.filter(
+    (declaration) =>
+      declaration.gameId === MAIN_STREET_GAME_ID &&
+      typeof declaration.purchaseRuleId === 'string' &&
+      declaration.purchaseRuleId.length > 0,
+  ).map((declaration) => declaration.packId);
+}
+
+/** Outcome of {@link purchaseMainStreetCardPack}. */
+export interface MainStreetPackPurchaseResult {
+  /** Whether the pack became entitled and is now loaded. */
+  readonly purchased: boolean;
+  /** The discovery result after the purchase, or `null` when none ran. */
+  readonly load: MainStreetPackLoadResult | null;
+  /** Human-readable reason when `purchased` is false. */
+  readonly reason: string | null;
+}
+
+/** Options for {@link purchaseMainStreetCardPack}. */
+export interface PurchaseMainStreetCardPackOptions {
+  /** Content-unlock client; defaults to the last boot's client or the window. */
+  readonly contentUnlocks?: ContentUnlockClient | null;
+  /** Bootstrap options override for the post-purchase re-discovery. */
+  readonly bootstrapOptions?: BootstrapMainStreetCardPacksOptions;
+}
+
+/**
+ * Perform the scoped dev/QA simulated purchase for *packId* and re-discover.
+ *
+ * The purchase is **rule-scoped**: only the declared pack's purchase rule is
+ * evaluated, so no other reward is ever collateral-unlocked. On success the
+ * pack pool is re-discovered with the same transports as the last boot and
+ * re-applied, so the newly unlocked pack's rows merge and its cards deal in
+ * play. Total: a pack that is not gated, a bridge that cannot refresh, and a
+ * failed purchase all resolve to `purchased: false` with a reason.
+ */
+export async function purchaseMainStreetCardPack(
+  packId: string,
+  options: PurchaseMainStreetCardPackOptions = {},
+): Promise<MainStreetPackPurchaseResult> {
+  const declaration = findContentUnlockGatedPack(MAIN_STREET_GAME_ID, packId);
+  const ruleId = declaration?.purchaseRuleId;
+  if (!declaration || typeof ruleId !== 'string' || ruleId.length === 0) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'That pack is not available for purchase.',
+    };
+  }
+
+  const contentUnlocks =
+    options.contentUnlocks ??
+    _lastBootstrapOptions.contentUnlocks ??
+    contentUnlockClientFromWindow();
+
+  let refreshed = false;
+  try {
+    const results = await contentUnlocks.refresh({
+      ruleIds: [ruleId],
+      simulatePurchase: true,
+    });
+    refreshed = Array.isArray(results);
+  } catch {
+    refreshed = false;
+  }
+  if (!refreshed) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'The simulated purchase could not be performed in this environment.',
+    };
+  }
+
+  // Re-discover with the same transports as the last boot so the unlocked pack
+  // is loaded and applied; the listing then re-renders from the fresh result.
+  const bootstrapOptions = options.bootstrapOptions ?? _lastBootstrapOptions;
+  const load = await bootstrapMainStreetCardPacks({
+    ...bootstrapOptions,
+    contentUnlocks,
+  });
+  if (!load) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'Card packs are not reachable in this environment.',
+    };
+  }
+
+  const purchased = load.loaded.some((pack) => pack.manifest.id === packId);
+  return {
+    purchased,
+    load,
+    reason: purchased ? null : 'The simulated purchase did not unlock that pack.',
+  };
 }
 
 /**
