@@ -7,6 +7,14 @@ This document lists every card template in the Main Street card pool, organised 
 
 Card templates are stored as rows in `card-data.csv` and parsed at build time by `MainStreetCards.ts`. To add cards, edit the CSV and regenerate metadata (see guidance below).
 
+> **Card packs (DLC):** the catalogue below is the **base** pool. Installed
+> card packs contribute extra rows at runtime and are intentionally **not**
+> listed here — a pack's cards exist only in the pack's own CSV fragment. The
+> base + pack merge lives in `src/MainStreetCardPacks.ts`; see the core
+> [Card Packs](../../core/docs/DEVELOPER.md#card-packs) docs (and the
+> `docs/dev/card-packs-runbook.md` lifecycle runbook) for authoring, building
+> and gating a pack.
+
 **Deck sizes (default copies):**
 
 | Family        | Templates | Copies each | Total cards |

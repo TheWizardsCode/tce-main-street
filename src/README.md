@@ -236,6 +236,15 @@ All card template data is defined in a single CSV file:
 
 - **File:** `src/card-data.csv`
 
+> **Card packs (DLC).** The pool can be extended at runtime by installed card
+> packs: a pack contributes extra rows in this **exact** header schema, merged
+> into the base CSV before parsing (see `src/MainStreetCardPacks.ts`). The merge
+> entry point is `mergeMainStreetCardPool()` → `loadTemplatesFromCsv()`; a pack
+> whose header differs or whose card ids collide is rejected whole. See the core
+> [Card Packs](../core/docs/DEVELOPER.md#card-packs) docs (and the
+> `docs/dev/card-packs-runbook.md` lifecycle runbook they link) for authoring,
+> building and gating a pack.
+
 ### How it works
 
 The CSV is loaded at build time via Vite's `?raw` import suffix and parsed by
