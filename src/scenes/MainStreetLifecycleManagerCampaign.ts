@@ -46,25 +46,17 @@ export function loadCampaignAndSetup(lmCtx: MainStreetLifecycleManagerContext): 
     // the CSV mismatch check has a chance to run (see CG-0MRH36Z6800065JC).
     // Texture cache invalidation is handled atomically inside
     // prewarmVisibleCardTextures() — per-key remove-and-rasterize.
+    //
+    // This is the single regeneration for the boot path
+    // (MS-0MUTU19SF007791K): regeneration is idempotent per active CSV
+    // checksum and loadCardSvgSources() will not overwrite an already-populated
+    // source, so the late-resolving static SVG fetches can no longer clobber
+    // these CSV-fresh sources. The previous defensive re-apply chain on
+    // `cardSvgLoadPromise` is therefore unnecessary and removed.
     try {
       s.msSvgTextureManager?.regenerateSvgSourcesFromCsv();
     } catch (_) {
       // Non-fatal: scene continues with fetched SVGs if regeneration fails
-    }
-
-    // Re-apply regenerated SVGs after all SVG fetches complete. Individual
-    // fetch() callbacks from loadCardSvgSources() may overwrite the freshly
-    // regenerated SVGs in cardSvgSources if they resolve after the synchronous
-    // regeneration above. By chaining onto cardSvgLoadPromise, we ensure fresh
-    // CSV-based SVGs are present before prewarmVisibleCardTextures() runs.
-    if (s.cardSvgLoadPromise) {
-      s.cardSvgLoadPromise = s.cardSvgLoadPromise.then(() => {
-        try {
-          s.msSvgTextureManager?.regenerateSvgSourcesFromCsv();
-        } catch (_) {
-          // Non-fatal: scene continues with fetched SVGs if re-generation fails
-        }
-      });
     }
 
     // Determine tutorial visibility options from scene state
