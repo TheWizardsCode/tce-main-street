@@ -94,6 +94,9 @@ function fakeContentUnlocks(unlockedKeys: readonly string[] = []): {
       async getUnlocks() {
         return [];
       },
+      async refresh() {
+        return [];
+      },
     },
   };
 }
@@ -241,6 +244,9 @@ describe('composeContentUnlockEntitlement', () => {
         throw new Error('bridge boom');
       },
       async getUnlocks() {
+        return [];
+      },
+      async refresh() {
         return [];
       },
     };
