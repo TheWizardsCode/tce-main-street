@@ -108,7 +108,7 @@ describe('Tutorial CSV integrity', () => {
     // row would carry a `tutorial.*` key. Assert the known copy resolves and
     // the full key set survives.
     expect(bundle['tutorial.T1.title']).toBe('Welcome to Main Street');
-    expect(Object.keys(bundle).length).toBe(65);
+    expect(Object.keys(bundle).length).toBe(67);
   });
 
   it('comma-bearing values round-trip correctly (RFC4180 quoting)', () => {

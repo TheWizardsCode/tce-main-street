@@ -54,13 +54,17 @@
  * | T19 | End Turn + income (~392) | 392 | 0 | 1818 |
  * | T20 | Place Library (listed $700) | 0 | 700 | 1118 |
  * | T21 | End Turn + income (~100) | 100 | 0 | 1218 |
- * | T22 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
- * | T23+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
+ * | T22 | Banking day — End Turn + income (~100) | 100 | 0 | 1318 |
+ * | T23 | Play Local Festival (~+100 net) | 100 | 0 | 1418 |
+ * | T24+ | Confirm steps (no cost) | 0 | 0 | ≥ 1418 |
  *
  * MS-0MT3JK16W006A66P merged the former standalone Community-Favour day into
- * the Bookshop-placement day (T15 favour → T16 place → T17 end), so every day
- * that ends now spends its action. The income figures are approximate and
- * validated by the tutorial e2e/budget tests.
+ * the Bookshop-placement day (T15 favour → T16 place → T17 end). Producer
+ * option (a) (2026-10-09) then added the deliberate **banking day** (T22): a
+ * week with no action-consuming step so the spare action banks and the
+ * contextual banking hint fires. It is the single intentional exception to
+ * "every day that ends spends its action". The income figures are approximate
+ * and validated by the tutorial e2e/budget tests.
  *
  * All placements are at listed cost because each follows an End Turn
  * (plan-ahead). The rep→coins Community Favour exchange teaches the

@@ -127,7 +127,7 @@ Tutorial text follows these editorial principles:
 
 - **Reading level:** ~10-year-old reading level (Flesch-Kincaid Grade Level ≤ 5-6)
 - **Sentence limit:** **≤3 sentences per text box** (titles and bodies), each box
-  communicating **exactly one point** (25-step flow editorial rule)
+  communicating **exactly one point** (26-step flow editorial rule)
 - **Word count:** Each step body under 50 words (soft boundary — conciseness preferred)
 - **Concepts:** At most 1–2 distinct gameplay concepts per step (soft boundary)
 - **Plain language:** Short sentences, common words, active voice, no jargon without explanation
@@ -138,13 +138,13 @@ Tutorial text follows these editorial principles:
 > for the canonical vocabulary rule ("this week"/"next week"; the activity-log
 > header stays `Turn N`). `scripts/check-terminology-guards.sh` enforces it.
 
-### Content rules for the 25-step two-turn flow
+### Content rules for the 26-step two-turn flow
 
 - Do NOT mention time-limited play (the "25 turns" sentence was removed from T1).
 - Do NOT describe incident cards as "blue" or list their impacts in Upcoming Incidents.
 - Do NOT mention matching cards in the Place a Business step.
 
-### Step flow (25 steps, T1–T25)
+### Step flow (26 steps, T1–T26)
 
 | # | ID | Title | Gate | Highlight zone |
 |---|----|-------|------|----------------|
@@ -169,10 +169,11 @@ Tutorial text follows these editorial principles:
 | 19 | T19 | End this turn | action (end-turn) | endTurnButton |
 | 20 | T20 | Build a Library | action (place-business + synergy) | streetGrid |
 | 21 | T21 | End this turn | action (end-turn) | endTurnButton |
-| 22 | T22 | Triggering Events | action (play-event) | hand |
-| 23 | T23 | Success and Failure | confirm | hud (scoring bar) |
-| 24 | T24 | Challenges | confirm | challengePanel |
-| 25 | T25 | Tutorial Complete | confirm | completionModal (Steam follow CTA) |
+| 22 | T22 | A quiet week (banking day) | action (end-turn) | endTurnButton |
+| 23 | T23 | Triggering Events | action (play-event) | hand |
+| 24 | T24 | Success and Failure | confirm | hud (scoring bar) |
+| 25 | T25 | Challenges | confirm | challengePanel |
+| 26 | T26 | Tutorial Complete | confirm | completionModal (Steam follow CTA) |
 
 Every purchase is a **two-turn plan-ahead flow** (CG-0MT53NXGZ004H5AE): move a
 card to hand in week N (its one action), End Turn, then place it from hand in week
@@ -182,8 +183,12 @@ informative step that introduces the Library's running cost vs reputation
 trade-off; the Culture synergy rule (place the Library next to the Bookshop) is
 taught by T20. T15 teaches the Community Favour rep→coins exchange
 (CG-0MSTOATDQ005XDET) — useful but not strictly required in the two-turn budget.
-T25 carries the Steam follow CTA (CG-0MSMAJQQT004SDCC), which never blocks
-finishing. Gate count: 9 confirm + 16 action = 25.
+T22 is the deliberate **banking day** (MS-0MT3JK16W006A66P, producer option a):
+a week with no action-consuming step so the player ends it with a spare action;
+the contextual first-bank hint fires there and the banked action carries into
+the Festival week (T23). T26 carries the Steam follow CTA
+(CG-0MSMAJQQT004SDCC), which never blocks
+finishing. Gate count: 9 confirm + 17 action = 26.
 
 Card-level highlight zones (`laundromatCard`, `festivalCard`) are resolved through
 `resolveMarketCardAnchor()` in `MainStreetTutorialHints.ts` using the deterministic
@@ -213,12 +218,13 @@ same-week premium), so every balance stays positive (CG-0MT53NXGZ004H5AE):
 | T19 | End Turn + income (~392) | 392 | 0 | 1818 |
 | T20 | Place Library (listed $700) | 0 | 700 | 1118 |
 | T21 | End Turn + income (~100) | 100 | 0 | 1218 |
-| T22 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
-| T23+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
+| T22 | Banking day — End Turn + income (~100) | 100 | 0 | 1318 |
+| T23 | Play Local Festival (~+100 net) | 100 | 0 | 1418 |
+| T24+ | Confirm steps (no cost) | 0 | 0 | ≥ 1418 |
 
 All placements are at listed cost because each follows an End Turn
-(plan-ahead). The deterministic 5-incident deck (Community Award ×3, Rainy Day
-×2 — both non-negative on the tutorial street) never drains the balance. The
+(plan-ahead). The deterministic 8-incident deck (Community Award ×4, Rainy Day
+×4 — both non-negative on the tutorial street) never drains the balance. The
 authoritative walkthrough lives in the `Coin Budget (Easy / 1200 coins)` table in
 `src/TutorialScenario.ts`.
 
@@ -370,7 +376,7 @@ The following test files cover tutorial localization:
 
 | Test file | What it verifies |
 |-----------|-----------------|
-| `tests/main-street/tutorial-csv.test.ts` | CSV integrity: `key,text` header, exactly 65 required keys, no duplicates/orphans, no empty values, comma/quote round-trip, BOM tolerance, placeholder preservation |
+| `tests/main-street/tutorial-csv.test.ts` | CSV integrity: `key,text` header, exactly 67 required keys, no duplicates/orphans, no empty values, comma/quote round-trip, BOM tolerance, placeholder preservation |
 | `tests/main-street/tutorial-i18n.test.ts` | All keys exist in English bundle; locale switching; `resolveTutorialStepText()` correctness; per-locale placeholder interpolation |
 | `tests/main-street/tutorial-text-updates.test.ts` | Data-driven text content (T3 cost matches `card-data.csv`; no raw `{token}` text; changed cost ⇒ updated text; deterministic resolution; T7/T8/T9 placeholders) |
 | `tests/main-street/tutorial-flow.test.ts` | Step definitions have non-empty `titleKey`/`bodyKey`; `resolveTutorialStepText()` returns non-empty text |
@@ -381,7 +387,7 @@ The following test files cover tutorial localization:
 | File | Purpose |
 |------|---------|
 | `src/TutorialFlow.ts` | Step definitions (keys + `requiredCardId`/`referencedCardId`), controller logic, `resolveTutorialStepText()` data-driven resolution |
-| `src/i18n/tutorial-en.csv` | **Source of truth** — spreadsheet-editable `key,text` CSV holding all 65 English tutorial/modal/overlay/banking/Steam-follow strings; `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders for card facts |
+| `src/i18n/tutorial-en.csv` | **Source of truth** — spreadsheet-editable `key,text` CSV holding all 67 English tutorial/modal/overlay/banking/Steam-follow strings; `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders for card facts |
 | `src/i18n/tutorial-en.ts` | Thin loader: `?raw` CSV import + `parseCsv()` + BOM strip → `TUTORIAL_EN_BUNDLE`; exports the `tutorialKey`/`modalKey`/`overlayKey`/`bankingHintKey` helpers. Contains no copy |
 | `src/MainStreetCards.ts` | Live card templates parsed from `card-data.csv` (`getCsvRows()`, `getBaseTypeId()`) |
 | `src/scenes/MainStreetTutorialHints.ts` | Overlay manager — resolves via `resolveTutorialStepText()` at render time (DOM + Phaser) |
