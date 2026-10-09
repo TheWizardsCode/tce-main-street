@@ -119,8 +119,10 @@ export class MainStreetScene extends CardGameScene {
 
   /**
    * When true, the day-banner at boot is deferred until the player commits
-   * to playing (skips the tutorial offer, starts the tutorial, or resumes
-   * from checkpoint). Cleared after it fires exactly once.
+   * to playing by confirming a game mode (the selector presented after the
+   * tutorial offer), or until no selector is due. The tutorial and
+   * checkpoint-resume paths clear it without firing. Cleared after it fires
+   * exactly once.
    */
   public deferredWeekBanner = false;
 

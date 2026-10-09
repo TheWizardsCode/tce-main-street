@@ -1,8 +1,8 @@
 /**
  * Main Street: Tutorial Lifecycle
  *
- * Tutorial offer/deferred banner, step confirmation/overlay, action gating,
- * and completion.
+ * Tutorial offer/mode-selector/deferred-banner boot flow, step
+ * confirmation/overlay, action gating, and completion.
  *
  * Import graph: depends only on `MainStreetLifecycleManagerContext` (type).
  *

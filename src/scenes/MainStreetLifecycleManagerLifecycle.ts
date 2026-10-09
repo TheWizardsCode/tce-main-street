@@ -463,8 +463,9 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     }
 
     // Create the pre-game "New Game" mode selector (MS-0MUTU8INS009MRR1).
-    // It is shown by showTutorialOfferOrDeferredBanner as the first blocking
-    // boot modal, before the tutorial offer / deferred banner.
+    // It is shown by showTutorialOfferOrDeferredBanner as the **second**
+    // blocking boot modal, after the tutorial offer has been answered (skipped)
+    // or when the offer is ineligible (MS-0MV0319OC002H15F).
     try {
       (s as any).newGameOverlay = new MainStreetNewGameOverlay(s);
     } catch (_) { /* ignore if overlay cannot be created (headless) */ }
@@ -625,8 +626,10 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     });
 
     // Start first turn — suppress the day-banner at boot so it does not
-    // fire while the tutorial offer modal is visible or before any player
-    // choice is made (deferred banner will play on skip/start/tutorial).
+    // fire while the tutorial offer or mode selector is waiting for a choice.
+    // The deferred banner plays once the player confirms a mode (see
+    // showNewGameSelector) and is suppressed for the tutorial path
+    // (MS-0MV0319OC002H15F).
     s.deferredWeekBanner = true;
     s.startTurnPhase(false, true);
   

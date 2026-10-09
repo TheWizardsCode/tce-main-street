@@ -118,7 +118,8 @@ export function loadCampaignAndSetup(lmCtx: MainStreetLifecycleManagerContext): 
         try {
           s.checkForSavedCheckpoint(tutorialOpts);
         } catch (e) {
-          // If checkpoint check fails, fall through to tutorial offer / deferred banner
+          // If checkpoint check fails, fall through to the boot modals
+          // (tutorial offer then mode selector) / deferred banner
           try {
             const legacySeen = s.campaign ? (s.campaign as any).tutorialSeen : undefined;
             lmCtx.showTutorialOfferOrDeferredBanner(tutorialOpts, legacySeen);
@@ -126,7 +127,8 @@ export function loadCampaignAndSetup(lmCtx: MainStreetLifecycleManagerContext): 
         }
         return saved;
       }).catch(() => {
-        // If load fails, continue with defaults and show offer modal / deferred banner
+        // If load fails, continue with defaults and show the boot modals
+        // (tutorial offer then mode selector) / deferred banner
         try {
           const legacySeen = s.campaign ? (s.campaign as any).tutorialSeen : undefined;
           lmCtx.showTutorialOfferOrDeferredBanner(tutorialOpts, legacySeen);
@@ -134,7 +136,8 @@ export function loadCampaignAndSetup(lmCtx: MainStreetLifecycleManagerContext): 
         return null;
       });
     } else {
-      // No saveStore: show tutorial offer modal / deferred banner (best-effort)
+      // No saveStore: show the boot modals (tutorial offer then mode
+      // selector) / deferred banner (best-effort)
       try {
         const legacySeen = s.campaign ? (s.campaign as any).tutorialSeen : undefined;
         lmCtx.showTutorialOfferOrDeferredBanner(tutorialOpts, legacySeen);
@@ -295,7 +298,8 @@ export function checkForSavedCheckpoint(lmCtx: MainStreetLifecycleManagerContext
     if (!s.checkpointManager) return;
 
     s.checkpointManager.checkAndResume(
-      // No checkpoint — show tutorial offer / play deferred banner
+      // No checkpoint — show the boot modals (tutorial offer then mode
+      // selector) / play deferred banner
       () => {
         try {
           const legacySeen = s.campaign ? (s.campaign as any).tutorialSeen : undefined;
@@ -335,7 +339,8 @@ export function checkForSavedCheckpoint(lmCtx: MainStreetLifecycleManagerContext
         createDefaultResumeOverlay(s, state, onResume, onNewGame);
       },
     ).catch(() => {
-      // On error (e.g., storage unavailable), show tutorial offer / deferred banner
+      // On error (e.g., storage unavailable), show the boot modals (tutorial
+      // offer then mode selector) / deferred banner
       try {
         const legacySeen = s.campaign ? (s.campaign as any).tutorialSeen : undefined;
         lmCtx.showTutorialOfferOrDeferredBanner(tutorialOpts, legacySeen);
