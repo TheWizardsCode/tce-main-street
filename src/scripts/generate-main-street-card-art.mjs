@@ -55,6 +55,7 @@
  * Inputs:
  *   src/sprites/<Name>_1024_x_1024.png
  *   src/card-data.csv
+ *   packs/<gameId>/<packId>/cards.csv   (production pack fragments)
  *
  * Outputs:
  *   src/card-art-map.json
@@ -85,6 +86,8 @@ const SRC_DIR = path.resolve(__dirname, '..');
 const SPRITES_DIR = path.join(SRC_DIR, 'sprites');
 const MAP_PATH = path.join(SRC_DIR, 'card-art-map.json');
 const CSV_PATH = path.join(SRC_DIR, 'card-data.csv');
+/** Repo-root `packs/` directory holding production pack source trees. */
+const PACKS_DIR = path.resolve(SRC_DIR, '..', 'packs');
 
 /** Source sprite suffix — the committed high-resolution art is the truth. */
 const SOURCE_SUFFIX = '_1024_x_1024.png';
@@ -125,6 +128,30 @@ export const CARD_ART_FALLBACK = 'Fallback';
 // ---------------------------------------------------------------------------
 // CSV helpers (CG-0MUBVL4H80061B1E)
 // ---------------------------------------------------------------------------
+
+/** Minimal CSV parser — reads card-data.csv and returns rows as objects. */
+/**
+ * Discover every production pack CSV fragment under `packs/<gameId>/<packId>/`.
+ *
+ * Returns a sorted list so regeneration is deterministic; a missing `packs/`
+ * directory (e.g. a stripped checkout) yields an empty list.
+ *
+ * @returns {string[]} Absolute paths to pack `cards.csv` fragments.
+ */
+export function listPackCsvPaths() {
+  if (!fs.existsSync(PACKS_DIR)) return [];
+  const paths = [];
+  for (const gameEntry of fs.readdirSync(PACKS_DIR, { withFileTypes: true })) {
+    if (!gameEntry.isDirectory()) continue;
+    const gameDir = path.join(PACKS_DIR, gameEntry.name);
+    for (const packEntry of fs.readdirSync(gameDir, { withFileTypes: true })) {
+      if (!packEntry.isDirectory()) continue;
+      const csvPath = path.join(gameDir, packEntry.name, 'cards.csv');
+      if (fs.existsSync(csvPath)) paths.push(csvPath);
+    }
+  }
+  return paths.sort();
+}
 
 /** Minimal CSV parser — reads card-data.csv and returns rows as objects. */
 function readCsvRows(csvPath) {
@@ -192,40 +219,46 @@ function readCsvRows(csvPath) {
 export function buildMappingsFromCsv(csvPath, knownSprites) {
   const has = (name) => (knownSprites ? knownSprites.has(name) : false);
   const mappings = {};
-  const rows = readCsvRows(csvPath);
+  // Accept a single CSV path (base pool) or several (base + pack fragments);
+  // later sources win, which is fine because pack card names are namespaced
+  // and unique across the base pool and packs.
+  const csvPaths = Array.isArray(csvPath) ? csvPath : [csvPath];
 
-  for (const row of rows) {
-    const family = row.family;
-    const name = row.name;
+  for (const sourcePath of csvPaths) {
+    const rows = readCsvRows(sourcePath);
+    for (const row of rows) {
+      const family = row.family;
+      const name = row.name;
 
-    if (SPELLING_ALIASES[name]) {
-      mappings[name] = SPELLING_ALIASES[name];
-      continue;
-    }
-
-    if (family === 'upgrade') {
-      // CG-0MUBVL4H80061B1E: prefer the upgrade's own display-name sprite
-      // (a duplicate of the target's art); fall back to the target's art.
-      const displayName = row.newDisplayName;
-      const target = row.targetBusiness;
-      if (displayName && has(displayName)) {
-        mappings[name] = displayName;
-      } else if (target) {
-        mappings[name] = target;
+      if (SPELLING_ALIASES[name]) {
+        mappings[name] = SPELLING_ALIASES[name];
+        continue;
       }
-    } else if (family === 'event') {
-      // CG-0MUBVL4H80061B1E: keep an existing dedicated event sprite; only the
-      // art-less events fall back to the (trigger, targetSynergy) category.
-      if (has(name)) {
-        mappings[name] = name;
+
+      if (family === 'upgrade') {
+        // CG-0MUBVL4H80061B1E: prefer the upgrade's own display-name sprite
+        // (a duplicate of the target's art); fall back to the target's art.
+        const displayName = row.newDisplayName;
+        const target = row.targetBusiness;
+        if (displayName && has(displayName)) {
+          mappings[name] = displayName;
+        } else if (target) {
+          mappings[name] = target;
+        }
+      } else if (family === 'event') {
+        // CG-0MUBVL4H80061B1E: keep an existing dedicated event sprite; only the
+        // art-less events fall back to the (trigger, targetSynergy) category.
+        if (has(name)) {
+          mappings[name] = name;
+        } else {
+          const trigger = row.trigger || '';
+          const synergy = row.targetSynergy || '';
+          mappings[name] = `${trigger}__${synergy}`;
+        }
       } else {
-        const trigger = row.trigger || '';
-        const synergy = row.targetSynergy || '';
-        mappings[name] = `${trigger}__${synergy}`;
+        // Staff / business / community-space: direct name match.
+        mappings[name] = name;
       }
-    } else {
-      // Staff / business / community-space: direct name match.
-      mappings[name] = name;
     }
   }
 
@@ -307,8 +340,11 @@ export async function regenerateCardArt() {
   }
 
   // CG-0MUBVL4H80061B1E: build aliases from CSV (upgrades, events, staff, etc.)
-  const csvMappings = buildMappingsFromCsv(CSV_PATH, knownSprites);
-  const csvAliases = buildAliasesFromCsv(CSV_PATH, knownSprites);
+  // MS-0MV0M5BHH0020WFY: include the production pack fragments so pack card
+  // names are mapped and aliased alongside the base pool.
+  const csvPaths = [CSV_PATH, ...listPackCsvPaths()];
+  const csvMappings = buildMappingsFromCsv(csvPaths, knownSprites);
+  const csvAliases = buildAliasesFromCsv(csvPaths, knownSprites);
 
   // Merge: CSV aliases take precedence, then spelling aliases for coverage.
   const mergedAliases = { ...csvAliases };
