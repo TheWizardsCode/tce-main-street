@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.19 (2026-10-09)
+> **Release focus:** This release focuses on making card packs a first-class, reliable feature with browsing, toggling, and save support, alongside automatic card verification to keep balance changes stable. It also rebalances the economy and reputation recovery, improves AI opponent behaviour and win handling, and adds clearer storylines, upgrade reachability, and market reroll costs.
+### Features
+- Every card is now automatically verified, so balance changes and card effects are far less likely to break. (MS-0MUXW90YE009L4DQ)
+- Reputation now recovers in step with the slower economy, so runs can be lost to bankruptcy or reputation, not just reputation. (MS-0MUR9IMN60093HIE)
+- Storyline docs now show clear per-storyline diagrams with event details. (MS-0MUNB54KU005084C)
+- Powerful late-game upgrades now show up in the market more often, so you can actually reach them. (MS-0MUYK08I1004I19W)
+- Competitive games now scale the score target to the number of players, so bigger matches stay winnable. (MS-0MUZH6V7C0091SGE)
+- High-tier business upgrades are now actually reachable, so your favourite spots can grow into their best versions. (MS-0MUXAL8HC005P9E4)
+- New players are now asked about the tutorial before choosing a game mode. (MS-0MV02N2F40069LPY)
+- Installed card packs now stay active and load correctly with your saves. (MS-0MV07GNUU005E536)
+- Upgrades are now worth buying, with previously ignored options appearing more often. (MS-0MUR9I9WO004EW0M)
+- Farm-to-Table rewards are now more balanced, so it no longer trivializes your run. (MS-0MUYOBLA5006HZ9Z)
+- Browse and toggle your card packs from the Main Street menu, with locked packs clearly shown. (MS-0MV0OK0XU0062E0H)
+- Card packs now load, save, and restore reliably, with clear warnings if a pack is missing. (MS-0MV0Q479I002W0R6)
+- Upgraded card level badges now appear in the top-left corner, making them easier to spot at a glance. (MS-0MUGRKEWZ0073327)
+- Each market reroll in a turn now costs 250 more than the last, resetting each turn. (MS-0MTR6ZRF5007PWNZ)
+- Hire an Investor for a free daily market reroll that favors your business type. (MS-0MTISBYLS009936W)
+- Keep playing after someone wins with optional endless mode. (MS-0MTIILU5V006GCN4)
+- Your reputation now appears as pedestrians on the street who turn into coins for your businesses. (MS-0MTV9AS15004AC1E)
+- Your choices now shape visible, named storylines with a journal to track them. (MS-0MUB0GFY00001ASV)
+### Bug Fixes
+- AI opponents now build fewer community spaces and invest more in income-generating businesses. (MS-0MUX8J9KJ005ZKDW)
+- AI opponents now correctly win matches, so you'll no longer see "You Win!" when the AI actually beat you. (MS-0MUX6PMCE002I6HO)
+- The greedy AI now spends reputation more wisely, so losses feel fairer. (MS-0MUVB2ZES005V83Y)
+- Your game no longer ends when only an AI opponent goes bankrupt — the AI is eliminated and you keep playing. (MS-0MUVBH589001L7NL)
+- AI opponents no longer place cards that only boost your businesses. (MS-0MUYODDW300690KX)
+### Other
+- Card packs are now documented so you can find and understand them more easily. (MS-0MV0R1H5S007TTVG)
+
 ## v0.1.18 (2026-10-06)
 > **Release focus:** This release introduces a new competitive mode where you race AI opponents on the shared street, alongside a browser-playable version of Main Street requiring no download. It also rebalances core economy mechanics, including business payback periods and community space pricing, while fixing numerous bugs across staff discounts, upgrades, and UI behavior.
 ### Features
