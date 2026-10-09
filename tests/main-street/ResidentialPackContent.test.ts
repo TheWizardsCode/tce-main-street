@@ -17,7 +17,6 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -27,11 +26,12 @@ import { parseCsv, validateCsvRows, type CsvRow } from '@balance-cards';
 import { buildCardPack } from '@core-scripts/build-card-pack.mjs';
 
 import { CARD_DATA_RAW } from '../../src/MainStreetCards';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, '../..');
-const PACK_SOURCE = path.join(REPO_ROOT, 'packs');
-const BASE_CSV_PATH = path.join(REPO_ROOT, 'src/card-data.csv');
+import {
+  BASE_CARD_CSV_PATH as BASE_CSV_PATH,
+  REPO_ROOT,
+  RESIDENTIAL_PACK_ROOT as PACK_SOURCE,
+  readResidentialPackCsv,
+} from './helpers/residentialPack';
 
 const PACK_ID = 'main-street-residential-pack';
 const GAME_ID = 'main-street';
@@ -78,12 +78,9 @@ function readManifest(): Manifest {
   ) as Manifest;
 }
 
-/** The authored pack CSV text. */
+/** The authored pack CSV text (shared helper keeps the suites in sync). */
 function readPackCsv(): string {
-  return readFileSync(
-    path.join(PACK_SOURCE, GAME_ID, PACK_ID, 'cards.csv'),
-    'utf-8',
-  );
+  return readResidentialPackCsv();
 }
 
 /** Parse a CSV fragment into its header (column names) and row objects. */
