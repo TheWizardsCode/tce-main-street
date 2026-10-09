@@ -1,12 +1,12 @@
 # Tutorial Localization Guide
 
 The Main Street tutorial system externalises all user-facing copy through the
-core engine's [i18n module](../../src/core-engine/I18n.ts). This means tutorial
+core engine's [i18n module](../../core/src/core-engine/I18n.ts). This means tutorial
 text can be translated and reviewed without editing gameplay code.
 
 ## Architecture
 
-Tutorial step definitions in [`TutorialFlow.ts`](../../example-games/main-street/TutorialFlow.ts)
+Tutorial step definitions in [`TutorialFlow.ts`](../../src/TutorialFlow.ts)
 no longer contain inline string literals for titles and bodies. Instead, each
 step carries an i18n **key**:
 
@@ -19,14 +19,14 @@ step carries an i18n **key**:
 ```
 
 The actual string values are stored in **locale bundles**. English copy lives in
-[`tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv) — a
+[`tutorial-en.csv`](../../src/i18n/tutorial-en.csv) — a
 spreadsheet-editable `key,text` CSV — which is bundled at build time via Vite's
-`?raw` import and parsed by the core [`parseCsv()`](../../src/core-engine/CsvLoader.ts)
+`?raw` import and parsed by the core [`parseCsv()`](../../core/src/core-engine/CsvLoader.ts)
 helper into the `TUTORIAL_EN_BUNDLE` exported by
-[`tutorial-en.ts`](../../example-games/main-street/i18n/tutorial-en.ts). The `.ts`
+[`tutorial-en.ts`](../../src/i18n/tutorial-en.ts). The `.ts`
 module now holds only the key helpers and the loader; it contains no copy.
 
-At runtime, the overlay manager ([`MainStreetTutorialHints`](../../example-games/main-street/scenes/MainStreetTutorialHints.ts))
+At runtime, the overlay manager ([`MainStreetTutorialHints`](../../src/scenes/MainStreetTutorialHints.ts))
 calls `t(key)` to resolve the active locale's string for each step. The
 English bundle is registered at module load time, so it is always available
 as a fallback.
@@ -90,7 +90,7 @@ Examples:
 The `tutorialKey()` helper function constructs these keys:
 
 ```ts
-import { tutorialKey } from '../../example-games/main-street/i18n/tutorial-en';
+import { tutorialKey } from '../../src/i18n/tutorial-en';
 
 tutorialKey('T3', 'title'); // → 'tutorial.T3.title'
 ```
@@ -113,7 +113,7 @@ The tutorial offer modal and overlay button labels are also externalized:
 Helper functions:
 
 ```ts
-import { modalKey, overlayKey } from '../../example-games/main-street/i18n/tutorial-en';
+import { modalKey, overlayKey } from '../../src/i18n/tutorial-en';
 
 modalKey('title');     // → 'tutorial.modal.title'
 overlayKey('dismiss'); // → 'tutorial.overlay.dismiss'
@@ -127,7 +127,7 @@ Tutorial text follows these editorial principles:
 
 - **Reading level:** ~10-year-old reading level (Flesch-Kincaid Grade Level ≤ 5-6)
 - **Sentence limit:** **≤3 sentences per text box** (titles and bodies), each box
-  communicating **exactly one point** (23-step flow editorial rule)
+  communicating **exactly one point** (25-step flow editorial rule)
 - **Word count:** Each step body under 50 words (soft boundary — conciseness preferred)
 - **Concepts:** At most 1–2 distinct gameplay concepts per step (soft boundary)
 - **Plain language:** Short sentences, common words, active voice, no jargon without explanation
@@ -138,49 +138,52 @@ Tutorial text follows these editorial principles:
 > for the canonical vocabulary rule ("this week"/"next week"; the activity-log
 > header stays `Turn N`). `scripts/check-terminology-guards.sh` enforces it.
 
-### Content rules for the 23-step two-turn flow
+### Content rules for the 25-step two-turn flow
 
 - Do NOT mention time-limited play (the "25 turns" sentence was removed from T1).
 - Do NOT describe incident cards as "blue" or list their impacts in Upcoming Incidents.
 - Do NOT mention matching cards in the Place a Business step.
 
-### Step flow (23 steps, T1–T23)
+### Step flow (25 steps, T1–T25)
 
 | # | ID | Title | Gate | Highlight zone |
 |---|----|-------|------|----------------|
 | 1 | T1 | Welcome to Main Street | confirm | centerModal |
-| 2 | T2 | The Market Row | confirm | developmentRow (single market row) |
-| 3 | T3 | Move the Laundromat to hand | action (select-business) | laundromatCard (card-level) |
+| 2 | T2 | The Market Row | confirm | developmentRow |
+| 3 | T3 | Buy the Laundromat | action (select-business) | laundromatCard (card-level) |
 | 4 | T4 | Your Hand | confirm | hand |
 | 5 | T5 | Upcoming Incidents | confirm | incidentQueue |
-| 6 | T6 | End Turn (week 1 → 2) | action (end-turn) | endTurnButton |
-| 7 | T7 | Place the Laundromat (listed $400) | action (place-business) | streetGrid |
-| 8 | T8 | More than Businesses | confirm | investmentsRow (aliases the single market row) |
-| 9 | T9 | Buy the Local Festival | action (buy-event) | festivalCard (card-level) |
-| 10 | T10 | End this turn (week 2 → 3) | action (end-turn) | endTurnButton |
-| 11 | T11 | Move the Bookshop to hand | action (select-business) | developmentRow |
-| 12 | T12 | Costs and Reputation | confirm (informative) | developmentRow |
-| 13 | T13 | Community Favour | action (community-favour, rep→coins) | actionButtons (HUD strip favour band) |
-| 14 | T14 | End this turn (week 3 → 4) | action (end-turn) | endTurnButton |
-| 15 | T15 | Place the Bookshop (listed $300) | action (place-business) | streetGrid |
-| 16 | T16 | End this turn (week 4 → 5) | action (end-turn) | endTurnButton |
-| 17 | T17 | Move the Library to hand | action (select-business) | developmentRow |
-| 18 | T18 | End this turn (week 5 → 6) | action (end-turn) | endTurnButton |
-| 19 | T19 | Build a Library next to the Bookshop (listed $700) | action (place-business + synergy) | streetGrid |
-| 20 | T20 | Triggering Events | action (play-event) | hand |
-| 21 | T21 | Success and Failure | confirm | hud (scoring bar) |
-| 22 | T22 | Challenges | confirm | challengePanel |
-| 23 | T23 | Tutorial Complete | confirm | completionModal |
+| 6 | T6 | End Turn | action (end-turn) | endTurnButton |
+| 7 | T7 | Place a Business | action (place-business) | streetGrid |
+| 8 | T8 | End this turn | action (end-turn) | endTurnButton |
+| 9 | T9 | More than Businesses | confirm | investmentsRow |
+| 10 | T10 | Buy the Local Festival | action (buy-event) | festivalCard (card-level) |
+| 11 | T11 | End this turn | action (end-turn) | endTurnButton |
+| 12 | T12 | Move the Bookshop to hand | action (select-business) | developmentRow |
+| 13 | T13 | Costs and Reputation | confirm | developmentRow |
+| 14 | T14 | End this turn | action (end-turn) | endTurnButton |
+| 15 | T15 | Community Favour | action (community-favour, rep→coins) | actionButtons |
+| 16 | T16 | Place the Bookshop | action (place-business) | streetGrid |
+| 17 | T17 | End this turn | action (end-turn) | endTurnButton |
+| 18 | T18 | Move the Library to hand | action (select-business) | developmentRow |
+| 19 | T19 | End this turn | action (end-turn) | endTurnButton |
+| 20 | T20 | Build a Library | action (place-business + synergy) | streetGrid |
+| 21 | T21 | End this turn | action (end-turn) | endTurnButton |
+| 22 | T22 | Triggering Events | action (play-event) | hand |
+| 23 | T23 | Success and Failure | confirm | hud (scoring bar) |
+| 24 | T24 | Challenges | confirm | challengePanel |
+| 25 | T25 | Tutorial Complete | confirm | completionModal (Steam follow CTA) |
 
 Every purchase is a **two-turn plan-ahead flow** (CG-0MT53NXGZ004H5AE): move a
 card to hand in week N (its one action), End Turn, then place it from hand in week
 N+1 at its **listed cost** (another action). No same-week composite step exists,
-so no +50% premium is ever scripted. T12 (Costs and Reputation) is an
+so no +50% premium is ever scripted. T13 (Costs and Reputation) is an
 informative step that introduces the Library's running cost vs reputation
 trade-off; the Culture synergy rule (place the Library next to the Bookshop) is
-taught by T19. T13 teaches the Community Favour rep→coins exchange
+taught by T20. T15 teaches the Community Favour rep→coins exchange
 (CG-0MSTOATDQ005XDET) — useful but not strictly required in the two-turn budget.
-Gate count: 9 confirm + 14 action = 23.
+T25 carries the Steam follow CTA (CG-0MSMAJQQT004SDCC), which never blocks
+finishing. Gate count: 9 confirm + 16 action = 25.
 
 Card-level highlight zones (`laundromatCard`, `festivalCard`) are resolved through
 `resolveMarketCardAnchor()` in `MainStreetTutorialHints.ts` using the deterministic
@@ -195,30 +198,33 @@ same-week premium), so every balance stays positive (CG-0MT53NXGZ004H5AE):
 | Step | Action | Coins In | Coins Out | Balance |
 |------|--------|----------|-----------|---------|
 | T1 | Start (Easy, 1200 coins) | 1200 | 0 | 1200 |
-| T3 | Move Laundromat to hand (free) | 0 | 0 | 1200 |
+| T3 | Move Laundromat to hand (1 action) | 0 | 0 | 1200 |
 | T6 | End Turn (held-card cost -1) | 0 | 100 | 1100 |
 | T7 | Place Laundromat (listed $400) | 0 | 400 | 700 |
-| T9 | Move Local Festival to hand (free) | 0 | 0 | 700 |
-| T10 | End Turn + income (~215) | 215 | 0 | 915 |
-| T11 | Move Bookshop to hand (free) | 0 | 0 | 915 |
-| T13 | Community Favour (200 rep → 300 coins) | 300 | 0 | 1215 |
-| T14 | End Turn + income (~133) | 133 | 0 | 1349 |
-| T15 | Place Bookshop (listed $300) | 0 | 300 | 1049 |
-| T16 | End Turn + income (~391) | 391 | 0 | 1440 |
-| T17 | Move Library to hand (free) | 0 | 0 | 1440 |
-| T18 | End Turn + income (~392) | 392 | 0 | 1832 |
-| T19 | Place Library (listed $700) | 0 | 700 | 1132 |
-| T20 | Play Local Festival ($300, +4 culture) | 100 | 0 | 1232 |
+| T8 | End Turn (day 2 → 3) | 0 | 0 | 700 |
+| T10 | Buy Local Festival (event, $300) | 0 | 0 | 700 |
+| T11 | End Turn + income (~215) | 215 | 0 | 915 |
+| T12 | Move Bookshop to hand | 0 | 0 | 915 |
+| T14 | End Turn (day 4 → 5) | 120 | 0 | 1035 |
+| T15 | Community Favour (200 rep → 300c) | 300 | 0 | 1335 |
+| T16 | Place Bookshop (listed $300) | 0 | 300 | 1035 |
+| T17 | End Turn + income (~391) | 391 | 0 | 1426 |
+| T18 | Move Library to hand | 0 | 0 | 1426 |
+| T19 | End Turn + income (~392) | 392 | 0 | 1818 |
+| T20 | Place Library (listed $700) | 0 | 700 | 1118 |
+| T21 | End Turn + income (~100) | 100 | 0 | 1218 |
+| T22 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
+| T23+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
 
 All placements are at listed cost because each follows an End Turn
 (plan-ahead). The deterministic 5-incident deck (Community Award ×3, Rainy Day
 ×2 — both non-negative on the tutorial street) never drains the balance. The
 authoritative walkthrough lives in the `Coin Budget (Easy / 1200 coins)` table in
-`example-games/main-street/TutorialScenario.ts`.
+`src/TutorialScenario.ts`.
 
 ### Changing existing text
 
-1. Open [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
+1. Open [`i18n/tutorial-en.csv`](../../src/i18n/tutorial-en.csv)
    in a spreadsheet application (Excel, LibreOffice Calc, Google Sheets) — or
    any plain-text editor.
 2. Find the `key` for the string you want to update (e.g. `tutorial.T3.body`)
@@ -252,7 +258,7 @@ automatically.
 
 For offer modal or button label changes:
 
-1. Open [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
+1. Open [`i18n/tutorial-en.csv`](../../src/i18n/tutorial-en.csv)
    in your spreadsheet editor.
 2. Find the relevant `tutorial.modal.*` or `tutorial.overlay.*` row.
 3. Update the `text` cell and save as CSV UTF-8.
@@ -279,24 +285,22 @@ Both build a `Record<string, string>` keyed by the same `tutorial.*` keys.
 
 ### Option A — CSV locale (spreadsheet-friendly)
 
-1. Copy [`i18n/tutorial-en.csv`](../../example-games/main-street/i18n/tutorial-en.csv)
-   to `example-games/main-street/i18n/tutorial-fr.csv`.
+1. Copy [`i18n/tutorial-en.csv`](../../src/i18n/tutorial-en.csv)
+   to `src/i18n/tutorial-fr.csv`.
 2. Translate the `text` column, keeping the `key` column unchanged and
    preserving every placeholder token in the same positions.
-3. Add a thin loader that mirrors `tutorial-en.ts`:
+3. Add a thin loader that reuses the exported CSV parser:
 
    ```ts
-   import { parseCsv } from '@core-engine/CsvLoader';
    import rawCsv from './tutorial-fr.csv?raw';
+   import { parseTutorialCsv } from './tutorial-en';
 
-   const parsed = parseCsv(rawCsv.charCodeAt(0) === 0xfeff ? rawCsv.slice(1) : rawCsv);
-   export const TUTORIAL_FR_BUNDLE: Record<string, string> = {};
-   for (const row of parsed) TUTORIAL_FR_BUNDLE[row.key] = row.text;
+   export const TUTORIAL_FR_BUNDLE: Record<string, string> = parseTutorialCsv(rawCsv);
    ```
 
 ### Option B — TypeScript locale
 
-1. Create a new locale bundle file, e.g. `example-games/main-street/i18n/tutorial-fr.ts`:
+1. Create a new locale bundle file, e.g. `src/i18n/tutorial-fr.ts`:
 
    ```ts
    import { tutorialKey } from './tutorial-en';
@@ -321,7 +325,7 @@ Both build a `Record<string, string>` keyed by the same `tutorial.*` keys.
    locales alongside it, or switch the active locale based on a user setting:
 
    ```ts
-   import { registerLocale } from '../../../src/core-engine/I18n';
+   import { registerLocale } from '@core-engine/I18n';
    import { TUTORIAL_FR_BUNDLE } from '../i18n/tutorial-fr';
 
    registerLocale('fr', TUTORIAL_FR_BUNDLE);
@@ -330,7 +334,7 @@ Both build a `Record<string, string>` keyed by the same `tutorial.*` keys.
 3. Switch the active locale:
 
    ```ts
-   import { setLocale } from '../../../src/core-engine/I18n';
+   import { setLocale } from '@core-engine/I18n';
    setLocale('fr');
    ```
 
@@ -366,7 +370,7 @@ The following test files cover tutorial localization:
 
 | Test file | What it verifies |
 |-----------|-----------------|
-| `tests/main-street/tutorial-csv.test.ts` | CSV integrity: `key,text` header, exactly 62 required keys, no duplicates/orphans, no empty values, comma/quote round-trip, BOM tolerance, placeholder preservation |
+| `tests/main-street/tutorial-csv.test.ts` | CSV integrity: `key,text` header, exactly 65 required keys, no duplicates/orphans, no empty values, comma/quote round-trip, BOM tolerance, placeholder preservation |
 | `tests/main-street/tutorial-i18n.test.ts` | All keys exist in English bundle; locale switching; `resolveTutorialStepText()` correctness; per-locale placeholder interpolation |
 | `tests/main-street/tutorial-text-updates.test.ts` | Data-driven text content (T3 cost matches `card-data.csv`; no raw `{token}` text; changed cost ⇒ updated text; deterministic resolution; T7/T8/T9 placeholders) |
 | `tests/main-street/tutorial-flow.test.ts` | Step definitions have non-empty `titleKey`/`bodyKey`; `resolveTutorialStepText()` returns non-empty text |
@@ -376,11 +380,11 @@ The following test files cover tutorial localization:
 
 | File | Purpose |
 |------|---------|
-| `example-games/main-street/TutorialFlow.ts` | Step definitions (keys + `requiredCardId`/`referencedCardId`), controller logic, `resolveTutorialStepText()` data-driven resolution |
-| `example-games/main-street/i18n/tutorial-en.csv` | **Source of truth** — spreadsheet-editable `key,text` CSV holding all 62 English tutorial/modal/overlay/banking strings; `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders for card facts |
-| `example-games/main-street/i18n/tutorial-en.ts` | Thin loader: `?raw` CSV import + `parseCsv()` + BOM strip → `TUTORIAL_EN_BUNDLE`; exports the `tutorialKey`/`modalKey`/`overlayKey`/`bankingHintKey` helpers. Contains no copy |
-| `example-games/main-street/MainStreetCards.ts` | Live card templates parsed from `card-data.csv` (`getCsvRows()`, `getBaseTypeId()`) |
-| `example-games/main-street/scenes/MainStreetTutorialHints.ts` | Overlay manager — resolves via `resolveTutorialStepText()` at render time (DOM + Phaser) |
-| `src/core-engine/I18n.ts` | Core i18n lookup + `t(key, params)` placeholder interpolation |
+| `src/TutorialFlow.ts` | Step definitions (keys + `requiredCardId`/`referencedCardId`), controller logic, `resolveTutorialStepText()` data-driven resolution |
+| `src/i18n/tutorial-en.csv` | **Source of truth** — spreadsheet-editable `key,text` CSV holding all 65 English tutorial/modal/overlay/banking/Steam-follow strings; `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders for card facts |
+| `src/i18n/tutorial-en.ts` | Thin loader: `?raw` CSV import + `parseCsv()` + BOM strip → `TUTORIAL_EN_BUNDLE`; exports the `tutorialKey`/`modalKey`/`overlayKey`/`bankingHintKey` helpers. Contains no copy |
+| `src/MainStreetCards.ts` | Live card templates parsed from `card-data.csv` (`getCsvRows()`, `getBaseTypeId()`) |
+| `src/scenes/MainStreetTutorialHints.ts` | Overlay manager — resolves via `resolveTutorialStepText()` at render time (DOM + Phaser) |
+| `core/src/core-engine/I18n.ts` | Core i18n lookup + `t(key, params)` placeholder interpolation |
 | `tests/main-street/tutorial-i18n.test.ts` | i18n-specific test coverage |
 | `tests/core-engine/I18n.test.ts` | Interpolation unit tests |
