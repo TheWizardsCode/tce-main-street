@@ -52,6 +52,12 @@ import {
   cardPackClientFromWindow,
   type CardPackClient,
 } from '@ui/card-pack-client';
+import { readContentDirFromWindow } from '@ui/game-plugin-boot';
+import {
+  getEnabledCardPackIds,
+  setEnabledCardPackIds,
+  type StorageLike,
+} from './MainStreetPrefs';
 import {
   CARD_DATA_RAW,
   getBusinessTemplates,
@@ -63,6 +69,7 @@ import {
   resetTemplatesToDefault,
 } from './MainStreetCardsTemplates';
 import type { ActiveMainStreetPack } from './MainStreetCardsTypes';
+import { getBaseTypeId } from './MainStreetCardsUtils';
 import type { MainStreetState } from './MainStreetStateTypes';
 
 export type { ActiveMainStreetPack };
@@ -404,6 +411,242 @@ export function resetMainStreetCardPacks(): void {
   setActiveMainStreetPacks([]);
 }
 
+// ── Boot bootstrap & UI helpers (F9 / CG-0MUZIS4KZ003R1HP) ───
+
+/**
+ * The most recent discovery result, or `null` when packs were never loaded
+ * (browser/core-only build, or discovery skipped). Read by the in-game
+ * listing ({@link toCardPackListingInput}); written only by
+ * {@link bootstrapMainStreetCardPacks} / {@link setMainStreetCardPackLoadResult}.
+ */
+let _lastLoadResult: MainStreetPackLoadResult | null = null;
+
+/** Whether {@link bootstrapMainStreetCardPacks} has completed (success or not). */
+let _bootstrapped = false;
+
+/** Whether the process has run pack discovery once. */
+export function isMainStreetCardPacksBootstrapped(): boolean {
+  return _bootstrapped;
+}
+
+/** The latest pack discovery result, or `null` when none was produced. */
+export function getMainStreetCardPackLoadResult(): MainStreetPackLoadResult | null {
+  return _lastLoadResult;
+}
+
+/**
+ * Record a discovery result as the listing source (test / replay seam).
+ *
+ * Marks discovery as bootstrapped so the scene boot gate does not re-run it.
+ */
+export function setMainStreetCardPackLoadResult(
+  result: MainStreetPackLoadResult | null,
+): void {
+  _lastLoadResult = result;
+  _bootstrapped = true;
+}
+
+/** Options for {@link bootstrapMainStreetCardPacks}. */
+export interface BootstrapMainStreetCardPacksOptions {
+  /**
+   * Content directory override. Defaults to `window.tce.contentDir`. An
+   * explicit `null` forces the base-content path even when a launcher bridge
+   * exists (used by tests).
+   */
+  readonly contentDir?: string | null;
+  /** Core-engine version for compatibility; defaults to the core constant. */
+  readonly engineVersion?: string;
+  /** Packs a save requested (degradation warnings only). */
+  readonly requestedPacks?: readonly ActiveMainStreetPack[];
+  /** Manifest transport override (tests). */
+  readonly fetchManifest?: MainStreetPackLoadOptions['fetchManifest'];
+  /** CSV transport override (tests). */
+  readonly fetchCsv?: MainStreetPackLoadOptions['fetchCsv'];
+  /** Dynamic-import transport override (tests). */
+  readonly importer?: MainStreetPackLoadOptions['importer'];
+  /** Entitlement client override; defaults to the `window.tce` client. */
+  readonly client?: CardPackClient;
+  /** Discovery loader override; defaults to the core `loadCardPacks`. */
+  readonly loader?: MainStreetCardPackLoader;
+  /** Warning sink; defaults to `console`. */
+  readonly logger?: MainStreetCardPackLogger;
+  /** Storage backend for the enabled-pack preference (tests). */
+  readonly storage?: StorageLike | null;
+}
+
+/**
+ * Discover, merge and apply the installed card packs *before* scene setup.
+ *
+ * This is the Main Street boot entry point (called from
+ * `createMainStreetGame.ts` / `main.ts`, and by the scene lifecycle when the
+ * launcher started the scene directly). It never throws:
+ *
+ *   - no content directory (browser / core-only build) → base content;
+ *   - any discovery failure → {@link loadMainStreetCardPacks} already degrades
+ *     to base content;
+ *   - a missing/malformed manifest → base content.
+ *
+ * On success the merged pool is applied to the live templates so
+ * `setupMainStreetGame()` deals pack cards, and the enabled-pack preference
+ * seeds the active set. Returns the load result, or `null` when no content
+ * directory was available.
+ */
+export async function bootstrapMainStreetCardPacks(
+  options: BootstrapMainStreetCardPacksOptions = {},
+): Promise<MainStreetPackLoadResult | null> {
+  const contentDir =
+    options.contentDir !== undefined
+      ? options.contentDir
+      : readContentDirFromWindow();
+
+  if (!contentDir) {
+    // Safe base-content fallback: no packs are reachable in this environment.
+    resetMainStreetCardPacks();
+    _lastLoadResult = null;
+    _bootstrapped = true;
+    return null;
+  }
+
+  const enabledPackIds = getEnabledCardPackIds(options.storage) ?? undefined;
+  const result = await loadMainStreetCardPacks({
+    contentDir,
+    engineVersion: options.engineVersion,
+    requestedPacks: options.requestedPacks,
+    enabledPackIds,
+    fetchManifest: options.fetchManifest,
+    fetchCsv: options.fetchCsv,
+    importer: options.importer,
+    client: options.client,
+    loader: options.loader,
+    logger: options.logger,
+  });
+
+  applyMainStreetCardPool(result.pool);
+  _lastLoadResult = result;
+  _bootstrapped = true;
+  return result;
+}
+
+/**
+ * The enabled pack ids shown by the listing.
+ *
+ * The stored preference wins when present (an empty array means the player
+ * disabled every pack). With no preference all entitled packs are enabled by
+ * default, matching the loader.
+ */
+export function resolveEnabledPackIds(
+  load: MainStreetPackLoadResult | null,
+  storage?: StorageLike | null,
+): string[] {
+  const persisted = getEnabledCardPackIds(storage);
+  if (persisted !== null) return persisted;
+  return load ? load.loaded.map((pack) => pack.manifest.id) : [];
+}
+
+/**
+ * Shape a Main Street discovery result as a core {@link CardPackLoadResult}
+ * for the reusable `CardPackListing`.
+ *
+ * Loaded packs carry an explicit `enabled` flag derived from *enabledPackIds*
+ * so the listing renders the player's toggles (the loader always marks its
+ * packs enabled).
+ */
+export function toCardPackListingInput(
+  load: MainStreetPackLoadResult | null,
+  enabledPackIds: readonly string[],
+): CardPackLoadResult {
+  if (!load) return { packs: [], incompatible: [], locked: [], errors: [] };
+  const enabled = new Set(enabledPackIds);
+  return {
+    packs: load.loaded.map((pack) => ({
+      ...pack,
+      enabled: enabled.has(pack.manifest.id),
+    })),
+    incompatible: load.incompatible,
+    locked: load.locked,
+    errors: load.errors,
+  };
+}
+
+/** The outcome of {@link applyEnabledMainStreetPacks}. */
+export interface ApplyEnabledMainStreetPacksResult {
+  /** Whether the requested enabled set was applied. */
+  readonly applied: boolean;
+  /** The enabled set in effect after the call (previous set on refusal). */
+  readonly enabledPackIds: string[];
+  /** Human-readable refusal reason, when `applied` is false. */
+  readonly reason: string | null;
+}
+
+/** Options for {@link applyEnabledMainStreetPacks}. */
+export interface ApplyEnabledMainStreetPacksOptions {
+  /**
+   * Live game state. When supplied, a toggle that would strand a live card
+   * instance (a pack card in play) is refused and the previous pool restored
+   * — the "refuse only when a live card instance needs the missing template"
+   * policy, honoured for the interactive toggle.
+   */
+  readonly state?: MainStreetState | null;
+  /** Persist the new enabled set as the new-game preference. Default true. */
+  readonly persist?: boolean;
+  /** Storage backend for the preference (tests). */
+  readonly storage?: StorageLike | null;
+}
+
+/**
+ * Re-merge the base pool with *enabledPackIds* and apply it to the live
+ * templates, so the game's card pool refreshes consistently when a pack is
+ * enabled/disabled in the listing.
+ *
+ * Enabling is always safe (additive rows). Disabling a pack whose cards are
+ * still live in *state* is refused: the previous pool is restored and
+ * `applied: false` is returned with an actionable reason, so a save can never
+ * be stranded mid-run. The enabled set is persisted as the new-game
+ * preference on success.
+ */
+export function applyEnabledMainStreetPacks(
+  load: MainStreetPackLoadResult | null,
+  enabledPackIds: readonly string[],
+  options: ApplyEnabledMainStreetPacksOptions = {},
+): ApplyEnabledMainStreetPacksResult {
+  const previousEnabled = getActiveMainStreetPacks().map((pack) => pack.id);
+  const previousPool = mergeMainStreetCardPool(CARD_DATA_RAW, load?.loaded ?? [], {
+    enabledPackIds: previousEnabled,
+  });
+
+  if (!load) {
+    return {
+      applied: false,
+      enabledPackIds: previousEnabled,
+      reason: 'No card packs are installed.',
+    };
+  }
+
+  const nextPool = mergeMainStreetCardPool(CARD_DATA_RAW, load.loaded, {
+    enabledPackIds,
+  });
+  applyMainStreetCardPool(nextPool);
+
+  if (options.state) {
+    const missing = findMissingLiveTemplateIds(options.state);
+    if (missing.length > 0) {
+      applyMainStreetCardPool(previousPool);
+      return {
+        applied: false,
+        enabledPackIds: previousEnabled,
+        reason:
+          'A card from that pack is currently in play — finish or restart ' +
+          'the game before disabling it.',
+      };
+    }
+  }
+
+  if (options.persist !== false) {
+    setEnabledCardPackIds(enabledPackIds, options.storage);
+  }
+  return { applied: true, enabledPackIds: [...enabledPackIds], reason: null };
+}
+
 // ── Live-template resolution (degradation refusal) ──────────
 
 /** Every card template id currently available across all card families. */
@@ -425,8 +668,14 @@ export function getAvailableTemplateIds(): string[] {
  */
 export function collectLiveCardIds(state: MainStreetState): string[] {
   const ids = new Set<string>();
+  // Normalise to the base template id (copy/serial suffixes like `-0` are
+  // stripped): live instances carry suffixed ids (`biz-bakery-1`) while
+  // templates are keyed by the base id (`biz-bakery`), so comparing raw ids
+  // would report every real card as "missing" (CG-0MUZIS4KZ003R1HP).
   const add = (card: { id?: unknown } | null | undefined): void => {
-    if (card && typeof card.id === 'string' && card.id.length > 0) ids.add(card.id);
+    if (card && typeof card.id === 'string' && card.id.length > 0) {
+      ids.add(getBaseTypeId(card.id));
+    }
   };
   const addAll = (cards: readonly unknown[] | undefined): void => {
     for (const card of cards ?? []) add(card as { id?: unknown });
@@ -520,4 +769,12 @@ export const MainStreetCardPacks = {
   getActive: getActiveMainStreetPacks,
   /** Live instances that a missing pack would strand. */
   findMissingLiveTemplateIds,
+  /** Discover + merge + apply installed packs before scene setup. */
+  bootstrap: bootstrapMainStreetCardPacks,
+  /** Whether boot discovery has completed. */
+  isBootstrapped: isMainStreetCardPacksBootstrapped,
+  /** The latest discovery result (listing source). */
+  getLoadResult: getMainStreetCardPackLoadResult,
+  /** Apply a new enabled set, refusing to strand live pack cards. */
+  applyEnabled: applyEnabledMainStreetPacks,
 } as const;

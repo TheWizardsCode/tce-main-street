@@ -38,6 +38,11 @@ import { MainStreetTutorialHints } from './MainStreetTutorialHints';
 import { StatsOverlay } from './StatsOverlay';
 import { TutorialOfferModal } from './TutorialOfferModal';
 import { MainStreetNewGameOverlay, resetNewGameSelectionFlag } from './MainStreetNewGameOverlay';
+import {
+  bootstrapMainStreetCardPacks,
+  isMainStreetCardPacksBootstrapped,
+} from '../MainStreetCardPacks';
+import { readContentDirFromWindow } from '@ui/game-plugin-boot';
 
 export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 
@@ -114,6 +119,38 @@ export function preload(lmCtx: MainStreetLifecycleManagerContext): void {
 }
 
 export function create(lmCtx: MainStreetLifecycleManagerContext): void {
+    const s = lmCtx.scene;
+
+    // Card packs (F9 / CG-0MUZIS4KZ003R1HP): when the launcher starts this
+    // scene directly (the game's own `main.ts` did not run), discover the
+    // installed packs and only then set the game up, so the first deal can
+    // include pack cards. In a plain browser / test run there is no content
+    // directory, so this gate is skipped and the synchronous path below is
+    // byte-for-byte unchanged. Discovery never throws and degrades to base
+    // content, so the scene still boots when the manifest is missing.
+    if (shouldBootstrapPacks(s)) {
+      void bootstrapMainStreetCardPacks().then(
+        () => createScene(lmCtx),
+        () => createScene(lmCtx),
+      );
+      return;
+    }
+
+    createScene(lmCtx);
+}
+
+/** Whether the scene must await pack discovery before setting up. */
+function shouldBootstrapPacks(s: MainStreetLifecycleManagerContext['scene']): boolean {
+    if (s?.replayMode) return false;
+    if (isMainStreetCardPacksBootstrapped()) return false;
+    try {
+      return readContentDirFromWindow() !== null;
+    } catch {
+      return false;
+    }
+}
+
+function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
 
     const s = lmCtx.scene;
     markSceneValid(s);

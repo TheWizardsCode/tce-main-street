@@ -5,7 +5,20 @@ import type { EventCard, StaffCard } from '../MainStreetCards';
 import { SFX_KEYS } from './MainStreetConstants';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import type { TurnResult } from '../MainStreetEngine';
-import { FONT_FAMILY, createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
+import {
+  FONT_FAMILY,
+  CardPackListing,
+  createOverlayBackground,
+  createOverlayButton,
+  dismissOverlay,
+  enabledCardPackIds,
+} from '@ui';
+import {
+  applyEnabledMainStreetPacks,
+  getMainStreetCardPackLoadResult,
+  resolveEnabledPackIds,
+  toCardPackListingInput,
+} from '../MainStreetCardPacks';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
 import { buildJournal, journalIsEmpty, journalTitle, choiceClarityLabels } from '../MainStreetStorylineJournal';
@@ -1163,5 +1176,71 @@ export class MainStreetOverlayContent {
       onClose?.();
     });
     s.overlayObjects.push(closeBtn);
+  }
+
+  /**
+   * Shows the **Card Packs** overlay (F9 / CG-0MUZIS4KZ003R1HP).
+   *
+   * Renders the reusable, SLL-positioned core `CardPackListing` over the packs
+   * discovered at boot ({@link getMainStreetCardPackLoadResult}). Each row shows
+   * its installed/unlocked/locked state; locked and incompatible packs are
+   * read-only, entitled packs carry an enable/disable control.
+   *
+   * Toggling re-merges and re-applies the game's card pool immediately
+   * ({@link applyEnabledMainStreetPacks}) and persists the enabled set as the
+   * new-game preference — so the pool refreshes consistently rather than
+   * requiring a restart. A toggle that would strand a card currently in play
+   * is refused in place with an explanatory hint. The overlay adds no
+   * animation, so reduced motion is honoured by construction, and every
+   * interaction plays through `safePlaySound` so mute/volume still apply.
+   */
+  public showCardPacksDialog(): void {
+    const s = this.scene;
+    if (s.replayMode) return;
+
+    const load = getMainStreetCardPackLoadResult();
+    let enabledIds = resolveEnabledPackIds(load);
+
+    // Modal backdrop (depth 199). The listing draws its own SLL panel and is
+    // parented above it (depth 201), matching the overlay depth convention.
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 });
+    s.overlayObjects.push(...overlay.objects);
+
+    const listing = new CardPackListing(s, {
+      result: toCardPackListingInput(load, enabledIds),
+      onToggle: (state) => {
+        const nextIds = enabledCardPackIds(state);
+        const outcome = applyEnabledMainStreetPacks(load, nextIds, {
+          state: s.state,
+        });
+        if (!outcome.applied) {
+          // Refused (a live card needs the pack): revert the rendered toggle
+          // and explain the refusal without changing the pool.
+          safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
+          listing.setResult(toCardPackListingInput(load, enabledIds));
+          s.instructionText?.setText?.(
+            outcome.reason ?? 'That pack cannot be disabled right now.',
+          );
+          return;
+        }
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        enabledIds = outcome.enabledPackIds;
+      },
+      onClose: () => this.closeCardPacksDialog(listing),
+    });
+
+    const container = listing.gameObject;
+    container.setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(container);
+    s.overlayObjects.push(container);
+  }
+
+  /** Dismiss the Card Packs overlay and release its listing objects. */
+  private closeCardPacksDialog(listing: CardPackListing): void {
+    const s = this.scene;
+    safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+    listing.destroy();
+    dismissOverlay(s.overlayObjects);
+    s.overlayObjects = [];
   }
 }

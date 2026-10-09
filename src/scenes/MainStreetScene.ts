@@ -1342,6 +1342,17 @@ export class MainStreetScene extends CardGameScene {
     }
   }
 
+  /**
+   * Shows the Card Packs overlay (F9 / CG-0MUZIS4KZ003R1HP): the installed
+   * card packs with their lock state and enable/disable controls. Delegates to
+   * the overlay manager's showCardPacksDialog.
+   */
+  public showCardPacks(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCardPacksDialog === 'function') {
+      (this.msOverlayManager as any).showCardPacksDialog();
+    }
+  }
+
   // ── Tutorial Flow (Milestone 5 action-gated) ────────────
   public confirmTutorialStep(...args: any[]): any {
     return (this.msLifecycleManager as any).confirmTutorialStep.apply(this.msLifecycleManager, args);
