@@ -117,6 +117,9 @@ npm test        # unit suite (vitest run --project unit)
 npm run build   # type-check (tsc --noEmit) + production bundle into dist/
 ```
 
+See [docs/testing.md](docs/testing.md) for the browser (headless Chromium)
+suite and the shared-helper import convention (`@core-tests/*` aliases).
+
 Run the game locally in watch mode:
 
 ```bash
