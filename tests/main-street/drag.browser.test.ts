@@ -21,42 +21,28 @@ import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
 import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
+import { dismissBootModals } from './helpers/bootModals';
 
 const GAME_W = 1280;
 const GAME_H = 720;
 
-/**
- * Clear persistent storage (localStorage + IndexedDB) so a checkpoint saved
- * by another test (or a previous run) cannot surface the resume overlay
- * (depth-2000 full-screen blocker) during the drag tests.
- */
+/** Clear localStorage so persisted tutorial hints cannot surface a modal. */
 async function clearPersistentStorage(): Promise<void> {
   try { localStorage.clear(); } catch { /* ignore */ }
-  try {
-    let names: string[] = ['save-load-store'];
-    if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
-      try {
-        names = (await Promise.race([
-          indexedDB.databases(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('databases timeout')), 2000)),
-        ])).map((d: IDBDatabaseInfo) => d.name).filter((n): n is string => !!n);
-      } catch { /* fall back to the default name */ }
-    }
-    await Promise.race([
-      Promise.all(
-        names.map(
-          (n) =>
-            new Promise<void>((resolve) => {
-              const req = indexedDB.deleteDatabase(n);
-              req.onsuccess = () => resolve();
-              req.onerror = () => resolve();
-              req.onblocked = () => resolve();
-            }),
-        ),
-      ),
-      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-    ]);
-  } catch { /* ignore */ }
+}
+
+/**
+ * Remove the persisted run checkpoint through the live save store.
+ *
+ * The store lives in IndexedDB, which is origin-scoped and shared across
+ * browser test files: a checkpoint saved here would otherwise be offered to
+ * the next boot as the blocking resume overlay. Deleting the IndexedDB
+ * database out from under the store's open connection instead wedges its
+ * async load (the boot flow never reaches its modal decision), so clear
+ * through the store as `MainStreetNewGame.browser.test.ts` does.
+ */
+async function clearSaveStore(scene: Scene | undefined): Promise<void> {
+  try { await scene?.saveStore?.clear?.(); } catch { /* ignore in constrained environments */ }
 }
 
 async function bootGame(): Promise<Phaser.Game> {
@@ -82,6 +68,10 @@ async function bootGame(): Promise<Phaser.Game> {
     height: GAME_H,
   });
   await waitForScene(game, 'MainStreetScene');
+  // The tutorial offer is pre-skipped, so the boot flow presents the blocking
+  // New Game selector next; dismiss it before any pointer interaction
+  // (MS-0MV1HAOC8006SCON).
+  await dismissBootModals(game.scene.getScene('MainStreetScene'));
   return game;
 }
 
@@ -202,7 +192,10 @@ async function simulateDrag(sx: number, sy: number, dx: number, dy: number, sett
 describe('MainStreet drag-to-buy/place (browser)', () => {
   let game: Phaser.Game | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clear the run checkpoint through the live store before tearing the game
+    // down so the next boot cannot offer the blocking resume overlay.
+    await clearSaveStore(game?.scene.getScene('MainStreetScene') as Scene | undefined);
     destroyGame(game);
     game = null;
     // Reset tutorial state between tests so each run starts fresh.
