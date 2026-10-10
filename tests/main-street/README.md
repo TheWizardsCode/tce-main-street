@@ -83,6 +83,19 @@ entries appear after the phase UI. The flag is scene-instance state and is reset
 by `createScene()`, so an interrupted closing can never leave the log blank
 across a scene restart.
 
+## Boot modals in browser tests
+
+Every browser suite that boots the real `MainStreetScene` and then dispatches
+synthetic pointer events (`mousedown`/`mouseup`, drags) must dismiss the
+blocking pre-game modals first by calling `dismissBootModals(scene)` from
+[`helpers/bootModals.ts`](helpers/bootModals.ts) after `waitForScene`. The
+tutorial offer is pre-skipped in test setup, so the boot flow proceeds to the
+"New Game" mode selector: a full-screen interactive backdrop (depth 200) that
+hit-tests above the street slots under Phaser's `topOnly` input mode. Until it
+is dismissed, a synthetic click on a slot is absorbed by the backdrop and
+`onSlotClick` is never reached. This was the root cause of the
+`click-place.browser.test.ts` regression (MS-0MV1HARL5007KCAU).
+
 ## Layout regression maintenance
 
 The browser test `MainStreetLayoutAnchors.browser.test.ts` asserts explicit numeric bounds for:

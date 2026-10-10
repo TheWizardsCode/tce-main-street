@@ -22,6 +22,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissBootModals } from './helpers/bootModals';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
 import { canPurchaseBusiness, getEmptySlots } from '../../src/MainStreetMarket';
 import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
@@ -87,6 +88,14 @@ async function bootGame(): Promise<Phaser.Game> {
     height: GAME_H,
   });
   await waitForScene(game, 'MainStreetScene');
+  // The tutorial offer is pre-skipped, so the boot flow presents the blocking
+  // New Game selector next. Its full-screen interactive backdrop (depth 200)
+  // hit-tests above the street slots under Phaser's topOnly input mode, so a
+  // synthetic click on an empty slot is absorbed by the backdrop and
+  // onSlotClick is never called. Dismiss it (polling, because the modal
+  // decision runs after the asynchronous checkpoint load) before any pointer
+  // interaction (MS-0MV1HARL5007KCAU).
+  await dismissBootModals(game.scene.getScene('MainStreetScene'));
   return game;
 }
 
@@ -304,8 +313,12 @@ describe('MainStreet click-to-place via real pointer events (browser)', () => {
     expect(scene.state.bankedActions).toBe(beforeBanked);
     expect(scene.state.hand.some((c: any) => c.id === business.id)).toBe(true);
     expect(scene.pendingHandIndex).toBe(0);
-    // The failed attempt must never leave the scene stuck in 'animating'.
-    expect(scene.uiPhase).toBe('placing-from-hand');
+    // The failed attempt must never leave the scene stuck in 'animating'. The
+    // pre-flight legality path intentionally returns to 'market' while
+    // retaining the hand selection (pendingHandIndex, asserted above) so the
+    // player can immediately retarget (MS-0MUUDWIXG009IB0W).
+    expect(scene.uiPhase).not.toBe('animating');
+    expect(scene.uiPhase).toBe('market');
     expect(scene.hiddenTransferSourceCardIds.has(business.id)).toBe(false);
   }, 60_000);
 
