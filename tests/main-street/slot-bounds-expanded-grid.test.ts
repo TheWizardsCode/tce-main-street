@@ -111,6 +111,7 @@ describe('slot bounds use state.streetGrid.length (not hard-coded 10)', () => {
   it('error messages reflect actual grid length', () => {
     const { state, handIndex } = setupExpandedState(40);
     const result = canPlaceFromHand(state, handIndex, 40);
+    if (result.legal) throw new Error('expected slot 40 to be rejected');
     expect(result.reason).toContain('0-39');
   });
 });
