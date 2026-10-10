@@ -352,8 +352,11 @@ describe('MainStreet end-of-turn income presentation (controller wiring)', () =>
     expect(scene.incomeCollectionActive).toBe(false);
 
     // ...and the day still starts in the usual window.
+    // Under full-suite CPU contention the 800ms delayedCall can stretch,
+    // so use a generous margin consistent with the PHASED_SHOW_WAIT_MS
+    // pattern that guards the normal phased-show path.
     await waitForCondition(() => state.turn > turnBefore && state.phase === 'MarketPhase', {
-      timeoutMs: 4000,
+      timeoutMs: PHASED_SHOW_WAIT_MS,
       label: 'turn advance after animator failure',
     });
   }, 15_000);
