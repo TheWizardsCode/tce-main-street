@@ -15,12 +15,19 @@
  * street-slot click (the regression guard from click-place.browser.test.ts);
  * market/hand clicks call the scene on* handlers directly as in that suite.
  *
+ * Because the street-slot click goes through the real pointer pipeline, every
+ * full-screen boot modal must be dismissed first: the tutorial offer is
+ * pre-skipped, so the boot flow presents the blocking "New Game" selector,
+ * whose interactive backdrop would otherwise hit-test above the slot. See
+ * `dismissBootModals` in `helpers/bootModals.ts`.
+ *
  * @module tests/main-street/composite-click.browser
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissBootModals } from './helpers/bootModals';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
 import { getEmptySlots } from '../../src/MainStreetMarket';
 import { createBusinessDeck, createCommunitySpaceDeck } from '../../src/MainStreetCards';
@@ -98,6 +105,14 @@ async function bootGame(): Promise<Phaser.Game> {
   // contention (the exact scenario that stalls the full tween).
   const sceneAny = game.scene.getScene('MainStreetScene') as any;
   if (sceneAny?.settingsPanel) sceneAny.settingsPanel._reducedMotion = true;
+  // The tutorial offer is pre-skipped, so the boot flow presents the blocking
+  // "New Game" mode selector next. Its full-screen interactive backdrop
+  // (depth 200) hit-tests above the street slots, so a synthetic slot click
+  // is delivered to the backdrop instead of the slot and the placement never
+  // registers. Dismiss it (polling, because the modal decision runs after the
+  // asynchronous checkpoint load) before any pointer interaction
+  // (MS-0MV1HABBG003CKXE).
+  await dismissBootModals(sceneAny);
   return game;
 }
 
