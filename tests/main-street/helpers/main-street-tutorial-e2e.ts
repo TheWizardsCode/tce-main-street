@@ -349,7 +349,7 @@ async function attemptBoot(cycleNumber: number, attempt: number): Promise<Phaser
  * (unlike deleteDatabase). Abandoned (race-capped) wipes leave only an idle
  * connection in this context, which is torn down with the session.
  */
-async function clearStaleMainStreetSaves(): Promise<void> {
+export async function clearStaleMainStreetSaves(): Promise<void> {
   const deadline = () =>
     new Promise<void>((resolve) => setTimeout(resolve, 5000));
   try {
