@@ -890,10 +890,10 @@ export async function clickStreetSlotExpectRejected(
  *
  * `autoAdvance` (default true) mirrors the historical helper behaviour:
  * after the end-turn lands, if the current step is still an end-turn step it
- * advances it directly. Pass `false` at the T21 boundary (T21 → T22) where the
- * NEXT step is also an end-turn (the T22 banking day): the direct advance
- * would skip T22, so the caller must drive T22 through the banking hint
- * (`clickEndTurnBankingHint`) instead.
+ * advances it directly. (Before MS-0MV4F04NN007H3DB the T21 boundary needed
+ * `false` to avoid auto-skipping the T22 banking day; T22 is gone, so callers
+ * may keep passing `false` there — the next step, T23, is driven by its own
+ * play-event action rather than an end-turn.)
  */
 export async function clickEndTurn(scene: Phaser.Scene, autoAdvance = true): Promise<void> {
   const s = scene as any;
@@ -914,36 +914,6 @@ export async function clickEndTurn(scene: Phaser.Scene, autoAdvance = true): Pro
   if (autoAdvance) {
     maybeAdvanceFromRequiredAction(scene, 'end-turn');
   }
-  await new Promise((r) => setTimeout(r, 200));
-}
-
-/**
- * End the deliberate banking day (T22, MS-0MT3JK16W006A66P) and dismiss the
- * contextual banking hint.
- *
- * Unlike `clickEndTurn`, this does NOT auto-advance via
- * `maybeAdvanceFromRequiredAction`: the production flow defers the end-turn
- * step completion while the hint is shown, so the test must dismiss the hint
- * (which completes the step and advances to T23) to mirror the real player.
- * Only T22 leaves a spare action, so only this end-turn shows the hint.
- */
-export async function clickEndTurnBankingHint(scene: Phaser.Scene): Promise<void> {
-  const s = scene as any;
-  if (s.uiPhase !== 'market') { s.uiPhase = 'market'; }
-  const turnBefore = s.state?.turn ?? 0;
-  try { s.endTurn(); } catch (_) { /* ignore */ }
-  // The hint is presented after the closing presentation; wait for its title.
-  const hintText = (): string =>
-    document.querySelector('.ms-tutorial-tooltip')?.textContent ?? '';
-  await pollUntil(() => hintText().includes('Bank your spare action'), 15_000);
-  if (hintText().includes('Bank your spare action')) {
-    await clickOverlayButtonByText('Dismiss');
-  }
-  // Dismiss completes the deferred T22 step and advances the tutorial.
-  await pollUntil(
-    () => getStepIndex(scene) >= 22 && (s.state?.turn ?? 0) > turnBefore,
-    10_000,
-  );
   await new Promise((r) => setTimeout(r, 200));
 }
 

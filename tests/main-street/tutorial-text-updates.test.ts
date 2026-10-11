@@ -234,18 +234,7 @@ describe('Tutorial text updates (25-step two-turn restructure)', () => {
     });
   });
 
-  describe('T22 A quiet week (banking day, MS-0MT3JK16W006A66P)', () => {
-    it('tells the player to end the turn and references the held Festival by name', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!).body;
-      expect(body.toLowerCase()).toMatch(/end the turn/);
-      // {cardName} resolves from live card data (evt-festival) — no hardcoded name.
-      expect(body).toMatch(/Festival/);
-    });
-    it('does not pre-empt the contextual hint copy (cap-2 wording lives in the hint)', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!).body;
-      expect(body.toLowerCase()).not.toMatch(/bank/);
-    });
-  });
+  // MS-0MV4F04NN007H3DB: the T22 "A quiet week" banking-day step was removed.
 
   describe('T25 button label (AC: "Let\'s play!")', () => {
     it('overlay startFullGame is "Let\'s play!"', () => {

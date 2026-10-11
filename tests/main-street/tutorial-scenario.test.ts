@@ -86,12 +86,11 @@ describe('STANDARD_TUTORIAL_SCENARIO definition', () => {
     expect(STANDARD_TUTORIAL_SCENARIO.market.cards.length).toBe(MARKET_TOTAL_SLOTS);
   });
 
-  it('defines exactly 8 incident deck cards (one per End Turn, two-turn flow)', () => {
-    // MS-0MT3JK16W006A66P: the merged favour/bookshop day plus the deliberate
-    // banking day leave the 26-step tutorial with 9 days and 8 End Turns
-    // (T6, T8, T11, T14, T17, T19, T21, T22), so the deterministic deck holds
-    // 8 incidents.
-    expect(STANDARD_TUTORIAL_SCENARIO.incidentDeck.length).toBe(8);
+  it('defines exactly 7 incident deck cards (one per End Turn, two-turn flow)', () => {
+    // MS-0MV4F04NN007H3DB: removing the T22 banking day leaves the 25-step
+    // tutorial with 8 days and 7 End Turns (T6, T8, T11, T14, T17, T19, T21),
+    // so the deterministic deck holds 7 incidents.
+    expect(STANDARD_TUTORIAL_SCENARIO.incidentDeck.length).toBe(7);
   });
 
   it('all development row card template IDs are from Tier-1 pool', () => {
@@ -170,9 +169,9 @@ describe('createTutorialScenario', () => {
     expect(events.length).toBe(1);
   });
 
-  it('has exactly 8 cards in incident deck (one per End Turn)', () => {
+  it('has exactly 7 cards in incident deck (one per End Turn; T22 banking day removed)', () => {
     const state = createTutorialScenario();
-    expect(state.incidentDeck.length).toBe(8);
+    expect(state.incidentDeck.length).toBe(7);
   });
 
   it('has all incident cards as Incident-trigger events', () => {
@@ -216,13 +215,13 @@ describe('createTutorialScenario', () => {
 
   // ── Coin budget verification (AC5: 12-coin flow + required conversion) ──
 
-  it('provides sufficient coin budget for the 26-step two-turn flow (listed-cost placements, positive balances)', () => {
+  it('provides sufficient coin budget for the 25-step two-turn flow (listed-cost placements, positive balances)', () => {
     const state = createTutorialScenario();
     // Scenario starts with 1200 coins (higher than Easy's 500 so holding a card
     // until next week overhead (−100/−75/−25 ongoing costs) never goes negative).
     expect(state.resourceBank.coins).toBe(1200);
 
-    // 26-step flow (MS-0MT3JK16W006A66P): 9 days, 8 End Turns, budget verified
+    // 25-step flow (MS-0MV4F04NN007H3DB): 8 days, 7 End Turns, budget verified
     // in tutorial-action-economy.test.ts as well.
     // The Laundromat referenced in T3 must exist and cost ≤ 400
     const t3 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T3')!;

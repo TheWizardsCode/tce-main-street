@@ -437,7 +437,7 @@ Main Street Milestone 5 (CG-0MOY5TOJK008JFJM) adds a first-time player onboardin
 
 ### Action-Gated Tutorial Flow
 
-- **Module:** `TutorialFlow.ts` — T1-T25 step definitions with pure progression controller (MS-0MT3JK16W006A66P merged the favour/bookshop day).
+- **Module:** `TutorialFlow.ts` — 25 step definitions (T1-T21, T23-T26) with pure progression controller (MS-0MT3JK16W006A66P merged the favour/bookshop day; MS-0MV4F04NN007H3DB removed the T22 banking day).
 - Each step gates on a specific player action (confirm, select-business, place-business, end-turn, etc.)
 - Invalid actions show: "Complete the highlighted step first."
 

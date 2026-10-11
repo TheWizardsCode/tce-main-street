@@ -186,7 +186,7 @@ export function onTutorialActionComplete(lmCtx: MainStreetLifecycleManagerContex
 
     // A completed place-business step already returns the scene to the
     // market phase with pendingHandIndex cleared. This reset for play-event
-    // steps (T22) keeps the held event card clickable in the hand (event
+    // steps (T23) keeps the held event card clickable in the hand (event
     // clicks are only wired while uiPhase === 'market').
     const nextStep = getCurrentStep(newState);
     if (nextStep?.requiredAction === 'play-event') {

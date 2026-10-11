@@ -91,8 +91,8 @@ function partitionIntoWeeks() {
 }
 
 describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
-  it('has exactly 26 unified steps after the Day 2/4/8 fixes, the favour/bookshop merge, and the banking day', () => {
-    expect(UNIFIED_TUTORIAL_STEPS.length).toBe(26);
+  it('has exactly 25 unified steps after the Day 2/4 fixes, the favour/bookshop merge, and the T22 removal', () => {
+    expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25);
   });
 
   it('no day requires more than one action-consuming step (Easy base = 1, no prior bank)', () => {
@@ -117,30 +117,20 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     ).toEqual([]);
   });
 
-  it('MS-0MT3JK16W006A66P: every day spends exactly one action except the deliberate banking day', () => {
+  it('every day spends exactly one action (T22 banking day removed by MS-0MV4F04NN007H3DB)', () => {
     // Producer review (2026-10-04) rejected a day that ended without spending
-    // its action: the free Community Favour day now also places the Bookshop
-    // (T16) before ending (T17). Producer option (a) (2026-10-09) then added
-    // T22 as the SINGLE intentional exception — a banking day with no
-    // action-consuming step so the player ends it with a spare action and the
-    // banking hint fires. Every other day must still have exactly one
-    // consuming action.
+    // its action: the free Community Favour day also places the Bookshop
+    // (T16) before ending (T17). The former T22 banking day was the single
+    // intentional exception; it has been removed, so now *every* day has
+    // exactly one consuming action.
     const days = partitionIntoWeeks();
-    const bankingDays = days.filter((d) => d.steps.some((s) => s.id === 'T22'));
-    expect(bankingDays).toHaveLength(1);
+    expect(days.some((d) => d.steps.some((s) => s.id === 'T22'))).toBe(false);
     const violations: string[] = [];
     for (const day of days) {
       const consumers = day.steps.filter(
         (s) => s.gate === 'action' && consumesAction(s.requiredAction),
       );
-      const isBankingDay = day.steps.some((s) => s.id === 'T22');
-      if (isBankingDay) {
-        if (consumers.length !== 0) {
-          violations.push(
-            `Day ${day.index} (${day.steps.map((s) => s.id).join(', ')}): banking day must have 0 consumers, got ${consumers.length}`,
-          );
-        }
-      } else if (consumers.length !== 1) {
+      if (consumers.length !== 1) {
         violations.push(
           `Day ${day.index} (${day.steps.map((s) => s.id).join(', ')}): ${consumers.length} consumers`,
         );
@@ -149,22 +139,23 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     expect(
       violations,
       violations.length
-        ? `Days without exactly one spent action (banking day excepted):\n${violations.join('\n')}`
+        ? `Days without exactly one spent action:\n${violations.join('\n')}`
         : undefined,
     ).toEqual([]);
   });
 
-  it('MS-0MT3JK16W006A66P: the banking day (T22) ends with a bankable action so the hint fires', () => {
+  it('MS-0MV4F04NN007H3DB: no end-turn leaves a spare action, so the banking hint is not triggered', () => {
     // Simulate the action economy (mirrors MainStreetEngine.consumeAction +
-    // executeWeekStart banking) and assert day 8 ends with actionsRemaining > 0
-    // — the exact condition `shouldTriggerBankingHint` gates on while the
-    // tutorial is active.
+    // executeWeekStart banking). With the T22 banking day removed, every
+    // end-turn should occur with actionsRemaining === 0, the exact negation of
+    // the condition `shouldTriggerBankingHint` gates on while the tutorial is
+    // active.
     let actionsRemaining = 1;
     let bankedActions = 0;
-    let bankingDaySpare: number | null = null;
+    const spareAtEndTurn: { id: string; actions: number }[] = [];
     for (const step of UNIFIED_TUTORIAL_STEPS) {
       if (step.requiredAction === 'end-turn') {
-        if (step.id === 'T22') bankingDaySpare = actionsRemaining;
+        spareAtEndTurn.push({ id: step.id, actions: actionsRemaining });
         const bankable = Math.min(actionsRemaining, 1);
         bankedActions = Math.min(2, bankedActions + bankable);
         actionsRemaining = 1 + bankedActions;
@@ -175,7 +166,8 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
         bankedActions = Math.max(0, bankedActions - 1);
       }
     }
-    expect(bankingDaySpare).toBe(1);
+    expect(spareAtEndTurn.map((e) => e.id)).toEqual(['T6', 'T8', 'T11', 'T14', 'T17', 'T19', 'T21']);
+    expect(spareAtEndTurn.filter((e) => e.actions > 0)).toEqual([]);
   });
 
   it('MS-0MT3JK16W006A66P: the Community Favour is followed by the Bookshop placement before the day ends', () => {
@@ -244,9 +236,9 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     expect(weekOf('T10')).toBe(3);
   });
 
-  it('eight End Turns delimit nine days (T6, T8, T11, T14, T17, T19, T21, T22)', () => {
+  it('seven End Turns delimit eight days (T6, T8, T11, T14, T17, T19, T21)', () => {
     const endTurnIds = UNIFIED_TUTORIAL_STEPS.filter((s) => s.requiredAction === 'end-turn').map((s) => s.id);
-    expect(endTurnIds).toEqual(['T6', 'T8', 'T11', 'T14', 'T17', 'T19', 'T21', 'T22']);
-    expect(partitionIntoWeeks()).toHaveLength(9);
+    expect(endTurnIds).toEqual(['T6', 'T8', 'T11', 'T14', 'T17', 'T19', 'T21']);
+    expect(partitionIntoWeeks()).toHaveLength(8);
   });
 });

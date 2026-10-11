@@ -3,17 +3,16 @@
  *
  * Validates that the highlight rectangles drawn by showStep
  * cover the correct UI areas for each TutorialHighlightZone in the
- * unified T1–T26 tutorial system.
+ * unified T1-T21, T23-T26 tutorial system.
  *
- * Unified step mapping (26 steps, MS-0MT3JK16W006A66P — see TutorialFlow.ts
- * T1-T26 for the authoritative mapping: T1 centerModal, T2 developmentRow, T3
- * laundromatCard, T4 hand, T5 incidentQueue, T6 endTurnButton, T7
- * streetGrid, T8 endTurnButton, T9 investmentsRow, T10 festivalCard,
- * T11 endTurnButton, T12 developmentRow, T13 developmentRow, T14
- * endTurnButton, T15 actionButtons, T16 streetGrid, T17 endTurnButton,
+ * Unified step mapping (25 steps; T22 was removed by MS-0MV4F04NN007H3DB —
+ * see TutorialFlow.ts for the authoritative mapping): T1 centerModal, T2
+ * developmentRow, T3 laundromatCard, T4 hand, T5 incidentQueue, T6
+ * endTurnButton, T7 streetGrid, T8 endTurnButton, T9 investmentsRow, T10
+ * festivalCard, T11 endTurnButton, T12 developmentRow, T13 developmentRow,
+ * T14 endTurnButton, T15 actionButtons, T16 streetGrid, T17 endTurnButton,
  * T18 developmentRow, T19 endTurnButton, T20 streetGrid, T21 endTurnButton,
- * T22 endTurnButton (banking day), T23 hand, T24 hud, T25 challengePanel,
- * T26 completionModal).
+ * T23 hand, T24 hud, T25 challengePanel, T26 completionModal).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
@@ -146,7 +145,7 @@ describe('TutorialOverlayManager highlight zones', () => {
     return null;
   }
 
-  // ── AC 1: HUD highlight (T23, Success and Failure) ─────────
+  // ── AC 1: HUD highlight (T24, Success and Failure) ─────────
 
   it('HUD highlight (T23) starts at hudY and covers the HUD strip', async () => {
     const layout = scene.layout as {

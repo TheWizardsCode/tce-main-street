@@ -1,7 +1,8 @@
 /**
  * Main Street: Unified Tutorial Flow
  *
- * Defines the unified T1-T26 tutorial steps (26 steps) that teach the core
+ * Defines the unified tutorial steps (25 steps; T22 was removed by
+ * MS-0MV4F04NN007H3DB, so the IDs run T1-T21 then T23-T26) that teach the core
  * Main Street loop (buy → hand → end turn → place; invest → optimize →
  * trigger). Each step has a gate type:
  *
@@ -26,8 +27,7 @@
  * T11 (day 3 end), T12-T14 (day 4: move Bookshop, Costs, end),
  * T15-T17 (day 5: Community Favour, place Bookshop, end),
  * T18-T19 (day 6: move Library, end), T20-T21 (day 7: place Library, end),
- * T22 (day 8: banking day — end-turn with a spare action), T23 (day 9: play
- * Local Festival), T24-T26 (day 9: confirmations).
+ * T23 (day 8: play Local Festival), T24-T26 (day 8: confirmations).
  *
  * CG-0MTNMBX5Z002U0MH: inserted T8 (end-turn) before More than Businesses so
  * T7 place-business and T10 buy-event no longer share a single daily action
@@ -38,12 +38,15 @@
  * action (MS-0MT3JK16W006A66P producer review). Per-day budget audit lives in
  * `tests/main-street/tutorial-action-economy.test.ts`.
  *
- * MS-0MT3JK16W006A66P (option a, 2026-10-09): T22 is a deliberate **banking
- * day** — day 8 has no action-consuming step, so the player ends the turn with
- * one unused action. The contextual first-bank hint fires there (once),
- * teaching that unused actions bank (cap 2) for future weeks; day 9 (T23)
- * then starts with the banked action available for the Festival. This is the
- * single intentional exception to "every day spends exactly one action".
+ * MS-0MV4F04NN007H3DB: the former T22 banking day (an end-turn with no
+ * action-consuming step) was removed. The flow now runs straight from T21
+ * (day 7 end) to T23 (day 8: play the held Local Festival); T24-T26 are the
+ * confirmations on that same day. Every day spends its single action before
+ * the next end-turn, so no end-turn leaves a spare action.
+ *
+ * MS-0MT3JK16W006A66P introduced that banking day to fire the contextual
+ * first-bank hint. The hint is retained as a general, tutorial-scoped trigger
+ * but is not expected to fire in this flow — see `BANKING_HINT_STEP`.
  *
  * ## Coin Budget Analysis (TutorialScenario, Easy difficulty)
  *
@@ -66,10 +69,9 @@
  * Event steps follow the same economy as business steps
  * (CG-0MTFWBNL30043ZBM): **taking an Investment event to hand costs 1
  * action** (T10, on day 3) and **playing a held event costs 1 action**
- * (T23, on day 9). Each event step is the only action-consuming step on
- * its day — T8 and T21 end the preceding days and T22 (the banking day)
- * ends day 8 with a spare action, so the Festival day starts with a fresh
- * (banked) action and no step ever overbooks its daily budget.
+ * (T23, on day 8). Each event step is the only action-consuming step on
+ * its day — T8 and T21 end the preceding days, so the Festival day starts
+ * with a fresh action and no step ever overbooks its daily budget.
  *
  * @module
  */
@@ -146,7 +148,7 @@ export const COMPOSITE_BUY_AND_PLACE = 'buy-and-place' as TutorialActionType;
 export type TutorialGateType = 'confirm' | 'action';
 
 /**
- * A single unified tutorial step definition (26 steps total T1-T26).
+ * A single unified tutorial step definition (25 steps; IDs T1-T21, T23-T26).
  *
  * Confirm steps only need `gate: 'confirm'`; they do not have a
  * `requiredAction` field because the only way to advance is by
@@ -223,13 +225,13 @@ export interface UnifiedTutorialStepDef {
  * step places it on day N+1 at listed cost. There are no same-turn
  * composite `buy-and-place` steps.
  *
- * Gate type distribution (26 steps):
- * 8 consuming actions + 8 end-turns + 1 free Community Favour + 9 confirm = 26.
+ * Gate type distribution (25 steps):
+ * 8 consuming actions + 7 end-turns + 1 free Community Favour + 9 confirm = 25.
  * (consuming: T3, T7, T10, T12, T16, T18, T20, T23; end-turns: T6, T8, T11,
- * T14, T17, T19, T21, T22; free favour: T15; confirms: T1, T2, T4, T5, T9,
+ * T14, T17, T19, T21; free favour: T15; confirms: T1, T2, T4, T5, T9,
  * T13, T24, T25, T26.) MS-0MT3JK16W006A66P merged the former day-5 favour day
  * into the Bookshop-placement day so no day ends without spending its action;
- * T22 is the one deliberate banking day (option a, 2026-10-09).
+ * T22 (its banking day) was removed by MS-0MV4F04NN007H3DB.
  */
 export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
   {
@@ -466,20 +468,8 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     referencedCardId: 'cs-library',
   },
   {
-    id: 'T22',
-    // NEW (MS-0MT3JK16W006A66P, option a): the deliberate banking day. Day 8
-    // has no action-consuming step, so T22 ends it with one unused action.
-    // The contextual first-bank hint fires here (once) and teaches that unused
-    // actions bank (cap 2) for future weeks. referencedCardId feeds the
-    // {cardName} placeholder used to refer to the held Festival.
-    titleKey: tutorialKey('T22', 'title'),
-    bodyKey: tutorialKey('T22', 'body'),
-    highlightZone: 'endTurnButton',
-    gate: 'action',
-    requiredAction: 'end-turn',
-    referencedCardId: 'evt-festival-0',
-  },
-  {
+    // MS-0MV4F04NN007H3DB: the former T22 banking day was removed. Day 7 ends
+    // at T21; T23 (play the held Local Festival) is the next step, on day 8.
     id: 'T23',
     titleKey: tutorialKey('T23', 'title'),
     bodyKey: tutorialKey('T23', 'body'),
@@ -518,9 +508,16 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
 ] as const;
 
 /** Contextual first-bank hint (MS-0MT3JK16W006A66P). Not part of the fixed
- * 26-step flow: triggered once from `MainStreetTurnController.endTurn()` while
+ * 25-step flow: triggered once from `MainStreetTurnController.endTurn()` while
  * the tutorial is active and `actionsRemaining > 0` at turn end, exactly when
- * a bank would occur. */
+ * a bank would occur.
+ *
+ * MS-0MV4F04NN007H3DB removed the T22 banking day, so the standard tutorial
+ * flow no longer ends any turn with a spare action and this hint is not
+ * expected to fire. It is retained as a general contextual trigger (harmless
+ * if it does) rather than removed, so the banking-trigger plumbing stays
+ * available should a future flow (or difficulty variant) leave an unused
+ * action at turn end. */
 export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
   id: 'BANKING',
   titleKey: bankingHintKey('title'),
@@ -530,7 +527,7 @@ export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
 };
 
 /** Total number of unified tutorial steps. */
-export const UNIFIED_TUTORIAL_STEP_COUNT = UNIFIED_TUTORIAL_STEPS.length; // 26
+export const UNIFIED_TUTORIAL_STEP_COUNT = UNIFIED_TUTORIAL_STEPS.length; // 25
 
 export const INVALID_ACTION_MESSAGE = 'Complete the highlighted step first.';
 

@@ -40,8 +40,9 @@ const REQUIRED_KEYS = [
   'tutorial.steamFollow.openedBrowser',
   'tutorial.steamFollow.unavailable',
   'tutorial.steamFollow.unlocked',
-  // Tutorial steps T1–T26 (52 = 26 × 2)
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].flatMap(n => [
+  // Tutorial steps T1-T21, T23-T26 (50 = 25 × 2); T22 was removed by
+  // MS-0MV4F04NN007H3DB.
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26].flatMap(n => [
     `tutorial.T${n}.title`,
     `tutorial.T${n}.body`,
   ]),
@@ -56,9 +57,9 @@ describe('Tutorial CSV integrity', () => {
     expect(parts).toEqual(['key', 'text']);
   });
 
-  it('contains exactly 67 data rows (keys)', () => {
+  it('contains exactly 65 data rows (keys)', () => {
     const rows = parseCsv(rawCsv);
-    expect(rows.length).toBe(67);
+    expect(rows.length).toBe(65);
   });
 
   it('every required key is present', () => {
@@ -108,7 +109,7 @@ describe('Tutorial CSV integrity', () => {
     // row would carry a `tutorial.*` key. Assert the known copy resolves and
     // the full key set survives.
     expect(bundle['tutorial.T1.title']).toBe('Welcome to Main Street');
-    expect(Object.keys(bundle).length).toBe(67);
+    expect(Object.keys(bundle).length).toBe(65);
   });
 
   it('comma-bearing values round-trip correctly (RFC4180 quoting)', () => {
@@ -155,7 +156,7 @@ describe('Tutorial CSV integrity', () => {
     expect(t20!.text).toContain('{synergyCardName}');
   });
 
-  it('loader bundle has all 67 keys (CSV loads correctly)', () => {
-    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(67);
+  it('loader bundle has all 65 keys (CSV loads correctly)', () => {
+    expect(Object.keys(TUTORIAL_EN_BUNDLE).length).toBe(65);
   });
 });
