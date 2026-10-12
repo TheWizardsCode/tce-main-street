@@ -189,6 +189,26 @@ async function simulateDrag(sx: number, sy: number, dx: number, dy: number, sett
   await wait(settleMs); // allow dragend / snap-back / illegal feedback processing
 }
 
+/**
+ * Poll for an in-flight transfer visual to appear and return the active
+ * visuals.
+ *
+ * The transfer visual is created asynchronously once the buy/drop command
+ * completes, so a single fixed-delay sample is racy on a loaded worker (a
+ * 40ms sample was observed to miss the visual entirely —
+ * MS-0MV5SS1ES000LKPB). The flight is short (clamped to ≤250ms), so poll
+ * briefly and return the first non-empty sample.
+ */
+async function waitForTransferVisual(scene: Scene, timeoutMs = 500): Promise<any[]> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const visuals = [...(scene.activeTransferVisuals ?? [])];
+    if (visuals.length > 0) return visuals;
+    await wait(10);
+  }
+  return [...(scene.activeTransferVisuals ?? [])];
+}
+
 describe('MainStreet drag-to-buy/place (browser)', () => {
   let game: Phaser.Game | null = null;
 
@@ -234,7 +254,7 @@ describe('MainStreet drag-to-buy/place (browser)', () => {
     // tween is still running, and a y near the slot end (far from the
     // market row) proves the animation did not jump back to the market row
     // (CG-0MST2LS3E004BTPO).
-    const visuals = [...(scene.activeTransferVisuals ?? [])];
+    const visuals = await waitForTransferVisual(scene);
     expect(visuals.length).toBe(1);
     const spread = Math.abs(originY - target.y);
     expect(Math.abs(visuals[0].y - originY)).toBeGreaterThan(spread / 2);
