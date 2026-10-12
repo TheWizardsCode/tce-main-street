@@ -35,10 +35,22 @@ export {
 
 /**
  * Renders the per-player scoreboard above the HUD strip: one cell per seat,
- * evenly distributed, with the active seat bold/green and the human seat
- * coloured distinctly from the AI seats. Transient HUD objects, so they are
- * removed by `clearTransientHud` on the next refresh.
+ * evenly distributed, each drawn in its own persisted seat colour (F5 of
+ * MS-0MUWNTN8W006C7EF) so a seat reads as the same colour here, in the
+ * activity-log prefix (F3) and on its placed-card border (F4). The active seat
+ * is additionally bold and prefixed with `▶`, so the indicator uses the active
+ * seat's colour without relying on colour alone. Transient HUD objects, so they
+ * are removed by `clearTransientHud` on the next refresh.
  */
+
+/**
+ * Neutral fallback text colour for a row with no resolved seat colour.
+ *
+ * Competitive rows always carry a seat colour (see
+ * {@link CompetitiveScoreboardRow.colour}); this only guards a malformed or
+ * single-seat roster, so it is deliberately not a seat colour.
+ */
+const NEUTRAL_ROW_COLOUR = '#ffffff';
 export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext): void {
   const s = renderer.scene;
   const rows: CompetitiveScoreboardRow[] = buildCompetitiveScoreboard(s.state);
@@ -50,7 +62,7 @@ export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext)
 
   rows.forEach((row, index) => {
     const x = hudLeft + colWidth * index + colWidth / 2;
-    const colour = row.isActive ? '#aaffaa' : row.isHuman ? '#ffcc44' : '#88bbff';
+    const colour = row.colour ?? NEUTRAL_ROW_COLOUR;
     const text = markHudTransient(
       s.add
         .text(x, rowY, formatCompetitiveScoreboardRow(row), {
