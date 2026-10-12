@@ -64,6 +64,10 @@ import {
   findContentUnlockGatedPack,
 } from './MainStreetContentUnlockGate';
 import {
+  createPackSourceTransports,
+  type PackSourceRegistry,
+} from './MainStreetPackSources';
+import {
   getEnabledCardPackIds,
   setEnabledCardPackIds,
   type StorageLike,
@@ -157,6 +161,13 @@ export interface MainStreetPackLoadOptions {
   readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
+  /**
+   * Ordered pack-source registry (e.g. the bundled build-time source). When
+   * supplied, its transports become the default `fetchManifest` / `fetchCsv`,
+   * so a non-Electron source can serve content with no change to the core
+   * loader. Explicit `fetchManifest` / `fetchCsv` still win.
+   */
+  readonly packSources?: PackSourceRegistry;
   /** Warning sink; defaults to `console`. */
   readonly logger?: MainStreetCardPackLogger;
 }
@@ -317,6 +328,12 @@ export async function loadMainStreetCardPacks(
   const logger = options.logger ?? console;
   const client = options.client ?? cardPackClientFromWindow();
   const loader = options.loader ?? loadCardPacks;
+  // A registry adapts to the loader's injectable transports; an explicit
+  // transport still takes precedence so Electron content-dir reads are
+  // unchanged (and bundled reads need no core-loader change).
+  const sourceTransports = options.packSources
+    ? createPackSourceTransports(options.packSources)
+    : null;
 
   let result: CardPackLoadResult;
   try {
@@ -324,8 +341,8 @@ export async function loadMainStreetCardPacks(
       contentDir: options.contentDir,
       gameId: MAIN_STREET_GAME_ID,
       engineVersion: options.engineVersion,
-      fetchManifest: options.fetchManifest,
-      fetchCsv: options.fetchCsv,
+      fetchManifest: options.fetchManifest ?? sourceTransports?.fetchManifest,
+      fetchCsv: options.fetchCsv ?? sourceTransports?.fetchCsv,
       importer: options.importer,
       resolveEntitlement: composeContentUnlockEntitlement({
         steam: (refs) => client.listStatus(refs),
@@ -504,6 +521,11 @@ export interface BootstrapMainStreetCardPacksOptions {
   readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
+  /**
+   * Ordered pack-source registry (e.g. the bundled build-time source).
+   * Supplied to {@link loadMainStreetCardPacks} as its default transports.
+   */
+  readonly packSources?: PackSourceRegistry;
   /** Warning sink; defaults to `console`. */
   readonly logger?: MainStreetCardPackLogger;
   /** Storage backend for the enabled-pack preference (tests). */
@@ -555,6 +577,7 @@ export async function bootstrapMainStreetCardPacks(
     client: options.client,
     contentUnlocks: options.contentUnlocks,
     loader: options.loader,
+    packSources: options.packSources,
     logger: options.logger,
   });
 
