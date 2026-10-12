@@ -191,6 +191,63 @@ export interface UpgradeOverlaySpec {
 }
 
 // ---------------------------------------------------------------------------
+// Gradient sampling (pure)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sample the shader-effect gradient at position *t* in [0, 1] by linearly
+ * interpolating between adjacent colour stops (RGB) and their alphas.
+ *
+ * Pure and Phaser-free so the renderer's Canvas gradient approximation is
+ * unit-testable: a Phaser `Graphics` cannot paint a true gradient under
+ * Canvas, so the renderer draws a handful of vertical strips whose colours come
+ * from this sampler (MS-0MV5I4O8U001SU5J). Values below the first stop or
+ * above the last clamp to that stop.
+ *
+ * @param stops - Ordered gradient stops (left → right).
+ * @param t - Position in the gradient, 0 = left, 1 = right.
+ * @returns The interpolated 24-bit colour and alpha.
+ */
+export function sampleShaderGradient(
+  stops: readonly OverlayShaderColourStop[],
+  t: number,
+): { color: number; alpha: number } {
+  if (stops.length === 0) return { color: 0x000000, alpha: 0 };
+  const clamped = Math.max(0, Math.min(1, t));
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  if (clamped <= first.offset) return { color: first.color, alpha: first.alpha };
+  if (clamped >= last.offset) return { color: last.color, alpha: last.alpha };
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    if (clamped >= a.offset && clamped <= b.offset) {
+      const span = b.offset - a.offset;
+      const f = span === 0 ? 0 : (clamped - a.offset) / span;
+      return {
+        color: lerpColour(a.color, b.color, f),
+        alpha: a.alpha + (b.alpha - a.alpha) * f,
+      };
+    }
+  }
+  return { color: last.color, alpha: last.alpha };
+}
+
+/** Linearly interpolate two 24-bit RGB colours by factor *f* in [0, 1]. */
+function lerpColour(a: number, b: number, f: number): number {
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * f);
+  const g = Math.round(ag + (bg - ag) * f);
+  const bl = Math.round(ab + (bb - ab) * f);
+  return (r << 16) | (g << 8) | bl;
+}
+
+// ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 

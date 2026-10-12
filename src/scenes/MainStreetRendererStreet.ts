@@ -20,7 +20,7 @@ import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
-import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
+import { buildUpgradeOverlaySpec, sampleShaderGradient } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
@@ -889,6 +889,30 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
       );
       accent.setName('ms-upgrade-accent');
       container.add(accent);
+    }
+
+    // ── Shader-style upgrade accent (MS-0MV5I4O8U001SU5J) ──
+    // Card shader (Canvas-compatible): a gradient accent confined to the
+    // top-left upgrade region, sampled from the pure `shaderEffect` stops. A
+    // Phaser `Graphics` cannot paint a true gradient under Canvas, so the
+    // gradient is approximated with vertical strips (sampleShaderGradient —
+    // pure + unit-tested). Drawn after the flat accent but before the level
+    // badge so the badge text stays on top, and confined to the accent bounds
+    // so it never becomes a full-card stroke. The static form drawn here is
+    // also the reduced-motion/replay form; slice 3 adds the motion-gated
+    // shimmer tween.
+    if (spec.shaderEffect && spec.levelAccent) {
+      const { x: accentX, y: accentY, width: accentW, height: accentH } = spec.levelAccent;
+      const effect = renderer.scene.add.graphics();
+      const strips = 12;
+      for (let i = 0; i < strips; i++) {
+        const t = strips > 1 ? i / (strips - 1) : 0;
+        const sampled = sampleShaderGradient(spec.shaderEffect.colourStops, t);
+        effect.fillStyle(sampled.color, sampled.alpha);
+        effect.fillRect(accentX + (accentW * i) / strips, accentY, accentW / strips + 1, accentH);
+      }
+      effect.setName('ms-upgrade-shader');
+      container.add(effect);
     }
 
     // Level badge (top-left)

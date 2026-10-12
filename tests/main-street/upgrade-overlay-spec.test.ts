@@ -22,7 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildUpgradeOverlaySpec } from '../../src/scenes/UpgradeOverlaySpec';
+import { buildUpgradeOverlaySpec, sampleShaderGradient } from '../../src/scenes/UpgradeOverlaySpec';
 import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { getUpgradeTemplates } from '../../src/MainStreetCards';
 
@@ -290,5 +290,52 @@ describe('shaderEffect: no upgradeBorder, no per-level texture keys', () => {
     const lvl1 = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect;
     const lvl2 = buildUpgradeOverlaySpec(makeBusiness({ level: 2 }), WIDTH, HEIGHT).shaderEffect;
     expect(lvl1).toEqual(lvl2);
+  });
+});
+
+// ── AC2/AC5: pure gradient sampler consumed by the renderer ─────
+
+/**
+ * `sampleShaderGradient` is the pure, Phaser-free helper the renderer uses to
+ * approximate a Canvas gradient with vertical strips (MS-0MV5I4O8U001SU5J).
+ * These tests pin interpolation, clamping and determinism so the rendering
+ * slice has no hidden rendering logic to re-test.
+ */
+describe('sampleShaderGradient (AC2/AC5)', () => {
+  const stops = [
+    { offset: 0, color: 0xffaa22, alpha: 0.92 },
+    { offset: 0.5, color: 0xffe08a, alpha: 1 },
+    { offset: 1, color: 0xffaa22, alpha: 0.92 },
+  ];
+
+  it('returns the first stop at t=0 and the last stop at t=1', () => {
+    expect(sampleShaderGradient(stops, 0)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+    expect(sampleShaderGradient(stops, 1)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+  });
+
+  it('returns the highlight stop exactly at its offset', () => {
+    expect(sampleShaderGradient(stops, 0.5)).toEqual({ color: 0xffe08a, alpha: 1 });
+  });
+
+  it('clamps positions below 0 and above 1 to the end stops', () => {
+    expect(sampleShaderGradient(stops, -5)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+    expect(sampleShaderGradient(stops, 5)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+  });
+
+  it('linearly interpolates colour and alpha between adjacent stops', () => {
+    // Halfway between 0xffaa22 (a=0.92) and 0xffe08a (a=1).
+    const mid = sampleShaderGradient(stops, 0.25);
+    expect(mid.color).toBe(0xffc556);
+    expect(mid.alpha).toBeCloseTo(0.96, 5);
+  });
+
+  it('returns a transparent black for an empty stop list (defensive)', () => {
+    expect(sampleShaderGradient([], 0.5)).toEqual({ color: 0x000000, alpha: 0 });
+  });
+
+  it('samples the real upgraded spec deterministically', () => {
+    const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
+    expect(sampleShaderGradient(effect.colourStops, 0).color).toBe(0xffaa22);
+    expect(sampleShaderGradient(effect.colourStops, 1).color).toBe(0xffaa22);
   });
 });

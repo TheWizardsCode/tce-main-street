@@ -124,6 +124,23 @@ interface MockRect {
   data: Record<string, unknown>;
 }
 
+interface MockFill {
+  color: number;
+  alpha: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface MockGraphics {
+  kind: 'graphics';
+  name?: string;
+  lastFill?: { color: number; alpha: number };
+  fills: MockFill[];
+  data: Record<string, unknown>;
+}
+
 interface MockContainer {
   kind: 'container';
   x: number;
@@ -142,6 +159,7 @@ interface HarnessOptions {
 function createHarness(opts: HarnessOptions = {}) {
   const rects: MockRect[] = [];
   const containers: MockContainer[] = [];
+  const graphicsList: MockGraphics[] = [];
 
   const soldSlots = new Array<boolean>(GRID_SIZE).fill(false);
   if (opts.sold) soldSlots[0] = true;
@@ -259,6 +277,32 @@ function createHarness(opts: HarnessOptions = {}) {
         };
         return chain;
       }),
+      // Shader-style upgrade accent (MS-0MV5I4O8U001SU5J): a Phaser Graphics
+      // drawn as a stripped gradient. Recorded so the wiring can be asserted.
+      graphics: vi.fn(() => {
+        const graphics: MockGraphics = {
+          kind: 'graphics',
+          name: undefined,
+          fills: [],
+          data: {},
+        };
+        graphicsList.push(graphics);
+        const chain = {
+          fillStyle: (color: number, alpha: number) => {
+            graphics.lastFill = { color, alpha };
+            return chain;
+          },
+          fillRect: (x: number, y: number, w: number, h: number) => {
+            graphics.fills.push({ ...(graphics.lastFill ?? { color: 0, alpha: 1 }), x, y, w, h });
+            return chain;
+          },
+          setName: (name: string) => {
+            graphics.name = name;
+            return chain;
+          },
+        };
+        return chain;
+      }),
     },
     streetContainer: { add: vi.fn((obj: unknown) => obj) },
   };
@@ -276,6 +320,7 @@ function createHarness(opts: HarnessOptions = {}) {
     scene,
     rects,
     containers,
+    graphics: graphicsList,
   };
 }
 
@@ -389,6 +434,34 @@ describe('upgrade border removed, top-left indicator (AC4/AC5)', () => {
     drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 0 }));
 
     expect(rects.filter((rect) => rect.name === 'ms-upgrade-accent')).toHaveLength(0);
+  });
+
+  it('draws a shader-effect Graphics confined to the top-left accent region', () => {
+    const players = [makePlayer(0, ORANGE), makePlayer(1, SKY_BLUE)];
+    const { renderer, graphics } = createHarness({ players, ownerId: 1 });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 2 }));
+
+    expect(graphics).toHaveLength(1);
+    expect(graphics[0].name).toBe('ms-upgrade-shader');
+    expect(graphics[0].fills.length).toBeGreaterThan(0);
+    // Every gradient strip stays in the top-left quadrant (container-local
+    // 0,0 is the card centre), so the effect is never a full-card stroke.
+    for (const fill of graphics[0].fills) {
+      expect(fill.x).toBeLessThan(0);
+      expect(fill.y).toBeLessThan(0);
+      expect(fill.x + fill.w).toBeLessThanOrEqual(0);
+      expect(fill.y + fill.h).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it('draws no shader effect for a base (level 0) card', () => {
+    const players = [makePlayer(0, ORANGE), makePlayer(1, SKY_BLUE)];
+    const { renderer, graphics } = createHarness({ players, ownerId: 1 });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 0 }));
+
+    expect(graphics).toHaveLength(0);
   });
 });
 
