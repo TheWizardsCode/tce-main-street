@@ -15,11 +15,19 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CARD_DATA_RAW } from '../../src/MainStreetCards';
 import {
+  applyEnabledMainStreetPacks,
   bootstrapMainStreetCardPacks,
   getAvailableTemplateIds,
+  getMainStreetPurchasablePackIds,
   purchaseMainStreetCardPack,
   resetMainStreetCardPacks,
 } from '../../src/MainStreetCardPacks';
+import { createBrowserContentUnlockClient } from '../../src/MainStreetBrowserContentUnlockClient';
+import {
+  getEnabledCardPackIds,
+  setEnabledCardPackIds,
+  type StorageLike,
+} from '../../src/MainStreetPrefs';
 import type { CardPackStatusRef, PackEntitlementStatusLike } from '@ui/card-pack-client';
 import type { ContentUnlockClient } from '@ui/content-unlock-client';
 
@@ -148,6 +156,39 @@ afterEach(() => {
   resetMainStreetCardPacks();
 });
 
+/** An in-memory {@link StorageLike} modelling a browser `localStorage`. */
+interface MockStorage extends StorageLike {
+  readonly map: Map<string, string>;
+}
+
+function createMockStorage(): MockStorage {
+  const map = new Map<string, string>();
+  return {
+    map,
+    getItem: (key) => (map.has(key) ? map.get(key)! : null),
+    setItem: (key, value) => {
+      map.set(key, value);
+    },
+    removeItem: (key) => {
+      map.delete(key);
+    },
+  };
+}
+
+/** The itch.io golf reward target a browser purchase must never touch. */
+const ITCH_GOLF_TARGET = {
+  kind: 'dlc' as const,
+  gameId: 'itch-io',
+  dlcId: 'golf-reward',
+};
+
+/** The residential pack's unlock target. */
+const RESIDENTIAL_TARGET = {
+  kind: 'dlc' as const,
+  gameId: 'main-street',
+  dlcId: PACK_ID,
+};
+
 describe('purchaseMainStreetCardPack', () => {
   it('scopes the purchase to the pack rule, re-discovers and applies the pack', async () => {
     const { client, refreshCalls } = mutableContentUnlocks();
@@ -200,5 +241,106 @@ describe('purchaseMainStreetCardPack', () => {
 
     expect(outcome.purchased).toBe(false);
     expect(outcome.reason).toMatch(/could not|did not unlock/i);
+  });
+});
+
+/**
+ * End-to-end browser-source path: the **real** `localStorage` client (not a
+ * test double) drives the listing's scoped purchase and re-discovery, then the
+ * explicit enable step merges the pack's rows so its card deals. Covers the
+ * work-item ACs lock → purchase → enable → deal, persistence across a reload,
+ * and no collateral unlock of another configured reward.
+ */
+describe('purchaseMainStreetCardPack with the browser localStorage client', () => {
+  it('lists the pack as purchasable and gates it out of play while locked', async () => {
+    const storage = createMockStorage();
+    const client = createBrowserContentUnlockClient({ storage });
+
+    // No pack enabled: the listing starts from a locked, unmerged pack.
+    setEnabledCardPackIds([], storage);
+    const load = await bootstrapMainStreetCardPacks({
+      contentDir: 'file:///content/',
+      fetchManifest: async () => MANIFEST,
+      fetchCsv: async () => residentialPackCsv(),
+      client: freeSteamClient,
+      contentUnlocks: client,
+      storage,
+      logger: silentLogger,
+    });
+
+    expect(getMainStreetPurchasablePackIds()).toContain(PACK_ID);
+    expect(load?.locked.map((pack) => pack.manifest.id)).toContain(PACK_ID);
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+  });
+
+  it('purchases, enables and deals through the real browser client, persisting across a reload', async () => {
+    const storage = createMockStorage();
+    setEnabledCardPackIds([], storage);
+
+    const bootOptions = {
+      contentDir: 'file:///content/',
+      fetchManifest: async (): Promise<string> => MANIFEST,
+      fetchCsv: async (): Promise<string> => residentialPackCsv(),
+      client: freeSteamClient,
+      storage,
+      logger: silentLogger,
+    };
+
+    // Boot locked with the real localStorage-backed browser client.
+    const before = await bootstrapMainStreetCardPacks({
+      ...bootOptions,
+      contentUnlocks: createBrowserContentUnlockClient({ storage }),
+    });
+    expect(before?.locked.map((pack) => pack.manifest.id)).toContain(PACK_ID);
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    // Purchase through a fresh client over the same storage: the scoped
+    // simulated purchase persists the unlock and re-discovers the pool.
+    const outcome = await purchaseMainStreetCardPack(PACK_ID, {
+      contentUnlocks: createBrowserContentUnlockClient({ storage }),
+    });
+    expect(outcome.purchased).toBe(true);
+    const load = outcome.load!;
+    expect(load.loaded.map((pack) => pack.manifest.id)).toContain(PACK_ID);
+    // Still not enabled: the enabled-pack preference was explicitly emptied.
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    // Enable it: its rows merge into the live pool so its card deals.
+    const enabled = applyEnabledMainStreetPacks(load, [PACK_ID], { storage });
+    expect(enabled.applied).toBe(true);
+    expect(getAvailableTemplateIds()).toContain(PACK_CARD_ID);
+
+    // A reload (fresh client over the same storage) keeps both the unlock and
+    // the enabled-pack preference.
+    const reloaded = createBrowserContentUnlockClient({ storage });
+    await expect(reloaded.isUnlocked(RESIDENTIAL_TARGET)).resolves.toBe(true);
+    expect(getEnabledCardPackIds(storage)).toEqual([PACK_ID]);
+  });
+
+  it('is rule-scoped: no collateral unlock and no unlock without simulatePurchase', async () => {
+    const storage = createMockStorage();
+    const client = createBrowserContentUnlockClient({ storage });
+
+    // A global self-attested refresh never unlocks.
+    await expect(client.refresh({ attested: true })).resolves.toEqual([]);
+    expect(await client.isUnlocked(RESIDENTIAL_TARGET)).toBe(false);
+
+    // A different reward rule (itch.io golf) is neither evaluated nor unlocked.
+    await expect(
+      client.refresh({ ruleIds: ['itch-io-golf-reward'], simulatePurchase: true }),
+    ).resolves.toEqual([]);
+    expect(await client.isUnlocked(ITCH_GOLF_TARGET)).toBe(false);
+
+    // Only the requested residential rule unlocks, and only its target.
+    await expect(
+      client.refresh({
+        ruleIds: [PURCHASE_RULE_ID],
+        simulatePurchase: true,
+      }),
+    ).resolves.toEqual([
+      { ruleId: PURCHASE_RULE_ID, key: DLC_KEY, outcome: 'unlocked' },
+    ]);
+    expect(await client.isUnlocked(RESIDENTIAL_TARGET)).toBe(true);
+    expect(await client.isUnlocked(ITCH_GOLF_TARGET)).toBe(false);
   });
 });
