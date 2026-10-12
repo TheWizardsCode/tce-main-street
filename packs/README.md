@@ -4,7 +4,33 @@
 
 This directory contains the source trees for Main Street card packs. Each pack
 is a self-contained directory that the card-pack builder turns into an
-installable packs root under `<contentDir>/packs/`.
+installable packs root under `<contentDir>/packs/` **and** that the web build
+bundles directly (see
+[Bundled source (web build)](#bundled-source-web-build)).
+
+## Bundled source (web build)
+
+The committed `packs/` tree is more than an authoring source: the **same tree is
+baked into the web build at build time**. `src/MainStreetPackSources.ts` reads
+it with Vite's `import.meta.glob` (`?raw` for `manifest.json` and each pack's
+`cards.csv`, `?url` for the asset binaries) and exposes it as the first entry in
+Main Street's pack-source registry, so the published browser build discovers
+the residential pack with **no manual `<contentDir>/packs/` copy step**.
+
+- **A bundled-pack change requires a rebuild in this iteration.** Editing
+  anything under `packs/**` (the manifest, a `cards.csv`, or an asset) changes
+  what is bundled only after `npm run build`; a running bundle is not reloaded
+  and there is no runtime content-directory install in the browser
+  distribution.
+- **The Electron content-directory path is separate and unchanged.** The
+  `npm run build:card-pack` → `<contentDir>/packs/` install described below is
+  still how a pack is delivered to the desktop launcher. The browser build uses
+  the bundled source instead because it has no content directory.
+- **Sources are additive.** The bundled source is registered first; a
+  same-origin (`<base>/packs/…`) or remote source can be added by implementing
+  `PackSource` and registering it after the bundled one — the core loader is
+  unchanged. See the core repo's [Card
+  Packs](../core/docs/DEVELOPER.md#pack-sources-additive-game-side) section.
 
 ## Pack Layout
 

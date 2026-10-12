@@ -78,12 +78,41 @@ launcher's **unified content-unlock store** (a
 `dlc:main-street:main-street-residential-pack` unlock) rather than a Steam DLC
 app id. For dev/QA there is a **simulated purchase** control on the locked pack
 row in the Card Packs panel: it performs a rule-scoped purchase
-(`main-street-residential-pack-purchase`) through `window.tce.contentUnlocks`,
-re-discovers the packs and makes the pack enable-able — no storefront required.
+(`main-street-residential-pack-purchase`), re-discovers the packs and makes the
+pack enable-able — no storefront required.
 
-The pack source lives under [`packs/`](packs/README.md); build it with
-`npm run build:card-pack -- --input packs` and install the emitted root under
-`<contentDir>/packs/`.
+### Browser distribution
+
+The published web build carries the residential pack **inside the bundle**: no
+manual `<contentDir>/packs/` copy step is involved.
+[`src/MainStreetPackSources.ts`](src/MainStreetPackSources.ts) bakes the
+committed [`packs/`](packs/README.md) tree into the build with Vite's
+`import.meta.glob` (`?raw` for the manifest and CSVs, `?url` for the art), so
+`npm run build` → `dist/` already contains the pack. Changing a bundled pack
+requires a rebuild in this iteration.
+
+Main Street reads pack content through a game-side **pack-source registry** (an
+ordered list of `PackSource`s) wired into the core loader's existing injectable
+`fetchManifest` / `fetchCsv` / `fetchAsset` transports, so the core renderer
+loader (`core/src/ui/CardPackLoader.ts`) is unchanged. The bundled source is
+registered first; a same-origin or remote source can be added **additively** by
+registering it after the bundled one — see
+[packs/README.md](packs/README.md#bundled-source-web-build) and the core
+[Card Packs](core/docs/DEVELOPER.md#pack-sources-additive-game-side) section.
+
+A plain browser has no Electron `window.tce.contentUnlocks` bridge, so the
+content-unlock read is backed by
+[`src/MainStreetBrowserContentUnlockClient.ts`](src/MainStreetBrowserContentUnlockClient.ts),
+a total `localStorage`-backed `ContentUnlockClient` (key
+`tce-main-street-content-unlocks`). It preserves the full lock → purchase →
+enable flow and survives a page reload; when the Electron bridge *is* present it
+keeps precedence, so the launcher's unified store remains authoritative.
+
+The pack **authoring** source lives under [`packs/`](packs/README.md). Build and
+install it into a launcher's content directory with
+`npm run build:card-pack -- --input packs`, copying the emitted root under
+`<contentDir>/packs/` (the Electron distribution path; the browser build uses
+the bundled source described above).
 
 Authoring, building, installing and gating a pack — with the reference pack as
 a worked example — is documented in the core repo's
