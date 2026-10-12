@@ -15,12 +15,39 @@ packs/
     <packId>/
       cards.csv                         ← CSV fragment (header + rows)
       assets/
-        <card-name>.png                 ← pack art assets
+        <cardId>.png                    ← pack art (asset stem = card id, Option A)
 ```
 
 The `manifest.json` declares each pack's id, gameId, version, core-engine
 version constraint, and the paths to its CSV and assets. The builder upserts
 each accepted entry into the output manifest by `(gameId, id)`.
+
+## Pack Art Resolution
+
+A pack's declared `assets/<cardId>.png` are the **only** art a pack needs. The
+generated base art map (`src/card-art-map.json`) is **base-pool only** and is
+not a pack dependency.
+
+At boot the core loader (`core/src/ui/CardPackLoader.ts`) reads each declared
+asset's bytes through the environment-injected `fetchAsset` transport (default
+`fetch` + `arrayBuffer`) and inlines them as `data:<media>;base64,…` URIs keyed
+by card id (`LoadedCardPack.assetDataUris`). Main Street registers those URIs in
+`src/MainStreetCardPackArt.ts` before any card texture is generated, so
+`MainStreetCardArt.getCardArtDataUriForCard(cardId, cardName)` resolves a pack
+card from its own asset and falls back to the base map and then `Fallback`.
+
+- **Option A — asset stem = card id.** `assets/biz-ms-residential-solar.png`
+  supplies the card `biz-ms-residential-solar`. No CSV or manifest schema
+  change is required; the mapping is derived from the declared `assets` list.
+- **Environment-agnostic.** The loader consumes the injected transport, so the
+  same path works for Electron `tce-packs://` URLs and for the bundled browser
+  asset URLs supplied by `MS-0MV1O7EGG004MWGD` (no scheme-specific branching).
+- **Graceful degradation.** A missing, unreadable or malformed asset is
+  reported structurally and omitted; the card degrades to the base map and then
+  `Fallback` art with a logged warning — never a crash or a blank face.
+- **Core seam.** The inlining seam is the cross-repo core feature
+  `CG-0MV590RLL0026M7G` (`CardPackLoaderOptions.fetchAsset` +
+  `LoadedCardPack.assetDataUris`).
 
 ## Building a Pack
 
@@ -34,6 +61,17 @@ This invokes `core/scripts/build-card-pack.mjs` and emits an installable
 packs root under `build/card-packs/packs/`. Copy the contents of
 `build/card-packs/packs/` into the launcher's `<contentDir>/packs/` to
 install the pack.
+
+`build:card-pack` first runs `npm run generate:pack-assets`, which emits each
+pack's `assets/<cardId>.png` deterministically (256×256 PNG) from the committed
+`src/sprites/<Name>_1024_x_1024.png` sources. To regenerate by hand after
+changing a pack's `cards.csv` or `src/sprites/` sources:
+
+```bash
+npm run generate:pack-assets                          # pack assets (from src/sprites)
+node src/scripts/generate-main-street-card-art.mjs     # base art map (base pool only)
+node src/scripts/generate-main-street-card-svgs.mjs    # static SVG fixtures (if applicable)
+```
 
 ## Production Packs
 
@@ -73,12 +111,15 @@ npm run build:card-pack -- --input packs
 - Every card id must be unique across the base pool and all packs.
 - The core merge rejects a mismatched header or a duplicate card id — the
   pack is refused whole.
+- Pack art lives in `assets/<cardId>.png` (the asset stem is the card id) and
+  must be declared in the manifest's `assets` list.
 - All art must be project-generated (CC0) and licence-clean.
 
 ## Adding a New Pack
 
 1. Create a new `<gameId>/<packId>/` directory under `packs/`.
 2. Add a `cards.csv` fragment with the same header as the base pool.
-3. Add `assets/<name>.png` files for each card that needs bespoke art.
+3. Add `assets/<cardId>.png` files for each card that needs bespoke art
+   (the asset filename stem must equal the card id).
 4. Register the pack in `manifest.json` with the required fields.
 5. Build and install as above.

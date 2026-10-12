@@ -26,6 +26,16 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 > (`dlc:main-street:main-street-residential-pack`); the locked row in the Card
 > Packs panel offers a scoped dev/QA simulated purchase. These cards are **not**
 > part of the base catalogue or its tier progression.
+>
+> **Pack art (self-contained):** the pack's bespoke card faces resolve from its
+> own declared `assets/<cardId>.png` (asset filename stem = card id), inlined by
+> the core loader and registered in `src/MainStreetCardPackArt.ts` before
+> textures are generated. The base `src/card-art-map.json` is base-pool only and
+> is **not** a pack dependency. Run `npm run generate:pack-assets` (also invoked
+> by `build:card-pack`) to regenerate the assets from the committed
+> `src/sprites/` sources; a missing/unreadable asset degrades to `Fallback` art
+> with a logged warning. See [`packs/README.md`](../../packs/README.md) for the
+> full contract.
 
 **Deck sizes (default copies):**
 
