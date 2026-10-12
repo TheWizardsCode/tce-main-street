@@ -86,8 +86,6 @@ const SRC_DIR = path.resolve(__dirname, '..');
 const SPRITES_DIR = path.join(SRC_DIR, 'sprites');
 const MAP_PATH = path.join(SRC_DIR, 'card-art-map.json');
 const CSV_PATH = path.join(SRC_DIR, 'card-data.csv');
-/** Repo-root `packs/` directory holding production pack source trees. */
-const PACKS_DIR = path.resolve(SRC_DIR, '..', 'packs');
 
 /** Source sprite suffix — the committed high-resolution art is the truth. */
 const SOURCE_SUFFIX = '_1024_x_1024.png';
@@ -128,30 +126,6 @@ export const CARD_ART_FALLBACK = 'Fallback';
 // ---------------------------------------------------------------------------
 // CSV helpers (CG-0MUBVL4H80061B1E)
 // ---------------------------------------------------------------------------
-
-/** Minimal CSV parser — reads card-data.csv and returns rows as objects. */
-/**
- * Discover every production pack CSV fragment under `packs/<gameId>/<packId>/`.
- *
- * Returns a sorted list so regeneration is deterministic; a missing `packs/`
- * directory (e.g. a stripped checkout) yields an empty list.
- *
- * @returns {string[]} Absolute paths to pack `cards.csv` fragments.
- */
-export function listPackCsvPaths() {
-  if (!fs.existsSync(PACKS_DIR)) return [];
-  const paths = [];
-  for (const gameEntry of fs.readdirSync(PACKS_DIR, { withFileTypes: true })) {
-    if (!gameEntry.isDirectory()) continue;
-    const gameDir = path.join(PACKS_DIR, gameEntry.name);
-    for (const packEntry of fs.readdirSync(gameDir, { withFileTypes: true })) {
-      if (!packEntry.isDirectory()) continue;
-      const csvPath = path.join(gameDir, packEntry.name, 'cards.csv');
-      if (fs.existsSync(csvPath)) paths.push(csvPath);
-    }
-  }
-  return paths.sort();
-}
 
 /** Minimal CSV parser — reads card-data.csv and returns rows as objects. */
 function readCsvRows(csvPath) {
@@ -332,19 +306,33 @@ export async function encodeArt(filePath) {
 export async function regenerateCardArt() {
   const names = listSpriteNames();
   const knownSprites = new Set(names);
-  const art = {};
 
-  for (const name of names) {
+  // CG-0MUBVL4H80061B1E: build aliases from the base pool CSV only (upgrades,
+  // events, staff, etc.).
+  // F6 (MS-0MV26K321003MWO0): the base map is base-pool only. Production pack
+  // CSVs are no longer read here, so pack art can never be baked into the base
+  // map — pack art travels with the pack (`assets/<cardId>.png`, inlined at
+  // boot through the core loader) and resolves via the pack-art registry.
+  const csvPaths = [CSV_PATH];
+  const csvMappings = buildMappingsFromCsv(csvPaths, knownSprites);
+  const csvAliases = buildAliasesFromCsv(csvPaths, knownSprites);
+
+  // Embed art only for sprites the base pool resolves to, plus the fallback.
+  // Any other committed sprite (e.g. a pack's bespoke source art) is
+  // deliberately excluded, so the base map is not a hidden pack dependency.
+  const embeddedSpriteNames = [
+    ...new Set([
+      ...Object.values(csvMappings),
+      ...Object.values(csvAliases),
+      CARD_ART_FALLBACK,
+    ]),
+  ].filter((target) => knownSprites.has(target));
+
+  const art = {};
+  for (const name of embeddedSpriteNames) {
     const artBytes = await encodeArt(path.join(SPRITES_DIR, `${name}${SOURCE_SUFFIX}`));
     art[name] = `data:image/webp;base64,${artBytes.toString('base64')}`;
   }
-
-  // CG-0MUBVL4H80061B1E: build aliases from CSV (upgrades, events, staff, etc.)
-  // MS-0MV0M5BHH0020WFY: include the production pack fragments so pack card
-  // names are mapped and aliased alongside the base pool.
-  const csvPaths = [CSV_PATH, ...listPackCsvPaths()];
-  const csvMappings = buildMappingsFromCsv(csvPaths, knownSprites);
-  const csvAliases = buildAliasesFromCsv(csvPaths, knownSprites);
 
   // Merge: CSV aliases take precedence, then spelling aliases for coverage.
   const mergedAliases = { ...csvAliases };
@@ -379,7 +367,7 @@ export async function regenerateCardArt() {
     Object.values(csvMappings).filter((target) => !knownSprites.has(target)),
   );
   console.log(
-    `Generated art map for ${names.length} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +
+    `Generated art map for ${embeddedSpriteNames.length} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +
       `(drawn into a ${ART_SIZE}x${ART_SIZE} zone); ` +
       `map: ${path.relative(SRC_DIR, MAP_PATH)} (${Math.round(totalBytes / 1024)} KB of base64)`,
   );
@@ -392,7 +380,7 @@ export async function regenerateCardArt() {
     );
   }
 
-  return { sprites: names.length, mapPath: MAP_PATH, totalBytes };
+  return { sprites: embeddedSpriteNames.length, mapPath: MAP_PATH, totalBytes };
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`;

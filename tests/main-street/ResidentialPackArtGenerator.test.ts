@@ -21,8 +21,8 @@ import sharp from 'sharp';
 
 // @ts-ignore: no declaration file for the .mjs generator — intentional
 import { RESIDENTIAL_PACK_ART, SOURCE_SUFFIX, generateResidentialPackArt, generateResidentialPackAssets, renderCardArtSvg, PACK_ASSET_SIZE } from '../../src/scripts/generate-residential-pack-art.mjs';
-// @ts-ignore: no declaration file for the .mjs generator — intentional
-import { buildMappingsFromCsv, listPackCsvPaths, listSpriteNames } from '../../src/scripts/generate-main-street-card-art.mjs';
+import artMapJson from '../../src/card-art-map.json';
+import { residentialPackCardNames } from './helpers/residentialPack';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -102,31 +102,29 @@ describe('residential pack art generator — determinism', () => {
   });
 });
 
-describe('art-map generator — pack CSV coverage', () => {
-  it('discovers the production residential pack CSV fragment', () => {
-    const paths = listPackCsvPaths();
-    expect(paths).toContain(PACK_CSV);
+describe('base art map — production pack decoupled (F6)', () => {
+  const ART_MAP = artMapJson as {
+    art: Record<string, string>;
+    aliases: Record<string, string>;
+  };
+
+  it('does not embed any residential pack source sprite', () => {
+    for (const card of RESIDENTIAL_PACK_ART) {
+      expect(
+        ART_MAP.art[card.sprite],
+        `${card.sprite} must not be baked into the base map`,
+      ).toBeUndefined();
+    }
   });
 
-  it('maps every pack card name to a sprite that exists on disk', () => {
-    const knownSprites = new Set(listSpriteNames());
-    const mappings = buildMappingsFromCsv(
-      [path.join(REPO_ROOT, 'src/card-data.csv'), ...listPackCsvPaths()],
-      knownSprites,
-    ) as Record<string, string>;
-
-    // Every card in the pack CSV resolves to a committed sprite.
-    const packCsv = readFileSync(PACK_CSV, 'utf-8');
-    const names = packCsv
-      .split('\n')
-      .slice(1)
-      .map((line) => line.split(',')[2])
-      .filter(Boolean);
-    expect(names.length).toBeGreaterThan(0);
+  it('does not alias any residential pack card name', () => {
+    const names = residentialPackCardNames();
+    expect(names.length).toBe(10);
     for (const name of names) {
-      const target = mappings[name];
-      expect(target, `${name} is mapped`).toBeTruthy();
-      expect(knownSprites.has(target), `${name} → ${target} has committed art`).toBe(true);
+      expect(
+        ART_MAP.aliases[name],
+        `${name} must not be aliased in the base map`,
+      ).toBeUndefined();
     }
   });
 });

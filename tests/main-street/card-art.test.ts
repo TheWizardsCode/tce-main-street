@@ -45,7 +45,9 @@ import type {
 // @ts-ignore: no declaration file for .mjs script — intentional
 import { generateCardSvg, resolveCardArtDataUri } from '../../src/scripts/generate-main-street-card-svgs.mjs';
 // @ts-ignore: no declaration file for .mjs script — intentional
-import { buildAliasesFromCsv, buildMappingsFromCsv, listPackCsvPaths } from '../../src/scripts/generate-main-street-card-art.mjs';
+import { RESIDENTIAL_PACK_ART } from '../../src/scripts/generate-residential-pack-art.mjs';
+// @ts-ignore: no declaration file for .mjs script — intentional
+import { buildAliasesFromCsv, buildMappingsFromCsv } from '../../src/scripts/generate-main-street-card-art.mjs';
 import artMapJson from '../../src/card-art-map.json';
 
 const ART_MAP = artMapJson as { version: number; aliases: Record<string, string>; art: Record<string, string>; fallback: string };
@@ -183,8 +185,20 @@ describe('MainStreetCardArt — name resolution', () => {
 });
 
 describe('MainStreetCardArt — sprite coverage', () => {
-  it('has an entry for every 1024×1024 source sprite on disk (drift guard)', () => {
-    const stems = sourceSpriteStems();
+  /**
+   * Committed *base* source sprites: every committed sprite except the
+   * residential pack's bespoke source art. F6 keeps pack art out of the base
+   * map, so the drift guard covers base sprites only.
+   */
+  function baseSourceSpriteStems(): string[] {
+    const packSprites = new Set(
+      RESIDENTIAL_PACK_ART.map((card: { sprite: string }) => card.sprite),
+    );
+    return sourceSpriteStems().filter((stem) => !packSprites.has(stem));
+  }
+
+  it('has an entry for every base 1024×1024 source sprite on disk (drift guard)', () => {
+    const stems = baseSourceSpriteStems();
 
     expect(stems.length).toBeGreaterThan(0);
     for (const stem of stems) {
@@ -195,8 +209,8 @@ describe('MainStreetCardArt — sprite coverage', () => {
     }
   });
 
-  it('reports the number of generated sprites', () => {
-    expect(cardArtSpriteCount()).toBe(sourceSpriteStems().length);
+  it('reports the number of generated base sprites', () => {
+    expect(cardArtSpriteCount()).toBe(baseSourceSpriteStems().length);
   });
 });
 
@@ -314,10 +328,10 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
     expect(unresolvedCount).toBeLessThanOrEqual(BASELINE_UNRESOLVED_CARDS);
   });
 
-  it('committed card-art-map.json aliases match a fresh generator run (reproducibility)', () => {
-    // MS-0MV0M5BHH0020WFY: the generator reads the base pool plus the
-    // production pack fragments, so the fresh run must use the same inputs.
-    const csvPaths = [CSV_PATH, ...listPackCsvPaths()];
+  it('committed card-art-map.json aliases match a fresh base-pool generator run (reproducibility)', () => {
+    // F6 (MS-0MV26K321003MWO0): the generator is base-pool only; pack CSVs are
+    // no longer read, so the fresh run uses `card-data.csv` alone.
+    const csvPaths = [CSV_PATH];
     const expected = buildAliasesFromCsv(csvPaths, KNOWN_SPRITES) as Record<string, string>;
     expect(ART_MAP.aliases).toEqual(expected);
   });
