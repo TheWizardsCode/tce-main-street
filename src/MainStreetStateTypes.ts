@@ -244,6 +244,18 @@ export interface PlayerRecord {
    */
   aiDifficulty?: AiSeatDifficulty;
   /**
+   * Colour-blind-safe hex colour assigned to this seat for the run
+   * (F2 of MS-0MUWNTN8W006C7EF — Identify different AI players).
+   *
+   * Set on every competitive seat by `createCompetitiveState` from the shared
+   * Okabe–Ito palette (`MainStreetSeatColours`) and persisted through
+   * save/load, so a seat keeps one colour for the whole game rather than
+   * reshuffling on reload. Absent in single-player mode (a lone human seat
+   * needs no colour assignment) and on legacy saves, where the loader
+   * defensively re-derives it when more than one seat is present.
+   */
+  colour?: string;
+  /**
    * Whether this seat has been eliminated from competitive play
    * (MS-0MUVQRBVI0015AB2). An eliminated seat is skipped in turn rotation and
    * AI action enumeration, and its owned businesses/community spaces are

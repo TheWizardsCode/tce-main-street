@@ -40,7 +40,7 @@ import type {
   PlayerRecord,
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
-import { ALLOWED_START_WEEKS } from './MainStreetStateSetup';
+import { ALLOWED_START_WEEKS, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
  * Serializes Main Street runtime state into a JSON-safe checkpoint shape.
@@ -703,6 +703,24 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     state.players = state.players.map((player) =>
       normalizeSeatConfig(player, state.config.difficultyName),
     );
+  }
+
+  // ── Competitive seat-colour backfill (F2 of MS-0MUWNTN8W006C7EF) ──
+  // Legacy competitive saves predate the persisted per-seat colour. Re-derive
+  // the deterministic assignment from the saved seed and fill only the gaps,
+  // so a loaded seat always has a stable colour without clobbering one that
+  // was saved. Single-player (one seat) needs no colour and stays untouched.
+  if (state.players && state.players.length > 1) {
+    const colours = state.players.some((player) => !player.colour)
+      ? deriveSeatColours(state.players, state.numericSeed)
+      : null;
+    if (colours) {
+      state.players = state.players.map((player) =>
+        player.colour
+          ? player
+          : { ...player, colour: colours.get(String(player.playerId)) },
+      );
+    }
   }
 
   // ── Per-business employedStaff backfill (CG-0MU3BNO590066H75) ──────
