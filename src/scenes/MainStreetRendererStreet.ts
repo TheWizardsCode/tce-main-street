@@ -12,6 +12,7 @@
 import { FONT_FAMILY, HandView } from '@ui';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
+import { getSlotOwnerId, resolveSeatColour } from '../MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
 import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
@@ -22,6 +23,7 @@ import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
+import { seatColourToNumber } from '../MainStreetSeatColours';
 import { createGameZone } from '@ui/Renderer';
 import Phaser from 'phaser';
 
@@ -40,6 +42,15 @@ export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
  */
 const SYNERGY_LINE_HIT_THICKNESS = 12;
 
+/**
+ * Stroke width (px) of the owner-coloured placed-card border (F4 of
+ * MS-0MUWNTN8W006C7EF).
+ *
+ * Thin enough that the transparent-filled frame never obscures the card face
+ * or the synergy two-tone colouring, while still reading as an ownership
+ * frame at the default street zoom.
+ */
+const OWNER_BORDER_WIDTH = 3;
 
 // markHudTransient and clearTransientHud are now imported from src/ui/Renderer
 
@@ -703,7 +714,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
     // pulse the paired cards.
     cardContainer.setData('streetSlotIndex', _index);
 
-    // Apply upgrade overlays (level badge, income, name, border)
+    // Apply upgrade overlays (level badge, top-left accent, income, reputation)
     renderer.applyUpgradeOverlays(cardContainer, biz, renderW, renderH);
 
     // ── Employed-staff count badge (CG-0MU3BTTCH001E7ZD AC1) ────
@@ -759,6 +770,28 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         fontFamily: FONT_FAMILY,
       }).setOrigin(0.5);
       cardContainer.add(soldText);
+    }
+
+    // ── Owner-coloured outer border (F4 of MS-0MUWNTN8W006C7EF) ──
+    // Every placed business/community-space card carries an outer border in
+    // its owner's seat colour, so ownership reads at a glance (the human and
+    // each AI seat have distinct colours; see `MainStreetSeatColours`). The
+    // frame is transparent-filled, so it never obscures the card face or the
+    // synergy two-tone colouring, and it is drawn last so it stays crisp on
+    // a sold (dimmed) card. Single-player has no seat colour, so no border is
+    // drawn and single-player visuals are unchanged.
+    const ownerColour = resolveSeatColour(
+      s.state,
+      getSlotOwnerId(s.state, _index),
+    );
+    if (ownerColour) {
+      const ownerBorder = s.add.rectangle(0, 0, renderW, renderH);
+      ownerBorder.setStrokeStyle(OWNER_BORDER_WIDTH, seatColourToNumber(ownerColour));
+      ownerBorder.setFillStyle(0x000000, 0);
+      ownerBorder.setName(`ms-owner-border-${_index}`);
+      // Tag for tests/visual QA: find the owner border by data key.
+      ownerBorder.setData('ownerBorder', true);
+      cardContainer.add(ownerBorder);
     }
 
     if (!s.replayMode) {
@@ -840,12 +873,22 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
 
     const spec = buildUpgradeOverlaySpec(biz, width, height);
 
-    // Upgrade border (drawn behind text overlays but on top of card image)
-    if (spec.upgradeBorder) {
-      const border = renderer.scene.add.rectangle(0, 0, width, height);
-      border.setStrokeStyle(spec.upgradeBorder.strokeWidth, spec.upgradeBorder.color);
-      border.setFillStyle(0x000000, 0);
-      container.add(border);
+    // Top-left upgrade accent (F4 of MS-0MUWNTN8W006C7EF). This replaces the
+    // former full-card upgrade border: the card's outer frame now carries the
+    // owner's seat colour (drawn in `drawBusinessSlot`), so upgrade state is
+    // indicated here instead. Drawn before the level badge so the badge text
+    // sits on top of the accent.
+    if (spec.levelAccent) {
+      const accent = renderer.scene.add.rectangle(
+        spec.levelAccent.x + spec.levelAccent.width / 2,
+        spec.levelAccent.y + spec.levelAccent.height / 2,
+        spec.levelAccent.width,
+        spec.levelAccent.height,
+        spec.levelAccent.color,
+        spec.levelAccent.alpha ?? 1,
+      );
+      accent.setName('ms-upgrade-accent');
+      container.add(accent);
     }
 
     // Level badge (top-left)

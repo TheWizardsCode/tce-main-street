@@ -111,7 +111,8 @@ describe('No nameText overlay (name is part of the card face, AC1/AC2/AC4)', () 
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.levelBadge).not.toBeNull();
     expect(spec.levelBadge!.text).toBe('Lvl 1');
-    expect(spec.upgradeBorder).not.toBeNull();
+    expect(spec.levelAccent).not.toBeNull();
+    expect(spec).not.toHaveProperty('upgradeBorder');
   });
 });
 
@@ -149,17 +150,17 @@ describe('CSV data: upgrade templates carry newDisplayName (AC2)', () => {
 // ── Overlay spec structural integrity ─────────────────────────
 
 describe('Overlay spec structure', () => {
-  it('base card: levelBadge and upgradeBorder are null, cashLine is present', () => {
+  it('base card: levelBadge and levelAccent are null, cashLine is present', () => {
     const biz = makeBusiness({ level: 0, baseIncome: 1 });
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
 
     expect(spec.levelBadge).toBeNull();
-    expect(spec.upgradeBorder).toBeNull();
+    expect(spec.levelAccent).toBeNull();
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+1');
   });
 
-  it('upgraded card: cash/reputation/level/border overlays present when income > 0', () => {
+  it('upgraded card: cash/reputation/level/accent overlays present when income > 0', () => {
     const biz = makeBusiness({
       level: 1,
       name: 'Bakery',
@@ -171,9 +172,12 @@ describe('Overlay spec structure', () => {
 
     expect(spec.levelBadge).not.toBeNull();
     expect(spec.levelBadge!.text).toBe('Lvl 1');
+    expect(spec.levelAccent).not.toBeNull();
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+1.5');
-    expect(spec.upgradeBorder).not.toBeNull();
+    // The full-card upgrade border was removed in F4
+    // (MS-0MV34MIUY009WRME): the owner's seat colour now owns the frame.
+    expect(spec).not.toHaveProperty('upgradeBorder');
   });
 
   it('reputation overlay reflects upgrade reputationBonus', () => {

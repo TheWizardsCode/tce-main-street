@@ -169,3 +169,23 @@ export function getSeatColour(
 ): string | undefined {
   return assignSeatColours(seats, rng).get(playerId);
 }
+
+/**
+ * Converts a seat hex colour (`#RRGGBB`) to the 24-bit integer Phaser's
+ * `setStrokeStyle` / `fillStyle` style APIs expect (e.g. `#E69F00` →
+ * `0xE69F00`).
+ *
+ * Phaser-free and total: malformed input falls back to black (`0x000000`)
+ * rather than throwing, so a bad persisted colour can never crash the render
+ * loop. This is the one place seat colours cross from the pure presentation
+ * contract (hex strings) into Phaser's numeric colour space, keeping the
+ * placed-card border (F4 of MS-0MUWNTN8W006C7EF) consistent with the rest of
+ * the seat-identity UI.
+ *
+ * @param hex A `#RRGGBB` colour string (the `#` is optional).
+ * @returns The equivalent 24-bit integer, or `0x000000` for malformed input.
+ */
+export function seatColourToNumber(hex: string): number {
+  const match = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
+  return match ? Number.parseInt(match[1], 16) : 0x000000;
+}

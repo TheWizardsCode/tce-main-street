@@ -807,6 +807,38 @@ always present.
 - Single-player is unchanged: with no roster (or one seat) the seat argument is
 ignored and entries render exactly as before.
 
+## Owner-coloured placed-card borders (F4, MS-0MUWNTN8W006C7EF)
+
+In competitive (multi-seat) games every placed business/community-space card on
+the street carries an outer border in the colour of the seat that owns it, so
+ownership reads at a glance. The human and each AI seat have distinct colours,
+so their cards are visually distinguishable.
+
+- Data: `resolveSeatColour(state, ownerId)`
+  (`src/MainStreetAdjacencyOwner.ts`) is the shared lookup for a seat's
+  persisted `PlayerRecord.colour` (assigned from the Okabe–Ito palette in
+  `src/MainStreetSeatColours.ts`, F1/F2). The slot's owner comes from
+  `getSlotOwnerId(state, slotIndex)`. A seat therefore has one colour on the
+  log, the scoreboard/HUD and the street.
+- Rendering: `drawBusinessSlot` (`src/scenes/MainStreetRendererStreet.ts`)
+  draws the border as a transparent-filled, full-card frame stroked in the
+  owner's colour (`seatColourToNumber` converts the hex colour to Phaser's
+  numeric space). Because the frame is only a stroke it never obscures the card
+  face or the synergy two-tone colouring, and it is drawn last so it stays
+  crisp on a sold (dimmed) card.
+- Upgrade indicator: the former full-card gold upgrade border
+  (`spec.upgradeBorder`) is removed. Upgrade state is now carried by the
+  existing top-left level badge plus a small top-left corner accent
+  (`spec.levelAccent`), drawn behind the badge by `applyUpgradeOverlays`. This
+  keeps the outer frame reserved for the owner's colour (producer decision
+  Q3 = A).
+- Accessibility: colour is never the sole carrier of meaning — the owner's card
+  still carries its own content/upgrade badge, and every seat-identity surface
+  pairs the colour with the seat label text.
+- Single-player is unchanged: with no roster (or one seat) there is no seat
+  colour, so no owner border is drawn (and the upgrade accent/badge render as
+  before).
+
 ## Scene Transitions
 
 - Main Street scene-level fade transitions are currently disabled.

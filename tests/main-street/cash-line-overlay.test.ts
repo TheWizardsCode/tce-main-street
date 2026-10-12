@@ -319,13 +319,13 @@ describe('Structural: incomeText replaced by cashLine', () => {
     expect(spec).toHaveProperty('cashLine');
   });
 
-  it('base card with income: cashLine present, but no levelBadge/upgradeBorder', () => {
+  it('base card with income: cashLine present, but no levelBadge/levelAccent', () => {
     const biz = makeBusiness({ level: 0, baseIncome: 2, ongoingCost: 0 });
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+2');
     expect(spec.levelBadge).toBeNull();
-    expect(spec.upgradeBorder).toBeNull();
+    expect(spec.levelAccent).toBeNull();
     expect(spec.reputationText).toBeNull();
   });
 });

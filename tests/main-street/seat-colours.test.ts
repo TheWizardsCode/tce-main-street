@@ -13,6 +13,7 @@ import {
   InsufficientSeatColoursError,
   assignSeatColours,
   getSeatColour,
+  seatColourToNumber,
   type SeatInfo,
 } from '../../src/MainStreetSeatColours';
 import { createSeededRng } from '@core-engine/SeededRng';
@@ -191,5 +192,31 @@ describe('getSeatColour', () => {
 
   it('returns undefined in single-player mode', () => {
     expect(getSeatColour(makeSeats(1), 'seat-0', makeRng(1))).toBeUndefined();
+  });
+});
+
+// ── Phaser colour conversion ─────────────────────────────────
+
+describe('seatColourToNumber', () => {
+  it('converts every palette colour to its 24-bit integer value', () => {
+    for (const colour of SEAT_COLOUR_PALETTE) {
+      expect(seatColourToNumber(colour)).toBe(Number.parseInt(colour.slice(1), 16));
+    }
+  });
+
+  it('converts a known colour precisely', () => {
+    expect(seatColourToNumber('#E69F00')).toBe(0xe69f00);
+    expect(seatColourToNumber('#000000')).toBe(0x000000);
+    expect(seatColourToNumber('#FFFFFF')).toBe(0xffffff);
+  });
+
+  it('accepts a colour without the leading hash', () => {
+    expect(seatColourToNumber('56B4E9')).toBe(0x56b4e9);
+  });
+
+  it('falls back to black for malformed input rather than throwing', () => {
+    for (const bad of ['', '#12', 'nonsense', '#GGGGGG', 'rgb(1,2,3)']) {
+      expect(seatColourToNumber(bad)).toBe(0x000000);
+    }
   });
 });

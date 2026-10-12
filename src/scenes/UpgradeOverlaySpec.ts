@@ -14,8 +14,9 @@
  *    (CG-0MT24MHGZ0025O20).
  * 2. It then calls `applyUpgradeOverlays()`, which invokes
  *    `buildUpgradeOverlaySpec()` to get overlay specifications (level badge,
- *    income, reputation, border — the NAME is intentionally not part of this
- *    spec; it lives in the card face).
+ *    top-left upgrade accent, income, reputation — the NAME is intentionally
+ *    not part of this spec; it lives in the card face, and the outer border
+ *    is the owner's seat colour rather than an upgrade border).
  * 3. The renderer creates Phaser Text/Graphics objects from the spec and adds
  *    them as children of the card's container.
  *
@@ -78,23 +79,46 @@ export interface OverlayTextSpec {
   segments?: OverlayTextSegmentSpec[];
 }
 
-/** Describes a border/glow overlay for upgraded cards. */
-export interface OverlayBorderSpec {
+/**
+ * Describes a filled corner accent for upgraded cards.
+ *
+ * The former full-card `upgradeBorder` is gone (F4 of MS-0MUWNTN8W006C7EF):
+ * the placed card's outer frame now carries its owner's colour, so upgrade
+ * state is indicated by the top-left level badge plus this small corner
+ * accent. Coordinates are container-local (0,0 = card centre) and refer to the
+ * accent's top-left corner, matching {@link OverlayTextSpec}.
+ */
+export interface OverlayAccentSpec {
+  /** Left edge of the accent in container-local coordinates. */
+  x: number;
+  /** Top edge of the accent in container-local coordinates. */
+  y: number;
+  /** Accent width in pixels. */
+  width: number;
+  /** Accent height in pixels. */
+  height: number;
+  /** Filled accent colour (Phaser 24-bit integer). */
   color: number;
-  strokeWidth: number;
+  /** Fill alpha (default 1). */
+  alpha?: number;
 }
 
 /** Complete overlay specification for a BusinessCard. */
 export interface UpgradeOverlaySpec {
   /** Level badge text (e.g. "Lvl 2"), null for base cards. */
   levelBadge: OverlayTextSpec | null;
+  /**
+   * Top-left corner accent marking an upgraded card, null for base cards.
+   * Replaces the former full-card `upgradeBorder` (F4 of
+   * MS-0MUWNTN8W006C7EF) as the upgrade indicator, now that the outer card
+   * frame carries the owner's colour.
+   */
+  levelAccent: OverlayAccentSpec | null;
   /** Combined cash line (e.g. "+230 / -75"), null when income and cost are both 0.
    *  Replaces the former separate income/cost overlays (CG-0MTCP76MP0088TQW). */
   cashLine: OverlayTextSpec | null;
   /** Per-turn reputation text (e.g. "+20/turn"), null when total reputation is 0. */
   reputationText: OverlayTextSpec | null;
-  /** Border/glow for upgraded cards, null for base cards. */
-  upgradeBorder: OverlayBorderSpec | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +127,13 @@ export interface UpgradeOverlaySpec {
 
 /**
  * Build an overlay specification for a BusinessCard based on its current
- * upgrade state. Returns specs for level badge, income display, and border
- * styling.
+ * upgrade state. Returns specs for the level badge, the top-left upgrade
+ * accent, the combined cash line and the reputation line.
  *
  * Base cards (level === 0) get `null` for all overlay fields — the renderer
- * skips overlay creation entirely. Upgraded cards (level > 0) get all four
- * overlays populated for visual distinction.
+ * skips overlay creation entirely. Upgraded cards (level > 0) get the level
+ * badge, the corner accent, and any non-zero cash/reputation lines populated
+ * for visual distinction.
  *
  * Note: the upgraded business NAME is intentionally NOT part of the overlay
  * spec (since CG-0MT24MHGZ0025O20 review): it is baked into the card's SVG
@@ -141,6 +166,21 @@ export function buildUpgradeOverlaySpec(
         color: '#ffdd44',
         fontStyle: 'bold',
         originX: 0,
+      }
+    : null;
+
+  // Top-left corner accent (F4 of MS-0MUWNTN8W006C7EF): the upgrade indicator
+  // that replaces the former full-card `upgradeBorder`. It sits behind the
+  // level badge text at the card's top-left corner, so upgrade state stays
+  // legible now that the outer frame is reserved for the owner's colour.
+  const levelAccent: OverlayAccentSpec | null = isUpgraded
+    ? {
+        x: Math.round(-width / 2),
+        y: Math.round(-height / 2),
+        width: 30,
+        height: 16,
+        color: 0xffaa22,
+        alpha: 0.92,
       }
     : null;
 
@@ -213,13 +253,5 @@ export function buildUpgradeOverlaySpec(
   // rendered as a Phaser overlay. The card face therefore shows the upgraded
   // name as a part of the card image, exactly like the base name.
 
-  // Upgrade border: golden glow for upgraded cards
-  const upgradeBorder: OverlayBorderSpec | null = isUpgraded
-    ? {
-        color: 0xffaa22,
-        strokeWidth: 3,
-      }
-    : null;
-
-  return { levelBadge, cashLine, reputationText, upgradeBorder };
+  return { levelBadge, levelAccent, cashLine, reputationText };
 }
