@@ -43,6 +43,21 @@ export const SPRITE_SIZE = 1024;
 /** Source sprite suffix — must match the art-map generator. */
 export const SOURCE_SUFFIX = '_1024_x_1024.png';
 
+/** The production pack directory (`packs/<gameId>/<packId>`). */
+export const PACK_DIR = path.resolve(
+  SRC_DIR,
+  '..',
+  'packs',
+  'main-street',
+  'main-street-residential-pack',
+);
+
+/** The pack's declared art directory (`assets/<cardId>.png`). */
+export const PACK_ASSETS_DIR = path.join(PACK_DIR, 'assets');
+
+/** Side length (px) of an emitted pack asset — parity with `CARD_ART_RESOLUTION`. */
+export const PACK_ASSET_SIZE = 256;
+
 /**
  * The pack's bespoke card art. One entry per card; `sprite` is the committed
  * file stem and `motif` returns the deterministic SVG body drawn over the
@@ -328,16 +343,118 @@ export async function generateResidentialPackArt(options = {}) {
   return { count: sprites.length, sprites, spritesDir };
 }
 
+/**
+ * Parse a pack CSV fragment (quote-aware) into row objects keyed by header.
+ * Mirrors `tests/main-street/helpers/residentialPack.ts` so the generator and
+ * the tests cannot disagree on the schema.
+ */
+export function parsePackCsv(text) {
+  const parseLine = (line) => {
+    const fields = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    fields.push(current);
+    return fields;
+  };
+
+  const lines = text.trim().split('\n');
+  const header = parseLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i += 1) {
+    if (lines[i].trim() === '') continue;
+    const values = parseLine(lines[i]);
+    const row = {};
+    header.forEach((column, index) => {
+      row[column] = values[index] ?? '';
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * The source-sprite name for a pack card row: the upgrade's preferred
+ * `newDisplayName` when present, otherwise the card name — mirroring the
+ * art-map generator's sprite naming.
+ */
+export function packAssetSpriteName(row) {
+  const upgradeName = (row.newDisplayName || '').trim();
+  return upgradeName || (row.name || '').trim();
+}
+
+/**
+ * Emit the pack's declared `assets/<cardId>.png` deterministically from the
+ * committed `src/sprites/<Name>_1024_x_1024.png` sources.
+ *
+ * Each asset is a 256×256 PNG (parity with `CARD_ART_RESOLUTION`) named by the
+ * card id (Option A: asset stem = card id), so the pack's declared assets are
+ * the whole art it needs. `sharp` renders identical inputs to identical bytes,
+ * so re-running on an unchanged tree is a no-op.
+ *
+ * @param {{ packDir?: string, spritesDir?: string, csvPath?: string, size?: number }} [options]
+ * @returns {Promise<{ count: number, assets: string[], assetsDir: string }>}
+ */
+export async function generateResidentialPackAssets(options = {}) {
+  const packDir = options.packDir || PACK_DIR;
+  const spritesDir = options.spritesDir || SPRITES_DIR;
+  const size = options.size || PACK_ASSET_SIZE;
+  const csvPath = options.csvPath || path.join(packDir, 'cards.csv');
+  const assetsDir = path.join(packDir, 'assets');
+
+  const rows = parsePackCsv(fs.readFileSync(csvPath, 'utf-8'));
+  fs.mkdirSync(assetsDir, { recursive: true });
+
+  const assets = [];
+  for (const row of rows) {
+    const cardId = (row.id || '').trim();
+    if (!cardId) continue;
+    const spriteName = packAssetSpriteName(row);
+    const spritePath = path.join(spritesDir, `${spriteName}${SOURCE_SUFFIX}`);
+    if (!fs.existsSync(spritePath)) {
+      throw new Error(
+        `Missing committed source sprite for "${cardId}": ${spritePath}`,
+      );
+    }
+    const png = await sharp(spritePath).resize(size, size).png().toBuffer();
+    fs.writeFileSync(path.join(assetsDir, `${cardId}.png`), png);
+    assets.push(cardId);
+  }
+  return { count: assets.length, assets, assetsDir };
+}
+
 const isMain = process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`;
 if (isMain) {
-  generateResidentialPackArt()
-    .then((r) => {
-      console.log(
-        `Generated ${r.count} residential pack source sprite(s) in ${path.relative(process.cwd(), r.spritesDir)}`,
-      );
-    })
-    .catch((err) => {
-      console.error('Residential pack art generation failed:', err);
-      process.exit(1);
-    });
+  (async () => {
+    const sprites = await generateResidentialPackArt();
+    console.log(
+      `Generated ${sprites.count} residential pack source sprite(s) in ${path.relative(process.cwd(), sprites.spritesDir)}`,
+    );
+    const assets = await generateResidentialPackAssets();
+    console.log(
+      `Generated ${assets.count} residential pack asset(s) in ${path.relative(process.cwd(), assets.assetsDir)}`,
+    );
+  })().catch((err) => {
+    console.error('Residential pack art generation failed:', err);
+    process.exit(1);
+  });
 }
