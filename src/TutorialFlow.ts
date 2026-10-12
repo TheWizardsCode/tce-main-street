@@ -508,16 +508,16 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
 ] as const;
 
 /** Contextual first-bank hint (MS-0MT3JK16W006A66P). Not part of the fixed
- * 25-step flow: triggered once from `MainStreetTurnController.endTurn()` while
- * the tutorial is active and `actionsRemaining > 0` at turn end, exactly when
- * a bank would occur.
+ * 25-step flow: triggered once from `MainStreetTurnController.endTurn()`
+ * whenever `actionsRemaining > 0` at turn end and the hint has not yet been
+ * shown, exactly when a bank would occur.
  *
  * MS-0MV4F04NN007H3DB removed the T22 banking day, so the standard tutorial
- * flow no longer ends any turn with a spare action and this hint is not
- * expected to fire. It is retained as a general contextual trigger (harmless
- * if it does) rather than removed, so the banking-trigger plumbing stays
- * available should a future flow (or difficulty variant) leave an unused
- * action at turn end. */
+ * flow no longer ends any turn with a spare action and this hint will not
+ * fire during the tutorial. It is retained as a general contextual trigger
+ * (harmless if it does) and fires in normal gameplay on the player's first
+ * bank after the tutorial, so that players who never banked during the
+ * tutorial still learn about action banking. */
 export const BANKING_HINT_STEP: UnifiedTutorialStepDef = {
   id: 'BANKING',
   titleKey: bankingHintKey('title'),

@@ -142,11 +142,9 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     // dismissed back into the flow instead of dead-ending it.
     let pendingBankingHint = false;
     try {
-      const tut = (s as any).tutorialController as any;
       const ts = loadTutorialState(new BrowserLocalStorageAdapter());
       if (
         shouldTriggerBankingHint({
-          tutorialActive: tut?.isActive === true,
           actionsRemaining: s.state.actionsRemaining,
           alreadyShown: hasSeenBankingHint(ts),
         })

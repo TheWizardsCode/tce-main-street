@@ -144,12 +144,11 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     ).toEqual([]);
   });
 
-  it('MS-0MV4F04NN007H3DB: no end-turn leaves a spare action, so the banking hint is not triggered', () => {
+  it('MS-0MV4F04NN007H3DB: no end-turn leaves a spare action, so the banking hint is not triggered during the tutorial', () => {
     // Simulate the action economy (mirrors MainStreetEngine.consumeAction +
     // executeWeekStart banking). With the T22 banking day removed, every
     // end-turn should occur with actionsRemaining === 0, the exact negation of
-    // the condition `shouldTriggerBankingHint` gates on while the tutorial is
-    // active.
+    // the condition `shouldTriggerBankingHint` gates on (actionsRemaining > 0).
     let actionsRemaining = 1;
     let bankedActions = 0;
     const spareAtEndTurn: { id: string; actions: number }[] = [];

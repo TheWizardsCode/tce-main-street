@@ -237,22 +237,22 @@ export function hasSeenBankingHint(state: MainStreetTutorialStateV1): boolean {
  * Decide whether the contextual first-bank hint should fire at the end of a
  * turn.
  *
- * The hint fires when the tutorial is active and the player ends a turn with
- * unused action points — the first time this happens, a banking hint overlay
- * is presented as a tutorial step (MS-0MT3JK16W006A66P). It is scoped to the
- * tutorial flow and is one-shot: the persisted flag prevents a repeat on a
- * later run within the same save.
+ * The hint fires when the player ends a turn with unused action points
+ * — the first time this happens, a banking hint overlay is presented
+ * (MS-0MT3JK16W006A66P). It is one-shot: the persisted flag prevents
+ * a repeat on a later run within the same save. The hint fires both
+ * during and after the tutorial so that players who never banked during
+ * the tutorial (no spare-action turns remain after T22 was removed)
+ * still see the hint the first time they bank in normal gameplay.
  *
  * Extracted as a pure predicate so the gating decision is unit-testable
  * without booting a Phaser scene.
  */
 export function shouldTriggerBankingHint(params: {
-  tutorialActive: boolean;
   actionsRemaining: number;
   alreadyShown: boolean;
 }): boolean {
   return (
-    params.tutorialActive &&
     params.actionsRemaining > 0 &&
     !params.alreadyShown
   );
