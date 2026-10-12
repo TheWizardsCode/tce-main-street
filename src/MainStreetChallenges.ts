@@ -98,6 +98,15 @@ export interface Challenge extends ChallengeDefinition<MainStreetState> {
 export interface ActiveChallenge extends ActiveChallengeRecord<MainStreetState> {
   /** The challenge template (narrowed to Main Street's Challenge type). */
   readonly challenge: Challenge;
+  /**
+   * The seat that completed this challenge, attributed on first completion
+   * (MS-0MUWNTJIK009O6BZ, Q1 = B). `null` when the run has no seat context
+   * (single-player / legacy); `undefined` while the challenge is incomplete.
+   *
+   * `completed` remains the single source of truth for completion — this field
+   * is written once, alongside it, and never reassigned (first-write wins).
+   */
+  completedBySeatId?: number | null;
 }
 
 // ── Evaluator Helpers ───────────────────────────────────────
@@ -425,13 +434,18 @@ export function selectChallenges(
  *
  * @param activeChallenges  The active challenges to evaluate.
  * @param state             Current game state (mutated in-place: challengesCompleted, activityLog, achievementSystem).
+ * @param seatId            The acting seat id in competitive mode, or `null`
+ *                          (the default) for single-player / legacy runs.
+ *                          Recorded once on each newly completed challenge as
+ *                          `completedBySeatId` (MS-0MUWNTJIK009O6BZ).
  * @returns Array of challenge IDs that were newly completed this call.
  */
 export function evaluateChallenges(
   activeChallenges: ActiveChallenge[],
   state: MainStreetState,
+  seatId: number | null = null,
 ): string[] {
-  return genericEvaluateChallenges(
+  const newlyCompleted = genericEvaluateChallenges(
     activeChallenges,
     state,
     (challenge, s) => {
@@ -446,6 +460,19 @@ export function evaluateChallenges(
       s.achievementSystem?.onChallengeCompleted(challenge.id);
     },
   );
+
+  // Attribute each newly completed challenge to the acting seat. The generic
+  // evaluator marks `completed` before returning, so a challenge is only ever
+  // attributed on its first completion (first-write wins); later evaluations
+  // skip it and never overwrite this value.
+  for (const id of newlyCompleted) {
+    const record = activeChallenges.find(ac => ac.challenge.id === id);
+    if (record && record.completedBySeatId === undefined) {
+      record.completedBySeatId = seatId;
+    }
+  }
+
+  return newlyCompleted;
 }
 
 /**
@@ -465,7 +492,14 @@ export function evaluateChallenges(
  * @returns The challenge IDs newly completed by this action (usually `[]`).
  */
 export function evaluateChallengesAfterAction(state: MainStreetState): string[] {
-  const newlyCompleted = evaluateChallenges(state.activeChallenges, state);
+  // Attribute the completion to the currently acting seat in competitive
+  // mode; single-player / legacy states carry no `activePlayerId` and default
+  // to `null` (global attribution retained).
+  const newlyCompleted = evaluateChallenges(
+    state.activeChallenges,
+    state,
+    state.activePlayerId ?? null,
+  );
   state._newlyCompletedThisAction = newlyCompleted;
   return newlyCompleted;
 }
