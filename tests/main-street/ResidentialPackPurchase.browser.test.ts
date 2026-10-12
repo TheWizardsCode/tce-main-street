@@ -7,7 +7,14 @@
  * the pack locked → purchase → unlocked → enable-able, with the pack's card
  * merging into the playable pool.
  *
+ * The focused verification suite (`MS-0MV53CF6O007J2UY`) additionally drives
+ * the flow through the **real** `localStorage`-backed content-unlock client and
+ * the build-time bundled pack source (no `window.tce` bridges, no test double),
+ * asserting reload persistence, rule-scoping against the itch.io golf reward,
+ * save/load round-tripping and missing/disabled-pack degradation.
+ *
  * @see src/scenes/MainStreetOverlayContent.ts (showCardPacksDialog)
+ * @see src/MainStreetBrowserContentUnlockClient.ts (real browser client)
  * @see tests/main-street/helpers/residentialPack.ts
  */
 
@@ -22,9 +29,20 @@ import residentialCsvRaw from '../../packs/main-street/main-street-residential-p
 
 import {
   bootstrapMainStreetCardPacks,
+  getActiveMainStreetPacks,
   getAvailableTemplateIds,
   resetMainStreetCardPacks,
 } from '../../src/MainStreetCardPacks';
+import {
+  BROWSER_CONTENT_UNLOCKS_KEY,
+  resolveMainStreetContentUnlockClient,
+} from '../../src/MainStreetBrowserContentUnlockClient';
+import { PackSourceRegistry } from '../../src/MainStreetPackSources';
+import {
+  deserializeMainStreetState,
+  serializeMainStreetState,
+  setupMainStreetGame,
+} from '../../src/MainStreetState';
 import { getEnabledCardPackIds, type StorageLike } from '../../src/MainStreetPrefs';
 import type { CardPackStatusRef, PackEntitlementStatusLike } from '@ui/card-pack-client';
 import type { ContentUnlockClient } from '@ui/content-unlock-client';
@@ -34,6 +52,10 @@ const PACK_ID = 'main-street-residential-pack';
 const PACK_CARD_ID = 'biz-ms-residential-property-mgmt';
 const DLC_KEY = `dlc:main-street:${PACK_ID}`;
 const PURCHASE_RULE_ID = 'main-street-residential-pack-purchase';
+const PACK_VERSION = '1.0.0';
+const ITCHIO_FOLLOW_RULE_ID = 'itchio-follow';
+const GOLF_TARGET = { kind: 'game', gameId: 'golf' } as const;
+const SILENT_LOGGER = { warn: (): void => {} };
 
 const FREE_STEAM = {
   listStatus: async (
@@ -103,6 +125,42 @@ function waitFrames(n: number): Promise<void> {
   });
 }
 
+/** Poll *predicate* until it is true or *timeoutMs* elapses. */
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs = 10_000,
+  pollMs = 25,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  throw new Error(`Timed out waiting for condition after ${timeoutMs}ms`);
+}
+
+/**
+ * Discover the packs through the build-time bundled source exactly as the
+ * plain-browser boot does (no launcher content directory, no bridges).
+ */
+function bootstrapBundledPack() {
+  return bootstrapMainStreetCardPacks({ contentDir: null, logger: SILENT_LOGGER });
+}
+
+/** The overlay listing's visible text labels. */
+function listingTexts(scene: any): string[] {
+  return collectTexts(listingContainer(scene)).map((text) => text.text);
+}
+
+/** Emit `pointerdown` on the listing control labelled *label*. */
+function clickListingControl(scene: any, label: string): void {
+  const control = collectTexts(listingContainer(scene)).find(
+    (text) => text.text === label,
+  );
+  if (!control) throw new Error(`Listing control ${label} not found`);
+  control.emit('pointerdown');
+}
+
 /** Recursively collect every Text object under *root*. */
 function collectTexts(root: Phaser.GameObjects.GameObject): Phaser.GameObjects.Text[] {
   const out: Phaser.GameObjects.Text[] = [];
@@ -131,6 +189,7 @@ describe('residential pack purchase (browser)', () => {
     game = null;
     try {
       localStorage.removeItem(ENABLED_KEY);
+      localStorage.removeItem(BROWSER_CONTENT_UNLOCKS_KEY);
     } catch {
       /* ignore */
     }
@@ -183,5 +242,133 @@ describe('residential pack purchase (browser)', () => {
     expect(getAvailableTemplateIds()).toContain(PACK_CARD_ID);
     const storage = (globalThis as unknown as { localStorage: StorageLike }).localStorage;
     expect(getEnabledCardPackIds(storage)).toEqual([PACK_ID]);
+  });
+
+  it('purchases, enables and deals the bundled pack through the real browser unlock client', async () => {
+    // Explicit empty enabled set: the pack must be enabled by hand after the
+    // purchase, exercising the full lock → purchase → enable → deal path.
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([]));
+    await bootstrapBundledPack();
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    scene.showCardPacks();
+    await waitForCondition(() => listingTexts(scene).includes('[ Purchase ]'));
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    clickListingControl(scene, '[ Purchase ]');
+    await waitForCondition(() => listingTexts(scene).includes('[ Enable ]'));
+    // Unlocked by the scoped purchase but not enabled yet: still out of play.
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    // The real localStorage-backed client persisted exactly the scoped unlock,
+    // and the itch.io golf reward was never collateral-unlocked.
+    const client = resolveMainStreetContentUnlockClient();
+    expect((await client.getUnlocks()).map((record) => record.key)).toEqual([DLC_KEY]);
+    expect(await client.isUnlocked(GOLF_TARGET)).toBe(false);
+    expect(
+      await client.refresh({ ruleIds: [ITCHIO_FOLLOW_RULE_ID], simulatePurchase: true }),
+    ).toEqual([]);
+    expect(await client.isUnlocked(GOLF_TARGET)).toBe(false);
+
+    clickListingControl(scene, '[ Enable ]');
+    await waitForCondition(() => getAvailableTemplateIds().includes(PACK_CARD_ID));
+
+    expect(getActiveMainStreetPacks()).toEqual([
+      { id: PACK_ID, version: PACK_VERSION },
+    ]);
+    const storage = (globalThis as unknown as { localStorage: StorageLike }).localStorage;
+    expect(getEnabledCardPackIds(storage)).toEqual([PACK_ID]);
+  });
+
+  it('keeps the unlock and the enabled-pack preference across a reload', async () => {
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([]));
+    await bootstrapBundledPack();
+    game = await bootGame();
+    let scene = game.scene.getScene('MainStreetScene') as any;
+
+    scene.showCardPacks();
+    await waitForCondition(() => listingTexts(scene).includes('[ Purchase ]'));
+    clickListingControl(scene, '[ Purchase ]');
+    await waitForCondition(() => listingTexts(scene).includes('[ Enable ]'));
+    clickListingControl(scene, '[ Enable ]');
+    await waitForCondition(() => getAvailableTemplateIds().includes(PACK_CARD_ID));
+    expect(getEnabledCardPackIds(globalThis.localStorage)).toEqual([PACK_ID]);
+
+    // Simulate a page reload: drop the in-memory pool, then re-discover from the
+    // persisted localStorage unlock + enabled-pack preference.
+    destroyGame(game);
+    game = null;
+    resetMainStreetCardPacks();
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    const reloaded = await bootstrapBundledPack();
+    expect(reloaded!.loaded.map((pack) => pack.manifest.id)).toContain(PACK_ID);
+    expect(getAvailableTemplateIds()).toContain(PACK_CARD_ID);
+    expect(getActiveMainStreetPacks()).toEqual([
+      { id: PACK_ID, version: PACK_VERSION },
+    ]);
+
+    // The reopened listing shows the pack unlocked and enabled, not purchasable.
+    game = await bootGame();
+    scene = game.scene.getScene('MainStreetScene') as any;
+    scene.showCardPacks();
+    await waitForCondition(() => listingTexts(scene).includes('[ Disable ]'));
+    expect(listingTexts(scene)).not.toContain('[ Purchase ]');
+  });
+
+  it('round-trips the browser-enabled pack pool through save/load', async () => {
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([]));
+    await bootstrapBundledPack();
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    scene.showCardPacks();
+    await waitForCondition(() => listingTexts(scene).includes('[ Purchase ]'));
+    clickListingControl(scene, '[ Purchase ]');
+    await waitForCondition(() => listingTexts(scene).includes('[ Enable ]'));
+    clickListingControl(scene, '[ Enable ]');
+    await waitForCondition(() => getAvailableTemplateIds().includes(PACK_CARD_ID));
+
+    const state = setupMainStreetGame({ seed: 'browser-pack-save-load' });
+    const serialized = serializeMainStreetState(state);
+    expect(serialized.activePacks).toEqual([{ id: PACK_ID, version: PACK_VERSION }]);
+    expect(serialized.csvData).toContain(PACK_CARD_ID);
+
+    resetMainStreetCardPacks();
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    deserializeMainStreetState(structuredClone(serialized));
+    expect(getAvailableTemplateIds()).toContain(PACK_CARD_ID);
+    expect(getActiveMainStreetPacks()).toEqual([
+      { id: PACK_ID, version: PACK_VERSION },
+    ]);
+  });
+
+  it('degrades to base content with a warning when the bundled pack is missing or disabled', async () => {
+    // Missing: the bundled source carries no pack at all.
+    const missing = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      packSources: new PackSourceRegistry(),
+      requestedPacks: [{ id: PACK_ID, version: PACK_VERSION }],
+      logger: SILENT_LOGGER,
+    });
+    expect(missing!.pool.baseOnly).toBe(true);
+    expect(missing!.warnings.some((warning) => warning.includes('missing'))).toBe(true);
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
+
+    // Disabled: the pack is installed but the unlock is absent, so it stays
+    // locked and its cards never merge.
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([PACK_ID]));
+    localStorage.removeItem(BROWSER_CONTENT_UNLOCKS_KEY);
+    const disabled = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      requestedPacks: [{ id: PACK_ID, version: PACK_VERSION }],
+      logger: SILENT_LOGGER,
+    });
+    expect(disabled!.pool.baseOnly).toBe(true);
+    expect(disabled!.locked.map((pack) => pack.manifest.id)).toContain(PACK_ID);
+    expect(disabled!.warnings.some((warning) => warning.includes('disabled'))).toBe(true);
+    expect(getAvailableTemplateIds()).not.toContain(PACK_CARD_ID);
   });
 });

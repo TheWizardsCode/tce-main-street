@@ -219,6 +219,59 @@ describe('bootstrapMainStreetCardPacks', () => {
   });
 });
 
+describe('bootstrapMainStreetCardPacks — Electron content directory', () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('reads the launcher content directory through tce-packs:// when window.tce.contentDir is set', async () => {
+    const contentDir = 'file:///launcher-content/';
+    (globalThis as { window?: unknown }).window = { tce: { contentDir } };
+
+    const manifest = JSON.stringify({
+      version: 1,
+      packs: [
+        {
+          id: PACK_ID,
+          gameId: MAIN_STREET_GAME_ID,
+          title: 'Foundations',
+          description: 'Test pack',
+          version: '1.0.0',
+          coreEngineVersion: '^0.1.0',
+          cards: 'cards.csv',
+        },
+      ],
+    });
+    const requested: string[] = [];
+    // The default transports read through the renderer's global `fetch`; the
+    // manifest comes from the content directory and the pack CSV through the
+    // Electron-only `tce-packs://` scheme.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.endsWith('/packs/manifest.json')) {
+        return { ok: true, status: 200, statusText: 'OK', text: async () => manifest } as never;
+      }
+      if (url.startsWith('tce-packs://')) {
+        return { ok: true, status: 200, statusText: 'OK', text: async () => packCsv() } as never;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const result = await bootstrapMainStreetCardPacks({ logger: { warn: () => {} } });
+
+    // The launcher content directory — not the bundled fallback — is read,
+    // and the pack CSV still goes through the `tce-packs://` protocol.
+    expect(requested).toContain(`${contentDir}packs/manifest.json`);
+    expect(requested).toContain(
+      `tce-packs://${MAIN_STREET_GAME_ID}/${PACK_ID}/cards.csv`,
+    );
+    // The content-directory install path stays supported end to end.
+    expect(result).not.toBeNull();
+    expect(getAvailableTemplateIds()).toContain(PACK_BUSINESS_ID);
+  });
+});
+
 describe('resolveBundledContentDir', () => {
   it('derives the bundled content base from the web base path', () => {
     // The GitHub Pages project base must be preserved, not flattened to `/`.
