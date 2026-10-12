@@ -86,6 +86,7 @@ function loadedPack(overrides: Partial<LoadedCardPack> = {}): LoadedCardPack {
     },
     csv: packCsv(),
     assetUrls: [],
+    assetDataUris: {},
     status: {
       packId: PACK_ID,
       gameId: MAIN_STREET_GAME_ID,

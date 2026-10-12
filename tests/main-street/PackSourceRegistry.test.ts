@@ -289,10 +289,12 @@ describe('loader transport wiring', () => {
       }),
     ]);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const fetchAsset = vi.fn(async () => new Uint8Array([1, 2, 3]));
 
     const result = await loadMainStreetCardPacks({
       contentDir: 'bundled://main-street',
       packSources: registry,
+      fetchAsset,
       contentUnlocks: {
         isUnlocked: async () => true,
         getUnlocks: async () => [],
@@ -302,9 +304,11 @@ describe('loader transport wiring', () => {
     });
 
     // The bundled source supplied the production pack, with no core-loader
-    // change and no `tce-packs://` / network request.
+    // change and no `tce-packs://` / network request; the caller injects the
+    // asset-byte transport so the inlined pack art never hits `fetch`.
     expect(result.pool.activePacks).toEqual([{ id: RESIDENTIAL_PACK_ID, version: '1.0.0' }]);
     expect(result.pool.csv).toContain(RESIDENTIAL_CARD_ID);
+    expect(fetchAsset).toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

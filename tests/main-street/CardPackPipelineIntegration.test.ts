@@ -126,6 +126,17 @@ function diskFetchers(contentDir: string) {
         'utf-8',
       );
     },
+    fetchAsset: async (url: string): Promise<Uint8Array> => {
+      const parsed = new URL(url);
+      const [packId, ...rest] = decodeURIComponent(parsed.pathname)
+        .split('/')
+        .filter(Boolean);
+      return new Uint8Array(
+        readFileSync(
+          path.join(packsDir, parsed.hostname, packId, rest.join('/')),
+        ),
+      );
+    },
   };
 }
 

@@ -149,6 +149,8 @@ export interface MainStreetPackLoadOptions {
   readonly fetchManifest?: CardPackLoaderOptions['fetchManifest'];
   /** CSV transport override (tests). */
   readonly fetchCsv?: CardPackLoaderOptions['fetchCsv'];
+  /** Asset-byte transport override; defaults to the loader's `fetch` transport. */
+  readonly fetchAsset?: CardPackLoaderOptions['fetchAsset'];
   /** Dynamic-import fallback transport override (tests). */
   readonly importer?: CardPackLoaderOptions['importer'];
   /** Entitlement client; defaults to the total `window.tce` client. */
@@ -343,6 +345,7 @@ export async function loadMainStreetCardPacks(
       engineVersion: options.engineVersion,
       fetchManifest: options.fetchManifest ?? sourceTransports?.fetchManifest,
       fetchCsv: options.fetchCsv ?? sourceTransports?.fetchCsv,
+      fetchAsset: options.fetchAsset,
       importer: options.importer,
       resolveEntitlement: composeContentUnlockEntitlement({
         steam: (refs) => client.listStatus(refs),
