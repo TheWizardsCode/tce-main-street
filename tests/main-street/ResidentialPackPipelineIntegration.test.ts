@@ -62,6 +62,9 @@ import {
   RESIDENTIAL_PACK_GAME_ID,
   RESIDENTIAL_PACK_ID,
 } from './helpers/residentialPack';
+import { getCardArtDataUriForCard } from '../../src/MainStreetCardArt';
+import { hasPackArt } from '../../src/MainStreetCardPackArt';
+import { generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 const CONFIG_PATH = path.join(REPO_ROOT, 'core', 'electron', 'action-rewards.json');
 const PACK_ROOT = path.join(REPO_ROOT, 'packs');
@@ -71,6 +74,9 @@ const GOLF_TARGET = { kind: 'game', gameId: 'golf' } as const;
 
 /** A card id contributed by the production residential pack. */
 const PACK_CARD_ID = 'biz-ms-residential-property-mgmt';
+
+/** The display name of {@link PACK_CARD_ID} in the production pack. */
+const PACK_CARD_NAME = 'Neighbourhood Property Group';
 
 const silentLogger = { warn: (): void => {} };
 
@@ -338,5 +344,119 @@ describe('residential pack — deal, save and load', () => {
     expect(result.pool.checksum).toBe(CSV_CHECKSUM);
     expect(result.warnings.some((warning) => warning.includes(RESIDENTIAL_PACK_ID))).toBe(true);
     expect(result.warnings.some((warning) => warning.includes('missing'))).toBe(true);
+  });
+});
+
+describe('residential pack — end-to-end rendered SVG embeds pack art', () => {
+  it('materialises the pack, loads it through the real loader and embeds the inlined pack data URI', async () => {
+    const { client } = makeServiceBackedContentUnlocks();
+    const contentDir = makeContentDir();
+
+    const outcome = await purchaseMainStreetCardPack(RESIDENTIAL_PACK_ID, {
+      contentUnlocks: client,
+      bootstrapOptions: {
+        contentDir,
+        ...diskFetchers(contentDir),
+        client: freeSteamClient,
+        contentUnlocks: client,
+        storage: null,
+        logger: silentLogger,
+      },
+    });
+    expect(outcome.purchased).toBe(true);
+
+    const load = outcome.load as MainStreetPackLoadResult;
+    const pack = load.loaded.find((entry) => entry.manifest.id === RESIDENTIAL_PACK_ID);
+    expect(pack, 'residential pack loaded').toBeDefined();
+
+    const dataUri = pack!.assetDataUris[PACK_CARD_ID];
+    expect(dataUri, 'pack asset inlined').toMatch(/^data:image\/png;base64,/);
+    expect(hasPackArt(PACK_CARD_ID)).toBe(true);
+
+    const svg = generateCardSvgFromCsvRow({
+      id: PACK_CARD_ID,
+      name: PACK_CARD_NAME,
+      family: 'business',
+    });
+    expect(svg).toContain(dataUri);
+    expect(getCardArtDataUriForCard(PACK_CARD_ID, PACK_CARD_NAME)).toBe(dataUri);
+  });
+});
+
+describe('residential pack — asset degradation', () => {
+  it('degrades a missing pack asset to Fallback with a logged warning', async () => {
+    const { client } = makeServiceBackedContentUnlocks();
+    const contentDir = makeContentDir();
+
+    // Remove one declared asset from the materialised content directory.
+    rmSync(
+      path.join(
+        contentDir,
+        'packs',
+        RESIDENTIAL_PACK_GAME_ID,
+        RESIDENTIAL_PACK_ID,
+        'assets',
+        `${PACK_CARD_ID}.png`,
+      ),
+    );
+
+    const warnings: string[] = [];
+    const outcome = await purchaseMainStreetCardPack(RESIDENTIAL_PACK_ID, {
+      contentUnlocks: client,
+      bootstrapOptions: {
+        contentDir,
+        ...diskFetchers(contentDir),
+        client: freeSteamClient,
+        contentUnlocks: client,
+        storage: null,
+        logger: { warn: (message: string) => warnings.push(message) },
+      },
+    });
+    expect(outcome.purchased).toBe(true);
+
+    const load = outcome.load as MainStreetPackLoadResult;
+    // Reported structurally — never thrown, never crashing the load.
+    expect(
+      load.errors.some((error) => error.reason.includes(`${PACK_CARD_ID}.png`)),
+      'missing asset reported structurally',
+    ).toBe(true);
+    expect(
+      warnings.some((warning) => warning.includes(PACK_CARD_ID)),
+      'missing asset warned',
+    ).toBe(true);
+
+    // The card degrades: no pack art registered → base map (none) → Fallback.
+    expect(hasPackArt(PACK_CARD_ID)).toBe(false);
+    const uri = getCardArtDataUriForCard(PACK_CARD_ID, PACK_CARD_NAME);
+    expect(uri).toMatch(/^data:/);
+    expect(uri).not.toMatch(/^data:image\/png;base64,/);
+
+    // The rendered SVG is never blank — it embeds the Fallback art.
+    const svg = generateCardSvgFromCsvRow({
+      id: PACK_CARD_ID,
+      name: PACK_CARD_NAME,
+      family: 'business',
+    });
+    expect(svg).toContain(uri);
+    expect(svg).toMatch(/<image /);
+  });
+
+  it('renders Fallback for pack cards when the pack is not installed', async () => {
+    const { client } = makeServiceBackedContentUnlocks();
+    const contentDir = makeEmptyContentDir();
+
+    const result = await loadMainStreetCardPacks({
+      contentDir,
+      ...diskFetchers(contentDir),
+      client: freeSteamClient,
+      contentUnlocks: client,
+      logger: silentLogger,
+    });
+    expect(result.pool.baseOnly).toBe(true);
+
+    expect(hasPackArt(PACK_CARD_ID)).toBe(false);
+    const uri = getCardArtDataUriForCard(PACK_CARD_ID, PACK_CARD_NAME);
+    expect(uri).toMatch(/^data:/);
+    expect(uri).not.toMatch(/^data:image\/png;base64,/);
   });
 });
