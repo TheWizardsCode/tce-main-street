@@ -22,6 +22,7 @@ import { type IncomeResult, type SlotIncome } from '../MainStreetAdjacency';
 import { reputationCoinMultiplier, applyReputationMultiplier } from '../MainStreetDifficulty';
 import { ORDERED_TIER_DEFINITIONS } from '../MainStreetTiers';
 import { computeScore, effectiveWinThreshold, canMoveStaffOnBusiness } from '../MainStreetEngine';
+import { countChallengesCreditedToHumanSeat } from '../MainStreetChallenges';
 import {
   canUseFreeMarketReroll,
   getEmployedInvestorReroll,
@@ -353,7 +354,11 @@ export function buildScoreTooltip(
   const coins = state.resourceBank.coins;
   const rep = state.resourceBank.reputation;
   const repContribution = rep;
-  const challengeContribution = state.challengesCompleted.length * state.config.challengeBonusPoints;
+  // Challenge contribution is per-seat in competitive mode: the human is
+  // shown only the challenges they personally completed, never an AI seat's
+  // (MS-0MUWNTJIK009O6BZ, Q3 = A). Single-player stays run-global.
+  const challengeContribution =
+    countChallengesCreditedToHumanSeat(state) * state.config.challengeBonusPoints;
   const remaining = threshold - score;
 
   // Compute total ongoing turn cost from all placed cards.

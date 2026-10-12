@@ -109,6 +109,70 @@ export interface ActiveChallenge extends ActiveChallengeRecord<MainStreetState> 
   completedBySeatId?: number | null;
 }
 
+/**
+ * Minimal seat context needed to decide whether a completion may be credited
+ * to the human seat. Structurally satisfied by {@link MainStreetState} and by
+ * the celebration scene's lightweight state surface.
+ */
+export interface ChallengeSeatContext {
+  players?: ReadonlyArray<{ playerId?: number; controller?: string }> | null;
+}
+
+/**
+ * Whether `seatId` is the human-controlled seat for presentation credit
+ * (celebration, HUD, Steam achievements).
+ *
+ * Returns `true` for single-player / legacy runs (fewer than two seats, or no
+ * seat array at all): challenge presentation is run-global and unchanged. In
+ * competitive mode it returns `true` only when `seatId` resolves to the
+ * human-controlled seat (`controller === 'human'`). An unknown or
+ * unattributed seat id (`null` / `undefined`, or out of range) is never the
+ * human seat in competitive mode, so a legacy completion is credited to no
+ * seat (MS-0MUWNTJIK009O6BZ, Q3 = A).
+ *
+ * Legacy seats without a `controller` fall back to seat 0 = human, matching
+ * the save-load backfill and `buildCompetitiveScoreboard`.
+ *
+ * @param state  State carrying the competitive seat records.
+ * @param seatId The seat id to test (a completion's `completedBySeatId` or
+ *               the acting seat id).
+ * @returns Whether the completion may be credited to the human seat.
+ */
+export function isHumanSeatCredit(
+  state: ChallengeSeatContext,
+  seatId: number | null | undefined,
+): boolean {
+  const players = state.players ?? [];
+  if (players.length <= 1) return true;
+  if (typeof seatId !== 'number' || seatId < 0 || seatId >= players.length) return false;
+  const controller =
+    players[seatId]?.controller ?? (players[seatId]?.playerId === 0 ? 'human' : 'ai');
+  return controller === 'human';
+}
+
+/**
+ * Counts the challenges credited to the human seat for HUD presentation.
+ *
+ * Single-player / legacy runs return the run-global completed count, keeping
+ * their behaviour unchanged. Competitive runs count only the completed
+ * challenges attributed to the human seat via
+ * `ActiveChallenge.completedBySeatId` (MS-0MUWNTJIK009O6BZ, Q3 = A).
+ *
+ * @param state Current game state (read-only).
+ * @returns The number of completions the human seat may be shown as having.
+ */
+export function countChallengesCreditedToHumanSeat(state: MainStreetState): number {
+  const players = state.players ?? [];
+  if (players.length <= 1) return state.challengesCompleted.length;
+  const humanId = players.findIndex(
+    p => (p.controller ?? (p.playerId === 0 ? 'human' : 'ai')) === 'human',
+  );
+  if (humanId < 0) return 0;
+  return (state.activeChallenges ?? []).filter(
+    ac => ac.completed && ac.completedBySeatId === humanId,
+  ).length;
+}
+
 // ── Evaluator Helpers ───────────────────────────────────────
 
 /**
@@ -428,7 +492,9 @@ export function selectChallenges(
  *   mapped persistent Steam achievement is unlocked (F7, CG-0MUNC7FK5001T5CP).
  *   The engine `AchievementSystem` is idempotent, so a completion fires at
  *   most one unlock per achievement per session, and the launcher persists
- *   unlocks across runs.
+ *   unlocks across runs. In competitive mode the bridge fires only when
+ *   `seatId` is the human seat (MS-0MUWNTJIK009O6BZ, Q3 = A); single-player /
+ *   legacy runs keep the run-global behaviour.
  *
  * Once a challenge is marked complete it stays complete (no revocation).
  *
@@ -455,9 +521,14 @@ export function evaluateChallenges(
         text: `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`,
         type: 'gain',
       });
-      // Persistent achievement bridge (F7). The engine tolerates a throwing
-      // or absent sink, so this never affects gameplay.
-      s.achievementSystem?.onChallengeCompleted(challenge.id);
+      // Persistent achievement bridge (F7). Gated to the human seat in
+      // competitive mode so an AI completion never unlocks the human's
+      // achievement (MS-0MUWNTJIK009O6BZ, Q3 = A); single-player / legacy
+      // runs (no seat context) stay unchanged. The engine tolerates a
+      // throwing or absent sink, so this never affects gameplay.
+      if (isHumanSeatCredit(s, seatId)) {
+        s.achievementSystem?.onChallengeCompleted(challenge.id);
+      }
     },
   );
 
