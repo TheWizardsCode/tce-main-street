@@ -191,3 +191,104 @@ describe('Overlay spec structure', () => {
     expect(spec.reputationText!.text).toBe('+30/turn');
   });
 });
+
+// ── AC2: Pure shader-effect spec (MS-0MV5I4NTU002D3V4) ─────────
+
+/**
+ * The `shaderEffect` field is the pure, Phaser-free contract that the
+ * rendering slices (MS-0MV5I4O8U001SU5J / MS-0MV5I4ONA000Z7NV) consume. These
+ * tests pin the base-vs-upgraded boundary, the pure-data shape (gradient stops,
+ * animation parameters, reduced-motion static form flag) and the constraints
+ * that no full-card `upgradeBorder` and no per-level texture-cache key return.
+ */
+describe('shaderEffect: base vs upgraded output (AC2)', () => {
+  it('is null for a base BusinessCard (level 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 0 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeNull();
+  });
+
+  it('is null for a base CommunitySpaceCard (level 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeCommunitySpace({ level: 0 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeNull();
+  });
+
+  it('is populated for an upgraded BusinessCard (level > 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeDefined();
+    expect(spec.shaderEffect).not.toBeNull();
+  });
+
+  it('is populated for an upgraded CommunitySpaceCard (level > 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeCommunitySpace({ level: 2 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeDefined();
+    expect(spec.shaderEffect).not.toBeNull();
+  });
+});
+
+describe('shaderEffect: pure data shape', () => {
+  it('exposes ordered gradient colour stops reusing the golden accent palette', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+    expect(Array.isArray(effect.colourStops)).toBe(true);
+    expect(effect.colourStops.length).toBeGreaterThanOrEqual(2);
+
+    const colours = effect.colourStops.map(stop => stop.color);
+    expect(colours).toContain(0xffaa22); // existing levelAccent golden
+    expect(colours).toContain(0xffe08a); // lighter highlight stop
+
+    // Stops are ordered left-to-right for a renderable static gradient.
+    const offsets = effect.colourStops.map(stop => stop.offset);
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+    for (const stop of effect.colourStops) {
+      expect(stop.offset).toBeGreaterThanOrEqual(0);
+      expect(stop.offset).toBeLessThanOrEqual(1);
+      expect(stop.alpha).toBeGreaterThanOrEqual(0);
+      expect(stop.alpha).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('exposes deterministic animation parameters (duration/easing/amplitude)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+
+    expect(typeof effect.animationDurationMs).toBe('number');
+    expect(effect.animationDurationMs).toBeGreaterThanOrEqual(1800);
+    expect(effect.animationDurationMs).toBeLessThanOrEqual(2400);
+
+    expect(typeof effect.animationEasing).toBe('string');
+    expect(effect.animationEasing.length).toBeGreaterThan(0);
+
+    expect(typeof effect.animationAmplitude).toBe('number');
+    expect(effect.animationAmplitude).toBeGreaterThan(0);
+  });
+
+  it('marks a static (reduced-motion) form as available', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+    expect(effect.staticForm).toBe(true);
+    // The static form is renderable from the same gradient stops; a non-empty
+    // stop list is what slice 2 draws when motion is disallowed.
+    expect(effect.colourStops.length).toBeGreaterThan(0);
+  });
+});
+
+describe('shaderEffect: no upgradeBorder, no per-level texture keys', () => {
+  it('does not reintroduce a full-card upgradeBorder', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec).not.toHaveProperty('upgradeBorder');
+    expect(spec.shaderEffect).not.toHaveProperty('upgradeBorder');
+  });
+
+  it('exposes no per-level texture-cache key', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).not.toHaveProperty('textureKey');
+    expect(spec.shaderEffect).not.toHaveProperty('textureCacheKey');
+    expect(Object.keys(spec.shaderEffect!)).not.toContain('textureKey');
+  });
+
+  it('produces an identical effect across levels (no per-level spec variants)', () => {
+    const lvl1 = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect;
+    const lvl2 = buildUpgradeOverlaySpec(makeBusiness({ level: 2 }), WIDTH, HEIGHT).shaderEffect;
+    expect(lvl1).toEqual(lvl2);
+  });
+});

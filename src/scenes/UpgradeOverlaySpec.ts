@@ -43,6 +43,22 @@ export const CASH_LINE_INCOME = '#44ff44';
 /** Red ongoing-cost colour for the cash line. */
 export const CASH_LINE_COST = '#ff6644';
 
+/**
+ * Base golden accent colour for the shader-style upgrade effect, reused from
+ * the level accent / legacy upgrade border palette so the effect reads as an
+ * upgrade accent rather than a new colour language
+ * (MS-0MV5I4NTU002D3V4).
+ */
+export const SHADER_ACCENT_GOLD = 0xffaa22;
+/** Lighter highlight stop for the shader-effect gradient. */
+export const SHADER_ACCENT_HIGHLIGHT = 0xffe08a;
+/** Duration in milliseconds of one shimmer sweep cycle (plan assumption A2). */
+export const SHADER_ANIMATION_DURATION_MS = 2000;
+/** Easing identifier for the shimmer sweep. */
+export const SHADER_ANIMATION_EASING = 'Sine.easeInOut';
+/** Shimmer travel amplitude in pixels. */
+export const SHADER_ANIMATION_AMPLITUDE = 6;
+
 /** Right-column origin for card overlays — left edge of the text column
  *  to the right of the 64×64 graphic (GRAPHIC_X 8 + GRAPHIC_W 64 + 8 gap).
  *  In card-local coords (0,0 = centre) this is -width/2 + 80. */
@@ -103,6 +119,53 @@ export interface OverlayAccentSpec {
   alpha?: number;
 }
 
+/**
+ * A single gradient colour stop for the shader-style upgrade accent.
+ *
+ * Pure data: `color` is a Phaser 24-bit integer, but the type carries no
+ * Phaser dependency so the spec builder stays unit-testable without a runtime.
+ */
+export interface OverlayShaderColourStop {
+  /** Stop position in the [0, 1] gradient range. */
+  offset: number;
+  /** Stop colour (Phaser 24-bit integer). */
+  color: number;
+  /** Stop alpha (0–1). */
+  alpha: number;
+}
+
+/**
+ * Pure, Phaser-free description of the shader-style upgrade accent applied to
+ * upgraded (level > 0) business / community-space cards
+ * (MS-0MV5I4NTU002D3V4).
+ *
+ * The rendering slices draw this with a Canvas-safe Phaser `Graphics` accent
+ * under the existing overlay pipeline; the spec itself imports nothing from
+ * Phaser. It describes the animated shimmer (duration/easing/amplitude) and the
+ * reduced-motion static form (`staticForm` + `colourStops`), so the
+ * reduced-motion fallback is testable as pure data. It deliberately carries no
+ * per-level texture-cache key and no full-card `upgradeBorder`.
+ */
+export interface OverlayShaderEffectSpec {
+  /**
+   * Ordered gradient colour stops (left → right), reused as the frozen
+   * reduced-motion / replay static form.
+   */
+  colourStops: OverlayShaderColourStop[];
+  /** Duration in milliseconds of one shimmer sweep cycle. */
+  animationDurationMs: number;
+  /** Easing identifier for the shimmer sweep. */
+  animationEasing: string;
+  /** Shimmer travel amplitude in pixels (0 = no movement). */
+  animationAmplitude: number;
+  /**
+   * Whether a static (reduced-motion) form is available. When true the
+   * renderer draws `colourStops` frozen instead of running the tween — used
+   * for both reduced-motion and replay/headless.
+   */
+  staticForm: boolean;
+}
+
 /** Complete overlay specification for a BusinessCard. */
 export interface UpgradeOverlaySpec {
   /** Level badge text (e.g. "Lvl 2"), null for base cards. */
@@ -119,6 +182,12 @@ export interface UpgradeOverlaySpec {
   cashLine: OverlayTextSpec | null;
   /** Per-turn reputation text (e.g. "+20/turn"), null when total reputation is 0. */
   reputationText: OverlayTextSpec | null;
+  /**
+   * Canvas-compatible shader-style accent for upgraded cards, null for base
+   * cards. Pure data consumed by the rendering slices
+   * (MS-0MV5I4O8U001SU5J / MS-0MV5I4ONA000Z7NV); never a full-card stroke.
+   */
+  shaderEffect: OverlayShaderEffectSpec | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,12 +197,13 @@ export interface UpgradeOverlaySpec {
 /**
  * Build an overlay specification for a BusinessCard based on its current
  * upgrade state. Returns specs for the level badge, the top-left upgrade
- * accent, the combined cash line and the reputation line.
+ * accent, the combined cash line, the reputation line and the shader-style
+ * upgrade effect.
  *
  * Base cards (level === 0) get `null` for all overlay fields — the renderer
  * skips overlay creation entirely. Upgraded cards (level > 0) get the level
- * badge, the corner accent, and any non-zero cash/reputation lines populated
- * for visual distinction.
+ * badge, the corner accent, any non-zero cash/reputation lines, and the
+ * shader-style upgrade effect for visual distinction.
  *
  * Note: the upgraded business NAME is intentionally NOT part of the overlay
  * spec (since CG-0MT24MHGZ0025O20 review): it is baked into the card's SVG
@@ -248,10 +318,29 @@ export function buildUpgradeOverlaySpec(
       }
     : null;
 
+  // Shader-style upgrade accent (MS-0MV5I4NTU002D3V4): a Canvas-safe
+  // gradient/shimmer confined to the upgrade accent region, consumed by the
+  // rendering slices. Pure data only — no Phaser import, no per-level texture
+  // key, and `null` for base cards so their output is byte-for-byte unchanged.
+  // The static form is the same gradient stops frozen (reduced-motion/replay).
+  const shaderEffect: OverlayShaderEffectSpec | null = isUpgraded
+    ? {
+        colourStops: [
+          { offset: 0, color: SHADER_ACCENT_GOLD, alpha: 0.92 },
+          { offset: 0.5, color: SHADER_ACCENT_HIGHLIGHT, alpha: 1 },
+          { offset: 1, color: SHADER_ACCENT_GOLD, alpha: 0.92 },
+        ],
+        animationDurationMs: SHADER_ANIMATION_DURATION_MS,
+        animationEasing: SHADER_ANIMATION_EASING,
+        animationAmplitude: SHADER_ANIMATION_AMPLITUDE,
+        staticForm: true,
+      }
+    : null;
+
   // Name overlay — REMOVED (CG-0MT24MHGZ0025O20 manual review): the upgraded
   // name is baked into the card's SVG texture as a display-name variant, not
   // rendered as a Phaser overlay. The card face therefore shows the upgraded
   // name as a part of the card image, exactly like the base name.
 
-  return { levelBadge, levelAccent, cashLine, reputationText };
+  return { levelBadge, levelAccent, cashLine, reputationText, shaderEffect };
 }
