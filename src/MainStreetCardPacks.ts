@@ -53,10 +53,12 @@ import {
   type CardPackClient,
 } from '@ui/card-pack-client';
 import {
-  contentUnlockClientFromWindow,
   type ContentUnlockClient,
 } from '@ui/content-unlock-client';
 import { readContentDirFromWindow } from '@ui/game-plugin-boot';
+import {
+  resolveMainStreetContentUnlockClient,
+} from './MainStreetBrowserContentUnlockClient';
 import {
   MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS,
   MAIN_STREET_GAME_ID,
@@ -353,7 +355,7 @@ export async function loadMainStreetCardPacks(
       importer: options.importer,
       resolveEntitlement: composeContentUnlockEntitlement({
         steam: (refs) => client.listStatus(refs),
-        contentUnlocks: options.contentUnlocks ?? contentUnlockClientFromWindow(),
+        contentUnlocks: options.contentUnlocks ?? resolveMainStreetContentUnlockClient(),
       }),
     });
   } catch (error) {
@@ -668,7 +670,7 @@ export async function purchaseMainStreetCardPack(
   const contentUnlocks =
     options.contentUnlocks ??
     _lastBootstrapOptions.contentUnlocks ??
-    contentUnlockClientFromWindow();
+    resolveMainStreetContentUnlockClient();
 
   let refreshed = false;
   try {
