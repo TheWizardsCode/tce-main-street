@@ -124,11 +124,9 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
     // Card packs (F9 / CG-0MUZIS4KZ003R1HP): when the launcher starts this
     // scene directly (the game's own `main.ts` did not run), discover the
     // installed packs and only then set the game up, so the first deal can
-    // include pack cards. In a plain browser / test run there is no content
-    // directory, so this gate is skipped and the synchronous path below is
-    // byte-for-byte unchanged. Discovery never throws and degrades to base
-    // content, so the scene still boots when the manifest is missing.
-    if (shouldBootstrapPacks(s)) {
+    // include pack cards. This blocking path is the Electron content-directory
+    // case; it keeps the pre-existing behaviour byte-for-byte unchanged.
+    if (shouldBlockOnPackDiscovery(s)) {
       void bootstrapMainStreetCardPacks().then(
         () => createScene(lmCtx),
         () => createScene(lmCtx),
@@ -136,17 +134,49 @@ export function create(lmCtx: MainStreetLifecycleManagerContext): void {
       return;
     }
 
+    // Every other path (a plain browser, or an already-bootstrapped process)
+    // sets the game up **synchronously** and, in the browser, discovers the
+    // build-time bundled pack in the background. The bundled pack is gated, so
+    // its cards stay out of play until it is unlocked and enabled, and the
+    // synchronous scene contract relied on across the suite is preserved.
     createScene(lmCtx);
+    if (shouldDiscoverBundledPacks(s)) {
+      void bootstrapMainStreetCardPacks();
+    }
 }
 
-/** Whether the scene must await pack discovery before setting up. */
-function shouldBootstrapPacks(s: MainStreetLifecycleManagerContext['scene']): boolean {
+/**
+ * Whether the scene must await pack discovery before setting up.
+ *
+ * True only when the launcher supplied a content directory (Electron) and the
+ * process has not already bootstrapped: there the first deal must include the
+ * installed pack cards, so setup waits for discovery. The browser path has no
+ * content directory and uses the non-blocking bundled fallback instead.
+ */
+function shouldBlockOnPackDiscovery(s: MainStreetLifecycleManagerContext['scene']): boolean {
     if (s?.replayMode) return false;
     if (isMainStreetCardPacksBootstrapped()) return false;
     try {
-      return readContentDirFromWindow() !== null;
+      return Boolean(readContentDirFromWindow());
     } catch {
       return false;
+    }
+}
+
+/**
+ * Whether the browser path should discover the bundled pack in the background.
+ *
+ * The complement of {@link shouldBlockOnPackDiscovery}: no launcher content
+ * directory, not a replay, and not already bootstrapped.
+ */
+function shouldDiscoverBundledPacks(s: MainStreetLifecycleManagerContext['scene']): boolean {
+    if (s?.replayMode) return false;
+    if (isMainStreetCardPacksBootstrapped()) return false;
+    try {
+      return !readContentDirFromWindow();
+    } catch {
+      // No window (headless): treat as the browser path.
+      return true;
     }
 }
 

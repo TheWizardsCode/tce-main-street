@@ -66,6 +66,7 @@ import {
   findContentUnlockGatedPack,
 } from './MainStreetContentUnlockGate';
 import {
+  createDefaultPackSourceRegistry,
   createPackSourceTransports,
   type PackSourceRegistry,
 } from './MainStreetPackSources';
@@ -351,7 +352,11 @@ export async function loadMainStreetCardPacks(
       engineVersion: options.engineVersion,
       fetchManifest: options.fetchManifest ?? sourceTransports?.fetchManifest,
       fetchCsv: options.fetchCsv ?? sourceTransports?.fetchCsv,
-      fetchAsset: options.fetchAsset,
+      // An explicit asset transport always wins; otherwise a pack-source
+      // registry supplies one that resolves the loader's `tce-packs://` asset
+      // URL to a browser-usable (`?url`) URL, so the browser path makes no
+      // `tce-packs://` request.
+      fetchAsset: options.fetchAsset ?? sourceTransports?.fetchAsset,
       importer: options.importer,
       resolveEntitlement: composeContentUnlockEntitlement({
         steam: (refs) => client.listStatus(refs),
@@ -545,37 +550,64 @@ export interface BootstrapMainStreetCardPacksOptions {
 }
 
 /**
+ * The content directory for the bundled browser fallback.
+ *
+ * The bundled pack source ({@link createDefaultPackSourceRegistry}) reads the
+ * manifest/CSV from the build-time module graph and emits asset URLs (`?url`)
+ * that Vite already prefixes with the web base, so `contentDir` only needs to
+ * be a non-empty, base-correct value for the core loader's URL builder. Deriving
+ * it from `import.meta.env.BASE_URL` (`/tce-main-street/` for the GitHub Pages
+ * project site) keeps the same-origin fallback respecting the deployed base path
+ * rather than assuming `/`.
+ *
+ * @param baseUrl Web base path; defaults to `import.meta.env.BASE_URL`.
+ */
+export function resolveBundledContentDir(
+  baseUrl: string = import.meta.env.BASE_URL,
+): string {
+  return typeof baseUrl === 'string' && baseUrl.trim() !== '' ? baseUrl : '/';
+}
+
+/**
  * Discover, merge and apply the installed card packs *before* scene setup.
  *
  * This is the Main Street boot entry point (called from
  * `createMainStreetGame.ts` / `main.ts`, and by the scene lifecycle when the
  * launcher started the scene directly). It never throws:
  *
- *   - no content directory (browser / core-only build) → base content;
+ *   - a launcher content directory (Electron) reads the content directory
+ *     through the existing transports, unchanged;
+ *   - no content directory (browser distribution) falls back to the bundled
+ *     build-time pack source through the pack-source registry, so the
+ *     residential pack is discovered without an Electron bridge;
  *   - any discovery failure → {@link loadMainStreetCardPacks} already degrades
  *     to base content;
- *   - a missing/malformed manifest → base content.
+ *   - a missing/malformed manifest or an empty bundled source → base content.
  *
  * On success the merged pool is applied to the live templates so
  * `setupMainStreetGame()` deals pack cards, and the enabled-pack preference
- * seeds the active set. Returns the load result, or `null` when no content
- * directory was available.
+ * seeds the active set. Discovery always yields a result — base-only when no
+ * pack is reachable — so the caller can apply the pool unconditionally.
  */
 export async function bootstrapMainStreetCardPacks(
   options: BootstrapMainStreetCardPacksOptions = {},
 ): Promise<MainStreetPackLoadResult | null> {
-  const contentDir =
+  const launcherContentDir =
     options.contentDir !== undefined
       ? options.contentDir
       : readContentDirFromWindow();
 
-  if (!contentDir) {
-    // Safe base-content fallback: no packs are reachable in this environment.
-    resetMainStreetCardPacks();
-    _lastLoadResult = null;
-    _bootstrapped = true;
-    return null;
-  }
+  // No launcher content directory → the browser distribution. Discover the
+  // build-time bundled pack through the pack-source registry (no Electron
+  // bridges, no `tce-packs://` request). An explicit content directory keeps
+  // the Electron content-directory path byte-for-byte unchanged.
+  const useBundledSource = !launcherContentDir;
+  const contentDir = useBundledSource
+    ? resolveBundledContentDir()
+    : launcherContentDir;
+
+  const packSources =
+    options.packSources ?? (useBundledSource ? createDefaultPackSourceRegistry() : undefined);
 
   const enabledPackIds = getEnabledCardPackIds(options.storage) ?? undefined;
   const result = await loadMainStreetCardPacks({
@@ -590,7 +622,7 @@ export async function bootstrapMainStreetCardPacks(
     client: options.client,
     contentUnlocks: options.contentUnlocks,
     loader: options.loader,
-    packSources: options.packSources,
+    packSources,
     logger: options.logger,
   });
 

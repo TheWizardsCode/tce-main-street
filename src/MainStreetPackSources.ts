@@ -45,6 +45,7 @@
  */
 
 import type {
+  CardPackAssetFetcher,
   CardPackCsvFetcher,
   CardPackManifestFetcher,
 } from '@ui/CardPackLoader';
@@ -341,23 +342,45 @@ export interface PackSourceTransports {
   readonly fetchManifest: CardPackManifestFetcher;
   /** CSV transport for `CardPackLoaderOptions.fetchCsv`. */
   readonly fetchCsv: CardPackCsvFetcher;
+  /**
+   * Asset-byte transport for `CardPackLoaderOptions.fetchAsset`. Resolves the
+   * loader's `tce-packs://` asset URL to a browser-usable URL through the
+   * registry (the `?url` emitted for a bundled asset) before reading its bytes,
+   * so the browser path never issues a `tce-packs://` request.
+   */
+  readonly fetchAsset: CardPackAssetFetcher;
+}
+
+/** Default asset-byte read: the renderer's global `fetch` + `arrayBuffer`. */
+async function defaultFetchAssetBytes(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 /**
- * Adapt *registry* to the core loader's manifest/CSV transport seams.
+ * Adapt *registry* to the core loader's manifest/CSV/asset transport seams.
  *
  * The returned callbacks map the URL the loader would have requested to a
  * packs-relative path and read it from the registry. When no source carries the
  * file they throw a descriptive error **for the loader's existing try/catch**,
  * so discovery degrades to base content rather than crashing (the registry
- * itself stays total).
+ * itself stays total). Assets are resolved to a browser-usable URL before the
+ * injected byte reader is called, so a bundled `?url` is read same-origin and
+ * a `tce-packs://` request is never made.
  *
  * Defaults to the bundled registry, which also keeps the bundled pack (its
  * `?raw` text and `?url` assets) referenced from the production module graph so
  * the web build emits it even before a caller wires a source explicitly.
+ *
+ * @param registry        Source registry; defaults to the bundled registry.
+ * @param fetchAssetBytes Asset-byte reader; defaults to `fetch` + `arrayBuffer`.
  */
 export function createPackSourceTransports(
   registry: PackSourceRegistry = createDefaultPackSourceRegistry(),
+  fetchAssetBytes: (url: string) => Promise<Uint8Array> = defaultFetchAssetBytes,
 ): PackSourceTransports {
   return {
     async fetchManifest(url: string): Promise<string> {
@@ -375,6 +398,13 @@ export function createPackSourceTransports(
         throw new Error(`No pack source resolved "${url}".`);
       }
       return text;
+    },
+    async fetchAsset(url: string): Promise<Uint8Array> {
+      const resolved = await resolvePackAssetUrl(registry, url);
+      if (resolved === null) {
+        throw new Error(`No pack source resolved asset "${url}".`);
+      }
+      return fetchAssetBytes(resolved);
     },
   };
 }
