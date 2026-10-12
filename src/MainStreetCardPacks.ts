@@ -73,6 +73,10 @@ import {
   type StorageLike,
 } from './MainStreetPrefs';
 import {
+  registerPackArtAssets,
+  resetPackArt,
+} from './MainStreetCardPackArt';
+import {
   CARD_DATA_RAW,
   getBusinessTemplates,
   getCommunitySpaceTemplates,
@@ -453,6 +457,7 @@ export function applyMainStreetCardPool(pool: MainStreetCardPool): void {
 export function resetMainStreetCardPacks(): void {
   resetTemplatesToDefault();
   setActiveMainStreetPacks([]);
+  resetPackArt();
 }
 
 // ── Boot bootstrap & UI helpers (F9 / CG-0MUZIS4KZ003R1HP) ───
@@ -513,6 +518,8 @@ export interface BootstrapMainStreetCardPacksOptions {
   readonly fetchManifest?: MainStreetPackLoadOptions['fetchManifest'];
   /** CSV transport override (tests). */
   readonly fetchCsv?: MainStreetPackLoadOptions['fetchCsv'];
+  /** Asset-byte transport override (tests). */
+  readonly fetchAsset?: MainStreetPackLoadOptions['fetchAsset'];
   /** Dynamic-import transport override (tests). */
   readonly importer?: MainStreetPackLoadOptions['importer'];
   /** Entitlement client override; defaults to the `window.tce` client. */
@@ -576,6 +583,7 @@ export async function bootstrapMainStreetCardPacks(
     enabledPackIds,
     fetchManifest: options.fetchManifest,
     fetchCsv: options.fetchCsv,
+    fetchAsset: options.fetchAsset,
     importer: options.importer,
     client: options.client,
     contentUnlocks: options.contentUnlocks,
@@ -585,6 +593,14 @@ export async function bootstrapMainStreetCardPacks(
   });
 
   applyMainStreetCardPool(result.pool);
+  // Pack art must be in the registry before any card texture is generated
+  // (`createMainStreetGameWithPacks` awaits this call before creating the
+  // scene; the scene lifecycle applies the same gate). Reset first so a
+  // failed/disabled pack leaves the registry in base-only state.
+  resetPackArt();
+  for (const pack of result.loaded) {
+    registerPackArtAssets(pack.assetDataUris);
+  }
   _lastLoadResult = result;
   _bootstrapped = true;
   // Remember the options so a later purchase can re-discover with the same

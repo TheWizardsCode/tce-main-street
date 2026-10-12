@@ -41,6 +41,13 @@ import {
 import { setupMainStreetGame } from '../../src/MainStreetState';
 import type { MainStreetState } from '../../src/MainStreetState';
 import type { CardPackLoadResult, LoadedCardPack } from '@ui/CardPackLoader';
+import {
+  getPackArtDataUri,
+  hasPackArt,
+  registerPackArt,
+} from '../../src/MainStreetCardPackArt';
+import { getCardArtDataUriForCard } from '../../src/MainStreetCardArt';
+import { generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 const BASE_HEADER = CARD_DATA_RAW.split('\n')[0];
 const BASE_COLUMNS = BASE_HEADER.split(',');
@@ -179,6 +186,76 @@ describe('bootstrapMainStreetCardPacks', () => {
     expect(result).not.toBeNull();
     expect(getActiveCsvData()).toBe(CARD_DATA_RAW);
     expect(getActiveMainStreetPacks()).toEqual([]);
+  });
+});
+
+describe('bootstrapMainStreetCardPacks — pack-art registry', () => {
+  const PACK_ART_URI =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  function loaderWithPackArt() {
+    return vi.fn(async () => ({
+      packs: [
+        loadedPack({ assetDataUris: { [PACK_BUSINESS_ID]: PACK_ART_URI } }),
+      ],
+      incompatible: [],
+      locked: [],
+      errors: [],
+    }));
+  }
+
+  it('registers every loaded pack\'s inlined assets before scene setup', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(true);
+    expect(getPackArtDataUri(PACK_BUSINESS_ID)).toBe(PACK_ART_URI);
+    expect(getCardArtDataUriForCard(PACK_BUSINESS_ID, 'Pack Tea House')).toBe(
+      PACK_ART_URI,
+    );
+  });
+
+  it('clears the registry on reset', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(true);
+
+    resetMainStreetCardPacks();
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(false);
+  });
+
+  it('leaves the registry base-only when the loader fails', async () => {
+    registerPackArt(PACK_BUSINESS_ID, PACK_ART_URI);
+    const loader = vi.fn(async () => ({
+      packs: [],
+      incompatible: [],
+      locked: [],
+      errors: [{ id: PACK_ID, reason: 'boom' }],
+    }));
+
+    await bootstrapMainStreetCardPacks({ contentDir: '/content', loader });
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(false);
+  });
+
+  it('populates the registry before the SVG generator draws a pack card (ordering)', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+
+    const svg = generateCardSvgFromCsvRow({
+      id: PACK_BUSINESS_ID,
+      name: 'Pack Tea House',
+      family: 'business',
+    });
+
+    expect(svg).toContain(PACK_ART_URI);
   });
 });
 
