@@ -22,7 +22,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildUpgradeOverlaySpec, sampleShaderGradient } from '../../src/scenes/UpgradeOverlaySpec';
+import {
+  buildUpgradeOverlaySpec,
+  sampleShaderGradient,
+  shouldAnimateShaderEffect,
+} from '../../src/scenes/UpgradeOverlaySpec';
 import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { getUpgradeTemplates } from '../../src/MainStreetCards';
 
@@ -337,5 +341,31 @@ describe('sampleShaderGradient (AC2/AC5)', () => {
     const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
     expect(sampleShaderGradient(effect.colourStops, 0).color).toBe(0xffaa22);
     expect(sampleShaderGradient(effect.colourStops, 1).color).toBe(0xffaa22);
+  });
+});
+
+// ── AC3/AC5: pure motion-gating predicate (MS-0MV5I4ONA000Z7NV) ─────
+
+/**
+ * `shouldAnimateShaderEffect` is the pure predicate the renderer uses to gate
+ * the shimmer tween. Reduced motion and replay/headless must both fall back to
+ * the static form so transcripts and headless CI output are unchanged.
+ */
+describe('shouldAnimateShaderEffect (AC3/AC5)', () => {
+  it('allows motion only when reduced motion is off and not in replay', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: false, replayMode: false })).toBe(true);
+  });
+
+  it('disallows motion when reduced motion is enabled', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: true, replayMode: false })).toBe(false);
+  });
+
+  it('disallows motion in replay/headless mode', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: false, replayMode: true })).toBe(false);
+    expect(shouldAnimateShaderEffect({ reducedMotion: true, replayMode: true })).toBe(false);
+  });
+
+  it('defaults to allowing motion when settings are absent', () => {
+    expect(shouldAnimateShaderEffect({})).toBe(true);
   });
 });

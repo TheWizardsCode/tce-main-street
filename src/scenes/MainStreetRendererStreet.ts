@@ -20,7 +20,7 @@ import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
-import { buildUpgradeOverlaySpec, sampleShaderGradient } from './UpgradeOverlaySpec';
+import { buildUpgradeOverlaySpec, sampleShaderGradient, shouldAnimateShaderEffect } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
@@ -913,6 +913,50 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
       }
       effect.setName('ms-upgrade-shader');
       container.add(effect);
+
+      // ── Motion layer (MS-0MV5I4ONA000Z7NV) ──
+      // Deterministic shimmer sweep over the accent, gated by
+      // shouldAnimateShaderEffect so reduced motion and replay/headless keep
+      // the static gradient and create no tween. The tween is killed when the
+      // card container is destroyed, so refreshes never leak tweens. Purely
+      // presentational — it never touches game state, transcript or replay
+      // output.
+      if (
+        shouldAnimateShaderEffect({
+          reducedMotion: !!(renderer.scene.settingsPanel?.reducedMotion),
+          replayMode: !!renderer.scene.replayMode,
+        })
+      ) {
+        const centreX = accentX + accentW / 2;
+        const centreY = accentY + accentH / 2;
+        const amplitude = spec.shaderEffect.animationAmplitude;
+        const shimmer = renderer.scene.add.rectangle(
+          centreX - amplitude,
+          centreY,
+          Math.max(2, accentW * 0.4),
+          accentH,
+          0xffffff,
+          0.35,
+        );
+        shimmer.setName('ms-upgrade-shimmer');
+        container.add(shimmer);
+        renderer.scene.tweens?.add({
+          targets: shimmer,
+          x: centreX + amplitude,
+          alpha: { from: 0.15, to: 0.6 },
+          duration: spec.shaderEffect.animationDurationMs,
+          ease: spec.shaderEffect.animationEasing,
+          yoyo: true,
+          repeat: -1,
+        });
+        container.once('destroy', () => {
+          try {
+            renderer.scene.tweens?.killTweensOf(shimmer);
+          } catch (_) {
+            /* presentation-only cleanup; never break the game loop */
+          }
+        });
+      }
     }
 
     // Level badge (top-left)

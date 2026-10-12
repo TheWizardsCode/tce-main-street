@@ -248,6 +248,26 @@ function lerpColour(a: number, b: number, f: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Motion gating (pure)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the shader-effect motion layer should run for a card.
+ *
+ * Motion is allowed only when the player has **not** enabled reduced motion
+ * and the scene is not in replay/headless mode. When this returns false the
+ * effect renders in its static form (the gradient drawn by the renderer) and no
+ * tween is created, so transcripts, replays and headless CI output are
+ * unchanged (MS-0MV5I4ONA000Z7NV). Pure and Phaser-free so it is unit-testable.
+ */
+export function shouldAnimateShaderEffect(options: {
+  reducedMotion?: boolean;
+  replayMode?: boolean;
+}): boolean {
+  return !options.reducedMotion && !options.replayMode;
+}
+
+// ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 

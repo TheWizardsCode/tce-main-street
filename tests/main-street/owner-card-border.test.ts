@@ -147,6 +147,7 @@ interface MockContainer {
   y: number;
   children: unknown[];
   data: Record<string, unknown>;
+  destroyHandlers: (() => void)[];
 }
 
 interface HarnessOptions {
@@ -154,12 +155,22 @@ interface HarnessOptions {
   ownerId?: number;
   sold?: boolean;
   replayMode?: boolean;
+  reducedMotion?: boolean;
 }
 
 function createHarness(opts: HarnessOptions = {}) {
   const rects: MockRect[] = [];
   const containers: MockContainer[] = [];
   const graphicsList: MockGraphics[] = [];
+  const tweenConfigs: Record<string, unknown>[] = [];
+  const tweenManager = {
+    add: vi.fn((config: Record<string, unknown>) => {
+      tweenConfigs.push(config);
+      return { ...config };
+    }),
+    killTweensOf: vi.fn(),
+    isTweening: vi.fn(() => false),
+  };
 
   const soldSlots = new Array<boolean>(GRID_SIZE).fill(false);
   if (opts.sold) soldSlots[0] = true;
@@ -185,6 +196,11 @@ function createHarness(opts: HarnessOptions = {}) {
   const scene = {
     layout: { slotW: SLOT_W, slotH: SLOT_H },
     replayMode: opts.replayMode ?? false,
+    settingsPanel:
+      opts.reducedMotion === undefined
+        ? undefined
+        : { reducedMotion: opts.reducedMotion },
+    tweens: tweenManager,
     uiPhase: 'idle',
     pendingHandIndex: null,
     hintedSlotIndex: null,
@@ -197,6 +213,7 @@ function createHarness(opts: HarnessOptions = {}) {
           y,
           children: [],
           data: {},
+          destroyHandlers: [],
         };
         containers.push(container);
         return {
@@ -207,6 +224,10 @@ function createHarness(opts: HarnessOptions = {}) {
           },
           setData: (key: string, value: unknown) => {
             container.data[key] = value;
+            return container;
+          },
+          once: (event: string, handler: () => void) => {
+            if (event === 'destroy') container.destroyHandlers.push(handler);
             return container;
           },
         };
@@ -232,6 +253,7 @@ function createHarness(opts: HarnessOptions = {}) {
           };
           rects.push(rect);
           const chain = {
+            name: undefined as string | undefined,
             setStrokeStyle: (width: number, color: number) => {
               rect.strokeWidth = width;
               rect.strokeColor = color;
@@ -244,6 +266,7 @@ function createHarness(opts: HarnessOptions = {}) {
             },
             setName: (name: string) => {
               rect.name = name;
+              chain.name = name;
               return chain;
             },
             setData: (key: string, value: unknown) => {
@@ -321,12 +344,20 @@ function createHarness(opts: HarnessOptions = {}) {
     rects,
     containers,
     graphics: graphicsList,
+    tweenConfigs,
   };
 }
 
 /** The frame drawn for the card itself (full render size, no fill recorded). */
 function ownerBorderRects(rects: MockRect[]): MockRect[] {
   return rects.filter((rect) => rect.data.ownerBorder === true);
+}
+
+/** The animated shimmer rectangle on a card container, if present. */
+function shimmerOf(container: MockContainer): unknown {
+  return container.children.find(
+    (obj) => (obj as { name?: string })?.name === 'ms-upgrade-shimmer',
+  );
 }
 
 // ── AC1/AC2: owner-coloured border colour matches the seat colour ──
@@ -502,5 +533,77 @@ describe('owner lookup integration', () => {
     const ownerId = getSlotOwnerId(renderer.scene.state, 0);
     expect(ownerId).toBe(1);
     expect(resolveSeatColour(renderer.scene.state, ownerId)).toBe(SKY_BLUE);
+  });
+});
+
+// ── MS-0MV5I4ONA000Z7NV: shader motion gating ─────────────────
+
+/**
+ * The shader accent animates (deterministic shimmer sweep) only when motion is
+ * allowed; reduced motion and replay/headless render the static gradient and
+ * create no tween. These tests assert the renderer wiring via the recording
+ * tween manager, and that destroying the card container kills the tween.
+ */
+describe('shader motion gating (MS-0MV5I4ONA000Z7NV)', () => {
+  it('creates a deterministic shimmer tween when motion is allowed', () => {
+    const { renderer, containers, tweenConfigs } = createHarness({
+      reducedMotion: false,
+      replayMode: false,
+    });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
+
+    expect(tweenConfigs).toHaveLength(1);
+    const tween = tweenConfigs[0] as Record<string, unknown>;
+    expect(tween.duration).toBe(2000);
+    expect(tween.ease).toBe('Sine.easeInOut');
+    expect(tween.repeat).toBe(-1);
+    expect(tween.yoyo).toBe(true);
+    expect(shimmerOf(containers[0])).toBeDefined();
+  });
+
+  it('creates a deterministic shimmer tween by default (no settings panel)', () => {
+    const { renderer, tweenConfigs } = createHarness();
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
+
+    expect(tweenConfigs).toHaveLength(1);
+  });
+
+  it('does not create a tween or shimmer when reduced motion is enabled', () => {
+    const { renderer, containers, tweenConfigs } = createHarness({ reducedMotion: true });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
+
+    expect(tweenConfigs).toHaveLength(0);
+    expect(shimmerOf(containers[0])).toBeUndefined();
+  });
+
+  it('does not create a tween or shimmer in replay mode', () => {
+    const { renderer, containers, tweenConfigs } = createHarness({ replayMode: true });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
+
+    expect(tweenConfigs).toHaveLength(0);
+    expect(shimmerOf(containers[0])).toBeUndefined();
+  });
+
+  it('creates no motion for a base (level 0) card even when motion is allowed', () => {
+    const { renderer, tweenConfigs } = createHarness({ reducedMotion: false });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 0 }));
+
+    expect(tweenConfigs).toHaveLength(0);
+  });
+
+  it('kills the shimmer tween when the card container is destroyed (no leak)', () => {
+    const { renderer, containers, scene } = createHarness({ reducedMotion: false });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
+
+    const container = containers[0];
+    expect(container.destroyHandlers.length).toBeGreaterThan(0);
+    for (const handler of container.destroyHandlers) handler();
+    expect(scene.tweens.killTweensOf).toHaveBeenCalled();
   });
 });
