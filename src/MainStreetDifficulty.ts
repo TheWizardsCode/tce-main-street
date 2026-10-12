@@ -177,7 +177,10 @@ export interface GameConfig extends DifficultyConfig {
  *
  * - the canonical 200-seed / 60-turn greedy profile preserves the primary
  *   balance gate — a monotone-decreasing win-rate ladder
- *   Easy (0.62) ≥ Medium (0.325) ≥ Hard (0.11);
+ *   Easy (0.62) ≥ Medium (0.325) ≥ Hard (0.11) at the rebalance; after the
+ *   R2 reputation re-tune and the Community-Favour AI gate it measures
+ *   Easy (0.76) ≥ Medium (0.665) ≥ Hard (0.41), all inside the PRD bands
+ *   (2026-10-09);
  * - the guardrail bands (src/scripts/balance/guards/thresholds.ts and the
  *   Monte Carlo guardrail tests) are revised to the measured after-state
  *   instead of the presets being re-tuned to the old baseline;
@@ -186,6 +189,19 @@ export interface GameConfig extends DifficultyConfig {
  * Community-space / event / upgrade pricing was reviewed and any relative
  * re-valuation is tracked as follow-up work rather than changed here. See
  * docs/main-street/payback-rebalance-evidence.md.
+ *
+ * Difficulty-lever confirmation (MS-0MUR9IMXE0090WIV, producer decision A,
+ * 2026-10-09). With liquidity slack and runs ~10–12 turns after the
+ * rebalance, the producer confirmed the per-difficulty `winThreshold` values
+ * (Easy 10,000 / Medium 12,000 / Hard 15,000) and the **absence of a
+ * `maxTurns` cap** as the accepted design intent — **no preset change**.
+ * Win thresholds / run length remain the intended difficulty lever; the
+ * measured ladder holds (0.76 ≥ 0.665 ≥ 0.41). Evidence: canonical-profile
+ * comment MS-C0MV1D0IBA001ROOU; the unchanged presets are pinned by
+ * tests/main-street/difficulty-presets.test.ts (winThreshold values and
+ * `maxTurns === undefined`) and
+ * tests/main-street/monte-carlo-greedy-guardrail.test.ts (win-rate bands and
+ * ladder).
  */
 
 /**

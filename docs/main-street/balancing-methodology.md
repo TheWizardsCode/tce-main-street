@@ -198,9 +198,49 @@ all net incomes positive.
 | **Community spaces** | 0 income by design; excluded. |
 
 The tighter economy is the accepted design intent (producer decision Q3 = C): difficulty
-presets are unchanged, the win-rate ladder `Easy ≥ Medium ≥ Hard` is preserved
-(0.62 ≥ 0.325 ≥ 0.11), and the guardrail bands were revised to the measured after-state. See
+presets are unchanged, the win-rate ladder `Easy ≥ Medium ≥ Hard` was preserved
+(measured 0.62 ≥ 0.325 ≥ 0.11 at the rebalance; since raised to 0.76 ≥ 0.665 ≥ 0.41 — see
+the difficulty-lever confirmation below), and the guardrail bands were revised to the
+measured after-state. See
 [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+
+## Difficulty-Lever Confirmation (MS-0MUR9IMXE0090WIV)
+
+After the five-turn payback rebalance (MS-0MUQ50I1Y000B6L3, producer decision
+Q3 = C) the remaining open question (R3 of
+[further-balancing-recommendations.md](further-balancing-recommendations.md#5-prioritised-recommendations))
+was whether "tighter" should now be expressed through **difficulty
+`winThreshold` and/or a per-difficulty `maxTurns` cap** rather than through
+income. The R2 reputation re-tune (MS-0MUR9IMN60093HIE), the Community-Favour
+AI gate (MS-0MUVB2ZES005V83Y) and the R1/R4 card re-pricing materially changed
+the measured state first, so the question was re-assessed on refreshed evidence.
+
+**Decision (producer, decision A, 2026-10-09).** **No change**: the
+per-difficulty `winThreshold` values stay **Easy 10,000 / Medium 12,000 / Hard
+15,000**, and **no `maxTurns` cap** is added. Win thresholds / run length remain
+the intended difficulty lever; the current state is the accepted design intent.
+
+**Canonical-profile evidence** (200 seeds `mc-balance-0…199`, 60-turn harness
+cap, `greedy`, all three presets — comment `MS-C0MV1D0IBA001ROOU`):
+
+| Difficulty | `winThreshold` | winRate | PRD band | medianScore | avgTurns |
+|---|---:|---:|---|---:|---:|
+| Easy   | 10,000 | 0.760 | 0.45–0.95 | 10,856.5 | 10.74 |
+| Medium | 12,000 | 0.665 | 0.20–0.85 | 12,638.5 | 12.22 |
+| Hard   | 15,000 | 0.410 | 0.05–0.60 |    512.0 | 11.04 |
+
+The primary balance gate holds — a monotone-decreasing win-rate ladder
+`Easy 0.760 ≥ Medium 0.665 ≥ Hard 0.410` — and every difficulty sits inside its
+PRD band. Run length remains ~11–12 turns (below the `avgTurns_greedy_medium`
+informational band of 14–22 and the PRD Milestone 1 "surviving 20 turns" intent),
+which the producer explicitly accepted rather than re-tuning.
+
+The decision is **pinned by the existing verification guards** (no new test code
+required): `tests/main-street/difficulty-presets.test.ts` asserts each preset's
+`winThreshold` and that `preset.maxTurns` is `undefined`;
+`tests/main-street/monte-carlo-greedy-guardrail.test.ts` asserts the
+per-difficulty win-rate bands and the ladder. Any future difficulty tune must be
+raised as a **new** balance work item, not by editing these pins.
 
 ## 8-Way Adjacency Re-Tune (CG-0MSP1HCAS00785MP / CG-0MSP26Q5N002EH8P)
 
