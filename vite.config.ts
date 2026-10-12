@@ -50,6 +50,25 @@ const presetEnv = {
 };
 
 /**
+ * Subprocess/render-heavy CLI tests that cold-start a `vite-node` process (or,
+ * for `storyline-graph-svg`, a Playwright Chromium render) per test file.
+ *
+ * Under Vitest file-level parallelism these contend with each other — and with
+ * the rest of the unit suite — for CPU and the Vite transform pipeline; the
+ * spawned CLI then fails spuriously (`expected 1 to be +0`) even though the
+ * production CLI is fine (MS-0MV5PNIPO00940KG). They are therefore moved out of
+ * the `unit` project into the serialized `unit-cli` project below, which runs
+ * after `unit` completes via `sequence.groupOrder`.
+ */
+const CLI_TEST_FILES = [
+  'tests/main-street/validate-storylines.test.ts',
+  'tests/main-street/storyline-graph.test.ts',
+  'tests/main-street/storyline-author.test.ts',
+  'tests/main-street/storyline-graph-svg.test.ts',
+  'tests/main-street/harness-cli.test.ts',
+];
+
+/**
  * Dev-server middleware that persists browser card-test results into
  * `src/card-data.csv`.
  *
@@ -146,9 +165,39 @@ export default defineConfig(({ mode }) => ({
           // repo's single-game preset to register the game's adapter.
           env: { GAMES_CONFIG: 'game' },
           include: ['tests/**/*.test.ts'],
-          exclude: ['tests/**/*.browser.test.ts'],
+          // Browser tests have their own project; the subprocess/render-heavy
+          // CLI tests run in the serialized `unit-cli` project below instead,
+          // so they never contend with the parallel unit workers
+          // (MS-0MV5PNIPO00940KG).
+          exclude: ['tests/**/*.browser.test.ts', ...CLI_TEST_FILES],
           testTimeout: 15_000,
           maxWorkers: 4,
+        },
+      },
+      // Serialized subprocess/render-heavy CLI tests (MS-0MV5PNIPO00940KG).
+      //
+      // Each file cold-starts `vite-node` (or a Playwright Chromium render) and
+      // asserts a zero exit code. Running them in the parallel `unit` pool makes
+      // concurrent cold Vite compilations contend for CPU and the transform
+      // pipeline, intermittently yielding a spurious non-zero CLI exit. This
+      // project runs with `fileParallelism: false` (one file at a time), and
+      // `sequence.groupOrder: 1` schedules it after the default group so it
+      // also runs after the `unit` project has drained. Mirrors the core
+      // `replay-e2e` isolation pattern (cold Vite compilation under CPU
+      // contention).
+      {
+        extends: true,
+        test: {
+          name: 'unit-cli',
+          globals: true,
+          environment: 'node',
+          // The spawned CLI subprocesses inherit this: they must resolve the
+          // repo's single-game preset to register the game's adapter.
+          env: { GAMES_CONFIG: 'game' },
+          include: CLI_TEST_FILES,
+          fileParallelism: false,
+          sequence: { concurrent: false, groupOrder: 1 },
+          testTimeout: 180_000,
         },
       },
       // Browser integration project: real Phaser MainStreetScene in headless
