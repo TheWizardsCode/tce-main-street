@@ -311,6 +311,10 @@ function createHarness(opts: HarnessOptions = {}) {
         };
         graphicsList.push(graphics);
         const chain = {
+          clear: () => {
+            graphics.fills.length = 0;
+            return chain;
+          },
           fillStyle: (color: number, alpha: number) => {
             graphics.lastFill = { color, alpha };
             return chain;
@@ -321,6 +325,10 @@ function createHarness(opts: HarnessOptions = {}) {
           },
           setName: (name: string) => {
             graphics.name = name;
+            return chain;
+          },
+          setData: (key: string, value: unknown) => {
+            graphics.data[key] = value;
             return chain;
           },
         };
@@ -351,13 +359,6 @@ function createHarness(opts: HarnessOptions = {}) {
 /** The frame drawn for the card itself (full render size, no fill recorded). */
 function ownerBorderRects(rects: MockRect[]): MockRect[] {
   return rects.filter((rect) => rect.data.ownerBorder === true);
-}
-
-/** The animated shimmer rectangle on a card container, if present. */
-function shimmerOf(container: MockContainer): unknown {
-  return container.children.find(
-    (obj) => (obj as { name?: string })?.name === 'ms-upgrade-shimmer',
-  );
 }
 
 // ── AC1/AC2: owner-coloured border colour matches the seat colour ──
@@ -486,6 +487,25 @@ describe('upgrade border removed, top-left indicator (AC4/AC5)', () => {
     }
   });
 
+  it('draws a shard clearly larger and more vivid than the flat corner accent (remediation)', () => {
+    const players = [makePlayer(0, ORANGE), makePlayer(1, SKY_BLUE)];
+    const { renderer, graphics } = createHarness({ players, ownerId: 1 });
+
+    drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 2 }));
+
+    const shader = graphics[0];
+    const shardArea = shader.fills.reduce((sum, fill) => sum + fill.w * fill.h, 0);
+    // The former flat accent was 30x16 = 480 px^2; the shard must clearly
+    // exceed it so the upgrade distinction is actually visible on screen.
+    expect(shardArea).toBeGreaterThan(480 * 2);
+
+    // The shard carries the vivid gradient (gold + warm-white foil) rather
+    // than the single flat gold fill the old accent used.
+    const colours = new Set(shader.fills.map((fill) => fill.color));
+    expect(colours.size).toBeGreaterThan(2);
+    expect([...colours]).toContain(0xfff4d6);
+  });
+
   it('draws no shader effect for a base (level 0) card', () => {
     const players = [makePlayer(0, ORANGE), makePlayer(1, SKY_BLUE)];
     const { renderer, graphics } = createHarness({ players, ownerId: 1 });
@@ -546,7 +566,7 @@ describe('owner lookup integration', () => {
  */
 describe('shader motion gating (MS-0MV5I4ONA000Z7NV)', () => {
   it('creates a deterministic shimmer tween when motion is allowed', () => {
-    const { renderer, containers, tweenConfigs } = createHarness({
+    const { renderer, graphics, tweenConfigs } = createHarness({
       reducedMotion: false,
       replayMode: false,
     });
@@ -558,8 +578,12 @@ describe('shader motion gating (MS-0MV5I4ONA000Z7NV)', () => {
     expect(tween.duration).toBe(2000);
     expect(tween.ease).toBe('Sine.easeInOut');
     expect(tween.repeat).toBe(-1);
-    expect(tween.yoyo).toBe(true);
-    expect(shimmerOf(containers[0])).toBeDefined();
+    // The sweep drives the shard gradient phase via a redraw callback, so the
+    // shard itself animates rather than a separate overlay rectangle.
+    expect(typeof tween.onUpdate).toBe('function');
+    expect((tween.targets as { phase?: number }).phase).toBe(0);
+    // The shader Graphics records its tween for lifecycle cleanup / QA.
+    expect(graphics[0].data.shaderTween).toBeDefined();
   });
 
   it('creates a deterministic shimmer tween by default (no settings panel)', () => {
@@ -570,22 +594,22 @@ describe('shader motion gating (MS-0MV5I4ONA000Z7NV)', () => {
     expect(tweenConfigs).toHaveLength(1);
   });
 
-  it('does not create a tween or shimmer when reduced motion is enabled', () => {
-    const { renderer, containers, tweenConfigs } = createHarness({ reducedMotion: true });
+  it('does not create a tween when reduced motion is enabled', () => {
+    const { renderer, graphics, tweenConfigs } = createHarness({ reducedMotion: true });
 
     drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
 
     expect(tweenConfigs).toHaveLength(0);
-    expect(shimmerOf(containers[0])).toBeUndefined();
+    expect(graphics[0].data.shaderTween).toBeUndefined();
   });
 
-  it('does not create a tween or shimmer in replay mode', () => {
-    const { renderer, containers, tweenConfigs } = createHarness({ replayMode: true });
+  it('does not create a tween in replay mode', () => {
+    const { renderer, graphics, tweenConfigs } = createHarness({ replayMode: true });
 
     drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));
 
     expect(tweenConfigs).toHaveLength(0);
-    expect(shimmerOf(containers[0])).toBeUndefined();
+    expect(graphics[0].data.shaderTween).toBeUndefined();
   });
 
   it('creates no motion for a base (level 0) card even when motion is allowed', () => {
@@ -596,7 +620,7 @@ describe('shader motion gating (MS-0MV5I4ONA000Z7NV)', () => {
     expect(tweenConfigs).toHaveLength(0);
   });
 
-  it('kills the shimmer tween when the card container is destroyed (no leak)', () => {
+  it('kills the shader tween when the card container is destroyed (no leak)', () => {
     const { renderer, containers, scene } = createHarness({ reducedMotion: false });
 
     drawBusinessSlot(renderer, 0, 0, 0, makeBiz({ level: 1 }));

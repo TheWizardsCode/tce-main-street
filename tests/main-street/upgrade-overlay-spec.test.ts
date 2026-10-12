@@ -24,8 +24,10 @@ import { describe, it, expect } from 'vitest';
 
 import {
   buildUpgradeOverlaySpec,
+  circularDistance,
   sampleShaderGradient,
   shouldAnimateShaderEffect,
+  wrapShaderPhase,
 } from '../../src/scenes/UpgradeOverlaySpec';
 import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { getUpgradeTemplates } from '../../src/MainStreetCards';
@@ -251,7 +253,7 @@ describe('shaderEffect: pure data shape', () => {
     }
   });
 
-  it('exposes deterministic animation parameters (duration/easing/amplitude)', () => {
+  it('exposes deterministic animation parameters (duration/easing/highlight band)', () => {
     const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
     const effect = spec.shaderEffect!;
 
@@ -262,8 +264,23 @@ describe('shaderEffect: pure data shape', () => {
     expect(typeof effect.animationEasing).toBe('string');
     expect(effect.animationEasing.length).toBeGreaterThan(0);
 
-    expect(typeof effect.animationAmplitude).toBe('number');
-    expect(effect.animationAmplitude).toBeGreaterThan(0);
+    expect(typeof effect.highlightBand).toBe('number');
+    expect(effect.highlightBand).toBeGreaterThan(0);
+    expect(effect.highlightBand).toBeLessThanOrEqual(0.5);
+  });
+
+  it('exposes vivid sheen/highlight render parameters (MS-0MUWNTQ5L0075Y38)', () => {
+    const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
+
+    expect(effect.sheenAlpha).toBeGreaterThan(0);
+    expect(effect.sheenAlpha).toBeLessThanOrEqual(1);
+    expect(typeof effect.highlightColour).toBe('number');
+    expect(effect.highlightAlpha).toBeGreaterThan(0);
+    expect(effect.highlightAlpha).toBeLessThanOrEqual(1);
+
+    // The reworked shader is more vivid than the old flat gold accent: the
+    // gradient carries a warm-white foil stop alongside the gold highlight.
+    expect(effect.colourStops.map(stop => stop.color)).toContain(0xfff4d6);
   });
 
   it('marks a static (reduced-motion) form as available', () => {
@@ -341,6 +358,48 @@ describe('sampleShaderGradient (AC2/AC5)', () => {
     const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
     expect(sampleShaderGradient(effect.colourStops, 0).color).toBe(0xffaa22);
     expect(sampleShaderGradient(effect.colourStops, 1).color).toBe(0xffaa22);
+  });
+});
+
+// ── Phase wrapping / highlight band helpers (MS-0MUWNTQ5L0075Y38) ──
+
+/**
+ * `wrapShaderPhase` and `circularDistance` drive the seamless animated sweep
+ * of the corner shard. They are pure and Phaser-free so the animation maths is
+ * unit-tested without a runtime.
+ */
+describe('wrapShaderPhase / circularDistance (AC2/AC5)', () => {
+  it('leaves positions already inside [0, 1) unchanged', () => {
+    expect(wrapShaderPhase(0)).toBe(0);
+    expect(wrapShaderPhase(0.25)).toBeCloseTo(0.25, 10);
+    expect(wrapShaderPhase(0.999)).toBeCloseTo(0.999, 10);
+  });
+
+  it('wraps positions at or above 1 back into [0, 1)', () => {
+    expect(wrapShaderPhase(1)).toBe(0);
+    expect(wrapShaderPhase(1.25)).toBeCloseTo(0.25, 10);
+    expect(wrapShaderPhase(2.75)).toBeCloseTo(0.75, 10);
+  });
+
+  it('wraps negative positions forward into [0, 1)', () => {
+    expect(wrapShaderPhase(-0.25)).toBeCloseTo(0.75, 10);
+    expect(wrapShaderPhase(-1)).toBe(0);
+  });
+
+  it('measures the shortest distance on the unit circle', () => {
+    expect(circularDistance(0.1, 0.2)).toBeCloseTo(0.1, 10);
+    expect(circularDistance(0.9, 0.1)).toBeCloseTo(0.2, 10);
+    expect(circularDistance(0, 0.5)).toBeCloseTo(0.5, 10);
+    expect(circularDistance(0.3, 0.3)).toBe(0);
+  });
+
+  it('a full phase sweep returns to the same gradient position (seamless loop)', () => {
+    const stops = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT)
+      .shaderEffect!.colourStops;
+    for (const t of [0, 0.2, 0.5, 0.8]) {
+      expect(sampleShaderGradient(stops, wrapShaderPhase(t + 1)))
+        .toEqual(sampleShaderGradient(stops, wrapShaderPhase(t)));
+    }
   });
 });
 

@@ -52,12 +52,24 @@ export const CASH_LINE_COST = '#ff6644';
 export const SHADER_ACCENT_GOLD = 0xffaa22;
 /** Lighter highlight stop for the shader-effect gradient. */
 export const SHADER_ACCENT_HIGHLIGHT = 0xffe08a;
+/** Warm-white foil stop so the corner shard reads as a premium shimmer. */
+export const SHADER_ACCENT_WARM_WHITE = 0xfff4d6;
 /** Duration in milliseconds of one shimmer sweep cycle (plan assumption A2). */
 export const SHADER_ANIMATION_DURATION_MS = 2000;
 /** Easing identifier for the shimmer sweep. */
 export const SHADER_ANIMATION_EASING = 'Sine.easeInOut';
-/** Shimmer travel amplitude in pixels. */
-export const SHADER_ANIMATION_AMPLITUDE = 6;
+/**
+ * Peak opacity of the corner shard fill. Each gradient stop's alpha is
+ * multiplied by this so the shard glows over (rather than hides) the card art
+ * beneath it (MS-0MUWNTQ5L0075Y38 remediation).
+ */
+export const SHADER_SHEEN_ALPHA = 0.6;
+/** Colour of the moving highlight band in the shader-effect shard. */
+export const SHADER_HIGHLIGHT_COLOUR = 0xffffff;
+/** Peak opacity of the moving highlight band. */
+export const SHADER_HIGHLIGHT_ALPHA = 0.55;
+/** Width of the moving highlight band as a fraction of the shard gradient. */
+export const SHADER_HIGHLIGHT_BAND = 0.35;
 
 /** Right-column origin for card overlays — left edge of the text column
  *  to the right of the 64×64 graphic (GRAPHIC_X 8 + GRAPHIC_W 64 + 8 gap).
@@ -141,8 +153,8 @@ export interface OverlayShaderColourStop {
  *
  * The rendering slices draw this with a Canvas-safe Phaser `Graphics` accent
  * under the existing overlay pipeline; the spec itself imports nothing from
- * Phaser. It describes the animated shimmer (duration/easing/amplitude) and the
- * reduced-motion static form (`staticForm` + `colourStops`), so the
+ * Phaser. It describes the animated shimmer (duration/easing/highlight band)
+ * and the reduced-motion static form (`staticForm` + `colourStops`), so the
  * reduced-motion fallback is testable as pure data. It deliberately carries no
  * per-level texture-cache key and no full-card `upgradeBorder`.
  */
@@ -156,14 +168,20 @@ export interface OverlayShaderEffectSpec {
   animationDurationMs: number;
   /** Easing identifier for the shimmer sweep. */
   animationEasing: string;
-  /** Shimmer travel amplitude in pixels (0 = no movement). */
-  animationAmplitude: number;
   /**
    * Whether a static (reduced-motion) form is available. When true the
    * renderer draws `colourStops` frozen instead of running the tween — used
    * for both reduced-motion and replay/headless.
    */
   staticForm: boolean;
+  /** Peak opacity multiplier of the shard fill (per-stop alpha is scaled). */
+  sheenAlpha: number;
+  /** Colour of the moving highlight band. */
+  highlightColour: number;
+  /** Peak opacity of the moving highlight band. */
+  highlightAlpha: number;
+  /** Width of the moving highlight band as a fraction of the shard gradient. */
+  highlightBand: number;
 }
 
 /** Complete overlay specification for a BusinessCard. */
@@ -231,6 +249,33 @@ export function sampleShaderGradient(
     }
   }
   return { color: last.color, alpha: last.alpha };
+}
+
+/**
+ * Wrap a gradient position into the half-open interval [0, 1) so an animated
+ * shader phase loops seamlessly from one sweep to the next. Pure and
+ * Phaser-free (MS-0MUWNTQ5L0075Y38).
+ *
+ * @param t - Any gradient position.
+ * @returns The equivalent position in [0, 1).
+ */
+export function wrapShaderPhase(t: number): number {
+  const w = t % 1;
+  // `+ 0` normalises a negative zero (e.g. -1 % 1) to positive zero.
+  return w < 0 ? w + 1 : w + 0;
+}
+
+/**
+ * Shortest distance between two positions on a unit circle, in [0, 0.5]. Used
+ * to place a highlight band that wraps seamlessly around the gradient.
+ *
+ * @param a - First gradient position.
+ * @param b - Second gradient position.
+ * @returns The circular distance in [0, 0.5].
+ */
+export function circularDistance(a: number, b: number): number {
+  const d = Math.abs(wrapShaderPhase(a) - wrapShaderPhase(b));
+  return Math.min(d, 1 - d);
 }
 
 /** Linearly interpolate two 24-bit RGB colours by factor *f* in [0, 1]. */
@@ -395,22 +440,31 @@ export function buildUpgradeOverlaySpec(
       }
     : null;
 
-  // Shader-style upgrade accent (MS-0MV5I4NTU002D3V4): a Canvas-safe
-  // gradient/shimmer confined to the upgrade accent region, consumed by the
+  // Shader-style upgrade accent (MS-0MV5I4NTU002D3V4; visual rework
+  // MS-0MUWNTQ5L0075Y38): a Canvas-safe corner shard — a translucent diagonal
+  // gradient that fills the card's top-left quadrant, with a moving highlight
+  // band. Confined to that quadrant (never a full-card stroke), consumed by the
   // rendering slices. Pure data only — no Phaser import, no per-level texture
   // key, and `null` for base cards so their output is byte-for-byte unchanged.
   // The static form is the same gradient stops frozen (reduced-motion/replay).
+  // The warm-white foil stop is what makes the effect visible: the previous
+  // shader reused the flat accent's exact position and gold colour and was
+  // invisible in manual review.
   const shaderEffect: OverlayShaderEffectSpec | null = isUpgraded
     ? {
         colourStops: [
-          { offset: 0, color: SHADER_ACCENT_GOLD, alpha: 0.92 },
-          { offset: 0.5, color: SHADER_ACCENT_HIGHLIGHT, alpha: 1 },
-          { offset: 1, color: SHADER_ACCENT_GOLD, alpha: 0.92 },
+          { offset: 0, color: SHADER_ACCENT_GOLD, alpha: 0.85 },
+          { offset: 0.35, color: SHADER_ACCENT_HIGHLIGHT, alpha: 0.95 },
+          { offset: 0.65, color: SHADER_ACCENT_WARM_WHITE, alpha: 1 },
+          { offset: 1, color: SHADER_ACCENT_GOLD, alpha: 0.85 },
         ],
         animationDurationMs: SHADER_ANIMATION_DURATION_MS,
         animationEasing: SHADER_ANIMATION_EASING,
-        animationAmplitude: SHADER_ANIMATION_AMPLITUDE,
         staticForm: true,
+        sheenAlpha: SHADER_SHEEN_ALPHA,
+        highlightColour: SHADER_HIGHLIGHT_COLOUR,
+        highlightAlpha: SHADER_HIGHLIGHT_ALPHA,
+        highlightBand: SHADER_HIGHLIGHT_BAND,
       }
     : null;
 
