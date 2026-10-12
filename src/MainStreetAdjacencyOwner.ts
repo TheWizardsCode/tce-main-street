@@ -68,6 +68,23 @@ export function getSeatLabel(ownerId: number): string {
 }
 
 /**
+ * Canonical UI label for a seat, shared by every seat-identity surface.
+ *
+ * Seat 0 is the human player (`You`); every other seat is an AI opponent
+ * (`AI 1`, `AI 2`, ...). Unlike {@link getSeatLabel} — which is the
+ * possessive/message form (`the player`) used in ownership-rejection
+ * messages — this is the label form shown to the player (activity-log
+ * prefixes, scoreboard rows, game-over summaries). It is the single source
+ * of truth for the activity-log seat prefix (F3 of MS-0MUWNTN8W006C7EF).
+ *
+ * @param ownerId Owning player index.
+ * @returns `"You"` for seat 0, otherwise `"AI <ownerId>"`.
+ */
+export function getSeatDisplayLabel(ownerId: number): string {
+  return ownerId === 0 ? 'You' : `AI ${ownerId}`;
+}
+
+/**
  * Access-control predicate for mutating a street slot (sell / close / upgrade
  * and any future cross-owner action).
  *

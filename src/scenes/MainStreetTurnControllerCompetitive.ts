@@ -279,7 +279,7 @@ function driveActiveAiSeat(
     restoreCompetitiveSeat(state, playerId);
     actions += 1;
 
-    addLog(state, `AI ${playerId} ${describeAction(action)}`, 'neutral');
+    addLog(state, playerId, describeAction(action), 'neutral');
     try {
       recordMainStreetEvent({ type: 'ai-action', turn: state.turn, strategy: resolveSeatStrategy(seat).name, action });
     } catch { /* transcript is optional (headless) */ }

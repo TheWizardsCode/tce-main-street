@@ -785,6 +785,28 @@ text-only summary.
 - Reuse: `popTextOrIcon` + `SFX_KEYS.CLICK` (both already loaded); no new
   engine infrastructure.
 
+## Activity log seat prefixes (F3, MS-0MUWNTN8W006C7EF)
+
+In competitive (multi-seat) games each activity-log entry that is attributable
+to a seat is prefixed with that seat's label — `You` for the human, `AI 1`,
+`AI 2`, ... for AI opponents — drawn in the seat's colour.
+
+- Data: `addLog(state, seatId, text, type)` (`src/MainStreetStateLog.ts`) stamps
+the `LogEntry` with `seatId`, `seatLabel` and `seatColour`. The label comes from
+the shared `getSeatDisplayLabel` in `src/MainStreetAdjacencyOwner.ts`; the
+colour is the seat's persisted `PlayerRecord.colour` (see
+`src/MainStreetSeatColours.ts`), so a seat has one colour throughout the UI.
+- Rendering: `refreshLog` (`src/scenes/MainStreetRendererHud.ts`) draws the
+label as a bold prefix beside the body, which keeps the entry's gain/loss/
+neutral line colour.
+- Legibility: `resolveLogSeatColour` lightens a seat colour until it clears a
+minimum WCAG contrast ratio against the dark log panel and a minimum RGB
+distance from the line-type colour, so even the dark Okabe–Ito hues stay
+readable. Colour is never the sole carrier of meaning — the seat label text is
+always present.
+- Single-player is unchanged: with no roster (or one seat) the seat argument is
+ignored and entries render exactly as before.
+
 ## Scene Transitions
 
 - Main Street scene-level fade transitions are currently disabled.

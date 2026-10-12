@@ -43,6 +43,23 @@ export interface LogEntry {
   text: string;
   /** Classification for UI color coding. */
   type: LogEntryType;
+  /**
+   * Acting seat's `playerId`, when the entry is attributable to a seat
+   * (competitive mode). Absent for shared/turn-level entries and in
+   * single-player, so single-player visuals are unchanged
+   * (F3 of MS-0MUWNTN8W006C7EF).
+   */
+  seatId?: number;
+  /**
+   * Canonical seat label rendered as the entry prefix (`You`, `AI 1`, ...).
+   * Derived from `getSeatDisplayLabel` in `MainStreetAdjacencyOwner`.
+   */
+  seatLabel?: string;
+  /**
+   * Seat colour (hex) for the prefix, copied from the seat's persisted
+   * `PlayerRecord.colour` so the log matches the rest of the UI.
+   */
+  seatColour?: string;
 }
 // ── Phase Types ─────────────────────────────────────────────
 

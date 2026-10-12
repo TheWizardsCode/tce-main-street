@@ -201,6 +201,7 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
   const repChange = state.resourceBank.reputation - repBefore;
   addLog(
     state,
+    state.activePlayerId ?? 0,
     `Investment: ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
   );
@@ -230,6 +231,7 @@ export function resolveHeldInvestment(state: MainStreetState): EventCard | null 
   const repChange = state.resourceBank.reputation - repBefore;
   addLog(
     state,
+    state.activePlayerId ?? 0,
     `Investment (auto): ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
   );
@@ -457,7 +459,8 @@ export function applyCompetitiveEventEffects(
   for (const c of changed) {
     addLog(
       state,
-      `P${c.ownerId} ${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.rep)})`,
+      c.ownerId,
+      `${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.rep)})`,
       classifyEffect(c.coins, c.rep),
     );
   }
