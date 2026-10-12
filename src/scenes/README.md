@@ -42,16 +42,20 @@ engine state.
 In competitive mode (MS-0MUXAQQON006XA6I) the closing surfaces the
 authoritative per-owner income on `TurnResult.playerIncome`
 (`OwnerIncomeResult[]` from `applyCompetitiveIncome`, non-eliminated seats
-only, in seat order). `presentCompetitiveClosing` then runs the full phased
-`animateIncomePhases` choreography once per seat using that seat's own
-`phaseBreakdown.perSlotBreakdown`, staggered by
-`COMPETITIVE_CLOSING_SEAT_STAGGER_MS`, and reports per-seat income
+only, in seat order). `presentCompetitiveClosing` then runs one **phase-major**
+`animateIncomePhases` choreography: every seat's own
+`phaseBreakdown.perSlotBreakdown` is concatenated in seat order and passed to a
+single `animateIncomePhases` call, so each phase (base → synergy → reputation →
+events → upcoming → collection) plays for the human seat, then AI 1, then AI 2
+before the next phase begins. The presentation reports per-seat income
 (`Player N: +X coins`). The shared incident reveal and day advance are
 delegated to the primitive with the shared income line suppressed
 (`incomeSummary: ''`).
 
-- Bounded: the per-seat stagger is clamped to
-  `COMPETITIVE_CLOSING_MAX_TOTAL_MS`, so a large roster cannot stall the day.
+- Bounded/non-blocking: the primitive waits for the combined choreography to
+  finish collecting before the day advances (`waitForIncomeCollection`),
+  clamped to `COMPETITIVE_CLOSING_MAX_TOTAL_MS`, so a large roster cannot
+  stall the day and the animation is never left running in the background.
 - Reduced motion / replay / headless: the per-seat animations are skipped,
   the per-seat text is still shown and the day always advances.
 - No per-owner data (single-player-free / legacy results): the condensed

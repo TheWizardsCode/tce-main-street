@@ -19,8 +19,8 @@
  *      under a bounded guard.
  *   4. {@link runCompetitiveClosing} runs the shared closing and completes a
  *      paused dual-choice incident so the day never stalls.
- *   5. {@link presentCompetitiveClosing} presents the closing results per seat:
- *      one full phased income choreography per non-eliminated seat, in seat
+ *   5. {@link presentCompetitiveClosing} presents the closing results as one
+ *      phase-major income choreography over every non-eliminated seat, in seat
  *      order, with per-seat income text, then the shared incident reveal and
  *      next-day advance via the shared `presentTurnClosing` primitive
  *      (MS-0MUXAQQON006XA6I). Bounded and non-blocking, so the day never
@@ -365,15 +365,6 @@ function turnResultFromState(state: MainStreetState): TurnResult {
 export const COMPETITIVE_CLOSING_HOLD_MS = 900;
 
 /**
- * Approximate duration of one seat's full phased income choreography. Used to
- * stagger each non-eliminated seat's `animateIncomePhases` call so the seats
- * play back-to-back in seat order rather than overlapping
- * (MS-0MUXAQQON006XA6I AC1). The bounded/fast-forward child
- * (MS-0MUYFXCJ5008K6MY) may cap this so a large roster cannot stall the game.
- */
-export const COMPETITIVE_CLOSING_SEAT_STAGGER_MS = 12_000;
-
-/**
  * Builds the one-line closing summary shown to the player: the shared income
  * total and, when one resolved, the incident name. Returns an empty string
  * when there is nothing to report (e.g. a turn that ended outside the closing).
@@ -396,8 +387,8 @@ export function competitiveClosingSummary(result: TurnResult): string {
  *
  *  - **Per-seat (AC1–AC3):** when the closing surfaced authoritative
  *    per-owner income (`result.playerIncome`, from
- *    `applyCompetitiveIncome`), the presentation runs the full phased income
- *    choreography once per non-eliminated seat, in seat order, using that
+ *    `applyCompetitiveIncome`), the presentation runs one phase-major income
+ *    choreography over every non-eliminated seat, in seat order, using each
  *    seat's own `phaseBreakdown.perSlotBreakdown`. The engine already filtered
  *    eliminated seats, so iterating `playerIncome` skips them. The closing
  *    summary reports each seat's own income (`Player N: +X coins`), never the
@@ -405,8 +396,8 @@ export function competitiveClosingSummary(result: TurnResult): string {
  *  - **Legacy/shared:** with no per-owner data, it keeps the condensed shared
  *    summary used by single-player-free callers.
  *
- *  - AC1: full per-seat income choreography (or per-seat text when animations
- *         are disabled).
+ *  - AC1: one phase-major income choreography over all seats (or per-seat text
+ *         when animations are disabled).
  *  - AC2: incident reveal (name + deltas) when an incident resolved, once per
  *         shared day.
  *  - AC3: instruction text reports each seat's income.
@@ -436,9 +427,17 @@ export function presentCompetitiveClosing(
 }
 
 /**
- * Per-seat competitive closing presentation (MS-0MUXAQQON006XA6I): one full
- * income choreography per non-eliminated seat, in seat order, followed by the
- * shared incident reveal and the day advance.
+ * Per-seat competitive closing presentation (MS-0MUXAQQON006XA6I, amended by
+ * the producer audit of 2026-10-08): a single phase-major income choreography
+ * over every non-eliminated seat, in seat order, followed by the shared
+ * incident reveal and the day advance.
+ *
+ * The seats' `income.phaseBreakdown.perSlotBreakdown` lists are concatenated in
+ * seat order and handed to `animateIncomePhases` once. `runIncomePhase` walks
+ * the combined slot list per phase, so each phase (base → synergy → reputation
+ * → events → upcoming → collection) plays for the human seat, then AI 1, then
+ * AI 2, before the next phase begins — rather than a full seat-major
+ * choreography per seat.
  *
  * Presentation-only and Phaser-free-by-contract: it reads `result.playerIncome`
  * and the scene's animator surface, mutates no engine state and consumes no
@@ -465,45 +464,43 @@ function presentPerSeatCompetitiveClosing(
     try { s.instructionText?.setText?.(summary); } catch { /* presentation-only */ }
   }
 
-  // AC1: one full choreography per surfaced seat, in seat order. Each seat's
-  // phase data is staggered by a per-seat budget so the seats play
-  // back-to-back instead of overlapping. The engine has already applied the
-  // per-owner deltas to each `PlayerRecord` during the shared closing, so no
-  // deferred-delta payload is forwarded here (re-sending the shared result
-  // would double-apply it). The deferred-delta window is preserved by the
-  // existing HUD gating instead: the competitive scoreboard is not refreshed
-  // during the closing, and the shared HUD is gated by `incomeCollectionActive`
-  // while the choreography runs, so numbers update only once play resumes.
+  // AC1 (amended by the producer audit of 2026-10-08): one phase-major sweep
+  // over all non-eliminated seats. The seats' slot lists are concatenated in
+  // seat order; the shared choreography emits each phase once and iterates the
+  // combined slots in order, so the human seat, then AI 1, then AI 2 play each
+  // phase in turn. The engine has already applied the per-owner deltas to each
+  // `PlayerRecord` during the shared closing, so no deferred-delta payload is
+  // forwarded here (re-sending the shared result would double-apply it); the
+  // deferred-delta window is preserved by the existing HUD gating instead: the
+  // competitive scoreboard is not refreshed during the closing, and the shared
+  // HUD is gated by `incomeCollectionActive` while the choreography runs, so
+  // numbers update only once play resumes.
   if (animationsEnabled) {
-    seats.forEach((seat, index) => {
-      const phaseData = seat.income?.phaseBreakdown?.perSlotBreakdown ?? [];
-      if (phaseData.length === 0) return;
-      // Clamp each seat's stagger delay to the global fast-forward bound so a
-      // very large roster cannot stall the game (AC6). Beyond the bound later
-      // seats start immediately and their choreographies overlap rather than
-      // queueing indefinitely; the day still advances.
-      const startDelayMs = Math.min(
-        index * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
-        COMPETITIVE_CLOSING_MAX_TOTAL_MS,
-      );
+    const combined = seats.flatMap(
+      (seat) => seat.income?.phaseBreakdown?.perSlotBreakdown ?? [],
+    );
+    if (combined.length > 0) {
       try {
-        s.msAnimator?.animateIncomePhases?.(phaseData, { startDelayMs });
+        s.msAnimator?.animateIncomePhases?.(combined);
       } catch {
         // presentation-only — never stall the closing on an animation failure
       }
-    });
+    }
   }
 
-  // AC2/AC4: the shared incident reveal (once per shared day) and the day
-  // advance are driven by the same primitive as single-player. The primitive's
-  // shared income summary is suppressed (empty) because the per-seat lines
-  // above replace it (AC3). No post-choreography hold is needed — the per-seat
-  // stagger already provides the pacing, so the day advances as soon as the
-  // last seat's choreography (and the incident reveal) completes (AC6).
+  // AC2/AC4/AC6: the shared incident reveal (once per shared day) and the day
+  // advance are driven by the same primitive as single-player. The primitive
+  // waits for the phase-major choreography to finish collecting before it
+  // advances (`waitForIncomeCollection`), bounded by the global closing cap, so
+  // the animation is never left running in the background while the next day
+  // starts. The primitive's shared income summary is suppressed (empty)
+  // because the per-seat lines above replace it (AC3).
   presentTurnClosing(tcCtx, result, onComplete, {
     completionText: 'End of turn complete.',
     holdMs: 0,
     incomeSummary: '',
+    waitForIncomeCollection: true,
+    incomeCollectionCapMs: COMPETITIVE_CLOSING_MAX_TOTAL_MS,
   });
 }
 

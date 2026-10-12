@@ -84,15 +84,16 @@ export const INCIDENT_REVEAL_HOLD_MS = 1920;
 
 // ── Competitive closing bounds (MS-0MUXAQQON006XA6I / MS-0MUYFXCJ5008K6MY) ──
 /**
- * Global maximum total closing time for the per-seat competitive closing.
- * The stagger delay for each seat is clamped to this bound so a very large
+ * Global maximum total closing time for the phase-major competitive closing.
+ * The presentation waits for the combined income choreography to finish
+ * collecting before the day advances, bounded by this value, so a very large
  * roster cannot stall the game — the closing always advances within this
  * window regardless of player count.
  *
- * Default: 180 s — comfortably fits 15 seats at 12 s stagger (168 s) with
- * headroom. Once a seat's stagger would exceed this bound, later seats clamp
- * to the bound and their choreographies overlap rather than queueing
- * indefinitely; the closing (and the day) still completes.
+ * Default: 180 s — a generous cap that comfortably covers a large roster's
+ * combined base → synergy → … → collection sweep. Once the bound is reached
+ * the closing stops waiting and advances the day (the remaining choreography
+ * is abandoned rather than queueing indefinitely).
  */
 export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
 
