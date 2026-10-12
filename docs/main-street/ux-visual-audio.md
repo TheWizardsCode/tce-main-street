@@ -785,6 +785,67 @@ text-only summary.
 - Reuse: `popTextOrIcon` + `SFX_KEYS.CLICK` (both already loaded); no new
   engine infrastructure.
 
+## Competitive seat colours (F1/F2, MS-0MUWNTN8W006C7EF)
+
+In competitive (human-vs-AI) play every seat — the human and each AI opponent —
+is assigned a distinct colour so a player can identify who did what at a
+glance. The colour is the single seat-identity token threaded through the
+activity log, the competitive scoreboard/HUD and the placed-card borders, so a
+seat has one colour everywhere.
+
+- **Palette.** `SEAT_COLOUR_PALETTE` (`src/MainStreetSeatColours.ts`) is the
+  Okabe–Ito colour-vision-deficiency-safe set (8 colours): orange `#E69F00`,
+  sky blue `#56B4E9`, bluish green `#009E73`, yellow `#F0E442`, blue `#0072B2`,
+  vermillion `#D55E00`, reddish purple `#CC79A7` and black `#000000`. The
+  palette is fixed and never mutated; it is drawn from only to build an
+  assignment.
+- **Assignment.** `assignSeatColours(seats, rng)`
+  (`src/MainStreetSeatColours.ts`) is a pure, Phaser-free helper. It takes the
+  seat list (human first, then AI opponents) and an **injected seeded RNG**,
+  Fisher–Yates-shuffles a copy of the palette and hands one colour to each seat
+  in seat order, returning a `playerId → hex colour` map. The assignment is
+  therefore deterministic for a given seed (repeatable in tests and replay) yet
+  shuffled per game. A guard (`InsufficientSeatColoursError`) throws rather
+  than silently reusing a colour when a game configures more seats than the
+  palette has colours.
+- **Persistence.** `createCompetitiveState` (`src/MainStreetStateSetup.ts`)
+  derives the per-seat assignment from a dedicated seat-colour RNG stream
+  (`deriveSeatColours`, salted with `SEAT_COLOUR_RNG_SALT` so it cannot disturb
+  the game-play RNG) and stores each colour on `PlayerRecord.colour`
+  (`src/MainStreetStateTypes.ts`). The colour is included in competitive state
+  save/load (`src/MainStreetStateSerialize.ts`), so a seat keeps its colour
+  across a reload instead of reshuffling.
+- **Lookup contract.** `resolveSeatColour(state, ownerId)`
+  (`src/MainStreetAdjacencyOwner.ts`) is the single source of truth for "which
+  colour is this seat?"; `seatColourToNumber(hex)`
+  (`src/MainStreetSeatColours.ts`) is the only place the hex string crosses into
+  Phaser's numeric colour space. All seat-identity surfaces call the lookup
+  rather than hard-coding a hex value.
+- **Single-player is unchanged.** With one seat (the human only) there is no AI
+  to distinguish, so `assignSeatColours` returns an empty map and
+  `PlayerRecord.colour` stays undefined; no log prefix, scoreboard colour or
+  owner border is applied.
+
+### Colour-blind-friendly design decisions
+
+- **Okabe–Ito palette.** The palette is a recognised
+  colour-vision-deficiency-safe set, chosen so the seat colours remain mutually
+  distinguishable under common forms of colour blindness (producer decision
+  Q2 = A). It is large enough for the maximum supported AI opponent count.
+- **Colour is never the sole carrier of meaning.** Every seat-identity surface
+  pairs the colour with the seat label text — `You` for the human and `AI 1`,
+  `AI 2`, … for AI opponents — so the game remains fully playable without
+  colour perception.
+- **Legibility is resolved per surface.** The activity-log prefix lightens a
+  seat colour until it clears a minimum WCAG contrast ratio against the dark
+  log panel and a minimum RGB distance from the gain/loss/neutral line colour,
+  so even the darkest Okabe–Ito hues stay readable beside the body text (see
+  [Activity log seat prefixes](#activity-log-seat-prefixes-f3-ms-0muwntn8w006c7ef)).
+- **Ownership without obscuring content.** On the street the colour is carried
+  by a stroke-only outer border rather than a fill, so it never hides the card
+  face or the synergy two-tone colouring (see
+  [Owner-coloured placed-card borders](#owner-coloured-placed-card-borders-f4-ms-0muwntn8w006c7ef)).
+
 ## Activity log seat prefixes (F3, MS-0MUWNTN8W006C7EF)
 
 In competitive (multi-seat) games each activity-log entry that is attributable
