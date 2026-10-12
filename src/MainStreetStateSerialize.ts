@@ -67,6 +67,10 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     activeChallenges: state.activeChallenges.map((ac) => ({
       challengeId: ac.challenge.id,
       completed: ac.completed,
+      // Persist per-seat attribution (MS-0MUWNTJIK009O6BZ). Incomplete
+      // challenges carry `undefined`; normalise to `null` so the field is
+      // always present in the serialized shape.
+      completedBySeatId: ac.completedBySeatId ?? null,
     })),
     incidentDeck: structuredClone(state.incidentDeck),
     incidentBalance: structuredClone(state.incidentBalance),
@@ -629,9 +633,22 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
       if (!challenge) {
         throw new Error(`Unknown challenge id in save: ${ac.challengeId}`);
       }
+      // Restore per-seat attribution (MS-0MUWNTJIK009O6BZ).
+      //  - Completed challenge with a numeric seat → keep that seat.
+      //  - Completed challenge without one (single-player or a legacy save
+      //    that predates attribution) → `null`, i.e. global / no attribution.
+      //  - Incomplete challenge → `undefined`, so a later completion can still
+      //    be attributed (first-write wins keys off `undefined`).
+      const completedBySeatId =
+        !ac.completed
+          ? undefined
+          : typeof ac.completedBySeatId === 'number'
+            ? ac.completedBySeatId
+            : null;
       return {
         challenge,
         completed: ac.completed,
+        completedBySeatId,
       };
     }),
     incidentDeck: structuredClone(saved.incidentDeck),

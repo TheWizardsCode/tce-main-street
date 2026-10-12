@@ -666,6 +666,13 @@ export interface MainStreetSerializedState {
   activeChallenges: {
     challengeId: string;
     completed: boolean;
+    /**
+     * The seat that completed this challenge, persisted for per-seat credit
+     * (MS-0MUWNTJIK009O6BZ). `null` for single-player / legacy completions
+     * with no seat context; omitted (or `null`) while the challenge is
+     * incomplete.
+     */
+    completedBySeatId?: number | null;
   }[];
   /** Face-down incident deck at the time of save (migrated from old incidentQueue by the loader). */
   incidentDeck: EventCard[];
