@@ -234,6 +234,26 @@ export function hasSeenBankingHint(state: MainStreetTutorialStateV1): boolean {
 }
 
 /**
+ * Re-arms the contextual banking hint for a new playthrough.
+ *
+ * The hint is a one-shot teaching moment (MS-0MT3JK16W006A66P): once shown,
+ * `bankingHintShownAt` is persisted so it is not repeated within the same run
+ * or across restarts of that run. However, the value lives in per-browser
+ * localStorage, and no game path ever cleared it — so a returning player who
+ * saw the hint once never saw it again in any later new game (bug
+ * MS-0MV79JQ4H003E6BH).
+ *
+ * Starting a fresh game (any mode) or starting the tutorial is the re-arm
+ * boundary: each new playthrough teaches the lesson again on that run's first
+ * bank. No-ops (returns the same state) when the hint was never shown.
+ */
+export function rearmBankingHintForNewGame(
+  current: MainStreetTutorialStateV1,
+): MainStreetTutorialStateV1 {
+  return clearBankingHint(current);
+}
+
+/**
  * Decide whether the contextual first-bank hint should fire at the end of a
  * turn.
  *

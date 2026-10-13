@@ -21,7 +21,7 @@ import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStre
 import { createTutorialControllerState, startTutorial } from '../TutorialFlow';
 import type { TutorialControllerState } from '../TutorialFlow';
 import { createTutorialScenario } from '../TutorialScenario';
-import { BrowserLocalStorageAdapter, loadTutorialState, saveTutorialState, updateTutorialStatus } from '../TutorialState';
+import { BrowserLocalStorageAdapter, loadTutorialState, rearmBankingHintForNewGame, saveTutorialState, updateTutorialStatus } from '../TutorialState';
 import { MAIN_STREET_TF_SFX_MAPPING } from '../sfx-tf-mapping';
 import { getMainStreetTfModule, getMainStreetTfDiagnostics, loadMainStreetTfModule } from '../tf/mainStreetTfModule';
 import { MainStreetAnimator } from './MainStreetAnimator';
@@ -553,6 +553,15 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
         {
           onStartTutorial: () => {
             try {
+              // ── Banking hint re-arm (MS-0MV79JQ4H003E6BH) ────────
+              // A freshly started tutorial is a new playthrough: clear the
+              // persisted one-shot `bankingHintShownAt` so the player is
+              // taught the lesson again on this run's first bank, even in a
+              // browser that saw it in an earlier game.
+              try {
+                const ts = loadTutorialState(new BrowserLocalStorageAdapter());
+                void saveTutorialState(new BrowserLocalStorageAdapter(), rearmBankingHintForNewGame(ts));
+              } catch (_) { /* hint re-arm must never block the tutorial */ }
               // ── Tutorial Scenario Setup ──────────────────────
               // When the tutorial starts, create the game state using the
               // explicit TutorialScenario system instead of seed-based

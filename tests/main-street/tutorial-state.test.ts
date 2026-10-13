@@ -11,6 +11,10 @@ import {
   clearTutorialState,
   bridgeLegacyTutorialSeen,
   shouldTriggerBankingHint,
+  hasSeenBankingHint,
+  markBankingHintShown,
+  clearBankingHint,
+  rearmBankingHintForNewGame,
   TUTORIAL_STATE_SCHEMA_VERSION,
   TUTORIAL_STATE_STORAGE_KEY,
   BrowserLocalStorageAdapter,
@@ -525,5 +529,67 @@ describe('shouldTriggerBankingHint', () => {
         alreadyShown: true,
       }),
     ).toBe(false);
+  });
+});
+
+// ── Banking hint one-shot + re-arm (MS-0MV79JQ4H003E6BH) ────
+
+describe('banking hint one-shot lifecycle', () => {
+  it('markBankingHintShown records a timestamp and hasSeenBankingHint is true', () => {
+    const shown = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    expect(shown.bankingHintShownAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(hasSeenBankingHint(shown)).toBe(true);
+  });
+
+  it('markBankingHintShown is idempotent (keeps the first timestamp)', () => {
+    const first = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const second = markBankingHintShown(first, { now: '2026-10-02T00:00:00.000Z' });
+    expect(second.bankingHintShownAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(second).toBe(first);
+  });
+
+  it('rearmBankingHintForNewGame clears the flag so a new playthrough re-teaches', () => {
+    const shown = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const rearmed = rearmBankingHintForNewGame(shown);
+    expect(rearmed.bankingHintShownAt).toBeNull();
+    expect(hasSeenBankingHint(rearmed)).toBe(false);
+    // The trigger becomes eligible again after re-arm.
+    expect(
+      shouldTriggerBankingHint({
+        actionsRemaining: 1,
+        alreadyShown: hasSeenBankingHint(rearmed),
+      }),
+    ).toBe(true);
+  });
+
+  it('rearmBankingHintForNewGame preserves the rest of the tutorial state', () => {
+    const completed = updateTutorialStatus(createDefaultTutorialState(), 'completed', {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const shown = markBankingHintShown(completed);
+    const rearmed = rearmBankingHintForNewGame(shown);
+    expect(rearmed.status).toBe('completed');
+    expect(rearmed.completedAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(rearmed.bankingHintShownAt).toBeNull();
+  });
+
+  it('rearmBankingHintForNewGame no-ops when the hint was never shown', () => {
+    const fresh = createDefaultTutorialState();
+    expect(rearmBankingHintForNewGame(fresh)).toBe(fresh);
+  });
+
+  it('clearBankingHint clears only the banking flag', () => {
+    const shown = markBankingHintShown(
+      updateTutorialStatus(createDefaultTutorialState(), 'skipped'),
+    );
+    const cleared = clearBankingHint(shown);
+    expect(cleared.bankingHintShownAt).toBeNull();
+    expect(cleared.status).toBe('skipped');
   });
 });

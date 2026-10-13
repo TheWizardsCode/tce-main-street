@@ -17,6 +17,7 @@ import { deserializeMainStreetState, setupMainStreetGame } from '../MainStreetSt
 import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
 import { createStateFromNewGameSelection, type NewGameSelection } from './MainStreetNewGameSelection';
 import { BrowserStatsStorageAdapter, loadStats, saveStats, updateStatsAfterRun } from '../StatsDomain';
+import { BrowserLocalStorageAdapter, loadTutorialState, rearmBankingHintForNewGame, saveTutorialState } from '../TutorialState';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
 
@@ -256,6 +257,15 @@ export async function checkForCsvMismatchAndRegenerate(lmCtx: MainStreetLifecycl
 export function applyNewGameSelection(lmCtx: MainStreetLifecycleManagerContext, selection: NewGameSelection): void {
 
     const s = lmCtx.scene;
+    // A new playthrough re-arms the one-shot banking hint: the persisted
+    // `bankingHintShownAt` flag must not leak across games in the same browser
+    // (MS-0MV79JQ4H003E6BH). Cleared before the single-player early-return so
+    // every mode benefits. The hint still only fires once per run after this.
+    try {
+      const current = loadTutorialState(new BrowserLocalStorageAdapter());
+      void saveTutorialState(new BrowserLocalStorageAdapter(), rearmBankingHintForNewGame(current));
+    } catch (_) { /* hint re-arm must never block game start */ }
+
     // Single-player keeps the existing state byte-for-byte (AC5 — no
     // behavioural change); only the competitive selection rebuilds the state.
     if (selection.mode !== 'competitive') return;
