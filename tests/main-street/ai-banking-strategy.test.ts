@@ -125,6 +125,16 @@ describe('AC1 · additive BankingGreedyStrategy', () => {
       state.market.cards = [
         makeBusiness({ id: 'mega', name: 'Mega Mall', cost: 5000, baseIncome: 1000 }),
       ];
+      // Give the seat an income stream: the expensive-business acquisition
+      // gate (MS-0MV5VOIV40020KXT) only blocks an unaffordable business for a
+      // seat with no income, so with income Greedy still locks the card in
+      // while BankingGreedy deliberately hoards for it.
+      state.streetGrid[0] = makeBusiness({
+        id: 'income-biz',
+        name: 'Income Biz',
+        cost: 6,
+        baseIncome: 5,
+      });
       return state;
     };
 
