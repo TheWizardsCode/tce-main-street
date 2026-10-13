@@ -185,7 +185,10 @@ taught by T20. T15 teaches the Community Favour rep→coins exchange
 The former T22 banking day was removed (MS-0MV4F04NN007H3DB), so T21 (week 7
 end) advances straight to T23 (play the held Local Festival in week 8). Every
 week now spends its action before the next End Turn, so the contextual
-first-bank hint (MS-0MT3JK16W006A66P) is retained but is not expected to fire.
+first-bank hint (MS-0MT3JK16W006A66P) is not expected to fire during the
+scripted tutorial run — it is retained as a general one-shot trigger and fires
+on the player's first end-turn with an unused action in normal play (the
+tutorial-only gate was removed, MS-0MUMC6IVF0098WRL).
 T26 carries the Steam follow CTA
 (CG-0MSMAJQQT004SDCC), which never blocks
 finishing. Gate count: 9 confirm + 16 action = 25.

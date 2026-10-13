@@ -130,12 +130,16 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.refreshActionButtons();
 
     // ── Banking hint trigger (MS-0MT3JK16W006A66P) ────────────────
-    // Contextual one-shot hint: when the tutorial is active, the player
-    // ends a turn with at least one unused action (a bankable action), and
-    // the hint has not yet been shown, remember the candidate and fire the
-    // HUD-highlighting hint AFTER the non-blocking `processEndOfTurn` runs.
-    // The flag is persisted via TutorialState so a restart does not replay
-    // it; legacy saves default to "not shown" (AC2).
+    // Contextual one-shot hint: the first time the player ends a turn with
+    // at least one unused action (a bankable action) and the hint has not
+    // yet been shown, remember the candidate and fire the HUD-highlighting
+    // hint AFTER the non-blocking `processEndOfTurn` runs. The trigger is
+    // not scoped to the tutorial: it fires both during and after the
+    // tutorial, so a player who never banks during the scripted run still
+    // sees the lesson the first time they bank in normal play (producer
+    // clarification 2026-10-13). The flag is persisted via TutorialState so
+    // a restart does not replay it; legacy saves default to "not shown"
+    // (AC2).
     //
     // When the hint fires mid-tutorial the end-turn step completion is
     // deferred (see `finishTurnPresentation`) so the hint overlay can be
