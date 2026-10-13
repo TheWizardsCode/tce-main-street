@@ -32,6 +32,15 @@ every seat's final coins, reputation and score side by side, flagging bankrupt,
 collapsed and eliminated seats. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
+Competitive challenges are credited **per seat**: the shared challenge pool is
+kept, but each completion is attributed to the seat that satisfied it
+(`ActiveChallenge.completedBySeatId`) and the difficulty-scaled challenge
+bonus goes only to that seat. The Game Over screen shows a per-seat challenge
+breakdown, and the celebration, HUD and Steam achievements surface only the
+human seat's completions. Single-player play is unchanged (run-global pool,
+single-list summary). See
+[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
+
 ### Competitive end-of-turn
 
 Once every seat has taken its MarketPhase the shared day resolves a single

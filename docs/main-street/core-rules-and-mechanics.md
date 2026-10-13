@@ -420,6 +420,18 @@ All win conditions are **deterministic** given the same seed, ensuring testabili
 > (Income / Incident) are caught before win/loss is determined. Undoing the
 > action that completed a challenge prompts a warning and, if confirmed,
 > revokes the completion (tracker, log, and score bonus all revert together).
+>
+> **Per-seat challenge credit in competitive play (MS-0MUWNTJIK009O6BZ).** In
+> human-vs-AI games the challenge pool is **shared** (Q1 = B), but each
+> completion is attributed to the seat whose action satisfied it
+> (`ActiveChallenge.completedBySeatId`). `updateCompetitiveScores` awards the
+> difficulty-scaled `challengeBonusPoints` **only** to the credited seat
+> (Q2 = A), and a challenge is never re-completed or re-credited to another
+> seat once a seat has achieved it. In competitive mode the Game Over summary
+> presents a **per-seat** challenge breakdown, and the celebration, HUD and
+> Steam achievements surface only the **human** seat's completions (Q3 = A).
+> Single-player / legacy runs have no seat context and retain the run-global
+> pool and single-list summary unchanged.
 
 ---
 

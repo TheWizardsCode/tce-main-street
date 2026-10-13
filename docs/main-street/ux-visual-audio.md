@@ -750,8 +750,11 @@ condensed text-only summary.
     `You` row from the shared wallet). A failing or eliminated seat carries a
     `Bankrupt`, `Reputation collapse` or `Eliminated` badge (cause before
     consequence; reputation collapse applies only after turn 1). The run's
-    challenges met follow below — challenges are run-global in the engine, so
-    they are shown once per run rather than per player.
+    challenges met follow below. In competitive mode the challenge summary is
+    **per seat** — each seat lists only the challenges it completed (the
+    completions credited to it via `ActiveChallenge.completedBySeatId`), while
+    single-player retains the historic run-global list shown once per run
+    (MS-0MUWNTJIK009O6BZ).
   - **Right "Summary" column:** the retained score breakdown (coins,
     reputation, challenges, final score), per-challenge details, tier-unlock
     notifications, current tier + campaign stats and the difficulty selector,
