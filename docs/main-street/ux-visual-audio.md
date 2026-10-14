@@ -4,24 +4,31 @@
 
 This document captures the current implementation-level guidance for Main Street UI feedback polish in Milestone 4.
 
-## ToneForge runtime audio (activation + fallback)
+## ToneForge runtime audio (opt-in + fallback)
 
-Main Street's SFX play through `SoundManager` with an optional ToneForge synth
-integration:
+Main Street's SFX play through `SoundManager` on the **WAV/Phaser path by
+default**. ToneForge synth integration is **opt-in per session**
+(MS-0MV76P7BN00164RF):
 
-- **Async activation.** `loadMainStreetTfModule()`
-  (`src/tf/mainStreetTfModule.ts`) resolves the committed runtime module after
-  scene boot and attaches it via `createTfPlayer()` / `setSynthIntegration()`.
-  After it settles, `SoundManager.isSynthActive()` is `true` and the debug
-  **ToneForge** entry reports `Active` (and can toggle synthesis without a scene
-  restart).
+- **Off by default.** The scene boots without attaching a synth player and
+  without fetching the runtime module: `SoundManager.isSynthActive()` is
+  `false` and no ToneForge lazy chunk is requested.
+- **Dev-only opt-in.** The dev-only debug **ToneForge** entry (Settings →
+  Debug Tools) is the enable path. Switching it on calls
+  `loadMainStreetTfIntegration()` (`src/debug/MainStreetDebugTools.ts`), which
+  lazily resolves the committed module (`loadMainStreetTfModule()` in
+  `src/tf/mainStreetTfModule.ts`) and attaches it via `createTfPlayer()` /
+  `setSynthIntegration()`. The status line then reports `Active`; switching it
+  off detaches the synth player without a scene restart, reverting mapped keys
+  to WAV/Phaser.
 - **Loud failures.** A load/normalisation failure emits a `console.warn` with
   the reason and is retained by `getMainStreetTfDiagnostics()`
-  (`loaded` / `factoryCount` / `lastLoadError`), which the scene forwards to
-  `SoundManager.setSynthDiagnostics()`.
+  (`loaded` / `factoryCount` / `lastLoadError`), which the opt-in loader
+  forwards to `SoundManager.setSynthDiagnostics()` so the status line shows
+  `Inactive · … · load error: <reason>`.
 - **Missing-factory fallback.** `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical
   keys but the runtime module ships only 12 factories. A mapped key with no
-  matching factory now falls back to the WAV/Phaser path instead of going
+  matching factory always falls back to the WAV/Phaser path instead of going
   silent (`tfAdapter` reports whether it handled the key;
   `SoundManager.play()` falls through when it did not) — engine item
   CG-0MUU9PSWC009CW76.

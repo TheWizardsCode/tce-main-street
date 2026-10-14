@@ -1,7 +1,7 @@
 /**
  * End-to-end activation contract for the Main Street ToneForge runtime path
  * (engine work item CG-0MUTU0MFE0077H0F; sibling tracking item
- * MS-0MUU9QYQE006NLEZ).
+ * MS-0MUU9QYQE006NLEZ; opt-in default MS-0MV76P7BN00164RF).
  *
  * ## Corrected root-cause note (engine child CG-0MUU9PSWI005EZ56)
  *
@@ -11,11 +11,12 @@
  * leaving ToneForge silent. **That conclusion was a Node-environment
  * artefact**: with no Web Audio context, Tone.js's `Param` assertion fails for
  * *any* `Gain` construction. In a real browser all 12 factories construct
- * successfully, and the real scene ends up with an active synth player.
+ * successfully, and an enabled opt-in session ends up with an active synth
+ * player.
  *
  * This test therefore pins the observable, environment-independent contract of
  * the load -> normalise -> `createTfPlayer()` -> `setSynthIntegration()` chain
- * that the scene relies on:
+ * that the opt-in path (`loadMainStreetTfIntegration`) relies on:
  *
  *  - the real loader resolves a normalisable tf module with the expected
  *    factory keys;

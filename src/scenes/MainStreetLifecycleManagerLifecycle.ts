@@ -8,7 +8,7 @@
  * @module
  */
 
-import { SaveLoadStore, UndoRedoManager, createTfPlayer, markSceneInvalid, markSceneValid } from '@core-engine';
+import { SaveLoadStore, UndoRedoManager, markSceneInvalid, markSceneValid } from '@core-engine';
 import type { Command } from '@core-engine';
 import { TooltipManager, createSingleSelectionManager } from '@ui';
 import type { HelpSection } from '@ui';
@@ -22,8 +22,6 @@ import { createTutorialControllerState, startTutorial } from '../TutorialFlow';
 import type { TutorialControllerState } from '../TutorialFlow';
 import { createTutorialScenario } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, loadTutorialState, rearmBankingHintForNewGame, saveTutorialState, updateTutorialStatus } from '../TutorialState';
-import { MAIN_STREET_TF_SFX_MAPPING } from '../sfx-tf-mapping';
-import { getMainStreetTfModule, getMainStreetTfDiagnostics, loadMainStreetTfModule } from '../tf/mainStreetTfModule';
 import { MainStreetAnimator } from './MainStreetAnimator';
 import { BG_COLOR, SFX_KEYS } from './MainStreetConstants';
 import { MainStreetInputManager } from './MainStreetInputManager';
@@ -278,37 +276,13 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
       'income-gained': SFX_KEYS.INCOME_POSITIVE,
     } as const;
 
-    const tfModule = getMainStreetTfModule();
-    const tfPlayer = tfModule
-      ? createTfPlayer(tfModule)
-      : null;
-
+    // ToneForge synth is **opt-in by default** (MS-0MV76P7BN00164RF): the scene
+    // boots on the WAV/Phaser path. It neither attaches a synth player nor
+    // fetches the runtime module here — enabling synthesis from the dev-only
+    // ToneForge debug tool lazily loads + attaches the module instead, and
+    // disabling detaches with the WAV fallback intact.
     s.initSoundSystem(Object.values(SFX_KEYS), mapping, {
-      synthPlayer: tfPlayer,
-      synthKeyMap: MAIN_STREET_TF_SFX_MAPPING,
       namespace: 'main-street',
-    });
-
-    // Late async tf module load (runtime-generated module path) without restart.
-    // On success the real player is attached; on failure the loader has
-    // already warned, and we forward the retained diagnostics so the debug
-    // indicator reports why ToneForge is inactive
-    // (CG-0MUU9PP9V000UOC3, CG-0MUTX0J5L0063RHS).
-    void loadMainStreetTfModule().then((loadedModule) => {
-      const diagnostics = getMainStreetTfDiagnostics();
-      if (!loadedModule) {
-        s.soundManager?.setSynthDiagnostics({
-          factoryCount: diagnostics.factoryCount,
-          lastLoadError: diagnostics.lastLoadError,
-        });
-        return;
-      }
-      if (!s.soundManager) return;
-      s.soundManager.setSynthIntegration(
-        createTfPlayer(loadedModule),
-        MAIN_STREET_TF_SFX_MAPPING,
-        { factoryCount: diagnostics.factoryCount, lastLoadError: diagnostics.lastLoadError },
-      );
     });
 
     // UI scaffolding

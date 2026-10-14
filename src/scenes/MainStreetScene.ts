@@ -76,7 +76,7 @@ export class MainStreetScene extends CardGameScene {
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true), vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle);
       return;
     }
     super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
