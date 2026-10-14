@@ -153,7 +153,11 @@ export async function updateCampaignAfterRun(
     campaign.persistentReputation = state.resourceBank.reputation;
   }
 
-  // Evaluate tier unlocks (ordered by tier number)
+  // Evaluate tier unlocks (ordered by tier number). At most ONE tier unlocks
+  // per completed run (MS-0MV88T4I6000HQZG): the lowest newly-eligible locked
+  // tier, whichever path made it eligible — reputation, challenge, or both.
+  // This paces the ladder so a single strong run cannot burst through several
+  // rungs at once; later runs continue from the next locked tier.
   for (const tierDef of ORDERED_TIER_DEFINITIONS) {
     // Skip tier-1 (always unlocked) and already-unlocked tiers
     if (tierDef.id === 'tier-1') continue;
@@ -163,22 +167,23 @@ export async function updateCampaignAfterRun(
       state.resourceBank.reputation >= tierDef.reputationThreshold;
     const challengeMet = tierDef.challengeCondition(state);
 
-    if (reputationMet || challengeMet) {
-      campaign.unlockedTiers.push(tierDef.id);
-      campaign.milestoneHistory.push({
-        tierId: tierDef.id,
-        triggerType: reputationMet ? 'reputation' : 'challenge',
-        reputationAtUnlock: reputationMet
-          ? state.resourceBank.reputation
-          : null,
-        challengeIdsAtUnlock: challengeMet
-          ? [...state.challengesCompleted]
-          : null,
-        runFinalScore: state.finalScore,
-        runSeed: state.seed,
-        unlockedAt: now,
-      });
-    }
+    if (!reputationMet && !challengeMet) continue;
+
+    campaign.unlockedTiers.push(tierDef.id);
+    campaign.milestoneHistory.push({
+      tierId: tierDef.id,
+      triggerType: reputationMet ? 'reputation' : 'challenge',
+      reputationAtUnlock: reputationMet
+        ? state.resourceBank.reputation
+        : null,
+      challengeIdsAtUnlock: challengeMet
+        ? [...state.challengesCompleted]
+        : null,
+      runFinalScore: state.finalScore,
+      runSeed: state.seed,
+      unlockedAt: now,
+    });
+    break; // one tier unlock per completed run
   }
 
   // Derive updated card list from all unlocked tiers

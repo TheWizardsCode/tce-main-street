@@ -180,6 +180,8 @@ Run N+1 starts with expanded card pool
 
 > Update note 3 (12-tier expansion CG-0MT3C744B009DS84): the progression was expanded from **5 tiers to 12 tiers** so each tier holds ~10-15 cards instead of ~27-30. Reputation thresholds form an anchored ladder (0, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80) that preserves the historical anchors 8/16/32/64 at T3/T5/T7/T11 and adds an aspirational T12=80. Challenge paths are progressive: T2 any 1 challenge, T3 any 2, T4 synergy+resource, T5 3 incl. cross-cutting/placement, T6 synergy+placement+upgrade, T7 any 4, T8 synergy+resource+upgrade, T9 4 incl. cross-cutting, T10 ch-diversified, T11 ch-synergy-master, T12 both flagships. Community-space (8 cards) and staff (9 cards) are spread across as many tiers as their card counts allow (cs in 7 tiers; staff in 9 tiers) rather than forced into every tier. Tier names: T1 Foundation, T2 Rising Street, T3 Neighborhood, T4 District, T5 Midtown, T6 Metropolitan, T7 City Center, T8 Capital, T9 Iconic Quarter, T10 Historic Mile, T11 National Street, T12 Legendary Main Street. All tables above are historical; see the `tier` column in `card-data.csv` for current per-card assignments.
 
+> Update note 4 (threshold re-calibration + one-per-run cap, MS-0MV88T4I6000HQZG): reputation thresholds were re-derived from a fresh 200-seed Medium Monte-Carlo run on current HEAD to hit a target achievement-rate staircase — the share of Medium runs clearing each tier: T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%, T11 4%, T12 1%. New thresholds: **0 / 250 / 750 / 2650 / 3100 / 3300 / 3600 / 4000 / 4300 / 4600 / 4900 / 5500** (evidence: [tier-threshold-calibration-evidence.md](tier-threshold-calibration-evidence.md) + [tier-threshold-calibration-medium.json](tier-threshold-calibration-medium.json)). Unlock pacing is capped at **one tier unlock per completed run** — the lowest newly-eligible locked tier, from either the reputation or the challenge path. The old anchored ladder (0/400/800/1200/1600/2400/3200/4000/4800/5600/6400/8000) and the multi-tier burst-unlock behaviour are superseded; challenge conditions themselves are unchanged.
+
 ### 2.7 Historical note (superseded)
 
 This section originally tracked cards that were not tier-gated. It is now superseded by follow-up work item CG-0MP1VO5FM008LB5Z, which updated progression so the full expanded catalog is tier-gated and reachable through campaign unlocks.
@@ -653,16 +655,16 @@ Next run starts with updated campaign
 
 **Acceptance Criteria:**
 
-1. When a run completes (win or loss), the system evaluates the player's `resourceBank.reputation` against each locked tier's reputation threshold.
-2. If `reputation >= threshold` for any locked tier, that tier is added to `campaign.unlockedTiers`.
-3. Multiple tiers can be unlocked in a single run (e.g., a player with reputation 12 and only Tier 1 unlocked would unlock Tiers 2, 3, 4, and 5 simultaneously).
+1. When a run completes (win or loss), the system evaluates the player's `resourceBank.reputation` (and the challenge path) against locked tiers in ascending tier order.
+2. If any locked tier is eligible (`reputation >= threshold` and/or its challenge condition), the **lowest** newly-eligible locked tier is added to `campaign.unlockedTiers`.
+3. **At most one tier unlocks per completed run** — the one-per-run pacing cap (MS-0MV88T4I6000HQZG) replaces the old burst unlock; a strong run clears the next rung, never several rungs at once.
 4. Tier evaluation uses the per-run reputation value, not the final score.
 5. Tier evaluation occurs after challenge evaluation but before the game-over screen is displayed.
 
 **Testable Conditions:**
-- Given a completed run with `reputation = 7` and only `tier-1` unlocked, then `tier-2` is added to `unlockedTiers`.
-- Given a completed run with `reputation = 5` and only `tier-1` unlocked, then `unlockedTiers` remains `['tier-1']`.
-- Given a completed run with `reputation = 64` and only `tier-1` unlocked, then `unlockedTiers` becomes `['tier-1', 'tier-2', 'tier-3', 'tier-4', 'tier-5']`.
+- Given a completed run with `reputation = 250` and only `tier-1` unlocked, then `tier-2` is added to `unlockedTiers`.
+- Given a completed run with `reputation = 249` and only `tier-1` unlocked, then `unlockedTiers` remains `['tier-1']`.
+- Given a completed run with `reputation = 6400` and only `tier-1` unlocked, then `unlockedTiers` becomes `['tier-1', 'tier-2']` (one-per-run cap — only the lowest newly-eligible tier).
 
 ### US-2: Challenge-Based Tier Unlock
 
@@ -676,9 +678,9 @@ Next run starts with updated campaign
 4. Challenge conditions reference challenge IDs from the existing `CHALLENGE_TEMPLATES` pool.
 
 **Testable Conditions:**
-- Given a completed run with `reputation = 4` (below Tier 2 threshold) but `challengesCompleted = ['ch-foodie-row', 'ch-deep-pockets']` (2 challenges), then `tier-2` is unlocked via the challenge path.
-- Given a completed run with `reputation = 4` and `challengesCompleted = ['ch-foodie-row']` (only 1 challenge), then `tier-2` is NOT unlocked (need 2 for Tier 2 challenge path).
-- Given a completed run satisfying Tier 3's challenge condition (`challengesCompleted` includes both a synergy and a resource challenge), but Tier 2 is not yet unlocked, then both Tier 2 AND Tier 3 are unlocked (tiers are evaluated independently, not sequentially).
+- Given a completed run with `reputation = 240` (below the T2 threshold of 250) but `challengesCompleted = ['ch-foodie-row']` (1 challenge), then `tier-2` is unlocked via the challenge path.
+- Given a completed run with `reputation = 240` and `challengesCompleted = []`, then `tier-2` is NOT unlocked.
+- Given a completed run satisfying Tier 3's challenge condition (`challengesCompleted` includes both a synergy and a resource challenge), but Tier 2 is not yet unlocked, then **only Tier 2** is unlocked (lowest newly-eligible tier — the one-per-run cap, MS-0MV88T4I6000HQZG); Tier 3 unlocks on the next qualifying run.
 
 ### US-3: Milestone Latch Permanence
 
@@ -896,6 +898,28 @@ Challenge-based unlock paths are designed to be achievable by skilled players wh
 | 5 | Diversified challenge | Specific high-difficulty challenge requiring all 6 synergy types (Food, Culture, Commerce, Service, Entertainment, Health). Only achievable at Tier 4+ (when Entertainment and Health are unlocked). |
 
 > **Note:** These thresholds are initial estimates based on analysis of the current game parameters. Balance tuning is deferred to Milestone 3 (CG-0MM4REQ4C01X8C08), where AI auto-play will validate achievement rates across difficulty presets and suggest adjustments.
+
+### Re-calibration (MS-0MV88T4I6000HQZG — supersedes the estimate table above)
+
+The estimate table above predates the current economy. Thresholds were re-derived from a fresh 200-seed Medium Monte-Carlo distribution on current HEAD (greedy strategy) to hit the target staircase — the share of Medium runs clearing each tier — T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%, T11 4%, T12 1%:
+
+| Tier | Threshold |
+|------|-----------|
+| T2 Rising Street | 250 |
+| T3 Neighborhood | 750 |
+| T4 District | 2650 |
+| T5 Midtown | 3100 |
+| T6 Metropolitan | 3300 |
+| T7 City Center | 3600 |
+| T8 Capital | 4000 |
+| T9 Iconic Quarter | 4300 |
+| T10 Historic Mile | 4600 |
+| T11 National Street | 4900 |
+| T12 Legendary Main Street | 5500 |
+
+Evidence, percentile tables and rounding notes:
+[docs/main-street/tier-threshold-calibration-evidence.md](tier-threshold-calibration-evidence.md).
+Unlock pacing is governed by the one-per-run cap (lowest newly-eligible locked tier). Easy/Hard drift remains accepted per operator decision Q2/A.
 
 ---
 

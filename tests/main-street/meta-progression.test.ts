@@ -116,6 +116,18 @@ function freshCampaign(): MainStreetCampaignProgress {
   return createDefaultCampaignProgress();
 }
 
+/**
+ * Pre-unlocks every tier from tier-2 through `highestTier` on a campaign.
+ *
+ * `updateCampaignAfterRun` unlocks at most one tier per run, so a test that
+ * targets a specific tier must first bring the campaign up to the tier below it.
+ */
+function unlockThrough(campaign: MainStreetCampaignProgress, highestTier: number): void {
+  for (let i = 2; i <= highestTier; i++) {
+    campaign.unlockedTiers.push(`tier-${i}`);
+  }
+}
+
 // ── Test Suites ─────────────────────────────────────────────
 
 describe('Meta-Progression System', () => {
@@ -203,10 +215,11 @@ describe('Meta-Progression System', () => {
       }
     });
 
-    it('specific reputation thresholds follow the 12-tier ladder (0, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80)', () => {
-      // Anchors 8/16/32/64 preserved from the 5-tier ladder (8, 16, 32, 64)
-      // at T3/T5/T7/T11; extended to aspirational T12=80 - CG-0MT3C744B009DS84.
-      const expected = [0, 400, 800, 1200, 1600, 2400, 3200, 4000, 4800, 5600, 6400, 8000];
+    it('specific reputation thresholds follow the calibrated 12-tier ladder', () => {
+      // Re-derived from a fresh Medium Monte-Carlo run (MS-0MV88T4I6000HQZG)
+      // to hit the target achievement-rate staircase; see
+      // docs/main-street/tier-threshold-calibration-evidence.md.
+      const expected = [0, 250, 750, 2650, 3100, 3300, 3600, 4000, 4300, 4600, 4900, 5500];
       for (let i = 0; i < 12; i++) {
         expect(TIER_DEFINITIONS[`tier-${i + 1}`].reputationThreshold).toBe(expected[i]);
       }
@@ -235,83 +248,83 @@ describe('Meta-Progression System', () => {
   // ────────────────────────────────────────────────────────────
 
   describe('US-1: Tier evaluation via reputation thresholds', () => {
-    it('unlocks Tier 2 when reputation >= 4', async () => {
+    it('unlocks Tier 2 when reputation meets the T2 threshold (250)', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 400 });
+      const state = createCompletedRunState({ reputation: 250 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).toContain('tier-2');
     });
 
-    it('does NOT unlock Tier 2 when reputation < 4 and no challenges', async () => {
+    it('does NOT unlock Tier 2 when reputation is below 250 and no challenges', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 300 });
+      const state = createCompletedRunState({ reputation: 249 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).not.toContain('tier-2');
     });
 
-    it('unlocks Tier 3 when reputation >= 8', async () => {
+    it('unlocks Tier 3 when reputation meets the T3 threshold (750)', async () => {
       const campaign = freshCampaign();
-      campaign.unlockedTiers.push('tier-2'); // Must already have tier 2 or not - tiers are independent
-      const state = createCompletedRunState({ reputation: 800 });
+      unlockThrough(campaign, 2); // tier-2 already earned; T3 is the lowest locked tier
+      const state = createCompletedRunState({ reputation: 750 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).toContain('tier-3');
     });
 
-    it('unlocks Tier 4 when reputation >= 12', async () => {
+    it('unlocks Tier 4 when reputation meets the T4 threshold (2650)', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 1200 });
+      unlockThrough(campaign, 3);
+      const state = createCompletedRunState({ reputation: 2650 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).toContain('tier-4');
     });
 
-    it('unlocks Tier 5 when reputation >= 16', async () => {
+    it('unlocks Tier 5 when reputation meets the T5 threshold (3100)', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 1600 });
+      unlockThrough(campaign, 4);
+      const state = createCompletedRunState({ reputation: 3100 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).toContain('tier-5');
     });
 
-    it('unlocks Tier 12 only at the aspirational end-reputation (80)', async () => {
+    it('unlocks Tier 12 only at the aspirational end-reputation (5500)', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 8000 });
+      unlockThrough(campaign, 11);
+      const state = createCompletedRunState({ reputation: 5500 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).toContain('tier-12');
     });
 
-    it('does NOT unlock Tier 12 below 80 reputation', async () => {
+    it('does NOT unlock Tier 12 below 5500 reputation', async () => {
       const campaign = freshCampaign();
-      const state = createCompletedRunState({ reputation: 7900 });
+      unlockThrough(campaign, 11);
+      const state = createCompletedRunState({ reputation: 5499 });
 
       await updateCampaignAfterRun(campaign, state);
 
       expect(campaign.unlockedTiers).not.toContain('tier-12');
     });
 
-    it('unlocks multiple tiers in a single high-reputation run', async () => {
+    it('unlocks exactly one tier (the lowest) in a single high-reputation run', async () => {
       const campaign = freshCampaign();
-      // A run with reputation 64 should unlock tiers 2 through 11 in one go
-      // (T12 needs 80; thresholds go 4, 8, 12, 16, 24, 32, 40, 48, 56, 64).
+      // Reputation 6400 clears T2-T9 by threshold, but the one-per-run cap must
+      // stop at the lowest newly-eligible locked tier (tier-2).
       const state = createCompletedRunState({ reputation: 6400 });
 
       await updateCampaignAfterRun(campaign, state);
 
-      expect(campaign.unlockedTiers).toContain('tier-2');
-      expect(campaign.unlockedTiers).toContain('tier-5');
-      expect(campaign.unlockedTiers).toContain('tier-7');
-      expect(campaign.unlockedTiers).toContain('tier-11');
-      expect(campaign.unlockedTiers).not.toContain('tier-12');
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2']);
     });
 
     it('updates persistentReputation to highest seen value', async () => {
@@ -407,6 +420,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 3 with 2 completed challenges (any category)', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 2); // T3 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets'],
@@ -443,6 +457,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 4 with 1 synergy + 1 resource challenge', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 3); // T4 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets'],
@@ -465,6 +480,7 @@ describe('Meta-Progression System', () => {
 
     it('does NOT unlock Tier 4 with only synergy challenges (no resource)', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 2); // T3 qualifies (2 challenges); T4 needs a resource challenge
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-culture-district', 'ch-commerce-hub'],
@@ -493,6 +509,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 5 with 3 challenges including cross-cutting', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 4); // T5 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets', 'ch-diversified'],
@@ -519,6 +536,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 5 with 3 challenges including placement', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 4); // T5 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets', 'ch-full-block'],
@@ -545,6 +563,7 @@ describe('Meta-Progression System', () => {
 
     it('does NOT unlock Tier 5 with 3 challenges but none cross-cutting/placement', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 3); // T4 qualifies (synergy+resource); T5 needs cross-cutting/placement
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets', 'ch-renovator'],
@@ -572,6 +591,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 10 via the Diversified challenge (5 synergy types)', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 9); // T10 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-diversified'],
@@ -590,6 +610,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 11 via the Synergy Master challenge (5+ synergy pairs)', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 10); // T11 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-synergy-master'],
@@ -608,6 +629,7 @@ describe('Meta-Progression System', () => {
 
     it('does NOT unlock Tier 10 via a non-Diversified challenge', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 9); // only T11 is newly eligible (needs ch-synergy-master)
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-synergy-master'],
@@ -626,6 +648,7 @@ describe('Meta-Progression System', () => {
 
     it('unlocks Tier 12 only via BOTH flagship cross-cutting challenges', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 11); // T12 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-diversified', 'ch-synergy-master'],
@@ -648,6 +671,7 @@ describe('Meta-Progression System', () => {
 
     it('does NOT unlock Tier 12 with only one flagship challenge', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 9); // Diversified unlocks T10; T12 needs both flagships
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-diversified'],
@@ -684,6 +708,101 @@ describe('Meta-Progression System', () => {
   });
 
   // ────────────────────────────────────────────────────────────
+  // ONE-TIER-PER-RUN CAP (MS-0MV88T4I6000HQZG)
+  // ────────────────────────────────────────────────────────────
+
+  describe('One-tier-per-run cap', () => {
+    it('caps a reputation-only run at the single lowest newly-eligible tier', async () => {
+      const campaign = freshCampaign();
+      const state = createCompletedRunState({ reputation: 6400 });
+
+      await updateCampaignAfterRun(campaign, state);
+
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2']);
+    });
+
+    it('caps a challenge-only run at the single lowest newly-eligible tier', async () => {
+      const campaign = freshCampaign();
+      // 3 challenges incl. cross-cutting would qualify T2, T3 and T5 at once.
+      const state = createCompletedRunState({
+        reputation: 0,
+        challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets', 'ch-diversified'],
+      });
+      state.activeChallenges = [
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-foodie-row')!, completed: true },
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-deep-pockets')!, completed: true },
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-diversified')!, completed: true },
+      ];
+
+      await updateCampaignAfterRun(campaign, state);
+
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2']);
+    });
+
+    it('records the reputation path when a tier is eligible via both triggers', async () => {
+      const campaign = freshCampaign();
+      unlockThrough(campaign, 2); // T3 is the lowest locked tier
+      // T3 is met by reputation (>=750) AND by the challenge path (2 challenges).
+      const state = createCompletedRunState({
+        reputation: 3100,
+        challengesCompleted: ['ch-foodie-row', 'ch-deep-pockets'],
+      });
+      state.activeChallenges = [
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-foodie-row')!, completed: true },
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-deep-pockets')!, completed: true },
+      ];
+
+      await updateCampaignAfterRun(campaign, state);
+
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2', 'tier-3']);
+      expect(campaign.milestoneHistory).toHaveLength(1);
+      expect(campaign.milestoneHistory[0].tierId).toBe('tier-3');
+      expect(campaign.milestoneHistory[0].triggerType).toBe('reputation');
+    });
+
+    it('continues the ladder one tier per run across successive runs', async () => {
+      const campaign = freshCampaign();
+
+      for (let run = 0; run < 3; run++) {
+        const state = createCompletedRunState({ reputation: 6400, seed: `cont-${run}` });
+        await updateCampaignAfterRun(campaign, state);
+      }
+
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2', 'tier-3', 'tier-4']);
+      expect(campaign.milestoneHistory.map((r) => r.tierId)).toEqual(['tier-2', 'tier-3', 'tier-4']);
+    });
+
+    it('unlocks the lowest locked tier without skipping ahead', async () => {
+      const campaign = freshCampaign();
+      unlockThrough(campaign, 3);
+      const state = createCompletedRunState({ reputation: 6400 });
+
+      await updateCampaignAfterRun(campaign, state);
+
+      // T4 is the lowest locked tier; T5+ must not be skipped into.
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2', 'tier-3', 'tier-4']);
+    });
+
+    it('allows T12 to unlock via the challenge path below its reputation threshold', async () => {
+      const campaign = freshCampaign();
+      unlockThrough(campaign, 11);
+      const state = createCompletedRunState({
+        reputation: 100, // far below the 5500 reputation threshold
+        challengesCompleted: ['ch-diversified', 'ch-synergy-master'],
+      });
+      state.activeChallenges = [
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-diversified')!, completed: true },
+        { challenge: CHALLENGE_TEMPLATES.find((t) => t.id === 'ch-synergy-master')!, completed: true },
+      ];
+
+      await updateCampaignAfterRun(campaign, state);
+
+      expect(campaign.unlockedTiers).toContain('tier-12');
+      expect(campaign.milestoneHistory[0].triggerType).toBe('challenge');
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
   // US-3: MILESTONE LATCH PERMANENCE
   // ────────────────────────────────────────────────────────────
 
@@ -691,15 +810,19 @@ describe('Meta-Progression System', () => {
     it('unlocks are never removed by subsequent runs', async () => {
       const campaign = freshCampaign();
 
-      // First run: unlock tier-2 and tier-3 (thresholds 4 and 8)
+      // First run: unlock tier-2 (threshold 250)
       const run1 = createCompletedRunState({ reputation: 800 });
       await updateCampaignAfterRun(campaign, run1);
       expect(campaign.unlockedTiers).toContain('tier-2');
+
+      // Second run: unlock tier-3 (threshold 750) now that tier-2 is earned
+      const run2 = createCompletedRunState({ reputation: 800 });
+      await updateCampaignAfterRun(campaign, run2);
       expect(campaign.unlockedTiers).toContain('tier-3');
 
-      // Second run: much lower reputation, should NOT lose tiers
-      const run2 = createCompletedRunState({ reputation: 0 });
-      await updateCampaignAfterRun(campaign, run2);
+      // Third run: much lower reputation, should NOT lose tiers
+      const run3 = createCompletedRunState({ reputation: 0 });
+      await updateCampaignAfterRun(campaign, run3);
       expect(campaign.unlockedTiers).toContain('tier-2');
       expect(campaign.unlockedTiers).toContain('tier-3');
     });
@@ -730,10 +853,14 @@ describe('Meta-Progression System', () => {
       await updateCampaignAfterRun(campaign, run2);
       expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2', 'tier-3']);
 
-      // Run 3: unlock tier-5 (rep 16 meets tier-4 (12) and tier-5 (16) too)
-      const run3 = createCompletedRunState({ reputation: 1600 });
+      // Run 3: unlock tier-4 (rep 2650 meets the T4 threshold; the cap stops there)
+      const run3 = createCompletedRunState({ reputation: 2650 });
       await updateCampaignAfterRun(campaign, run3);
-      expect(campaign.unlockedTiers).toContain('tier-4');
+      expect(campaign.unlockedTiers).toEqual(['tier-1', 'tier-2', 'tier-3', 'tier-4']);
+
+      // Run 4: unlock tier-5 (rep 3100 meets the T5 threshold)
+      const run4 = createCompletedRunState({ reputation: 3100 });
+      await updateCampaignAfterRun(campaign, run4);
       expect(campaign.unlockedTiers).toContain('tier-5');
     });
   });
@@ -951,6 +1078,7 @@ describe('Meta-Progression System', () => {
     it('updateCampaignAfterRun persists to store when provided', async () => {
       const store = new SaveLoadStore();
       const campaign = freshCampaign();
+      unlockThrough(campaign, 2); // tier-2 already earned; T3 is the lowest locked tier
       const state = createCompletedRunState({ reputation: 1600 });
 
       await updateCampaignAfterRun(campaign, state, store);
@@ -1080,21 +1208,16 @@ describe('Meta-Progression System', () => {
       expect(tier2Records[0].challengeIdsAtUnlock).toEqual(['ch-foodie-row']);
     });
 
-    it('multiple tier unlocks in one run each produce a MilestoneRecord', async () => {
+    it('one-per-run cap produces exactly one MilestoneRecord in a high-reputation run', async () => {
       const campaign = freshCampaign();
       const state = createCompletedRunState({ reputation: 6400, finalScore: 500 });
 
       await updateCampaignAfterRun(campaign, state);
 
-      // Rep 64 clears thresholds 4,8,12,16,24,32,40,48,56,64 => tiers 2-11
-      // (10 records); tier-12 needs 80.
-      expect(campaign.milestoneHistory).toHaveLength(10);
-      const tierIds = campaign.milestoneHistory.map((r) => r.tierId);
-      expect(tierIds).toContain('tier-2');
-      expect(tierIds).toContain('tier-5');
-      expect(tierIds).toContain('tier-7');
-      expect(tierIds).toContain('tier-11');
-      expect(tierIds).not.toContain('tier-12');
+      // Rep 6400 clears many thresholds, but the one-per-run cap records only
+      // the lowest newly-eligible locked tier (tier-2).
+      expect(campaign.milestoneHistory).toHaveLength(1);
+      expect(campaign.milestoneHistory[0].tierId).toBe('tier-2');
     });
 
     it('no MilestoneRecord is added when no new tier is unlocked', async () => {
@@ -1144,6 +1267,7 @@ describe('Meta-Progression System', () => {
 
     it('challenge trigger records challenge IDs; reputation field is null', async () => {
       const campaign = freshCampaign();
+      unlockThrough(campaign, 9); // T10 is the lowest locked tier
       const state = createCompletedRunState({
         reputation: 0,
         challengesCompleted: ['ch-diversified'],
@@ -1251,7 +1375,8 @@ describe('Meta-Progression System', () => {
       let campaign = createDefaultCampaignProgress();
       expect(campaign.unlockedTiers).toEqual(['tier-1']);
 
-      // Simulate a winning run with high reputation
+      // Simulate a winning run that clears the next tier (T3, with T2 pre-earned)
+      campaign.unlockedTiers.push('tier-2');
       const state = createCompletedRunState({
         reputation: 1600,
         finalScore: 200,

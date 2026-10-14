@@ -196,21 +196,21 @@ describe('findNextLockedTier', () => {
     expect(result).toBeDefined();
     expect(result!.id).toBe('tier-2');
     expect(result!.name).toBe('Rising Street');
-    expect(result!.reputationThreshold).toBe(400);
+    expect(result!.reputationThreshold).toBe(250);
   });
 
   it('returns tier-3 when tier-1 and tier-2 are unlocked', () => {
     const result = findNextLockedTier(['tier-1', 'tier-2']);
     expect(result).toBeDefined();
     expect(result!.id).toBe('tier-3');
-    expect(result!.reputationThreshold).toBe(800);
+    expect(result!.reputationThreshold).toBe(750);
   });
 
   it('returns tier-5 when tier-1 through tier-4 are unlocked', () => {
     const result = findNextLockedTier(['tier-1', 'tier-2', 'tier-3', 'tier-4']);
     expect(result).toBeDefined();
     expect(result!.id).toBe('tier-5');
-    expect(result!.reputationThreshold).toBe(1600);
+    expect(result!.reputationThreshold).toBe(3100);
   });
 
   it('returns undefined when all tiers are unlocked', () => {
@@ -474,7 +474,7 @@ describe('buildScoreTooltip', () => {
 
     // Should mention tier-2 (next locked after tier-1)
     expect(tooltip).toContain('Rising Street');
-    expect(tooltip).toContain('Rep ≥ 400');
+    expect(tooltip).toContain('Rep ≥ 250');
   });
 
   it('shows "All tiers unlocked" when all tiers are unlocked', () => {
