@@ -100,6 +100,55 @@ Multi-way storylines (>2 options) can be declared programmatically via
 options take precedence over the legacy compilation. Authoring new options via
 CSV keeps to the two-way Accept/Reject shape today.
 
+### The `options` CSV column (arbitrary multi-outcome encoding)
+
+New CSV-authored choice nodes use a single `options` column instead of the
+legacy `hasChoices`/`acceptNextCardId`/`rejectNextCardId` trio. The encoding is:
+
+```text
+label|cardA,cardB;label2|cardC
+```
+
+| Token | Meaning |
+|-------|---------|
+| `;` | Separates one option from the next. |
+| `|` | Separates an option's label from its candidate successor card ids. |
+| `,` | Separates the candidate card ids within one option. |
+
+The value is parsed deterministically with surrounding whitespace trimmed at
+every level (labels, separators and candidate ids):
+
+- **Blank / absent** — the card is **not** a choice node (equivalent to
+  `hasChoices` empty).
+- **`label|`** (an empty candidate list) — a **terminal** option: choosing it
+  ends the chain. This is a valid encoding, not an error.
+- **`label|cardA,cardB`** — the option carries an ordered candidate set of
+  possible successors. When the option is chosen, one candidate is selected
+  (the uniform random draw lands in F3, `MS-0MV8KQL820077BOS`).
+- **Non-empty but no valid option** (e.g. `;;`, or a segment missing `|`) —
+  rejected with an error rather than silently ignored.
+
+CSV-authored options always compile with `effectPolicy: 'apply'` (producer
+Q4=B): the incident's own effect applies whichever option the player picks.
+`skip` remains available only through the programmatic
+`registerStorylineOptions` seam. `hasChoices` is **derived** from a non-empty
+option list, so an `options`-authored row intercepts resolution exactly like a
+legacy choice card.
+
+```ts
+// `options` cell: "Negotiate|evt-nat-a,evt-nat-b;Walk away|;Escalate|evt-nat-c"
+compileStorylineFromEvent(card).compiledOptions;
+// → [
+//   { label: 'Negotiate', successorIds: ['evt-nat-a', 'evt-nat-b'], effectPolicy: 'apply' },
+//   { label: 'Walk away', successorIds: [], effectPolicy: 'apply' },
+//   { label: 'Escalate', successorIds: ['evt-nat-c'], effectPolicy: 'apply' },
+// ]
+```
+
+The parser is exposed as `parseStorylineOptionsEncoding(encoding)` in
+[`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts) and the
+encoding is validated by `npm run validate:storylines`.
+
 ### 2.1 Callback escape hatch
 
 Some narrative logic cannot be expressed with field/op/value predicates

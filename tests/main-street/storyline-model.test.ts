@@ -1116,7 +1116,7 @@ function compiledContractOptions(event: EventCard): ContractOption[] {
 }
 
 describe('F1 — CSV options compile to the multi-outcome candidate-set model', () => {
-  it.fails(
+  it(
     'AC1 — a CSV `options` column compiles to an ordered option list carrying successorIds candidate sets',
     () => {
       loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
@@ -1133,7 +1133,7 @@ describe('F1 — CSV options compile to the multi-outcome candidate-set model', 
     },
   );
 
-  it.fails('AC1 — an empty candidate set is preserved as an empty successorIds list (terminal option)', () => {
+  it('AC1 — an empty candidate set is preserved as an empty successorIds list (terminal option)', () => {
     loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
     const event = multiOutcomeEvent('evt-mo-model');
 
@@ -1143,7 +1143,7 @@ describe('F1 — CSV options compile to the multi-outcome candidate-set model', 
     expect(terminal.successorIds).toEqual([]);
   });
 
-  it.fails('AC4 — every CSV-authored option compiles with effectPolicy "apply" (producer Q4=B)', () => {
+  it('AC4 — every CSV-authored option compiles with effectPolicy "apply" (producer Q4=B)', () => {
     loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
     const event = multiOutcomeEvent('evt-mo-model');
 

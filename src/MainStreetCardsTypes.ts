@@ -251,8 +251,35 @@ export interface EventCard {
   /**
    * When the player chooses Reject, this card ID is added to the incident
    * deck (the event's effect is NOT applied). Null / absent ends the chain.
+   *
+   * @deprecated Legacy two-way choice field (MS-0MV8KQJR30007JL5). Retained
+   * transitionally while the shipped rows migrate to {@link EventCard.options};
+   * the new model is the arbitrary `options` encoding. No new content should
+   * use this field.
    */
   readonly rejectNextCardId?: string | null;
+  /**
+   * Raw CSV options encoding for an arbitrary multi-outcome choice node
+   * (MS-0MV8KQJR30007JL5). Format:
+   *
+   * ```text
+   * label|cardA,cardB;label2|cardC
+   * ```
+   *
+   * `;` separates options, `|` separates the label from its candidate
+   * successor card ids, and `,` separates candidate ids. A blank / absent
+   * value means the card is not a choice node. An empty candidate list
+   * (`label|`) is a **terminal** option — the chain ends after it is chosen.
+   *
+   * CSV-authored options always carry `effectPolicy: 'apply'` (producer Q4=B);
+   * `skip` remains available only through the programmatic
+   * `registerStorylineOptions` seam. A non-empty value that decodes to no
+   * valid option is rejected at compilation rather than silently ignored.
+   *
+   * The legacy `hasChoices` predicate is derived from a non-empty option
+   * list, so CSV-authored choice nodes set `hasChoices: true` on load.
+   */
+  readonly options?: string;
   /**
    * Optional storyline identifier — groups cards into a named story arc.
    * Absent means the card is not part of a storyline (legacy behaviour).
@@ -623,8 +650,22 @@ export const MAX_TRACKED_INCIDENT_HISTORY = 10;
 export interface StorylineOption {
   /** Human-readable label for the option (e.g. "Accept", "Reject", "Investigate"). */
   readonly label: string;
-  /** The card ID to push when this option is chosen. Null / absent ends the chain. */
-  readonly successorId: string | null | undefined;
+  /**
+   * The single card ID to push when this option is chosen. Null / absent ends
+   * the chain. Retained for the programmatic registry seam and transitional
+   * legacy compilation; CSV-authored options use {@link successorIds}.
+   *
+   * @deprecated Prefer {@link successorIds} for new options.
+   */
+  readonly successorId?: string | null | undefined;
+  /**
+   * Ordered candidate successor card ids for this option (MS-0MV8KQJR30007JL5).
+   * When the option is chosen, one candidate is selected at resolution time
+   * (the random draw lands in F3); an empty list is a terminal option — the
+   * chain ends. CSV-authored options populate this field; a
+   * `successorResolver` callback (if present) keeps precedence.
+   */
+  readonly successorIds?: readonly string[];
   /** Whether the event's intrinsic effect applies when this option is chosen. */
   readonly effectPolicy: 'apply' | 'skip';
   /**
