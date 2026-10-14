@@ -93,10 +93,20 @@ export {
 // ── Events ─────────────────────────────────────────────
 export {
   applyCompetitiveEventEffects,
+  applyPiggybackFreeRide,
+  applyPiggybackJoinFully,
   computeEventDeltas,
+  piggybackJoinFullyCost,
   playHeldEvent,
+  projectPiggybackEventReward,
   resolveEvent,
   resolveHeldInvestment,
+} from './MainStreetEngineEvents';
+
+export type {
+  PiggybackJoinFullyResult,
+  PiggybackRewardProjection,
+  PiggybackRewardScale,
 } from './MainStreetEngineEvents';
 
 // ── TurnClosing ─────────────────────────────────────────────
