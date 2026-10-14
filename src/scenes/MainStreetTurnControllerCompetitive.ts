@@ -46,6 +46,7 @@ import {
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
+  resolveCompetitivePendingPiggyback,
 } from '../MainStreetEngineCompetitiveTurn';
 import {
   BankingGreedyStrategy,
@@ -337,6 +338,13 @@ export function driveAiSeatsUntilClosing(
 export function runCompetitiveClosing(state: MainStreetState): TurnResult | null {
   if (state.phase !== 'InvestmentResolution') return null;
   const closing = resolveCompetitiveClosingPhases(state);
+  if (closing.piggybackPending) {
+    // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raised
+    // pending piggyback decisions; settle them (free-ride default) and finish
+    // the deferred closing so the day never stalls — mirrors the choice-pending
+    // path below. F4 wires the seat-aware AI policy through this seam.
+    return resolveCompetitivePendingPiggyback(state) ?? closing;
+  }
   if (!closing.choicePending) return closing;
   const resolved = resolveCompetitivePendingChoice(state) ?? closing;
   // A dual-choice incident pauses the closing *after* the income phase. The

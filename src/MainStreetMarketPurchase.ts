@@ -16,7 +16,7 @@ import { addLog, describeEventEffects, classifyEffect } from './MainStreetState'
 import type { BusinessCard, UpgradeCard, EventCard } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
-import { resolveEvent } from './MainStreetEngine';
+import { resolveEvent, raisePiggybackDecisions } from './MainStreetEngine';
 import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
 import { canAddToHand, validateHandIndex } from './MainStreetMarketHand';
@@ -545,6 +545,13 @@ export function playEventFromHand(
     `Played event ${event.name} from hand (-€${event.cost}, ${describeEventEffects(coinDelta, repDelta)})`,
     classifyEffect(coinDelta, repDelta),
   );
+
+  // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raises one
+  // pending piggyback decision per other active seat after the acting player's
+  // effects resolve. Covers both engine dispatch paths (`play-event`,
+  // `play-event-from-hand`) and the scene command wrapper; no-op in N=1 /
+  // for non-eligible events.
+  raisePiggybackDecisions(state, event, state.activePlayerId ?? 0, event.cost);
 
   return { card: event, cost: event.cost, refilled: false };
 }

@@ -80,6 +80,7 @@ export {
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
+  resolveCompetitivePendingPiggyback,
   setActivePlayerId,
 } from './MainStreetEngineCompetitiveTurn';
 
@@ -97,17 +98,25 @@ export {
   applyPiggybackFreeRide,
   applyPiggybackJoinFully,
   computeEventDeltas,
+  getNextPendingPiggybackSeat,
+  getPiggybackSeatIds,
+  hasPendingPiggyback,
+  isPiggybackEligible,
   piggybackJoinFullyCost,
   playHeldEvent,
   projectPiggybackEventReward,
+  raisePiggybackDecisions,
+  resolveAllPendingPiggybacks,
   resolveEvent,
   resolveHeldInvestment,
+  resolvePendingPiggyback,
 } from './MainStreetEngineEvents';
 
 export type {
   PiggybackJoinFullyResult,
   PiggybackRewardProjection,
   PiggybackRewardScale,
+  PiggybackSeatResolution,
 } from './MainStreetEngineEvents';
 
 // ── TurnClosing ─────────────────────────────────────────────

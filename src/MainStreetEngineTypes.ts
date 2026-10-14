@@ -209,6 +209,15 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    */
   choicePending: boolean;
   /**
+   * True when the shared closing paused because an eligible organiser event
+   * raised pending piggyback decisions that are not yet resolved (F3 of epic
+   * MS-0MUYC47EL005Z69H). When set, `state.pendingPiggyback` holds one
+   * unresolved entry per other active seat; the caller resolves them via
+   * `resolvePendingPiggyback` before re-running the closing. Absent/false
+   * when no piggyback decision is pending.
+   */
+  piggybackPending?: boolean;
+  /**
    * True when this result came from the deferred-mutation path
    * (processEndOfTurn with `deferResourceApplication`, CG-0MTR72P14000VO6Q):
    * the resource deltas are un-applied and the closing tail (EndCheck → next

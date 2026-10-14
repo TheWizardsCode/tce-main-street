@@ -11,7 +11,7 @@
 import { executeAction } from './MainStreetEngineActions';
 import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
-import { computeEventDeltas, resolveEvent } from './MainStreetEngineEvents';
+import { computeEventDeltas, hasPendingPiggyback, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
@@ -384,6 +384,26 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       finalScore: state.finalScore,
       newlyCompletedChallenges: [],
       choicePending: true,
+      pendingCoinDelta: 0,
+      pendingRepDelta: 0,
+      pendingScoreDelta: 0,
+    };
+  }
+  // F3 piggyback pause (epic MS-0MUYC47EL005Z69H): an unresolved piggyback
+  // decision set blocks the closing. Defensive for the single-player path
+  // (piggybacking is competitive-only) and mirrors the choice-pending guard so
+  // a stray end-turn call can never drop a pending share.
+  if (hasPendingPiggyback(state)) {
+    return {
+      income: null,
+      incident: null,
+      incidentCoinChange: 0,
+      incidentRepChange: 0,
+      gameResult: state.gameResult,
+      finalScore: state.finalScore,
+      newlyCompletedChallenges: [],
+      choicePending: false,
+      piggybackPending: true,
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,

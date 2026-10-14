@@ -411,6 +411,7 @@ export function createTutorialScenario(
     investorFreeRerollUsedThisTurn: false,
     pendingApplicant: null,
     pendingEventChoice: null,
+    pendingPiggyback: null,
   };
 
   // Select challenges for this run using seeded RNG

@@ -1,6 +1,6 @@
 import { createSeededRng } from '@core-engine';
 import { setupMainStreetGame, createCompetitiveState, seedToNumber, type MainStreetState } from './MainStreetState';
-import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, processEndOfTurn, type PlayerAction } from './MainStreetEngine';
+import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, type PlayerAction } from './MainStreetEngine';
 import { canPurchaseEvent, getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from './MainStreetMarket';
 import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlayer, resolveAiEventChoice, bindCompetitiveSeat, restoreCompetitiveSeat, CompetitiveGreedyStrategy, type MainStreetAiStrategy } from './MainStreetAiStrategy';
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
@@ -1080,6 +1080,12 @@ export function runCompetitiveSeed(
       // Dual-choice incident: apply the AI policy and finish the shared-day
       // closing (per-owner routing retained).
       resolveCompetitivePendingChoice(state);
+    }
+    if (closing.piggybackPending) {
+      // F3 piggyback (epic MS-0MUYC47EL005Z69H): an eligible organiser event
+      // raised pending decisions; settle them (free-ride default) and finish
+      // the deferred closing so the sim never stalls.
+      resolveCompetitivePendingPiggyback(state);
     }
     turns++;
   }

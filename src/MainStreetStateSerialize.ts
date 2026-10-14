@@ -115,6 +115,20 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           resolved: state.pendingEventChoice.resolved,
         }
       : null,
+    pendingPiggyback: state.pendingPiggyback
+      ? {
+          actingSeatId: state.pendingPiggyback.actingSeatId,
+          event: structuredClone(state.pendingPiggyback.event),
+          paidCost: state.pendingPiggyback.paidCost,
+          decisions: state.pendingPiggyback.decisions.map((decision) => ({
+            seatId: decision.seatId,
+            event: structuredClone(decision.event),
+            paidCost: decision.paidCost,
+            chosenJoin: decision.chosenJoin,
+            resolved: decision.resolved,
+          })),
+        }
+      : null,
   };
 }
 
@@ -420,6 +434,14 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
     (saved as Record<string, unknown>).pendingEventChoice = null;
   }
 
+  // ── pendingPiggyback (F3 of MS-0MUYC47EL005Z69H): backfill default ─
+  // Legacy saves predate the piggyback decision mechanic; default to null
+  // (no pending decision set). Idempotent, so direct-deserialize callers are
+  // covered too.
+  if (!('pendingPiggyback' in saved)) {
+    (saved as Record<string, unknown>).pendingPiggyback = null;
+  }
+
   // ── day → week terminology rename (CG-0MTMYIHKO001QCWL) ──
   // Pre-rename saves serialized the phase as 'DayStart' and the turn-start
   // resource snapshot as dayStartCoins/dayStartRep/dayStartScore. Map them to
@@ -710,6 +732,49 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           chosenOption: (saved as unknown as { pendingEventChoice: { chosenOption: string | null } }).pendingEventChoice!.chosenOption,
           resolved: (saved as unknown as { pendingEventChoice: { resolved: boolean } }).pendingEventChoice!.resolved,
         }
+      : null,
+    pendingPiggyback: (saved as unknown as {
+      pendingPiggyback?: {
+        actingSeatId: number;
+        event: EventCard;
+        paidCost: number;
+        decisions: Array<{
+          seatId: number;
+          event: EventCard;
+          paidCost: number;
+          chosenJoin: boolean | null;
+          resolved: boolean;
+        }>;
+      } | null;
+    })?.pendingPiggyback
+      ? (() => {
+          const pending = (saved as unknown as {
+            pendingPiggyback: {
+              actingSeatId: number;
+              event: EventCard;
+              paidCost: number;
+              decisions: Array<{
+                seatId: number;
+                event: EventCard;
+                paidCost: number;
+                chosenJoin: boolean | null;
+                resolved: boolean;
+              }>;
+            };
+          }).pendingPiggyback!;
+          return {
+            actingSeatId: pending.actingSeatId,
+            event: structuredClone(pending.event),
+            paidCost: pending.paidCost,
+            decisions: (pending.decisions ?? []).map((decision) => ({
+              seatId: decision.seatId,
+              event: structuredClone(decision.event),
+              paidCost: decision.paidCost,
+              chosenJoin: decision.chosenJoin ?? null,
+              resolved: decision.resolved ?? false,
+            })),
+          };
+        })()
       : null,
   };
 

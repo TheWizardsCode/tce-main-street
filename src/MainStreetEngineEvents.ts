@@ -14,7 +14,7 @@ import { isDurationEventCard } from './MainStreetCards';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
 import { deserializeSkillIds } from './MainStreetStaffSkills';
-import type { MainStreetState, PlayerRecord } from './MainStreetState';
+import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 
@@ -187,7 +187,6 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
   if (card.family !== 'event') {
     throw new Error(`Card at hand index ${index} is not an Investment event.`);
   }
-
   const event = card as EventCard;
   const coinsBefore = state.resourceBank.coins;
   const repBefore = state.resourceBank.reputation;
@@ -197,6 +196,10 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
   if ((state.players?.length ?? 0) > 1) {
     applyCompetitiveEventEffects(state, event, state.activePlayerId ?? 0);
   }
+  // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raises one
+  // pending piggyback decision per other active seat after the acting player's
+  // effects resolve. No-op in N=1 / for non-eligible events.
+  raisePiggybackDecisions(state, event, state.activePlayerId ?? 0, event.cost);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
   addLog(
@@ -732,6 +735,219 @@ export function applyPiggybackFreeRide(
     classifyEffect(reward.coins, reward.reputation),
   );
   return reward;
+}
+
+// ── Piggyback decision state machine (epic MS-0MUYC47EL005Z69H, F3) ──
+
+/**
+ * Other non-eliminated seats that owe a piggyback decision when `actingSeatId`
+ * plays an eligible organiser event, in seat order (F3 AC5).
+ *
+ * The acting seat is excluded, and eliminated seats are skipped entirely
+ * (MS-0MUVQRBVI0015AB2). Returns an empty list for single-player / N=1 state,
+ * which is how the N=1 no-pause gate is enforced.
+ */
+export function getPiggybackSeatIds(
+  state: MainStreetState,
+  actingSeatId: number,
+): number[] {
+  const players = state.players ?? [];
+  const seats: number[] = [];
+  for (const player of players) {
+    if (player.eliminated) continue;
+    if (player.playerId === actingSeatId) continue;
+    seats.push(player.playerId);
+  }
+  return seats;
+}
+
+/**
+ * True when playing `event` by `actingSeatId` should raise piggyback decisions:
+ * competitive (N≥2), an Investment trigger, the per-card `piggybackable` flag
+ * set, a non-duration card, and at least one other active seat. Consumes no RNG
+ * (pure predicate shared by the raise gate and the AI policy, F4).
+ */
+export function isPiggybackEligible(
+  state: MainStreetState,
+  event: EventCard,
+  actingSeatId: number,
+): boolean {
+  if ((state.players?.length ?? 0) < 2) return false;
+  if (event.trigger !== 'Investment') return false;
+  if (event.piggybackable !== true) return false;
+  if (isDurationEventCard(event)) return false;
+  return getPiggybackSeatIds(state, actingSeatId).length > 0;
+}
+
+/**
+ * True when `state` carries a pending piggyback set with at least one
+ * unresolved decision (F3 AC1). The shared closing pauses while true.
+ */
+export function hasPendingPiggyback(state: MainStreetState): boolean {
+  const pending = state.pendingPiggyback;
+  if (!pending) return false;
+  return pending.decisions.some((decision) => !decision.resolved);
+}
+
+/**
+ * Lowest-index seat whose decision is still unresolved, in seat order, or
+ * `null` when every decision is resolved / nothing is pending. The interactive
+ * prompt (F5) uses this to present the next decision in order.
+ */
+export function getNextPendingPiggybackSeat(state: MainStreetState): number | null {
+  const pending = state.pendingPiggyback;
+  if (!pending) return null;
+  for (const decision of pending.decisions) {
+    if (!decision.resolved) return decision.seatId;
+  }
+  return null;
+}
+
+/**
+ * Raises one pending piggyback decision per other active seat for an eligible
+ * organiser event just played by `actingSeatId` (F3 AC1).
+ *
+ * Called after the acting player's event effects resolve, from every event-play
+ * dispatch path (`play-event`, `play-event-from-hand` via `playEventFromHand`,
+ * and `playHeldEvent`). No-op (returns false, sets no state) for N=1,
+ * non-eligible events, or when no other active seat remains — so N=1 and
+ * non-eligible events never pause.
+ *
+ * `paidCost` is the amount the acting player ACTUALLY paid (the 150% join-fully
+ * baseline); `event.cost` is the listed cost charged by `playEventFromHand`.
+ * Consumes no RNG. A still-unresolved set from a previous play is auto-resolved
+ * (free-ride default) first so no seat's share is silently dropped.
+ *
+ * @returns True when a pending set was raised.
+ */
+export function raisePiggybackDecisions(
+  state: MainStreetState,
+  event: EventCard,
+  actingSeatId: number,
+  paidCost: number,
+): boolean {
+  if (!isPiggybackEligible(state, event, actingSeatId)) return false;
+  // Defensive: never drop an unresolved set the caller forgot to resolve.
+  // Headless drivers and the interactive scene resolve before the next play,
+  // so this path is only reached by a caller that skipped resolution.
+  if (hasPendingPiggyback(state)) {
+    resolveAllPendingPiggybacks(state);
+  }
+  const decisions: PendingPiggybackDecision[] = getPiggybackSeatIds(state, actingSeatId).map(
+    (seatId) => ({
+      seatId,
+      event,
+      paidCost,
+      chosenJoin: null,
+      resolved: false,
+    }),
+  );
+  state.pendingPiggyback = { actingSeatId, event, paidCost, decisions };
+  addLog(
+    state,
+    `Piggyback: ${event.name} — ${decisions.length} seat(s) invited to join fully.`,
+    'neutral',
+  );
+  return true;
+}
+
+/** Outcome of resolving one seat's pending piggyback decision (F3 AC2). */
+export interface PiggybackSeatResolution {
+  seatId: number;
+  /** True when the join-fully tier was applied (150% charged, 100% reward). */
+  joined: boolean;
+  /** True when the automatic 50% free-ride was applied. */
+  freeRide: boolean;
+  /** Coins charged from the seat (0 for a free-ride). */
+  charge: number;
+  /** The reward projection actually applied to the seat's own board. */
+  reward: PiggybackRewardProjection;
+}
+
+/**
+ * Resolves one seat's pending piggyback decision (F3 AC2).
+ *
+ * - `join === true`: applies the join-fully tier via {@link applyPiggybackJoinFully}
+ *   (deducts `round(1.5 × paidCost)`, credits the 100% own-board reward, spends
+ *   no action point). When the seat cannot afford the charge the join is
+ *   unavailable, nothing is charged, and the automatic 50% free-ride is applied
+ *   instead (epic AC3) — never a partial charge.
+ * - `join === false`: applies the automatic 50% free-ride via
+ *   {@link applyPiggybackFreeRide}.
+ *
+ * Seats resolve independently in seat order; resolving the last unresolved
+ * entry clears `state.pendingPiggyback`. Deterministic and consumes no RNG.
+ *
+ * @returns The applied resolution, or `null` when nothing is pending for the
+ *          seat (no set, unknown seat, or already resolved).
+ * @throws Error when no player record exists for `seatId` (via the F2 helper).
+ */
+export function resolvePendingPiggyback(
+  state: MainStreetState,
+  seatId: number,
+  join: boolean,
+): PiggybackSeatResolution | null {
+  const pending = state.pendingPiggyback;
+  if (!pending) return null;
+  const decision = pending.decisions.find((entry) => entry.seatId === seatId);
+  if (!decision || decision.resolved) return null;
+
+  let resolution: PiggybackSeatResolution;
+  if (join) {
+    const result = applyPiggybackJoinFully(state, decision.event, seatId, decision.paidCost);
+    if (result.applied) {
+      resolution = {
+        seatId,
+        joined: true,
+        freeRide: false,
+        charge: result.charge,
+        reward: result.reward,
+      };
+    } else {
+      // Unaffordable: the join option is unavailable (no partial charge); the
+      // automatic 50% free-ride applies instead (epic AC3).
+      const reward = applyPiggybackFreeRide(state, decision.event, seatId);
+      resolution = { seatId, joined: false, freeRide: true, charge: 0, reward };
+    }
+  } else {
+    const reward = applyPiggybackFreeRide(state, decision.event, seatId);
+    resolution = { seatId, joined: false, freeRide: true, charge: 0, reward };
+  }
+
+  decision.chosenJoin = resolution.joined;
+  decision.resolved = true;
+  if (!hasPendingPiggyback(state)) {
+    state.pendingPiggyback = null;
+  }
+  return resolution;
+}
+
+/**
+ * Resolves every unresolved piggyback decision in seat order (F3 AC2/AC4).
+ *
+ * `decide` is the policy seam: given a decision it returns `true` to join
+ * fully, `false` to keep the free-ride. When omitted every seat keeps the
+ * automatic free-ride (the deterministic headless default — the F4 AI policy
+ * supplies the seat-aware heuristic through this seam). Consumes no RNG.
+ *
+ * @returns The applied resolution for every seat resolved, in seat order.
+ */
+export function resolveAllPendingPiggybacks(
+  state: MainStreetState,
+  decide?: (decision: Readonly<PendingPiggybackDecision>, state: MainStreetState) => boolean,
+): PiggybackSeatResolution[] {
+  const pending = state.pendingPiggyback;
+  if (!pending) return [];
+  const resolutions: PiggybackSeatResolution[] = [];
+  // Iterate a copy: resolvePendingPiggyback may clear the pending set on the
+  // final entry, but never mutates the decisions array itself.
+  for (const decision of [...pending.decisions]) {
+    if (decision.resolved) continue;
+    const join = decide ? decide(decision, state) === true : false;
+    const resolution = resolvePendingPiggyback(state, decision.seatId, join);
+    if (resolution) resolutions.push(resolution);
+  }
+  return resolutions;
 }
 
 /**

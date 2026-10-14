@@ -40,6 +40,7 @@ import {
   executeCompetitiveWeekStart,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
+  resolveCompetitivePendingPiggyback,
   updateCompetitiveScores,
   type PlayerAction,
 } from '../../../src/MainStreetEngine';
@@ -252,6 +253,13 @@ export function runCompetitiveGame(options: RunCompetitiveGameOptions): Competit
         // Dual-choice incident: resolve per the difficulty policy and finish
         // the shared-day closing (per-owner routing retained).
         resolveCompetitivePendingChoice(state);
+        pendingChoicesResolved += 1;
+      }
+      if (closing.piggybackPending) {
+        // F3 piggyback (epic MS-0MUYC47EL005Z69H): settle the pending
+        // decisions (free-ride default) and finish the closing so the harness
+        // day loop never stalls.
+        resolveCompetitivePendingPiggyback(state);
         pendingChoicesResolved += 1;
       }
       recordMainStreetEvent({ type: 'turn-end', turn: state.turn });

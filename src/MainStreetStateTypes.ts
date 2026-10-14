@@ -566,6 +566,23 @@ export interface MainStreetState {
    */
   pendingEventChoice: PendingEventChoice | null;
   /**
+   * Pending piggyback decisions raised by the most recent eligible organiser
+   * event played in competitive mode (F3 of epic MS-0MUYC47EL005Z69H).
+   *
+   * Populated by {@link raisePiggybackDecisions} after the acting player's
+   * event effects resolve (N>=2 only): one unresolved entry per OTHER
+   * non-eliminated seat, in seat order. Each seat independently chooses to
+   * join fully (pay 150% of the acting player's paid cost, earn 100%) or keep
+   * the automatic 50% free-ride. Resolving the last entry clears the field.
+   *
+   * The shared closing pauses while a set is unresolved (`TurnResult
+   * .piggybackPending === true`) so the acting player's resolution always
+   * completes first and no piggyback share is silently dropped. Serialized by
+   * save/load (null default for older saves) so an unresolved set survives a
+   * save/load round-trip.
+   */
+  pendingPiggyback: PendingPiggyback | null;
+  /**
    * Transient buffer of challenge IDs completed by the most recent
    * per-action evaluation (CG-0MU37CKRR008252I). Reset to `[]` at the start
    * of every `executeAction` call and populated by
@@ -626,6 +643,46 @@ export interface PendingEventChoice {
    * where the engine falls back to recompiling.
    */
   options?: StorylineOption[];
+}
+
+/**
+ * One seat's pending piggyback decision (F3 of epic MS-0MUYC47EL005Z69H).
+ * Held on {@link PendingPiggyback} in seat order; each entry resolves
+ * independently.
+ */
+export interface PendingPiggybackDecision {
+  /** Owner index of the seat that must decide (never the acting seat). */
+  seatId: number;
+  /** The organiser event the acting seat played. */
+  event: EventCard;
+  /**
+   * Cost the acting player ACTUALLY paid for the event (after any acting-seat
+   * discounts) — the 150% join-fully baseline (epic Q2/Q3).
+   */
+  paidCost: number;
+  /**
+   * True when the seat chose to join fully, false when it kept the free-ride,
+   * and null while the decision is still pending.
+   */
+  chosenJoin: boolean | null;
+  /** True once the seat's tier (join-fully or free-ride) has been applied. */
+  resolved: boolean;
+}
+
+/**
+ * The set of pending piggyback decisions raised by one eligible organiser
+ * event play (F3 of epic MS-0MUYC47EL005Z69H). Stored as the typed
+ * `state.pendingPiggyback` field so it survives save/load and undo.
+ */
+export interface PendingPiggyback {
+  /** Owner index of the seat that played the organiser event. */
+  actingSeatId: number;
+  /** The organiser event the acting seat played. */
+  event: EventCard;
+  /** Cost the acting player actually paid (150% join-fully baseline). */
+  paidCost: number;
+  /** One unresolved entry per other active seat, in seat order. */
+  decisions: PendingPiggybackDecision[];
 }
 
 export interface MainStreetSerializedState {
@@ -763,6 +820,11 @@ export interface MainStreetSerializedState {
   pendingApplicant: PendingApplicant | null;
   /** Pending dual-choice incident event awaiting Accept/Reject (CG-0MTSHG8RP008E128). */
   pendingEventChoice: PendingEventChoice | null;
+  /**
+   * Pending piggyback decision set (F3 of epic MS-0MUYC47EL005Z69H). Absent /
+   * null on older saves and when no decision is pending.
+   */
+  pendingPiggyback: PendingPiggyback | null;
 }
 
 /** Record of a single milestone (tier unlock) achievement. */

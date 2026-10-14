@@ -677,6 +677,7 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     competitiveWinnerId: undefined,
     pendingApplicant: null,
     pendingEventChoice: null,
+    pendingPiggyback: null,
   };
   // Endless-mode opt-in (CG-0MTIILU5V006GCN4): overrides the preset's
   // win-threshold semantics. Default is false (existing behaviour).

@@ -101,6 +101,12 @@ interface MarketActionSnapshot {
    */
   pendingEventChoice: any | null;
   /**
+   * Pending piggyback decision set (F3 of MS-0MUYC47EL005Z69H). Captured so
+   * undoing an eligible event play returns to the unresolved pending state
+   * (and redo re-raises it) instead of leaving a stale decision set behind.
+   */
+  pendingPiggyback: any | null;
+  /**
    * Active duration effects. Captured so undoing a choice that accepted a
    * DurationEventCard removes the effect it pushed.
    */
@@ -187,6 +193,7 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     justMovedUpgradeCardId: (state as any).justMovedUpgradeCardId ?? null,
     justMovedEventCardId: (state as any).justMovedEventCardId ?? null,
     pendingEventChoice: clonePendingChoice((state as any).pendingEventChoice ?? null),
+    pendingPiggyback: safeClone((state as any).pendingPiggyback ?? null),
     activeEffects: safeClone(state.activeEffects ?? []),
     // Challenge completion state — cloneable form only (never activeChallenges,
     // whose evaluator functions would be dropped by safeClone).
@@ -252,6 +259,9 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   }
   if ('pendingEventChoice' in snap) {
     (state as any).pendingEventChoice = snap.pendingEventChoice;
+  }
+  if ('pendingPiggyback' in snap) {
+    (state as any).pendingPiggyback = snap.pendingPiggyback;
   }
   if ('activeEffects' in snap) {
     state.activeEffects = snap.activeEffects ?? [];
