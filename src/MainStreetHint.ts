@@ -23,9 +23,11 @@ import type {
   PlayBusinessFromHandAction,
   PlayUpgradeFromHandAction,
   PlayEventFromHandAction,
+  CloseBusinessAction,
 } from './MainStreetEngine';
 import { computeSynergyBonus } from './MainStreetAdjacency';
 import { formatSynergyRate } from './MainStreetFormatting';
+import { closeReputationDelta } from './MainStreetMarket';
 import type { BusinessCard, UpgradeCard, EventCard } from './MainStreetCards';
 
 // ── Types ────────────────────────────────────────────────────
@@ -181,6 +183,13 @@ export function buildRationale(
 
     case 'discard-from-hand':
       return 'Discard a hand card for reputation equal to its coin cost, to open a hand slot';
+    case 'close-business': {
+      const a = action as CloseBusinessAction;
+      const card = state.streetGrid[a.slotIndex];
+      const delta = closeReputationDelta(state, a.slotIndex);
+      const deltaLabel = `${delta > 0 ? '+' : ''}${delta} reputation`;
+      return `Close ${card?.name ?? 'a street card'} for 1 action (${deltaLabel}) to remove a nuisance`;
+    }
     case 'community-favour': {
       const a = action as { type: 'community-favour'; direction: 'coins-to-rep' | 'rep-to-coins' };
       if (a.direction === 'coins-to-rep') {

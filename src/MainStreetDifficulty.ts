@@ -162,6 +162,24 @@ export interface GameConfig extends DifficultyConfig {
    * preventing infinite arbitrage.
    */
   readonly favourRepToCoinsCoinGain: number;
+
+  // ── Close Reputation (MS-0MURC6XO8005W57D) ──────────────
+  /**
+   * Multiplier applied to a closed card's effective per-turn reputation
+   * contribution.
+   *
+   * Closing a card deducts `cardReputationPerTurn × closeReputationMultiplier`
+   * from the player's reputation (floored at 0), so a card that harms the
+   * street's standing (negative `reputationPerTurn`, e.g. the Pawn Shop)
+   * yields a **boost** when removed. `cardReputationPerTurn` is the card's
+   * effective per-turn contribution on the grid (cached synergy/upgrade value
+   * plus per-business staff buffs — matching what the income phase credits to
+   * that slot).
+   *
+   * Default 20. Kept as a configurable difficulty/economy lever so balance
+   * guardrails can tune the close consequence without a code change.
+   */
+  readonly closeReputationMultiplier: number;
 }
 
 // ── Preset Definitions ──────────────────────────────────────
@@ -229,6 +247,8 @@ export const EASY_PRESET: Readonly<GameConfig> = {
   favourCoinsToRepCost: 200,
   favourRepToCoinsRepCost: 200,
   favourRepToCoinsCoinGain: 300,
+  // Closing a card applies cardReputationPerTurn × 20 to reputation.
+  closeReputationMultiplier: 20,
 };
 
 /**
@@ -258,6 +278,8 @@ export const MEDIUM_PRESET: Readonly<GameConfig> = {
   favourCoinsToRepCost: 200,
   favourRepToCoinsRepCost: 200,
   favourRepToCoinsCoinGain: 300,
+  // Closing a card applies cardReputationPerTurn × 20 to reputation.
+  closeReputationMultiplier: 20,
 };
 
 /**
@@ -287,6 +309,8 @@ export const HARD_PRESET: Readonly<GameConfig> = {
   favourCoinsToRepCost: 200,
   favourRepToCoinsRepCost: 200,
   favourRepToCoinsCoinGain: 300,
+  // Closing a card applies cardReputationPerTurn × 20 to reputation.
+  closeReputationMultiplier: 20,
 };
 
 // ── Preset Registry ─────────────────────────────────────────

@@ -28,6 +28,7 @@ export type {
   BuyBusinessAction,
   BuyEventAction,
   BuyUpgradeAction,
+  CloseBusinessAction,
   CommunityFavourAction,
   DiscardFromHandAction,
   EndOfTurnOptions,

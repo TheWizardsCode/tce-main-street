@@ -14,6 +14,18 @@ A playable web build is published automatically to:
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how the Pages site is built, released and
 verified.
 
+## Closing a business
+
+Closing a non-sold street card (Manage Card → **Close**) costs **1 action and
+no coins** and removes it to the discard pile. It also **damages reputation**:
+the player's reputation changes by `−(cardReputationPerTurn ×
+closeReputationMultiplier)` (default multiplier **20**) and never drops below
+0. Closing a reputation-positive card is therefore a penalty (a Café at +20 →
+−400) while closing a nuisance card is a boost (the Pawn Shop at −10 → +200).
+The change is undoable and shown in the activity log, and the AI factors the
+reputation cost into its close decisions. See
+[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
+
 ## Competitive ownership
 
 In human-vs-AI competitive play the shared street is owner-tagged. A seat may

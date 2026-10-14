@@ -36,6 +36,20 @@ Banking-aware behaviour lives in a **new** `BankingGreedyStrategy` (`MainStreetA
 
 `BankingGreedyStrategy` is registered as a distinct `banking-greedy` variant in the Monte Carlo harness (`MainStreetMonteCarlo.ts`), so runs can compare baseline `greedy` vs. banking-aware side by side (AC5). The existing `greedy`/`random` baselines are not replaced.
 
+### Close evaluation (MS-0MURC6XO8005W57D)
+
+Closing a street card applies a reputation consequence (penalty for a
+reputation-positive card, boost for a nuisance). The AI represents this as a
+`close-business` `PlayerAction`, enumerated **only for nuisance cards** (a
+negative effective per-turn reputation, i.e. `closeReputationDelta(state, slot)
+> 0`) so the AI never gratuitously closes a card that props up the street's
+standing — the same "only when it helps" gating as `discard-from-hand` (hand
+full). `scoreCloseBusinessAction` values the close in coin-equivalent units: the
+reputation delta converted at the Community Favour exchange rate minus the
+card's lost income over `aiPlanningHorizon`. It is taken by the greedy chain at
+Priority 7 (after the held-event play, before discard) only when the score is
+positive, so a high-income nuisance is retained.
+
 ### Hybrid heuristic: `scoreBankOption(state, difficulty?)` (AC3)
 
 Scores the implicit "bank actions" option — the expected value of ending the turn early with `actionsRemaining > 0`. It is **hybrid**:

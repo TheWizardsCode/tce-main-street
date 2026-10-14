@@ -179,9 +179,13 @@ dialog (`MainStreetOverlayContent.showSellConfirmation`, panel 480×360):
   on the grid as an inert *sold* marker (existing behaviour).
 - **[Close]** — costs **1 action, no coins** (`closeBusinessCommand` via the
   shared `consumeAction` enforcement point); removes the card from `streetGrid`
-  into `discardPile`, recalculates neighbours, and frees the slot. Illegal
-  closes (no actions, sold slot, empty slot) produce illegal-move feedback and
-  no state change.
+  into `discardPile`, recalculates neighbours, and frees the slot. Closing also
+  applies a **reputation consequence** (MS-0MURC6XO8005W57D): reputation changes
+  by `−(cardReputationPerTurn × closeReputationMultiplier)` (default 20, floored
+  at 0), so a reputation-positive card is a penalty and a nuisance card is a
+  boost; the result is undoable and shown in the log. Illegal closes (no
+  actions, sold slot, empty slot) produce illegal-move feedback and no state
+  change.
 - **[Cancel]** — dismisses with no state change.
 
 All text/buttons are parented into `hudContainer` at depth 201 (backdrop 199,

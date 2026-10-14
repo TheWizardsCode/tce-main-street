@@ -37,6 +37,7 @@ import {
   type PlayUpgradeFromHandAction,
   type PlayEventFromHandAction,
   type CommunityFavourAction,
+  type CloseBusinessAction,
 } from './MainStreetEngine';
 import {
   canPurchaseBusiness,
@@ -47,6 +48,8 @@ import {
   getEmptySlots,
   effectiveUpgradeCost,
   bestEffectiveUpgradeCost,
+  canCloseBusiness,
+  closeReputationDelta,
 } from './MainStreetMarket';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, StaffCard, SynergyType } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
@@ -713,6 +716,10 @@ export interface MainStreetAiStrategy extends AiStrategyBase {
  *   - `discard-from-hand`: costs the card's coin value in reputation
  *     (CG-0MTQ7KUVF009ELQK); only enumerated when the hand is full, so the AI
  *     never gratuitously discards
+ *   - `close-business`: closes a nuisance street card (negative effective
+ *     per-turn reputation) for a reputation boost (MS-0MURC6XO8005W57D); only
+ *     enumerated when the close yields a positive reputation change, so the AI
+ *     never gratuitously closes a reputation-positive card
  *   - `end-turn`: always included
  *
  * Every action returned here is guaranteed to be accepted by `executeAction`.
@@ -884,6 +891,21 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
     hand.forEach((_, handIndex) => {
       actions.push({ type: 'discard-from-hand', handIndex });
     });
+  }
+
+  // ── close-business (MS-0MURC6XO8005W57D) ─────────────────
+  // Closing a street card costs 1 action and applies the card's reputation
+  // consequence (penalty for a reputation-positive card, boost for a
+  // nuisance). Like discard (only enumerated when the hand is full), close
+  // is enumerated ONLY for nuisance cards — a negative effective per-turn
+  // reputation means removing them is a reputation *boost* — so the AI never
+  // gratuitously closes a card that props up the street's standing.
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    if (!state.streetGrid[i]) continue;
+    if (!canCloseBusiness(state, i).legal) continue;
+    if (closeReputationDelta(state, i) > 0) {
+      actions.push({ type: 'close-business', slotIndex: i });
+    }
   }
 
   // ── peek-incident-deck (staff peek skill, CG-0MSXOW6GN008ZSMN) ──
@@ -1351,6 +1373,8 @@ function pickFreeCompositePlay(
  *   4. Buy a business (best synergy placement)
  *   5. Spend the action on the best market acquisition
  *   6. Play a held Investment event with positive ROI
+ *   7. Close a nuisance street card for a reputation boost
+ *      (MS-0MURC6XO8005W57D)
  *   8. Discard from a full hand
  *   9. Community Favour fallback
  *  10. Hire staff
@@ -1446,6 +1470,20 @@ const chooseGreedyAction = (
       const bestEvent = pickBest(handEventActions, a => scorePlayEventFromHandAction(state, a), rng);
       if (scorePlayEventFromHandAction(state, bestEvent) > 0) {
         return bestEvent;
+      }
+    }
+
+    // Priority 7: close a nuisance street card (negative effective per-turn
+    // reputation) for a reputation boost (MS-0MURC6XO8005W57D). Enumerated
+    // only for nuisance cards; taken only when the close's reputation value
+    // clears the card's lost income over the horizon.
+    const closeActions = legalActions.filter(
+      a => a.type === 'close-business',
+    ) as CloseBusinessAction[];
+    if (closeActions.length > 0) {
+      const best = pickBest(closeActions, a => scoreAction(state, a), rng);
+      if (scoreAction(state, best) > 0) {
+        return best;
       }
     }
 
@@ -1830,6 +1868,9 @@ function scorePlayEventFromHandAction(
  *   - `buy-event`:    `coinDelta + reputationDelta - cost` (net play value;
  *                     the take itself spends the day's one action)
  *   - `play-event`:   fixed bonus of 5 (prefer playing over end-turn)
+ *   - `close-business`: the card's reputation consequence in coin-equivalent
+ *                     value minus the card's lost income over the horizon
+ *                     (MS-0MURC6XO8005W57D)
  *   - `end-turn`:     0 (baseline / fallback)
  *
  * `horizon` is the AI planning horizon derived from the distance to the
@@ -1874,6 +1915,8 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
     }
     case 'end-turn':
       return 0;
+    case 'close-business':
+      return scoreCloseBusinessAction(state, action);
     // Action economy actions (CG-0MSTOF1N5005PK2R). Minimal scoring for now;
     // the AI strategy child (CG-0MSX41S7I009MMZN) refines budget-aware scoring.
     case 'buy-and-place':
@@ -1911,6 +1954,43 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
     default:
       return 0;
   }
+}
+
+/**
+ * Scores closing the street card at `action.slotIndex`
+ * (MS-0MURC6XO8005W57D).
+ *
+ * The close's reputation consequence is converted to coin-equivalent value at
+ * the Community Favour exchange rate (`favourRepToCoinsRepCost` rep ↔
+ * `favourRepToCoinsCoinGain` coins) so it can be compared against the AI's
+ * other economic actions. A nuisance card (negative effective per-turn
+ * reputation, e.g. the Pawn Shop) therefore scores **positive** — closing it
+ * is a boost — while a reputation-positive card scores negative, so the AI
+ * avoids closing cards that prop up the street's standing. The card's lost
+ * per-turn income over the planning horizon is subtracted so a high-income
+ * card is not demolished purely for its rep delta (a real close also forfeits
+ * that slot's future earnings).
+ *
+ * @param state  Current game state (read-only by convention).
+ * @param action The close action to score.
+ * @returns Numeric score in coin-equivalent units (higher is better).
+ */
+export function scoreCloseBusinessAction(
+  state: MainStreetState,
+  action: CloseBusinessAction,
+): number {
+  const card = state.streetGrid[action.slotIndex];
+  if (!card) return 0;
+  const deltaRep = closeReputationDelta(state, action.slotIndex);
+  // Coin-equivalent value of the reputation change via the Community Favour
+  // exchange rate. Falls back to 1:1 when the config is degenerate.
+  const repToCoins = state.config.favourRepToCoinsRepCost > 0
+    ? state.config.favourRepToCoinsCoinGain / state.config.favourRepToCoinsRepCost
+    : 1;
+  const repValue = deltaRep * repToCoins;
+  const lostIncomeValue =
+    (card.currentIncome ?? card.baseIncome ?? 0) * aiPlanningHorizon(state);
+  return repValue - lostIncomeValue;
 }
 
 /**

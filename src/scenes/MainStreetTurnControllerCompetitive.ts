@@ -211,6 +211,8 @@ function describeAction(action: PlayerAction): string {
       return `played event from hand`;
     case 'discard-from-hand':
       return `discarded a hand card`;
+    case 'close-business':
+      return `closed a street card`;
     case 'community-favour':
       return `used Community Favour`;
     case 'end-turn':

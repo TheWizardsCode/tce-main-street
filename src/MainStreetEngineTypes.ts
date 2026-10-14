@@ -135,6 +135,18 @@ export interface CommunityFavourAction {
   direction: 'coins-to-rep' | 'rep-to-coins';
 }
 
+/**
+ * Close a street card (MS-0MURC6XO8005W57D): removes a non-sold business or
+ * community-space card for 1 action and no coins, applying the reputation
+ * consequence (penalty for reputation-positive cards, boost for nuisance
+ * cards). Exposed to the AI so its close evaluation factors the reputation
+ * cost (supersedes the former Close AC6 "no AI changes").
+ */
+export interface CloseBusinessAction {
+  type: 'close-business';
+  slotIndex: number;
+}
+
 /** Union of all player actions. */
 
 export type PlayerAction =
@@ -152,6 +164,7 @@ export type PlayerAction =
   | PlayEventAction
   | PeekIncidentAction
   | CommunityFavourAction
+  | CloseBusinessAction
   | EndTurnAction;
 
 // ── Turn Result ─────────────────────────────────────────────

@@ -286,7 +286,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. |
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
 | Hire a staff card | 1 action | From the general market row. |
-| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
+| Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
 | Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
 
 > **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
@@ -340,6 +340,24 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > Sell price (CG-0MT5XO7DI0066QCT): the sell refund mirrors the buy-and-place premium (1.5× purchase + upgrades) and adds the card's current synergy value, so emergency cash reflects what the card actually earns on the grid. A card with no synergies still recovers more than before (`/2 → ×1.5`); a well-synergised card recovers coins **plus** rep-derived value automatically. The breakdown is visible before the player confirms.
 
 > Close vs Sell (CG-0MT5XT7K3005IBBV): clicking a non-sold street card opens a **Manage Card** dialog with **[Sell] [Close] [Cancel]**. **Sell** is free and keeps the sold card on the grid as an inert synergy anchor (the slot remains occupied permanently). **Close** costs **1 action and no coins**, removes the card to the discard pile, recalculates its neighbours **without** the removed card's synergy, and frees the slot for a future placement. Sold cards cannot be closed — once sold, the only way past that slot is a future "clear sold card" capability (not yet implemented).
+
+> **Close damages reputation (MS-0MURC6XO8005W57D).** Closing also applies a
+> reputation consequence so removing a card is never free: the player's
+> reputation changes by `−(cardReputationPerTurn × closeReputationMultiplier)`
+> and is **floored at 0** (the Discard precedent, CG-0MTQ7KUVF009ELQK).
+> `cardReputationPerTurn` is the card's **effective** per-turn contribution on
+> the grid — the cached `currentReputationPerTurn` (synergy and upgrades
+> included) plus any per-business staff skill buffs, matching what the income
+> phase credits to that slot. `closeReputationMultiplier` is a per-difficulty
+> `GameConfig` lever (default **20**). Consequently closing a
+> reputation-positive card is a penalty (a Café at +20 → **−400**) while
+> closing a nuisance card is a **boost** (the Pawn Shop at −10 → **+200**).
+> Undo restores the reputation (the command pre-snapshot captures the resource
+> bank), redo re-applies it, and the activity log shows the change via
+> `describeEventEffects`/`classifyEffect` (e.g. `Closed Café from slot 2 (no
+> refund, 1 action, -400 rep)`). The AI factors the reputation cost into its
+> close scoring, closing a nuisance card only when the reputation gain clears
+> the card's lost income.
 
 > **Ownership in competitive play (MS-0MUV9P89G0061SRA).** In human-vs-AI
 > competitive games the shared street is owner-tagged (`ownerTaggedGrid`). A
