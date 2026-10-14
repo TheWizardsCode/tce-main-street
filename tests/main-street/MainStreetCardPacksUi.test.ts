@@ -29,10 +29,15 @@ import {
   getMainStreetCardPackLoadResult,
   isMainStreetCardPacksBootstrapped,
   resetMainStreetCardPacks,
+  resolveBundledContentDir,
   resolveEnabledPackIds,
   setMainStreetCardPackLoadResult,
   toCardPackListingInput,
 } from '../../src/MainStreetCardPacks';
+import {
+  PackSourceRegistry,
+  createBundledPackSource,
+} from '../../src/MainStreetPackSources';
 import {
   getEnabledCardPackIds,
   setEnabledCardPackIds,
@@ -41,6 +46,13 @@ import {
 import { setupMainStreetGame } from '../../src/MainStreetState';
 import type { MainStreetState } from '../../src/MainStreetState';
 import type { CardPackLoadResult, LoadedCardPack } from '@ui/CardPackLoader';
+import {
+  getPackArtDataUri,
+  hasPackArt,
+  registerPackArt,
+} from '../../src/MainStreetCardPackArt';
+import { getCardArtDataUriForCard } from '../../src/MainStreetCardArt';
+import { generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 const BASE_HEADER = CARD_DATA_RAW.split('\n')[0];
 const BASE_COLUMNS = BASE_HEADER.split(',');
@@ -86,6 +98,7 @@ function loadedPack(overrides: Partial<LoadedCardPack> = {}): LoadedCardPack {
     },
     csv: packCsv(),
     assetUrls: [],
+    assetDataUris: {},
     status: {
       packId: PACK_ID,
       gameId: MAIN_STREET_GAME_ID,
@@ -116,14 +129,39 @@ afterEach(() => {
 });
 
 describe('bootstrapMainStreetCardPacks', () => {
-  it('falls back to base content when no content directory is available', async () => {
+  it('discovers the bundled pack when no content directory is available', async () => {
     resetTemplatesToDefault();
 
-    const result = await bootstrapMainStreetCardPacks({ contentDir: null });
+    const result = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      logger: { warn: () => {} },
+    });
 
-    expect(result).toBeNull();
+    // The browser fallback now discovers the build-time bundled residential
+    // pack instead of bailing to base content.
+    expect(result).not.toBeNull();
     expect(isMainStreetCardPacksBootstrapped()).toBe(true);
-    expect(getMainStreetCardPackLoadResult()).toBeNull();
+    expect(getMainStreetCardPackLoadResult()).toBe(result);
+    // With no content unlock it stays gated: listed as locked, cards out of play.
+    expect(result!.locked.map((pack) => pack.manifest.id)).toContain(
+      'main-street-residential-pack',
+    );
+    expect(result!.pool.baseOnly).toBe(true);
+    expect(getActiveCsvData()).toBe(CARD_DATA_RAW);
+    expect(getAvailableTemplateIds()).not.toContain('biz-ms-residential-property-mgmt');
+  });
+
+  it('degrades to base content when the bundled source carries no pack', async () => {
+    const result = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      packSources: new PackSourceRegistry(),
+      storage: null,
+      logger: { warn: () => {} },
+    });
+
+    // A missing bundled manifest must never throw and leaves base content.
+    expect(result).not.toBeNull();
+    expect(result!.pool.baseOnly).toBe(true);
     expect(getActiveCsvData()).toBe(CARD_DATA_RAW);
   });
 
@@ -178,6 +216,228 @@ describe('bootstrapMainStreetCardPacks', () => {
     expect(result).not.toBeNull();
     expect(getActiveCsvData()).toBe(CARD_DATA_RAW);
     expect(getActiveMainStreetPacks()).toEqual([]);
+  });
+});
+
+describe('bootstrapMainStreetCardPacks — Electron content directory', () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('reads the launcher content directory through tce-packs:// when window.tce.contentDir is set', async () => {
+    const contentDir = 'file:///launcher-content/';
+    (globalThis as { window?: unknown }).window = { tce: { contentDir } };
+
+    const manifest = JSON.stringify({
+      version: 1,
+      packs: [
+        {
+          id: PACK_ID,
+          gameId: MAIN_STREET_GAME_ID,
+          title: 'Foundations',
+          description: 'Test pack',
+          version: '1.0.0',
+          coreEngineVersion: '^0.1.0',
+          cards: 'cards.csv',
+        },
+      ],
+    });
+    const requested: string[] = [];
+    // The default transports read through the renderer's global `fetch`; the
+    // manifest comes from the content directory and the pack CSV through the
+    // Electron-only `tce-packs://` scheme.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.endsWith('/packs/manifest.json')) {
+        return { ok: true, status: 200, statusText: 'OK', text: async () => manifest } as never;
+      }
+      if (url.startsWith('tce-packs://')) {
+        return { ok: true, status: 200, statusText: 'OK', text: async () => packCsv() } as never;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const result = await bootstrapMainStreetCardPacks({ logger: { warn: () => {} } });
+
+    // The launcher content directory — not the bundled fallback — is read,
+    // and the pack CSV still goes through the `tce-packs://` protocol.
+    expect(requested).toContain(`${contentDir}packs/manifest.json`);
+    expect(requested).toContain(
+      `tce-packs://${MAIN_STREET_GAME_ID}/${PACK_ID}/cards.csv`,
+    );
+    // The content-directory install path stays supported end to end.
+    expect(result).not.toBeNull();
+    expect(getAvailableTemplateIds()).toContain(PACK_BUSINESS_ID);
+  });
+});
+
+describe('resolveBundledContentDir', () => {
+  it('derives the bundled content base from the web base path', () => {
+    // The GitHub Pages project base must be preserved, not flattened to `/`.
+    expect(resolveBundledContentDir('/tce-main-street/')).toBe('/tce-main-street/');
+    expect(resolveBundledContentDir('/')).toBe('/');
+  });
+
+  it('defaults to the build-time web base and tolerates a blank value', () => {
+    expect(resolveBundledContentDir()).toBe(import.meta.env.BASE_URL);
+    expect(resolveBundledContentDir('')).toBe('/');
+  });
+});
+
+describe('bundled pack-source boot transports', () => {
+  const RESIDENTIAL_ID = 'main-street-residential-pack';
+  const RESIDENTIAL_CARD_ID = 'biz-ms-residential-property-mgmt';
+  const MANIFEST = JSON.stringify({
+    version: 1,
+    packs: [
+      {
+        id: RESIDENTIAL_ID,
+        gameId: MAIN_STREET_GAME_ID,
+        title: 'Main Street Residential',
+        description: 'Residential pack',
+        version: '1.0.0',
+        coreEngineVersion: '^0.1.0',
+        cards: 'cards.csv',
+        assets: [`assets/${RESIDENTIAL_CARD_ID}.png`],
+      },
+    ],
+  });
+
+  function residentialCsv(): string {
+    return [
+      BASE_HEADER,
+      packRow({
+        family: 'business',
+        id: RESIDENTIAL_CARD_ID,
+        name: 'Neighbourhood Property Group',
+        cost: '500',
+        baseIncome: '120',
+        description: 'A residential property business.',
+      }),
+    ].join('\n');
+  }
+
+  it('resolves bundled CSV and asset URLs through the registry with no tce-packs request', async () => {
+    const emittedAssetUrl = '/tce-main-street/assets/biz-ms-residential-property-mgmt-abc.png';
+    const registry = new PackSourceRegistry([
+      createBundledPackSource({
+        text: {
+          'manifest.json': async () => MANIFEST,
+          [`${MAIN_STREET_GAME_ID}/${RESIDENTIAL_ID}/cards.csv`]: async () => residentialCsv(),
+        },
+        urls: {
+          [`${MAIN_STREET_GAME_ID}/${RESIDENTIAL_ID}/assets/${RESIDENTIAL_CARD_ID}.png`]:
+            async () => emittedAssetUrl,
+        },
+      }),
+    ]);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+    } as never);
+
+    const result = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      packSources: registry,
+      client: {
+        listStatus: async (refs: readonly { id: string; gameId: string | null }[]) =>
+          refs.map((ref) => ({
+            packId: ref.id,
+            gameId: ref.gameId,
+            state: 'free' as const,
+            steamAppId: null,
+            reason: null,
+          })),
+      } as never,
+      contentUnlocks: {
+        isUnlocked: async () => true,
+        getUnlocks: async () => [],
+        refresh: async () => [],
+      },
+      storage: null,
+      logger: { warn: () => {} },
+    });
+
+    expect(result!.pool.activePacks).toEqual([{ id: RESIDENTIAL_ID, version: '1.0.0' }]);
+    // The asset is read from the registry's same-origin (`?url`) resolution, so
+    // no request ever targets the Electron-only `tce-packs://` scheme.
+    expect(fetchSpy).toHaveBeenCalledWith(emittedAssetUrl);
+    expect(
+      fetchSpy.mock.calls.every(([url]) => !String(url).startsWith('tce-packs://')),
+    ).toBe(true);
+  });
+});
+
+describe('bootstrapMainStreetCardPacks — pack-art registry', () => {
+  const PACK_ART_URI =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  function loaderWithPackArt() {
+    return vi.fn(async () => ({
+      packs: [
+        loadedPack({ assetDataUris: { [PACK_BUSINESS_ID]: PACK_ART_URI } }),
+      ],
+      incompatible: [],
+      locked: [],
+      errors: [],
+    }));
+  }
+
+  it('registers every loaded pack\'s inlined assets before scene setup', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(true);
+    expect(getPackArtDataUri(PACK_BUSINESS_ID)).toBe(PACK_ART_URI);
+    expect(getCardArtDataUriForCard(PACK_BUSINESS_ID, 'Pack Tea House')).toBe(
+      PACK_ART_URI,
+    );
+  });
+
+  it('clears the registry on reset', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(true);
+
+    resetMainStreetCardPacks();
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(false);
+  });
+
+  it('leaves the registry base-only when the loader fails', async () => {
+    registerPackArt(PACK_BUSINESS_ID, PACK_ART_URI);
+    const loader = vi.fn(async () => ({
+      packs: [],
+      incompatible: [],
+      locked: [],
+      errors: [{ id: PACK_ID, reason: 'boom' }],
+    }));
+
+    await bootstrapMainStreetCardPacks({ contentDir: '/content', loader });
+
+    expect(hasPackArt(PACK_BUSINESS_ID)).toBe(false);
+  });
+
+  it('populates the registry before the SVG generator draws a pack card (ordering)', async () => {
+    await bootstrapMainStreetCardPacks({
+      contentDir: '/content',
+      loader: loaderWithPackArt(),
+    });
+
+    const svg = generateCardSvgFromCsvRow({
+      id: PACK_BUSINESS_ID,
+      name: 'Pack Tea House',
+      family: 'business',
+    });
+
+    expect(svg).toContain(PACK_ART_URI);
   });
 });
 

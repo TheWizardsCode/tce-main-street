@@ -255,7 +255,15 @@ function finishCompetitiveClosingTail(
     addLog(state, `${expired.description} has expired.`, 'neutral');
     recordMainStreetEvent({ type: 'info', turn: state.turn, message: `${expired.description} has expired.` });
   }
-  const newlyCompletedChallenges = evaluateChallenges(state.activeChallenges, state);
+  // Closing-phase EndCheck safety net: attribute any completion caused by the
+  // shared closing (Income / Incident) to the active seat, matching the
+  // per-action path. In competitive mode the acting seat is the last player to
+  // take their MarketPhase; single-player runs never reach this tail.
+  const newlyCompletedChallenges = evaluateChallenges(
+    state.activeChallenges,
+    state,
+    state.activePlayerId ?? null,
+  );
   checkCompetitiveEndConditions(state);
   if (state.gameResult === 'playing') {
     state.turn += 1;

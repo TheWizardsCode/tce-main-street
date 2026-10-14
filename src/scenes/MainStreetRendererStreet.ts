@@ -12,6 +12,7 @@
 import { FONT_FAMILY, HandView } from '@ui';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
+import { getSlotOwnerId, resolveSeatColour } from '../MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
 import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
@@ -19,9 +20,10 @@ import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
-import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
+import { buildUpgradeOverlaySpec, circularDistance, sampleShaderGradient, shouldAnimateShaderEffect, wrapShaderPhase } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
+import { seatColourToNumber } from '../MainStreetSeatColours';
 import { createGameZone } from '@ui/Renderer';
 import Phaser from 'phaser';
 
@@ -40,6 +42,15 @@ export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
  */
 const SYNERGY_LINE_HIT_THICKNESS = 12;
 
+/**
+ * Stroke width (px) of the owner-coloured placed-card border (F4 of
+ * MS-0MUWNTN8W006C7EF).
+ *
+ * Thin enough that the transparent-filled frame never obscures the card face
+ * or the synergy two-tone colouring, while still reading as an ownership
+ * frame at the default street zoom.
+ */
+const OWNER_BORDER_WIDTH = 3;
 
 // markHudTransient and clearTransientHud are now imported from src/ui/Renderer
 
@@ -703,7 +714,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
     // pulse the paired cards.
     cardContainer.setData('streetSlotIndex', _index);
 
-    // Apply upgrade overlays (level badge, income, name, border)
+    // Apply upgrade overlays (level badge, top-left accent, income, reputation)
     renderer.applyUpgradeOverlays(cardContainer, biz, renderW, renderH);
 
     // ── Employed-staff count badge (CG-0MU3BTTCH001E7ZD AC1) ────
@@ -759,6 +770,28 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         fontFamily: FONT_FAMILY,
       }).setOrigin(0.5);
       cardContainer.add(soldText);
+    }
+
+    // ── Owner-coloured outer border (F4 of MS-0MUWNTN8W006C7EF) ──
+    // Every placed business/community-space card carries an outer border in
+    // its owner's seat colour, so ownership reads at a glance (the human and
+    // each AI seat have distinct colours; see `MainStreetSeatColours`). The
+    // frame is transparent-filled, so it never obscures the card face or the
+    // synergy two-tone colouring, and it is drawn last so it stays crisp on
+    // a sold (dimmed) card. Single-player has no seat colour, so no border is
+    // drawn and single-player visuals are unchanged.
+    const ownerColour = resolveSeatColour(
+      s.state,
+      getSlotOwnerId(s.state, _index),
+    );
+    if (ownerColour) {
+      const ownerBorder = s.add.rectangle(0, 0, renderW, renderH);
+      ownerBorder.setStrokeStyle(OWNER_BORDER_WIDTH, seatColourToNumber(ownerColour));
+      ownerBorder.setFillStyle(0x000000, 0);
+      ownerBorder.setName(`ms-owner-border-${_index}`);
+      // Tag for tests/visual QA: find the owner border by data key.
+      ownerBorder.setData('ownerBorder', true);
+      cardContainer.add(ownerBorder);
     }
 
     if (!s.replayMode) {
@@ -840,12 +873,113 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
 
     const spec = buildUpgradeOverlaySpec(biz, width, height);
 
-    // Upgrade border (drawn behind text overlays but on top of card image)
-    if (spec.upgradeBorder) {
-      const border = renderer.scene.add.rectangle(0, 0, width, height);
-      border.setStrokeStyle(spec.upgradeBorder.strokeWidth, spec.upgradeBorder.color);
-      border.setFillStyle(0x000000, 0);
-      container.add(border);
+    // Top-left upgrade accent (F4 of MS-0MUWNTN8W006C7EF). This replaces the
+    // former full-card upgrade border: the card's outer frame now carries the
+    // owner's seat colour (drawn in `drawBusinessSlot`), so upgrade state is
+    // indicated here instead. Drawn before the level badge so the badge text
+    // sits on top of the accent.
+    if (spec.levelAccent) {
+      const accent = renderer.scene.add.rectangle(
+        spec.levelAccent.x + spec.levelAccent.width / 2,
+        spec.levelAccent.y + spec.levelAccent.height / 2,
+        spec.levelAccent.width,
+        spec.levelAccent.height,
+        spec.levelAccent.color,
+        spec.levelAccent.alpha ?? 1,
+      );
+      accent.setName('ms-upgrade-accent');
+      container.add(accent);
+    }
+
+    // ── Shader-style upgrade accent (MS-0MV5I4O8U001SU5J; reworked by the
+    // MS-0MUWNTQ5L0075Y38 remediation) ──
+    // A Canvas-compatible corner shard: a translucent diagonal gradient
+    // (gold → pale → warm-white → gold) drawn as a right triangle in the
+    // card's top-left quadrant, with a moving highlight band. It is
+    // deliberately larger and more vivid than the former flat gold accent —
+    // which sat at exactly the same spot and used the same colour, so the
+    // shader was invisible (manual review: "I see no difference in the
+    // upgraded cards"). It remains an *accent*, never a full-card stroke:
+    // every fill stays strictly inside the top-left quadrant, so it coexists
+    // with the owner-coloured outer border and never masks the right-hand
+    // text column. A Phaser `Graphics` cannot paint a true gradient under
+    // Canvas, so the gradient is approximated with vertical strips
+    // (`sampleShaderGradient` — pure + unit-tested). The static form drawn
+    // here is also the reduced-motion/replay form; the motion layer below adds
+    // the gated sweep.
+    if (spec.shaderEffect) {
+      const fx = spec.shaderEffect;
+      const halfW = width / 2;
+      const halfH = height / 2;
+      // Keep the shard strictly inside the top-left quadrant (0,0 = centre).
+      const shardW = halfW * 0.92;
+      const shardH = halfH * 0.92;
+      const strips = 20;
+      const effect = renderer.scene.add.graphics();
+
+      // Integer strip edges tile without seams; the shard is a right triangle
+      // (full height at the outer corner, tapering inward), with a
+      // radial-ish alpha falloff so the card art stays legible beneath it.
+      const xAt = (k: number): number => Math.round(-halfW + (shardW * k) / strips);
+
+      const drawShader = (phase: number): void => {
+        effect.clear();
+        for (let i = 0; i < strips; i++) {
+          const f = i / strips;
+          const x = xAt(i);
+          const stripW = xAt(i + 1) - x;
+          const stripH = shardH * (1 - f);
+          if (stripW <= 0 || stripH <= 0) continue;
+          const taper = 1 - f * 0.7;
+          const sampled = sampleShaderGradient(fx.colourStops, wrapShaderPhase(f + phase));
+          effect.fillStyle(sampled.color, sampled.alpha * fx.sheenAlpha * taper);
+          effect.fillRect(x, -halfH, stripW, stripH);
+          // Moving highlight band, wrapping seamlessly around the gradient.
+          const d = circularDistance(f, phase);
+          if (d < fx.highlightBand) {
+            const bandStrength = 1 - d / fx.highlightBand;
+            effect.fillStyle(fx.highlightColour, fx.highlightAlpha * bandStrength * taper);
+            effect.fillRect(x, -halfH, stripW, stripH);
+          }
+        }
+      };
+
+      drawShader(0);
+      effect.setName('ms-upgrade-shader');
+      container.add(effect);
+
+      // ── Motion layer (MS-0MV5I4ONA000Z7NV) ──
+      // Deterministic shimmer sweep, gated by `shouldAnimateShaderEffect` so
+      // reduced motion and replay/headless keep the static gradient and create
+      // no tween. The tween is killed when the card container is destroyed, so
+      // refreshes never leak tweens. Purely presentational — it never touches
+      // game state, transcript or replay output.
+      if (
+        shouldAnimateShaderEffect({
+          reducedMotion: !!(renderer.scene.settingsPanel?.reducedMotion),
+          replayMode: !!renderer.scene.replayMode,
+        })
+      ) {
+        const sweep = { phase: 0 };
+        const tween = renderer.scene.tweens?.add({
+          targets: sweep,
+          phase: 1,
+          duration: fx.animationDurationMs,
+          ease: fx.animationEasing,
+          repeat: -1,
+          onUpdate: () => drawShader(sweep.phase),
+        });
+        if (tween) {
+          effect.setData('shaderTween', tween);
+        }
+        container.once('destroy', () => {
+          try {
+            renderer.scene.tweens?.killTweensOf(sweep);
+          } catch (_) {
+            /* presentation-only cleanup; never break the game loop */
+          }
+        });
+      }
     }
 
     // Level badge (top-left)

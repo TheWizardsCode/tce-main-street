@@ -131,9 +131,23 @@ function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-const parsed = parseCsv(stripBom(rawCsv));
-
-export const TUTORIAL_EN_BUNDLE: Record<string, string> = {};
-for (const row of parsed) {
-  TUTORIAL_EN_BUNDLE[row.key] = row.text;
+/**
+ * Parse a tutorial CSV string into an i18n bundle.
+ *
+ * Strips a leading UTF-8 BOM before parsing (see {@link stripBom}), then maps
+ * each `key,text` row into the bundle record. Exported so the CSV-integrity
+ * test can assert BOM tolerance directly, and so additional locale loaders
+ * can reuse the same logic.
+ *
+ * @param csvText - Full CSV text (header + data rows).
+ * @returns Map of i18n key → text value.
+ */
+export function parseTutorialCsv(csvText: string): Record<string, string> {
+  const bundle: Record<string, string> = {};
+  for (const row of parseCsv(stripBom(csvText))) {
+    bundle[row.key] = row.text;
+  }
+  return bundle;
 }
+
+export const TUTORIAL_EN_BUNDLE: Record<string, string> = parseTutorialCsv(rawCsv);

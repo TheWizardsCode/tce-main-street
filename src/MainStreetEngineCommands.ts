@@ -53,8 +53,8 @@ export function placeFromHand(
   }
 
   // Validate slot index
-  if (slotIndex < 0 || slotIndex >= 10) {
-    throw new Error(`Invalid slot index: ${slotIndex}. Must be 0-9.`);
+  if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
+    throw new Error(`Invalid slot index: ${slotIndex}. Must be 0-${state.streetGrid.length - 1}.`);
   }
 
   // Check slot is empty
@@ -145,8 +145,8 @@ export function sellFromTableau(
   slotIndex: number,
 ): void {
   // Validate slot index
-  if (slotIndex < 0 || slotIndex >= 10) {
-    throw new Error(`Invalid slot index: ${slotIndex}. Must be 0-9.`);
+  if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
+    throw new Error(`Invalid slot index: ${slotIndex}. Must be 0-${state.streetGrid.length - 1}.`);
   }
 
   const card = state.streetGrid[slotIndex];
@@ -222,8 +222,8 @@ export function canPlaceFromHand(
   }
 
   // Validate slot index
-  if (slotIndex < 0 || slotIndex >= 10) {
-    return { legal: false, reason: `Invalid slot index: ${slotIndex}. Must be 0-9.` };
+  if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
+    return { legal: false, reason: `Invalid slot index: ${slotIndex}. Must be 0-${state.streetGrid.length - 1}.` };
   }
 
   // Check slot is empty
@@ -290,8 +290,8 @@ export function canSellFromTableau(
   slotIndex: number,
 ): import('@rule-engine').LegalityResult {
   // Validate slot index
-  if (slotIndex < 0 || slotIndex >= 10) {
-    return { legal: false, reason: `Invalid slot index: ${slotIndex}. Must be 0-9.` };
+  if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
+    return { legal: false, reason: `Invalid slot index: ${slotIndex}. Must be 0-${state.streetGrid.length - 1}.` };
   }
 
   // Check slot is occupied

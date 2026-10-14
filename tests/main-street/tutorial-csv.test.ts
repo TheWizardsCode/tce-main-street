@@ -3,7 +3,7 @@
  *
  * Validates the spreadsheet source of truth for tutorial copy:
  * - Header is `key,text`
- * - Every required key is present (65 total)
+ * - Every required key is present (67 total)
  * - No duplicate or orphan/unknown keys
  * - No value is empty
  * - Embedded commas and double quotes round-trip
@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseCsv } from '@core-engine/CsvLoader';
-import { TUTORIAL_EN_BUNDLE } from '../../src/i18n/tutorial-en';
+import { TUTORIAL_EN_BUNDLE, parseTutorialCsv } from '../../src/i18n/tutorial-en';
 import tutorialCsvRaw from '../../src/i18n/tutorial-en.csv?raw';
 
 // ── Required keys ─────────────────────────────────────────────
@@ -40,8 +40,9 @@ const REQUIRED_KEYS = [
   'tutorial.steamFollow.openedBrowser',
   'tutorial.steamFollow.unavailable',
   'tutorial.steamFollow.unlocked',
-  // Tutorial steps T1–T25 (50 = 25 × 2)
-  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].flatMap(n => [
+  // Tutorial steps T1-T21, T23-T26 (50 = 25 × 2); T22 was removed by
+  // MS-0MV4F04NN007H3DB.
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26].flatMap(n => [
     `tutorial.T${n}.title`,
     `tutorial.T${n}.body`,
   ]),
@@ -99,6 +100,16 @@ describe('Tutorial CSV integrity', () => {
     const banking = rows.find(r => r.key === 'tutorial.bankingHint.body');
     expect(banking).toBeDefined();
     expect(banking!.text).toContain('"(1 banked)"');
+  });
+
+  it('tolerates a leading UTF-8 BOM (loader strips it)', () => {
+    const withBom = '\uFEFF' + tutorialCsvRaw;
+    const bundle = parseTutorialCsv(withBom);
+    // Without BOM stripping the first header cell parses as `\uFEFFkey`, so no
+    // row would carry a `tutorial.*` key. Assert the known copy resolves and
+    // the full key set survives.
+    expect(bundle['tutorial.T1.title']).toBe('Welcome to Main Street');
+    expect(Object.keys(bundle).length).toBe(65);
   });
 
   it('comma-bearing values round-trip correctly (RFC4180 quoting)', () => {

@@ -59,6 +59,7 @@ import {
   AI_SEAT_STRATEGIES,
 } from './MainStreetStateTypes';
 import { addLog } from './MainStreetStateLog';
+import { assignSeatColours } from './MainStreetSeatColours';
 
 // ── Seed Helpers ────────────────────────────────────────────
 
@@ -746,6 +747,35 @@ function validateOpponentConfigs(
 }
 
 /**
+ * RNG salt for the dedicated seat-colour stream (F2 of MS-0MUWNTN8W006C7EF).
+ *
+ * XORed into the game's numeric seed so seat colours are deterministic for a
+ * given game seed while leaving the main gameplay RNG stream untouched.
+ */
+const SEAT_COLOUR_RNG_SALT = 0x5ea7c010;
+
+/**
+ * Derives the deterministic `playerId → hex colour` assignment for a seat
+ * list.
+ *
+ * Split out from {@link createCompetitiveState} so save/load can defensively
+ * re-derive missing colours for legacy saves from the same seeded stream.
+ * Single-player (at most one seat) yields an empty map.
+ */
+export function deriveSeatColours(
+  players: readonly PlayerRecord[],
+  numericSeed: number,
+): Map<string, string> {
+  return assignSeatColours(
+    players.map((seat) => ({
+      playerId: String(seat.playerId),
+      controller: seat.controller === 'ai' ? 'ai' : 'human',
+    })),
+    createSeededRng(numericSeed ^ SEAT_COLOUR_RNG_SALT),
+  );
+}
+
+/**
  * Creates a competitive game state with N per-player records.
  *
  * N-player-ready (parallel PlayerRecord[] indexed by ownerId): shared
@@ -801,6 +831,16 @@ export function createCompetitiveState(
     seat.aiDifficulty = config.difficulty;
     return seat;
   });
+
+  // Assign each seat a distinct colour-blind-safe colour (F2 of
+  // MS-0MUWNTN8W006C7EF). A dedicated seeded stream keeps the assignment
+  // deterministic per game without perturbing the main gameplay RNG; the
+  // colours are persisted so a loaded save keeps each seat's colour.
+  const seatColours = deriveSeatColours(state.players, state.numericSeed);
+  for (const seat of state.players) {
+    const colour = seatColours.get(String(seat.playerId));
+    if (colour !== undefined) seat.colour = colour;
+  }
 
   state.ownerTaggedGrid = Array.from(
     { length: state.streetGrid.length },

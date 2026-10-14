@@ -449,8 +449,12 @@ describe('AC4 — AI visibility and per-seat difficulty', () => {
     endHumanMarketPhase(state);
     driveAiSeatsUntilClosing(state);
 
-    // Activity-log entry written as the AI seat acts.
-    expect(state.activityLog.some((entry) => entry.text.startsWith('AI 1'))).toBe(true);
+    // Activity-log entry written as the AI seat acts; the seat label is
+    // carried separately as the coloured prefix (F3 of MS-0MUWNTN8W006C7EF).
+    const aiEntry = state.activityLog.find((entry) => entry.seatLabel === 'AI 1');
+    expect(aiEntry).toBeDefined();
+    expect(aiEntry!.seatColour).toBe(state.players![1].colour);
+    expect(aiEntry!.text.length).toBeGreaterThan(0);
   });
 
   it('threads the seat difficulty into the policy without mutating the shared config', () => {

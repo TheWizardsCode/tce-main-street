@@ -22,7 +22,13 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildUpgradeOverlaySpec } from '../../src/scenes/UpgradeOverlaySpec';
+import {
+  buildUpgradeOverlaySpec,
+  circularDistance,
+  sampleShaderGradient,
+  shouldAnimateShaderEffect,
+  wrapShaderPhase,
+} from '../../src/scenes/UpgradeOverlaySpec';
 import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
 import { getUpgradeTemplates } from '../../src/MainStreetCards';
 
@@ -111,7 +117,8 @@ describe('No nameText overlay (name is part of the card face, AC1/AC2/AC4)', () 
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.levelBadge).not.toBeNull();
     expect(spec.levelBadge!.text).toBe('Lvl 1');
-    expect(spec.upgradeBorder).not.toBeNull();
+    expect(spec.levelAccent).not.toBeNull();
+    expect(spec).not.toHaveProperty('upgradeBorder');
   });
 });
 
@@ -149,17 +156,17 @@ describe('CSV data: upgrade templates carry newDisplayName (AC2)', () => {
 // ── Overlay spec structural integrity ─────────────────────────
 
 describe('Overlay spec structure', () => {
-  it('base card: levelBadge and upgradeBorder are null, cashLine is present', () => {
+  it('base card: levelBadge and levelAccent are null, cashLine is present', () => {
     const biz = makeBusiness({ level: 0, baseIncome: 1 });
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
 
     expect(spec.levelBadge).toBeNull();
-    expect(spec.upgradeBorder).toBeNull();
+    expect(spec.levelAccent).toBeNull();
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+1');
   });
 
-  it('upgraded card: cash/reputation/level/border overlays present when income > 0', () => {
+  it('upgraded card: cash/reputation/level/accent overlays present when income > 0', () => {
     const biz = makeBusiness({
       level: 1,
       name: 'Bakery',
@@ -171,9 +178,12 @@ describe('Overlay spec structure', () => {
 
     expect(spec.levelBadge).not.toBeNull();
     expect(spec.levelBadge!.text).toBe('Lvl 1');
+    expect(spec.levelAccent).not.toBeNull();
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+1.5');
-    expect(spec.upgradeBorder).not.toBeNull();
+    // The full-card upgrade border was removed in F4
+    // (MS-0MV34MIUY009WRME): the owner's seat colour now owns the frame.
+    expect(spec).not.toHaveProperty('upgradeBorder');
   });
 
   it('reputation overlay reflects upgrade reputationBonus', () => {
@@ -185,5 +195,236 @@ describe('Overlay spec structure', () => {
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.reputationText).not.toBeNull();
     expect(spec.reputationText!.text).toBe('+30/turn');
+  });
+});
+
+// ── AC2: Pure shader-effect spec (MS-0MV5I4NTU002D3V4) ─────────
+
+/**
+ * The `shaderEffect` field is the pure, Phaser-free contract that the
+ * rendering slices (MS-0MV5I4O8U001SU5J / MS-0MV5I4ONA000Z7NV) consume. These
+ * tests pin the base-vs-upgraded boundary, the pure-data shape (gradient stops,
+ * animation parameters, reduced-motion static form flag) and the constraints
+ * that no full-card `upgradeBorder` and no per-level texture-cache key return.
+ */
+describe('shaderEffect: base vs upgraded output (AC2)', () => {
+  it('is null for a base BusinessCard (level 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 0 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeNull();
+  });
+
+  it('is null for a base CommunitySpaceCard (level 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeCommunitySpace({ level: 0 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeNull();
+  });
+
+  it('is populated for an upgraded BusinessCard (level > 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeDefined();
+    expect(spec.shaderEffect).not.toBeNull();
+  });
+
+  it('is populated for an upgraded CommunitySpaceCard (level > 0)', () => {
+    const spec = buildUpgradeOverlaySpec(makeCommunitySpace({ level: 2 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).toBeDefined();
+    expect(spec.shaderEffect).not.toBeNull();
+  });
+});
+
+describe('shaderEffect: pure data shape', () => {
+  it('exposes ordered gradient colour stops reusing the golden accent palette', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+    expect(Array.isArray(effect.colourStops)).toBe(true);
+    expect(effect.colourStops.length).toBeGreaterThanOrEqual(2);
+
+    const colours = effect.colourStops.map(stop => stop.color);
+    expect(colours).toContain(0xffaa22); // existing levelAccent golden
+    expect(colours).toContain(0xffe08a); // lighter highlight stop
+
+    // Stops are ordered left-to-right for a renderable static gradient.
+    const offsets = effect.colourStops.map(stop => stop.offset);
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
+    for (const stop of effect.colourStops) {
+      expect(stop.offset).toBeGreaterThanOrEqual(0);
+      expect(stop.offset).toBeLessThanOrEqual(1);
+      expect(stop.alpha).toBeGreaterThanOrEqual(0);
+      expect(stop.alpha).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('exposes deterministic animation parameters (duration/easing/highlight band)', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+
+    expect(typeof effect.animationDurationMs).toBe('number');
+    expect(effect.animationDurationMs).toBeGreaterThanOrEqual(1800);
+    expect(effect.animationDurationMs).toBeLessThanOrEqual(2400);
+
+    expect(typeof effect.animationEasing).toBe('string');
+    expect(effect.animationEasing.length).toBeGreaterThan(0);
+
+    expect(typeof effect.highlightBand).toBe('number');
+    expect(effect.highlightBand).toBeGreaterThan(0);
+    expect(effect.highlightBand).toBeLessThanOrEqual(0.5);
+  });
+
+  it('exposes vivid sheen/highlight render parameters (MS-0MUWNTQ5L0075Y38)', () => {
+    const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
+
+    expect(effect.sheenAlpha).toBeGreaterThan(0);
+    expect(effect.sheenAlpha).toBeLessThanOrEqual(1);
+    expect(typeof effect.highlightColour).toBe('number');
+    expect(effect.highlightAlpha).toBeGreaterThan(0);
+    expect(effect.highlightAlpha).toBeLessThanOrEqual(1);
+
+    // The reworked shader is more vivid than the old flat gold accent: the
+    // gradient carries a warm-white foil stop alongside the gold highlight.
+    expect(effect.colourStops.map(stop => stop.color)).toContain(0xfff4d6);
+  });
+
+  it('marks a static (reduced-motion) form as available', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    const effect = spec.shaderEffect!;
+    expect(effect.staticForm).toBe(true);
+    // The static form is renderable from the same gradient stops; a non-empty
+    // stop list is what slice 2 draws when motion is disallowed.
+    expect(effect.colourStops.length).toBeGreaterThan(0);
+  });
+});
+
+describe('shaderEffect: no upgradeBorder, no per-level texture keys', () => {
+  it('does not reintroduce a full-card upgradeBorder', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec).not.toHaveProperty('upgradeBorder');
+    expect(spec.shaderEffect).not.toHaveProperty('upgradeBorder');
+  });
+
+  it('exposes no per-level texture-cache key', () => {
+    const spec = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT);
+    expect(spec.shaderEffect).not.toHaveProperty('textureKey');
+    expect(spec.shaderEffect).not.toHaveProperty('textureCacheKey');
+    expect(Object.keys(spec.shaderEffect!)).not.toContain('textureKey');
+  });
+
+  it('produces an identical effect across levels (no per-level spec variants)', () => {
+    const lvl1 = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect;
+    const lvl2 = buildUpgradeOverlaySpec(makeBusiness({ level: 2 }), WIDTH, HEIGHT).shaderEffect;
+    expect(lvl1).toEqual(lvl2);
+  });
+});
+
+// ── AC2/AC5: pure gradient sampler consumed by the renderer ─────
+
+/**
+ * `sampleShaderGradient` is the pure, Phaser-free helper the renderer uses to
+ * approximate a Canvas gradient with vertical strips (MS-0MV5I4O8U001SU5J).
+ * These tests pin interpolation, clamping and determinism so the rendering
+ * slice has no hidden rendering logic to re-test.
+ */
+describe('sampleShaderGradient (AC2/AC5)', () => {
+  const stops = [
+    { offset: 0, color: 0xffaa22, alpha: 0.92 },
+    { offset: 0.5, color: 0xffe08a, alpha: 1 },
+    { offset: 1, color: 0xffaa22, alpha: 0.92 },
+  ];
+
+  it('returns the first stop at t=0 and the last stop at t=1', () => {
+    expect(sampleShaderGradient(stops, 0)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+    expect(sampleShaderGradient(stops, 1)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+  });
+
+  it('returns the highlight stop exactly at its offset', () => {
+    expect(sampleShaderGradient(stops, 0.5)).toEqual({ color: 0xffe08a, alpha: 1 });
+  });
+
+  it('clamps positions below 0 and above 1 to the end stops', () => {
+    expect(sampleShaderGradient(stops, -5)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+    expect(sampleShaderGradient(stops, 5)).toEqual({ color: 0xffaa22, alpha: 0.92 });
+  });
+
+  it('linearly interpolates colour and alpha between adjacent stops', () => {
+    // Halfway between 0xffaa22 (a=0.92) and 0xffe08a (a=1).
+    const mid = sampleShaderGradient(stops, 0.25);
+    expect(mid.color).toBe(0xffc556);
+    expect(mid.alpha).toBeCloseTo(0.96, 5);
+  });
+
+  it('returns a transparent black for an empty stop list (defensive)', () => {
+    expect(sampleShaderGradient([], 0.5)).toEqual({ color: 0x000000, alpha: 0 });
+  });
+
+  it('samples the real upgraded spec deterministically', () => {
+    const effect = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT).shaderEffect!;
+    expect(sampleShaderGradient(effect.colourStops, 0).color).toBe(0xffaa22);
+    expect(sampleShaderGradient(effect.colourStops, 1).color).toBe(0xffaa22);
+  });
+});
+
+// ── Phase wrapping / highlight band helpers (MS-0MUWNTQ5L0075Y38) ──
+
+/**
+ * `wrapShaderPhase` and `circularDistance` drive the seamless animated sweep
+ * of the corner shard. They are pure and Phaser-free so the animation maths is
+ * unit-tested without a runtime.
+ */
+describe('wrapShaderPhase / circularDistance (AC2/AC5)', () => {
+  it('leaves positions already inside [0, 1) unchanged', () => {
+    expect(wrapShaderPhase(0)).toBe(0);
+    expect(wrapShaderPhase(0.25)).toBeCloseTo(0.25, 10);
+    expect(wrapShaderPhase(0.999)).toBeCloseTo(0.999, 10);
+  });
+
+  it('wraps positions at or above 1 back into [0, 1)', () => {
+    expect(wrapShaderPhase(1)).toBe(0);
+    expect(wrapShaderPhase(1.25)).toBeCloseTo(0.25, 10);
+    expect(wrapShaderPhase(2.75)).toBeCloseTo(0.75, 10);
+  });
+
+  it('wraps negative positions forward into [0, 1)', () => {
+    expect(wrapShaderPhase(-0.25)).toBeCloseTo(0.75, 10);
+    expect(wrapShaderPhase(-1)).toBe(0);
+  });
+
+  it('measures the shortest distance on the unit circle', () => {
+    expect(circularDistance(0.1, 0.2)).toBeCloseTo(0.1, 10);
+    expect(circularDistance(0.9, 0.1)).toBeCloseTo(0.2, 10);
+    expect(circularDistance(0, 0.5)).toBeCloseTo(0.5, 10);
+    expect(circularDistance(0.3, 0.3)).toBe(0);
+  });
+
+  it('a full phase sweep returns to the same gradient position (seamless loop)', () => {
+    const stops = buildUpgradeOverlaySpec(makeBusiness({ level: 1 }), WIDTH, HEIGHT)
+      .shaderEffect!.colourStops;
+    for (const t of [0, 0.2, 0.5, 0.8]) {
+      expect(sampleShaderGradient(stops, wrapShaderPhase(t + 1)))
+        .toEqual(sampleShaderGradient(stops, wrapShaderPhase(t)));
+    }
+  });
+});
+
+// ── AC3/AC5: pure motion-gating predicate (MS-0MV5I4ONA000Z7NV) ─────
+
+/**
+ * `shouldAnimateShaderEffect` is the pure predicate the renderer uses to gate
+ * the shimmer tween. Reduced motion and replay/headless must both fall back to
+ * the static form so transcripts and headless CI output are unchanged.
+ */
+describe('shouldAnimateShaderEffect (AC3/AC5)', () => {
+  it('allows motion only when reduced motion is off and not in replay', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: false, replayMode: false })).toBe(true);
+  });
+
+  it('disallows motion when reduced motion is enabled', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: true, replayMode: false })).toBe(false);
+  });
+
+  it('disallows motion in replay/headless mode', () => {
+    expect(shouldAnimateShaderEffect({ reducedMotion: false, replayMode: true })).toBe(false);
+    expect(shouldAnimateShaderEffect({ reducedMotion: true, replayMode: true })).toBe(false);
+  });
+
+  it('defaults to allowing motion when settings are absent', () => {
+    expect(shouldAnimateShaderEffect({})).toBe(true);
   });
 });

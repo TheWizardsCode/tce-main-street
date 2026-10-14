@@ -52,12 +52,33 @@ import {
   cardPackClientFromWindow,
   type CardPackClient,
 } from '@ui/card-pack-client';
+import {
+  type ContentUnlockClient,
+} from '@ui/content-unlock-client';
 import { readContentDirFromWindow } from '@ui/game-plugin-boot';
+import {
+  resolveMainStreetContentUnlockClient,
+} from './MainStreetBrowserContentUnlockClient';
+import {
+  MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS,
+  MAIN_STREET_GAME_ID,
+  composeContentUnlockEntitlement,
+  findContentUnlockGatedPack,
+} from './MainStreetContentUnlockGate';
+import {
+  createDefaultPackSourceRegistry,
+  createPackSourceTransports,
+  type PackSourceRegistry,
+} from './MainStreetPackSources';
 import {
   getEnabledCardPackIds,
   setEnabledCardPackIds,
   type StorageLike,
 } from './MainStreetPrefs';
+import {
+  registerPackArtAssets,
+  resetPackArt,
+} from './MainStreetCardPackArt';
 import {
   CARD_DATA_RAW,
   getBusinessTemplates,
@@ -74,8 +95,13 @@ import type { MainStreetState } from './MainStreetStateTypes';
 
 export type { ActiveMainStreetPack };
 
-/** The `gameId` Main Street pack manifests must declare. */
-export const MAIN_STREET_GAME_ID = 'main-street';
+/**
+ * The `gameId` Main Street pack manifests must declare.
+ *
+ * Re-exported from {@link ./MainStreetContentUnlockGate} so the content-unlock
+ * gating declaration and the loader share one source of truth.
+ */
+export { MAIN_STREET_GAME_ID };
 
 /** A merged Main Street card pool ready to apply to the templates. */
 export interface MainStreetCardPool {
@@ -130,12 +156,27 @@ export interface MainStreetPackLoadOptions {
   readonly fetchManifest?: CardPackLoaderOptions['fetchManifest'];
   /** CSV transport override (tests). */
   readonly fetchCsv?: CardPackLoaderOptions['fetchCsv'];
+  /** Asset-byte transport override; defaults to the loader's `fetch` transport. */
+  readonly fetchAsset?: CardPackLoaderOptions['fetchAsset'];
   /** Dynamic-import fallback transport override (tests). */
   readonly importer?: CardPackLoaderOptions['importer'];
   /** Entitlement client; defaults to the total `window.tce` client. */
   readonly client?: CardPackClient;
+  /**
+   * Unified content-unlock read client; defaults to the total
+   * `window.tce.contentUnlocks` client. A missing/malformed client leaves
+   * content-unlock gated packs locked.
+   */
+  readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
+  /**
+   * Ordered pack-source registry (e.g. the bundled build-time source). When
+   * supplied, its transports become the default `fetchManifest` / `fetchCsv`,
+   * so a non-Electron source can serve content with no change to the core
+   * loader. Explicit `fetchManifest` / `fetchCsv` still win.
+   */
+  readonly packSources?: PackSourceRegistry;
   /** Warning sink; defaults to `console`. */
   readonly logger?: MainStreetCardPackLogger;
 }
@@ -296,6 +337,12 @@ export async function loadMainStreetCardPacks(
   const logger = options.logger ?? console;
   const client = options.client ?? cardPackClientFromWindow();
   const loader = options.loader ?? loadCardPacks;
+  // A registry adapts to the loader's injectable transports; an explicit
+  // transport still takes precedence so Electron content-dir reads are
+  // unchanged (and bundled reads need no core-loader change).
+  const sourceTransports = options.packSources
+    ? createPackSourceTransports(options.packSources)
+    : null;
 
   let result: CardPackLoadResult;
   try {
@@ -303,10 +350,18 @@ export async function loadMainStreetCardPacks(
       contentDir: options.contentDir,
       gameId: MAIN_STREET_GAME_ID,
       engineVersion: options.engineVersion,
-      fetchManifest: options.fetchManifest,
-      fetchCsv: options.fetchCsv,
+      fetchManifest: options.fetchManifest ?? sourceTransports?.fetchManifest,
+      fetchCsv: options.fetchCsv ?? sourceTransports?.fetchCsv,
+      // An explicit asset transport always wins; otherwise a pack-source
+      // registry supplies one that resolves the loader's `tce-packs://` asset
+      // URL to a browser-usable (`?url`) URL, so the browser path makes no
+      // `tce-packs://` request.
+      fetchAsset: options.fetchAsset ?? sourceTransports?.fetchAsset,
       importer: options.importer,
-      resolveEntitlement: (refs) => client.listStatus(refs),
+      resolveEntitlement: composeContentUnlockEntitlement({
+        steam: (refs) => client.listStatus(refs),
+        contentUnlocks: options.contentUnlocks ?? resolveMainStreetContentUnlockClient(),
+      }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -409,6 +464,7 @@ export function applyMainStreetCardPool(pool: MainStreetCardPool): void {
 export function resetMainStreetCardPacks(): void {
   resetTemplatesToDefault();
   setActiveMainStreetPacks([]);
+  resetPackArt();
 }
 
 // ── Boot bootstrap & UI helpers (F9 / CG-0MUZIS4KZ003R1HP) ───
@@ -420,6 +476,13 @@ export function resetMainStreetCardPacks(): void {
  * {@link bootstrapMainStreetCardPacks} / {@link setMainStreetCardPackLoadResult}.
  */
 let _lastLoadResult: MainStreetPackLoadResult | null = null;
+
+/**
+ * The options the last {@link bootstrapMainStreetCardPacks} ran with, captured
+ * so {@link purchaseMainStreetCardPack} can re-discover with the same
+ * transports (the launcher passes none and reads the window; tests inject).
+ */
+let _lastBootstrapOptions: BootstrapMainStreetCardPacksOptions = {};
 
 /** Whether {@link bootstrapMainStreetCardPacks} has completed (success or not). */
 let _bootstrapped = false;
@@ -462,16 +525,47 @@ export interface BootstrapMainStreetCardPacksOptions {
   readonly fetchManifest?: MainStreetPackLoadOptions['fetchManifest'];
   /** CSV transport override (tests). */
   readonly fetchCsv?: MainStreetPackLoadOptions['fetchCsv'];
+  /** Asset-byte transport override (tests). */
+  readonly fetchAsset?: MainStreetPackLoadOptions['fetchAsset'];
   /** Dynamic-import transport override (tests). */
   readonly importer?: MainStreetPackLoadOptions['importer'];
   /** Entitlement client override; defaults to the `window.tce` client. */
   readonly client?: CardPackClient;
+  /**
+   * Unified content-unlock read client override; defaults to the
+   * `window.tce.contentUnlocks` client.
+   */
+  readonly contentUnlocks?: ContentUnlockClient | null;
   /** Discovery loader override; defaults to the core `loadCardPacks`. */
   readonly loader?: MainStreetCardPackLoader;
+  /**
+   * Ordered pack-source registry (e.g. the bundled build-time source).
+   * Supplied to {@link loadMainStreetCardPacks} as its default transports.
+   */
+  readonly packSources?: PackSourceRegistry;
   /** Warning sink; defaults to `console`. */
   readonly logger?: MainStreetCardPackLogger;
   /** Storage backend for the enabled-pack preference (tests). */
   readonly storage?: StorageLike | null;
+}
+
+/**
+ * The content directory for the bundled browser fallback.
+ *
+ * The bundled pack source ({@link createDefaultPackSourceRegistry}) reads the
+ * manifest/CSV from the build-time module graph and emits asset URLs (`?url`)
+ * that Vite already prefixes with the web base, so `contentDir` only needs to
+ * be a non-empty, base-correct value for the core loader's URL builder. Deriving
+ * it from `import.meta.env.BASE_URL` (`/tce-main-street/` for the GitHub Pages
+ * project site) keeps the same-origin fallback respecting the deployed base path
+ * rather than assuming `/`.
+ *
+ * @param baseUrl Web base path; defaults to `import.meta.env.BASE_URL`.
+ */
+export function resolveBundledContentDir(
+  baseUrl: string = import.meta.env.BASE_URL,
+): string {
+  return typeof baseUrl === 'string' && baseUrl.trim() !== '' ? baseUrl : '/';
 }
 
 /**
@@ -481,31 +575,39 @@ export interface BootstrapMainStreetCardPacksOptions {
  * `createMainStreetGame.ts` / `main.ts`, and by the scene lifecycle when the
  * launcher started the scene directly). It never throws:
  *
- *   - no content directory (browser / core-only build) → base content;
+ *   - a launcher content directory (Electron) reads the content directory
+ *     through the existing transports, unchanged;
+ *   - no content directory (browser distribution) falls back to the bundled
+ *     build-time pack source through the pack-source registry, so the
+ *     residential pack is discovered without an Electron bridge;
  *   - any discovery failure → {@link loadMainStreetCardPacks} already degrades
  *     to base content;
- *   - a missing/malformed manifest → base content.
+ *   - a missing/malformed manifest or an empty bundled source → base content.
  *
  * On success the merged pool is applied to the live templates so
  * `setupMainStreetGame()` deals pack cards, and the enabled-pack preference
- * seeds the active set. Returns the load result, or `null` when no content
- * directory was available.
+ * seeds the active set. Discovery always yields a result — base-only when no
+ * pack is reachable — so the caller can apply the pool unconditionally.
  */
 export async function bootstrapMainStreetCardPacks(
   options: BootstrapMainStreetCardPacksOptions = {},
 ): Promise<MainStreetPackLoadResult | null> {
-  const contentDir =
+  const launcherContentDir =
     options.contentDir !== undefined
       ? options.contentDir
       : readContentDirFromWindow();
 
-  if (!contentDir) {
-    // Safe base-content fallback: no packs are reachable in this environment.
-    resetMainStreetCardPacks();
-    _lastLoadResult = null;
-    _bootstrapped = true;
-    return null;
-  }
+  // No launcher content directory → the browser distribution. Discover the
+  // build-time bundled pack through the pack-source registry (no Electron
+  // bridges, no `tce-packs://` request). An explicit content directory keeps
+  // the Electron content-directory path byte-for-byte unchanged.
+  const useBundledSource = !launcherContentDir;
+  const contentDir = useBundledSource
+    ? resolveBundledContentDir()
+    : launcherContentDir;
+
+  const packSources =
+    options.packSources ?? (useBundledSource ? createDefaultPackSourceRegistry() : undefined);
 
   const enabledPackIds = getEnabledCardPackIds(options.storage) ?? undefined;
   const result = await loadMainStreetCardPacks({
@@ -515,16 +617,132 @@ export async function bootstrapMainStreetCardPacks(
     enabledPackIds,
     fetchManifest: options.fetchManifest,
     fetchCsv: options.fetchCsv,
+    fetchAsset: options.fetchAsset,
     importer: options.importer,
     client: options.client,
+    contentUnlocks: options.contentUnlocks,
     loader: options.loader,
+    packSources,
     logger: options.logger,
   });
 
   applyMainStreetCardPool(result.pool);
+  // Pack art must be in the registry before any card texture is generated
+  // (`createMainStreetGameWithPacks` awaits this call before creating the
+  // scene; the scene lifecycle applies the same gate). Reset first so a
+  // failed/disabled pack leaves the registry in base-only state.
+  resetPackArt();
+  for (const pack of result.loaded) {
+    registerPackArtAssets(pack.assetDataUris);
+  }
   _lastLoadResult = result;
   _bootstrapped = true;
+  // Remember the options so a later purchase can re-discover with the same
+  // transports (the browser test injects them; the launcher uses the window).
+  _lastBootstrapOptions = { ...options };
   return result;
+}
+
+/**
+ * The pack ids that may be purchased (content-unlock gated with a purchase
+ * rule). Passed to the reusable listing as its `purchasablePackIds` so the
+ * purchase affordance is offered only for declared packs.
+ */
+export function getMainStreetPurchasablePackIds(): string[] {
+  return MAIN_STREET_CONTENT_UNLOCK_GATED_PACKS.filter(
+    (declaration) =>
+      declaration.gameId === MAIN_STREET_GAME_ID &&
+      typeof declaration.purchaseRuleId === 'string' &&
+      declaration.purchaseRuleId.length > 0,
+  ).map((declaration) => declaration.packId);
+}
+
+/** Outcome of {@link purchaseMainStreetCardPack}. */
+export interface MainStreetPackPurchaseResult {
+  /** Whether the pack became entitled and is now loaded. */
+  readonly purchased: boolean;
+  /** The discovery result after the purchase, or `null` when none ran. */
+  readonly load: MainStreetPackLoadResult | null;
+  /** Human-readable reason when `purchased` is false. */
+  readonly reason: string | null;
+}
+
+/** Options for {@link purchaseMainStreetCardPack}. */
+export interface PurchaseMainStreetCardPackOptions {
+  /** Content-unlock client; defaults to the last boot's client or the window. */
+  readonly contentUnlocks?: ContentUnlockClient | null;
+  /** Bootstrap options override for the post-purchase re-discovery. */
+  readonly bootstrapOptions?: BootstrapMainStreetCardPacksOptions;
+}
+
+/**
+ * Perform the scoped dev/QA simulated purchase for *packId* and re-discover.
+ *
+ * The purchase is **rule-scoped**: only the declared pack's purchase rule is
+ * evaluated, so no other reward is ever collateral-unlocked. On success the
+ * pack pool is re-discovered with the same transports as the last boot and
+ * re-applied, so the newly unlocked pack's rows merge and its cards deal in
+ * play. Total: a pack that is not gated, a bridge that cannot refresh, and a
+ * failed purchase all resolve to `purchased: false` with a reason.
+ */
+export async function purchaseMainStreetCardPack(
+  packId: string,
+  options: PurchaseMainStreetCardPackOptions = {},
+): Promise<MainStreetPackPurchaseResult> {
+  const declaration = findContentUnlockGatedPack(MAIN_STREET_GAME_ID, packId);
+  const ruleId = declaration?.purchaseRuleId;
+  if (!declaration || typeof ruleId !== 'string' || ruleId.length === 0) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'That pack is not available for purchase.',
+    };
+  }
+
+  const contentUnlocks =
+    options.contentUnlocks ??
+    _lastBootstrapOptions.contentUnlocks ??
+    resolveMainStreetContentUnlockClient();
+
+  let refreshed = false;
+  try {
+    const results = await contentUnlocks.refresh({
+      ruleIds: [ruleId],
+      simulatePurchase: true,
+    });
+    refreshed = Array.isArray(results);
+  } catch {
+    refreshed = false;
+  }
+  if (!refreshed) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'The simulated purchase could not be performed in this environment.',
+    };
+  }
+
+  // Re-discover with the same transports as the last boot so the unlocked pack
+  // is loaded and applied; the listing then re-renders from the fresh result.
+  const bootstrapOptions = options.bootstrapOptions ?? _lastBootstrapOptions;
+  const load = await bootstrapMainStreetCardPacks({
+    ...bootstrapOptions,
+    contentUnlocks,
+  });
+  if (!load) {
+    return {
+      purchased: false,
+      load: null,
+      reason: 'Card packs are not reachable in this environment.',
+    };
+  }
+
+  const purchased = load.loaded.some((pack) => pack.manifest.id === packId);
+  return {
+    purchased,
+    load,
+    reason: purchased ? null : 'The simulated purchase did not unlock that pack.',
+  };
 }
 
 /**

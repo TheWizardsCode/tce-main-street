@@ -196,6 +196,60 @@ eligibility gate. See
 below and [competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md)
 for the before/after figures.
 
+## Acquisition gates: expensive businesses and untargeted upgrades (MS-0MV5VOIV40020KXT)
+
+The heuristic `move-to-hand` acquisition tier values every non-event market card
+at its **listed cost** — a "lock-in" proxy — and used to do so with no
+affordability, income or upgrade-target check. That let the AI park a card it
+could never pay for, or an upgrade it could never apply, in one of its three
+hand slots and waste the week's action. Two gates now run before a card's cost
+is used as its acquisition score:
+
+| Gate | Card family | Rule |
+|------|-------------|------|
+| Expensive business | `business` | Not taken when the card is **unaffordable** *and* the acting seat has **no income stream**. |
+| Untargeted upgrade | `upgrade` | Not taken unless the acting seat **owns the upgrade's target business at the required level**. |
+
+Definitions:
+
+- **Affordable** — the card's *effective* play cost
+  (`computeEffectiveBusinessPurchaseCost`, i.e. after street-wide purchase
+  discounts such as Delivery Driver) does **not** exceed the seat's current
+  coins; unaffordable means `effectiveCost > coins`.
+- **Income stream** — the acting seat owns at least one **placed business with
+  `baseIncome > 0`** on the street. The coin *stock* in the wallet is not a
+  stream, and community spaces (`baseIncome = 0`) never establish one. In
+  competitive play only the seat's own businesses count
+  (`getSlotOwnerId === playerId`).
+- **Owns the target business** — a business the seat owns whose `name` equals
+  the upgrade's `targetBusiness`, whose `level` equals the upgrade's
+  `requiredLevel`, and which is below its `maxLevel` — exactly the eligibility
+  `canPurchaseUpgrade` / `play-upgrade-from-hand` require, so the gate cannot
+  diverge from what the AI could actually apply.
+
+The gates apply to the single-player acquisition scorer (`scoreMarketAcquisition`
+/ `bestMarketAcquisitionValue`) and to the competitive mirror
+(`scoreCompetitiveAction`'s `move-to-hand` branch /
+`competitiveBestMarketAcquisitionValue`). They are **scoring** gates, not
+enumeration filters, so `RandomStrategy` remains a uniform random legal-action
+baseline; `GreedyStrategy`, `BankingGreedyStrategy` and
+`CompetitiveGreedyStrategy` only take an acquisition when its score is `> 0`
+and therefore never select a gated `move-to-hand`.
+
+Behaviour that is deliberately **unchanged**: an affordable business, an
+unaffordable business for a seat that already has income, and an upgrade whose
+target the seat owns at the required level are all still taken exactly as
+before. Direct purchase paths (`buy-business`, `buy-upgrade`, `buy-event`) are
+untouched — `buy-upgrade` already requires an owned target at the required
+level.
+
+Helpers `hasIncomeStream`, `ownsUpgradeTarget` and `isAcquisitionEligible`
+express the rule once and are reused by both scorers
+(`src/MainStreetAiStrategy.ts`). Tests live in
+`tests/main-street/ai-acquisition-gates.test.ts` (the `ai-banking-strategy`
+greedy-vs-banking scenario was re-based onto an income-bearing board so it stays
+distinguishable under the gate).
+
 ## Competitive placement: ownership-aware (own − opponent)
 
 **Work item:** MS-0MUZFVM86003IPSM / MS-0MUZFVLVS007S56L (parent

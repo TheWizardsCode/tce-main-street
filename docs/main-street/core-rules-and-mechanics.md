@@ -420,6 +420,18 @@ All win conditions are **deterministic** given the same seed, ensuring testabili
 > (Income / Incident) are caught before win/loss is determined. Undoing the
 > action that completed a challenge prompts a warning and, if confirmed,
 > revokes the completion (tracker, log, and score bonus all revert together).
+>
+> **Per-seat challenge credit in competitive play (MS-0MUWNTJIK009O6BZ).** In
+> human-vs-AI games the challenge pool is **shared** (Q1 = B), but each
+> completion is attributed to the seat whose action satisfied it
+> (`ActiveChallenge.completedBySeatId`). `updateCompetitiveScores` awards the
+> difficulty-scaled `challengeBonusPoints` **only** to the credited seat
+> (Q2 = A), and a challenge is never re-completed or re-credited to another
+> seat once a seat has achieved it. In competitive mode the Game Over summary
+> presents a **per-seat** challenge breakdown, and the celebration, HUD and
+> Steam achievements surface only the **human** seat's completions (Q3 = A).
+> Single-player / legacy runs have no seat context and retain the run-global
+> pool and single-list summary unchanged.
 
 ---
 
@@ -475,6 +487,8 @@ Every resource-mutating action appends an entry to the activity log showing its 
 - Examples: purchases, upgrades, sells, staff hire/layoff, ongoing-cost deductions (including the clamped `Insufficient coins for ...` shortfall), market refreshes, Community Favour exchanges, events played from hand (cost *plus* resolved effects), investments, and incident resolutions.
 
 Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: <effective deltas>` — comparing the resource bank against a **week-start snapshot** taken at the beginning of `executeWeekStart`. The snapshot is persisted with saves (legacy saves fall back to the current resources), and the net row is emitted even when the game ends prematurely — in that case it is written **before** the `Game Over` / `Bankruptcy` banner so the summary precedes the loss entry. When both are present, the net row always precedes the game-over entry; on a normal turn it is the final log entry.
+
+The log **render** is deferred during the end-of-turn closing so entries appear only after the upcoming/phase UI, and the deferral flag (`logDeferredUntilPhaseComplete`) is reset on every scene creation — an interrupted closing must never leave the Activity Log blank across a scene restart (MS-0MURBOD2E009SOM2, MS-0MV14JDUG000E1V6).
 
 ---
 

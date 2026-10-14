@@ -114,6 +114,14 @@ interface MarketActionSnapshot {
   challengesCompleted: string[] | null;
   completedFlags: boolean[] | null;
   /**
+   * Per-seat challenge attribution by index (MS-0MUWNTJIK009O6BZ). Captured
+   * alongside `completedFlags` so undo restores the pre-action attribution
+   * (`undefined` for an incomplete challenge); without it a completion undone
+   * and later re-completed by another seat would be mis-credited to the seat
+   * that completed it first (AC3 of MS-0MV33TSK20076Q36).
+   */
+  completedBySeatIds: (number | null | undefined)[] | null;
+  /**
    * Per-family discard piles — captured so undoing a discard removes the card
    * from its family discard pile as well as restoring the hand, and redo
    * re-adds it exactly once (CG-0MUEQ19VX0009VIW).
@@ -184,6 +192,10 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // whose evaluator functions would be dropped by safeClone).
     challengesCompleted: safeClone(state.challengesCompleted ?? []),
     completedFlags: (state.activeChallenges ?? []).map(ac => ac.completed),
+    // Per-seat attribution is a primitive (number | null | undefined), so a
+    // plain map is already an independent copy and preserves `undefined`
+    // (safeClone's JSON fallback would coerce it to null).
+    completedBySeatIds: (state.activeChallenges ?? []).map(ac => ac.completedBySeatId),
     discards: safeClone(state.discards ?? {}),
   };
 }
@@ -252,6 +264,14 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   if (snap.completedFlags !== null && snap.completedFlags !== undefined) {
     for (let i = 0; i < state.activeChallenges.length && i < snap.completedFlags.length; i++) {
       state.activeChallenges[i].completed = snap.completedFlags[i];
+    }
+  }
+  // Restore per-seat attribution in lock-step with the completion flags so an
+  // undone completion is unattributed again and can be re-credited correctly
+  // (MS-0MUWNTJIK009O6BZ, AC3 of MS-0MV33TSK20076Q36).
+  if (snap.completedBySeatIds !== null && snap.completedBySeatIds !== undefined) {
+    for (let i = 0; i < state.activeChallenges.length && i < snap.completedBySeatIds.length; i++) {
+      state.activeChallenges[i].completedBySeatId = snap.completedBySeatIds[i];
     }
   }
   // Restore the per-family discard piles so undo removes a discarded card from

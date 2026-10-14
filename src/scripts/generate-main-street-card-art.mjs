@@ -55,6 +55,7 @@
  * Inputs:
  *   src/sprites/<Name>_1024_x_1024.png
  *   src/card-data.csv
+ *   packs/<gameId>/<packId>/cards.csv   (production pack fragments)
  *
  * Outputs:
  *   src/card-art-map.json
@@ -192,40 +193,46 @@ function readCsvRows(csvPath) {
 export function buildMappingsFromCsv(csvPath, knownSprites) {
   const has = (name) => (knownSprites ? knownSprites.has(name) : false);
   const mappings = {};
-  const rows = readCsvRows(csvPath);
+  // Accept a single CSV path (base pool) or several (base + pack fragments);
+  // later sources win, which is fine because pack card names are namespaced
+  // and unique across the base pool and packs.
+  const csvPaths = Array.isArray(csvPath) ? csvPath : [csvPath];
 
-  for (const row of rows) {
-    const family = row.family;
-    const name = row.name;
+  for (const sourcePath of csvPaths) {
+    const rows = readCsvRows(sourcePath);
+    for (const row of rows) {
+      const family = row.family;
+      const name = row.name;
 
-    if (SPELLING_ALIASES[name]) {
-      mappings[name] = SPELLING_ALIASES[name];
-      continue;
-    }
-
-    if (family === 'upgrade') {
-      // CG-0MUBVL4H80061B1E: prefer the upgrade's own display-name sprite
-      // (a duplicate of the target's art); fall back to the target's art.
-      const displayName = row.newDisplayName;
-      const target = row.targetBusiness;
-      if (displayName && has(displayName)) {
-        mappings[name] = displayName;
-      } else if (target) {
-        mappings[name] = target;
+      if (SPELLING_ALIASES[name]) {
+        mappings[name] = SPELLING_ALIASES[name];
+        continue;
       }
-    } else if (family === 'event') {
-      // CG-0MUBVL4H80061B1E: keep an existing dedicated event sprite; only the
-      // art-less events fall back to the (trigger, targetSynergy) category.
-      if (has(name)) {
-        mappings[name] = name;
+
+      if (family === 'upgrade') {
+        // CG-0MUBVL4H80061B1E: prefer the upgrade's own display-name sprite
+        // (a duplicate of the target's art); fall back to the target's art.
+        const displayName = row.newDisplayName;
+        const target = row.targetBusiness;
+        if (displayName && has(displayName)) {
+          mappings[name] = displayName;
+        } else if (target) {
+          mappings[name] = target;
+        }
+      } else if (family === 'event') {
+        // CG-0MUBVL4H80061B1E: keep an existing dedicated event sprite; only the
+        // art-less events fall back to the (trigger, targetSynergy) category.
+        if (has(name)) {
+          mappings[name] = name;
+        } else {
+          const trigger = row.trigger || '';
+          const synergy = row.targetSynergy || '';
+          mappings[name] = `${trigger}__${synergy}`;
+        }
       } else {
-        const trigger = row.trigger || '';
-        const synergy = row.targetSynergy || '';
-        mappings[name] = `${trigger}__${synergy}`;
+        // Staff / business / community-space: direct name match.
+        mappings[name] = name;
       }
-    } else {
-      // Staff / business / community-space: direct name match.
-      mappings[name] = name;
     }
   }
 
@@ -299,16 +306,33 @@ export async function encodeArt(filePath) {
 export async function regenerateCardArt() {
   const names = listSpriteNames();
   const knownSprites = new Set(names);
-  const art = {};
 
-  for (const name of names) {
+  // CG-0MUBVL4H80061B1E: build aliases from the base pool CSV only (upgrades,
+  // events, staff, etc.).
+  // F6 (MS-0MV26K321003MWO0): the base map is base-pool only. Production pack
+  // CSVs are no longer read here, so pack art can never be baked into the base
+  // map — pack art travels with the pack (`assets/<cardId>.png`, inlined at
+  // boot through the core loader) and resolves via the pack-art registry.
+  const csvPaths = [CSV_PATH];
+  const csvMappings = buildMappingsFromCsv(csvPaths, knownSprites);
+  const csvAliases = buildAliasesFromCsv(csvPaths, knownSprites);
+
+  // Embed art only for sprites the base pool resolves to, plus the fallback.
+  // Any other committed sprite (e.g. a pack's bespoke source art) is
+  // deliberately excluded, so the base map is not a hidden pack dependency.
+  const embeddedSpriteNames = [
+    ...new Set([
+      ...Object.values(csvMappings),
+      ...Object.values(csvAliases),
+      CARD_ART_FALLBACK,
+    ]),
+  ].filter((target) => knownSprites.has(target));
+
+  const art = {};
+  for (const name of embeddedSpriteNames) {
     const artBytes = await encodeArt(path.join(SPRITES_DIR, `${name}${SOURCE_SUFFIX}`));
     art[name] = `data:image/webp;base64,${artBytes.toString('base64')}`;
   }
-
-  // CG-0MUBVL4H80061B1E: build aliases from CSV (upgrades, events, staff, etc.)
-  const csvMappings = buildMappingsFromCsv(CSV_PATH, knownSprites);
-  const csvAliases = buildAliasesFromCsv(CSV_PATH, knownSprites);
 
   // Merge: CSV aliases take precedence, then spelling aliases for coverage.
   const mergedAliases = { ...csvAliases };
@@ -343,7 +367,7 @@ export async function regenerateCardArt() {
     Object.values(csvMappings).filter((target) => !knownSprites.has(target)),
   );
   console.log(
-    `Generated art map for ${names.length} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +
+    `Generated art map for ${embeddedSpriteNames.length} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +
       `(drawn into a ${ART_SIZE}x${ART_SIZE} zone); ` +
       `map: ${path.relative(SRC_DIR, MAP_PATH)} (${Math.round(totalBytes / 1024)} KB of base64)`,
   );
@@ -356,7 +380,7 @@ export async function regenerateCardArt() {
     );
   }
 
-  return { sprites: names.length, mapPath: MAP_PATH, totalBytes };
+  return { sprites: embeddedSpriteNames.length, mapPath: MAP_PATH, totalBytes };
 }
 
 const isMain = process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`;

@@ -20,6 +20,7 @@ import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } 
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import type { PendingApplicant } from '../MainStreetState';
+import { resolveLogSeatColour } from '../MainStreetStateLog';
 import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H } from './MainStreetConstants';
 import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
@@ -703,6 +704,12 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     // the upcoming/phase UI updates have been displayed to the player.
     // Do NOT update logPrevEntryCount while deferred — the next render
     // after deferral is cleared must see a count change and re-render.
+    //
+    // Reset contract (MS-0MV14JDUG000E1V6): the flag is scene-instance
+    // state, so `createScene()` resets it on every scene creation. Without
+    // that reset a flag left set across a `scene.restart()` kept this branch
+    // early-returning and the Activity Log stayed blank for the rest of the
+    // session (regression introduced by 7441311 / MS-0MURBOD2E009SOM2).
     if (s.logDeferredUntilPhaseComplete) {
       // Compute scroll bounds from existing content only (no re-render).
       if (s.logTotalContentH <= visibleH) {
@@ -749,12 +756,29 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
           s.logContentContainer.add(barBg);
         }
 
-        const txt = s.add.text(LOG_PAD, yOff, entry.text, {
+        // Seat-attributable entries (competitive mode) carry a coloured label
+        // prefix (F3 of MS-0MUWNTN8W006C7EF): the label is drawn in a legible
+        // variant of the seat's colour, the body in the line-type colour.
+        let bodyX = LOG_PAD;
+        let bodyWrapW = contentW;
+        if (entry.seatLabel && entry.seatColour) {
+          const prefix = s.add.text(LOG_PAD, yOff, `${entry.seatLabel} `, {
+            fontSize: `${LOG_FONT_SIZE}px`,
+            fontStyle: 'bold',
+            color: resolveLogSeatColour(entry.seatColour, color),
+            fontFamily: FONT_FAMILY,
+          });
+          s.logContentContainer.add(prefix);
+          bodyX = LOG_PAD + Math.ceil(prefix.width);
+          bodyWrapW = Math.max(20, contentW - Math.ceil(prefix.width));
+        }
+
+        const txt = s.add.text(bodyX, yOff, entry.text, {
           fontSize: `${LOG_FONT_SIZE}px`,
           fontStyle: isTurnHeader ? 'bold' : 'normal',
           color,
           fontFamily: FONT_FAMILY,
-          wordWrap: { width: contentW },
+          wordWrap: { width: bodyWrapW },
         });
         s.logContentContainer.add(txt);
 

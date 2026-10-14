@@ -11,7 +11,8 @@
  * - Two labelled columns ("Game State" / "Summary") with the title and
  *   end-reason headline spanning the top.
  * - Left column: per-player rows (label, coins, reputation, score) and
- *   failure/elimination badges, plus the run's challenges met.
+ *   failure/elimination badges, plus the run's challenges met — a per-seat
+ *   breakdown in competitive mode, the single list in single-player.
  * - Right column: the retained summary (score breakdown, challenge details,
  *   difficulty selector, Play Again / Menu buttons).
  * - Overlay conventions: HUD parenting, 199/200/201 depths, overlayObjects.
@@ -225,6 +226,72 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
     expect(rendered).toContain('AI 1: 100c  10r  20pt  — Eliminated');
     // Headline prefers the human seat for a per-seat failure.
     expect(rendered).toContain('Bankruptcy — You');
+  });
+
+  it('renders a per-seat challenge breakdown in competitive mode', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'all_challenges',
+      turn: 2,
+      players: [
+        player({ playerId: 0, coins: 100, reputation: 10, score: 40 }),
+        player({ playerId: 1, coins: 80, reputation: 10, score: 20, controller: 'ai' }),
+      ],
+      activeChallenges: [
+        { challenge: { id: 'ch-deep-pockets', title: 'Deep Pockets' }, completed: true, completedBySeatId: 1 },
+        { challenge: { id: 'ch-beloved-mayor', title: 'Beloved Mayor' }, completed: true, completedBySeatId: 0 },
+      ],
+      challengesCompleted: ['ch-deep-pockets', 'ch-beloved-mayor'],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const rendered = texts.map((t) => t.text);
+    // Each seat is credited only with the challenges it personally completed.
+    expect(rendered).toContain('You: Beloved Mayor');
+    expect(rendered).toContain('AI 1: Deep Pockets');
+    // The run-global totals are still shown.
+    expect(rendered).toContain('Met: 2 / 2');
+    // The human must never be shown the AI seat's completion.
+    expect(rendered.some((t) => t.includes('Deep Pockets') && t.startsWith('You:')))
+      .toBe(false);
+  });
+
+  it('shows an em dash for a competitive seat with no completions', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'all_challenges',
+      turn: 2,
+      players: [
+        player({ playerId: 0, coins: 100, reputation: 10, score: 40 }),
+        player({ playerId: 1, coins: 80, reputation: 10, score: 20, controller: 'ai' }),
+      ],
+      activeChallenges: [
+        { challenge: { id: 'ch-beloved-mayor', title: 'Beloved Mayor' }, completed: true, completedBySeatId: 0 },
+      ],
+      challengesCompleted: ['ch-beloved-mayor'],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const rendered = texts.map((t) => t.text);
+    expect(rendered).toContain('You: Beloved Mayor');
+    expect(rendered).toContain('AI 1: \u2014');
+  });
+
+  it('retains the single-list challenge format in single-player mode', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'all_challenges',
+      activeChallenges: [
+        { challenge: { id: 'ch-1', title: 'First challenge' }, completed: true },
+        { challenge: { id: 'ch-2', title: 'Second challenge' }, completed: false },
+      ],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const rendered = texts.map((t) => t.text);
+    expect(rendered).toContain('\u2713  First challenge');
+    expect(rendered).toContain('\u2717  Second challenge');
+    // No per-seat labels leak into the single-player presentation (the player
+    // row `You: <coins>c ...` is distinct from the per-seat `You: <titles>`).
+    expect(rendered.some((t) => /^(You|AI 1): (First|Second) challenge/.test(t)))
+      .toBe(false);
   });
 
   it('parents every element into hudContainer at depth 201 and uses the 199/200 backdrop convention', () => {

@@ -201,13 +201,14 @@ describe('AC2: TUTORIAL_SEED is deprecated and not used in tutorial setup path',
 // ── AC3: All 13 tutorial steps complete with scenario setup ──
 
 describe('AC3: All 25 tutorial steps complete with scenario-based setup', () => {
-  it('UNIFIED_TUTORIAL_STEPS contains exactly 25 steps (T1-T25)', () => {
+  it('UNIFIED_TUTORIAL_STEPS contains exactly 25 steps (T1-T21, T23-T26)', () => {
     expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25);
     expect(UNIFIED_TUTORIAL_STEP_COUNT).toBe(25);
 
-    for (let i = 0; i < 25; i++) {
-      expect(UNIFIED_TUTORIAL_STEPS[i].id).toBe(`T${i + 1}`);
-    }
+    expect(UNIFIED_TUTORIAL_STEPS.map((s) => s.id)).toEqual([
+      'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8',
+      'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
+    ]);
   });
 
   it('tutorial controller walks through all 25 steps via completeCurrentStep', () => {
@@ -229,11 +230,11 @@ describe('AC3: All 25 tutorial steps complete with scenario-based setup', () => 
     // Verify all 25 steps were completed in order
     expect(completedIds).toEqual([
       'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8',
-      'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T22', 'T23', 'T24', 'T25',
+      'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
     ]);
 
     // After the 25th step completes, the controller has advanced past the end
-    expect(controller.lastCompletedStepId).toBe('T25');
+    expect(controller.lastCompletedStepId).toBe('T26');
     expect(controller.currentStepIndex).toBe(25); // Past the end
     // isActive stays true (only exitTutorial sets it to false)
     // Verify the controller is at end by checking getCurrentStep returns null

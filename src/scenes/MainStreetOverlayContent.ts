@@ -16,6 +16,8 @@ import {
 import {
   applyEnabledMainStreetPacks,
   getMainStreetCardPackLoadResult,
+  getMainStreetPurchasablePackIds,
+  purchaseMainStreetCardPack,
   resolveEnabledPackIds,
   toCardPackListingInput,
 } from '../MainStreetCardPacks';
@@ -55,7 +57,9 @@ export class MainStreetOverlayContent {
    *   end-reason headline, spanning both columns.
    * - Left **Game State** column: one row per player (label, coins,
    *   reputation, score and any failure/elimination badge) followed by the
-   *   run's challenges met.
+   *   run's challenges met — a per-seat breakdown in competitive mode (each
+   *   seat credited only with its own completions) or the historic single
+   *   list in single-player.
    * - Right **Summary** column: the retained score breakdown, challenge
    *   details, tier-unlock notifications, tier + campaign stats, the
    *   difficulty selector and the Play Again / Menu buttons anchored at the
@@ -109,7 +113,10 @@ export class MainStreetOverlayContent {
 
     const rowH = 26;
     const leftPlayersH = 26 + playerRows.length * rowH; // "Game State" header + rows
-    const leftChallengesH = 20 + 22 + 20 + challengeSummary.totalCount * 20; // gap + header + met line + items
+    // Competitive mode renders one line per seat (each listing only that seat's
+    // completions); single-player keeps one line per active challenge.
+    const challengeLines = challengeSummary.seats?.length ?? challengeSummary.totalCount;
+    const leftChallengesH = 20 + 22 + 20 + challengeLines * 20; // gap + header + met line + lines
     const leftTotalH = leftPlayersH + leftChallengesH;
 
     const breakdownH = 108;
@@ -194,7 +201,9 @@ export class MainStreetOverlayContent {
       leftY += rowH;
     }
 
-    // Challenges met (run-global in the engine).
+    // Challenges met. `completedCount` / `totalCount` stay run-global (the
+    // union across seats); in competitive mode the lines below are a per-seat
+    // breakdown (MS-0MUWNTJIK009O6BZ, Q3 = A).
     leftY += 20;
     const challengesHeader = s.add.text(leftX, leftY, 'Challenges', {
       fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
@@ -213,15 +222,33 @@ export class MainStreetOverlayContent {
     s.overlayObjects.push(challengesMet);
     leftY += 20;
 
-    for (const item of challengeSummary.items) {
-      const icon = item.completed ? '\u2713' : '\u2717'; // checkmark or cross
-      const itemColor = item.completed ? '#44ff44' : '#ff6666';
-      const itemText = s.add.text(leftX, leftY, `${icon}  ${item.title}`, {
-        fontSize: '13px', color: itemColor, fontFamily: FONT_FAMILY,
-      }).setOrigin(0, 0).setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(itemText);
-      s.overlayObjects.push(itemText);
-      leftY += 20;
+    if (challengeSummary.seats) {
+      // Competitive mode: one line per seat listing only the challenges that
+      // seat personally completed, so an AI seat's completions are never
+      // presented as the human's. A seat with none shows an em dash.
+      for (const seat of challengeSummary.seats) {
+        const titles = seat.completedTitles.length > 0
+          ? seat.completedTitles.join(', ')
+          : '\u2014'; // em dash: no completions attributed to this seat
+        const seatColor = seat.isHuman ? '#ddccbb' : '#bbaa99';
+        const seatText = s.add.text(leftX, leftY, `${seat.label}: ${titles}`, {
+          fontSize: '13px', color: seatColor, fontFamily: FONT_FAMILY,
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(seatText);
+        s.overlayObjects.push(seatText);
+        leftY += 20;
+      }
+    } else {
+      for (const item of challengeSummary.items) {
+        const icon = item.completed ? '\u2713' : '\u2717'; // checkmark or cross
+        const itemColor = item.completed ? '#44ff44' : '#ff6666';
+        const itemText = s.add.text(leftX, leftY, `${icon}  ${item.title}`, {
+          fontSize: '13px', color: itemColor, fontFamily: FONT_FAMILY,
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(itemText);
+        s.overlayObjects.push(itemText);
+        leftY += 20;
+      }
     }
 
     // ── Right "Summary" column (retained content) ───────────────
@@ -1198,7 +1225,7 @@ export class MainStreetOverlayContent {
     const s = this.scene;
     if (s.replayMode) return;
 
-    const load = getMainStreetCardPackLoadResult();
+    let load = getMainStreetCardPackLoadResult();
     let enabledIds = resolveEnabledPackIds(load);
 
     // Modal backdrop (depth 199). The listing draws its own SLL panel and is
@@ -1206,8 +1233,31 @@ export class MainStreetOverlayContent {
     const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 });
     s.overlayObjects.push(...overlay.objects);
 
+    const purchasablePackIds = getMainStreetPurchasablePackIds();
+
     const listing = new CardPackListing(s, {
       result: toCardPackListingInput(load, enabledIds),
+      purchasablePackIds,
+      onPurchase: (packId) => {
+        // Dev/QA simulated purchase — scoped to the pack's own reward rule, so
+        // no other reward is collateral-unlocked. Re-discover and re-render so
+        // the newly unlocked pack becomes enable-able.
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        void purchaseMainStreetCardPack(packId).then((outcome) => {
+          if (!outcome.purchased) {
+            s.instructionText?.setText?.(
+              outcome.reason ?? 'That pack could not be unlocked.',
+            );
+            return;
+          }
+          const freshLoad = outcome.load ?? getMainStreetCardPackLoadResult();
+          // Refresh the captured discovery result so a subsequent toggle merges
+          // against the *unlocked* pool, not the stale locked one.
+          if (freshLoad) load = freshLoad;
+          enabledIds = resolveEnabledPackIds(freshLoad);
+          listing.setResult(toCardPackListingInput(freshLoad, enabledIds));
+        });
+      },
       onToggle: (state) => {
         const nextIds = enabledCardPackIds(state);
         const outcome = applyEnabledMainStreetPacks(load, nextIds, {

@@ -17,11 +17,14 @@ import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { CARD_DATA_RAW } from '../../src/MainStreetCards';
 import {
   applyEnabledMainStreetPacks,
+  bootstrapMainStreetCardPacks,
   getAvailableTemplateIds,
   resetMainStreetCardPacks,
   setMainStreetCardPackLoadResult,
 } from '../../src/MainStreetCardPacks';
 import { getEnabledCardPackIds, type StorageLike } from '../../src/MainStreetPrefs';
+import type { CardPackStatusRef, PackEntitlementStatusLike } from '@ui/card-pack-client';
+import type { ContentUnlockClient } from '@ui/content-unlock-client';
 
 const ENABLED_KEY = 'tce-main-street-enabled-card-packs';
 const BASE_HEADER = CARD_DATA_RAW.split('\n')[0];
@@ -153,6 +156,79 @@ function listingContainer(scene: any): Phaser.GameObjects.Container {
   return container as Phaser.GameObjects.Container;
 }
 
+const RESIDENTIAL_PACK_ID = 'main-street-residential-pack';
+const RESIDENTIAL_CARD_ID = 'biz-ms-residential-property-mgmt';
+const RESIDENTIAL_DLC_KEY = `dlc:main-street:${RESIDENTIAL_PACK_ID}`;
+const RESIDENTIAL_RULE_ID = 'main-street-residential-pack-purchase';
+
+const RESIDENTIAL_MANIFEST = JSON.stringify({
+  version: 1,
+  packs: [
+    {
+      id: RESIDENTIAL_PACK_ID,
+      gameId: 'main-street',
+      title: 'Main Street Residential',
+      description: 'Residential pack',
+      version: '1.0.0',
+      coreEngineVersion: '^0.1.0',
+      cards: 'cards.csv',
+    },
+  ],
+});
+
+function residentialCsv(): string {
+  return [
+    BASE_HEADER,
+    packRow({
+      family: 'business',
+      id: RESIDENTIAL_CARD_ID,
+      name: 'Neighbourhood Property Group',
+      cost: '500',
+      baseIncome: '120',
+      synergyTypes: 'Commerce',
+      maxLevel: '3',
+      description: 'A residential property business.',
+    }),
+  ].join('\n');
+}
+
+const RESIDENTIAL_FREE_STEAM = {
+  listStatus: async (
+    refs: readonly CardPackStatusRef[],
+  ): Promise<PackEntitlementStatusLike[]> =>
+    refs.map((ref) => ({
+      packId: ref.id,
+      gameId: ref.gameId ?? null,
+      state: 'free' as const,
+      steamAppId: null,
+      reason: null,
+    })),
+} as never;
+
+/** A mutable content-unlock client whose refresh performs the scoped purchase. */
+function mutableContentUnlocks(): ContentUnlockClient {
+  const unlocked = new Set<string>();
+  return {
+    async isUnlocked(target) {
+      if (target.kind !== 'dlc') return false;
+      return unlocked.has(`dlc:${target.gameId}:${target.dlcId}`);
+    },
+    async getUnlocks() {
+      return [];
+    },
+    async refresh(options) {
+      if (
+        options?.simulatePurchase === true &&
+        options.ruleIds?.includes(RESIDENTIAL_RULE_ID)
+      ) {
+        unlocked.add(RESIDENTIAL_DLC_KEY);
+        return [{ ruleId: RESIDENTIAL_RULE_ID, key: RESIDENTIAL_DLC_KEY, outcome: 'unlocked' }];
+      }
+      return [];
+    },
+  };
+}
+
 describe('Main Street Card Packs listing (browser)', () => {
   let game: Phaser.Game | null = null;
 
@@ -215,6 +291,72 @@ describe('Main Street Card Packs listing (browser)', () => {
 
     const storage = (globalThis as unknown as { localStorage: StorageLike }).localStorage;
     expect(getEnabledCardPackIds(storage)).toEqual([]);
+  });
+
+  it('offers no purchase control for the injected (non-gated) locked pack', async () => {
+    localStorage.removeItem(ENABLED_KEY);
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    setMainStreetCardPackLoadResult(packLoadResult());
+    scene.showCardPacks();
+    await waitFrames(6);
+
+    // The injected locked pack is not a declared content-unlock-gated pack, so
+    // it stays read-only (no purchase affordance leaks to arbitrary packs).
+    const texts = collectTexts(listingContainer(scene)).map((text) => text.text);
+    expect(texts).toContain('[ Locked ]');
+    expect(texts).not.toContain('[ Purchase ]');
+  });
+
+  it('purchases the gated residential pack and enables it (locked → unlocked → enabled)', async () => {
+    // No pack enabled yet: after the purchase the pack is unlocked but must be
+    // explicitly enabled, exercising the full affordance.
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([]));
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+
+    const contentUnlocks = mutableContentUnlocks();
+    await bootstrapMainStreetCardPacks({
+      contentDir: 'file:///content/',
+      fetchManifest: async () => RESIDENTIAL_MANIFEST,
+      fetchCsv: async () => residentialCsv(),
+      client: RESIDENTIAL_FREE_STEAM,
+      contentUnlocks,
+      storage: globalThis.localStorage,
+      logger: { warn: () => {} },
+    });
+    expect(getAvailableTemplateIds()).not.toContain(RESIDENTIAL_CARD_ID);
+
+    scene.showCardPacks();
+    await waitFrames(6);
+
+    // Locked row offers exactly the purchase control.
+    let texts = collectTexts(listingContainer(scene)).map((text) => text.text);
+    expect(texts).toContain('[ Purchase ]');
+
+    const purchase = collectTexts(listingContainer(scene)).find(
+      (text) => text.text === '[ Purchase ]',
+    );
+    expect(purchase).toBeDefined();
+    purchase!.emit('pointerdown');
+    // The purchase + re-discovery is async: give it several frames.
+    await waitFrames(20);
+
+    texts = collectTexts(listingContainer(scene)).map((text) => text.text);
+    expect(texts).not.toContain('[ Purchase ]');
+    expect(texts).toContain('[ Enable ]');
+
+    const enable = collectTexts(listingContainer(scene)).find(
+      (text) => text.text === '[ Enable ]',
+    );
+    enable!.emit('pointerdown');
+    await waitFrames(6);
+
+    // Enabling merges the pack's rows and persists the preference.
+    expect(getAvailableTemplateIds()).toContain(RESIDENTIAL_CARD_ID);
+    const storage = (globalThis as unknown as { localStorage: StorageLike }).localStorage;
+    expect(getEnabledCardPackIds(storage)).toEqual([RESIDENTIAL_PACK_ID]);
   });
 
   it('never offers an enable control for a locked pack', async () => {

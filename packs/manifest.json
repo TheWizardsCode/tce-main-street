@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "main-street-residential-pack",
+      "gameId": "main-street",
+      "title": "Main Street Residential",
+      "description": "A residential-themed card pack adding ten new cards spanning business, event, upgrade, staff and community-space families. Gated on the launcher's unified content-unlock store.",
+      "version": "1.0.0",
+      "coreEngineVersion": "^0.1.0",
+      "cards": "cards.csv",
+      "assets": [
+        "assets/biz-ms-residential-property-mgmt.png",
+        "assets/biz-ms-residential-solar.png",
+        "assets/biz-ms-residential-home-repair.png",
+        "assets/evt-ms-residential-block-party.png",
+        "assets/evt-ms-residential-farmers-market.png",
+        "assets/evt-ms-residential-safety-initiative.png",
+        "assets/upg-ms-residential-energy-efficient.png",
+        "assets/upg-ms-residential-smart-home.png",
+        "assets/stf-ms-residential-community-gardener.png",
+        "assets/cs-ms-residential-community-centre.png"
+      ]
+    }
+  ]
+}

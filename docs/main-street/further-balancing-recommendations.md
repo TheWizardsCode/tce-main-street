@@ -33,7 +33,8 @@ item.
   minority of runs; most games end on loss conditions.
 - **Wrong-axis risk:** if the producer wants "tighter" to mean *harder economic
   choices*, the lever that now bites is **win thresholds / run length**, not
-  income or ongoing cost.
+  income or ongoing cost. (**Confirmed** as the intended lever by producer
+  decision A, 2026-10-09 — see R3 below.)
 
 ## 2. Loss-mode decomposition
 
@@ -103,11 +104,28 @@ Ownership frequency (Medium, share of runs where the card was owned):
 |---|---|---|---|---|
 | R1 | High | Re-evaluate **upgrade costs / incomeBonus** so upgrades clear the ~5-turn payback opportunity cost (reduce upgrade cost and/or raise `incomeBonus`). | Upgrades appear in ≤1% of runs. | MS-0MUR9I9WO004EW0M |
 | R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE — **done**: positive rep/turn ×4; Medium now 32% / 68% (see reputation-retune-evidence.md). |
-| R3 | Medium | Confirm **win thresholds / run length** are the intended difficulty lever now that liquidity is slack (net liquidity 2–4 coins/turn, runs ~10–12 turns). Consider raising `winThreshold` or capping turns if "tighter" should mean harder. | avgTurns 10–12; liquidity ≪ band. | MS-0MUR9IMXE0090WIV |
+| R3 | Medium | **Confirmed / no change (MS-0MUR9IMXE0090WIV).** **Win thresholds / run length are the intended difficulty lever** now that liquidity is slack. The producer confirmed the per-difficulty `winThreshold` values (Easy 10,000 / Medium 12,000 / Hard 15,000) and the absence of a `maxTurns` cap as the accepted design intent — **no preset change**. | Canonical 200-seed / 60-turn greedy (2026-10-09, comment `MS-C0MV1D0IBA001ROOU`): win rate 0.760 / 0.665 / 0.410 (ladder holds, all inside PRD bands); avgTurns 10.7 / 12.2 / 11.0. | MS-0MUR9IMXE0090WIV — **done** |
 | R4 | Medium | Re-price **community spaces / events** relative to the slower business payback (community spaces are now relatively stronger value per coin). | Intake risk note; distribution shift to cheap cards. | MS-0MUR9IN7L0004TO5 |
 | R5 | Low | Track **synergy-diversity (G4/HHI)** and placement dominance in the next re-baseline to confirm no single synergy type crowds out the others. | Intake synergy-distortion risk. | MS-0MUR9INHX001QCSE |
 
 All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
+
+> **R3 confirmation (MS-0MUR9IMXE0090WIV, producer decision A, 2026-10-09).**
+> The R3 question — whether "tighter" should now mean raising `winThreshold`
+> and/or adding a per-difficulty `maxTurns` cap — was reviewed against the
+> refreshed canonical profile after the R2 reputation re-tune
+> (MS-0MUR9IMN60093HIE) and the Community-Favour AI gate
+> (MS-0MUVB2ZES005V83Y). The producer confirmed the **current state is
+> acceptable**: `winThreshold` stays Easy 10,000 / Medium 12,000 / Hard
+> 15,000, and **no `maxTurns` cap** is added. The primary balance gate (a
+> monotone-decreasing win-rate ladder `Easy ≥ Medium ≥ Hard`) holds
+> (0.760 ≥ 0.665 ≥ 0.410), with every difficulty inside its PRD band. The
+> unchanged presets are pinned by the existing guard tests
+> (`tests/main-street/difficulty-presets.test.ts` and
+> `tests/main-street/monte-carlo-greedy-guardrail.test.ts`). Evidence:
+> [payback-rebalance-evidence.md](payback-rebalance-evidence.md) and the
+> canonical-profile comment `MS-C0MV1D0IBA001ROOU`; methodology in
+> [balancing-methodology.md](balancing-methodology.md).
 
 > **R4 AI-side follow-up (MS-0MUX8J9KJ005ZKDW).** R4 (MS-0MUR9IN7L0004TO5)
 > re-priced community spaces in the card data. The *AI decision-quality*
@@ -122,6 +140,10 @@ All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
 
 - **Difficulty presets** — left unchanged by producer decision Q3 = C; the
   win-rate ladder `Easy ≥ Medium ≥ Hard` is the primary gate and holds.
+  Re-confirmed after the R2/AI re-tunes by MS-0MUR9IMXE0090WIV (decision A,
+  2026-10-09): the per-difficulty `winThreshold` values
+  (10,000 / 12,000 / 15,000) and the absence of a `maxTurns` cap are
+  intentional — see R3 above.
 - **Engine-rule changes** (score formula, action economy, synergy formula) —
   out of scope per the parent constraints.
 - **New cards / staff re-balancing** — separate work items.

@@ -30,8 +30,15 @@ export const PREMIUM_DIALOG_DISMISSED_KEY = 'tce-main-street-buy-and-place-premi
 /** Storage key for the enabled card-pack id list (seeds new games). */
 export const ENABLED_CARD_PACKS_KEY = 'tce-main-street-enabled-card-packs';
 
-/** Resolves the storage backend (browser localStorage when available). */
-function resolveStorage(storage?: StorageLike | null): StorageLike | null {
+/**
+ * Resolves the storage backend (browser localStorage when available).
+ *
+ * An explicit `undefined` selects the browser `localStorage`; any other value
+ * (including `null`) is returned unchanged. Exported so the browser
+ * content-unlock client (`src/MainStreetBrowserContentUnlockClient.ts`) reuses
+ * the exact same backend-resolution seam rather than duplicating it.
+ */
+export function resolveStorage(storage?: StorageLike | null): StorageLike | null {
   if (storage !== undefined) return storage;
   try {
     return typeof globalThis !== 'undefined' && (globalThis as any).localStorage

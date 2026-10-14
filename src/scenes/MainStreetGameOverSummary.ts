@@ -163,6 +163,25 @@ export interface GameOverChallengeItem {
   completed: boolean;
 }
 
+/**
+ * One seat's challenge breakdown (competitive mode).
+ *
+ * Derived from `ActiveChallenge.completedBySeatId`; lists only the challenges
+ * attributed to this seat, in engine order.
+ */
+export interface GameOverChallengeSeatBreakdown {
+  /** Owner index (index into `state.players`). */
+  playerId: number;
+  /** Display label: `You` for the human seat, `AI <n>` for AI seats. */
+  label: string;
+  /** True when this seat is controlled by the human. */
+  isHuman: boolean;
+  /** Ids of the challenges this seat completed, in engine order. */
+  completedChallengeIds: string[];
+  /** Titles of the challenges this seat completed, in engine order. */
+  completedTitles: string[];
+}
+
 /** The run's challenge completion summary. */
 export interface GameOverChallengeSummary {
   /** Active challenges (title + completion) in engine order. */
@@ -173,24 +192,52 @@ export interface GameOverChallengeSummary {
   totalCount: number;
   /** Ids of every challenge completed during the run. */
   completedChallengeIds: string[];
+  /**
+   * Per-seat challenge breakdown in competitive mode: one entry per seat, each
+   * listing only the challenges attributed to that seat. Absent in
+   * single-player mode, which retains the run-global single-list format.
+   */
+  seats?: GameOverChallengeSeatBreakdown[];
 }
 
 /**
  * Builds the run's challenge summary.
  *
- * Challenges are run-global in the engine (`state.activeChallenges` /
- * `state.challengesCompleted`), not per-seat, so this is shown once in the
- * Game State column rather than per player.
+ * The `items` / `completedCount` / `totalCount` / `completedChallengeIds`
+ * fields remain run-global (the union of every completion). In competitive
+ * mode the summary additionally carries a `seats` breakdown derived from
+ * `ActiveChallenge.completedBySeatId`, so each seat is credited only with its
+ * own completions (MS-0MUWNTJIK009O6BZ, Q1 = B / Q3 = A). Single-player runs
+ * have no seat context and omit `seats`, retaining the historic single-list
+ * format.
  */
 export function buildGameOverChallengeSummary(state: MainStreetState): GameOverChallengeSummary {
-  const items = (state.activeChallenges ?? []).map((active) => ({
-    title: active.challenge.title,
-    completed: active.completed,
+  const active = state.activeChallenges ?? [];
+  const items = active.map((entry) => ({
+    title: entry.challenge.title,
+    completed: entry.completed,
   }));
-  return {
+  const summary: GameOverChallengeSummary = {
     items,
     completedCount: items.filter((item) => item.completed).length,
     totalCount: items.length,
     completedChallengeIds: [...(state.challengesCompleted ?? [])],
   };
+
+  if (isCompetitive(state)) {
+    summary.seats = buildCompetitiveScoreboard(state).map((row) => {
+      const completed = active.filter(
+        (entry) => entry.completed && entry.completedBySeatId === row.playerId,
+      );
+      return {
+        playerId: row.playerId,
+        label: row.label,
+        isHuman: row.isHuman,
+        completedChallengeIds: completed.map((entry) => entry.challenge.id),
+        completedTitles: completed.map((entry) => entry.challenge.title),
+      };
+    });
+  }
+
+  return summary;
 }

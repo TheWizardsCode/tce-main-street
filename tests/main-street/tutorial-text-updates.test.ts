@@ -217,22 +217,24 @@ describe('Tutorial text updates (25-step two-turn restructure)', () => {
     });
   });
 
-  describe('T22 Triggering Events (AC: play festival from hand)', () => {
+  describe('T23 Triggering Events (AC: play festival from hand)', () => {
     it('mentions clicking the held festival in hand', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!).body;
       expect(body.toLowerCase()).toMatch(/hand/);
       expect(body.toLowerCase()).toMatch(/click/);
     });
   });
 
-  describe('T23 Success and Failure (AC: scoring bar)', () => {
+  describe('T24 Success and Failure (AC: scoring bar)', () => {
     it('mentions the scoring bar components', () => {
-      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!).body;
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T24')!).body;
       expect(body.toLowerCase()).toMatch(/coins/);
       expect(body.toLowerCase()).toMatch(/score/);
       expect(body.toLowerCase()).toMatch(/target/);
     });
   });
+
+  // MS-0MV4F04NN007H3DB: the T22 "A quiet week" banking-day step was removed.
 
   describe('T25 button label (AC: "Let\'s play!")', () => {
     it('overlay startFullGame is "Let\'s play!"', () => {
@@ -361,9 +363,9 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
       expect(body.toLowerCase()).toMatch(/action/);
     });
 
-    it('T22 play-event copy names the action cost', () => {
-      const t22 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T22')!;
-      const body = resolveTutorialStepText(t22).body;
+    it('T23 play-event copy names the action cost', () => {
+      const t23 = UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T23')!;
+      const body = resolveTutorialStepText(t23).body;
       expect(body.toLowerCase()).toMatch(/action/);
     });
 
@@ -376,12 +378,12 @@ describe('Data-driven tutorial text (card facts from card data)', () => {
     });
 
     it('event steps keep each action day within the 1-action budget', () => {
-      // T10 (buy-event) and T22 (play-event) each consume the day's single
+      // T10 (buy-event) and T23 (play-event) each consume the day's single
       // action, so each must be preceded by its own end-turn day boundary.
       // The partitioning guard lives in tutorial-action-economy.test.ts;
       // this asserts the two event steps are still classified as consumers.
       const consuming = new Set(['buy-event', 'play-event']);
-      for (const stepId of ['T10', 'T22']) {
+      for (const stepId of ['T10', 'T23']) {
         const step = UNIFIED_TUTORIAL_STEPS.find(s => s.id === stepId)!;
         expect(consuming.has(step.requiredAction!), `${stepId} should be action-gated`).toBe(true);
       }

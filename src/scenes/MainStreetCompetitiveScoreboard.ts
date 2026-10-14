@@ -9,6 +9,7 @@
  */
 
 import type { MainStreetState } from '../MainStreetState';
+import { resolveSeatColour } from '../MainStreetAdjacencyOwner';
 
 /**
  * Failure / elimination badge attached to a game-over scoreboard row.
@@ -35,6 +36,17 @@ export interface CompetitiveScoreboardRow {
   isHuman: boolean;
   /** True when this seat is the acting seat for the current shared day. */
   isActive: boolean;
+  /**
+   * The seat's persisted colour-blind-safe hex colour, resolved through the
+   * shared {@link resolveSeatColour} lookup (F5 of MS-0MUWNTN8W006C7EF).
+   *
+   * This is the one colour every seat-identity surface uses — the activity-log
+   * prefix (F3), the owner-coloured placed-card border (F4) and this
+   * scoreboard/HUD — so a seat reads as the same colour throughout the UI.
+   * `undefined` only for a single-seat roster, which has no colour assignment
+   * (and produces no rendered rows in competitive play).
+   */
+  colour?: string;
   /**
    * Optional failure/elimination badge (game-over summary only). Absent while
    * a seat is solvent; the live competitive HUD never sets it.
@@ -63,6 +75,8 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
       score: Math.round(player.score),
       isHuman,
       isActive: player.playerId === activeId,
+      // AC4/AC5: one shared colour source for every seat-identity surface.
+      colour: resolveSeatColour(state, player.playerId),
     };
   });
 }

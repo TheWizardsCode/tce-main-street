@@ -5,11 +5,16 @@
  * can be chosen by mouse, changing the 3-card market row.
  *
  * Runs in Vitest browser (Chromium) via the `browser` project.
+ *
+ * Test helpers are imported via the `@core-tests` alias (resolved to the
+ * `core` submodule's test tree in `vite.config.ts`); a relative
+ * `../helpers/waitForScene` path does not exist here and leaves the suite
+ * unloadable (see MS-0MV1HAUPR004REDJ).
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
-import { waitForScene } from '../helpers/waitForScene';
+import { waitForScene } from '@core-tests/helpers/waitForScene';
 
 async function bootGame(): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');

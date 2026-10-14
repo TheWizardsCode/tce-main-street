@@ -4,7 +4,7 @@
  * Validates that upgraded BusinessCards on the street grid display:
  * 1. A visible level badge when level > 0
  * 2. Updated income display (baseIncome + incomeBonus)
- * 3. Visual distinction from base cards (border/glow)
+ * 3. Visual distinction from base cards (top-left upgrade accent)
  *
  * These tests verify the rendering helper functions produce correct overlay
  * text content and styling for upgraded vs base cards.
@@ -121,17 +121,28 @@ describe('buildUpgradeOverlaySpec', () => {
   });
 
   describe('visual distinction', () => {
-    it('returns no upgrade border for a base (level 0) card', () => {
+    it('returns no upgrade accent for a base (level 0) card', () => {
       const biz = makeBiz({ level: 0 });
       const spec = buildUpgradeOverlaySpec(biz, 200, 280);
-      expect(spec.upgradeBorder).toBeNull();
+      expect(spec.levelAccent).toBeNull();
     });
 
-    it('returns an upgrade border for an upgraded card', () => {
+    it('returns a top-left upgrade accent for an upgraded card (F4 — replaces the full-card border)', () => {
       const biz = makeBiz({ level: 1 });
       const spec = buildUpgradeOverlaySpec(biz, 200, 280);
-      expect(spec.upgradeBorder).not.toBeNull();
-      expect(spec.upgradeBorder!.color).toBeDefined();
+      expect(spec.levelAccent).not.toBeNull();
+      expect(spec.levelAccent!.color).toBeDefined();
+      // Top-left corner in container-local coordinates.
+      expect(spec.levelAccent!.x).toBe(-100);
+      expect(spec.levelAccent!.y).toBe(-140);
+      expect(spec.levelAccent!.width).toBeGreaterThan(0);
+      expect(spec.levelAccent!.height).toBeGreaterThan(0);
+    });
+
+    it('no longer carries a full-card upgrade border (F4)', () => {
+      const biz = makeBiz({ level: 1 });
+      const spec = buildUpgradeOverlaySpec(biz, 200, 280);
+      expect(spec).not.toHaveProperty('upgradeBorder');
     });
   });
 

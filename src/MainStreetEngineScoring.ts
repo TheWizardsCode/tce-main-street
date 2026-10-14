@@ -65,16 +65,48 @@ export function updateCompetitiveScores(state: MainStreetState): void {
     updateScore(state);
     return;
   }
-  const bonus = state.challengesCompleted.length * state.config.challengeBonusPoints;
+  // Per-seat challenge bonus (MS-0MUWNTJIK009O6BZ, Q2 = A): each seat is
+  // credited only for the challenges it personally completed, using the
+  // attribution recorded by the challenge evaluation path
+  // (`ActiveChallenge.completedBySeatId`). Unattributed completions (single-
+  // player attribution / legacy saves) contribute no per-seat bonus, so no
+  // seat can be credited with another seat's completion.
+  const perSeatCompletions = countCompletedChallengesBySeat(state);
+  const bonusPoints = state.config.challengeBonusPoints;
+
   let maxScore = -Infinity;
   for (const p of state.players) {
-    p.score = p.coins + p.reputation + bonus;
+    const seatBonus = (perSeatCompletions.get(p.playerId) ?? 0) * bonusPoints;
+    p.score = p.coins + p.reputation + seatBonus;
     if (p.score > maxScore) maxScore = p.score;
   }
   // Keep the shared ledger/finalScore as the current best (open single-player API).
   syncResourceBankToLedger(state);
   state.finalScore = maxScore;
   // Also mirror max into shared coins/rep history where used.
+}
+
+/**
+ * Builds a seat-id → completed-challenge-count map from the attribution
+ * records written by the challenge evaluation path
+ * (`ActiveChallenge.completedBySeatId`).
+ *
+ * Only completed challenges with a numeric seat attribution are counted;
+ * `null`/`undefined` attribution (single-player / legacy saves) is ignored.
+ * The count is derived from the same records the evaluator writes, so it
+ * stays consistent with the attribution path by construction.
+ *
+ * @param state Current game state (read-only).
+ * @returns A map from seat id to the number of challenges it completed.
+ */
+function countCompletedChallengesBySeat(state: MainStreetState): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const ac of state.activeChallenges ?? []) {
+    if (ac.completed && typeof ac.completedBySeatId === 'number') {
+      counts.set(ac.completedBySeatId, (counts.get(ac.completedBySeatId) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 /**

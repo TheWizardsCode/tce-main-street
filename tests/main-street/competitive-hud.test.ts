@@ -10,6 +10,8 @@ import {
   buildCompetitiveScoreboard,
   formatCompetitiveScoreboardRow,
 } from '../../src/scenes/MainStreetCompetitiveScoreboard';
+import { resolveSeatColour } from '../../src/MainStreetAdjacencyOwner';
+import { SEAT_COLOUR_PALETTE } from '../../src/MainStreetSeatColours';
 import {
   createCompetitiveState,
   setupMainStreetGame,
@@ -88,6 +90,43 @@ describe('buildCompetitiveScoreboard', () => {
 
   it('returns no rows for a single-player state', () => {
     const single = setupMainStreetGame({ seed: 'hud-single' });
+    expect(buildCompetitiveScoreboard(single)).toEqual([]);
+  });
+});
+
+// ── AC1/AC2/AC4/AC5 — seat colours come from the shared lookup ──
+
+describe('buildCompetitiveScoreboard seat colours (F5)', () => {
+  it('gives each row the seat’s persisted colour from the shared lookup', () => {
+    const state = competitiveState();
+    const rows = buildCompetitiveScoreboard(state);
+
+    for (const row of rows) {
+      expect(row.colour).toBe(state.players![row.playerId].colour);
+      expect(row.colour).toBe(resolveSeatColour(state, row.playerId));
+      expect(SEAT_COLOUR_PALETTE).toContain(row.colour);
+    }
+  });
+
+  it('gives the active row the active seat’s colour', () => {
+    const state = competitiveState();
+    state.activePlayerId = 1;
+
+    const rows = buildCompetitiveScoreboard(state);
+    const active = rows.find((row) => row.isActive)!;
+
+    expect(active.playerId).toBe(1);
+    expect(active.colour).toBe(state.players![1].colour);
+  });
+
+  it('keeps every seat visually distinct by colour', () => {
+    const rows = buildCompetitiveScoreboard(competitiveState());
+    const colours = rows.map((row) => row.colour);
+    expect(new Set(colours).size).toBe(colours.length);
+  });
+
+  it('leaves the colour undefined when the roster has no seat colours', () => {
+    const single = setupMainStreetGame({ seed: 'hud-single-colour' });
     expect(buildCompetitiveScoreboard(single)).toEqual([]);
   });
 });
