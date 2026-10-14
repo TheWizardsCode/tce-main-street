@@ -1106,6 +1106,114 @@ function sameWeekCompositeEventActions(state: MainStreetState): PlayerAction[] {
 }
 
 /**
+ * Coins available to the acting seat: the competitive seat's own wallet when
+ * a roster is present, otherwise the shared single-player `resourceBank`
+ * (MS-0MV5VOIV40020KXT).
+ */
+function acquisitionCoins(state: MainStreetState, playerId?: number): number {
+  if (isCompetitiveMode(state)) {
+    const player = getCompetitivePlayer(state, playerId);
+    if (player) return player.coins ?? 0;
+  }
+  return state.resourceBank.coins;
+}
+
+/**
+ * Whether the acting seat has an income stream: at least one placed business
+ * **it owns** with `baseIncome > 0` (MS-0MV5VOIV40020KXT).
+ *
+ * In competitive play only the seat's own businesses count
+ * (`getSlotOwnerId === playerId`); single-player states have no owner tags, so
+ * every placed business belongs to the acting seat. Community spaces carry
+ * `baseIncome = 0` and so never establish a stream.
+ *
+ * @param state    Current game state (read-only by convention).
+ * @param playerId Owner index; defaults to the active player.
+ * @returns True when the seat owns at least one income-producing business.
+ */
+function hasIncomeStream(state: MainStreetState, playerId?: number): boolean {
+  const competitive = isCompetitiveMode(state);
+  const pid = playerId ?? state.activePlayerId ?? 0;
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    const biz = state.streetGrid[i];
+    if (!biz || biz.baseIncome <= 0) continue;
+    if (!competitive || getSlotOwnerId(state, i) === pid) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the acting seat owns a valid target business for `card` — a placed
+ * business it owns named `targetBusiness` at exactly `requiredLevel`, still
+ * below `maxLevel` (MS-0MV5VOIV40020KXT).
+ *
+ * Mirrors the eligibility used by `canPurchaseUpgrade` and the
+ * play-upgrade-from-hand enumeration, so the acquisition gate can never
+ * diverge from what the AI could actually apply.
+ *
+ * @param state    Current game state (read-only by convention).
+ * @param card     The upgrade card being considered.
+ * @param playerId Owner index; defaults to the active player.
+ * @returns True when a matching owned target exists.
+ */
+function ownsUpgradeTarget(
+  state: MainStreetState,
+  card: UpgradeCard,
+  playerId?: number,
+): boolean {
+  const requiredLevel = card.requiredLevel ?? 0;
+  const competitive = isCompetitiveMode(state);
+  const pid = playerId ?? state.activePlayerId ?? 0;
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    const biz = state.streetGrid[i];
+    if (!biz) continue;
+    if (competitive && getSlotOwnerId(state, i) !== pid) continue;
+    if (biz.name !== card.targetBusiness) continue;
+    if (biz.level !== requiredLevel) continue;
+    if (biz.level >= biz.maxLevel) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the acting seat may take `card` from the market into its hand
+ * (MS-0MV5VOIV40020KXT). Two heuristic gates keep the three-slot hand stocked
+ * with cards the seat can actually use:
+ *
+ *   - **business** — reject an unaffordable business (effective play cost
+ *     exceeds the seat's coins) when the seat has no income stream: with no
+ *     income there is no route to ever affording it.
+ *   - **upgrade** — reject unless the seat owns the upgrade's target at the
+ *     required level, matching the apply/play eligibility.
+ *
+ * Events, staff and any other family pass through unchanged. The gate is
+ * applied in the acquisition *scoring* (not enumeration), so `RandomStrategy`
+ * stays a uniform random baseline.
+ *
+ * @param state    Current game state (read-only by convention).
+ * @param card     The market card being considered.
+ * @param playerId Owner index; defaults to the active player.
+ * @returns True when the card may be taken into the hand.
+ */
+function isAcquisitionEligible(
+  state: MainStreetState,
+  card: { family?: string; cost?: number },
+  playerId?: number,
+): boolean {
+  if (card.family === 'business') {
+    const coins = acquisitionCoins(state, playerId);
+    const effectiveCost = computeEffectiveBusinessPurchaseCost(state, card.cost ?? 0);
+    if (effectiveCost > coins && !hasIncomeStream(state, playerId)) return false;
+    return true;
+  }
+  if (card.family === 'upgrade') {
+    return ownsUpgradeTarget(state, card as UpgradeCard, playerId);
+  }
+  return true;
+}
+
+/**
  * Value of spending the day's single action on a market acquisition — the
  * one tier shared by `move-to-hand` (non-event cards) and `buy-event`
  * (Investment events), because both cost the same action
@@ -1115,7 +1223,9 @@ function sameWeekCompositeEventActions(state: MainStreetState): PlayerAction[] {
  *
  * - `buy-event`: the event's net play value ({@link scoreEventAction}).
  * - `move-to-hand`: the card's listed cost — a proxy for how valuable it is
- *   to lock in ahead of payment (unchanged heuristic).
+ *   to lock in ahead of payment — but only when the card passes the
+ *   acquisition gates ({@link isAcquisitionEligible}); a gated card scores 0
+ *   so the caller's `> 0` check never selects it (MS-0MV5VOIV40020KXT).
  */
 function scoreMarketAcquisition(
   state: MainStreetState,
@@ -1125,7 +1235,9 @@ function scoreMarketAcquisition(
     return scoreEventAction(state, action);
   }
   const card = state.market.cards.find(c => c.id === action.cardId);
-  return card ? card.cost : 0;
+  if (!card) return 0;
+  if (!isAcquisitionEligible(state, card)) return 0;
+  return card.cost;
 }
 
 /**
@@ -1149,6 +1261,9 @@ function bestMarketAcquisitionValue(state: MainStreetState): number {
     if (card.family === 'staff') continue;
     const cost = (card as { cost?: number }).cost ?? 0;
     if (state.resourceBank.coins < cost) continue;
+    // Only cards the seat could actually take to hand count towards the
+    // capacity benefit (MS-0MV5VOIV40020KXT).
+    if (!isAcquisitionEligible(state, card)) continue;
     best = Math.max(
       best,
       card.family === 'event'
@@ -1312,8 +1427,11 @@ const chooseGreedyAction = (
     // one value-ranked tier — a fixed priority order would starve the event
     // path now that it is no longer a free extra action. The event score is
     // its net play value (cost included); the move-to-hand score stays the
-    // card's listed cost (lock-in value). Value-negative acquisitions are
-    // skipped rather than taken for lack of anything else.
+    // card's listed cost (lock-in value) but is gated by the acquisition
+    // rules — an unaffordable business with no income stream, or an upgrade
+    // without an owned target, scores 0 (MS-0MV5VOIV40020KXT).
+    // Value-negative acquisitions are skipped rather than taken for lack of
+    // anything else.
     const acquisitionActions = legalActions.filter(
       a => a.type === 'move-to-hand' || a.type === 'buy-event',
     ) as (MoveToHandAction | BuyEventAction)[];
@@ -2236,9 +2354,13 @@ export function scoreCompetitiveAction(
       return competitiveHandEventScore(state, player, action.handIndex, pid);
     case 'move-to-hand': {
       // Lock-in value: the card's listed cost (mirrors the single-player
-      // market-acquisition tier).
+      // market-acquisition tier), gated by the same acquisition rules
+      // (MS-0MV5VOIV40020KXT). A gated card scores 0 so Priority 5's `> 0`
+      // check never selects it.
       const card = state.market.cards.find(c => c.id === action.cardId);
-      return card ? card.cost : 0;
+      if (!card) return 0;
+      if (!isAcquisitionEligible(state, card, pid)) return 0;
+      return card.cost;
     }
     case 'community-favour':
       return competitiveFavourScore(state, player, action.direction);
@@ -2278,6 +2400,9 @@ function competitiveBestMarketAcquisitionValue(
     if (card.family === 'staff' || card.family === 'event') continue;
     const cost = (card as { cost?: number }).cost ?? 0;
     if ((player.coins ?? 0) < cost) continue;
+    // Only cards the seat could actually take count towards the benefit
+    // (MS-0MV5VOIV40020KXT).
+    if (!isAcquisitionEligible(state, card, player.playerId)) continue;
     best = Math.max(best, cost);
   }
   return best;
@@ -2593,7 +2718,9 @@ export const CompetitiveGreedyStrategy: MainStreetAiStrategy = {
     }
 
     // Priority 5: spend this week's action on the best market acquisition
-    // (event take vs. non-event move-to-hand), ranked by value.
+    // (event take vs. non-event move-to-hand), ranked by value. The
+    // acquisition gates are applied in the scorer, so a gated move-to-hand
+    // scores 0 and is never taken (MS-0MV5VOIV40020KXT).
     const acquisitionActions = legalActions.filter(
       a => a.type === 'move-to-hand' || a.type === 'buy-event',
     ) as (MoveToHandAction | BuyEventAction)[];

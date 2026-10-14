@@ -54,11 +54,11 @@ interface NewCommunitySpaceContract {
 // Costs re-priced by MS-0MUR9IN7L0004TO5 (community spaces relative to the
 // 4.87-turn business payback; see docs/main-street/analysis/community-space-event-repricing.md).
 const NEW_COMMUNITY_SPACE_CONTRACTS: NewCommunitySpaceContract[] = [
-  { id: 'cs-playground', name: 'Playground', cost: 300, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 20 },
+  { id: 'cs-playground', name: 'Playground', cost: 300, baseIncome: 0, ongoingCost: 20, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 20 },
   { id: 'cs-community-garden', name: 'Community Garden', cost: 350, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Entertainment'], tier: '4', reputationPerTurn: 40 },
-  { id: 'cs-fountain', name: 'Town Fountain', cost: 350, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Culture'], tier: '5', reputationPerTurn: 40 },
+  { id: 'cs-fountain', name: 'Town Fountain', cost: 350, baseIncome: 0, ongoingCost: 25, synergyTypes: ['Culture'], tier: '5', reputationPerTurn: 40 },
   { id: 'cs-health-kiosk', name: 'Health Kiosk', cost: 450, baseIncome: 0, ongoingCost: 15, synergyTypes: ['Health'], tier: '8', reputationPerTurn: 60 },
-  { id: 'cs-shelter', name: 'Community Shelter', cost: 400, baseIncome: 0, ongoingCost: 0, synergyTypes: ['Service'], tier: '3', reputationPerTurn: 60 }, // retiered T6->T3 (CG-0MT5VZJLS000B8KI) so T3 keeps a non-Entertainment synergy type
+  { id: 'cs-shelter', name: 'Community Shelter', cost: 400, baseIncome: 0, ongoingCost: 30, synergyTypes: ['Service'], tier: '3', reputationPerTurn: 60 }, // retiered T6->T3 (CG-0MT5VZJLS000B8KI) so T3 keeps a non-Entertainment synergy type
   { id: 'cs-public-art', name: 'Public Art', cost: 600, baseIncome: 0, ongoingCost: 25, synergyTypes: ['Culture', 'Entertainment'], tier: '12', reputationPerTurn: 80 },
 ];
 
@@ -210,18 +210,36 @@ describe('Group B community-space expansion: ongoing-cost behaviour (AC4)', () =
     expect(state.resourceBank.coins).toBeCloseTo(1000 - 50);
   });
 
-  it('does not deduct for zero-ongoing-cost cards', () => {
+  it('does not deduct for zero-ongoing-cost cards (synthetic fixture)', () => {
+    // All shipped community spaces now carry a non-zero ongoingCost
+    // (MS-0MUMC6IVF0098WRL), so the zero-cost path uses a synthetic card.
     const state = setupMainStreetGame({ seed: 'group-b-ongoing-zero' });
     state.resourceBank.coins = 1000;
     const grid = state.streetGrid;
 
-    const playground = createCommunitySpaceDeck(1).find(c => c.id.startsWith('cs-playground'))!;
-    const fountain = createCommunitySpaceDeck(1).find(c => c.id.startsWith('cs-fountain'))!;
-    const shelter = createCommunitySpaceDeck(1).find(c => c.id.startsWith('cs-shelter'))!;
+    const zeroCost = (name: string, id: string, synergyType: SynergyType): CommunitySpaceCard => ({
+      family: 'community-space',
+      id,
+      name,
+      cost: 200,
+      baseIncome: 0,
+      ongoingCost: 0,
+      synergyTypes: [synergyType],
+      maxLevel: 0,
+      description: 'Synthetic zero-cost card.',
+      level: 0,
+      incomeBonus: 0,
+      synergyRangeBonus: 0,
+      reputationBonus: 0,
+      reputationPerTurn: 10,
+      appliedUpgrades: [],
+      currentIncome: 0,
+      currentReputationPerTurn: 10,
+    });
 
-    grid[0] = { ...playground, level: 0, incomeBonus: 0, synergyRangeBonus: 0, reputationBonus: 0, appliedUpgrades: [] };
-    grid[1] = { ...fountain, level: 0, incomeBonus: 0, synergyRangeBonus: 0, reputationBonus: 0, appliedUpgrades: [] };
-    grid[2] = { ...shelter, level: 0, incomeBonus: 0, synergyRangeBonus: 0, reputationBonus: 0, appliedUpgrades: [] };
+    grid[0] = zeroCost('Zero Playground', 'cs-synthetic-playground', 'Entertainment');
+    grid[1] = zeroCost('Zero Fountain', 'cs-synthetic-fountain', 'Culture');
+    grid[2] = zeroCost('Zero Shelter', 'cs-synthetic-shelter', 'Service');
 
     applyCommunitySpaceOngoingCosts(state);
     expect(state.resourceBank.coins).toBe(1000);

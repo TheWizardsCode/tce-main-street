@@ -118,7 +118,17 @@ All values below are **enforced in the guardrail test suite** (`tests/main-stree
 > the new design intent**, so the bands below are revised to the measured
 > after-state rather than compensating the economy back. The **primary balance
 > gate remains the monotone win-rate ladder Easy ≥ Medium ≥ Hard** (measured
-> 0.62 ≥ 0.325 ≥ 0.11). See [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+> 0.62 ≥ 0.325 ≥ 0.11 at the rebalance). See [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+>
+> **R3 confirmation (MS-0MUR9IMXE0090WIV, producer decision A, 2026-10-09).**
+> The R2 reputation re-tune and the Community-Favour AI gate lifted the
+> measured ladder to **0.760 ≥ 0.665 ≥ 0.410** (canonical 200-seed / 60-turn
+> greedy), still monotone and inside every design-intent band. The producer
+> confirmed the unchanged `winThreshold` values (Easy 10,000 / Medium 12,000 /
+> Hard 15,000) and the absence of a `maxTurns` cap as the accepted design
+> intent — no preset change. See
+> [further-balancing-recommendations.md](further-balancing-recommendations.md) §5 R3 and
+> [balancing-methodology.md](balancing-methodology.md#difficulty-lever-confirmation-ms-0mur9imxe0090wiv).
 
 **Greedy AI, canonical harness profile (200 seeds, 60 max turns, seed prefix `mc-balance-`):**
 

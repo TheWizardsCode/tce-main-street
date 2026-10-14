@@ -1,20 +1,26 @@
 /**
- * Game startup console-error regression tests.
+ * Main Street startup console-error regression tests.
  *
- * Ensures that starting each supported game does not produce
- * console errors — particularly the `drawImage(null)` crash that
- * occurred when cached Phaser textures were cleared with a yield
- * point before rasterisation could replace them.
+ * Ensures that starting Main Street does not produce console errors —
+ * particularly the `drawImage(null)` crash that occurred when cached Phaser
+ * textures were cleared with a yield point before rasterisation could replace
+ * them.
  *
- * Each test boots a full Phaser game in a browser environment,
- * captures all console.error / console.warn calls during startup,
- * and asserts that no unexpected errors occurred.
+ * The test boots a full Phaser game in a browser environment, captures all
+ * console.error / console.warn calls during startup, and asserts that no
+ * unexpected errors occurred.
+ *
+ * This file was extracted from the core `tableau-card-engine` repo, where it
+ * also covered the Golf and Beleaguered Castle example games. Those games do
+ * not ship in the Main Street repo (see MS-0MUTU19SF007791K: the stale
+ * `../../example-games/*` and `../helpers/waitForScene` imports left the file
+ * unloadable), so only the Main Street boot coverage is retained here.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { page } from '@vitest/browser/context';
-import { waitForScene } from '../helpers/waitForScene';
+import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { destroyGame } from '../main-street/helpers/main-street-tutorial-e2e';
 
 const SCENE_LOAD_TIMEOUT = 30_000;
@@ -69,50 +75,6 @@ async function bootMainStreetGame(): Promise<Phaser.Game> {
   }
 
   // Extra settle time for SVG rasterisation, render loop, and post-prewarm refresh
-  await new Promise((r) => setTimeout(r, 500));
-
-  return newGame;
-}
-
-/** Boot a Golf game and wait for the scene to start. */
-async function bootGolfGame(): Promise<Phaser.Game> {
-  cleanDom();
-  createContainer();
-
-  const { createGolfGame } = await import(
-    '../../example-games/golf/createGolfGame'
-  );
-
-  const newGame = createGolfGame({
-    type: Phaser.CANVAS,
-    parent: 'game-container',
-    width: 800,
-    height: 600,
-  });
-
-  await waitForScene(newGame, 'GolfScene', SCENE_LOAD_TIMEOUT);
-  await new Promise((r) => setTimeout(r, 500));
-
-  return newGame;
-}
-
-/** Boot a Beleaguered Castle game and wait for the scene to start. */
-async function bootBeleagueredCastleGame(): Promise<Phaser.Game> {
-  cleanDom();
-  createContainer();
-
-  const { createBeleagueredCastleGame } = await import(
-    '../../example-games/beleaguered-castle/createBeleagueredCastleGame'
-  );
-
-  const newGame = createBeleagueredCastleGame({
-    type: Phaser.CANVAS,
-    parent: 'game-container',
-    width: 800,
-    height: 600,
-  });
-
-  await waitForScene(newGame, 'BeleagueredCastleScene', SCENE_LOAD_TIMEOUT);
   await new Promise((r) => setTimeout(r, 500));
 
   return newGame;
@@ -193,35 +155,5 @@ describe('Main Street startup — no console errors', () => {
     });
 
     assertNoUnexpectedErrors('MainStreet');
-  });
-});
-
-describe('Golf startup — no console errors', () => {
-  beforeEach(() => setupConsoleSpies());
-  afterEach(async () => teardown());
-
-  it('starts without errors', async () => {
-    game = await bootGolfGame();
-
-    await page.screenshot({
-      path: `__screenshots__/golf-no-console-errors/startup.png`,
-    });
-
-    assertNoUnexpectedErrors('Golf');
-  });
-});
-
-describe('Beleaguered Castle startup — no console errors', () => {
-  beforeEach(() => setupConsoleSpies());
-  afterEach(async () => teardown());
-
-  it('starts without errors', async () => {
-    game = await bootBeleagueredCastleGame();
-
-    await page.screenshot({
-      path: `__screenshots__/beleaguered-castle-no-console-errors/startup.png`,
-    });
-
-    assertNoUnexpectedErrors('BeleagueredCastle');
   });
 });

@@ -91,7 +91,7 @@ function partitionIntoWeeks() {
 }
 
 describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
-  it('has exactly 25 unified steps after the Day 2/4/8 fixes and the favour/bookshop merge', () => {
+  it('has exactly 25 unified steps after the Day 2/4 fixes, the favour/bookshop merge, and the T22 removal', () => {
     expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25);
   });
 
@@ -117,12 +117,14 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
     ).toEqual([]);
   });
 
-  it('MS-0MT3JK16W006A66P: every day spends exactly one action (no day closes with an unused action)', () => {
-    // Producer review rejected the original flow because the free Community
-    // Favour landed on its own day that then ended without spending the day's
-    // action. The favour day now also places the Bookshop (T16) before ending
-    // (T17), so every day has exactly one consuming action.
+  it('every day spends exactly one action (T22 banking day removed by MS-0MV4F04NN007H3DB)', () => {
+    // Producer review (2026-10-04) rejected a day that ended without spending
+    // its action: the free Community Favour day also places the Bookshop
+    // (T16) before ending (T17). The former T22 banking day was the single
+    // intentional exception; it has been removed, so now *every* day has
+    // exactly one consuming action.
     const days = partitionIntoWeeks();
+    expect(days.some((d) => d.steps.some((s) => s.id === 'T22'))).toBe(false);
     const violations: string[] = [];
     for (const day of days) {
       const consumers = day.steps.filter(
@@ -140,6 +142,31 @@ describe('Tutorial action economy (CG-0MTNMBX5Z002U0MH)', () => {
         ? `Days without exactly one spent action:\n${violations.join('\n')}`
         : undefined,
     ).toEqual([]);
+  });
+
+  it('MS-0MV4F04NN007H3DB: no end-turn leaves a spare action, so the banking hint is not triggered during the tutorial', () => {
+    // Simulate the action economy (mirrors MainStreetEngine.consumeAction +
+    // executeWeekStart banking). With the T22 banking day removed, every
+    // end-turn should occur with actionsRemaining === 0, the exact negation of
+    // the condition `shouldTriggerBankingHint` gates on (actionsRemaining > 0).
+    let actionsRemaining = 1;
+    let bankedActions = 0;
+    const spareAtEndTurn: { id: string; actions: number }[] = [];
+    for (const step of UNIFIED_TUTORIAL_STEPS) {
+      if (step.requiredAction === 'end-turn') {
+        spareAtEndTurn.push({ id: step.id, actions: actionsRemaining });
+        const bankable = Math.min(actionsRemaining, 1);
+        bankedActions = Math.min(2, bankedActions + bankable);
+        actionsRemaining = 1 + bankedActions;
+        continue;
+      }
+      if (step.gate === 'action' && consumesAction(step.requiredAction)) {
+        actionsRemaining -= 1;
+        bankedActions = Math.max(0, bankedActions - 1);
+      }
+    }
+    expect(spareAtEndTurn.map((e) => e.id)).toEqual(['T6', 'T8', 'T11', 'T14', 'T17', 'T19', 'T21']);
+    expect(spareAtEndTurn.filter((e) => e.actions > 0)).toEqual([]);
   });
 
   it('MS-0MT3JK16W006A66P: the Community Favour is followed by the Bookshop placement before the day ends', () => {

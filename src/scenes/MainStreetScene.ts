@@ -263,6 +263,8 @@ export class MainStreetScene extends CardGameScene {
   /** When true, `refreshLog` suppresses rendering of new entries so they
    * only appear after the upcoming/phase UI has been displayed to the player.
    * Cleared in `finalizeTurn` after `startTurnPhase` completes.
+   * Also reset to `false` on scene creation (`createScene`) so a deferral left
+   * set across a scene restart cannot blank the log (MS-0MV14JDUG000E1V6).
    * (MS-0MURBOD2E009SOM2) */
   public logDeferredUntilPhaseComplete = false;
   /** The index of the first entry displayed in the current log window (for windowed rendering). */

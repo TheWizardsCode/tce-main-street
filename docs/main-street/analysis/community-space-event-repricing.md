@@ -147,9 +147,13 @@ Investment events sorted by total ROI:
 | Art Sale | 500 | 350 | 0.70× | 1.00× | Borderline → fair |
 | Festival Season | 700 | 500 | 0.79× | 1.10× | Improved to good |
 
-> **Note:** The three community spaces getting running costs (Playground,
-> Town Fountain, Community Shelter) will need re-pricing once
-> MS-0MUMC6IVF0098WRL adds ongoing costs.
+> **Note:** The three community spaces (Playground, Town Fountain, Community
+> Shelter) gained their running costs in MS-0MUMC6IVF0098WRL: Playground 20,
+> Town Fountain 25 and Community Shelter 30 coins/turn. The re-pricing above
+> (MS-0MUR9IN7L0004TO5) was computed as if these cards remained free to run; the
+> running cost further increases their net drain and is surfaced on each card's
+> tooltip and cash line. All eight shipped community spaces now carry a
+> non-zero `ongoingCost`.
 
 ### Events excluded from adjustment
 

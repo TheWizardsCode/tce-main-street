@@ -98,6 +98,79 @@ export interface Challenge extends ChallengeDefinition<MainStreetState> {
 export interface ActiveChallenge extends ActiveChallengeRecord<MainStreetState> {
   /** The challenge template (narrowed to Main Street's Challenge type). */
   readonly challenge: Challenge;
+  /**
+   * The seat that completed this challenge, attributed on first completion
+   * (MS-0MUWNTJIK009O6BZ, Q1 = B). `null` when the run has no seat context
+   * (single-player / legacy); `undefined` while the challenge is incomplete.
+   *
+   * `completed` remains the single source of truth for completion — this field
+   * is written once, alongside it, and never reassigned (first-write wins).
+   */
+  completedBySeatId?: number | null;
+}
+
+/**
+ * Minimal seat context needed to decide whether a completion may be credited
+ * to the human seat. Structurally satisfied by {@link MainStreetState} and by
+ * the celebration scene's lightweight state surface.
+ */
+export interface ChallengeSeatContext {
+  players?: ReadonlyArray<{ playerId?: number; controller?: string }> | null;
+}
+
+/**
+ * Whether `seatId` is the human-controlled seat for presentation credit
+ * (celebration, HUD, Steam achievements).
+ *
+ * Returns `true` for single-player / legacy runs (fewer than two seats, or no
+ * seat array at all): challenge presentation is run-global and unchanged. In
+ * competitive mode it returns `true` only when `seatId` resolves to the
+ * human-controlled seat (`controller === 'human'`). An unknown or
+ * unattributed seat id (`null` / `undefined`, or out of range) is never the
+ * human seat in competitive mode, so a legacy completion is credited to no
+ * seat (MS-0MUWNTJIK009O6BZ, Q3 = A).
+ *
+ * Legacy seats without a `controller` fall back to seat 0 = human, matching
+ * the save-load backfill and `buildCompetitiveScoreboard`.
+ *
+ * @param state  State carrying the competitive seat records.
+ * @param seatId The seat id to test (a completion's `completedBySeatId` or
+ *               the acting seat id).
+ * @returns Whether the completion may be credited to the human seat.
+ */
+export function isHumanSeatCredit(
+  state: ChallengeSeatContext,
+  seatId: number | null | undefined,
+): boolean {
+  const players = state.players ?? [];
+  if (players.length <= 1) return true;
+  if (typeof seatId !== 'number' || seatId < 0 || seatId >= players.length) return false;
+  const controller =
+    players[seatId]?.controller ?? (players[seatId]?.playerId === 0 ? 'human' : 'ai');
+  return controller === 'human';
+}
+
+/**
+ * Counts the challenges credited to the human seat for HUD presentation.
+ *
+ * Single-player / legacy runs return the run-global completed count, keeping
+ * their behaviour unchanged. Competitive runs count only the completed
+ * challenges attributed to the human seat via
+ * `ActiveChallenge.completedBySeatId` (MS-0MUWNTJIK009O6BZ, Q3 = A).
+ *
+ * @param state Current game state (read-only).
+ * @returns The number of completions the human seat may be shown as having.
+ */
+export function countChallengesCreditedToHumanSeat(state: MainStreetState): number {
+  const players = state.players ?? [];
+  if (players.length <= 1) return state.challengesCompleted.length;
+  const humanId = players.findIndex(
+    p => (p.controller ?? (p.playerId === 0 ? 'human' : 'ai')) === 'human',
+  );
+  if (humanId < 0) return 0;
+  return (state.activeChallenges ?? []).filter(
+    ac => ac.completed && ac.completedBySeatId === humanId,
+  ).length;
 }
 
 // ── Evaluator Helpers ───────────────────────────────────────
@@ -419,19 +492,26 @@ export function selectChallenges(
  *   mapped persistent Steam achievement is unlocked (F7, CG-0MUNC7FK5001T5CP).
  *   The engine `AchievementSystem` is idempotent, so a completion fires at
  *   most one unlock per achievement per session, and the launcher persists
- *   unlocks across runs.
+ *   unlocks across runs. In competitive mode the bridge fires only when
+ *   `seatId` is the human seat (MS-0MUWNTJIK009O6BZ, Q3 = A); single-player /
+ *   legacy runs keep the run-global behaviour.
  *
  * Once a challenge is marked complete it stays complete (no revocation).
  *
  * @param activeChallenges  The active challenges to evaluate.
  * @param state             Current game state (mutated in-place: challengesCompleted, activityLog, achievementSystem).
+ * @param seatId            The acting seat id in competitive mode, or `null`
+ *                          (the default) for single-player / legacy runs.
+ *                          Recorded once on each newly completed challenge as
+ *                          `completedBySeatId` (MS-0MUWNTJIK009O6BZ).
  * @returns Array of challenge IDs that were newly completed this call.
  */
 export function evaluateChallenges(
   activeChallenges: ActiveChallenge[],
   state: MainStreetState,
+  seatId: number | null = null,
 ): string[] {
-  return genericEvaluateChallenges(
+  const newlyCompleted = genericEvaluateChallenges(
     activeChallenges,
     state,
     (challenge, s) => {
@@ -441,11 +521,29 @@ export function evaluateChallenges(
         text: `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`,
         type: 'gain',
       });
-      // Persistent achievement bridge (F7). The engine tolerates a throwing
-      // or absent sink, so this never affects gameplay.
-      s.achievementSystem?.onChallengeCompleted(challenge.id);
+      // Persistent achievement bridge (F7). Gated to the human seat in
+      // competitive mode so an AI completion never unlocks the human's
+      // achievement (MS-0MUWNTJIK009O6BZ, Q3 = A); single-player / legacy
+      // runs (no seat context) stay unchanged. The engine tolerates a
+      // throwing or absent sink, so this never affects gameplay.
+      if (isHumanSeatCredit(s, seatId)) {
+        s.achievementSystem?.onChallengeCompleted(challenge.id);
+      }
     },
   );
+
+  // Attribute each newly completed challenge to the acting seat. The generic
+  // evaluator marks `completed` before returning, so a challenge is only ever
+  // attributed on its first completion (first-write wins); later evaluations
+  // skip it and never overwrite this value.
+  for (const id of newlyCompleted) {
+    const record = activeChallenges.find(ac => ac.challenge.id === id);
+    if (record && record.completedBySeatId === undefined) {
+      record.completedBySeatId = seatId;
+    }
+  }
+
+  return newlyCompleted;
 }
 
 /**
@@ -465,7 +563,14 @@ export function evaluateChallenges(
  * @returns The challenge IDs newly completed by this action (usually `[]`).
  */
 export function evaluateChallengesAfterAction(state: MainStreetState): string[] {
-  const newlyCompleted = evaluateChallenges(state.activeChallenges, state);
+  // Attribute the completion to the currently acting seat in competitive
+  // mode; single-player / legacy states carry no `activePlayerId` and default
+  // to `null` (global attribution retained).
+  const newlyCompleted = evaluateChallenges(
+    state.activeChallenges,
+    state,
+    state.activePlayerId ?? null,
+  );
   state._newlyCompletedThisAction = newlyCompleted;
   return newlyCompleted;
 }

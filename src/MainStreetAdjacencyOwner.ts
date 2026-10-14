@@ -68,6 +68,50 @@ export function getSeatLabel(ownerId: number): string {
 }
 
 /**
+ * Canonical UI label for a seat, shared by every seat-identity surface.
+ *
+ * Seat 0 is the human player (`You`); every other seat is an AI opponent
+ * (`AI 1`, `AI 2`, ...). Unlike {@link getSeatLabel} — which is the
+ * possessive/message form (`the player`) used in ownership-rejection
+ * messages — this is the label form shown to the player (activity-log
+ * prefixes, scoreboard rows, game-over summaries). It is the single source
+ * of truth for the activity-log seat prefix (F3 of MS-0MUWNTN8W006C7EF).
+ *
+ * @param ownerId Owning player index.
+ * @returns `"You"` for seat 0, otherwise `"AI <ownerId>"`.
+ */
+export function getSeatDisplayLabel(ownerId: number): string {
+  return ownerId === 0 ? 'You' : `AI ${ownerId}`;
+}
+
+/**
+ * Resolves the persisted colour-blind-safe colour for a seat.
+ *
+ * The single source of truth for "which colour is this seat?" on every
+ * seat-identity surface (activity-log prefixes, competitive scoreboard/HUD and
+ * the owner-coloured placed-card border). Reads `PlayerRecord.colour`, which
+ * `createCompetitiveState` stamps from the shared Okabe–Ito palette and
+ * save/load round-trips, so a seat keeps one colour for the whole game.
+ *
+ * Returns `undefined` in single-player (no roster, or one seat) and for an
+ * unknown seat, leaving single-player visuals unchanged and letting callers
+ * fall back to their default styling.
+ *
+ * @param state   Current game state (read-only).
+ * @param ownerId Owning player index.
+ * @returns The seat's hex colour, or `undefined` when it has none.
+ */
+export function resolveSeatColour(
+  state: MainStreetState,
+  ownerId: number,
+): string | undefined {
+  const players = state.players;
+  // Single-player (no roster, or the lone human seat) has no seat colours.
+  if (!players || players.length <= 1) return undefined;
+  return players.find((player) => player.playerId === ownerId)?.colour;
+}
+
+/**
  * Access-control predicate for mutating a street slot (sell / close / upgrade
  * and any future cross-owner action).
  *

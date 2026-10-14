@@ -164,13 +164,13 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     expect(library).toBeTruthy();
 
     // Place the Library next to the Bookshop (slot 1 → slot 2 orthogonal;
-    // 8-way adjacency). Listed cost 700 (×100).
+    // 8-way adjacency). Listed cost 400 (×100).
     const coinsBeforeL = s.state.resourceBank.coins;
     await clickStreetSlot(scene, 2);
     await waitForOverlayVisible(5_000);
     expect(getStepIndex(scene)).toBe(20); // T21 End this turn
     expect(s.state.streetGrid[2]?.id.startsWith('cs-library')).toBe(true);
-    expect(s.state.resourceBank.coins).toBe(coinsBeforeL - 700);
+    expect(s.state.resourceBank.coins).toBe(coinsBeforeL - 400);
     await saveScreenshot('t20-t21');
   }, 30_000);
 

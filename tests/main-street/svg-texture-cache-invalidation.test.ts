@@ -1,6 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import { MainStreetSvgTextureManager } from '../../src/scenes/MainStreetSvgTextureManager';
+import { getActiveCsvChecksum, resetTemplatesToDefault, loadTemplatesFromCsv, getActiveCsvData } from '../../src/MainStreetCards';
+import { checkForCsvMismatchAndRegenerate } from '../../src/scenes/MainStreetLifecycleManagerCampaign';
+import { CARD_BACK_TEMPLATE } from '../../src/scenes/MainStreetConstants';
 
 function setDevicePixelRatio(value: number): void {
   const globalAny = globalThis as any;
@@ -188,5 +191,163 @@ describe('MainStreetSvgTextureManager cache invalidation', () => {
     expect(remove).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenNthCalledWith(1, 'ms_card_biz-a_100x50@1');
     expect(remove).toHaveBeenNthCalledWith(2, 'ms_card_evt-a_100x50@1');
+  });
+});
+
+/**
+ * Minimal scene shape used by the regeneration / fetch tests below. Only the
+ * fields the manager actually touches are provided.
+ */
+function makeSourceScene(overrides: Record<string, unknown> = {}): any {
+  return {
+    cardSvgSources: new Map<string, string>(),
+    cardSvgLoadPromise: Promise.resolve(),
+    textures: {
+      getTextureKeys: () => [],
+      exists: vi.fn(() => false),
+      remove: vi.fn(),
+    },
+    ...overrides,
+  };
+}
+
+/** Counts manager "Regenerated … card SVGs" log lines on a console.info spy. */
+function countRegeneratedLogs(spy: { mock: { calls: unknown[][] } }): number {
+  return spy.mock.calls.filter((call) => String(call[0]).includes('Regenerated')).length;
+}
+
+describe('MainStreetSvgTextureManager single-regeneration contract', () => {
+  beforeEach(() => {
+    // Keep the active CSV at the bundled default so the memo key is stable
+    // regardless of ordering with other test files.
+    resetTemplatesToDefault();
+  });
+
+  it('regenerates once per CSV checksum and treats a second call as a cheap no-op', () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+    const manager = new MainStreetSvgTextureManager(scene);
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const first = manager.regenerateSvgSourcesFromCsv();
+      const second = manager.regenerateSvgSourcesFromCsv();
+
+      // First call runs the full generation pass…
+      expect(first).toBeGreaterThan(0);
+      // …the second call is memoised and performs no generation.
+      expect(second).toBe(0);
+      // …and logs the regeneration exactly once (AC1).
+      expect(countRegeneratedLogs(infoSpy)).toBe(1);
+    } finally {
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('re-runs regeneration when the active CSV checksum changes', () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+    const manager = new MainStreetSvgTextureManager(scene);
+
+    const first = manager.regenerateSvgSourcesFromCsv();
+    expect(first).toBeGreaterThan(0);
+
+    // Simulate a CSV swap by reloading a checksum-distinct, but structurally
+    // valid, copy of the active CSV (append a newline). The memo must notice
+    // the changed checksum and re-run the generation pass, then restore the
+    // default so other tests are unaffected.
+    const originalCsv = getActiveCsvData();
+    const bundledChecksum = getActiveCsvChecksum();
+    loadTemplatesFromCsv(originalCsv + '\n');
+    try {
+      expect(getActiveCsvChecksum()).not.toBe(bundledChecksum);
+      const afterChange = manager.regenerateSvgSourcesFromCsv();
+      expect(afterChange).toBeGreaterThan(0);
+    } finally {
+      resetTemplatesToDefault();
+      // Sanity: the default checksum is restored.
+      expect(getActiveCsvChecksum()).toBe(bundledChecksum);
+    }
+  });
+
+  it('does not overwrite populated cardSvgSources entries when static SVG fetches resolve (AC2)', async () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+    const csvFreshBakery = '<svg id="csv-bakery">Bakery from CSV</svg>';
+    scene.cardSvgSources.set('biz-bakery', csvFreshBakery);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((url: string) => Promise.resolve({
+      ok: true,
+      text: () => Promise.resolve(`<svg>static ${url}</svg>`),
+    })) as any;
+
+    try {
+      const manager = new MainStreetSvgTextureManager(scene);
+      manager.loadCardSvgSources();
+      await scene.cardSvgLoadPromise;
+
+      // A pre-populated entry must survive the late-resolving static fetch.
+      expect(scene.cardSvgSources.get('biz-bakery')).toBe(csvFreshBakery);
+      // The non-CSV card back is still fetched and stored (guard is
+      // template-agnostic — it only skips already-present keys).
+      expect(scene.cardSvgSources.get(CARD_BACK_TEMPLATE)).toContain('static');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps CSV-fresh sources after the async fetch chain completes (AC3)', async () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.resolve({
+      ok: true,
+      text: () => Promise.resolve('<svg>static stale source</svg>'),
+    })) as any;
+
+    try {
+      const manager = new MainStreetSvgTextureManager(scene);
+      manager.loadCardSvgSources();
+      const csvCount = manager.regenerateSvgSourcesFromCsv();
+      expect(csvCount).toBeGreaterThan(0);
+
+      await scene.cardSvgLoadPromise;
+
+      // CSV templates must not have been clobbered by the static fetches.
+      const bakery = scene.cardSvgSources.get('biz-bakery');
+      expect(bakery).toBeDefined();
+      expect(bakery).not.toBe('<svg>static stale source</svg>');
+      expect(bakery).toContain('Bakery');
+      // The non-CSV card back remains populated.
+      expect(scene.cardSvgSources.get(CARD_BACK_TEMPLATE)).toBeDefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('mismatch path does not re-run a full generation pass when sources are already fresh (AC5)', async () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+    const manager = new MainStreetSvgTextureManager(scene);
+    scene.msSvgTextureManager = manager;
+
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      manager.regenerateSvgSourcesFromCsv();
+      expect(countRegeneratedLogs(infoSpy)).toBe(1);
+
+      // A saved checksum that differs from the current CSV triggers the
+      // mismatch path — but the sources are already fresh for the active CSV,
+      // so regeneration is a memoised no-op.
+      await checkForCsvMismatchAndRegenerate({ scene } as any, 'a-different-saved-checksum');
+
+      expect(countRegeneratedLogs(infoSpy)).toBe(1);
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 });

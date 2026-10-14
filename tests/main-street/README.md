@@ -53,6 +53,49 @@ These tests serve as the regression oracle during migration.
   `GymAudioFeedback.test.ts`).
 - Browser-level UI rendering of the market is covered by separate layout tests.
 
+## Activity Log rendering tests
+
+The Activity Log has three complementary suites:
+
+- `activity-log.test.ts` (unit) — log entry content, order and classification.
+- `activity-log-deferred-rendering.test.ts` (unit) — the deferred-render timing
+  contract (MS-0MURBOD2E009SOM2): entries accumulated during end-of-turn closing
+  render only after the upcoming/phase UI.
+- `activity-log-rendering.browser.test.ts` (browser) — real `MainStreetScene`
+  scroll bounds, auto-scroll and content regression coverage, including the
+  blank-log restart repro for MS-0MV14JDUG000E1V6.
+
+Browser tests must be run **explicitly**, because `npm test` runs only the
+`unit` Vitest project — `*.browser.test.ts` files are excluded from CI:
+
+```bash
+npx vitest run --project browser tests/main-street/activity-log-rendering.browser.test.ts
+```
+
+Assertion-helper note: a Phaser `Text` game object stores its rendered string in
+`.text` directly. Use `renderedLogTexts(scene)` (which filters to `Text` objects
+and reads `.text`); the older helper read that property twice, which is always
+`undefined` and silently verified nothing.
+
+Deferral contract (MS-0MURBOD2E009SOM2 / MS-0MV14JDUG000E1V6): `refreshLog`
+suppresses rendering while `logDeferredUntilPhaseComplete` is set so closing
+entries appear after the phase UI. The flag is scene-instance state and is reset
+by `createScene()`, so an interrupted closing can never leave the log blank
+across a scene restart.
+
+## Boot modals in browser tests
+
+Every browser suite that boots the real `MainStreetScene` and then dispatches
+synthetic pointer events (`mousedown`/`mouseup`, drags) must dismiss the
+blocking pre-game modals first by calling `dismissBootModals(scene)` from
+[`helpers/bootModals.ts`](helpers/bootModals.ts) after `waitForScene`. The
+tutorial offer is pre-skipped in test setup, so the boot flow proceeds to the
+"New Game" mode selector: a full-screen interactive backdrop (depth 200) that
+hit-tests above the street slots under Phaser's `topOnly` input mode. Until it
+is dismissed, a synthetic click on a slot is absorbed by the backdrop and
+`onSlotClick` is never reached. This was the root cause of the
+`click-place.browser.test.ts` regression (MS-0MV1HARL5007KCAU).
+
 ## Layout regression maintenance
 
 The browser test `MainStreetLayoutAnchors.browser.test.ts` asserts explicit numeric bounds for:

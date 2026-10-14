@@ -17,6 +17,7 @@ import { deserializeMainStreetState, setupMainStreetGame } from '../MainStreetSt
 import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
 import { createStateFromNewGameSelection, type NewGameSelection } from './MainStreetNewGameSelection';
 import { BrowserStatsStorageAdapter, loadStats, saveStats, updateStatsAfterRun } from '../StatsDomain';
+import { BrowserLocalStorageAdapter, loadTutorialState, rearmBankingHintForNewGame, saveTutorialState } from '../TutorialState';
 import type { TutorialVisibilityOptions } from '../TutorialState';
 import type { MainStreetLifecycleManagerContext } from './MainStreetLifecycleManagerContext';
 
@@ -46,25 +47,17 @@ export function loadCampaignAndSetup(lmCtx: MainStreetLifecycleManagerContext): 
     // the CSV mismatch check has a chance to run (see CG-0MRH36Z6800065JC).
     // Texture cache invalidation is handled atomically inside
     // prewarmVisibleCardTextures() — per-key remove-and-rasterize.
+    //
+    // This is the single regeneration for the boot path
+    // (MS-0MUTU19SF007791K): regeneration is idempotent per active CSV
+    // checksum and loadCardSvgSources() will not overwrite an already-populated
+    // source, so the late-resolving static SVG fetches can no longer clobber
+    // these CSV-fresh sources. The previous defensive re-apply chain on
+    // `cardSvgLoadPromise` is therefore unnecessary and removed.
     try {
       s.msSvgTextureManager?.regenerateSvgSourcesFromCsv();
     } catch (_) {
       // Non-fatal: scene continues with fetched SVGs if regeneration fails
-    }
-
-    // Re-apply regenerated SVGs after all SVG fetches complete. Individual
-    // fetch() callbacks from loadCardSvgSources() may overwrite the freshly
-    // regenerated SVGs in cardSvgSources if they resolve after the synchronous
-    // regeneration above. By chaining onto cardSvgLoadPromise, we ensure fresh
-    // CSV-based SVGs are present before prewarmVisibleCardTextures() runs.
-    if (s.cardSvgLoadPromise) {
-      s.cardSvgLoadPromise = s.cardSvgLoadPromise.then(() => {
-        try {
-          s.msSvgTextureManager?.regenerateSvgSourcesFromCsv();
-        } catch (_) {
-          // Non-fatal: scene continues with fetched SVGs if re-generation fails
-        }
-      });
     }
 
     // Determine tutorial visibility options from scene state
@@ -264,6 +257,15 @@ export async function checkForCsvMismatchAndRegenerate(lmCtx: MainStreetLifecycl
 export function applyNewGameSelection(lmCtx: MainStreetLifecycleManagerContext, selection: NewGameSelection): void {
 
     const s = lmCtx.scene;
+    // A new playthrough re-arms the one-shot banking hint: the persisted
+    // `bankingHintShownAt` flag must not leak across games in the same browser
+    // (MS-0MV79JQ4H003E6BH). Cleared before the single-player early-return so
+    // every mode benefits. The hint still only fires once per run after this.
+    try {
+      const current = loadTutorialState(new BrowserLocalStorageAdapter());
+      void saveTutorialState(new BrowserLocalStorageAdapter(), rearmBankingHintForNewGame(current));
+    } catch (_) { /* hint re-arm must never block game start */ }
+
     // Single-player keeps the existing state byte-for-byte (AC5 — no
     // behavioural change); only the competitive selection rebuilds the state.
     if (selection.mode !== 'competitive') return;

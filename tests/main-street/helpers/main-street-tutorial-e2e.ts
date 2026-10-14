@@ -349,7 +349,7 @@ async function attemptBoot(cycleNumber: number, attempt: number): Promise<Phaser
  * (unlike deleteDatabase). Abandoned (race-capped) wipes leave only an idle
  * connection in this context, which is torn down with the session.
  */
-async function clearStaleMainStreetSaves(): Promise<void> {
+export async function clearStaleMainStreetSaves(): Promise<void> {
   const deadline = () =>
     new Promise<void>((resolve) => setTimeout(resolve, 5000));
   try {
@@ -887,8 +887,15 @@ export async function clickStreetSlotExpectRejected(
 
 /**
  * End the current turn and advance the tutorial.
+ *
+ * `autoAdvance` (default true) mirrors the historical helper behaviour:
+ * after the end-turn lands, if the current step is still an end-turn step it
+ * advances it directly. (Before MS-0MV4F04NN007H3DB the T21 boundary needed
+ * `false` to avoid auto-skipping the T22 banking day; T22 is gone, so callers
+ * may keep passing `false` there — the next step, T23, is driven by its own
+ * play-event action rather than an end-turn.)
  */
-export async function clickEndTurn(scene: Phaser.Scene): Promise<void> {
+export async function clickEndTurn(scene: Phaser.Scene, autoAdvance = true): Promise<void> {
   const s = scene as any;
   if (s.uiPhase !== 'market') { s.uiPhase = 'market'; }
   const stepBefore = getStepIndex(scene);
@@ -904,7 +911,9 @@ export async function clickEndTurn(scene: Phaser.Scene): Promise<void> {
       s.state?.phase === 'MarketPhase',
     10_000,
   );
-  maybeAdvanceFromRequiredAction(scene, 'end-turn');
+  if (autoAdvance) {
+    maybeAdvanceFromRequiredAction(scene, 'end-turn');
+  }
   await new Promise((r) => setTimeout(r, 200));
 }
 

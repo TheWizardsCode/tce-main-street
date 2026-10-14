@@ -282,8 +282,13 @@ describe('AC2 — First-to-threshold win', () => {
     expect(s.competitiveWinnerId).toBe(1);
   });
 
-  it('updateCompetitiveScores recomputes per-player scores (coins+rep+bonus) and syncs finalScore to max', () => {
+  it('updateCompetitiveScores recomputes per-player scores (coins+rep+per-seat bonus) and syncs finalScore to max', () => {
     const s = comp('ac2-scores', 2);
+    // Seat 0 completed one challenge; seat 1 completed none. Per-seat scoring
+    // credits the bonus only to the completing seat (MS-0MUWNTJIK009O6BZ).
+    s.activeChallenges = [
+      { challenge: { id: 'c1' }, completed: true, completedBySeatId: 0 } as any,
+    ];
     s.challengesCompleted = ['c1'];
     const bonus = s.config.challengeBonusPoints;
     s.players![0].coins = 10;
@@ -292,7 +297,7 @@ describe('AC2 — First-to-threshold win', () => {
     s.players![1].reputation = 2;
     updateCompetitiveScores(s);
     expect(s.players![0].score).toBe(10 + 5 + bonus);
-    expect(s.players![1].score).toBe(3 + 2 + bonus);
+    expect(s.players![1].score).toBe(3 + 2 + 0);
     expect(s.finalScore).toBe(Math.max(s.players![0].score, s.players![1].score));
   });
 

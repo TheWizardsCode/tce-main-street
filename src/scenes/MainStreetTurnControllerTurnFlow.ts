@@ -129,20 +129,26 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.instructionText.setText('Processing end of turn...');
     s.refreshActionButtons();
 
-    // ── Banking hint trigger (CG-0MT3JK16W006A66P) ────────────────
-    // Contextual one-shot hint: when the tutorial is NOT active, the player
-    // ends a turn with at least one unused action (a bankable action), and
-    // the hint has not yet been shown, remember the candidate and fire the
-    // HUD-highlighting hint AFTER the non-blocking `processEndOfTurn` runs.
-    // The flag is persisted via TutorialState so a restart does not replay
-    // it; legacy saves default to "not shown" (AC2).
+    // ── Banking hint trigger (MS-0MT3JK16W006A66P) ────────────────
+    // Contextual one-shot hint: the first time the player ends a turn with
+    // at least one unused action (a bankable action) and the hint has not
+    // yet been shown, remember the candidate and fire the HUD-highlighting
+    // hint AFTER the non-blocking `processEndOfTurn` runs. The trigger is
+    // not scoped to the tutorial: it fires both during and after the
+    // tutorial, so a player who never banks during the scripted run still
+    // sees the lesson the first time they bank in normal play (producer
+    // clarification 2026-10-13). The flag is persisted via TutorialState so
+    // a restart does not replay it; legacy saves default to "not shown"
+    // (AC2).
+    //
+    // When the hint fires mid-tutorial the end-turn step completion is
+    // deferred (see `finishTurnPresentation`) so the hint overlay can be
+    // dismissed back into the flow instead of dead-ending it.
     let pendingBankingHint = false;
     try {
-      const tut = (s as any).tutorialController as any;
       const ts = loadTutorialState(new BrowserLocalStorageAdapter());
       if (
         shouldTriggerBankingHint({
-          tutorialActive: tut?.isActive === true,
           actionsRemaining: s.state.actionsRemaining,
           alreadyShown: hasSeenBankingHint(ts),
         })
@@ -337,7 +343,10 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // refresh fully once the choreography finishes.
     // Defer log rendering until after startTurnPhase has displayed
     // upcoming cards (MS-0MURBOD2E009SOM2). The deferred flag suppresses
-    // the log render; it is cleared in finalizeTurn after startTurnPhase.
+    // the log render; it is cleared in finalizeTurn after startTurnPhase,
+    // and reset unconditionally by createScene() on every scene creation so
+    // an interrupted closing cannot leave the log blank across a restart
+    // (MS-0MV14JDUG000E1V6).
     s.logDeferredUntilPhaseComplete = true;
     if (s.incomeCollectionActive) {
       s.msRenderer.refreshAllExceptStreet();
@@ -347,8 +356,16 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
 
     // Tutorial: mark end-turn step complete if active. Unchanged — the
     // step completes when the turn action resolves, not when the
-    // closing presentation finishes.
-    (s.msLifecycleManager as any).onTutorialActionComplete?.('end-turn' as TutorialActionType);
+    // closing presentation finishes. However, if a banking hint is pending
+    // during the tutorial, defer step completion until the hint is dismissed
+    // (MS-0MT3JK16W006A66P) — the hint overlay advances the tutorial on
+    // dismiss so the player is not left stuck on an untaught step.
+    const inTutorialWithBankingHint =
+      pendingBankingHint &&
+      (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
+    if (!inTutorialWithBankingHint) {
+      (s.msLifecycleManager as any).onTutorialActionComplete?.('end-turn' as TutorialActionType);
+    }
 
     // ── Closing presentation → day start ─────────────────────────
     // Advance the day once the closing presentation is done: present
@@ -654,7 +671,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
 
     // Tutorial gating: only allow play-event if it's the required action or
-    // the tutorial is inactive (T22 "Triggering Events" uses this gate).
+    // the tutorial is inactive (T23 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);
     if (check && !check.allowed) {
       s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');

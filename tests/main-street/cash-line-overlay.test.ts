@@ -262,6 +262,33 @@ describe('AC4: Ongoing cost included in overlay pipeline', () => {
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('-40');
   });
+
+  it('Playground card shows its real 20/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const playground = createCommunitySpaceDeck(1).find(c => c.name === 'Playground')!;
+    expect(playground.ongoingCost).toBe(20);
+
+    const spec = buildUpgradeOverlaySpec(playground, WIDTH, HEIGHT);
+    expect(spec.cashLine).not.toBeNull();
+    expect(spec.cashLine!.text).toBe('-20');
+  });
+
+  it('Town Fountain card shows its real 25/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const fountain = createCommunitySpaceDeck(1).find(c => c.name === 'Town Fountain')!;
+    expect(fountain.ongoingCost).toBe(25);
+
+    const spec = buildUpgradeOverlaySpec(fountain, WIDTH, HEIGHT);
+    expect(spec.cashLine).not.toBeNull();
+    expect(spec.cashLine!.text).toBe('-25');
+  });
+
+  it('Community Shelter card shows its real 30/turn running cost (MS-0MUMC6IVF0098WRL)', () => {
+    const shelter = createCommunitySpaceDeck(1).find(c => c.name === 'Community Shelter')!;
+    expect(shelter.ongoingCost).toBe(30);
+
+    const spec = buildUpgradeOverlaySpec(shelter, WIDTH, HEIGHT);
+    expect(spec.cashLine).not.toBeNull();
+    expect(spec.cashLine!.text).toBe('-30');
+  });
 });
 
 // ── AC5: Reputation overlay unchanged ─────────────────────────
@@ -292,13 +319,13 @@ describe('Structural: incomeText replaced by cashLine', () => {
     expect(spec).toHaveProperty('cashLine');
   });
 
-  it('base card with income: cashLine present, but no levelBadge/upgradeBorder', () => {
+  it('base card with income: cashLine present, but no levelBadge/levelAccent', () => {
     const biz = makeBusiness({ level: 0, baseIncome: 2, ongoingCost: 0 });
     const spec = buildUpgradeOverlaySpec(biz, WIDTH, HEIGHT);
     expect(spec.cashLine).not.toBeNull();
     expect(spec.cashLine!.text).toBe('+2');
     expect(spec.levelBadge).toBeNull();
-    expect(spec.upgradeBorder).toBeNull();
+    expect(spec.levelAccent).toBeNull();
     expect(spec.reputationText).toBeNull();
   });
 });

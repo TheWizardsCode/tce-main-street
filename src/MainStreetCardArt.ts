@@ -17,6 +17,11 @@
  * indirection (upgrade duplication, event-category, staff role) is baked into
  * the generated `aliases` map so the public API stays unchanged.
  *
+ * Pack-aware resolution (F3, `MS-0MV26K321003MWO0`):
+ * {@link getCardArtDataUriForCard} consults the pack-art registry by card id
+ * before the base map, so a pack's bespoke faces render from its own assets
+ * and the base `card-art-map.json` is not a hidden pack dependency.
+ *
  * Resolution order:
  *   1. Explicit mapping alias (spelling variant, upgrade target-dup,
  *      event-category, staff-role).
@@ -27,6 +32,7 @@
  */
 
 import artMapJson from './card-art-map.json';
+import { getPackArtDataUri } from './MainStreetCardPackArt';
 
 interface CardArtMap {
   version: number;
@@ -95,6 +101,31 @@ export function hasDedicatedCardArt(cardName: string): boolean {
  */
 export function getCardArtDataUri(cardName: string): string {
   return MAP.art[resolveCardArtName(cardName)];
+}
+
+/**
+ * Return the art data URI for a card, preferring pack-supplied art over the
+ * base name-keyed map.
+ *
+ * Resolution order (F3, `MS-0MV26K321003MWO0`):
+ *   1. The pack-art registry, by **card id** (Option A: asset stem = card id).
+ *   2. The base name-keyed art map (existing behaviour).
+ *   3. The generic `Fallback` sprite.
+ *
+ * Because the pack lookup is keyed by card id and only a pack's own card ids
+ * are registered, a base card is never shadowed by a pack entry.
+ *
+ * @param cardId - The card's stable id (the pack asset filename stem).
+ * @param cardName - The card's name field (the base-map key).
+ * @returns A self-contained data URI suitable for an SVG `<image href>`.
+ */
+export function getCardArtDataUriForCard(
+  cardId: string,
+  cardName: string,
+): string {
+  const packArt = getPackArtDataUri(cardId);
+  if (packArt) return packArt;
+  return getCardArtDataUri(cardName);
 }
 
 /** Number of sprites that have generated art (mostly for diagnostics). */

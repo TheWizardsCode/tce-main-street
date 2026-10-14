@@ -903,12 +903,13 @@ mc-balance-002,greedy,medium,loss,bankruptcy,67,0,7,4,7,0
 
 ### 7.4 Difficulty Presets (`MainStreetDifficulty.ts`)
 
-**Current capabilities (re-tuned by CG-0MSP26Q5N002EH8P, 2026-08-13):**
-- Easy: 10 starting coins, no turn limit, 120 win threshold, 0.5 synergy bonus/neighbor
-- Medium: 6 starting coins, no turn limit, 150 win threshold, 0.35 synergy bonus/neighbor
-- Hard: 4 starting coins, no turn limit, 180 win threshold, 0.25 synergy bonus/neighbor
+**Current capabilities (re-tuned by CG-0MSP26Q5N002EH8P, 2026-08-13; win thresholds set by CG-0MT3J8FXG006RCOA and confirmed unchanged by MS-0MUR9IMXE0090WIV, 2026-10-09):**
+- Easy: 10 starting coins, no turn limit, 100 win threshold, 0.5 synergy bonus/neighbor
+- Medium: 6 starting coins, no turn limit, 120 win threshold, 0.35 synergy bonus/neighbor
+- Hard: 4 starting coins, no turn limit, 150 win threshold, 0.25 synergy bonus/neighbor
 
 > Turn limits are opt-in via explicit `maxTurns` (CG-0MSLXJCHH001DLIO); the harness caps runs itself.
+> The per-difficulty `winThreshold` values and the absence of a `maxTurns` cap were re-confirmed as the accepted design intent after the R2/AI re-tunes (MS-0MUR9IMXE0090WIV, producer decision A, 2026-10-09); the win-rate ladder holds (0.760 ≥ 0.665 ≥ 0.410). See [balancing-methodology.md](balancing-methodology.md#difficulty-lever-confirmation-ms-0mur9imxe0090wiv).
 
 **Integration:**
 - Balance reports should be filterable by difficulty.

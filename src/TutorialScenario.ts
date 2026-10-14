@@ -54,13 +54,15 @@
  * | T19 | End Turn + income (~392) | 392 | 0 | 1818 |
  * | T20 | Place Library (listed $700) | 0 | 700 | 1118 |
  * | T21 | End Turn + income (~100) | 100 | 0 | 1218 |
- * | T22 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
- * | T23+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
+ * | T23 | Play Local Festival (~+100 net) | 100 | 0 | 1318 |
+ * | T24+ | Confirm steps (no cost) | 0 | 0 | ≥ 1318 |
  *
  * MS-0MT3JK16W006A66P merged the former standalone Community-Favour day into
- * the Bookshop-placement day (T15 favour → T16 place → T17 end), so every day
- * that ends now spends its action. The income figures are approximate and
- * validated by the tutorial e2e/budget tests.
+ * the Bookshop-placement day (T15 favour → T16 place → T17 end). MS-0MV4F04NN007H3DB
+ * then removed the deliberate **banking day** (T22): the flow runs from T21
+ * straight to T23, so every day spends its action and the contextual banking
+ * hint is retained but not expected to fire. The income figures are approximate
+ * and validated by the tutorial e2e/budget tests.
  *
  * All placements are at listed cost because each follows an End Turn
  * (plan-ahead). The rep→coins Community Favour exchange teaches the
@@ -155,19 +157,19 @@ export interface TutorialScenario {
  * upg-garden) are no longer scenario-placed; upgrades may appear in the
  * line randomly but no tutorial step requires them.
  *
- * **Incident Deck (face-down, 7 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH):**
+ * **Incident Deck (face-down, 7 cards — CG-0MT53NXGZ004H5AE, CG-0MTNMBX5Z002U0MH, MS-0MV4F04NN007H3DB):**
  * The 25-step flow runs 8 days with 7 End Turns (T6, T8, T11, T14, T17, T19, T21),
  * so the deterministic deck holds exactly 7 incidents. All are budget-safe
  * on the tutorial street (no Food businesses are placed):
  *   - `evt-award` (Community Award, +200 reputation) ×4
- *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×3
+ *   - `evt-rainy` (Rainy Day, -100 coin per Food business → 0 here) ×4
  *
  * **Coin Budget:** 1200 starting coins; payments happen at play time
  * (cost-at-play, listed cost — every placement follows an End Turn, so no
  * same-turn premium is requested): Laundromat placement $400 (T7) + Bookshop
  * placement $300 (T16) + Library placement $700 (T20) + Local Festival play $300
- * (T22, net +100 with the two Culture cards) — all covered by 1200 + income
- * across the seven end-turn steps + the T15 Community Favour exchange.
+ * (T23, net +100 with the two Culture cards) — all covered by 1200 + income
+ * across the eight end-turn steps + the T15 Community Favour exchange.
  * RNG-independent. See the budget table in the module docs.
  */
 export const STANDARD_TUTORIAL_SCENARIO: TutorialScenario = {
@@ -261,8 +263,8 @@ export function createTutorialScenario(
     );
   }
   // The tutorial's 25-step flow spans 8 days with 7 End Turns (T6, T8, T11,
-  // T14, T17, T19, T21), so the scenario declares a deterministic incident card
-  // per resolution. INCIDENT_QUEUE_SIZE (the
+  // T14, T17, T19, T21), so the scenario declares a deterministic incident
+  // card per resolution. INCIDENT_QUEUE_SIZE (the
   // legacy face-down-queue size, still 2 for the real game) no longer constrains
   // the scripted scenario deck — the scenario's own list is authoritative.
 

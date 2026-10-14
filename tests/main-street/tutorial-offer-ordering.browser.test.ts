@@ -23,6 +23,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
+import { clearStaleMainStreetSaves } from './helpers/main-street-tutorial-e2e';
 
 /** Key used by TutorialState for the tutorial-offer eligibility flag. */
 const TUTORIAL_STATE_KEY = 'tce-main-street-tutorial-state';
@@ -50,6 +51,10 @@ function resetTutorialState(): void {
 async function bootGame(): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
   if (container) container.remove();
+
+  // Clear stale IndexedDB saves so that a previous test file's checkpoint
+  // never routes this boot into the resume path instead of the tutorial offer.
+  await clearStaleMainStreetSaves();
 
   container = document.createElement('div');
   container.id = 'game-container';
@@ -171,5 +176,52 @@ describe('tutorial offer boot ordering (browser)', () => {
     expect(scene.tutorialOfferModal?.isVisible).toBe(false);
     // The selector guard is set once it is presented for this boot.
     expect(scene.newGameSelectionMade).toBe(true);
+  }, 30_000);
+
+  it('clears a stale IndexedDB checkpoint and still shows the tutorial offer', async () => {
+    // Seeds a stale checkpoint via the game's own saveStore, destroys the
+    // game (leaving the checkpoint behind), then boots a new game and asserts
+    // that the pre-boot clearStaleMainStreetSaves() wipes it so the tutorial
+    // offer is shown instead of the resume overlay.
+
+    // 1. First boot to get access to the saveStore.
+    game = await bootGame();
+    const firstScene = game.scene.getScene('MainStreetScene') as MainStreetSceneSeams;
+    const saveStore = (firstScene as any)?.saveStore;
+
+    // 2. Persist a stale checkpoint using the game's own store.
+    if (saveStore?.save) {
+      await saveStore.save('run-checkpoint', 'main-street', 'turn-start', {
+        turn: 5,
+        state: { dummy: true },
+      } as any).catch(() => { /* IndexedDB may not be available — skip */ });
+    }
+
+    // 3. Destroy the game using the local destroyGame (which does NOT clear
+    //    IndexedDB) to leave the checkpoint behind.
+    destroyGame(game);
+    game = null;
+
+    // 4. Reset tutorial state and clear localStorage (standard pre-boot setup).
+    resetTutorialState();
+    try {
+      (window as any).localStorage?.clear();
+    } catch (_) {
+      // ignore
+    }
+
+    // 5. Second boot — clearStaleMainStreetSaves() inside bootGame() must
+    //    wipe the stale checkpoint so the tutorial offer is shown.
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as MainStreetSceneSeams;
+
+    // 6. Assert: tutorial offer is shown, NOT the resume overlay.
+    await waitForCondition(
+      () => scene.tutorialOfferModal?.isVisible === true,
+      5_000,
+      'tutorial offer modal visible after stale checkpoint cleared',
+    );
+    expect(scene.tutorialOfferModal?.isVisible).toBe(true);
+    expect(scene.newGameOverlay?.isVisible).toBe(false);
   }, 30_000);
 });

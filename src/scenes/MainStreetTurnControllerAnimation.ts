@@ -100,6 +100,23 @@ export interface ClosingPresentationOptions {
    * per-seat closing path replaces the shared host total with per-seat lines).
    */
   incomeSummary?: string;
+  /**
+   * When `true`, the presentation waits for a phased income choreography
+   * (`scene.incomeCollectionActive`) to finish collecting before it writes the
+   * completion text and advances, so the animation is never left running in
+   * the background while the next day starts. The wait is bounded by
+   * {@link incomeCollectionCapMs}. Defaults to `false`; single-player drives
+   * its own bounded advance outside the primitive.
+   */
+  waitForIncomeCollection?: boolean;
+  /**
+   * Bound (ms) for any deferred income-collection wait: both the incident
+   * pre-wait and the {@link waitForIncomeCollection} advance wait. Defaults
+   * to 16_000 (single-player parity); the competitive closing passes the
+   * global closing bound so a large roster can still complete its
+   * choreography before the day advances.
+   */
+  incomeCollectionCapMs?: number;
 }
 
 /**
@@ -199,13 +216,43 @@ export function presentTurnClosing(
     const summary = options.incomeSummary ?? closingSummary(result);
     if (summary) setInstruction(s, summary);
 
-    const finish = (): void => {
+    const incomeCapMs = options.incomeCollectionCapMs ?? 16_000;
+
+    const complete = (): void => {
       if (options.completionText) setInstruction(s, options.completionText);
       if (typeof options.holdMs === 'number' && options.holdMs > 0) {
         scheduleOrRun(s, options.holdMs, onComplete);
       } else {
         onComplete();
       }
+    };
+
+    const finish = (): void => {
+      // Bounded deferral (AC6): when the caller ran a phased income
+      // choreography, wait for it to finish collecting before advancing so the
+      // animation is never left running in the background while the next day
+      // starts. A safety cap forces the advance even if the flag is somehow
+      // never cleared, so the closing can never hang the game. A clock-less
+      // scene (headless) cannot advance the poll, so it proceeds immediately
+      // (the animator clears the flag when it cannot schedule).
+      if (
+        options.waitForIncomeCollection === true &&
+        s.incomeCollectionActive &&
+        typeof s.time?.delayedCall === 'function'
+      ) {
+        const startAt = (s.time?.now ?? 0) + incomeCapMs;
+        const waitForIncome = (): void => {
+          if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
+            scheduleOrRun(s, 250, waitForIncome);
+          } else {
+            s.incomeCollectionActive = false;
+            complete();
+          }
+        };
+        waitForIncome();
+        return;
+      }
+      complete();
     };
 
     const incident = result.incident;
@@ -238,7 +285,7 @@ export function presentTurnClosing(
     // the phases stay distinct and non-overlapping. Bounded by a safety cap so
     // the day can never stall (AC6).
     if (s.incomeCollectionActive) {
-      const startAt = (s.time?.now ?? 0) + 16_000;
+      const startAt = (s.time?.now ?? 0) + incomeCapMs;
       const startAfterIncome = (): void => {
         if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
           scheduleOrRun(s, 250, startAfterIncome);

@@ -362,27 +362,28 @@ void popTextOrIcon({
 - Reuse: `moveGameObject` + `SoundManager` + `popTextOrIcon`, `SFX_KEYS`
   (`COMMON_SFX_KEYS` convention); no new SFX keys or engine infrastructure.
 
-### Competitive per-seat closing presentation (MS-0MUXAQQON006XA6I)
+### Competitive phase-major closing presentation (MS-0MUXAQQON006XA6I)
 
 In competitive (human-vs-AI) play the shared competitive closing is presented
-**per seat** after the shared day resolves, instead of a single condensed
-text-only summary.
+**per seat, phase-major**, after the shared day resolves, instead of a single
+condensed text-only summary.
 
 - Trigger: `endCompetitiveTurnDay()` → `runCompetitiveClosing()` →
   `presentCompetitiveClosing()` (`MainStreetTurnControllerCompetitive.ts`).
-- Per-seat animation: when the closing surfaces authoritative per-owner income
-  (`TurnResult.playerIncome`, from `applyCompetitiveIncome`, non-eliminated
-  seats only, in seat order) the presentation calls
-  `MainStreetAnimator.animateIncomePhases(seat.income.phaseBreakdown.perSlotBreakdown)`
-  **once per seat** — the same phased choreography documented under
+- Phase-major animation: when the closing surfaces authoritative per-owner
+  income (`TurnResult.playerIncome`, from `applyCompetitiveIncome`,
+  non-eliminated seats only, in seat order) the presentation concatenates every
+  seat's `income.phaseBreakdown.perSlotBreakdown` in seat order and calls
+  `MainStreetAnimator.animateIncomePhases(combinedSlots)` **once** — the same
+  phased choreography documented under
   [End-of-turn income presentation](#end-of-turn-income-presentation-phased-coin-grid-animation-cg-0mt23o6w8003axwj)
-  (base → synergy → reputation → events → upcoming → collect) — using each
-  seat's own phase data. Seats are staggered by
-  `COMPETITIVE_CLOSING_SEAT_STAGGER_MS` so they play back-to-back rather than
-  overlapping. The engine has already applied each seat's deltas to its
-  `PlayerRecord`; the shared HUD's `incomeCollectionActive` gating preserves
-  the deferred-delta window (the competitive scoreboard is not refreshed
-  during the closing).
+  (base → synergy → reputation → events → upcoming → collect). `runIncomePhase`
+  walks the combined slot list per phase, so each phase plays for the human
+  seat, then AI 1, then AI 2 before the next phase begins — rather than one
+  full choreography per seat. The engine has already applied each seat's deltas
+  to its `PlayerRecord`; the shared HUD's `incomeCollectionActive` gating
+  preserves the deferred-delta window (the competitive scoreboard is not
+  refreshed during the closing).
 - Per-seat feedback text: the closing summary reports each seat's own income
   (`Player 1: +10 coins | Player 2: +7 coins`, built by
   `perSeatClosingSummary`), never the shared host total, which can differ from
@@ -393,11 +394,12 @@ text-only summary.
   the single shared incident reveal and the next-day advance cannot drift. The
   shared income line is suppressed (`incomeSummary: ''`) because the per-seat
   lines replace it.
-- Bounded / non-blocking (AC6): a global fast-forward bound
-  (`COMPETITIVE_CLOSING_MAX_TOTAL_MS`) clamps the per-seat stagger so a large
-  roster cannot stall the game — later seats start immediately and their
-  choreographies overlap rather than queueing indefinitely, and the day still
-  advances. With no per-owner data the condensed shared summary is kept.
+- Bounded / non-blocking (AC6): the primitive waits for the combined
+  choreography to finish collecting before the day advances
+  (`waitForIncomeCollection`), clamped to the global fast-forward bound
+  (`COMPETITIVE_CLOSING_MAX_TOTAL_MS`) so a large roster cannot stall the game
+  — once the bound is reached the closing stops waiting and advances the day.
+  With no per-owner data the condensed shared summary is kept.
 - Accessibility (reduced motion), replay and headless: the per-seat
   animations are skipped, the per-seat text is still shown and the day always
   advances.
@@ -584,6 +586,38 @@ text-only summary.
 - Reuse: `popTextOrIcon` + `getStreetSlotCenter`; no new engine
   infrastructure.
 
+### Card upgrade shader effect
+
+- Spec/renderer: the pure `shaderEffect` field in `buildUpgradeOverlaySpec()`
+  (`src/scenes/UpgradeOverlaySpec.ts`), drawn by `applyUpgradeOverlays()`
+  (`src/scenes/MainStreetRendererStreet.ts`).
+- Trigger: any upgraded business / community-space card (`level > 0`). Base
+  cards (level 0) render unchanged — no shader object is created.
+- Behaviour (reduced-motion OFF): the top-left upgrade accent carries a
+  Canvas-compatible **corner shard** (`ms-upgrade-shader`) — a translucent
+  right triangle filling the card's top-left quadrant with a gold → pale →
+  warm-white → gold gradient (sampled from the pure colour stops via
+  `sampleShaderGradient()`) and a moving white highlight band. A deterministic
+  sweep tween (`repeat: -1`, fixed duration/easing) drives a phase value whose
+  `onUpdate` redraws the shard, so the highlight travels seamlessly across it
+  (`wrapShaderPhase()` / `circularDistance()`). It works under `Phaser.CANVAS`
+  with no renderer change and adds no per-level texture-cache keys.
+  The warm-white foil stop is deliberate: the earlier shader reused the flat
+  accent's exact position and gold colour, so manual review saw no difference
+  (MS-0MUWNTQ5L0075Y38). The shard now measurably brightens the top-left
+  quadrant (browser test: mean luminance ~16.6 → ~34.5).
+- Behaviour (reduced-motion ON) and replay/headless: the same gradient renders
+  in its static form and no tween is created, so transcripts and headless CI
+  output are unchanged (gated by `shouldAnimateShaderEffect()`).
+- Accessibility: upgrade state is also carried by shape/position (the corner
+  shard and the `Lvl N` badge), so colour is never the sole carrier of meaning.
+  The shard is confined strictly to the top-left quadrant and never forms a
+  full-card stroke, so it coexists with the owner-coloured outer border (F4 of
+  MS-0MUWNTN8W006C7EF) and never masks the 64×64 left-art zone or the
+  right-hand text column.
+- Reuse: `applyUpgradeOverlays()` + Phaser `Graphics`/tween; presentation-only,
+  never mutates state, transcript or replay output.
+
 ### Sell demolition + refund coin fly
 
 - Helper: `MainStreetAnimator.animateSell()`.
@@ -716,8 +750,11 @@ text-only summary.
     `You` row from the shared wallet). A failing or eliminated seat carries a
     `Bankrupt`, `Reputation collapse` or `Eliminated` badge (cause before
     consequence; reputation collapse applies only after turn 1). The run's
-    challenges met follow below — challenges are run-global in the engine, so
-    they are shown once per run rather than per player.
+    challenges met follow below. In competitive mode the challenge summary is
+    **per seat** — each seat lists only the challenges it completed (the
+    completions credited to it via `ActiveChallenge.completedBySeatId`), while
+    single-player retains the historic run-global list shown once per run
+    (MS-0MUWNTJIK009O6BZ).
   - **Right "Summary" column:** the retained score breakdown (coins,
     reputation, challenges, final score), per-challenge details, tier-unlock
     notifications, current tier + campaign stats and the difficulty selector,
@@ -784,6 +821,121 @@ text-only summary.
   game state.
 - Reuse: `popTextOrIcon` + `SFX_KEYS.CLICK` (both already loaded); no new
   engine infrastructure.
+
+## Competitive seat colours (F1/F2, MS-0MUWNTN8W006C7EF)
+
+In competitive (human-vs-AI) play every seat — the human and each AI opponent —
+is assigned a distinct colour so a player can identify who did what at a
+glance. The colour is the single seat-identity token threaded through the
+activity log, the competitive scoreboard/HUD and the placed-card borders, so a
+seat has one colour everywhere.
+
+- **Palette.** `SEAT_COLOUR_PALETTE` (`src/MainStreetSeatColours.ts`) is the
+  Okabe–Ito colour-vision-deficiency-safe set (8 colours): orange `#E69F00`,
+  sky blue `#56B4E9`, bluish green `#009E73`, yellow `#F0E442`, blue `#0072B2`,
+  vermillion `#D55E00`, reddish purple `#CC79A7` and black `#000000`. The
+  palette is fixed and never mutated; it is drawn from only to build an
+  assignment.
+- **Assignment.** `assignSeatColours(seats, rng)`
+  (`src/MainStreetSeatColours.ts`) is a pure, Phaser-free helper. It takes the
+  seat list (human first, then AI opponents) and an **injected seeded RNG**,
+  Fisher–Yates-shuffles a copy of the palette and hands one colour to each seat
+  in seat order, returning a `playerId → hex colour` map. The assignment is
+  therefore deterministic for a given seed (repeatable in tests and replay) yet
+  shuffled per game. A guard (`InsufficientSeatColoursError`) throws rather
+  than silently reusing a colour when a game configures more seats than the
+  palette has colours.
+- **Persistence.** `createCompetitiveState` (`src/MainStreetStateSetup.ts`)
+  derives the per-seat assignment from a dedicated seat-colour RNG stream
+  (`deriveSeatColours`, salted with `SEAT_COLOUR_RNG_SALT` so it cannot disturb
+  the game-play RNG) and stores each colour on `PlayerRecord.colour`
+  (`src/MainStreetStateTypes.ts`). The colour is included in competitive state
+  save/load (`src/MainStreetStateSerialize.ts`), so a seat keeps its colour
+  across a reload instead of reshuffling.
+- **Lookup contract.** `resolveSeatColour(state, ownerId)`
+  (`src/MainStreetAdjacencyOwner.ts`) is the single source of truth for "which
+  colour is this seat?"; `seatColourToNumber(hex)`
+  (`src/MainStreetSeatColours.ts`) is the only place the hex string crosses into
+  Phaser's numeric colour space. All seat-identity surfaces call the lookup
+  rather than hard-coding a hex value.
+- **Single-player is unchanged.** With one seat (the human only) there is no AI
+  to distinguish, so `assignSeatColours` returns an empty map and
+  `PlayerRecord.colour` stays undefined; no log prefix, scoreboard colour or
+  owner border is applied.
+
+### Colour-blind-friendly design decisions
+
+- **Okabe–Ito palette.** The palette is a recognised
+  colour-vision-deficiency-safe set, chosen so the seat colours remain mutually
+  distinguishable under common forms of colour blindness (producer decision
+  Q2 = A). It is large enough for the maximum supported AI opponent count.
+- **Colour is never the sole carrier of meaning.** Every seat-identity surface
+  pairs the colour with the seat label text — `You` for the human and `AI 1`,
+  `AI 2`, … for AI opponents — so the game remains fully playable without
+  colour perception.
+- **Legibility is resolved per surface.** The activity-log prefix lightens a
+  seat colour until it clears a minimum WCAG contrast ratio against the dark
+  log panel and a minimum RGB distance from the gain/loss/neutral line colour,
+  so even the darkest Okabe–Ito hues stay readable beside the body text (see
+  [Activity log seat prefixes](#activity-log-seat-prefixes-f3-ms-0muwntn8w006c7ef)).
+- **Ownership without obscuring content.** On the street the colour is carried
+  by a stroke-only outer border rather than a fill, so it never hides the card
+  face or the synergy two-tone colouring (see
+  [Owner-coloured placed-card borders](#owner-coloured-placed-card-borders-f4-ms-0muwntn8w006c7ef)).
+
+## Activity log seat prefixes (F3, MS-0MUWNTN8W006C7EF)
+
+In competitive (multi-seat) games each activity-log entry that is attributable
+to a seat is prefixed with that seat's label — `You` for the human, `AI 1`,
+`AI 2`, ... for AI opponents — drawn in the seat's colour.
+
+- Data: `addLog(state, seatId, text, type)` (`src/MainStreetStateLog.ts`) stamps
+the `LogEntry` with `seatId`, `seatLabel` and `seatColour`. The label comes from
+the shared `getSeatDisplayLabel` in `src/MainStreetAdjacencyOwner.ts`; the
+colour is the seat's persisted `PlayerRecord.colour` (see
+`src/MainStreetSeatColours.ts`), so a seat has one colour throughout the UI.
+- Rendering: `refreshLog` (`src/scenes/MainStreetRendererHud.ts`) draws the
+label as a bold prefix beside the body, which keeps the entry's gain/loss/
+neutral line colour.
+- Legibility: `resolveLogSeatColour` lightens a seat colour until it clears a
+minimum WCAG contrast ratio against the dark log panel and a minimum RGB
+distance from the line-type colour, so even the dark Okabe–Ito hues stay
+readable. Colour is never the sole carrier of meaning — the seat label text is
+always present.
+- Single-player is unchanged: with no roster (or one seat) the seat argument is
+ignored and entries render exactly as before.
+
+## Owner-coloured placed-card borders (F4, MS-0MUWNTN8W006C7EF)
+
+In competitive (multi-seat) games every placed business/community-space card on
+the street carries an outer border in the colour of the seat that owns it, so
+ownership reads at a glance. The human and each AI seat have distinct colours,
+so their cards are visually distinguishable.
+
+- Data: `resolveSeatColour(state, ownerId)`
+  (`src/MainStreetAdjacencyOwner.ts`) is the shared lookup for a seat's
+  persisted `PlayerRecord.colour` (assigned from the Okabe–Ito palette in
+  `src/MainStreetSeatColours.ts`, F1/F2). The slot's owner comes from
+  `getSlotOwnerId(state, slotIndex)`. A seat therefore has one colour on the
+  log, the scoreboard/HUD and the street.
+- Rendering: `drawBusinessSlot` (`src/scenes/MainStreetRendererStreet.ts`)
+  draws the border as a transparent-filled, full-card frame stroked in the
+  owner's colour (`seatColourToNumber` converts the hex colour to Phaser's
+  numeric space). Because the frame is only a stroke it never obscures the card
+  face or the synergy two-tone colouring, and it is drawn last so it stays
+  crisp on a sold (dimmed) card.
+- Upgrade indicator: the former full-card gold upgrade border
+  (`spec.upgradeBorder`) is removed. Upgrade state is now carried by the
+  existing top-left level badge plus a small top-left corner accent
+  (`spec.levelAccent`), drawn behind the badge by `applyUpgradeOverlays`. This
+  keeps the outer frame reserved for the owner's colour (producer decision
+  Q3 = A).
+- Accessibility: colour is never the sole carrier of meaning — the owner's card
+  still carries its own content/upgrade badge, and every seat-identity surface
+  pairs the colour with the seat label text.
+- Single-player is unchanged: with no roster (or one seat) there is no seat
+  colour, so no owner border is drawn (and the upgrade accent/badge render as
+  before).
 
 ## Scene Transitions
 

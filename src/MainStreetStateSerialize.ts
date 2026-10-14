@@ -40,7 +40,7 @@ import type {
   PlayerRecord,
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
-import { ALLOWED_START_WEEKS } from './MainStreetStateSetup';
+import { ALLOWED_START_WEEKS, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
  * Serializes Main Street runtime state into a JSON-safe checkpoint shape.
@@ -67,6 +67,10 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     activeChallenges: state.activeChallenges.map((ac) => ({
       challengeId: ac.challenge.id,
       completed: ac.completed,
+      // Persist per-seat attribution (MS-0MUWNTJIK009O6BZ). Incomplete
+      // challenges carry `undefined`; normalise to `null` so the field is
+      // always present in the serialized shape.
+      completedBySeatId: ac.completedBySeatId ?? null,
     })),
     incidentDeck: structuredClone(state.incidentDeck),
     incidentBalance: structuredClone(state.incidentBalance),
@@ -629,9 +633,22 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
       if (!challenge) {
         throw new Error(`Unknown challenge id in save: ${ac.challengeId}`);
       }
+      // Restore per-seat attribution (MS-0MUWNTJIK009O6BZ).
+      //  - Completed challenge with a numeric seat → keep that seat.
+      //  - Completed challenge without one (single-player or a legacy save
+      //    that predates attribution) → `null`, i.e. global / no attribution.
+      //  - Incomplete challenge → `undefined`, so a later completion can still
+      //    be attributed (first-write wins keys off `undefined`).
+      const completedBySeatId =
+        !ac.completed
+          ? undefined
+          : typeof ac.completedBySeatId === 'number'
+            ? ac.completedBySeatId
+            : null;
       return {
         challenge,
         completed: ac.completed,
+        completedBySeatId,
       };
     }),
     incidentDeck: structuredClone(saved.incidentDeck),
@@ -703,6 +720,24 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     state.players = state.players.map((player) =>
       normalizeSeatConfig(player, state.config.difficultyName),
     );
+  }
+
+  // ── Competitive seat-colour backfill (F2 of MS-0MUWNTN8W006C7EF) ──
+  // Legacy competitive saves predate the persisted per-seat colour. Re-derive
+  // the deterministic assignment from the saved seed and fill only the gaps,
+  // so a loaded seat always has a stable colour without clobbering one that
+  // was saved. Single-player (one seat) needs no colour and stays untouched.
+  if (state.players && state.players.length > 1) {
+    const colours = state.players.some((player) => !player.colour)
+      ? deriveSeatColours(state.players, state.numericSeed)
+      : null;
+    if (colours) {
+      state.players = state.players.map((player) =>
+        player.colour
+          ? player
+          : { ...player, colour: colours.get(String(player.playerId)) },
+      );
+    }
   }
 
   // ── Per-business employedStaff backfill (CG-0MU3BNO590066H75) ──────

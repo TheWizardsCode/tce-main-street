@@ -29,6 +29,7 @@ import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { destroyPhaserGame } from '@core-tests/helpers/phaserCanvasPool';
+import { dismissBootModals } from './helpers/bootModals';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
 import {
   getBusinessTemplates,
@@ -43,9 +44,23 @@ const GAME_H = 720;
 
 type Scene = Phaser.Scene & Record<string, any>;
 
-/** Clear persistent storage so no checkpoint/resume overlay swallows input. */
+/** Clear localStorage so persisted tutorial/checkpoint hints cannot surface. */
 async function clearPersistentStorage(): Promise<void> {
   try { localStorage.clear(); } catch { /* ignore */ }
+}
+
+/**
+ * Remove the persisted run checkpoint through the live save store.
+ *
+ * The store lives in IndexedDB, which is origin-scoped and shared across
+ * browser test files: a checkpoint saved by this file would otherwise be
+ * offered to the next boot as the blocking resume overlay (and deleting the
+ * IndexedDB database out from under an open connection instead wedges the
+ * store's async load). Clearing through the store mirrors
+ * `MainStreetNewGame.browser.test.ts`.
+ */
+async function clearSaveStore(scene: Scene | undefined): Promise<void> {
+  try { await scene?.saveStore?.clear?.(); } catch { /* ignore in constrained environments */ }
 }
 
 async function bootGame(): Promise<Phaser.Game> {
@@ -70,6 +85,9 @@ async function bootGame(): Promise<Phaser.Game> {
     height: GAME_H,
   });
   await waitForScene(game, 'MainStreetScene');
+  // The tutorial offer is pre-skipped, so the boot flow presents the blocking
+  // New Game selector next; dismiss it before any pointer interaction.
+  await dismissBootModals(game.scene.getScene('MainStreetScene') as Scene);
   return game;
 }
 
@@ -435,7 +453,10 @@ async function waitForMarketStable(scene: Scene, cardId: string): Promise<any> {
 describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
   let game: Phaser.Game | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clear the run checkpoint through the live store before tearing the game
+    // down so the next boot cannot offer the blocking resume overlay.
+    await clearSaveStore(game?.scene.getScene('MainStreetScene') as Scene | undefined);
     destroyGame(game);
     game = null;
     try { localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY); } catch { /* ignore */ }

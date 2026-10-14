@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.20 (2026-10-14)
+> **Release focus:** This release focuses on making AI opponents smarter, more distinct, and fairer, while improving the tutorial and adding a new residential card pack with browser support for card packs. It also includes numerous reliability fixes for audio, the activity log, live site updates, and overall game startup.
+### Features
+- The tutorial no longer makes you skip a turn with nothing to do. (MS-0MV4F04NN007H3DB)
+- AI opponents now only take cards they can afford or actually use, making them tougher and more realistic. (MS-0MV5VOIV40020KXT)
+- Unlock a new residential card pack with 10 fresh cards to expand your deck. (MS-0MV0M5BHH0020WFY)
+- Card packs now work in the browser version, so you can unlock and play them there too. (MS-0MV1O7EGG004MWGD)
+- Tutorial text is now easier to update, so fixes and improvements arrive faster. (MS-0MUQ5O4VQ0019H4T)
+- Each AI opponent now has a distinct colour so you can tell who's who at a glance. (MS-0MUWNTN8W006C7EF)
+- Playground, Fountain, and Shelter now cost coins each turn to run. (MS-0MUMC6IVF0098WRL)
+- Upgraded cards now have a shimmering premium look, with a static version for reduced motion. (MS-0MUWNTQ5L0075Y38)
+- Watch each player's income play out at the end of every day in AI games. (MS-0MUXAQQON006XA6I)
+### Bug Fixes
+- The live game site now updates reliably after every release. (MS-0MV0SUA5J002AZ40)
+- The Activity Log now correctly shows your turn history again. (MS-0MV14JDUG000E1V6)
+- Fixed flaky test failures so the full test suite runs reliably. (MS-0MV5PNIPO00940KG)
+- Card packs now display their own custom artwork correctly when installed. (MS-0MV26K321003MWO0)
+- Main Street audio now loads reliably without breaking the game. (MS-0MUQ5A7N1008ORJV)
+- Faster game startup with less redundant work while loading. (MS-0MUTU19SF007791K)
+- AI opponents now earn their own challenge rewards instead of yours. (MS-0MUWNTJIK009O6BZ)
+### Other
+- Difficulty settings are confirmed balanced and intentional, so no changes were made. (MS-0MUR9IMXE0090WIV)
+- Cleaned up the backlog so future fixes and updates can be delivered faster. (MS-0MV4D23B7006I8QD)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.19 (2026-10-09)
 > **Release focus:** This release focuses on making card packs a first-class, reliable feature with browsing, toggling, and save support, alongside automatic card verification to keep balance changes stable. It also rebalances the economy and reputation recovery, improves AI opponent behaviour and win handling, and adds clearer storylines, upgrade reachability, and market reroll costs.
 ### Features

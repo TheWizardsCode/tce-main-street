@@ -43,7 +43,7 @@ import type {
 } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
 import { formatCurrency } from '@core-engine/I18n';
-import { getCardArtDataUri } from '../MainStreetCardArt';
+import { getCardArtDataUriForCard } from '../MainStreetCardArt';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -240,7 +240,7 @@ export function generateBusinessCardSvg(
   const graphic = graphicZoneSvg(
     accent,
     (card.name || '?').trim().charAt(0).toUpperCase(),
-    getCardArtDataUri(card.name),
+    getCardArtDataUriForCard(card.id, card.name),
     cardArtClipId(card.id),
   );
 
@@ -332,7 +332,7 @@ export function generateEventCardSvg(
   const graphicFill = card.trigger === 'Incident' ? '#3D5A80' : '#A0522D';
   const inner: string[] = [];
 
-  inner.push(graphicZoneSvg(graphicFill, card.name.trim().charAt(0).toUpperCase(), getCardArtDataUri(card.name), cardArtClipId(card.id)));
+  inner.push(graphicZoneSvg(graphicFill, card.name.trim().charAt(0).toUpperCase(), getCardArtDataUriForCard(card.id, card.name), cardArtClipId(card.id)));
   inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="#cccccc" opacity="0.18" />');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="19" font-family="' + FONT + '" font-size="10" fill="#ffffff" font-weight="600" text-anchor="start">' + esc(card.name) + '</text>');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="35" font-family="' + FONT + '" font-size="9" fill="#aaaacc" font-weight="400" text-anchor="start">[' + esc(card.trigger) + ']</text>');
@@ -352,7 +352,7 @@ export function generateUpgradeCardSvg(
   height: number = CARD_H,
 ): string {
   const inner: string[] = [];
-  inner.push(graphicZoneSvg('#8B5CBF', card.name.trim().charAt(0).toUpperCase(), getCardArtDataUri(card.name), cardArtClipId(card.id)));
+  inner.push(graphicZoneSvg('#8B5CBF', card.name.trim().charAt(0).toUpperCase(), getCardArtDataUriForCard(card.id, card.name), cardArtClipId(card.id)));
   inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="#9B59B6" opacity="0.18" />');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="19" font-family="' + FONT + '" font-size="10" fill="#ffffff" font-weight="600" text-anchor="start">' + esc(card.name) + '</text>');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="35" font-family="' + FONT + '" font-size="9" fill="#bb99dd" font-weight="400" text-anchor="start">for ' + esc(card.targetBusiness) + '</text>');
@@ -372,7 +372,7 @@ export function generateStaffCardSvg(
   height: number = CARD_H,
 ): string {
   const inner: string[] = [];
-  inner.push(graphicZoneSvg('#777777', card.name.trim().charAt(0).toUpperCase(), getCardArtDataUri(card.name), cardArtClipId(card.id)));
+  inner.push(graphicZoneSvg('#777777', card.name.trim().charAt(0).toUpperCase(), getCardArtDataUriForCard(card.id, card.name), cardArtClipId(card.id)));
   inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="#888888" opacity="0.18" />');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="19" font-family="' + FONT + '" font-size="10" fill="#ffffff" font-weight="600" text-anchor="start">' + esc(card.name) + '</text>');
   inner.push('  <text x="' + TEXT_MIN_X + '" y="35" font-family="' + FONT + '" font-size="9" fill="#ff8844" font-weight="400" text-anchor="start">-' + card.ongoingCost + '/turn</text>');
@@ -479,7 +479,7 @@ export function generateCardSvgFromCsvRow(
   // 64×64 left-art graphic — same stacking/overlap rules as concrete generators
   // CG-0MTORJ5FS006B0UN: accent-coloured placeholder with bold initial glyph.
   const glyph = (name || '?').trim().charAt(0).toUpperCase();
-  inner.push(graphicZoneSvg(scheme.accent, glyph, getCardArtDataUri(name), cardArtClipId(id)));
+  inner.push(graphicZoneSvg(scheme.accent, glyph, getCardArtDataUriForCard(id, name), cardArtClipId(id)));
 
   // Header bar (kept for contrast, graphic sits on top of it at y=8)
   inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="' + scheme.accent + '" opacity="0.18" />');

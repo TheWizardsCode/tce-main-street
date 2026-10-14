@@ -205,12 +205,14 @@ export function worldIndexToPosition(
 
 /**
  * Translates (streetX, streetY, slot) to its flat world-slot index within a
- * `gridDims` lattice. Returns null when the street is outside the lattice or
- * the slot index is invalid.
+ * `gridDims` city-block lattice. Each street owns its own ten plots — there
+ * is no seam-sharing between streets. Returns `null` when the street
+ * coordinates are outside the lattice or the slot index is invalid.
  *
- * Shared nodes map to a single index: for a 2×2 lattice,
- * `streetSlotToWorldIndex(0,0,9)`, `(1,0,5)`, `(0,1,4)` and `(1,1,0)` all
- * return the same index (the four-way intersection is one card slot).
+ * For a 2×2 lattice the four corner plots at `(0,0,9)`, `(1,0,5)`,
+ * `(0,1,4)` and `(1,1,0)` are distinct world indices (the city-block model
+ * replaced the removed planar seam-sharing lattice where the four-way
+ * intersection was a single shared card slot).
  */
 export function streetSlotToWorldIndex(
   streetX: number,

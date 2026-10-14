@@ -93,6 +93,7 @@ function loadedPack(overrides: Partial<LoadedCardPack> = {}): LoadedCardPack {
     },
     csv: packCsv(),
     assetUrls: [],
+    assetDataUris: {},
     status: { packId: 'main-street-foundations', gameId: MAIN_STREET_GAME_ID, state: 'free', steamAppId: null, reason: null },
     enabled: true,
     ...overrides,

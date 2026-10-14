@@ -244,6 +244,15 @@ All card template data is defined in a single CSV file:
 > [Card Packs](../core/docs/DEVELOPER.md#card-packs) docs (and the
 > `docs/dev/card-packs-runbook.md` lifecycle runbook they link) for authoring,
 > building and gating a pack.
+>
+> The production pack is `main-street-residential-pack` (source under
+> [`packs/`](../packs/README.md)). It is gated on the launcher's unified
+> content-unlock store via `src/MainStreetContentUnlockGate.ts` — a
+> `dlc:main-street:main-street-residential-pack` unlock entitles it in addition
+> to the Steam-DLC status. `purchaseMainStreetCardPack()` performs the scoped
+> dev/QA simulated purchase (`main-street-residential-pack-purchase`) and
+> re-discovers the pool; the Card Packs listing wires it to a `[ Purchase ]`
+> control on the locked row.
 
 ### How it works
 
@@ -428,7 +437,7 @@ Main Street Milestone 5 (CG-0MOY5TOJK008JFJM) adds a first-time player onboardin
 
 ### Action-Gated Tutorial Flow
 
-- **Module:** `TutorialFlow.ts` — T1-T25 step definitions with pure progression controller (MS-0MT3JK16W006A66P merged the favour/bookshop day).
+- **Module:** `TutorialFlow.ts` — 25 step definitions (T1-T21, T23-T26) with pure progression controller (MS-0MT3JK16W006A66P merged the favour/bookshop day; MS-0MV4F04NN007H3DB removed the T22 banking day).
 - Each step gates on a specific player action (confirm, select-business, place-business, end-turn, etc.)
 - Invalid actions show: "Complete the highlighted step first."
 

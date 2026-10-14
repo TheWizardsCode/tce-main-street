@@ -851,12 +851,12 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
     }
 
     if (multiplied > 0) {
-      addLog(state, `P${ownerId} Income: +${multiplied} coins (${describeEventEffects(multiplied, 0)})`, 'gain');
+      addLog(state, ownerId, `Income: +${multiplied} coins (${describeEventEffects(multiplied, 0)})`, 'gain');
     } else {
-      addLog(state, `P${ownerId} Income: +0 coins (${describeEventEffects(0, 0)})`, 'neutral');
+      addLog(state, ownerId, `Income: +0 coins (${describeEventEffects(0, 0)})`, 'neutral');
     }
     if (modifiedRepPerTurn > 0) {
-      addLog(state, `P${ownerId} Reputation from cards: +${modifiedRepPerTurn} (${describeEventEffects(0, modifiedRepPerTurn)})`, 'gain');
+      addLog(state, ownerId, `Reputation from cards: +${modifiedRepPerTurn} (${describeEventEffects(0, modifiedRepPerTurn)})`, 'gain');
     }
 
     results.push({

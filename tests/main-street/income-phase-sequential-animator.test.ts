@@ -314,6 +314,50 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
   });
 
+  // ── Phase-major combined sweep (MS-0MUXAQQON006XA6I) ────────────────────
+  // The competitive closing concatenates every non-eliminated seat's slots in
+  // seat order and calls `animateIncomePhases` once. These tests pin the
+  // resulting phase-major ordering: each phase runs once over the whole
+  // roster, and within a phase the seats play in seat order.
+
+  it('runs each phase once over a combined multi-seat roster (phase-major, not per-seat)', () => {
+    const { scene, scheduled } = createMockScene(4);
+    const animator = new MainStreetAnimator(scene);
+
+    // Four cards = two seats × two cards, concatenated in seat order.
+    const order: IncomePhaseKey[] = [];
+    animator.animateIncomePhases(makePhaseData([100, 100, 100, 100]), {
+      phaseGapMs: 100_000,
+      onPhase: (phase) => order.push(phase),
+    });
+
+    // Fire the phase dispatches (0..5) then the collection.
+    for (let i = 0; i < 6; i++) scheduled[i].fn();
+
+    // One sweep over the whole roster — the phase sequence is NOT repeated
+    // per seat (which would emit 6 × seatCount entries).
+    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+  });
+
+  it('within a phase, seat 0 slots animate before seat 1 slots (seat order)', () => {
+    const { scene, scheduled } = createMockScene(4);
+    const animator = new MainStreetAnimator(scene);
+
+    // Seat 0 owns handles 0-1, seat 1 owns handles 2-3.
+    animator.animateIncomePhases(makePhaseData([100, 100, 100, 100]), { phaseGapMs: 100_000 });
+
+    const schedule = collectCountOutSchedule(scheduled, 0);
+    const seat0 = schedule.filter((s) => s.handleIndex <= 1);
+    const seat1 = schedule.filter((s) => s.handleIndex >= 2);
+
+    expect(seat0.length).toBeGreaterThan(0);
+    expect(seat1.length).toBeGreaterThan(0);
+    // Every seat-0 count-out lands strictly before every seat-1 count-out.
+    const lastSeat0 = Math.max(...seat0.map((s) => s.delay));
+    const firstSeat1 = Math.min(...seat1.map((s) => s.delay));
+    expect(firstSeat1).toBeGreaterThan(lastSeat0);
+  });
+
   it('reduced motion schedules no count-outs and no coin flights (AC5)', () => {
     const { scene, scheduled } = createMockScene(2, {
       settingsPanel: { reducedMotion: true },

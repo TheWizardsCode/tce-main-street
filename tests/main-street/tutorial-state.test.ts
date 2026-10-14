@@ -11,6 +11,10 @@ import {
   clearTutorialState,
   bridgeLegacyTutorialSeen,
   shouldTriggerBankingHint,
+  hasSeenBankingHint,
+  markBankingHintShown,
+  clearBankingHint,
+  rearmBankingHintForNewGame,
   TUTORIAL_STATE_SCHEMA_VERSION,
   TUTORIAL_STATE_STORAGE_KEY,
   BrowserLocalStorageAdapter,
@@ -481,25 +485,28 @@ describe('BrowserLocalStorageAdapter', () => {
   });
 });
 
-// ── shouldTriggerBankingHint (CG-0MUACDDMX004KWY8) ──────────
+// ── shouldTriggerBankingHint (MS-0MT3JK16W006A66P) ──────────
 
 describe('shouldTriggerBankingHint', () => {
-  it('does NOT trigger while the tutorial is active', () => {
-    // Regression: the banking hint previously fired mid-tutorial and
-    // dead-ended tutorial progression (CG-0MUACDDMX004KWY8).
+  it('triggers during the tutorial with unused actions (first bank)', () => {
+    // The banking hint fires during the tutorial on the first end-turn
+    // with remaining actions so the player learns about action banking
+    // (MS-0MT3JK16W006A66P — producer clarification 2026-10-09).
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: true,
         actionsRemaining: 2,
         alreadyShown: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it('triggers in normal play with an unused action and no prior hint', () => {
+  it('triggers in normal play (first bank after tutorial)', () => {
+    // After the tutorial ends, the banking hint should still fire
+    // on the player's first bank so that players who never banked
+    // during the tutorial (no spare-action turns remain after T22
+    // was removed) still learn about action banking.
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: false,
         actionsRemaining: 1,
         alreadyShown: false,
       }),
@@ -509,7 +516,6 @@ describe('shouldTriggerBankingHint', () => {
   it('does NOT trigger when there are no bankable actions remaining', () => {
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: false,
         actionsRemaining: 0,
         alreadyShown: false,
       }),
@@ -519,10 +525,71 @@ describe('shouldTriggerBankingHint', () => {
   it('does NOT trigger once the hint has already been shown (one-shot)', () => {
     expect(
       shouldTriggerBankingHint({
-        tutorialActive: false,
         actionsRemaining: 2,
         alreadyShown: true,
       }),
     ).toBe(false);
+  });
+});
+
+// ── Banking hint one-shot + re-arm (MS-0MV79JQ4H003E6BH) ────
+
+describe('banking hint one-shot lifecycle', () => {
+  it('markBankingHintShown records a timestamp and hasSeenBankingHint is true', () => {
+    const shown = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    expect(shown.bankingHintShownAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(hasSeenBankingHint(shown)).toBe(true);
+  });
+
+  it('markBankingHintShown is idempotent (keeps the first timestamp)', () => {
+    const first = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const second = markBankingHintShown(first, { now: '2026-10-02T00:00:00.000Z' });
+    expect(second.bankingHintShownAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(second).toBe(first);
+  });
+
+  it('rearmBankingHintForNewGame clears the flag so a new playthrough re-teaches', () => {
+    const shown = markBankingHintShown(createDefaultTutorialState(), {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const rearmed = rearmBankingHintForNewGame(shown);
+    expect(rearmed.bankingHintShownAt).toBeNull();
+    expect(hasSeenBankingHint(rearmed)).toBe(false);
+    // The trigger becomes eligible again after re-arm.
+    expect(
+      shouldTriggerBankingHint({
+        actionsRemaining: 1,
+        alreadyShown: hasSeenBankingHint(rearmed),
+      }),
+    ).toBe(true);
+  });
+
+  it('rearmBankingHintForNewGame preserves the rest of the tutorial state', () => {
+    const completed = updateTutorialStatus(createDefaultTutorialState(), 'completed', {
+      now: '2026-10-01T00:00:00.000Z',
+    });
+    const shown = markBankingHintShown(completed);
+    const rearmed = rearmBankingHintForNewGame(shown);
+    expect(rearmed.status).toBe('completed');
+    expect(rearmed.completedAt).toBe('2026-10-01T00:00:00.000Z');
+    expect(rearmed.bankingHintShownAt).toBeNull();
+  });
+
+  it('rearmBankingHintForNewGame no-ops when the hint was never shown', () => {
+    const fresh = createDefaultTutorialState();
+    expect(rearmBankingHintForNewGame(fresh)).toBe(fresh);
+  });
+
+  it('clearBankingHint clears only the banking flag', () => {
+    const shown = markBankingHintShown(
+      updateTutorialStatus(createDefaultTutorialState(), 'skipped'),
+    );
+    const cleared = clearBankingHint(shown);
+    expect(cleared.bankingHintShownAt).toBeNull();
+    expect(cleared.status).toBe('skipped');
   });
 });

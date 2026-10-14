@@ -66,6 +66,23 @@ therefore contains exactly **Main Street** plus the core-owned **Gym**; no
 sibling `tce-<game>` repository is composed and the all-games preset is never
 used.
 
+### Bundled card packs
+
+The web build bundles the committed **Main Street Residential** card pack, so
+the emitted `dist/` already carries the pack — its `manifest.json` and
+`cards.csv` are inlined into the emitted JavaScript chunks and its art is
+emitted (or inlined) as bundle assets. There is **no manual
+`<contentDir>/packs/` copy step** and no `dist/packs/` directory: the bundling
+is done at build time by [`src/MainStreetPackSources.ts`](src/MainStreetPackSources.ts)
+via Vite's `import.meta.glob` (`?raw` for the pack text, `?url` for the pack
+assets), and the Pages workflow uploads the resulting `dist/` unchanged.
+
+Editing anything under [`packs/`](packs/README.md) changes the bundled pack
+only after a rebuild — there is no runtime content-directory install in the
+browser distribution. The Electron launcher keeps its content-directory install
+path (`npm run build:card-pack` → `<contentDir>/packs/`), which is documented in
+[packs/README.md](packs/README.md).
+
 ## First-time setup
 
 GitHub Pages must be enabled once for this repository by an administrator:

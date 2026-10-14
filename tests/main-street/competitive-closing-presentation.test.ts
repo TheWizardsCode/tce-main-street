@@ -40,7 +40,6 @@ import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControlle
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import {
   COMPETITIVE_CLOSING_HOLD_MS,
-  COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
   competitiveClosingSummary,
   driveAiSeatsUntilClosing,
   endCompetitiveTurnDay,
@@ -48,7 +47,6 @@ import {
   presentCompetitiveClosing,
   startCompetitiveDay,
 } from '../../src/scenes/MainStreetTurnControllerCompetitive';
-import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from '../../src/scenes/MainStreetAnimatorTiming';
 import {
   createCompetitiveState,
   setupMainStreetGame,
@@ -602,17 +600,22 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
   );
 });
 
-// ── Per-seat closing animation sequencing (MS-0MUYFX8V3005VEOG) ────────────
+// ── Phase-major closing animation sequencing (MS-0MUYFX8V3005VEOG) ──────────
 //
-// Tests for the per-seat animated competitive closing (AC1–AC3 of
-// MS-0MUXAQQON006XA6I). After the shared closing resolves, each
-// non-eliminated seat receives its own full income choreography, in seat
-// order, driven by that seat's authoritative `OwnerIncomeResult`.
+// Tests for the phase-major animated competitive closing (AC1–AC3 of
+// MS-0MUXAQQON006XA6I, amended by the producer audit of 2026-10-08). After the
+// shared closing resolves, the presentation runs ONE combined choreography
+// over every non-eliminated seat, in seat order, driven by each seat's
+// authoritative `OwnerIncomeResult`.
 //
 // The presentation iterates `TurnResult.playerIncome` (surfaced by
-// MS-0MUYFX56M006RVIZ) and calls `animateIncomePhases` once per seat with that
-// seat's `income.phaseBreakdown.perSlotBreakdown`. Seats are identified in the
-// fixtures by a unique `businessName` (`Seat N Biz`) and a unique `baseIncome`.
+// MS-0MUYFX56M006RVIZ), concatenates each seat's
+// `income.phaseBreakdown.perSlotBreakdown` in seat order and calls
+// `animateIncomePhases` once with that combined list. `runIncomePhase` walks
+// the list per phase, so each phase (base → synergy → … → collect) plays for
+// the human seat, then AI 1, then AI 2, before the next phase begins — rather
+// than a full seat-major choreography per seat. Seats are identified in the
+// fixtures by a unique `businessName` (`Seat N Biz`).
 
 import type { OwnerIncomeResult } from '../../src/MainStreetAdjacency';
 import type { BusinessCard } from '../../src/MainStreetCards';
@@ -662,7 +665,7 @@ function makePlayerIncomes(entries: Array<[number, number]>): OwnerIncomeResult[
 
 /**
  * Harness for the per-seat closing: records every `animateIncomePhases` call
- * (its per-seat phase data) and the instruction text stream.
+ * (the combined phase-major sweep) and the instruction text stream.
  */
 interface PerSeatHarness {
   scene: any;
@@ -703,15 +706,19 @@ function makePerSeatHarness(overrides: Record<string, unknown> = {}): PerSeatHar
 const seatNameOf = (phaseData: any[]): string | undefined =>
   phaseData?.[0]?.businessName;
 
+/** Identifies a slot within a combined phase-major sweep by its business name. */
+const slotNameOf = (slot: any): string | undefined => slot?.businessName;
+
 describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
-  // Implemented by MS-0MUYFXA36009EMH0 (which flipped the red-phase
-  // `it.fails` assertions authored by MS-0MUYFX8V3005VEOG to normal `it`).
+  // Phase-major sweep (producer audit 2026-10-08, MS-0MUXAQQON006XA6I): one
+  // combined `animateIncomePhases` call whose phase data is every
+  // non-eliminated seat's slots concatenated in seat order.
   beforeEach(() => {
     presentTurnClosing.mockClear();
   });
 
   it(
-    'AC1 — runs the full income choreography once per non-eliminated seat, in seat order',
+    'AC1 — runs one phase-major choreography covering every non-eliminated seat, in seat order',
     () => {
       const h = makePerSeatHarness();
       const result: TurnResult = {
@@ -721,9 +728,9 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
       presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-      // One full choreography per seat, in seat order.
-      expect(h.incomeCalls).toHaveLength(3);
-      expect(h.incomeCalls.map(seatNameOf)).toEqual([
+      // A single combined sweep (phase-major), not one call per seat.
+      expect(h.incomeCalls).toHaveLength(1);
+      expect(h.incomeCalls[0].map(slotNameOf)).toEqual([
         'Seat 0 Biz',
         'Seat 1 Biz',
         'Seat 2 Biz',
@@ -731,7 +738,7 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     },
   );
 
-  it('AC1 — the human seat (player 0) is included in the per-seat sequence', () => {
+  it('AC1 — the human seat (player 0) is included first in the combined sweep', () => {
     const h = makePerSeatHarness();
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -740,12 +747,12 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-    // The first choreography belongs to the human seat 0.
-    expect(h.incomeCalls).toHaveLength(2);
+    // One combined sweep, human seat first.
+    expect(h.incomeCalls).toHaveLength(1);
     expect(seatNameOf(h.incomeCalls[0])).toBe('Seat 0 Biz');
   });
 
-  it('AC1 — eliminated seats are skipped (only surfaced seats are presented)', () => {
+  it('AC1 — eliminated seats are skipped (only surfaced seats are combined)', () => {
     const h = makePerSeatHarness();
     // Seat 1 was eliminated: the engine omits it from `playerIncome`.
     const result: TurnResult = {
@@ -755,11 +762,11 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-    expect(h.incomeCalls).toHaveLength(2);
-    expect(h.incomeCalls.map(seatNameOf)).toEqual(['Seat 0 Biz', 'Seat 2 Biz']);
+    expect(h.incomeCalls).toHaveLength(1);
+    expect(h.incomeCalls[0].map(slotNameOf)).toEqual(['Seat 0 Biz', 'Seat 2 Biz']);
   });
 
-  it('AC1 — each choreography receives that seat own phase breakdown', () => {
+  it("AC1 — the combined sweep carries each seat's own phase breakdown", () => {
     const h = makePerSeatHarness();
     const result: TurnResult = {
       ...makeResult({ income: null }),
@@ -768,18 +775,17 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-    // `animateIncomePhases` receives the `SlotPhaseBreakdown[]` (the array
-    // itself) for the seat, not the whole `OwnerIncomeResult`.
-    expect(h.incomeCalls).toHaveLength(3);
-    for (const phaseData of h.incomeCalls) {
-      expect(Array.isArray(phaseData)).toBe(true);
-      expect(phaseData[0]).toMatchObject({
-        businessName: expect.stringMatching(/^Seat \d Biz$/),
-      });
-    }
-    expect(h.incomeCalls[0][0].baseIncome).toBe(30);
-    expect(h.incomeCalls[1][0].baseIncome).toBe(20);
-    expect(h.incomeCalls[2][0].baseIncome).toBe(10);
+    // `animateIncomePhases` receives one `SlotPhaseBreakdown[]` containing
+    // every seat's slots in seat order (not the whole `OwnerIncomeResult`).
+    expect(h.incomeCalls).toHaveLength(1);
+    const combined = h.incomeCalls[0];
+    expect(Array.isArray(combined)).toBe(true);
+    expect(combined.map((slot) => slot.baseIncome)).toEqual([30, 20, 10]);
+    expect(combined.map((slot) => slot.businessName)).toEqual([
+      'Seat 0 Biz',
+      'Seat 1 Biz',
+      'Seat 2 Biz',
+    ]);
   });
 
   it('AC3 — the closing summary reports each seat income', () => {
@@ -902,11 +908,17 @@ describe('per-seat closing authoritative values (AC2)', () => {
     const h = makePerSeatHarness({ state });
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-    // One choreography per seat, each carrying the seat's applied income.
-    expect(h.incomeCalls).toHaveLength(2);
+    // One combined phase-major sweep; each seat's slice carries that seat's
+    // applied income (presented value equals the delta applied to its record).
+    expect(h.incomeCalls).toHaveLength(1);
+    const combined = h.incomeCalls[0];
     for (let i = 0; i < applied.length; i++) {
-      expect(presentedTotal(h.incomeCalls[i])).toBe(after[i] - before[i]);
-      expect(presentedTotal(h.incomeCalls[i])).toBe(applied[i].income.total);
+      const slotIndices = new Set(
+        result.playerIncome![i].income.phaseBreakdown.perSlotBreakdown.map((s) => s.slotIndex),
+      );
+      const seatSlots = combined.filter((s) => slotIndices.has(s.slotIndex));
+      expect(presentedTotal(seatSlots)).toBe(after[i] - before[i]);
+      expect(presentedTotal(seatSlots)).toBe(applied[i].income.total);
     }
   });
 
@@ -921,9 +933,9 @@ describe('per-seat closing authoritative values (AC2)', () => {
     const h = makePerSeatHarness({ state });
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
-    expect(h.incomeCalls).toHaveLength(2);
+    expect(h.incomeCalls).toHaveLength(1);
     // The presented seats are exactly the non-eliminated ones.
-    expect(h.incomeCalls.map(seatNameOf)).toEqual([
+    expect(h.incomeCalls[0].map(slotNameOf)).toEqual([
       result.playerIncome![0].income.phaseBreakdown.perSlotBreakdown[0].businessName,
       result.playerIncome![1].income.phaseBreakdown.perSlotBreakdown[0].businessName,
     ]);
@@ -932,20 +944,19 @@ describe('per-seat closing authoritative values (AC2)', () => {
 
 // ── Global fast-forward bound (AC6, bounded fallback) ──────────────────────
 //
-// The bounded / non-blocking contract: a large roster cannot stall the game.
-// Each seat's choreography is staggered by `COMPETITIVE_CLOSING_SEAT_STAGGER_MS`
-// (12 s) so the total closing timeline is `(N-1) × stagger`. The day always
-// advances regardless of roster size (MS-0MUXAQQON006XA6I AC6).
+// The bounded / non-blocking contract: the phase-major choreography runs once
+// for the whole roster and the day waits for it to finish collecting, bounded
+// by `COMPETITIVE_CLOSING_MAX_TOTAL_MS`. A large roster therefore cannot stall
+// the game: the closing always completes and the day advances.
 
 describe('global fast-forward bound (AC6, bounded fallback)', () => {
   beforeEach(() => {
     presentTurnClosing.mockClear();
   });
 
-  it('AC6 — a large roster (8 seats) still advances the day (bounded)', () => {
+  it('AC6 — a large roster (8 seats) is one combined sweep that still advances the day', () => {
     const instructions: string[] = [];
     const incomeCalls: any[][] = [];
-    const clock = makeFakeClock();
     const scene: any = {
       state: { players: [] },
       replayMode: false,
@@ -954,16 +965,14 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
       layout: { gameW: 800, gameH: 600 },
       msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
       msAnimator: {
-        animateIncomePhases: (phaseData: any[], options: any) => {
-          const startDelay = options?.startDelayMs ?? 0;
-          clock.now = startDelay;
+        animateIncomePhases: (phaseData: any[]) => {
           incomeCalls.push(phaseData);
         },
         animateIncidentReveal: (params: any) => {
           params.onComplete?.();
         },
       },
-      time: clock,
+      time: makeFakeClock(),
     };
     const seats: Array<[number, number]> = [];
     for (let i = 0; i < 8; i++) seats.push([i, 10 - i]);
@@ -975,54 +984,58 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
 
     presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
 
-    // Eight choreographies, one per seat, in seat order.
-    expect(incomeCalls).toHaveLength(8);
-    expect(incomeCalls.map(seatNameOf)).toEqual([
+    // One combined sweep covering all eight seats in seat order.
+    expect(incomeCalls).toHaveLength(1);
+    expect(incomeCalls[0].map(slotNameOf)).toEqual([
       'Seat 0 Biz', 'Seat 1 Biz', 'Seat 2 Biz', 'Seat 3 Biz',
       'Seat 4 Biz', 'Seat 5 Biz', 'Seat 6 Biz', 'Seat 7 Biz',
     ]);
-    // Staggered timeline: seat 7 starts at 7 × 12_000 ms — deterministic and bounded.
-    expect(clock.now).toBe(7 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS);
-    // The closing still completes — the day advances.
+    // The closing completes — the day advances.
     expect(lastInstruction(instructions)).toBe('End of turn complete.');
     expect(completed).toBe(1);
   });
 
-  it('AC6 — stagger timing is deterministic (seat N starts at N × stagger)', () => {
-    const instructions: string[] = [];
-    const delays: number[] = [];
-    const clock = makeFakeClock();
+  it('AC6 — the day does not advance until the income choreography has collected', () => {
+    const scheduled: Array<() => void> = [];
     const scene: any = {
       state: { players: [] },
       replayMode: false,
       settingsPanel: { reducedMotion: false },
-      instructionText: { setText: (t: string) => instructions.push(t) },
+      instructionText: { setText: () => {} },
       layout: { gameW: 800, gameH: 600 },
       msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
       msAnimator: {
-        animateIncomePhases: (_phaseData: any[], options: any) => {
-          delays.push(options?.startDelayMs ?? 0);
-          clock.now = delays[delays.length - 1];
-        },
-        animateIncidentReveal: (params: any) => {
-          params.onComplete?.();
+        animateIncomePhases: () => { scene.incomeCollectionActive = true; },
+        animateIncidentReveal: (params: any) => { params.onComplete?.(); },
+      },
+      incomeCollectionActive: false,
+      time: {
+        now: 0,
+        delayedCall: (ms: number, cb: () => void) => {
+          scene.time.now += ms;
+          scheduled.push(cb);
         },
       },
-      time: clock,
     };
     const result: TurnResult = {
       ...makeResult({ income: null }),
-      playerIncome: makePlayerIncomes([[0, 10], [1, 7], [2, 3]]),
+      playerIncome: makePlayerIncomes([[0, 10], [1, 7]]),
     };
+    let completed = 0;
 
-    presentCompetitiveClosing(asCtx(scene), result, () => {});
+    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
 
-    // Seat delays are exactly 0, 1×stagger, 2×stagger.
-    expect(delays).toEqual([
-      0,
-      1 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
-      2 * COMPETITIVE_CLOSING_SEAT_STAGGER_MS,
-    ]);
+    // The choreography is still collecting: the day must NOT advance yet.
+    expect(completed).toBe(0);
+
+    // Complete the collection, then drain the bounded poll: the day advances.
+    scene.incomeCollectionActive = false;
+    let guard = 0;
+    while (scheduled.length > 0) {
+      if (guard++ > 100) throw new Error('poll runaway');
+      scheduled.shift()!();
+    }
+    expect(completed).toBe(1);
   });
 
   it('AC6 — headless (no time object) degrades immediately and advances', () => {
@@ -1051,47 +1064,6 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
     },
   );
 
-  it('AC6 — an oversized roster is clamped to the global fast-forward bound', () => {
-    const delays: number[] = [];
-    const clock = makeFakeClock();
-    const scene: any = {
-      state: { players: [] },
-      replayMode: false,
-      settingsPanel: { reducedMotion: false },
-      instructionText: { setText: (_t: string) => {} },
-      layout: { gameW: 800, gameH: 600 },
-      msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
-      msAnimator: {
-        animateIncomePhases: (_phaseData: any[], options: any) => {
-          delays.push(options?.startDelayMs ?? 0);
-          clock.now = delays[delays.length - 1];
-        },
-        animateIncidentReveal: (params: any) => {
-          params.onComplete?.();
-        },
-      },
-      time: clock,
-    };
-    // 20 seats exceed the bound's capacity (180 s / 12 s = 15 staggered seats).
-    const seats: Array<[number, number]> = [];
-    for (let i = 0; i < 20; i++) seats.push([i, 10]);
-    const result: TurnResult = {
-      ...makeResult({ income: null }),
-      playerIncome: makePlayerIncomes(seats),
-    };
-    let completed = 0;
-
-    presentCompetitiveClosing(asCtx(scene), result, () => { completed += 1; });
-
-    // Every seat still gets its own choreography (none are skipped).
-    expect(delays).toHaveLength(20);
-    // Seats beyond the bound share the final bounded slot — total time capped.
-    expect(delays[15]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
-    expect(delays[19]).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
-    expect(Math.max(...delays)).toBe(COMPETITIVE_CLOSING_MAX_TOTAL_MS);
-    // The day still advances within the bound.
-    expect(completed).toBe(1);
-  });
 });
 
 /** Sums the presented per-slot income of a seat's phase breakdown. */

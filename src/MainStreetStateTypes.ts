@@ -43,6 +43,23 @@ export interface LogEntry {
   text: string;
   /** Classification for UI color coding. */
   type: LogEntryType;
+  /**
+   * Acting seat's `playerId`, when the entry is attributable to a seat
+   * (competitive mode). Absent for shared/turn-level entries and in
+   * single-player, so single-player visuals are unchanged
+   * (F3 of MS-0MUWNTN8W006C7EF).
+   */
+  seatId?: number;
+  /**
+   * Canonical seat label rendered as the entry prefix (`You`, `AI 1`, ...).
+   * Derived from `getSeatDisplayLabel` in `MainStreetAdjacencyOwner`.
+   */
+  seatLabel?: string;
+  /**
+   * Seat colour (hex) for the prefix, copied from the seat's persisted
+   * `PlayerRecord.colour` so the log matches the rest of the UI.
+   */
+  seatColour?: string;
 }
 // ── Phase Types ─────────────────────────────────────────────
 
@@ -243,6 +260,18 @@ export interface PlayerRecord {
    * `config.difficultyName`).
    */
   aiDifficulty?: AiSeatDifficulty;
+  /**
+   * Colour-blind-safe hex colour assigned to this seat for the run
+   * (F2 of MS-0MUWNTN8W006C7EF — Identify different AI players).
+   *
+   * Set on every competitive seat by `createCompetitiveState` from the shared
+   * Okabe–Ito palette (`MainStreetSeatColours`) and persisted through
+   * save/load, so a seat keeps one colour for the whole game rather than
+   * reshuffling on reload. Absent in single-player mode (a lone human seat
+   * needs no colour assignment) and on legacy saves, where the loader
+   * defensively re-derives it when more than one seat is present.
+   */
+  colour?: string;
   /**
    * Whether this seat has been eliminated from competitive play
    * (MS-0MUVQRBVI0015AB2). An eliminated seat is skipped in turn rotation and
@@ -637,6 +666,13 @@ export interface MainStreetSerializedState {
   activeChallenges: {
     challengeId: string;
     completed: boolean;
+    /**
+     * The seat that completed this challenge, persisted for per-seat credit
+     * (MS-0MUWNTJIK009O6BZ). `null` for single-player / legacy completions
+     * with no seat context; omitted (or `null`) while the challenge is
+     * incomplete.
+     */
+    completedBySeatId?: number | null;
   }[];
   /** Face-down incident deck at the time of save (migrated from old incidentQueue by the loader). */
   incidentDeck: EventCard[];

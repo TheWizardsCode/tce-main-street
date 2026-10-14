@@ -93,6 +93,14 @@ describe('Competitive HUD scoreboard (browser)', () => {
     expect(byPlayer.get(0).getData('human')).toBe(true);
     expect(byPlayer.get(1).getData('human')).toBe(false);
 
+    // F5: each row is drawn in its seat's persisted colour, so the human and
+    // AI seats are visually distinct and consistent with the rest of the UI.
+    const humanColour = scene.state.players[0].colour as string;
+    const aiColour = scene.state.players[1].colour as string;
+    expect(String(byPlayer.get(0).style.color).toLowerCase()).toBe(humanColour.toLowerCase());
+    expect(String(byPlayer.get(1).style.color).toLowerCase()).toBe(aiColour.toLowerCase());
+    expect(humanColour).not.toBe(aiColour);
+
     // Hand control back: the indicator moves to the human seat.
     scene.state.activePlayerId = 0;
     scene.refreshAll();
