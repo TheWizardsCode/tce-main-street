@@ -1009,3 +1009,209 @@ describe('callback semantics survive save/load and undo', () => {
     expect(state.incidentDeck[state.incidentDeck.length - 1].id).toContain('evt-persist-low');
   });
 });
+
+// ── Multi-outcome contract (MS-0MV8KQHYJ003EJO6) ─────────────
+//
+// Test-first tracer bullet for the arbitrary labelled option model (parent
+// MS-0MUZKA9CJ000N144). These tests pin the NEW contract:
+//
+//   * a CSV `options` column compiles to an ordered option list where each
+//     option carries a candidate set of successor card ids as `successorIds`
+//     (an empty list ends the chain);
+//   * exactly one seeded `state.rng()` draw occurs per selection at
+//     resolution time (the engine file pins the draw count);
+//   * `successorResolver` takes precedence over the random draw;
+//   * CSV-authored options always compile with `effectPolicy: 'apply'`,
+//     while the programmatic registry seam can still author `'skip'`.
+//
+// The `it.fails` cases are RED against the current two-way
+// `hasChoices`/`acceptNextCardId`/`rejectNextCardId` implementation — the
+// implementing items (F2/F3) flip each one to a normal `it` once the contract
+// lands. Guards that already hold today stay as normal `it` so they keep
+// protecting the contract through the migration.
+
+/**
+ * The multi-outcome option shape this item pins. It is intentionally declared
+ * locally (not imported) because `StorylineOption.successorIds` does not exist
+ * on the public type until F2 lands; every read goes through an `unknown`
+ * cast so this test-only tracer bullet still type-checks today.
+ */
+interface ContractOption {
+  readonly label: string;
+  readonly successorIds?: readonly string[];
+  readonly effectPolicy: 'apply' | 'skip';
+}
+
+/** Column subset for the new-model fixtures (legacy choice columns omitted). */
+const MULTI_OUTCOME_COLUMNS = [
+  'family', 'id', 'name', 'cost', 'tier', 'trigger', 'effect', 'target',
+  'coinDelta', 'reputationDelta', 'storylineId', 'options',
+];
+
+interface MultiOutcomeSpec {
+  id: string;
+  name: string;
+  effect: string;
+  coinDelta?: number;
+  storylineId?: string;
+  /** Raw `options` cell: `label|cardA,cardB;label2|cardC`. */
+  options?: string;
+}
+
+/**
+ * Builds a synthetic event CSV whose only choice encoding is the new `options`
+ * column. The options cell is quoted because it contains commas.
+ */
+function buildMultiOutcomeCsv(events: MultiOutcomeSpec[]): string {
+  const lines = [MULTI_OUTCOME_COLUMNS.join(',')];
+  for (const e of events) {
+    const row: Record<string, string> = {
+      family: 'event',
+      id: e.id,
+      name: e.name,
+      cost: '0',
+      tier: '1',
+      trigger: 'Incident',
+      effect: e.effect,
+      target: 'All',
+      coinDelta: String(e.coinDelta ?? 0),
+      reputationDelta: '0',
+      storylineId: e.storylineId ?? '',
+      options: e.options ?? '',
+    };
+    lines.push(
+      MULTI_OUTCOME_COLUMNS.map((c) =>
+        c === 'options' ? `"${(row[c] ?? '').replace(/"/g, '""')}"` : row[c] ?? '',
+      ).join(','),
+    );
+  }
+  return lines.join('\n');
+}
+
+const MULTI_OUTCOME_CSV = buildMultiOutcomeCsv([
+  {
+    id: 'evt-mo-model',
+    name: 'Multi Outcome Model',
+    effect: 'Lose 100 coins',
+    coinDelta: -100,
+    storylineId: 'arc-mo',
+    options: 'Negotiate|evt-mo-model-a,evt-mo-model-b;Walk away|;Escalate|evt-mo-model-c',
+  },
+  { id: 'evt-mo-model-a', name: 'Branch A', effect: 'Lose 10 coins', coinDelta: -10, storylineId: 'arc-mo' },
+  { id: 'evt-mo-model-b', name: 'Branch B', effect: 'Lose 20 coins', coinDelta: -20, storylineId: 'arc-mo' },
+  { id: 'evt-mo-model-c', name: 'Branch C', effect: 'Lose 30 coins', coinDelta: -30, storylineId: 'arc-mo' },
+]);
+
+function multiOutcomeEvent(id: string): EventCard {
+  const t = getEventTemplates().find((c) => c.id === id) as EventCard | undefined;
+  if (!t) throw new Error(`Multi-outcome template ${id} missing — is it in the fixture CSV?`);
+  return t;
+}
+
+function compiledContractOptions(event: EventCard): ContractOption[] {
+  const compiled = compileStorylineFromEvent(event) as unknown as {
+    compiledOptions: ContractOption[];
+  };
+  return compiled.compiledOptions;
+}
+
+describe('F1 — CSV options compile to the multi-outcome candidate-set model', () => {
+  it.fails(
+    'AC1 — a CSV `options` column compiles to an ordered option list carrying successorIds candidate sets',
+    () => {
+      loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+      const event = multiOutcomeEvent('evt-mo-model');
+
+      const options = compiledContractOptions(event);
+
+      // Ordered labels, then one candidate set per option.
+      expect(options.map((o) => o.label)).toEqual(['Negotiate', 'Walk away', 'Escalate']);
+      expect(options[0].successorIds).toEqual(['evt-mo-model-a', 'evt-mo-model-b']);
+      // Empty candidate set = the chain ends after this option.
+      expect(options[1].successorIds).toEqual([]);
+      expect(options[2].successorIds).toEqual(['evt-mo-model-c']);
+    },
+  );
+
+  it.fails('AC1 — an empty candidate set is preserved as an empty successorIds list (terminal option)', () => {
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    const event = multiOutcomeEvent('evt-mo-model');
+
+    const terminal = compiledContractOptions(event)[1];
+
+    expect(terminal.label).toBe('Walk away');
+    expect(terminal.successorIds).toEqual([]);
+  });
+
+  it.fails('AC4 — every CSV-authored option compiles with effectPolicy "apply" (producer Q4=B)', () => {
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    const event = multiOutcomeEvent('evt-mo-model');
+
+    expect(compiledContractOptions(event).map((o) => o.effectPolicy)).toEqual([
+      'apply',
+      'apply',
+      'apply',
+    ]);
+  });
+
+  it('AC4 — the programmatic registry seam can still author an explicit "skip" option', () => {
+    const registered: StorylineOption[] = [
+      { label: 'Take it', successorId: 'evt-mo-model-a', effectPolicy: 'apply' },
+      { label: 'Refuse', successorId: null, effectPolicy: 'skip' },
+    ];
+    registerStorylineOptions('evt-reg-skip', registered);
+    const event = {
+      family: 'event', id: 'evt-reg-skip', name: 'Registry Skip', trigger: 'Incident',
+      cost: 0, effect: 'x', target: 'All', coinDelta: 0, reputationDelta: 0,
+    } as EventCard;
+
+    const compiled = compileStorylineFromEvent(event);
+
+    expect(compiled.compiledOptions.map((o) => o.effectPolicy)).toEqual(['apply', 'skip']);
+  });
+});
+
+describe('F1 — resolver precedence and draw-time condition freezing', () => {
+  it('AC3 — successorResolver takes precedence over the random draw and consumes no rng', () => {
+    const state = setupMainStreetGame({ seed: 'mo-precedence', difficulty: 'Medium' });
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    const event = multiOutcomeEvent('evt-mo-model');
+    // Both a candidate set (the random path) and a resolver are present: the
+    // resolver must win and the candidate draw must not happen.
+    const option = {
+      label: 'Negotiate',
+      successorIds: ['evt-mo-model-a', 'evt-mo-model-b'],
+      effectPolicy: 'apply',
+      successorResolver: () => 'evt-mo-model-c',
+    } as unknown as StorylineOption;
+    const rngBefore = state.rngCalls;
+
+    const res = resolveStorylineOption(state, event, option);
+
+    expect(res.pushedCard?.id).toContain('evt-mo-model-c');
+    expect(state.rngCalls).toBe(rngBefore);
+  });
+
+  it('AC3 — a condition filters the option list at draw time (frozen snapshot)', () => {
+    const state = setupMainStreetGame({ seed: 'mo-cond-freeze', difficulty: 'Medium' });
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    registerStorylineOptions('evt-mo-cond', [
+      { label: 'Always', successorId: 'evt-mo-model-a', effectPolicy: 'apply', condition: () => true },
+      { label: 'Never', successorId: 'evt-mo-model-b', effectPolicy: 'apply', condition: () => false },
+    ]);
+    const event = {
+      family: 'event', id: 'evt-mo-cond', name: 'Conditional', trigger: 'Incident',
+      cost: 0, effect: 'x', target: 'All', coinDelta: 0, reputationDelta: 0,
+    } as EventCard;
+
+    const pending = createPendingStorylineChoice(event, state)!;
+    expect(pending.options?.map((o) => o.label)).toEqual(['Always']);
+
+    // The frozen snapshot is what resolution reads; mutating state afterwards
+    // must not re-open the omitted option or change the visible list.
+    state.resourceBank.coins = 999_999;
+    expect(pending.options?.map((o) => o.label)).toEqual(['Always']);
+    const res = resolveStorylineOption(state, event, pending.options![0]);
+    expect(res.pushedCard?.id).toContain('evt-mo-model-a');
+  });
+});

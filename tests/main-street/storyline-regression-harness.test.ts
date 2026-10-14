@@ -38,11 +38,18 @@ import {
   processEndOfTurn,
   resolveIncident,
   resolveEventChoice,
+  resolveEventOption,
 } from '../../src/MainStreetEngine';
 import {
   getEventTemplates,
+  loadTemplatesFromCsv,
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
+import {
+  registerStorylineOptions,
+  resetStorylineRegistry,
+} from '../../src/MainStreetStoryline';
+import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 import {
   decideEventChoice,
 } from '../../src/MainStreetEngineScoring';
@@ -97,6 +104,7 @@ function expectChoicePending(state: MainStreetState): void {
 afterEach(() => {
   setMainStreetRecorder(null);
   resetTemplatesToDefault();
+  resetStorylineRegistry();
 });
 
 // ── AC1: Legacy choice semantics for every shipped card ─────
@@ -391,5 +399,72 @@ describe('AC5 — regression harness smoke', () => {
       .map((c) => c.id)
       .sort();
     expect(shippedChoiceIds).toEqual(CHOICE_CARDS);
+  });
+});
+
+// ── F1: seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6) ──
+//
+// Extends the shipped-choice harness with the arbitrary-outcome model: a
+// registered multi-candidate option must resolve to the same successor across
+// same-seed replays and consume exactly one seeded draw. The five shipped
+// storylines are migrated in F6 and F9 owns the full green gate, so these
+// tracer-bullet cases are `it.fails` until the random draw lands in F3.
+
+const MO_HARNESS_CSV = [
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,hasChoices',
+  'event,evt-mo-h,Multi Harness,0,1,Incident,Lose 100 coins,All,-100,0,true',
+  'event,evt-mo-h-a,Branch A,0,1,Incident,Lose 10 coins,All,-10,0,',
+  'event,evt-mo-h-b,Branch B,0,1,Incident,Lose 20 coins,All,-20,0,',
+].join('\n');
+
+/** Queues the synthetic multi-outcome node as the next incident. */
+function queueMultiOutcome(state: MainStreetState): void {
+  const t = getEventTemplates().find((c) => c.id === 'evt-mo-h');
+  if (!t) throw new Error('Synthetic multi-outcome template evt-mo-h missing');
+  state.incidentDeck.length = 0;
+  state.incidentDeck.push({ ...t, id: 'evt-mo-h-0' });
+}
+
+/** Builds an identically-seeded state with the multi-outcome node queued. */
+function multiOutcomeState(seed: string): MainStreetState {
+  // Load the synthetic pool BEFORE setup so the replay pair consumes an
+  // identical RNG stream while building its market/deck.
+  loadTemplatesFromCsv(MO_HARNESS_CSV);
+  const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+  state.phase = 'MarketPhase';
+  queueMultiOutcome(state);
+  return state;
+}
+
+describe('F1 — seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6)', () => {
+  it.fails('AC2 — same seed resolves a candidate-set option to the same successor', () => {
+    registerStorylineOptions('evt-mo-h', [
+      { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+    ] as unknown as StorylineOption[]);
+
+    const a = multiOutcomeState('harness-replay');
+    processEndOfTurn(a);
+    const ra = resolveEventOption(a, 0);
+
+    const b = multiOutcomeState('harness-replay');
+    processEndOfTurn(b);
+    const rb = resolveEventOption(b, 0);
+
+    expect(ra.pushedCard).not.toBeNull();
+    expect(ra.pushedCard!.id).toBe(rb.pushedCard!.id);
+  });
+
+  it.fails('AC2 — resolving a candidate-set option consumes exactly one seeded draw', () => {
+    registerStorylineOptions('evt-mo-h', [
+      { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+    ] as unknown as StorylineOption[]);
+
+    const state = multiOutcomeState('harness-one-draw');
+    processEndOfTurn(state);
+    const rngBefore = state.rngCalls;
+
+    resolveEventOption(state, 0);
+
+    expect(state.rngCalls).toBe(rngBefore + 1);
   });
 });
