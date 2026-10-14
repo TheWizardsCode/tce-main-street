@@ -37,6 +37,7 @@ import {
   type UnifiedTutorialStepDef,
 } from '../TutorialFlow';
 import { TUTORIAL_EN_BUNDLE } from '../i18n/tutorial-en';
+import { runSteamFollowCta } from '../SteamFollowCta';
 import baseLayout from '../layouts/main-street.layout.json';
 import {
   BASE_MARKET_CARD_W,
@@ -268,46 +269,16 @@ export class MainStreetTutorialHints {
    */
   private async handleSteamFollow(): Promise<void> {
     const statusEl = this.pendingStatusEl;
-    const setStatus = (text: string): void => {
-      if (statusEl) statusEl.textContent = text;
-    };
-
-    try {
-      const bridge = (globalThis as any)?.window?.tce?.steamFollow as
-        | {
-            openStorePage?: () => Promise<boolean>;
-            claim?: () => Promise<{ unlocked?: boolean }>;
-            claimManually?: () => Promise<{ unlocked?: boolean }>;
-            supportsAutomaticFollowCheck?: () => Promise<boolean>;
-          }
-        | undefined;
-
-      if (!bridge) {
-        // Plain browser: open the public store page, no reward available.
-        const url = 'https://store.steampowered.com/';
-        try { (globalThis as any)?.window?.open?.(url, '_blank', 'noopener'); } catch (_) { /* ignore */ }
-        setStatus(t('tutorial.steamFollow.openedBrowser'));
-        return;
-      }
-
-      const opened = await bridge.openStorePage?.();
-      if (!opened) {
-        setStatus(t('tutorial.steamFollow.unavailable'));
-        return;
-      }
-      setStatus(t('tutorial.steamFollow.opened'));
-
-      // Re-check the follow on return. Automatic detection is used when the
-      // Steamworks binding supports it; otherwise fall back to a self-attest
-      // claim (F3 finding), so the reward is still reachable.
-      const supportsAuto = (await bridge.supportsAutomaticFollowCheck?.()) ?? false;
-      const result = supportsAuto
-        ? await bridge.claim?.()
-        : await bridge.claimManually?.();
-      if (result?.unlocked) setStatus(t('tutorial.steamFollow.unlocked'));
-    } catch (_) {
-      setStatus(t('tutorial.steamFollow.unavailable'));
-    }
+    await runSteamFollowCta({
+      bridge: (globalThis as any)?.window?.tce?.steamFollow,
+      openUrl: (url) => {
+        (globalThis as any)?.window?.open?.(url, '_blank', 'noopener');
+      },
+      translate: t,
+      setStatus: (text) => {
+        if (statusEl) statusEl.textContent = text;
+      },
+    });
   }
 
   /** True if the tutorial overlay is currently visible. */
