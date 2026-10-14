@@ -295,7 +295,7 @@ describe('MainStreetScene browser tests', () => {
     expect(streetHasRenderableCard).toBe(true);
   });
 
-  it('routes mapped SFX keys to tf-backed adapter when tf module is provided', async () => {
+  it('routes mapped SFX keys to tf-backed adapter when ToneForge is opted in', async () => {
     const placePlaySpy = vi.fn();
     const cheerPlaySpy = vi.fn();
 
@@ -308,6 +308,18 @@ describe('MainStreetScene browser tests', () => {
 
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
+
+    // ToneForge is opt-in and off by default (MS-0MV76P7BN00164RF): the scene
+    // no longer attaches the injected module at boot. Exercise the opt-in
+    // enable path (load the integration, then attach it) instead.
+    const { loadMainStreetTfIntegration } = await import('../../src/debug/MainStreetDebugTools');
+    const integration = await loadMainStreetTfIntegration(scene.soundManager);
+    expect(integration).not.toBeNull();
+    scene.soundManager.setSynthIntegration(
+      integration!.player,
+      integration!.keyMap,
+      integration!.diagnostics,
+    );
 
     scene.soundManager.play('sfx-place');
     scene.soundManager.play('sfx-event-cheer');
