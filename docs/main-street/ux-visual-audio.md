@@ -31,7 +31,35 @@ default**. ToneForge synth integration is **opt-in per session**
   matching factory always falls back to the WAV/Phaser path instead of going
   silent (`tfAdapter` reports whether it handled the key;
   `SoundManager.play()` falls through when it did not) — engine item
-  CG-0MUU9PSWC009CW76.
+  CG-0MUU9PSWC009CW76. The four factory-less mappings (`sfx-income-positive`,
+  `sfx-income-negative`, `sfx-income-neutral`, `sfx-challenge-complete`) are
+  **intentional** WAV-fallback cases, so the Main Street TF logger
+  (`src/tf/tfLogger.ts`) keeps their per-play
+  `[tfAdapter] Missing tf factory …` warning quiet while still forwarding any
+  unexpected missing factory or other adapter warning
+  (MS-0MV26MOWT004ZCQC). The factory-less keys are listed once in
+  `src/sfx-tf-mapping.ts` (`MAIN_STREET_TF_FACTORYLESS_KEYS` and the derived
+  `MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS`) so the mapping and the quiet list
+  cannot drift.
+
+## Tutorial layout composition (quiet by design)
+
+The tutorial highlight overlay composes the base shell layout with the
+scene-specific `main-street-tutorial.layout.json` using `sceneWins` (see
+`MainStreetTutorialHints.ts`). Three zones — `hand`, `endTurnButton` and
+`incidentQueue` — are deliberately reused by the tutorial layout so its rects
+override the base rects; this is the documented alignment contract, and the
+tutorial rects are the source of truth for those highlights.
+
+`composeResolvedLayouts()` reports every name collision as a developer warning,
+so resolving the tutorial used to emit three benign `Zone collision …`
+warnings on every call. The tutorial passes the `reportTutorialLayoutIssue`
+hook (`src/scenes/tutorialLayoutIssues.ts`) instead: it suppresses only the
+collisions for the documented override set (`TUTORIAL_INTENTIONAL_OVERRIDE_ZONES`)
+and re-emits every other issue (validation errors, namespace collisions and
+unexpected zone collisions) exactly as the default reporter would, so genuine
+diagnostics stay visible (MS-0MV26MOWT004ZCQC). `sceneWins` semantics and the
+tutorial rects are unchanged.
 
 ## Player hand layout
 

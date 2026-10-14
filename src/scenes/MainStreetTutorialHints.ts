@@ -21,8 +21,6 @@
 
 import { FONT_FAMILY } from '@ui';
 import { t, registerLocale } from '@core-engine/I18n';
-import { parseScreenLayoutDocument } from '@ui/screen-layout-schema';
-import { composeResolvedLayouts } from '@ui/screen-layout-compose';
 import { type LayoutViewport } from '@ui/screen-layout';
 
 import {
@@ -38,7 +36,6 @@ import {
 } from '../TutorialFlow';
 import { TUTORIAL_EN_BUNDLE } from '../i18n/tutorial-en';
 import { runSteamFollowCta } from '../SteamFollowCta';
-import baseLayout from '../layouts/main-street.layout.json';
 import {
   BASE_MARKET_CARD_W,
   BASE_MARKET_CARD_H,
@@ -56,6 +53,12 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  * The tutorial layout uses sceneWins policy, so its zone rects override base
  * zones with the same name. If the base layout or rendering constants change,
  * update the corresponding tutorial zone rects to match.
+ *
+ * The three base zones the tutorial intentionally reuses (`hand`,
+ * `endTurnButton`, `incidentQueue`) are resolved through
+ * `reportTutorialLayoutIssue` (`./tutorialLayoutIssues.ts`), which keeps those
+ * documented `Zone collision …` warnings quiet while still surfacing any
+ * unexpected collision (MS-0MV26MOWT004ZCQC).
  *
  * Alignment contract (verified by TutorialOverlayHighlights.browser.test.ts):
  * each tutorial zone rect resolves to the ACTUAL rendered element rect as
@@ -87,29 +90,12 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  * rendered panel height varies with difficulty; the static base-layout zone
  * rect is only a fallback. UI elements must NOT be moved to match highlights.
  */
-import tutorialLayout from '../layouts/main-street-tutorial.layout.json';
+import { composeTutorialLayout } from './tutorialLayoutCompose';
 
 // ── Register English locale bundle at module load time ───────
 registerLocale('en', TUTORIAL_EN_BUNDLE);
 
-// ── Pre-parse layouts at module load ──────────────────────────
-
-const baseParsed = parseScreenLayoutDocument(baseLayout);
-if (!baseParsed.valid) {
-  throw new Error(
-    `Base layout is invalid: ${baseParsed.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
-  );
-}
-
-const tutorialParsed = parseScreenLayoutDocument(tutorialLayout);
-if (!tutorialParsed.valid) {
-  throw new Error(
-    `Tutorial layout is invalid: ${tutorialLayout ? tutorialLayout.id : '(unknown)'}: ${tutorialParsed.errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`,
-  );
-}
-
-const BASE_LAYOUT = baseParsed.layout;
-const TUTORIAL_LAYOUT = tutorialParsed.layout;
+// ── Layouts are pre-parsed (and validity-checked) in `./tutorialLayoutCompose` ───────
 
 /** Null-zone values that do not need a highlight bounding box. */
 const NULL_ZONES: ReadonlySet<TutorialHighlightZone> = new Set([
@@ -157,13 +143,7 @@ export function resolveMarketCardAnchor(
     width: layout.gameW ?? 1280,
     height: layout.gameH ?? 720,
   };
-  const composed = composeResolvedLayouts(
-    BASE_LAYOUT,
-    TUTORIAL_LAYOUT,
-    viewport,
-    1,
-    { policy: 'sceneWins' },
-  );
+  const composed = composeTutorialLayout(viewport, 1);
 
   // Single row: the market row zone rect + shared card constants give the
   // slot positions (the renderer centres the row inside the market box).
@@ -201,13 +181,7 @@ export function resolveZoneToAnchor(
     return null;
   }
 
-  const composed = composeResolvedLayouts(
-    BASE_LAYOUT,
-    TUTORIAL_LAYOUT,
-    viewport,
-    dpr,
-    { policy: 'sceneWins' },
-  );
+  const composed = composeTutorialLayout(viewport, dpr);
 
   // Single-row market (CG-0MSTOATDT009BRX2): the investments/dev row split no
   // longer exists, so upgrade/event steps (investmentsRow) highlight the same

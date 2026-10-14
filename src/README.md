@@ -157,6 +157,11 @@ compatibility.
   - Defines 7 bounding-box zones for tutorial highlight areas (HUD, market, street, etc.)
   - Uses optional `w`/`h` dimensions on `NormalizedRect` for zone extents
   - Composed with the base layout via `composeResolvedLayouts()` in the tutorial system
+  - The three zones the tutorial intentionally overrides (`hand`, `endTurnButton`,
+    `incidentQueue`) are resolved through `reportTutorialLayoutIssue`
+    (`src/scenes/tutorialLayoutIssues.ts`), which keeps those documented
+    `Zone collision …` warnings quiet while still surfacing unexpected ones
+    (MS-0MV26MOWT004ZCQC)
 - Scene adapter: `src/scenes/MainStreetLayoutAdapter.ts`
 - Renderer entrypoint: `src/scenes/MainStreetRenderer.ts`
 

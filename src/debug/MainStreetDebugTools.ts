@@ -31,6 +31,7 @@ import { createGameEventLogTool } from '@ui/debug/GameEventLogOverlay';
 import { createAiDecisionViewerTool } from '@ui/debug/AiDecisionOverlay';
 import { getMainStreetTfDiagnostics, loadMainStreetTfModule } from '../tf/mainStreetTfModule';
 import { MAIN_STREET_TF_SFX_MAPPING } from '../sfx-tf-mapping';
+import { createMainStreetTfLogger } from '../tf/tfLogger';
 import { createMarketCardCheatTool } from './MarketCardCheatOverlay';
 import { createStaffApplicantCheatTool } from './StaffApplicantCheatOverlay';
 
@@ -63,7 +64,13 @@ export async function loadMainStreetTfIntegration(
     return null;
   }
   return {
-    player: createTfPlayer(module),
+    player: createTfPlayer(module, {
+      keyMap: MAIN_STREET_TF_SFX_MAPPING,
+      // The four factory-less mappings fall back to WAV by design; that
+      // expected fallback stays quiet while any unexpected missing factory
+      // still warns (MS-0MV26MOWT004ZCQC).
+      logger: createMainStreetTfLogger(),
+    }),
     keyMap: MAIN_STREET_TF_SFX_MAPPING,
     diagnostics: {
       factoryCount: diagnostics.factoryCount,
