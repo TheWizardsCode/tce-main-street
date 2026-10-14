@@ -82,6 +82,24 @@ function forceSafeIncidents(scene: any): void {
   );
 }
 
+/**
+ * Put a choice incident at the top of the incident deck, backed by safe
+ * (non-choice) incidents so only the first draw pauses for a dialog.
+ */
+function forceChoiceFirstIncident(scene: any): void {
+  const choice = getEventTemplates().find((t: any) => (t as any).hasChoices === true);
+  if (!choice) throw new Error('No choice event template found for the swallow regression');
+  const safeTemplates = getEventTemplates().filter((t) =>
+    ['evt-award', 'evt-good-press', 'evt-graffiti-art', 'evt-street-cleaning'].includes(t.id),
+  );
+  scene.state.incidentDeck.length = 0;
+  scene.state.incidentDeck.push(
+    { ...choice, id: `${choice.id}-0` },
+    ...safeTemplates.map((t, i) => ({ ...t, id: `${t.id}-${i}` })),
+    ...safeTemplates.map((t, i) => ({ ...t, id: `${t.id}-${i + 10}` })),
+  );
+}
+
 /** Drive a real end-turn with one bankable action; return the hint tooltip. */
 async function endTurnWithSpareAction(scene: any): Promise<Element | null> {
   try { scene?.tutorialOfferModal?.hide?.(); } catch { /* ignore */ }
@@ -168,5 +186,40 @@ describe('banking hint re-arm on a new game (browser)', () => {
     // Starting the tutorial re-arms the hint (MS-0MV79JQ4H003E6BH fix).
     await waitFor(() => readTutorialState()?.bankingHintShownAt === null, 5_000);
     expect(readTutorialState()?.bankingHintShownAt).toBeNull();
+  }, 60_000);
+
+  it('does not swallow the hint when the first bank turn pauses for an event choice', async () => {
+    // Regression (MS-0MV79JQ4H003E6BH): the one-shot flag used to be persisted
+    // when the turn ENDED, before the overlay was shown. A first-bank turn
+    // that paused on an event-choice dialog therefore consumed the flag
+    // without ever presenting the overlay — the hint was muted for the whole
+    // playthrough ("still not firing" manual-review repro). The flag must
+    // only be committed at actual presentation, and the armed hint must
+    // survive the choice pause into the resumed closing.
+    game = await bootGame();
+    const scene: any = game.scene.getScene('MainStreetScene');
+    await new Promise((r) => setTimeout(r, 500));
+
+    forceChoiceFirstIncident(scene);
+    scene.uiPhase = 'market';
+    scene.state.actionsRemaining = 1;
+    scene.state.bankedActions = 0;
+    scene.msTurnController.endTurn();
+
+    // The turn pauses for the choice dialog...
+    await waitFor(
+      () => Boolean(scene.state.pendingEventChoice) && !scene.state.pendingEventChoice.resolved,
+      15_000,
+    );
+    // ...and the one-shot flag is NOT consumed yet (nothing has been shown).
+    expect(readTutorialState()?.bankingHintShownAt ?? null).toBeNull();
+
+    // Resolving the choice resumes the closing, which presents the armed hint.
+    scene.msTurnController.onEventChoice('accept');
+    await waitFor(() => Boolean(document.querySelector('.ms-tutorial-tooltip')), 30_000);
+    const tooltip = document.querySelector('.ms-tutorial-tooltip');
+    expect(tooltip?.textContent).toContain('Bank your spare action');
+    // The hint is still one-shot within the playthrough once shown.
+    expect(readTutorialState()?.bankingHintShownAt).not.toBeNull();
   }, 60_000);
 });

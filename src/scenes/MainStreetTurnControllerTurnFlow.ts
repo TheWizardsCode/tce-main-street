@@ -66,6 +66,10 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     s.hintUsedThisTurn = false;
     s.hintedCardId = null;
     s.hintedSlotIndex = null;
+    // Reset the scene-carried banking-hint arm: each new day opens a fresh
+    // presentation window; a hint left armed by a game-over closing must not
+    // leak into the next playthrough (MS-0MV79JQ4H003E6BH).
+    (s as any).pendingBankingHint = false;
 
     s.refreshAll();
 
@@ -154,10 +158,17 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
         })
       ) {
         pendingBankingHint = true;
-        const next = markBankingHintShown(ts);
-        void saveTutorialState(new BrowserLocalStorageAdapter(), next).catch(() => {});
+        // The one-shot flag is NOT persisted here: persistence happens only
+        // when the hint is actually presented (`advanceTurn`). Persisting at
+        // end-turn consumed the hint even on turns that pause for an event
+        // choice (the overlay is deferred past the dialog) — the flag was set
+        // but the overlay never shown, silently muting the lesson for the
+        // rest of the playthrough (MS-0MV79JQ4H003E6BH).
       }
     } catch { /* banking hint trigger must never block the turn */ }
+    // Carry the armed hint on the scene across the closing presentation so a
+    // choice-dialog pause cannot lose it (`onEventChoice` re-reads it).
+    (s as any).pendingBankingHint = pendingBankingHint;
 
     // Process end-of-turn phases (events, income, night, end check)
     // Applicant auto-decline at end-of-turn (CG-0MSTOATDU006UGAX AC6):
@@ -381,12 +392,21 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     };
     const advanceTurn = (): void => {
       // ── Banking hint presentation (CG-0MT3JK16W006A66P) ─────
-      // Non-blocking HUD-highlighting overlay, once per save. Fires
+      // Non-blocking HUD-highlighting overlay, once per playthrough. Fires
       // after the turn's gated step has advanced so it does not
       // compete with the step's own overlay. Never blocks the day
-      // start.
+      // start. The one-shot flag is persisted HERE, at actual presentation,
+      // so an end-turn that never reaches this point (event-choice pause /
+      // game-over) does not consume the hint (MS-0MV79JQ4H003E6BH).
       if (pendingBankingHint) {
+        try {
+          const ts = loadTutorialState(new BrowserLocalStorageAdapter());
+          if (!hasSeenBankingHint(ts)) {
+            void saveTutorialState(new BrowserLocalStorageAdapter(), markBankingHintShown(ts)).catch(() => {});
+          }
+        } catch { /* hint persistence must never block the closing */ }
         try { (s as any).tutorialOverlay?.showBankingHint?.(); } catch { /* presentation-only */ }
+        (s as any).pendingBankingHint = false;
       }
       if (s.incomeCollectionActive) {
         // Bounded deferral: start the next week once the choreography
@@ -634,7 +654,14 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
       // the standard incident reveal. Reject applies nothing (deltas 0) — the
       // instruction text above is the only feedback. The reveal blocks the
       // day start until its hold completes (CG-0MTW18KFK000MM3I).
-      const present = (): void => tcCtx.finishTurnPresentation(finalResult, false);
+      const present = (): void => {
+        // The turn paused on an event-choice dialog before the banking hint
+        // could be presented — carry the still-armed hint into the resumed
+        // closing so it is not silently swallowed (MS-0MV79JQ4H003E6BH).
+        const pendingHint = (s as any).pendingBankingHint === true;
+        (s as any).pendingBankingHint = false;
+        tcCtx.finishTurnPresentation(finalResult, pendingHint);
+      };
       if (coinChange !== 0 || repChange !== 0) {
         try {
           s.msAnimator.animateIncidentReveal({
