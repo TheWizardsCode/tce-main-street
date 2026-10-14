@@ -6,8 +6,12 @@
       <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
     </linearGradient>
     <clipPath id="ms-art-clip-biz-florist"><rect x="8" y="8" width="64" height="64" rx="4" ry="4" /></clipPath>
+    <clipPath id="ms-face-clip-biz-florist"><rect x="0" y="0" width="140" height="80" rx="6" ry="6" /></clipPath>
   </defs>
-  <rect x="0" y="0" width="140" height="80" rx="6" ry="6" fill="#2f2f2f" />
+  <g clip-path="url(#ms-face-clip-biz-florist)">
+    <rect x="0" y="0" width="140" height="40" fill="#2E7D32" />
+    <rect x="0" y="40" width="140" height="40" fill="#1565C0" />
+  </g>
   <rect x="4" y="4" width="132" height="72" rx="4" ry="4" fill="url(#g-biz-florist)" />
   <rect x="4" y="4" width="132" height="20" rx="3" ry="3" fill="#27AE60" opacity="0.18" />
   <g class="ms-card-graphic" aria-hidden="true">
@@ -22,6 +26,14 @@
   <title>Commerce icon</title>
   <path d="M3 12h10v1H3z" fill="#27AE60" />
   <rect x="4" y="4" width="8" height="6" rx="1" fill="#fff" opacity="0.9" />
+
+    </svg>
+  </g>
+  <g class="ms-synergy-icon" aria-hidden="false" transform="translate(26, 58)">
+    <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Culture icon">
+  <title>Culture icon</title>
+  <rect x="2" y="2" width="12" height="12" rx="2" fill="#3498DB" />
+  <circle cx="8" cy="8" r="3" fill="#fff" opacity="0.9" />
 
     </svg>
   </g>

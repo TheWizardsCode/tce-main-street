@@ -6,8 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateBusinessCardSvg, replaceCardTitleInSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
-import type { BusinessCard, CommunitySpaceCard } from '../../src/MainStreetCards';
+import {
+  generateBusinessCardSvg,
+  generateCardSvgFromCsvRow,
+  replaceCardTitleInSvg,
+} from '../../src/scenes/MainStreetCardSvgGenerator';
+import { CARD_FACE_PALETTE, cardFaceBackground } from '../../src/MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, SynergyType } from '../../src/MainStreetCards';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -221,6 +226,138 @@ describe('generateBusinessCardSvg - formatting', () => {
     expect(svg).toContain('<?xml version="1.0"');
     expect(svg).toContain('<svg');
     expect(svg).toContain('</svg>');
+  });
+});
+
+describe('generateBusinessCardSvg - synergy face colouring (MS-0MUZH51PU007POJ4)', () => {
+  const paletteEntries = Object.entries(CARD_FACE_PALETTE).filter(
+    ([key]) => key !== 'default',
+  ) as Array<[SynergyType, string]>;
+
+  it('colours a single-synergy face with that synergy\'s palette colour', () => {
+    for (const [synergy, colour] of paletteEntries) {
+      const svg = generateBusinessCardSvg(makeBiz({ synergyTypes: [synergy] }));
+      expect(svg, synergy).toContain(`rx="6" ry="6" fill="${colour}"`);
+      expect(svg, synergy).not.toContain('fill="#2f2f2f"');
+    }
+  });
+
+  it('splits a two-synergy bridge face into horizontal top/bottom bands', () => {
+    const svg = generateBusinessCardSvg(
+      makeBiz({ id: 'biz-bridge', synergyTypes: ['Food', 'Culture'] }),
+    );
+    // Rounded clip preserves the corners; neither band bleeds past them.
+    expect(svg).toContain('ms-face-clip-biz-bridge');
+    expect(svg).toContain('clip-path="url(#ms-face-clip-biz-bridge)"');
+    // 140×80 card → two 140×40 bands.
+    expect(svg).toContain('<rect x="0" y="0" width="140" height="40" fill="#5D4037" />');
+    expect(svg).toContain('<rect x="0" y="40" width="140" height="40" fill="#1565C0" />');
+    // No single-tone neutral/rounded face for a bridge card.
+    expect(svg).not.toContain('rx="6" ry="6" fill="#2f2f2f"');
+  });
+
+  it('orders the bands by synergyTypes order (top = first entry)', () => {
+    const svg = generateBusinessCardSvg(
+      makeBiz({ id: 'biz-reversed', synergyTypes: ['Culture', 'Food'] }),
+    );
+    expect(svg).toContain('<rect x="0" y="0" width="140" height="40" fill="#1565C0" />');
+    expect(svg).toContain('<rect x="0" y="40" width="140" height="40" fill="#5D4037" />');
+  });
+
+  it('renders both synergy icons for a bridge card (colour is not the only cue)', () => {
+    const svg = generateBusinessCardSvg(makeBiz({ synergyTypes: ['Food', 'Culture'] }));
+    expect(svg).toContain('Food icon');
+    expect(svg).toContain('Culture icon');
+  });
+
+  it('keeps the neutral face and no split when a card has zero synergy types', () => {
+    const svg = generateBusinessCardSvg(makeBiz({ synergyTypes: [] }));
+    expect(svg).toContain('rx="6" ry="6" fill="#2f2f2f"');
+    expect(svg).not.toContain('ms-face-clip-');
+  });
+
+  it('degrades safely to the first colour when more than two synergy types are present', () => {
+    const svg = generateBusinessCardSvg(
+      makeBiz({ id: 'biz-tri', synergyTypes: ['Food', 'Culture', 'Health'] }),
+    );
+    expect(svg).not.toContain('ms-face-clip-biz-tri');
+    expect(svg).toContain('rx="6" ry="6" fill="#5D4037"');
+  });
+});
+
+describe('generateCardSvgFromCsvRow - synergy face colouring (MS-0MUZH51PU007POJ4)', () => {
+  it('colours a single-synergy CSV-row business face with the palette colour', () => {
+    const svg = generateCardSvgFromCsvRow({
+      id: 'biz-bakery',
+      name: 'Bakery',
+      family: 'business',
+      cost: '300',
+      synergyTypes: 'Food',
+    });
+    expect(svg).toContain('rx="6" ry="6" fill="#5D4037"');
+    expect(svg).not.toContain('fill="#2f2f2f"');
+  });
+
+  it('splits a bridge CSV row top/bottom in synergyTypes order', () => {
+    const svg = generateCardSvgFromCsvRow({
+      id: 'biz-cafe',
+      name: 'Cafe',
+      family: 'business',
+      cost: '700',
+      synergyTypes: 'Food|Culture',
+    });
+    expect(svg).toContain('ms-face-clip-biz-cafe');
+    expect(svg).toContain('<rect x="0" y="0" width="140" height="40" fill="#5D4037" />');
+    expect(svg).toContain('<rect x="0" y="40" width="140" height="40" fill="#1565C0" />');
+  });
+
+  it('renders both synergy icons for a bridge CSV row', () => {
+    const svg = generateCardSvgFromCsvRow({
+      id: 'biz-cafe',
+      name: 'Cafe',
+      family: 'business',
+      cost: '700',
+      synergyTypes: 'Food|Culture',
+    });
+    expect(svg).toContain('Food icon');
+    expect(svg).toContain('Culture icon');
+  });
+
+  it('uses the bright first-synergy accent for the graphic/header of synergy cards', () => {
+    const svg = generateCardSvgFromCsvRow({
+      id: 'biz-bakery',
+      name: 'Bakery',
+      family: 'business',
+      cost: '300',
+      synergyTypes: 'Food',
+    });
+    expect(svg).toContain('#e67e22'); // synergyColor('Food') bright accent (TS lowercase-hex convention)
+  });
+
+  it('leaves event family faces on their existing family colour', () => {
+    const svg = generateCardSvgFromCsvRow({
+      id: 'evt-rainy',
+      name: 'Rainy Day',
+      family: 'event',
+      cost: '0',
+      trigger: 'Incident',
+    });
+    expect(svg).toContain('fill="#2B3A67"');
+  });
+});
+
+describe('cardFaceBackground - palette resolver (MS-0MUZH51PU007POJ4)', () => {
+  it('resolves zero, single, bridge and >2 synergy inputs', () => {
+    expect(cardFaceBackground([])).toEqual({ fill: '#2f2f2f', split: null });
+    expect(cardFaceBackground(undefined)).toEqual({ fill: '#2f2f2f', split: null });
+    expect(cardFaceBackground(['Food'])).toEqual({ fill: '#5D4037', split: null });
+    expect(cardFaceBackground(['Food', 'Culture'])).toEqual({
+      fill: '#5D4037',
+      split: { top: '#5D4037', bottom: '#1565C0' },
+    });
+    const tri = cardFaceBackground(['Food', 'Culture', 'Health']);
+    expect(tri.split).toBeNull();
+    expect(tri.fill).toBe('#5D4037');
   });
 });
 

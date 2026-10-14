@@ -970,6 +970,38 @@ so their cards are visually distinguishable.
   colour, so no owner border is drawn (and the upgrade accent/badge render as
   before).
 
+## Synergy-coloured card faces (MS-0MUZH51PU007POJ4)
+
+Every business / community-space card face is coloured by its **synergy type**
+so a player can read a card's type(s) at a glance while scanning the market or
+their street. Previously the face was a neutral dark grey (`#2f2f2f`) and only
+the header bar, art backing and icons carried the synergy colour.
+
+- **Palette.** A single shared dark palette, `CARD_FACE_PALETTE`
+  (`src/MainStreetCardsUtils.ts`): Food `#5D4037`, Culture `#1565C0`,
+  Commerce `#2E7D32`, Service `#6A1B9A`, Entertainment `#C62828`,
+  Health `#00838F`, default `#2f2f2f`. The bright `synergyColor` palette stays
+  the accent for the header bar, 64×64 art backing and synergy icons, so the
+  white title / stat text remains legible on the darker face.
+- **Single synergy.** One palette colour fills the rounded face rect.
+- **Bridge (exactly two synergies).** The face is split horizontally —
+  **top band = `synergyTypes[0]`, bottom band = `synergyTypes[1]`** — with both
+  bands clipped to the rounded card rectangle so neither bleeds past the
+  corners. The title/stat text and both synergy icons render on top.
+- **Zero synergy** (event / upgrade / staff, and any untyped business) keeps
+  its existing family colour. More than two synergy types is out of scope and
+  degrades safely to the first colour rather than throwing.
+- **One source of truth, three renderers.** The dynamic generator
+  (`generateBusinessCardSvg`), the runtime CSV-row fallback
+  (`generateCardSvgFromCsvRow`) and the static Node generator
+  (`generate-main-street-card-svgs.mjs`) all colour/split the face the same
+  way; the static SVGs and `csv-checksum.json` are regenerated with the CSV.
+  The `.mjs` generator cannot import the TS module, so it duplicates the
+  palette values and a test asserts the two copies agree.
+- **Accessibility.** Both synergy icons are drawn bottom-left (one per type,
+  18 px pitch), so colour is never the sole carrier of meaning. The rounded
+  corners, inner gradient and header-bar treatment are preserved.
+
 ## Scene Transitions
 
 - Main Street scene-level fade transitions are currently disabled.

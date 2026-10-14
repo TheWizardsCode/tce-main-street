@@ -1,7 +1,7 @@
 # Main Street: Card Catalog
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
-> **Last updated:** Piggyback eligibility flag — 16 organiser Investment events (MS-0MV8BFOVB000HM0W)
+> **Last updated:** Synergy-coloured card faces + two-tone bridge split (MS-0MUZH51PU007POJ4)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
 
@@ -183,6 +183,16 @@ Park has been reclassified as a **Community Space** card (see below).
 #### Multi-Synergy Bridge Cards
 
 Bridge cards belong to two synergy types simultaneously, enabling cross-type adjacency bonuses and strategic placement decisions.
+
+> **Face colouring (MS-0MUZH51PU007POJ4):** every business / community-space
+> card face is coloured by synergy type from a single shared dark palette
+> (`CARD_FACE_PALETTE` in `src/MainStreetCardsUtils.ts` — Food `#5D4037`,
+> Culture `#1565C0`, Commerce `#2E7D32`, Service `#6A1B9A`,
+> Entertainment `#C62828`, Health `#00838F`; untyped default `#2f2f2f`). A
+> bridge card renders its face split horizontally into two bands — **top =
+> first `synergyTypes` entry, bottom = second** — inside the rounded card
+> corners. Both synergy icons stay visible bottom-left so colour is never the
+> sole cue.
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
@@ -486,6 +496,19 @@ Multi-level upgrades require the business to already be at Level 1 (`requiredLev
 ### Multi-Synergy Bridge Cards
 
 The adjacency resolver (`MainStreetAdjacency.ts`) uses `some()` to check if any synergy type matches, so bridge cards earn bonuses from neighbours of either type — a Cafe (Food+Culture) placed between a Bakery and a Bookshop earns bonuses from both sides. Bridges are also the primary lever for spreading synergy types across sparse tiers: since a bridge counts one card toward two types, a 2-card tier can span 3–4 types. T3's Entertainment 2 / Service 1 span now comes from the retiered Community Shelter rather than a bridge (Arcade is Entertainment-only since CG-0MT5VZJLS000B8KI).
+
+> **Card-face colouring (MS-0MUZH51PU007POJ4).** Business and community-space
+> faces are coloured by synergy type from the shared dark `CARD_FACE_PALETTE`
+> (single colour for one-synergy cards). A **bridge card** (exactly two
+> synergy types) splits its face horizontally — **top band = `synergyTypes[0]`,
+> bottom band = `synergyTypes[1]`** — clipped to the rounded rectangle so
+> neither band bleeds past the corners. The split is applied identically by
+> all three generators (static `.mjs`, runtime CSV row, dynamic state-aware)
+> and the static SVGs are committed alongside the CSV checksum. Event,
+> upgrade and staff cards keep their existing family colours. The bright
+> `synergyColor` palette remains the accent for icons, header bar and art
+> backing. Both synergy icons are drawn bottom-left on bridge cards (one per
+> type), so colour is never the only signal.
 
 ### Synergy Type Coverage
 
