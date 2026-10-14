@@ -19,7 +19,7 @@ Key terms:
 
 | Term | Meaning |
 |------|---------|
-| **Storyline id / title** | A stable grouping key (`storyline-tax`) and a display name (`Tax Troubles`). Descriptive metadata — it groups cards into an arc and drives the journal/HUD, but does **not** by itself make a card a choice. |
+| **Storyline id / title** | A stable grouping key (`storyline-tax`) and a display name (`Tax Troubles`). Descriptive metadata — it groups cards into an arc and drives the journal, but does **not** by itself make a card a choice. |
 | **Choice card** | An incident that pauses resolution and asks the player to pick an option. Marked by `hasChoices=true`, or by a registered option list. |
 | **Option** | `{ label, successorId, effectPolicy }` plus optional runtime callbacks `condition` / `successorResolver` (see §2.1). `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it). `successorId` is the card queued next, or empty to end the chain. |
 | **Successor / chain card** | The card pushed onto the incident deck when an option is chosen. |
@@ -44,14 +44,10 @@ without a browser):
 
 - **Named dialog** — the choice dialog title is the storyline name
   (`choiceDialogTitle`, fallback: the card name) with the specific incident as
-  a subtitle (`choiceDialogSubtitle`).
+  a subtitle (`choiceDialogSubtitle`). The dialog appears instantly, so it is
+  reduced-motion safe.
 - **Outcome feedback** — resolving a choice writes a narrative “story update”
   line to the activity log, tied to the storyline (`storyUpdateLine`).
-- **Continuity indicator** — a transient HUD label (`continuityIndicatorLabel`)
-  names the storylines currently in play (`getActiveStorylines`): active while a
-  card of the storyline is pending or queued, persisting through cycles, and
-  cleared when the thread ends. The dialog appears instantly and the indicator
-  is static text, so both are reduced-motion safe.
 - **Journal & choice clarity** — a **Journal** HUD action opens an overlay
   listing past storyline choices and outcomes, most recent first, with an empty
   state before any choice (`buildJournal`/`journalIsEmpty` in
@@ -74,7 +70,7 @@ mechanic (all default to empty = legacy behaviour):
 | `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses and asks for an option. Only the literal string `true` (case-insensitive) is accepted. |
 | `acceptNextCardId` | string | Card pushed when the **Accept** option (option 0, effect policy `apply`) is chosen. Empty ends the chain. |
 | `rejectNextCardId` | string | Card pushed when the **Reject** option (option 1, effect policy `skip`) is chosen. Empty ends the chain. |
-| `storylineId` | string | Storyline grouping key. Descriptive (journal/HUD). |
+| `storylineId` | string | Storyline grouping key. Descriptive (journal). |
 | `storylineTitle` | string | Storyline display name; falls back to the card name when empty. |
 
 These are appended to the shared header, so `src/README.md`'s
@@ -271,8 +267,6 @@ validation:
 - **Validator** — reports each cycle once as an informational finding.
 - **Graph/manifest** — marks participating edges `cycle: true`; Mermaid renders
   them with `==>`.
-- **Continuity** — the player-agency indicator (C7) persists while a cycle is
-  live.
 - **Tests** — the shipped tax cycle is pinned structurally (`chain-content`),
   behaviourally (C1 harness), and in the manifest (`storyline-graph`).
 
