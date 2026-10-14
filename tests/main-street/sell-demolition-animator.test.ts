@@ -201,6 +201,26 @@ describe('MainStreetAnimator.animateSell', () => {
     expect(scene.soundManager.play).toHaveBeenCalledWith(SFX_KEYS.COIN_POP);
   });
 
+  it('flies the refund coin and +€refund pop to the published HUD coin anchor (MS-0MUYT57J80021CWW)', async () => {
+    // The HUD render publishes the live coin-number anchor; the refund flight
+    // and its +€refund pop must land on it, not the approximate gameW fraction.
+    const { scene, tweens, texts } = createMockScene({
+      hudCoinAnchor: { x: 333, y: 56 },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    const promise = animator.animateSell({ slotIndex: 0, refund: 5, cardId: 'biz-1', family: 'business' });
+    await driveToCompletion(promise, tweens, moveGameObject);
+
+    const flight = moveGameObject.mock.calls.map((c) => c[0] as FlightOptions)[0];
+    expect(flight!.destX).toBe(333);
+    expect(flight!.destY).toBe(56);
+    const pop = texts.find((t) => t.label === '+€5');
+    expect(pop).toBeDefined();
+    expect(pop!.x).toBe(333);
+    expect(pop!.y).toBe(56 - 8);
+  });
+
   it('keeps only the +€refund pop under reduced motion (no demolition, no flight)', async () => {
     const { scene, tweens, texts, containers } = createMockScene({
       settingsPanel: { reducedMotion: true },

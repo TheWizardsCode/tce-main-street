@@ -11,6 +11,8 @@
 import type { SlotIncome, SlotPhaseBreakdown, SynergyPair } from '../MainStreetAdjacency';
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import type { CoinGridHandle } from '../coin-grid';
+import type { SceneLayout } from './MainStreetConstants';
+import { hudCoinFallback, hudRepFallback } from './MainStreetConstants';
 
 export type IncomePhaseKey = 'base' | 'synergy' | 'reputation' | 'events' | 'upcoming' | 'collect';
 
@@ -69,6 +71,40 @@ export interface SynergyPhaseFlight {
    * they sum exactly to the receiver's `SlotPhaseBreakdown.synergyBonus`.
    */
   amount: number;
+}
+
+/** A published on-screen anchor: the centre of a HUD number (see `HudAnchorHost`). */
+export interface HudAnchor {
+  x: number;
+  y: number;
+}
+
+/**
+ * Host exposing the live HUD number anchors published by
+ * `MainStreetRendererHud.refreshHud()` (MS-0MUYT57J80021CWW). The scene
+ * carries them; `null` until the first HUD render.
+ */
+export interface HudAnchorHost {
+  hudCoinAnchor?: HudAnchor | null;
+  hudRepAnchor?: HudAnchor | null;
+}
+
+/**
+ * Resolve a HUD flight destination from the published number anchor — the
+ * live centre of the `Coins: N` / `Reputation: N` numeric value — falling
+ * back to the legacy approximate coordinate (see `hudCoinFallback` /
+ * `hudRepFallback`) only when no HUD render has published an anchor yet
+ * (e.g. the very first render). Single source of truth: every
+ * coin/reputation → HUD flight consumes the published anchor instead of
+ * duplicating hard-coded destination maths.
+ */
+export function hudFlightTarget(
+  host: HudAnchorHost,
+  kind: 'coin' | 'rep',
+  layout: SceneLayout,
+): HudAnchor {
+  if (kind === 'rep') return host.hudRepAnchor ?? hudRepFallback(layout);
+  return host.hudCoinAnchor ?? hudCoinFallback(layout);
 }
 
 /** MainStreetAnimator -- animation and HUD-delta helper for Main Street scene. */

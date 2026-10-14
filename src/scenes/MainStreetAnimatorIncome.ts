@@ -17,7 +17,7 @@ import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { SFX_KEYS } from './MainStreetConstants';
 import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
-import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal } from './MainStreetAnimatorContext';
+import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal, hudFlightTarget } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
 import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
 
@@ -255,9 +255,12 @@ export function animateIncomeCollection(animator: MainStreetAnimatorContext, par
     const coinSources = params.income.breakdown.filter((b) => b.total > 0);
     if (coinSources.length === 0 && params.repSources.length === 0) return;
 
-    const { gameW, hudY } = s.layout;
-    const coinX = gameW * 0.25 + 70;
-    const repX = gameW * 0.5;
+    const { hudY } = s.layout;
+    // HUD landing targets (MS-0MUYT57J80021CWW): the published coin/reputation
+    // number anchors, with a conservative fallback to the legacy approximate
+    // coordinates before the first HUD render.
+    const coinTarget = hudFlightTarget(s, 'coin', s.layout);
+    const repTarget = hudFlightTarget(s, 'rep', s.layout);
     const flightMs = 600;
     const staggerMs = 50;
 
@@ -268,7 +271,7 @@ export function animateIncomeCollection(animator: MainStreetAnimatorContext, par
       remaining -= 1;
       if (remaining > 0) return;
       // All flights landed — final "+total" pop at the coin counter.
-      const totalText = s.add.text(coinX, hudY - 8, `+${params.income.total}`, {
+      const totalText = s.add.text(coinTarget.x, hudY - 8, `+${params.income.total}`, {
         fontSize: '18px',
         fontStyle: 'bold',
         color: '#ffdd66',
@@ -319,10 +322,10 @@ export function animateIncomeCollection(animator: MainStreetAnimatorContext, par
     };
 
     coinSources.forEach((slot, i) => {
-      launch(animator.getStreetSlotCenter(slot.slotIndex), { x: coinX, y: hudY }, 'coin', i * staggerMs);
+      launch(animator.getStreetSlotCenter(slot.slotIndex), { x: coinTarget.x, y: hudY }, 'coin', i * staggerMs);
     });
     params.repSources.forEach((slot, i) => {
-      launch(animator.getStreetSlotCenter(slot.slotIndex), { x: repX, y: hudY }, 'rep', (coinSources.length + i) * staggerMs);
+      launch(animator.getStreetSlotCenter(slot.slotIndex), { x: repTarget.x, y: hudY }, 'rep', (coinSources.length + i) * staggerMs);
     });
   
 }
@@ -527,8 +530,11 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
         // credited income. Presentation-only: never mutates state or the
         // credited total.
         const upcomingSource = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
-        const hudCoin = { x: s.layout.gameW * 0.25 + 70, y: s.layout.hudY };
-        const hudRep = { x: s.layout.gameW * 0.5, y: s.layout.hudY };
+        // HUD destinations: the published coin/reputation number anchors
+        // (MS-0MUYT57J80021CWW), falling back to the legacy approximate
+        // coordinates before the first HUD render.
+        const hudCoin = hudFlightTarget(s, 'coin', s.layout);
+        const hudRep = hudFlightTarget(s, 'rep', s.layout);
         let delayOffset = 0;
         for (let si = 0; si < numSlots; si++) {
           const slot = slots[si];
@@ -902,8 +908,10 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
   }): void {
 
     const s = animator.scene;
-    const { gameW, hudY } = s.layout;
-    const coinX = gameW * 0.25 + 70;
+    const { hudY } = s.layout;
+    // HUD landing target (MS-0MUYT57J80021CWW): the published coin number
+    // anchor, with a conservative fallback before the first HUD render.
+    const coinTarget = hudFlightTarget(s, 'coin', s.layout);
     const numSlots = slots.length;
 
     let pending = 0;
@@ -927,7 +935,7 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
           snapDisplayedTotals(s, ctx.pendingDeltas);
         }
         if (!ctx.reducedMotion || pending === 0) {
-          const totalText = s.add.text(coinX, hudY - 8, `+${ctx.creditedTotal}`, {
+          const totalText = s.add.text(coinTarget.x, hudY - 8, `+${ctx.creditedTotal}`, {
             fontSize: '18px',
             fontStyle: 'bold',
             color: '#ffdd66',
@@ -980,7 +988,7 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
             moveGameObject({
               scene: s,
               target: icon,
-              destX: coinX,
+              destX: coinTarget.x,
               destY: hudY,
               duration: flightMs,
               ease: 'Quad.easeIn',

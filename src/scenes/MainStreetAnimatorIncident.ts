@@ -17,7 +17,7 @@ import {
   INCIDENT_REVEAL_HOLD_MS,
 } from './MainStreetAnimatorTiming';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
-import { snapDisplayedTotals, stepDisplayedTotal } from './MainStreetAnimatorContext';
+import { snapDisplayedTotals, stepDisplayedTotal, hudFlightTarget } from './MainStreetAnimatorContext';
 import type { MainStreetAnimatorContext } from './MainStreetAnimatorContext';
 
 
@@ -125,14 +125,20 @@ export function animateIncidentReveal(animator: MainStreetAnimatorContext, param
           ease: 'Cubic.easeIn',
           onComplete: () => {
             back.setVisible(false);
-            // 4. Delta bubbles during the hold.
+            // 4. Delta bubbles during the hold. Destinations are the published
+            // coin/reputation number anchors (MS-0MUYT57J80021CWW), falling
+            // back to the legacy approximate coordinates before the first HUD
+            // render — captured at bubble launch so the flights land on the
+            // numbers the player reads.
+            const hudCoinTarget = hudFlightTarget(s, 'coin', s.layout);
+            const hudRepTarget = hudFlightTarget(s, 'rep', s.layout);
             animator.animateIncidentDeltaBubbles({
               coinChange: params.coinChange,
               repChange: params.repChange,
               cardCenter: boardCentre,
-              hudCoinX: s.layout.gameW * 0.25 + 70,
-              hudRepX: s.layout.gameW * 0.5,
-              hudY: s.layout.hudY,
+              hudCoinX: hudCoinTarget.x,
+              hudRepX: hudRepTarget.x,
+              hudY: hudCoinTarget.y,
             });
             // Hold, then return to queue.
             s.time.delayedCall(INCIDENT_REVEAL_HOLD_MS, () => {

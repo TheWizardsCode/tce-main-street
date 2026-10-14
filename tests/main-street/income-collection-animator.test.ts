@@ -133,8 +133,10 @@ describe('MainStreetAnimator.animateIncomeCollection', () => {
     // Fire the launches (the flights start when each delayed call fires).
     for (const { fn } of scheduled) fn();
 
-    // Each flight targets the HUD coin counter (stripLeft = gameW*0.25 + 70)
-    // with the shared coin-pop SFX played via the scene SoundManager.
+    // Each flight targets the HUD coin counter with the shared coin-pop SFX
+    // played via the scene SoundManager. No anchors are published (the mock
+    // scene has none), so the flight uses the conservative fallback coordinate
+    // — the value before the first HUD render.
     const coinX = 1280 * 0.25 + 70;
     const moveCalls = moveGameObject.mock.calls.map((c) => c[0] as Record<string, unknown>);
     expect(moveCalls).toHaveLength(2);
@@ -253,6 +255,55 @@ describe('MainStreetAnimator.animateIncomeCollection', () => {
     expect(scene.incomeCollectionActive).toBe(false);
     expect(scheduled).toHaveLength(0);
     expect(moveGameObject).not.toHaveBeenCalled();
+  });
+
+  it('flies coins and the final +total pop to the published HUD coin anchor (MS-0MUYT57J80021CWW)', () => {
+    // The HUD render publishes the live coin-number anchor; the flight must
+    // land exactly on it, ignoring the legacy gameW-fraction fallback.
+    const { scene, scheduled, createdTexts } = createMockScene({
+      hudCoinAnchor: { x: 409, y: 50 },
+      hudRepAnchor: { x: 777, y: 50 },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    animator.animateIncomeCollection({
+      income: {
+        total: 4,
+        breakdown: [{ slotIndex: 0, businessName: 'Bakery', baseIncome: 2, synergyBonus: 0, total: 2 }],
+      },
+      repSources: [],
+    });
+
+    completeAllFlights(scheduled);
+
+    const moveCalls = moveGameObject.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    expect(moveCalls).toHaveLength(1);
+    expect(moveCalls[0].destX).toBe(409);
+    expect(moveCalls[0].destY).toBe(50);
+    // The final "+total" pop targets the same published anchor.
+    const totalText = createdTexts.find((t) => t.label === '+4');
+    expect(totalText).toBeDefined();
+    expect(totalText!.x).toBe(409);
+    expect(scene.incomeCollectionActive).toBe(false);
+  });
+
+  it('flies reputation pips to the published HUD rep anchor (MS-0MUYT57J80021CWW)', () => {
+    const { scene, scheduled } = createMockScene({
+      hudCoinAnchor: { x: 409, y: 50 },
+      hudRepAnchor: { x: 777, y: 50 },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    animator.animateIncomeCollection({
+      income: { total: 0, breakdown: [] },
+      repSources: [{ slotIndex: 2, rep: 1 }],
+    });
+
+    scheduled[0].fn();
+    const moveCalls = moveGameObject.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    expect(moveCalls).toHaveLength(1);
+    expect(moveCalls[0].destX).toBe(777);
+    expect(moveCalls[0].destY).toBe(50);
   });
 });
 

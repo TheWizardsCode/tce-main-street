@@ -15,6 +15,7 @@ import type { SynergyPair } from '../MainStreetAdjacency';
 import { SFX_KEYS } from './MainStreetConstants';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import type { MainStreetAnimatorContext } from './MainStreetAnimatorContext';
+import { hudFlightTarget } from './MainStreetAnimatorContext';
 
 
 export function animateSynergyFormation(animator: MainStreetAnimatorContext, pair: SynergyPair): void {
@@ -301,8 +302,12 @@ export function animateSell(animator: MainStreetAnimatorContext, params: {
     if (s.replayMode) return Promise.resolve();
 
     const reducedMotion = s.settingsPanel?.reducedMotion === true;
-    const coinX = s.layout.gameW * 0.25 + 70;
-    const hudY = s.layout.hudY;
+    // Refund destination (MS-0MUYT57J80021CWW): the published HUD coin-number
+    // anchor, with a conservative fallback to the legacy approximate
+    // coordinate before the first HUD render.
+    const coinTarget = hudFlightTarget(s, 'coin', s.layout);
+    const coinX = coinTarget.x;
+    const hudY = coinTarget.y;
     const { x, y } = animator.getStreetSlotCenter(params.slotIndex);
 
     // Refund-delivered feedback: "+€refund" pop at the HUD counter + coin

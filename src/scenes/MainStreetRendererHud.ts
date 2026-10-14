@@ -254,6 +254,15 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // re-render it in place (MS-0MUYAESVU007X2U8).
     s.hudCoinText = coinText;
 
+    // Live HUD number anchors (MS-0MUYT57J80021CWW): the centre of the
+    // NUMERIC portion of each counter label (label origin + prefix width +
+    // number-width/2), NOT the centre of the whole label. The reputation
+    // label's width depends on its text, so the old whole-label centre
+    // drifted from the number; the numeric centre is what a coin/pip flight
+    // should visibly land on. Published here as the single source of truth
+    // for every coin/reputation → HUD flight destination.
+    s.hudCoinAnchor = hudNumberAnchor(coinText, 'Coins: ', String(Math.round(coins)), hudY);
+
     // Reputation — left-aligned right of the reserved Community Favour band so
     // the two never overlap once the buttons move into the strip
     // (CG-0MUFAITED0088AGN).
@@ -266,6 +275,11 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     s.hudRepText = repText;
     // Centre of the reputation text — used for the +/- delta pop position.
     const repX = repText.x + repText.width / 2;
+
+    // Live reputation number anchor (MS-0MUYT57J80021CWW) — the centre of
+    // the numeric portion of the `Reputation: N` label, published alongside
+    // the coin anchor above.
+    s.hudRepAnchor = hudNumberAnchor(repText, 'Reputation: ', String(Math.round(reputation)), hudY);
 
     // Score - right-aligned at the strip's right edge (shows x / y where y is
     // the effective win threshold — the per-seat target in competitive play,
@@ -315,8 +329,8 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     s.animateHudValueChanges({
       coins: deferredCoins,
       reputation: deferredReputation,
-      coinX: hudLeft + 70,
-      repX,
+      coinX: s.hudCoinAnchor?.x ?? hudLeft + 70,
+      repX: s.hudRepAnchor?.x ?? repX,
       hudY,
     });
   
@@ -1081,4 +1095,52 @@ export function animateUpcomingEffectLine(renderer: MainStreetRendererContext,
     }
     return chars;
   
+}
+
+/**
+ * Measure the rendered width of a substring (`value`) in the same font as
+ * the given Phaser Text object (MS-0MUYT57J80021CWW). Phaser syncs the
+ * canvas `font` to the label's style when it paints, so measuring on the
+ * Text's own `context` returns the exact same metrics the label uses.
+ * Defensive: a failure (e.g. mock/stub objects in tests) yields 0.
+ */
+function measureTextWidth(text: Phaser.GameObjects.Text, value: string): number {
+  try {
+    const style = (text as unknown as {
+      style?: { syncFont?: (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => void };
+    }).style;
+    const canvas = (text as unknown as { canvas?: HTMLCanvasElement }).canvas;
+    const context = (text as unknown as { context?: CanvasRenderingContext2D }).context;
+    if (style?.syncFont && canvas && context) style.syncFont(canvas, context);
+    if (context && typeof context.measureText === 'function') {
+      const measured = context.measureText(value).width;
+      return Number.isFinite(measured) ? measured : 0;
+    }
+  } catch {
+    // Presentation-only — never break the HUD render.
+  }
+  return 0;
+}
+
+/**
+ * Compute the live HUD number anchor from its rendered label text
+ * (MS-0MUYT57J80021CWW): the centre of the numeric portion — label origin +
+ * prefix width + number-width/2 — at the strip baseline `hudY`. Returns
+ * `null` only when measurement failed (callers then fall back to the legacy
+ * approximate coordinate, e.g. the very first render).
+ */
+function hudNumberAnchor(
+  text: Phaser.GameObjects.Text,
+  prefix: string,
+  numberText: string,
+  hudY: number,
+): { x: number; y: number } | null {
+  try {
+    const prefixWidth = measureTextWidth(text, prefix);
+    const numberWidth = measureTextWidth(text, numberText);
+    if (prefixWidth <= 0 && numberWidth <= 0) return null;
+    return { x: text.x + prefixWidth + numberWidth / 2, y: hudY };
+  } catch {
+    return null;
+  }
 }

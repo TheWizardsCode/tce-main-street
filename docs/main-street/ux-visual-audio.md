@@ -191,6 +191,51 @@ void popTextOrIcon({
 });
 ```
 
+### HUD resource anchors — single source of truth for flight destinations
+
+(MS-0MUYT57J80021CWW)
+
+- **Problem.** The HUD strip renders `Coins: N` left-aligned at
+  `hudLeft + 10` and `Reputation: N` at `favourBandRight + 40`; those edges
+  come from the SLL layout and the viewport, not fixed fractions of the
+  screen width. Every coin/reputation → HUD flight used to target hard-coded
+  `gameW * 0.25 + 70` (coins) / `gameW * 0.5` (reputation) coordinates, so
+  the flights only coincidentally landed on the counters — most visibly for
+  reputation, whose number sits near the right of a label that can be wider
+  than the assumed position — and read as coins "missing" the counter.
+- **Published anchors.** On every `refreshHud()` the render computes and
+  publishes two live anchors on the scene:
+  - `scene.hudCoinAnchor = { x, y }` — the centre of the **numeric portion**
+    of the `Coins: N` label (`label.x + prefixWidth + numberWidth/2`), at the
+    strip baseline `hudY`.
+  - `scene.hudRepAnchor = { x, y }` — the same for `Reputation: N`.
+
+  Widths are measured from the label's own Phaser canvas context
+  (`measureTextWidth`), so the anchor uses the exact glyph metrics the label
+  renders with. Anchors are recomputed on every HUD render, including
+  viewport/window changes (`handleResize` → `refreshAll` → `refreshHud`), so
+  later flights always target the current number positions.
+- **Consumers.** Every coin/reputation → HUD flight resolves its destination
+  through `hudFlightTarget(scene, kind, layout)`
+  (`MainStreetAnimatorContext.ts`): the income collection
+  (`animateIncomeCollection`), the phased collection (`collectIncomeGrids`),
+  the `upcoming` phase (`runIncomePhase`), the incident-reveal delta bubbles
+  (`animateIncidentReveal` → `animateIncidentDeltaBubbles`) and the sell
+  refund (`animateSell`). The HUD delta pop (`animateHudValueChanges`) is
+  passed the same anchor `x` from `refreshHud`.
+- **Fallback.** Before the first HUD render (`hudCoinAnchor` /
+  `hudRepAnchor` still `null`) `hudFlightTarget` falls back to the legacy
+  approximate coordinates, now centralised in `hudCoinFallback` /
+  `hudRepFallback` (`MainStreetConstants.ts`) — so no
+  `MainStreetAnimator*` module hard-codes a HUD-flight destination. The
+  non-HUD `gameW * 0.5` uses (the `upcomingSource` queue origin and the
+  centred phase label) are unaffected.
+- **Presentation-only.** The anchors are display state: they never mutate
+  game state, the transcript, or the deferred-mutation window; reduced-motion
+  and replay/headless modes remain flight-free exactly as before. The anchor
+  is captured at flight launch; a number that grows during the display-only
+  count-up is handled by MS-0MUYAESVU007X2U8, not here.
+
 ### Ambient street pedestrians (reputation crowd, MS-0MTV9AS15004AC1E)
 
 - Purpose: give reputation a persistent, diegetic on-street presence. The

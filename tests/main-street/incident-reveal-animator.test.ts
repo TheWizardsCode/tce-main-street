@@ -441,6 +441,37 @@ describe('MainStreetAnimator.animateIncidentReveal (new choreography)', () => {
 
     expect(soundCalls.some((c) => c.key === SFX_KEYS.INCOME_NEGATIVE)).toBe(true);
   });
+
+  it('routes incident delta bubbles to the published HUD coin/rep anchors (MS-0MUYT57J80021CWW)', () => {
+    // The HUD render publishes the live coin/reputation number anchors; the
+    // reveal bubbles (flown through `animateIncidentReveal` →
+    // `animateIncidentDeltaBubbles`) must land on them, not on approximate
+    // gameW fractions.
+    const { scene, flushDelayedCallsBelow } = createMockScene({
+      hudCoinAnchor: { x: 401, y: 50 },
+      hudRepAnchor: { x: 802, y: 50 },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    animator.animateIncidentReveal({
+      cardId: 'inc-1',
+      incidentName: 'Good Week',
+      coinChange: 3,
+      repChange: 2,
+      from: { x: 400, y: 300 },
+    });
+
+    // Fire the short bubble stagger delays to launch the bubbles.
+    flushDelayedCallsBelow(1000);
+
+    const moveCalls = moveGameObject.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    const coinLands = moveCalls.filter((c) => c.destX === 401);
+    const repLands = moveCalls.filter((c) => c.destX === 802);
+    expect(coinLands).toHaveLength(3);
+    expect(repLands).toHaveLength(2);
+    for (const call of coinLands) expect(call.destY).toBe(50);
+    for (const call of repLands) expect(call.destY).toBe(50);
+  });
 });
 
 describe('MainStreetAnimator.animateIncidentDeltaBubbles', () => {

@@ -316,6 +316,21 @@ export class MainStreetScene extends CardGameScene {
   public hudRepText: any = null;
 
   /**
+   * Live on-screen anchors of the HUD number centres, published by
+   * `refreshHud()` every time the HUD strip re-renders
+   * (MS-0MUYT57J80021CWW). `x` is the centre of the numeric portion of the
+   * `Coins: N` / `Reputation: N` label (label origin + prefix width +
+   * number-width/2), `y` is the HUD strip baseline (`hudY`). `null` before
+   * the first HUD render. Single source of truth for every coin/reputation →
+   * HUD flight destination (income collection, collection, Upcoming deltas,
+   * incident delta bubbles, sell refund, HUD delta pops); the animators
+   * consume these and fall back to the legacy approximate coordinates only
+   * when no render has happened yet.
+   */
+  public hudCoinAnchor: { x: number; y: number } | null = null;
+  public hudRepAnchor: { x: number; y: number } | null = null;
+
+  /**
    * True while the end-of-turn income collection animation is running
    * (coins/pips flying to the HUD). Suppresses the immediate HUD delta pop
    * in `animateHudValueChanges` so the collection's final "+total" pop is
