@@ -71,7 +71,7 @@ Staff cards are a new card family (`family: 'staff'`) that expand the player's h
 | Socialite | 800 | 150 | +1 | +10 rep/turn | **NEW** reputation ability *(Group F).* |
 | Accountant | 800 | 150 | +1 | refresh −1 | **NEW** economy ability *(Group F).* |
 | Director | 1400 | 400 | +3 | — | High investment, high capacity |
-| Executive | 2000 | 500 | +4 | — | Premium slot capacity *(Group F).* |
+| Executive | 2000 | 500 | +1 | +1 action/week | Tier-10 action economy, traded against hand capacity *(Group F; MS-0MUYAEXBN008YC0J).* |
 
 #### Rules
 

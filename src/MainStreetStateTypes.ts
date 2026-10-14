@@ -458,7 +458,8 @@ export interface MainStreetState {
   /**
    * Unused base actions banked from previous days (capped at 2).
    * Composed into the daily budget at WeekStart. Staff-derived actions
-   * (e.g. General Manager +1) are never banked — only the base action
+   * (e.g. Manager/Director/Executive/General Manager +1) are never banked —
+   * only the base action
    * banks each day. (CG-0MT3IOPZB005LNAR)
    */
   bankedActions: number;

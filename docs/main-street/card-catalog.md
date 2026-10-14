@@ -84,7 +84,8 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   reputation-bonus upgrade variants (Tea Lounge, Adventure Park, Orchard,
   Grand Fountain, Health Center).
 - Staff grew from 3 to 7 with the Group F expansion (CG-0MSQJ7VL9009JHF4):
-  Apprentice (budget) and Executive (+4 slots premium) cost points, plus two
+  Apprentice (budget) and Executive (+1 slot and +1 action/week premium) cost
+  points, plus two
   NEW ability mechanics — the Socialite's +10 rep/turn and the Accountant's
   market-refresh discount of 100 (StaffCard optional ability fields). The
   Financial Advisor's per-business upgrade discount of 100 is implemented via
@@ -596,7 +597,7 @@ Staff cards are a separate card family (`family: 'staff'`) that expand hand capa
 | `staff-accountant` | Accountant | 800 | 150 | +1 | 6 | Refresh −100; Tax 25% | A meticulous accountant makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J); refresh discount rescaled ×100 (CG-0MTKMGL66004I0PC).* |
 | `staff-lookout` | Lookout | 1000 | 200 | +1 | 7 | Peek once/turn | A sharp-eyed lookout can peek at the top card of the incident deck once per turn. | **NEW** peek ability *(CG-0MSXOW6GN008ZSMN).* |
 | `staff-director` | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. | Premium action economy + capacity *(MS-0MTQ7S5EJ008MWD0).* |
-| `staff-executive` | Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity at a high ongoing cost. | Premium slot capacity *(Group F).* |
+| `staff-executive` | Executive | 2000 | 500 | +1 | 10 | +1 action/turn | An experienced executive adds +1 hand slot and grants +1 action per week at a high ongoing cost. | Tier-10 action economy, traded against hand capacity *(Group F; MS-0MUYAEXBN008YC0J).* |
 | `staff-general-manager` | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | A seasoned leader grants **+1 action per week** while employed (2 actions instead of 1). | **NEW** action-economy ability *(CG-0MSTOF1N5005PK2R).* |
 | `staff-barista` | Barista | 300 | 50 | — | 2 | Food synergy | A skilled barista brings warmth to any business. Adjacent Food businesses gain +20 synergy coins. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
 | `staff-bookkeeper` | Bookkeeper | 300 | 50 | — | 2 | −20% ongoing | Keeps the books tight. Reduces this business ongoing cost by 20%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |

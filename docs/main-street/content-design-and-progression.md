@@ -135,7 +135,7 @@ Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG
 | Accountant | 800 | 150 | +1 | 6 | refresh −100; tax 25% | Makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J; ×100 rescale CG-0MTKMGL66004I0PC.)* |
 | Lookout | 1000 | 200 | +1 | 7 | peek once/turn | Peek at the top incident-deck card once per turn. *(CG-0MSXOW6GN008ZSMN.)* |
 | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
-| Executive | 2000 | 500 | +4 | 10 | — | An experienced executive adds major hand capacity. *(Group F.)* |
+| Executive | 2000 | 500 | +1 | 10 | +1 action/turn | An experienced executive adds +1 hand slot and grants an extra action per week, traded against hand capacity. *(Group F; MS-0MUYAEXBN008YC0J.)* |
 | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
 | Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. While employed at a business, grants one coin-free, action-free market re-roll per turn, biased 75% toward that business's synergy types; it advances the paid re-roll escalation counter. Generalist — serves every synergy type. *(MS-0MTISBYLS009936W.)* |
 

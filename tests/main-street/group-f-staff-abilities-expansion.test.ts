@@ -8,8 +8,9 @@
  * - Staff abilities are engine-supported and unit-tested (AC2): the
  *   Socialite's +0.1 rep/turn accrues during the income phase, and the
  *   Accountant reduces the investments-refresh cost by 1.
- * - Staff without abilities (Apprentice, Executive, and the existing
- *   Assistant/Manager/Director) behave exactly as before (AC3).
+ * - Staff without abilities (the Apprentice and the existing
+ *   Assistant) behave exactly as before (AC3); the Executive now grants
+ *   `actionsPerTurn: 1` and a single hand slot (MS-0MUYAEXBN008YC0J).
  * - All IDs unique (AC4); staff cards carry tiers following the rebalance
  *   (CG-0MT2WU0CX005Z143): every staff card is assigned a tier so staff are
  *   unlocked through the same progression as other families.
@@ -44,13 +45,14 @@ interface NewStaffContract {
   cost: number;
   ongoingCost: number;
   handSlotsAdded: number;
+  actionsPerTurn?: number;
   reputationPerTurn?: number;
   refreshCostDiscount?: number;
 }
 
 const NEW_STAFF_CONTRACTS: NewStaffContract[] = [
   { id: 'staff-apprentice', name: 'Apprentice', cost: 200, ongoingCost: 50, handSlotsAdded: 1 },
-  { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 4 },
+  { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 1, actionsPerTurn: 1 },
   { id: 'staff-socialite', name: 'Socialite', cost: 800, ongoingCost: 150, handSlotsAdded: 1, reputationPerTurn: 10 },
   { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 100 },
 ];
@@ -154,6 +156,7 @@ describe('Group F staff expansion: design contract stats', () => {
       expect(card!.cost).toBe(contract.cost);
       expect(card!.ongoingCost).toBe(contract.ongoingCost);
       expect(card!.handSlotsAdded).toBe(contract.handSlotsAdded);
+      expect(card!.actionsPerTurn ?? 0).toBe(contract.actionsPerTurn ?? 0);
       expect(card!.reputationPerTurn ?? 0).toBe(contract.reputationPerTurn ?? 0);
       expect(card!.refreshCostDiscount ?? 0).toBe(contract.refreshCostDiscount ?? 0);
       expect(card!.description.length).toBeGreaterThan(0);
@@ -277,14 +280,20 @@ describe('Group F: existing staff no-regression (AC3)', () => {
     }
   });
 
-  it('Apprentice and Executive carry no abilities either', () => {
+  it('Apprentice carries no abilities', () => {
     const deck = createStaffDeck(1);
-    for (const id of ['staff-apprentice', 'staff-executive']) {
-      const card = findStaff(deck, id)!;
-      expect(card.reputationPerTurn).toBeUndefined();
-      expect(card.refreshCostDiscount).toBeUndefined();
-      expect(card.actionsPerTurn).toBeUndefined();
-    }
+    const card = findStaff(deck, 'staff-apprentice')!;
+    expect(card.reputationPerTurn).toBeUndefined();
+    expect(card.refreshCostDiscount).toBeUndefined();
+    expect(card.actionsPerTurn).toBeUndefined();
+  });
+
+  it('Executive is no longer ability-free: it grants +1 action/turn', () => {
+    const deck = createStaffDeck(1);
+    const card = findStaff(deck, 'staff-executive')!;
+    expect(card.actionsPerTurn).toBe(1);
+    expect(card.reputationPerTurn).toBeUndefined();
+    expect(card.refreshCostDiscount).toBeUndefined();
   });
 
   it('non-action staff (Socialite, Accountant, Lookout) do not grant actions', () => {

@@ -136,7 +136,7 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
         'Market Actions: buy businesses, upgrades, or events; place businesses\n' +
         'on the street grid to earn future income.\n' +
         'You get 1 action per week, plus 1 per action-granting staff\n' +
-        '(Manager, Director, General Manager). Taking a card to hand costs\n' +
+        '(Manager, Director, Executive, General Manager). Taking a card to hand costs\n' +
         '1 action, as does playing or placing it from hand — but a same-week\n' +
         'move + play/place pair costs 1 action total.\n' +
         'Card costs are paid when a card is placed or played, not when taken\n' +

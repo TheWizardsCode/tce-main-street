@@ -286,6 +286,17 @@ describe('buildActionTooltip', () => {
     expect(tooltip).toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
   });
 
+  it('appends the staff action note when an Executive is employed', () => {
+    const state = setupMainStreetGame({ seed: 'tooltip-action-executive' });
+    const executive = getStaffCardTemplates().find(t => t.id === 'staff-executive');
+    if (!executive) throw new Error('staff-executive template missing');
+    state.staffCards.push({ ...executive });
+    state.actionsRemaining = 2;
+
+    const tooltip = buildActionTooltip(state);
+    expect(tooltip).toContain(HUD_TOOLTIP_STRINGS.actionBankingGmNote);
+  });
+
   it('omits the staff action note when no staff boosts actions', () => {
     const state = setupMainStreetGame({ seed: 'tooltip-action-no-gm' });
     state.staffCards = [];

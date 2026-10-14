@@ -164,7 +164,8 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
           // Employed-applicant cards (12 specialization staff, CG-0MT4WXNR80090FXZ)
           // deliberately grant 0 hand slots; only hand-capacity staff add slots.
           expect(tpl.handSlotsAdded).toBeGreaterThanOrEqual(0);
-          // 4 = Executive premium slot capacity (Group F, CG-0MSQJ7VL9009JHF4).
+          // 4 = General Manager slot capacity; the Executive dropped to +1
+          // slot when it gained an action per week (MS-0MUYAEXBN008YC0J).
           expect(tpl.handSlotsAdded).toBeLessThanOrEqual(4);
 
           // ongoingCost should exist (0 is acceptable for cheap staff)
