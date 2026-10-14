@@ -214,12 +214,24 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // back to the current state outside the window (or when no pre-values
     // were captured, e.g. reduced-motion / replay paths).
     const deferredWindow = s.incomeCollectionActive === true || s.incidentRevealActive === true;
-    const coins = deferredWindow && s.previousCoins !== null
+    const deferredCoins = deferredWindow && s.previousCoins !== null
       ? s.previousCoins
       : s.state.resourceBank.coins;
-    const reputation = deferredWindow && s.previousReputation !== null
+    const deferredReputation = deferredWindow && s.previousReputation !== null
       ? s.previousReputation
       : s.state.resourceBank.reputation;
+    // Display-only running totals (MS-0MUYAESVU007X2U8): while the deferred
+    // window is active AND the reconciliation is counting, render the running
+    // totals instead of the static pre-animation value. They step with the
+    // coin/pip flights and land exactly on the post-reconciliation value; when
+    // not counting (reduced motion / replay / outside the window) this is the
+    // unchanged `deferredCoins` / `deferredReputation` fallback.
+    const coins = deferredWindow && typeof s.displayedCoins === 'number'
+      ? s.displayedCoins
+      : deferredCoins;
+    const reputation = deferredWindow && typeof s.displayedReputation === 'number'
+      ? s.displayedReputation
+      : deferredReputation;
     const { hudLeft, hudRight, hudWidth, favourBandRight, hudY } = s.layout;
 
     // Background strip — market-aligned to `hudLeft`..`hudRight` (AC2,
@@ -238,6 +250,9 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
     }).setOrigin(0, 0.5));
     s.hudContainer.add(coinText);
+    // Retain the live text object so the display-only reconciliation steps can
+    // re-render it in place (MS-0MUYAESVU007X2U8).
+    s.hudCoinText = coinText;
 
     // Reputation — left-aligned right of the reserved Community Favour band so
     // the two never overlap once the buttons move into the strip
@@ -246,6 +261,9 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       fontSize: '16px', fontStyle: 'bold', color: '#88bbff', fontFamily: FONT_FAMILY,
     }).setOrigin(0, 0.5));
     s.hudContainer.add(repText);
+    // Retain the live text object so the display-only reconciliation steps can
+    // re-render it in place (MS-0MUYAESVU007X2U8).
+    s.hudRepText = repText;
     // Centre of the reputation text — used for the +/- delta pop position.
     const repX = repText.x + repText.width / 2;
 
@@ -295,13 +313,35 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     }
 
     s.animateHudValueChanges({
-      coins,
-      reputation,
+      coins: deferredCoins,
+      reputation: deferredReputation,
       coinX: hudLeft + 70,
       repX,
       hudY,
     });
   
+}
+
+/**
+ * Re-render the on-screen HUD totals in place from the display-only running
+ * totals (MS-0MUYAESVU007X2U8). Called by each reconciliation step/snap so the
+ * text visibly counts without a full (transient-clearing) refresh. A no-op
+ * outside the deferred window or when the counters are not counting.
+ */
+export function syncHudTotals(renderer: MainStreetRendererContext): void {
+  const s = renderer.scene;
+  try {
+    const deferredWindow = s.incomeCollectionActive === true || s.incidentRevealActive === true;
+    if (!deferredWindow) return;
+    if (s.hudCoinText && typeof s.displayedCoins === 'number') {
+      s.hudCoinText.setText(`Coins: ${Math.round(s.displayedCoins)}`);
+    }
+    if (s.hudRepText && typeof s.displayedReputation === 'number') {
+      s.hudRepText.setText(`Reputation: ${Math.round(s.displayedReputation)}`);
+    }
+  } catch {
+    // Presentation-only — a missing/destroyed text object must never break a flight.
+  }
 }
 
 export function refreshChallengeTracker(renderer: MainStreetRendererContext): void {

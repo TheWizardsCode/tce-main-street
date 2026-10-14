@@ -17,7 +17,7 @@ import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { SFX_KEYS } from './MainStreetConstants';
 import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
-import { resolveDeltaFlow } from './MainStreetAnimatorContext';
+import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
 import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
 
@@ -546,12 +546,14 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
             if (route.kind === 'coin') {
               // Attached (business card ↔ HUD coin counter) and unattached
               // (Upcoming panel ↔ HUD coin counter) coin deltas both fly
-              // point-to-point without touching a business grid.
-              animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs);
+              // point-to-point without touching a business grid. The signed
+              // delta steps the display-only coin total as each icon lands /
+              // departs (MS-0MUYAESVU007X2U8).
+              animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs, d.delta);
             } else {
               // Reputation parity (AC3): same attachment + direction rule,
               // flying reputation pips instead of coins.
-              animator.flyRepPips(route.from, route.to, amount, at, flightMs);
+              animator.flyRepPips(route.from, route.to, amount, at, flightMs, d.delta);
             }
           }
           const pauseMs = INCOME_CARD_FULL_PAUSE_MULTIPLIER * animator.currentCoinStagger;
@@ -772,15 +774,28 @@ export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
     amount: number,
     at: number,
     flightMs?: number,
+    /**
+     * Signed delta this flight represents, for the display-only running total
+     * (MS-0MUYAESVU007X2U8). When provided, each coin landing steps the HUD
+     * coin total by `displayDelta / iconCount`, so the total tracks the flight
+     * and sums exactly to the delta. Absent on the legacy call sites — the step
+     * then no-ops (the counter is not counting).
+     */
+    displayDelta?: number,
   ): void {
 
     const s = animator.scene;
     const iconCount = iconsForAmount(amount);
     if (iconCount === 0) return;
     const duration = flightMs ?? INCOME_FLIGHT_MS;
+    const perIcon = (displayDelta ?? 0) / iconCount;
+    // A loss departs from the HUD, a gain lands on it — step the display-only
+    // total at the HUD end of the flight (MS-0MUYAESVU007X2U8 AC1/AC2).
+    const stepOnLaunch = (displayDelta ?? 0) < 0;
     for (let i = 0; i < iconCount; i++) {
       s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
         try {
+          if (stepOnLaunch) stepDisplayedTotal(s, 'coin', perIcon);
           const visual = s.add.circle(from.x, from.y, 6, 0xffcc44, 1).setDepth(3000);
           moveGameObject({
             scene: s,
@@ -793,6 +808,7 @@ export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
             sfx: { start: SFX_KEYS.COIN_POP, moveIntervalMs: 200 },
             onComplete: () => {
               try { visual.destroy(); } catch { /* ignore */ }
+              if (!stepOnLaunch) stepDisplayedTotal(s, 'coin', perIcon);
             },
           });
         } catch { /* ignore */ }
@@ -808,6 +824,9 @@ export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
  * (business card when attached, otherwise the Upcoming panel) to the HUD
  * reputation counter; a loss flows HUD counter → actor. Reputation pips are
  * silent, matching the reputation income phase.
+ *
+ * A provided `displayDelta` steps the display-only reputation total per pip
+ * (MS-0MUYAESVU007X2U8).
  */
 export function flyRepPips(animator: MainStreetAnimatorContext,
     from: { x: number; y: number },
@@ -815,15 +834,20 @@ export function flyRepPips(animator: MainStreetAnimatorContext,
     amount: number,
     at: number,
     flightMs?: number,
+    /** Signed reputation delta for the display-only running total (see flyCoinsToPoint). */
+    displayDelta?: number,
   ): void {
 
     const s = animator.scene;
     const iconCount = iconsForAmount(amount);
     if (iconCount === 0) return;
     const duration = flightMs ?? INCOME_FLIGHT_MS;
+    const perIcon = (displayDelta ?? 0) / iconCount;
+    const stepOnLaunch = (displayDelta ?? 0) < 0;
     for (let i = 0; i < iconCount; i++) {
       s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
         try {
+          if (stepOnLaunch) stepDisplayedTotal(s, 'rep', perIcon);
           const visual = s.add.circle(from.x, from.y, 5, 0x88bbff, 1).setDepth(3000);
           moveGameObject({
             scene: s,
@@ -834,6 +858,7 @@ export function flyRepPips(animator: MainStreetAnimatorContext,
             ease: 'Quad.easeIn',
             onComplete: () => {
               try { visual.destroy(); } catch { /* ignore */ }
+              if (!stepOnLaunch) stepDisplayedTotal(s, 'rep', perIcon);
             },
           });
         } catch { /* ignore */ }
@@ -853,6 +878,20 @@ export function applyPendingDeltasOnce(animator: MainStreetAnimatorContext, delt
       }
     } catch { /* presentation-only — never break the choreography */ }
   
+}
+
+/**
+ * The credited invoice amount collected from one slot's grid (base + synergy +
+ * reputation + event deltas — the same components `creditedIncomeTotal` sums
+ * per turn). Used to price each collected grid icon for the display-only HUD
+ * counting (MS-0MUYAESVU007X2U8): a slot with N icons contributes this amount
+ * split evenly across its N flights, so the collection totals exactly the
+ * income the grid represented.
+ */
+function creditedSlotAmount(pd: SlotPhaseBreakdown): number {
+  let sum = (pd?.baseIncome ?? 0) + (pd?.synergyBonus ?? 0) + (pd?.repBonus ?? 0);
+  for (const d of pd?.eventDeltas ?? []) sum += d.delta;
+  return sum;
 }
 
 export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: IncomePhaseSlot[], ctx: {
@@ -877,6 +916,16 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
         // Idempotent: the scene guard ensures at-most-once across the income
         // and incident animations.
         animator.applyPendingDeltasOnce(ctx.pendingDeltas);
+        // Display-only totals (MS-0MUYAESVU007X2U8): the phased choreography
+        // has counted its flights — mark it so the incident-reveal replay
+        // never double-counts the same "Upcoming" delta, and snap the running
+        // totals to the authoritative post-reconciliation values so the HUD
+        // lands exactly on the final value at the last collection landing
+        // (per-icon rounding and unanimated ongoing costs are absorbed here).
+        if (ctx.pendingDeltas) {
+          s.displayedIncomeCounted = true;
+          snapDisplayedTotals(s, ctx.pendingDeltas);
+        }
         if (!ctx.reducedMotion || pending === 0) {
           const totalText = s.add.text(coinX, hudY - 8, `+${ctx.creditedTotal}`, {
             fontSize: '18px',
@@ -912,6 +961,11 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
       const slot = slots[si];
       const grid = slot.handle.container;
       const icons = [...grid.list];
+      // Display-only counting (MS-0MUYAESVU007X2U8): each collected icon steps
+      // the HUD coin total by an equal share of the slot's credited amount, so
+      // the running total tracks the collection and sums exactly per slot.
+      const iconCount = icons.length;
+      const perIcon = iconCount > 0 ? creditedSlotAmount(slot.pd) / iconCount : 0;
       const flightMs = animator.getFlightDuration(numSlots, si);
       for (let i = 0; i < icons.length; i++) {
         const icon = icons[i] as Phaser.GameObjects.Image;
@@ -934,6 +988,7 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
               sfx: { start: SFX_KEYS.COIN_POP, moveIntervalMs: 200 },
               onComplete: () => {
                 try { icon.destroy(); } catch { /* ignore */ }
+                stepDisplayedTotal(s, 'coin', perIcon);
                 pending -= 1;
                 if (pending <= 0) finalize();
               },

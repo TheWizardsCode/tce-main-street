@@ -133,4 +133,66 @@ describe('refreshHud during the deferred window (CG-0MTR72P14000VO6Q)', () => {
 
     expect(hudCoinText(scene)).toBe('Coins: 77');
   });
+
+  it('renders the display-only running total mid-flight during the deferred window (MS-0MUYAESVU007X2U8 AC5)', async () => {
+    const scene = game!.scene.getScene('MainStreetScene') as any;
+
+    // Reconciliation in progress: state already holds the post-turn value, the
+    // pre-animation capture is `previousCoins`, and the display-only counter
+    // has only reached an intermediate value (two of three flights landed).
+    scene.state.resourceBank.coins = 300;
+    scene.previousCoins = 100;
+    scene.displayedCoins = 200;
+    scene.incomeCollectionActive = true;
+    scene.incidentRevealActive = false;
+
+    scene.refreshHud();
+
+    expect(hudCoinText(scene)).toBe('Coins: 200');
+
+    // A flight landing re-renders the on-screen total in place (no full refresh).
+    scene.displayedCoins = 250;
+    scene.syncHudTotals();
+    expect(hudCoinText(scene)).toBe('Coins: 250');
+
+    // The final landing snaps the running total to the authoritative value.
+    scene.displayedCoins = 300;
+    scene.refreshHud();
+    expect(hudCoinText(scene)).toBe('Coins: 300');
+
+    scene.incomeCollectionActive = false;
+  });
+
+  it('counts reputation totals down during a loss reconciliation (MS-0MUYAESVU007X2U8 AC2/AC5)', async () => {
+    const scene = game!.scene.getScene('MainStreetScene') as any;
+
+    scene.state.resourceBank.reputation = 30;
+    scene.previousReputation = 50;
+    scene.displayedReputation = 40; // one pip of a -10 loss already departed
+    scene.displayedCoins = null; // coins do not move in this test
+    scene.incidentRevealActive = true;
+    scene.incomeCollectionActive = false;
+
+    scene.refreshHud();
+    const repText = (scene.hudContainer.list as Phaser.GameObjects.GameObject[])
+      .find(
+        (obj) => obj instanceof Phaser.GameObjects.Text
+          && (obj as any)._hudTransient
+          && (obj as Phaser.GameObjects.Text).text.startsWith('Reputation:'),
+      ) as Phaser.GameObjects.Text | undefined;
+    expect(repText?.text).toBe('Reputation: 40');
+
+    // Final value after the loss lands.
+    scene.displayedReputation = 30;
+    scene.refreshHud();
+    const repTextFinal = (scene.hudContainer.list as Phaser.GameObjects.GameObject[])
+      .find(
+        (obj) => obj instanceof Phaser.GameObjects.Text
+          && (obj as any)._hudTransient
+          && (obj as Phaser.GameObjects.Text).text.startsWith('Reputation:'),
+      ) as Phaser.GameObjects.Text | undefined;
+    expect(repTextFinal?.text).toBe('Reputation: 30');
+
+    scene.incidentRevealActive = false;
+  });
 });

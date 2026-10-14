@@ -353,6 +353,22 @@ void popTextOrIcon({
   (`scene.incomeCollectionActive === true`) the immediate HUD delta pop is
   suppressed so the final pop is the single landing feedback — the income
   sound/event routing (`income-gained` → `sfx-income-positive`) still runs.
+- **HUD totals count with the flights (MS-0MUYAESVU007X2U8).** While the
+  deferred window is active the HUD renders a pair of display-only running
+  totals (`displayedCoins` / `displayedReputation`) instead of the static
+  pre-animation value. They start at `previousCoins` / `previousReputation`
+  when the deferred end-of-turn path opens, step **up** as coin/pip flights
+  land at the HUD (grid-to-HUD collection, gain card/panel → HUD flights) and
+  **down** as loss flights depart the HUD (HUD → card/panel), and are snapped
+  to the authoritative post-reconciliation values at the final landing
+  (collection finalize / incident-reveal cleanup), so the total is exact —
+  per-icon rounding and unanimated ongoing costs are absorbed there.
+  Presentation-only: nothing touches `state`, the transcript, or the
+  deferred-mutation guards; reduced-motion, tutorial and replay/headless
+  paths never initialise the counters, so they keep the existing
+  instant-final fallback. The incident's delta is flown once (the
+  `upcoming` phase) and re-enacted by the reveal bubbles, so it is counted
+  once (`scene.displayedIncomeCounted` guards the replay).
 - Week-start deferral: the controller polls `incomeCollectionActive` on a
   250ms cadence (with a 16s safety cap) before starting the next week, so
   the street refresh + HUD update never cut the show short; the street
@@ -477,6 +493,16 @@ condensed text-only summary.
   are skipped — the card appears instantly face-up at board centre — but the
   1920ms hold, cleanup and `onComplete` are **preserved** so the player
   still has time to read the incident (producer-confirmed silent hold).
+- **HUD totals count with the reveal (MS-0MUYAESVU007X2U8).** The reveal's
+  delta bubbles step the display-only running totals like the `upcoming`
+  phase flights do: a gain counts up as bubbles land on the HUD counter, a
+  loss counts down as bubbles depart the HUD. Because the `upcoming` phase
+  (which animates the same incident delta) already counted it in the phased
+  show, the reveal is marked as counted (`scene.displayedIncomeCounted`) and
+  the replay bubbles do not move the totals again — the final
+  post-reconciliation snap still runs in the reveal's cleanup, which also
+  covers the no-income show where the reveal bubbles are the only counting
+  hook.
 - Tutorial exemption: the reveal (and its hold) is skipped while the
   tutorial is active, preserving the tutorial's window-safe step pacing —
   the same precedent as the phased income show and the week banner being

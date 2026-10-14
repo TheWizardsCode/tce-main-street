@@ -146,8 +146,9 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    displayDelta?: number,
   ): void {
-    flyCoinsToPoint(this, from, to, amount, at, flightMs);
+    flyCoinsToPoint(this, from, to, amount, at, flightMs, displayDelta);
   }
 
   public flyRepPips(
@@ -156,8 +157,9 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    displayDelta?: number,
   ): void {
-    flyRepPips(this, from, to, amount, at, flightMs);
+    flyRepPips(this, from, to, amount, at, flightMs, displayDelta);
   }
 
   public applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void {

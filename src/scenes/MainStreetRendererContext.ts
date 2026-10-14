@@ -28,6 +28,8 @@ export interface MainStreetRendererContext {
   refreshAll(): void;
   refreshAllExceptStreet(): void;
   refreshHud(): void;
+  /** Re-render the HUD totals in place from the display-only running totals (MS-0MUYAESVU007X2U8). */
+  syncHudTotals(): void;
   refreshChallengeTracker(): void;
   refreshStreetGrid(): void;
   drawStreetRoads(): void;

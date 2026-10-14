@@ -230,6 +230,11 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.overlayObjects = [];
     s.previousCoins = null;
     s.previousReputation = null;
+    s.displayedCoins = null;
+    s.displayedReputation = null;
+    s.displayedIncomeCounted = false;
+    s.hudCoinText = null;
+    s.hudRepText = null;
     s.pendingBusinessSourceIndex = null;
     s.transferAnimationCount = 0;
     s.cleanupTransferAnimations();

@@ -17,6 +17,7 @@ import {
   INCIDENT_REVEAL_HOLD_MS,
 } from './MainStreetAnimatorTiming';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
+import { snapDisplayedTotals, stepDisplayedTotal } from './MainStreetAnimatorContext';
 import type { MainStreetAnimatorContext } from './MainStreetAnimatorContext';
 
 
@@ -77,6 +78,11 @@ export function animateIncidentReveal(animator: MainStreetAnimatorContext, param
       // last animation of the end-of-turn cycle). Idempotent via the scene
       // guard — the income collection may have applied them already.
       animator.applyPendingDeltasOnce(params.pendingDeltas);
+      // Display-only totals (MS-0MUYAESVU007X2U8): snap the running totals to
+      // the authoritative post-reconciliation values so the HUD lands exactly
+      // on the final value (also covers the no-income show, where the reveal's
+      // own flights are the only counting hook).
+      snapDisplayedTotals(s, params.pendingDeltas);
       // Close the deferred HUD window so refreshHud renders post-delta values.
       s.incidentRevealActive = false;
       container.destroy();
@@ -163,6 +169,11 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
 
     const { coinChange, repChange, cardCenter, hudCoinX, hudRepX, hudY } = params;
     const flightMs = INCIDENT_BUBBLE_FLIGHT_MS;
+    // Avoid double-counting the incident delta when the phased `upcoming`
+    // phase already stepped the display-only totals earlier this turn
+    // (MS-0MUYAESVU007X2U8): the reveal is then a visual re-enactment and must
+    // not move the HUD totals again.
+    const credit = s.displayedIncomeCounted !== true;
 
     // Coin bubbles. Direction follows the incident convention
     // (CG-0MU41XVNV002N2D9): a gain flows card → HUD, a loss HUD → card.
@@ -175,8 +186,11 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
       const coinGain = coinChange > 0;
       const coinFrom = coinGain ? cardCenter : { x: hudCoinX, y: hudY };
       const coinTo = coinGain ? { x: hudCoinX, y: hudY } : cardCenter;
+      const perIcon = credit ? coinChange / iconCount : 0;
+      const stepOnLaunch = coinChange < 0;
       for (let i = 0; i < iconCount; i++) {
         s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
+          if (credit && stepOnLaunch) stepDisplayedTotal(s, 'coin', perIcon);
           const bubble = s.add.circle(coinFrom.x, coinFrom.y, 5, 0xffcc44, 1).setDepth(3000);
           moveGameObject({
             scene: s,
@@ -189,6 +203,7 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
             sfx: { start: SFX_KEYS.COIN_POP },
             onComplete: () => {
               try { bubble.destroy(); } catch (_) { /* ignore */ }
+              if (credit && !stepOnLaunch) stepDisplayedTotal(s, 'coin', perIcon);
             },
           });
         });
@@ -201,8 +216,11 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
       const repGain = repChange > 0;
       const repFrom = repGain ? cardCenter : { x: hudRepX, y: hudY };
       const repTo = repGain ? { x: hudRepX, y: hudY } : cardCenter;
+      const perIcon = credit ? repChange / iconCount : 0;
+      const stepOnLaunch = repChange < 0;
       for (let i = 0; i < iconCount; i++) {
         s.time.delayedCall(i * INCIDENT_BUBBLE_STAGGER_MS, () => {
+          if (credit && stepOnLaunch) stepDisplayedTotal(s, 'rep', perIcon);
           const bubble = s.add.circle(repFrom.x, repFrom.y, 4, 0x88bbff, 1).setDepth(3000);
           moveGameObject({
             scene: s,
@@ -213,6 +231,7 @@ export function animateIncidentDeltaBubbles(animator: MainStreetAnimatorContext,
             ease: 'Quad.easeIn',
             onComplete: () => {
               try { bubble.destroy(); } catch (_) { /* ignore */ }
+              if (credit && !stepOnLaunch) stepDisplayedTotal(s, 'rep', perIcon);
             },
           });
         });

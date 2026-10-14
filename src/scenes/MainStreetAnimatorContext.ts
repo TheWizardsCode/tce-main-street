@@ -155,6 +155,8 @@ export interface MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    /** Signed delta for the display-only coin total (MS-0MUYAESVU007X2U8). */
+    displayDelta?: number,
   ): void;
   /**
    * Flies reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS AC3 —
@@ -167,6 +169,8 @@ export interface MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    /** Signed delta for the display-only reputation total (MS-0MUYAESVU007X2U8). */
+    displayDelta?: number,
   ): void;
   applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void;
   collectIncomeGrids(slots: IncomePhaseSlot[], ctx: {
@@ -397,4 +401,91 @@ export function resolveDeltaFlow(
     kind,
     delta: delta.delta,
   };
+}
+
+// ── Display-only reconciliation totals (MS-0MUYAESVU007X2U8) ────────────
+// The end-of-turn reconciliation animates coins/reputation arriving at (or
+// leaving) the HUD. To make the HUD totals build in step with that animation,
+// the renderer reads a pair of display-only running totals — `displayedCoins`
+// / `displayedReputation` on the scene — while the deferred window is active.
+// These helpers are presentation-only: they never touch engine state, the
+// transcript, or the deferred-mutation guards (`endOfTurnDeltasApplied` /
+// `applyPendingDeltasOnce`). They live in the type hub so the income and
+// incident helper modules can share them without importing each other
+// (preserving the hub-and-spoke import graph).
+
+/** Which display-only running total a step applies to. */
+export type DisplayedResource = 'coin' | 'rep';
+
+/** Minimal host shape for the display-only running totals. */
+export interface DisplayTotalsHost {
+  displayedCoins: number | null;
+  displayedReputation: number | null;
+  previousCoins: number | null;
+  previousReputation: number | null;
+  /**
+   * Optional hook to re-render the on-screen HUD totals in place after a step/
+   * snap (MS-0MUYAESVU007X2U8). The scene exposes it via `syncHudTotals`.
+   */
+  syncHudTotals?: () => void;
+}
+
+/**
+ * Initialise the display-only running totals to the pre-reconciliation values.
+ * Called only when the deferred window opens (normal, non-reduced-motion,
+ * non-replay play); reduced motion / replay / headless never initialise them,
+ * so the counters never move and the existing instant-final fallback is kept.
+ */
+export function initDisplayedTotals(
+  host: DisplayTotalsHost,
+  coins: number | null,
+  reputation: number | null,
+): void {
+  host.displayedCoins = coins;
+  host.displayedReputation = reputation;
+}
+
+/**
+ * Step one display-only running total by a signed delta (gain positive, loss
+ * negative). A no-op when the counter is not counting (`null`) or the delta is
+ * not a finite non-zero number — which is how reduced-motion / replay / legacy
+ * paths stay untouched. Integer-ish amounts are fine; the renderer rounds.
+ */
+export function stepDisplayedTotal(
+  host: DisplayTotalsHost,
+  kind: DisplayedResource,
+  delta: number,
+): void {
+  if (!Number.isFinite(delta) || delta === 0) return;
+  if (kind === 'coin') {
+    if (typeof host.displayedCoins !== 'number') return;
+    host.displayedCoins += delta;
+  } else {
+    if (typeof host.displayedReputation !== 'number') return;
+    host.displayedReputation += delta;
+  }
+  host.syncHudTotals?.();
+}
+
+/**
+ * Snap the display-only running totals to the authoritative
+ * post-reconciliation values (`previous + pendingDelta`). Called at the final
+ * landing of the reconciliation so the total lands exactly on the final value
+ * regardless of per-icon rounding or unanimated ongoing costs. A no-op when a
+ * counter is not counting (`null`).
+ */
+export function snapDisplayedTotals(
+  host: DisplayTotalsHost,
+  deltas?: PendingEndOfTurnDeltas,
+): void {
+  let touched = false;
+  if (typeof host.displayedCoins === 'number' && host.previousCoins !== null) {
+    host.displayedCoins = host.previousCoins + (deltas?.pendingCoinDelta ?? 0);
+    touched = true;
+  }
+  if (typeof host.displayedReputation === 'number' && host.previousReputation !== null) {
+    host.displayedReputation = host.previousReputation + (deltas?.pendingRepDelta ?? 0);
+    touched = true;
+  }
+  if (touched) host.syncHudTotals?.();
 }

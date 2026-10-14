@@ -24,6 +24,7 @@ import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, mark
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { initDisplayedTotals } from './MainStreetAnimatorContext';
 import {
   endCompetitiveTurnDay,
   isCompetitiveState,
@@ -208,6 +209,12 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.previousCoins = s.state.resourceBank.coins;
     s.previousReputation = s.state.resourceBank.reputation;
     s.endOfTurnDeltasApplied = false;
+    // Display-only running totals (MS-0MUYAESVU007X2U8): reset here and only
+    // initialise below in the deferred animation path, so reduced-motion /
+    // tutorial / replay keep the existing instant-final behaviour.
+    s.displayedCoins = null;
+    s.displayedReputation = null;
+    s.displayedIncomeCounted = false;
     try {
       // Deferred-mutation mode: normal interactive play defers the resource
       // application until the end-of-turn animations complete. Tutorial and
@@ -217,6 +224,11 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
       const inTutorialBefore =
         (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
       const deferred = !inTutorialBefore && !reducedMotion && !s.replayMode;
+      if (deferred) {
+        // Open the display-only counters at the pre-reconciliation values so
+        // the HUD counts from the captured total as flights land/depart.
+        initDisplayedTotals(s, s.previousCoins, s.previousReputation);
+      }
       result = processEndOfTurn(
         s.state,
         deferred ? { deferResourceApplication: true } : undefined,
@@ -456,6 +468,8 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         // post-delta values.
         s.previousCoins = null;
         s.previousReputation = null;
+        s.displayedCoins = null;
+        s.displayedReputation = null;
         s.incidentRevealActive = false;
         // Defer log rendering until after startTurnPhase has displayed
         // upcoming cards (MS-0MURBOD2E009SOM2).

@@ -286,6 +286,36 @@ export class MainStreetScene extends CardGameScene {
   public previousReputation: number | null = null;
 
   /**
+   * Display-only running totals shown while the end-of-turn deferred window is
+   * active (MS-0MUYAESVU007X2U8). They start at the pre-animation values and
+   * step with the reconciliation flights (coins/reputation arriving at or
+   * leaving the HUD) so the player sees the totals build, landing exactly on
+   * the post-reconciliation value. Presentation-only: never read by the engine
+   * and never a substitute for `state`. `null` means "not counting" — the HUD
+   * falls back to `previousCoins` / `previousReputation` (and then `state`),
+   * which is the reduced-motion / replay / legacy behaviour.
+   */
+  public displayedCoins: number | null = null;
+  public displayedReputation: number | null = null;
+
+  /**
+   * True once the phased income choreography has stepped the display-only
+   * totals for the current end-of-turn reconciliation. Used to avoid
+   * double-counting the incident's (a.k.a. "Upcoming") delta, which is flown
+   * once in the `upcoming` phase and again in the incident reveal
+   * (MS-0MUYAESVU007X2U8). Reset at endTurn() start and on scene creation.
+   */
+  public displayedIncomeCounted = false;
+
+  /**
+   * Live HUD total text objects, stored by `refreshHud()` (MS-0MUYAESVU007X2U8).
+   * The display-only reconciliation steps re-render them in place so the
+   * running totals visibly count without a full (transient-clearing) refresh.
+   */
+  public hudCoinText: any = null;
+  public hudRepText: any = null;
+
+  /**
    * True while the end-of-turn income collection animation is running
    * (coins/pips flying to the HUD). Suppresses the immediate HUD delta pop
    * in `animateHudValueChanges` so the collection's final "+total" pop is
@@ -477,6 +507,15 @@ export class MainStreetScene extends CardGameScene {
   // ── HUD ─────────────────────────────────────────────────
   public refreshHud(...args: any[]): any {
     return (this.msRenderer as any).refreshHud.apply(this.msRenderer, args);
+  }
+
+  /**
+   * Re-render the on-screen HUD totals in place from the display-only running
+   * totals (MS-0MUYAESVU007X2U8) — used by the reconciliation steps so the
+   * text counts without a full transient-clearing refresh.
+   */
+  public syncHudTotals(...args: any[]): any {
+    return (this.msRenderer as any).syncHudTotals.apply(this.msRenderer, args);
   }
 
   public animateHudValueChanges(...args: any[]): any {
