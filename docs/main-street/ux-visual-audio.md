@@ -403,11 +403,27 @@ void popTextOrIcon({
       phase-sum invariant (`base + synergy + repBonus + eventDeltas` = credited
       total) and the deferred-mutation economy are unchanged; reduced-motion
       and replay/headless modes keep their no-flight exemption.
-  - Phase pace: `INCOME_PHASE_GAP_MS` (default 2200ms) between phases;
-    collection lands at ≈11s — **this pacing is part of the feature's
-    acceptance criteria and MUST NOT be shortened** (the turn controller
-    defers the week start until the show completes, so gameplay timing is
-    unaffected).
+  - **Empty phases are skipped (MS-0MUYT436C005B4QN).** A phase with no
+    non-zero contribution across the producing slots is skipped outright: no
+    phase label is shown and no `INCOME_PHASE_GAP_MS` gap is consumed for it.
+    Emptiness reuses the exact per-phase predicate each `runIncomePhase` case
+    uses — base = no slot with `baseIncome > 0`; synergy = no
+    `synergyPhaseFlights`; reputation = no slot with `repBonus > 0`; events =
+    no `eventDeltaEffects`; upcoming = no slot with a non-zero `upcomingDeltas`
+    entry — so a skipped phase can never hide a contribution the flights would
+    have shown. Non-empty phases keep the canonical order (base → synergy →
+    reputation → events → upcoming) and the standard gap between consecutive
+    *scheduled* phases; `collect` always runs after the last scheduled phase
+    (immediately after `startDelayMs` when every phase is empty, so the day
+    never hangs). `onPhase` fires only for scheduled phases plus `collect`,
+    reporting the scheduled position (empty phases are not reported).
+  - Phase pace: `INCOME_PHASE_GAP_MS` (default 2200ms) between **scheduled**
+    phases. The show's total length is the sum over scheduled phases only, so
+    an empty phase no longer adds a gap — the previous fixed ~11s figure
+    (5 phases × 2200ms) applies only when every phase is non-empty, and is
+    **superseded for empty phases** by the skip semantics above. Non-empty
+    pacing is unchanged and the turn controller still defers the week start
+    until the show completes, so gameplay timing is unaffected.
   - Non-blocking (AC9): VFX only — never mutates game state, the transcript,
     or the turn flow; every step is defensive and failures are swallowed so
     the turn always advances (a throwing animator cannot stall the week).

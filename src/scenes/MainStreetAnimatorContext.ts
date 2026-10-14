@@ -23,8 +23,11 @@ export interface IncomePhaseOptions {
   /** Initial delay before the first phase (default 0). */
   startDelayMs?: number;
   /**
-   * Lifecycle hook called at each phase start (including `collect`), in
-   * both full and reduced-motion modes. Never throws into the choreography.
+   * Lifecycle hook called at each SCHEDULED phase start (including `collect`),
+   * in both full and reduced-motion modes. Empty phases are skipped entirely
+   * (MS-0MUYT436C005B4QN): they are never reported here. `index` is the phase's
+   * position among the scheduled phases (0-based; `collect` reports the count
+   * of scheduled phases). Never throws into the choreography.
    */
   onPhase?: (phase: IncomePhaseKey, index: number) => void;
   /**

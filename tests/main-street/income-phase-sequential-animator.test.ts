@@ -288,30 +288,75 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     const { scene, scheduled } = createMockScene(3);
     const animator = new MainStreetAnimator(scene);
 
-    // Reputation phase = dispatch index 2; one icon per card (repBonus 100).
+    // Base is empty (0), so the sole scheduled phase is reputation; one icon
+    // per card (repBonus 100) → dispatch index 0.
     animator.animateIncomePhases(makePhaseData([0, 0, 0], [100, 100, 100]), { phaseGapMs: 100_000 });
 
-    const durations = collectFlightDurations(scheduled, 2);
+    const durations = collectFlightDurations(scheduled, 0);
     expect(durations).toHaveLength(3);
     // Later cards fly faster: durations strictly decrease.
     expect(durations[0]).toBeGreaterThan(durations[1]);
     expect(durations[1]).toBeGreaterThan(durations[2]);
   });
 
-  it('still runs every phase in order base → … → collect', () => {
+  it('runs only non-empty phases, in order, then collect (skip semantics)', () => {
+    const { scene, scheduled } = createMockScene(2);
+    const animator = new MainStreetAnimator(scene);
+
+    // Base + reputation contribute; synergy/events/upcoming are empty.
+    const order: IncomePhaseKey[] = [];
+    animator.animateIncomePhases(makePhaseData([100, 100], [100, 100]), {
+      phaseGapMs: 100_000,
+      onPhase: (phase) => order.push(phase),
+    });
+
+    // Two scheduled phases (base, reputation) + collect = 3 dispatches.
+    for (let i = 0; i < 3; i++) scheduled[i].fn();
+
+    expect(order).toEqual(['base', 'reputation', 'collect']);
+  });
+
+  it('skips every empty phase and schedules only base + collect for base-only data', () => {
     const { scene, scheduled } = createMockScene(2);
     const animator = new MainStreetAnimator(scene);
 
     const order: IncomePhaseKey[] = [];
+    const labels: string[] = [];
+    const labelSpy = vi.spyOn(animator, 'showIncomePhaseLabel').mockImplementation((label: string) => {
+      labels.push(label);
+    });
+
     animator.animateIncomePhases(makePhaseData([100, 100]), {
       phaseGapMs: 100_000,
       onPhase: (phase) => order.push(phase),
     });
 
-    // Fire the five phase dispatches plus collect (indices 0..5).
-    for (let i = 0; i < 6; i++) scheduled[i].fn();
+    // Only base is non-empty: exactly one phase dispatch + collect.
+    expect(scheduled).toHaveLength(2);
+    for (let i = 0; i < scheduled.length; i++) scheduled[i].fn();
 
-    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    expect(order).toEqual(['base', 'collect']);
+    // No label is shown for the skipped phases.
+    expect(labels).toEqual(['Base income']);
+    labelSpy.mockRestore();
+  });
+
+  it('collect runs immediately (no gap) when every phase is empty', () => {
+    const { scene, scheduled } = createMockScene(2);
+    const animator = new MainStreetAnimator(scene);
+
+    // All contributions zero → every phase is empty.
+    animator.animateIncomePhases(
+      [
+        { slotIndex: 0, businessName: 'A', baseIncome: 0, synergyBonus: 0, repBonus: 0, eventDeltas: [], upcomingDeltas: [] },
+        { slotIndex: 1, businessName: 'B', baseIncome: 0, synergyBonus: 0, repBonus: 0, eventDeltas: [], upcomingDeltas: [] },
+      ],
+      { phaseGapMs: 100_000, startDelayMs: 42, onPhase: () => {} },
+    );
+
+    // Exactly one scheduled call (collect) at the start delay — no phase gaps.
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0].delay).toBe(42);
   });
 
   // ── Phase-major combined sweep (MS-0MUXAQQON006XA6I) ────────────────────
@@ -326,17 +371,17 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
 
     // Four cards = two seats × two cards, concatenated in seat order.
     const order: IncomePhaseKey[] = [];
-    animator.animateIncomePhases(makePhaseData([100, 100, 100, 100]), {
+    animator.animateIncomePhases(makePhaseData([100, 100, 100, 100], [100, 100, 100, 100]), {
       phaseGapMs: 100_000,
       onPhase: (phase) => order.push(phase),
     });
 
-    // Fire the phase dispatches (0..5) then the collection.
-    for (let i = 0; i < 6; i++) scheduled[i].fn();
+    // Fire the scheduled phase dispatches (base, reputation) then the collection.
+    for (let i = 0; i < 3; i++) scheduled[i].fn();
 
     // One sweep over the whole roster — the phase sequence is NOT repeated
-    // per seat (which would emit 6 × seatCount entries).
-    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    // per seat (which would emit entries per seat).
+    expect(order).toEqual(['base', 'reputation', 'collect']);
   });
 
   it('within a phase, seat 0 slots animate before seat 1 slots (seat order)', () => {
@@ -370,7 +415,8 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     expect(schedule).toEqual([]);
     expect(gridRegistry.addLog).toEqual([]);
 
-    const durations = collectFlightDurations(scheduled, 2);
+    // Dispatch index 1 = reputation (the second scheduled phase).
+    const durations = collectFlightDurations(scheduled, 1);
     expect(durations).toEqual([]);
     expect(moveGameObject).not.toHaveBeenCalled();
   });

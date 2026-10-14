@@ -254,8 +254,10 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     // ── Income Phase Animation ──────────────────────────────────────
     // Presentation-only VFX (AGENTS.md rule 8 + epic CG-0MT23O6W8003AXWJ):
     // the phased income show — base → synergy → reputation → events →
-    // upcoming → grid-to-HUD collection (~11s) — runs when the turn ends
-    // with producing slots. `scene.incomeCollectionActive` gates the HUD
+    // upcoming → grid-to-HUD collection — runs when the turn ends
+    // with producing slots. Empty phases are skipped
+    // (MS-0MUYT436C005B4QN), so the show length is the sum over scheduled
+    // phases only. `scene.incomeCollectionActive` gates the HUD
     // delta pop and defers the street refresh + day start below so the
     // on-card coin grids survive the whole choreography. Never mutates
     // state or the transcript; failures are swallowed so the turn always

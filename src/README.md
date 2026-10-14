@@ -57,8 +57,11 @@ income choreography** instead of a single fly-to-HUD burst:
   card when the effect is attached (`SpecificSynergy` / `RandomBusiness`),
   otherwise the Upcoming panel. Upcoming deltas never touch a business coin
   grid (it is reserved for credited income).
-- **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between phases — collection at
-  ≈11s. The turn controller defers the week start (250ms poll, 16s cap)
+- **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between **scheduled** phases.
+  Empty phases are skipped (MS-0MUYT436C005B4QN): a phase with no non-zero
+  contribution shows no label and consumes no gap, so the show compacts to the
+  scheduled phases only (a fully non-empty show is still ≈11s). The turn
+  controller defers the week start (250ms poll, 16s cap)
   until the show completes, so gameplay timing is unchanged; the street
   render is deferred via `refreshAllExceptStreet` while the show runs.
 - **Tutorial:** the tutorial keeps the compact window-safe

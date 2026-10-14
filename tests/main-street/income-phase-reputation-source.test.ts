@@ -104,7 +104,14 @@ interface MockScene {
   msPedestrians?: { dissolveIntoCoins: (targets: Array<{ x: number; y: number }>) => Array<{ x: number; y: number }> };
 }
 
-const REPUTATION_DISPATCH_INDEX = 2;
+/**
+ * The dispatch index of the reputation phase within `animateIncomePhases`.
+ *
+ * These tests use reputation-only phase data (base and synergy are 0), so with
+ * empty-phase skipping (MS-0MUYT436C005B4QN) base and synergy are not
+ * scheduled and reputation is the first scheduled phase → index 0.
+ */
+const REPUTATION_DISPATCH_INDEX = 0;
 
 const LAYOUT = {
   gameW: 1280,

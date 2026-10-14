@@ -330,6 +330,48 @@ export function animateIncomeCollection(animator: MainStreetAnimatorContext, par
   
 }
 
+/** True when at least one producing slot has a base-income coin to count out. */
+function hasBaseIncome(slots: IncomePhaseSlot[]): boolean {
+  return slots.some((sl) => iconsForAmount(Math.max(0, roundHalf(sl.pd.baseIncome))) > 0);
+}
+
+/** True when at least one producing slot has a reputation coin to fly in. */
+function hasReputationIncome(slots: IncomePhaseSlot[]): boolean {
+  return slots.some((sl) => iconsForAmount(roundHalf(sl.pd.repBonus)) > 0);
+}
+
+/** True when at least one producing slot carries a non-zero Upcoming delta. */
+function hasUpcomingDeltas(slots: IncomePhaseSlot[]): boolean {
+  return slots.some((sl) =>
+    (sl.pd.upcomingDeltas ?? []).some((d) => iconsForAmount(Math.abs(roundHalf(d.delta))) > 0),
+  );
+}
+
+/**
+ * Per-phase emptiness predicate (MS-0MUYT436C005B4QN). A phase is empty when
+ * nothing would be animated for it; empty phases are skipped outright by
+ * {@link animateIncomePhases} — no label and no inter-phase gap.
+ *
+ * The conditions are the SAME ones each `runIncomePhase` case uses, so a
+ * skipped phase can never hide a contribution the flights would have shown.
+ */
+function isIncomePhaseEmpty(animator: MainStreetAnimatorContext, key: IncomePhaseKey, slots: IncomePhaseSlot[]): boolean {
+  switch (key) {
+    case 'base':
+      return !hasBaseIncome(slots);
+    case 'synergy':
+      return animator.synergyPhaseFlights(slots).length === 0;
+    case 'reputation':
+      return !hasReputationIncome(slots);
+    case 'events':
+      return animator.eventDeltaEffects(slots).length === 0;
+    case 'upcoming':
+      return !hasUpcomingDeltas(slots);
+    default:
+      return true;
+  }
+}
+
 export function animateIncomePhases(animator: MainStreetAnimatorContext, phaseData: SlotPhaseBreakdown[], options: IncomePhaseOptions = {}): void {
 
     const s = animator.scene;
@@ -369,8 +411,14 @@ export function animateIncomePhases(animator: MainStreetAnimatorContext, phaseDa
         { key: 'upcoming', label: 'Upcoming', color: 0x55ddaa },
       ];
 
+      // Skip empty phases entirely (MS-0MUYT436C005B4QN): only phases with a
+      // non-zero contribution are scheduled, contiguously, so an empty phase
+      // shows no label and consumes no `INCOME_PHASE_GAP_MS`. The canonical
+      // order and the per-phase gap between SCHEDULED phases are unchanged.
+      const activePhases = phaseMeta.filter((meta) => !isIncomePhaseEmpty(animator, meta.key, slots));
+
       let t = startAt;
-      phaseMeta.forEach((meta, i) => {
+      activePhases.forEach((meta, i) => {
         const at = t;
         s.time.delayedCall(at, () => {
           try {
@@ -382,9 +430,11 @@ export function animateIncomePhases(animator: MainStreetAnimatorContext, phaseDa
         t += gap;
       });
 
+      // `collect` always runs after the last scheduled phase — immediately
+      // after `startAt` when every phase is empty, so the day never hangs.
       s.time.delayedCall(t, () => {
         try {
-          emit('collect', phaseMeta.length);
+          emit('collect', activePhases.length);
           animator.collectIncomeGrids(slots, {
             reducedMotion,
             creditedTotal: animator.creditedIncomeTotal(phaseData),
