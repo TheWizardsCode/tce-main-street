@@ -2,10 +2,10 @@
 
 Main Street is a single-game distribution of the
 [Tableau Card Engine](https://github.com/TheWizardsCode/Tableau-Card-Engine):
-a small-business engine-builder played card by card on a shared high street.
-This repository builds a launcher that contains exactly one playable example
-game — **Main Street** — alongside the core-owned **Gym** (always present in
-the engine's game selector).
+an economic city builder played card by card, in which the player develops the
+commercial hub of a city. This repository builds a launcher that contains
+exactly one playable example game — **Main Street** — alongside the core-owned
+**Gym** (always present in the engine's game selector).
 
 A playable web build is published automatically to:
 
