@@ -235,6 +235,15 @@ export interface EventCard {
    */
   readonly hasChoices?: boolean;
   /**
+   * When true, this Investment event is an "organiser" card eligible for the
+   * piggyback mechanic (epic MS-0MUYC47EL005Z69H / F1): in competitive mode
+   * (N≥2) every other active player automatically receives a 50% free-ride
+   * share of its rewards and is offered the join-fully upgrade. Defaults to
+   * falsy / absent for backward compatibility — cards without this field,
+   * and older saves, are not piggyback-eligible.
+   */
+  readonly piggybackable?: boolean;
+  /**
    * When the player chooses Accept, this card ID is added to the incident
    * deck after the event's effect is applied. Null / absent ends the chain.
    */

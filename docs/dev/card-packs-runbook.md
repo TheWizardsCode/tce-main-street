@@ -53,7 +53,7 @@ applied.
 - Dependencies installed (`npm install`).
 - `tsx` available (a devDependency) — the builder runs under it.
 - The **base game's** `card-data.csv` header to copy into the fragment
-  (`src/card-data.csv`; 53 columns).
+  (`src/card-data.csv`; 54 columns).
 - For the gated scenario, a Steam DLC app id and a launcher build that ships
   the catalog entry (see [Gating a pack](#4-gate-a-pack-optional)).
 

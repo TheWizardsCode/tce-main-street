@@ -218,6 +218,11 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       const we = r.availableWeekEnd ? Number(r.availableWeekEnd) : undefined;
       // Parse choice-event columns (CG-0MTSHG8RP008E128)
       const hasChoices = r.hasChoices ? r.hasChoices.trim().toLowerCase() === 'true' : undefined;
+      // Parse the per-card piggyback-eligibility flag (MS-0MV8BFOVB000HM0W / F1).
+      // Spread only when true so older templates / saves keep the field absent.
+      const piggybackable = r.piggybackable
+        ? r.piggybackable.trim().toLowerCase() === 'true'
+        : undefined;
       const acceptNextCardId = r.acceptNextCardId ? r.acceptNextCardId.trim() || null : undefined;
       const rejectNextCardId = r.rejectNextCardId ? r.rejectNextCardId.trim() || null : undefined;
       // Parse storyline metadata (MS-0MUMP93DI0018OGV / AC1)
@@ -244,6 +249,7 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
           ? { availableWeekStart: ws, availableWeekEnd: we }
           : {}),
         ...(hasChoices === true ? { hasChoices: true } : {}),
+        ...(piggybackable === true ? { piggybackable: true } : {}),
         ...(acceptNextCardId !== undefined ? { acceptNextCardId } : {}),
         ...(rejectNextCardId !== undefined ? { rejectNextCardId } : {}),
         ...(storylineId !== undefined ? { storylineId } : {}),

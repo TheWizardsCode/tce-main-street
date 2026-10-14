@@ -1,7 +1,7 @@
 # Main Street: Card Catalog
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
-> **Last updated:** Annual calendar — week-gated seasonal/holiday events (CG-0MTT0K9RX0004QTE)
+> **Last updated:** Piggyback eligibility flag — 16 organiser Investment events (MS-0MV8BFOVB000HM0W)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
 
@@ -100,6 +100,15 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   (MS-0MTR6ZRF5007PWNZ), and relocating **any** employed staff member now costs
   1 action point (MS-0MUOSUNYR0073SI1).
 - Non-baseline card IDs are tracked in `docs/main-street/expanded-card-manifest.json`
+- The CSV gained a `piggybackable` column (MS-0MV8BFOVB000HM0W / epic
+  MS-0MUYC47EL005Z69H): **exactly 16 organiser Investment events** (town-wide
+  festivals, fairs, parties and celebrations — Local Festival, Wellness Fair,
+  Block Party, Harvest Festival, Book Fair, Garden Party, Festival Season,
+  Health Carnival, Summer Fest, St Brigid's Day, St Patrick's Day, Easter,
+  May Day / Bealtaine, Lughnasadh, Samhain / Halloween, Christmas) are flagged
+  `true`; every other row is blank (not eligible). The flag is parsed onto
+  `EventCard.piggybackable` and defaults to absent, so older templates and
+  saves are unaffected.
 
 ### Guidance: adding more cards safely
 
