@@ -499,3 +499,55 @@ describe('F1 — seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6)', ()
     expect(state.rngCalls).toBe(rngBefore + 1);
   });
 });
+
+// ── F9: seeded replay pinning (MS-0MV8KQVOL0047QIK) ─────────
+//
+// Final verification item: pin the seeded replay/Monte-Carlo determinism
+// claims end-to-end. Both the PLAYER path (resolveEventOption) and the AI
+// path (resolveAiEventChoice) must resolve the same good seed to the same
+// random successor — the uniform candidate draw consumes exactly one
+// seeded state.rng() call, so same-seed runs agree and different seeds may
+// differ.
+
+const F9_OPTIONS = [
+  { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+] as unknown as StorylineOption[];
+
+describe('F9 — seeded player-path replay pair (MS-0MV8KQVOL0047QIK)', () => {
+  it('same seed resolves the multi-candidate option to the same successor', () => {
+    registerStorylineOptions('evt-mo-h', F9_OPTIONS);
+    const player = (seed: string): string | null => {
+      const state = multiOutcomeState(seed);
+      processEndOfTurn(state);
+      return getBaseTypeId(resolveEventOption(state, 0).pushedCard!.id);
+    };
+    expect(player('f9-player-replay-a')).toBe(player('f9-player-replay-a'));
+    expect(player('f9-player-replay-b')).toBe(player('f9-player-replay-b'));
+    // The draw landed on one of the two candidates (fan-out exercised).
+    expect(['evt-mo-h-a', 'evt-mo-h-b']).toContain(player('f9-player-replay-a'));
+  });
+});
+
+describe('F9 — seeded AI-path replay pair (MS-0MV8KQVOL0047QIK)', () => {
+  it('same seed through resolveAiEventChoice takes the same random branch', () => {
+    registerStorylineOptions('evt-mo-h', F9_OPTIONS);
+    const run = (seed: string): { drawn: string | null; resolved: boolean } => {
+      const state = multiOutcomeState(seed);
+      processEndOfTurn(state);
+      resolveAiEventChoice(state);
+      const pushed = state.incidentDeck[0];
+      return {
+        drawn: pushed ? getBaseTypeId(pushed.id) : null,
+        resolved: state.pendingEventChoice === null,
+      };
+    };
+    // Identical inputs ⇒ identical successors (deterministic replay).
+    expect(run('f9-ai-replay-a')).toEqual(run('f9-ai-replay-a'));
+    expect(run('f9-ai-replay-b')).toEqual(run('f9-ai-replay-b'));
+    const a = run('f9-ai-replay-a');
+    // The AI resolved headlessly (no pending choice left) onto a valid
+    // candidate of the single-option node.
+    expect(a.resolved).toBe(true);
+    expect(['evt-mo-h-a', 'evt-mo-h-b']).toContain(a.drawn);
+  });
+});
