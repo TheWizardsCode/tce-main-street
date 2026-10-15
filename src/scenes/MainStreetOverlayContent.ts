@@ -1102,6 +1102,152 @@ export class MainStreetOverlayContent {
   }
 
   /**
+   * Shows the human piggyback decision prompt (F5 of MS-0MUYC47EL005Z69H).
+   *
+   * Presented when the human seat holds a pending piggyback decision raised
+   * after another active seat organised an eligible event. The player decides
+   * whether to **join fully** (pay exactly `round(1.5 × paidCost)` coins for
+   * a 100% share — no action point spent) or **keep the automatic 50%
+   * free-ride** share. There is NO decline/skip option: the 50% share is
+   * always applied, so the prompt offers exactly the two outcomes, and an
+   * unaffordable join-fully is hidden (the free-ride applies instead).
+   *
+   * Overlay pattern compliance (AGENTS.md UI Best Practices):
+   * createOverlayBackground + createOverlayButton from @ui; ALL elements are
+   * parented into `s.hudContainer`; depths 199 (backdrop) / 200 (box) /
+   * 201 (elements). Dialog appears instantly (no fade-in — reduced-motion
+   * safe); button SFX plays through safePlaySound (respects mute/volume).
+   * Cleanup on dismissal resets `s.overlayObjects`.
+   *
+   * @param info     The exact prompt data (event, 150% charge, affordability,
+   *                 100%/50% reward projections) from the turn controller.
+   * @param onJoin   Called when the player chooses to join fully.
+   * @param onKeep   Called when the player keeps the 50% free-ride.
+   */
+  public showPiggybackDialog(
+    info: {
+      event: EventCard;
+      charge: number;
+      affordable: boolean;
+      fullReward: { coins: number; reputation: number };
+      halfReward: { coins: number; reputation: number };
+    },
+    onJoin: () => void,
+    onKeep: () => void,
+  ): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    const panelW = 520;
+    const panelH = 340;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = {
+      width: panelW,
+      height: panelH,
+      color: 0x000000,
+      alpha: 1.0,
+      depth: 200,
+    };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    // Title: the event name — the exact thing the player is piggybacking on.
+    const titleText = s.add.text(
+      s.layout.gameW / 2, panelY + 24,
+      `${info.event.name} — piggyback`,
+      {
+        fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: panelW - 60 },
+      },
+    ).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    const joinCoins = Math.round(info.fullReward.coins);
+    const joinRep = Math.round(info.fullReward.reputation);
+    const rideCoins = Math.round(info.halfReward.coins);
+    const rideRep = Math.round(info.halfReward.reputation);
+
+    // Body: the exact 150% coin cost and the reward shares (AC1).
+    const bodyText = s.add.text(
+      s.layout.gameW / 2, panelY + 64,
+      `Another seat organised this event. You already hold the automatic 50% share.\n\n` +
+        `Join fully: pay ${info.charge} coins (no action used) for a 100% share of the rewards — ` +
+        `+${joinCoins} coins / +${joinRep} reputation.\n\n` +
+        `Keep the 50% share: nothing to pay — +${rideCoins} coins / +${rideRep} reputation.`,
+      {
+        fontSize: '13px',
+        color: '#ddccbb',
+        fontFamily: FONT_FAMILY,
+        align: 'center',
+        lineSpacing: 4,
+        wordWrap: { width: panelW - 70 },
+      },
+    ).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(bodyText);
+    s.overlayObjects.push(bodyText);
+
+    // Two outcomes only — never a decline/skip (AC2).
+    if (info.affordable) {
+      const joinBtn = createOverlayButton(
+        s, s.layout.gameW / 2 - 150, panelY + panelH - 52,
+        `Join fully — ${info.charge} coins`, 201,
+        { fontSize: '13px', color: '#88ff88', hoverColor: '#aaffaa' },
+      );
+      if (s.hudContainer) s.hudContainer.add(joinBtn);
+      joinBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onJoin();
+      });
+      s.overlayObjects.push(joinBtn);
+
+      const keepBtn = createOverlayButton(
+        s, s.layout.gameW / 2 + 150, panelY + panelH - 52,
+        'Keep 50% share', 201,
+        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
+      );
+      if (s.hudContainer) s.hudContainer.add(keepBtn);
+      keepBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onKeep();
+      });
+      s.overlayObjects.push(keepBtn);
+    } else {
+      // Unaffordable join-fully: the option is hidden — only the free-ride
+      // outcome remains and it applies automatically (AC2).
+      const noteText = s.add.text(
+        s.layout.gameW / 2, panelY + panelH - 106,
+        `Joining fully needs ${info.charge} coins — you cannot afford it this week.\nThe automatic 50% share (${rideCoins}c / ${rideRep}r) applies.`,
+        {
+          fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
+          align: 'center', wordWrap: { width: panelW - 70 },
+        },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(noteText);
+      s.overlayObjects.push(noteText);
+
+      const keepBtn = createOverlayButton(
+        s, s.layout.gameW / 2, panelY + panelH - 52,
+        'Continue with my 50% share', 201,
+        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
+      );
+      if (s.hudContainer) s.hudContainer.add(keepBtn);
+      keepBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onKeep();
+      });
+      s.overlayObjects.push(keepBtn);
+    }
+  }
+
+  /**
    * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D).
    *
    * Lists past storyline choices and their outcomes (from the activity log's

@@ -37,6 +37,7 @@ import {
   letGoStaffAction,
   resolveEventChoice,
   resolveEventOption,
+  resolvePendingPiggyback,
   placeStaffOnBusiness,
   isStaffRelocation,
   canMoveStaffOnBusiness,
@@ -107,6 +108,13 @@ interface MarketActionSnapshot {
    * (and redo re-raises it) instead of leaving a stale decision set behind.
    */
   pendingPiggyback: any | null;
+  /**
+   * Competitive per-owner wallets (F5 of MS-0MUYC47EL005Z69H). Captured so
+   * undoing a piggyback decision restores the piggybacker's `PlayerRecord`
+   * coins/reputation (the authoritative per-owner wallet) alongside the
+   * pending set — the command never mutates the shared `resourceBank`.
+   */
+  players: any | null;
   /**
    * Active duration effects. Captured so undoing a choice that accepted a
    * DurationEventCard removes the effect it pushed.
@@ -208,6 +216,7 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     justMovedEventCardId: (state as any).justMovedEventCardId ?? null,
     pendingEventChoice: clonePendingChoice((state as any).pendingEventChoice ?? null),
     pendingPiggyback: safeClone((state as any).pendingPiggyback ?? null),
+    players: safeClone(state.players ?? null),
     activeEffects: safeClone(state.activeEffects ?? []),
     // Challenge completion state — cloneable form only (never activeChallenges,
     // whose evaluator functions would be dropped by safeClone).
@@ -276,6 +285,9 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   }
   if ('pendingPiggyback' in snap) {
     (state as any).pendingPiggyback = snap.pendingPiggyback;
+  }
+  if (snap.players !== null && snap.players !== undefined) {
+    state.players = snap.players as any;
   }
   if ('activeEffects' in snap) {
     state.activeEffects = snap.activeEffects ?? [];
@@ -765,6 +777,42 @@ export function resolveEventChoiceCommand(
         }
       },
       `ResolveEventChoice ${JSON.stringify(option)}`,
+    ),
+  );
+}
+
+/**
+ * Command: Resolve a pending human piggyback decision (F5 of
+ * MS-0MUYC47EL005Z69H).
+ *
+ * Wraps the engine's {@link resolvePendingPiggyback} for one seat in a
+ * snapshot-based reversible command (mirrors `resolveEventChoiceCommand`):
+ * the pre-capture includes the unresolved `pendingPiggyback` set and the
+ * competitive per-owner wallets (via `players`), so undo returns to the
+ * pre-decision state — pending set re-opened, the piggybacker's coins and
+ * reputation restored — and redo re-applies the chosen tier.
+ *
+ * - `join === true`: join-fully tier (150% charge, 100% own-board reward,
+ *   no action point); when the seat cannot afford the charge the engine
+ *   falls back to the automatic 50% free-ride (never a partial charge).
+ * - `join === false`: automatic 50% free-ride.
+ *
+ * @param state  Current game state.
+ * @param seatId The piggybacker owner index whose decision is resolved.
+ * @param join   True to join fully, false to keep the 50% free-ride.
+ */
+export function resolvePiggybackCommand(
+  state: MainStreetState,
+  seatId: number,
+  join: boolean,
+) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => {
+        resolvePendingPiggyback(s, seatId, join);
+      },
+      join ? `ResolvePiggybackJoin ${seatId}` : `ResolvePiggybackFreeRide ${seatId}`,
     ),
   );
 }

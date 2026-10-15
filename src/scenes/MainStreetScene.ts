@@ -1388,6 +1388,33 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the human piggyback decision prompt (F5 of MS-0MUYC47EL005Z69H):
+   * join fully (pay the exact 150% charge for a 100% share, no action point)
+   * or keep the automatic 50% free-ride. Delegates to the overlay manager's
+   * showPiggybackDialog; the join-fully option is hidden when unaffordable.
+   *
+   * @param info     The exact prompt data (event, charge, affordability,
+   *                 100%/50% reward projections).
+   * @param onJoin   Called when the player joins fully.
+   * @param onKeep   Called when the player keeps the 50% share.
+   */
+  public showPiggybackDialog(
+    info: {
+      event: import('../MainStreetCards').EventCard;
+      charge: number;
+      affordable: boolean;
+      fullReward: { coins: number; reputation: number };
+      halfReward: { coins: number; reputation: number };
+    },
+    onJoin: () => void,
+    onKeep: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showPiggybackDialog === 'function') {
+      (this.msOverlayManager as any).showPiggybackDialog(info, onJoin, onKeep);
+    }
+  }
+
+  /**
    * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D): past storyline
    * choices and outcomes, or a sensible empty state. Delegates to the overlay
    * manager's showStorylineJournalDialog.

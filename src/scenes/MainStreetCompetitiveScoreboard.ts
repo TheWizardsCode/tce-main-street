@@ -52,6 +52,12 @@ export interface CompetitiveScoreboardRow {
    * a seat is solvent; the live competitive HUD never sets it.
    */
   badge?: CompetitiveScoreboardBadge;
+  /**
+   * True when this seat holds a still-unresolved piggyback decision (F5 of
+   * MS-0MUYC47EL005Z69H) — the human seat is awaiting the join-fully /
+   * keep-50% prompt. Surfaced as a `· decision` marker on the scoreboard row.
+   */
+  piggybackPending?: boolean;
 }
 
 /**
@@ -64,6 +70,13 @@ export interface CompetitiveScoreboardRow {
 export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveScoreboardRow[] {
   const players = state.players ?? [];
   const activeId = state.activePlayerId ?? 0;
+  // Seats with a still-unresolved piggyback decision (F5): the human seat is
+  // awaiting the interactive join-fully / keep-50% prompt.
+  const pendingPiggybackSeats = new Set(
+    (state.pendingPiggyback?.decisions ?? [])
+      .filter((d) => !d.resolved)
+      .map((d) => d.seatId),
+  );
 
   return players.map((player) => {
     const isHuman = (player.controller ?? (player.playerId === 0 ? 'human' : 'ai')) === 'human';
@@ -75,6 +88,7 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
       score: Math.round(player.score),
       isHuman,
       isActive: player.playerId === activeId,
+      piggybackPending: pendingPiggybackSeats.has(player.playerId),
       // AC4/AC5: one shared colour source for every seat-identity surface.
       colour: resolveSeatColour(state, player.playerId),
     };
@@ -83,7 +97,8 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
 
 /** One-line scoreboard cell, e.g. `▶ You: 600c 300r 0pt`. */
 export function formatCompetitiveScoreboardRow(row: CompetitiveScoreboardRow): string {
-  return `${row.isActive ? '▶ ' : ''}${row.label}: ${row.coins}c ${row.reputation}r ${row.score}pt`;
+  const marker = row.piggybackPending ? ' · decision' : '';
+  return `${row.isActive ? '▶ ' : ''}${row.label}: ${row.coins}c ${row.reputation}r ${row.score}pt${marker}`;
 }
 
 /**

@@ -11,8 +11,8 @@ import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
 
 import { TranscriptStore, autoSaveTranscript } from '@core-engine/transcript';
 import type { EventCard } from '../MainStreetCards';
-import { playEventCommand, resolveEventChoiceCommand } from '../MainStreetCommands';
-import { applyEndOfTurnDeltas, executeWeekStart, finishDeferredEndOfTurn, finishDeferredTurnClosing, processEndOfTurn } from '../MainStreetEngine';
+import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } from '../MainStreetCommands';
+import { applyEndOfTurnDeltas, canAffordPiggybackJoinFully, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
 import { turnLabel } from '../MainStreetFormatting';
@@ -26,7 +26,9 @@ import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
 import {
+  continueCompetitiveDayAfterPiggyback,
   endCompetitiveTurnDay,
+  humanSeatPiggybackPending,
   isCompetitiveState,
   startCompetitiveDay,
 } from './MainStreetTurnControllerCompetitive';
@@ -707,13 +709,139 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: st
   
 }
 
-export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handIndex?: number): void {
+export function presentPiggybackDialog(tcCtx: MainStreetTurnControllerContext): void {
 
+    const s = tcCtx.scene;
+    const state = s.state;
+    // The closing pauses only when the HUMAN seat holds an unresolved
+    // piggyback decision (F5 of MS-0MUYC47EL005Z69H). Nothing to present
+    // otherwise.
+    if (!state.pendingPiggyback || !humanSeatPiggybackPending(state)) return;
+    const humanId = findHumanSeatId(state);
+    if (humanId < 0) return;
+    const decision = state.pendingPiggyback.decisions.find(
+      (d: { seatId: number; resolved: boolean }) => d.seatId === humanId && !d.resolved,
+    );
+    if (!decision) return;
+
+    // Exact prompt data (AC1): the 150% charge and the 100%/50% own-board
+    // reward projections, computed through the same helpers the engine and AI
+    // policy use so the prompt can never disagree with the application path.
+    const charge = piggybackJoinFullyCost(decision.paidCost);
+    const affordable = canAffordPiggybackJoinFully(state, humanId, decision.paidCost);
+    const fullReward = projectPiggybackEventReward(state, decision.event, humanId, 1);
+    const halfReward = projectPiggybackEventReward(state, decision.event, humanId, 0.5);
+
+    // Tutorial/hud regression guard (mirrors `presentEventChoiceDialog`): a
+    // headless tutorial can never hang waiting for dialog input — keep the
+    // automatic free-ride.
+    const tutController = (s as { tutorialController?: { isActive?: boolean } }).tutorialController;
+    if (tutController?.isActive) {
+      tcCtx.onPiggybackChoice(false);
+      return;
+    }
+    // Replay/headless guard: the competition overlay is never presented in
+    // replay, so resolve the decision headlessly (keep the automatic
+    // free-ride) — a replay can never hang on the interactive prompt.
+    if (s.replayMode === true) {
+      tcCtx.onPiggybackChoice(false);
+      return;
+    }
+
+    const show = (): void => {
+      const overlay = s.msOverlayManager as unknown as {
+        showPiggybackDialog?: (
+          info: {
+            event: EventCard;
+            charge: number;
+            affordable: boolean;
+            fullReward: { coins: number; reputation: number };
+            halfReward: { coins: number; reputation: number };
+          },
+          onJoin: () => void,
+          onKeep: () => void,
+        ) => void;
+      };
+      if (overlay && typeof overlay.showPiggybackDialog === 'function') {
+        overlay.showPiggybackDialog(
+          { event: decision.event, charge, affordable, fullReward, halfReward },
+          () => tcCtx.onPiggybackChoice(true),
+          () => tcCtx.onPiggybackChoice(false),
+        );
+      } else {
+        // Defensive fallback: no dialog support — keep the free-ride so a
+        // pending decision can never hang the game loop (regression guard).
+        tcCtx.onPiggybackChoice(false);
+      }
+    };
+
+    if (s.incomeCollectionActive) {
+      // Bounded deferral: present once the income choreography completes; a
+      // safety cap forces the dialog even if the flag is never cleared, so a
+      // pending decision can never hang the game.
+      const startAt = s.time.now + 16_000;
+      const waitForIncome = (): void => {
+        if (s.incomeCollectionActive && s.time.now < startAt) {
+          s.time.delayedCall(250, waitForIncome);
+        } else {
+          s.incomeCollectionActive = false;
+          show();
+        }
+      };
+      waitForIncome();
+    } else {
+      show();
+    }
+  
+}
+
+export function onPiggybackChoice(tcCtx: MainStreetTurnControllerContext, join: boolean): void {
+
+    const s = tcCtx.scene;
+    const state = s.state;
+    const humanId = findHumanSeatId(state);
+    if (humanId < 0) return;
+    const decision = state.pendingPiggyback?.decisions.find(
+      (d: { seatId: number; resolved: boolean }) => d.seatId === humanId && !d.resolved,
+    );
+    if (!decision) return; // nothing to decide
+    try {
+      // Resolve via the snapshot-based undoable command so the decision can
+      // be undone back to the unresolved pending state (AC1). Runs through
+      // the undo manager when one is present.
+      const cmd = resolvePiggybackCommand(state, humanId, join);
+      if (s.undoManager) s.undoManager.execute(cmd);
+      else cmd.execute();
+      s.instructionText.setText(
+        join ? 'Joined the event fully — 100% share earned!' : 'Kept the automatic 50% share.',
+      );
+    } catch (e) {
+      // Resolution failed (should not happen in normal flow): recover by
+      // keeping the free-ride so the day never stalls on a dead prompt.
+      console.error('[Piggyback] resolve failed:', e);
+      try { resolvePendingPiggyback(state, humanId, false); } catch (_) { /* ignore */ }
+      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      s.refreshAll();
+    }
+    // Continue the shared day: settle any remaining seats (AI via the F4
+    // policy), finish the deferred closing and present it — the day never
+    // stalls (AC3).
+    continueCompetitiveDayAfterPiggyback(tcCtx);
+    // The decision closed out this shared day; clear the per-turn undo stack
+    // (mirrors `onEventChoice`'s deferred-closing clear) so the piggyback
+    // resolution cannot be undone after the day advanced — undo would
+    // resurrect the pending decision mid-next-market. The command itself
+    // remains snapshot-undoable at the command layer (AC1).
+    try { s.undoManager?.clear(); } catch (_) { /* ignore */ }
+    try { s.refreshUndoRedoButtons?.(false, false); } catch (_) { /* ignore */ }
+  
+}
+
+export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handIndex?: number): void {
     const s = tcCtx.scene;
     // Allow both the one-click market path and the select-then-act
     // `event-selected` phase (CG-0MUEQ1BF000770B3).
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
-
     // Tutorial gating: only allow play-event if it's the required action or
     // the tutorial is inactive (T23 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);
