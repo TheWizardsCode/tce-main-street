@@ -342,6 +342,60 @@ Elimination effects on the AI:
 Only the AI elimination path is special-cased; a human seat's own collapse keeps
 the existing loss semantics. Single-player (`N = 1`) is unaffected.
 
+## Piggyback join-fully policy (epic MS-0MUYC47EL005Z69H, F4)
+
+When any seat plays a piggyback-eligible organiser event in competitive play
+(human vs AI, N ≥ 2), every other active seat receives an automatic 50%
+free-ride share of the event's rewards and may upgrade to **join fully** — pay
+150% of the acting seat's paid cost for 100% of the rewards (see
+`docs/main-street/core-rules-and-mechanics.md` §6.1). AI seats resolve that
+decision with a **deterministic, RNG-free policy**: `decidePiggyback` in
+`MainStreetEngineScoring.ts` (re-exported from `MainStreetAiStrategy`), so
+identical inputs always produce identical outputs (replay reproducibility).
+
+An AI seat joins fully **only when all of the following hold:**
+
+1. **Affordable (shared predicate).** The seat can pay the exact charge
+   `round(1.5 × paidCost)` — checked through `canAffordPiggybackJoinFully`, the
+   *same* predicate the engine's application path
+   (`applyPiggybackJoinFully`) enforces. The AI can never attempt a join the
+   engine would refuse, so an unaffordable join is never chosen (no partial
+   charge — the automatic free-ride applies instead).
+2. **Worthwhile.** The event's projected 100%-scale reward on the seat's OWN
+   board (coins + reputation; `SpecificSynergy` rewards count only the seat's
+   own matching businesses, scaled by its own reputation multiplier and staff
+   mitigation) exceeds the 150% charge.
+3. **Liquid enough.** The coins remaining after the charge stay at or above the
+   difficulty-visible floor (`piggybackBalanceFloor` =
+   `round(startingCoins × profile.minBalanceFloorRatio)`), so co-funding never
+   strips the purse below the operating buffer the difficulty requires:
+
+| Difficulty | Min balance floor ratio (of starting coins) | Behaviour |
+|------------|---------------------------------------------|-----------|
+| Easy | 0.5 | Most cautious — keeps half the starting purse in reserve. |
+| Medium | 0.25 | Balanced. |
+| Hard | 0.1 | Most willing to commit its purse. |
+
+Otherwise the seat keeps the automatic free-ride. The floor is what makes the
+policy difficulty-aware: on an otherwise identical state Easy may free-ride
+where Hard joins. The tuning table must stay in sync with
+`PIGGYBACK_DIFFICULTY_PROFILES` in `MainStreetEngineScoring.ts`.
+
+**Where the policy applies:**
+
+- `decidePiggybackForSeat` — the headless competitive closing resolves pending
+  decisions for **AI-controlled seats only** via the policy; human seats keep
+  the automatic free-ride (the interactive join-fully prompt handles the human
+  seat at the scene layer).
+- `decidePiggybackForAllSeats` — the Monte Carlo harness (`runCompetitiveSeed`)
+  drives all seats with strategies, so all-seats runs resolve every seat with
+  the same deterministic policy.
+
+**Guarantees:** deterministic (no RNG consulted); the shared affordability
+predicate is the exact check the engine enforces, so policy and application
+cannot diverge; joining never spends an action point; decisions for N > 2
+resolve independently per seat in seat order.
+
 ## Expected Output
 
 A formal GDD section covering The Build's AI design with enough detail for an engineer to implement the strategy classes using the engine's existing AI abstractions.

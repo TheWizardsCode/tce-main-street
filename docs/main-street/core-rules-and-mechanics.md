@@ -90,6 +90,7 @@ committing changes to player-facing text or docs.
 | **Trigger** | enum {`Investment`, `Incident`} | When the event resolves. **Investment** events are player‑bought (generally positive) and held until played. **Incident** events happen automatically (generally negative). |
 | **Effect** | string (DSL) | Human‑readable description of the effect (e.g., `+200 coins to all Food businesses`). |
 | **Target** | enum {`All`, `SpecificSynergy`, `RandomBusiness`} | Scope of the effect. |
+| **Piggyback-eligible** | boolean (optional) | When `true`, this Investment event is an "organiser" card (festivals, fairs, celebrations) that lets every other active seat in competitive mode (N ≥ 2) piggyback: an automatic 50% free-ride share of the rewards, with an optional join-fully upgrade (150% of the paid cost for 100% of the rewards). Defaults to absent (not eligible) for backward compatibility — see §6.1. |
 
 **Example Event Card**
 ```json
@@ -97,7 +98,8 @@ committing changes to player-facing text or docs.
   "name": "Local Festival",
   "trigger": "Investment",
   "effect": "+200 coins to all Culture businesses and +100 reputation.",
-  "target": "SpecificSynergy"
+  "target": "SpecificSynergy",
+  "piggybackable": true
 }
 ```
 
@@ -221,7 +223,7 @@ stateDiagram-v2
    - **Buy Business** → `resourceBank.coins -= cost` → place card into a chosen empty slot.
    - **Buy Upgrade** → `resourceBank.coins -= cost` → apply upgrade effects to the targeted Business.
    - **Take Event (Investment)** → add the event card to the player's hand for **1 action** (bounded by `maxHandSize`). The player may play it during MarketPhase via a `play-event` action, paying its cost then.
-   - **Play Event (from hand)** → resolve an Investment event card from the hand immediately and remove it.
+   - **Play Event (from hand)** → resolve an Investment event card from the hand immediately and remove it. In competitive mode (N ≥ 2) a piggyback-eligible organiser event additionally raises one pending piggyback decision per other active seat (see §6.1).
 4. **InvestmentResolution** – Reserved phase; Investment events are **not** auto‑resolved here. Unplayed events persist in the hand until the player plays them during a later MarketPhase.
 5. **IncomePhase** – For each placed Business, compute:
    - `totalIncome = effectiveBase + synergyBonus`, where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` and `synergyBonus = effectiveBase × synergyCoinBonus × synergyBonusPerNeighbor × N`. Synergy uses a percentage-based formula: each matching neighbor (8‑way adjacent, including diagonal) contributes a percentage of the source business's effective base income, scaled by the difficulty preset multiplier. Synergy is only earned from adjacent neighbors of **different base types** (template IDs). Same-type adjacent businesses: synergy is nullified (0 contribution), and base income (including any income bonus from upgrades) is reduced to **60%**.
@@ -385,6 +387,72 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | **Place Business** | Choose an empty slot and put the purchased Business card there. | Business card in hand; slot is empty. | Card is now part of `streetGrid`. |
 | **Resolve Event** | Apply the effect described on an Event card. | Event card active. | Game state mutated per effect (coins, reputation, temporary modifiers). |
 | **End Turn** | Transition to the next phase/state. | All desired actions for the week are complete. | Turn counter increments, flow moves to week end or next WeekStart. |
+
+### 6.1 Piggyback mechanic (competitive, human vs AI)
+
+**Epic:** MS-0MUYC47EL005Z69H — *Add a mechanic that will allow the player to
+piggyback on some actions of other players* (e.g. when the AI organises a Local
+Festival the player may join fully by paying 150% of the festival's cost for
+100% of its rewards, or keep the automatic 50% spill-over for free).
+
+Town-wide "organiser" events thematically belong to the whole town, so in
+competitive play (N ≥ 2) the acting player's eligible Investment event is
+**shared**: every **other non-eliminated seat** automatically receives a **50%
+free-ride share** of the event's rewards, and is offered the single choice to
+**join fully** by co-funding the event:
+
+| Option | Cost | Reward |
+|--------|------|--------|
+| **Join fully** (opt-in) | **150%** of the cost the acting player actually paid, paid from the piggybacker's own coins; **no action point is spent** | **100%** of the event's rewards |
+| **Free-ride** (automatic default) | Nothing | **50%** of the event's rewards, granted automatically |
+
+- **Free-ride is automatic.** There is no "decline everything" option and no
+  prompt to refuse it — every other active seat always receives the 50% share;
+  the only decision is whether to pay to upgrade 50% → 100%.
+- **No action cost.** Joining fully spends coins only
+  (`round(1.5 × paidCost)`); the piggybacker's action budget and the shared
+  banked-action pool are untouched, and the acting player's own action
+  consumption is unchanged.
+- **Own-board reward baseline.** Rewards (coins + reputation) are computed on
+  the **piggybacker's own board** by the same per-owner event math as
+  `applyCompetitiveEventEffects` — `SpecificSynergy` rewards count the owner's
+  own matching businesses, and the per-owner reputation multiplier and staff
+  mitigation apply — then scaled ×1.0 (join fully) / ×0.5 (free-ride).
+  Integer-only economy: scaled rewards are rounded to whole coins/reputation.
+- **Cost baseline is the paid cost.** The 150% charge is computed from the
+  amount the acting player **actually paid** at play time (after any discounts
+  the acting seat holds), not the card's nominal listed cost.
+- **Unaffordable join is never charged.** When a piggybacker cannot afford the
+  150% charge the join-fully option is unavailable, nothing is deducted
+  (never a partial charge), and the automatic 50% free-ride applies instead.
+- **Acting player and decks unaffected.** The acting player's own reward and
+  the shared market/incident decks are byte-for-byte unchanged by piggyback
+  decisions; N > 2 decisions resolve independently per seat in seat order with
+  no additional RNG draws (deterministic replay).
+- **Persistent.** An unresolved piggyback decision set (`state.pendingPiggyback`)
+  survives save/load (null default for older saves) and pauses the shared
+  closing (`TurnResult.piggybackPending`) until every seat's tier is applied —
+  no share is silently dropped.
+
+**Eligibility — per-card opt-in, competitive only:**
+
+- The mechanic applies **only in competitive mode (N ≥ 2)**; single-player
+  (N = 1) has no other players and is unchanged — no share, no prompt, no pause.
+- Only **Investment-trigger organiser events** flagged in `src/card-data.csv`
+  (`EventCard.piggybackable`) are eligible; Incidents, non-flagged Investments,
+  purchases, upgrades and staff hires never raise a piggyback decision.
+- **Eligible cards (16):** Local Festival, Wellness Fair, Block Party, Harvest
+  Festival, Book Fair, Garden Party, Festival Season, Health Carnival, Summer
+  Fest, St Brigid's Day, St Patrick's Day, Easter, May Day / Bealtaine,
+  Lughnasadh, Samhain / Halloween, Christmas.
+
+**Engine behaviour:** when an eligible event is played, the engine raises one
+pending piggyback decision per other active seat after the acting player's
+effects resolve, then pauses the shared day until each seat resolves (join fully
+or free-ride). AI seats resolve via the deterministic join-fully policy in
+`MainStreetEngineScoring` (see `docs/main-street/ai-strategy.md` §Piggyback
+join-fully policy); the human seat is offered the choice through the interactive
+prompt.
 
 ---
 
