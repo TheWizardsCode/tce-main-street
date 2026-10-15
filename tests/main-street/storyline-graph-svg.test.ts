@@ -207,7 +207,8 @@ describe('AC10 — the manifest exposes per-event detail', () => {
   it('marks every option edge with its effect policy', () => {
     const edges = manifest().edges;
     expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Accept')!.effectPolicy).toBe('apply');
-    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Reject')!.effectPolicy).toBe('skip');
+    // F6 (Q4=B): migrated CSV options always apply the event effect.
+    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Reject')!.effectPolicy).toBe('apply');
   });
 
   it('formats impact readably (percent, delta, duration, synergy)', () => {
@@ -228,7 +229,8 @@ describe('AC11/AC12 — detail tables and generated docs are drift-guarded', () 
     expect(table).toContain('Tax Audit (`evt-tax`)');
     expect(table).toContain('Lose 45% of your banked coins.');
     expect(table).toContain('−45% of banked coins (nominal −300 coins)');
-    expect(table).toContain('Reject: effect skipped → Inquiry Commission');
+    // F6 (Q4=B): migrated CSV options always apply the event effect.
+    expect(table).toContain('Reject: effect applies → Inquiry Commission');
   });
 
   it('the committed storyline documents match the regenerated documents', () => {

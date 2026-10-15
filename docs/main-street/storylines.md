@@ -21,7 +21,7 @@ Key terms:
 |------|---------|
 | **Storyline id / title** | A stable grouping key (`storyline-tax`) and a display name (`Tax Troubles`). Descriptive metadata — it groups cards into an arc and drives the journal, but does **not** by itself make a card a choice. |
 | **Choice card** | An incident that pauses resolution and asks the player to pick an option. Marked by `hasChoices=true`, or by a registered option list. |
-| **Option** | `{ label, successorId, effectPolicy }` plus optional runtime callbacks `condition` / `successorResolver` (see §2.1). `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it). `successorId` is the card queued next, or empty to end the chain. |
+| **Option** | `{ label, successorIds, effectPolicy }` plus optional runtime callbacks `condition` / `successorResolver` (see §2.1). `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it — CSV content always `apply`). `successorIds` is the ordered candidate set of cards queued next; empty means the chain ends. When an option is chosen, one candidate is drawn uniformly at random at resolution time. |
 | **Successor / chain card** | The card pushed onto the incident deck when an option is chosen. |
 | **Cycle** | A chain that returns to an earlier card. Cycles are a **first-class shape** (see §6). |
 | **Pending choice** | `state.pendingEventChoice` — the drawn choice card awaiting a decision; the end-of-turn sequence is deferred until it resolves. |
@@ -32,7 +32,7 @@ The shipped game defines five storylines:
 |--------------|-------|--------------|
 | `storyline-tax` | Tax Troubles | `evt-tax`, `evt-tax-error`, `evt-tax-inquiry` |
 | `storyline-health` | Public Health Crisis | `evt-flu-outbreak` (→ `evt-pandemic`) |
-| `storyline-economy` | Economic Downturn | `evt-recession` (→ `evt-depression`) |
+| `storyline-economy` | Economic Downturn | `evt-recession` (→ `evt-depression` or `evt-general-strike`) |
 | `storyline-labor` | Labour Unrest | `evt-strike-service` (→ `evt-general-strike`) |
 | `storyline-restaurant` | Restaurant Renaissance | `evt-popular-menu` (→ `evt-farm-table`) |
 
@@ -328,11 +328,11 @@ This is the complete, copy-pasteable workflow. It matches the shipped tooling.
 ### 7.1 Declare a storyline and add a choice card
 
 ```sh
-# 1. Add the first card of a new storyline, with a choice:
+# 1. Add the first card of a new storyline, with a multi-outcome choice:
 npm run storylines:author -- add-card \
   --id evt-river-festival --name "River Festival" \
   --effect "Lose 150 coins staging the festival" --coin-delta -150 \
-  --has-choices --accept-next evt-good-press --reject-next evt-noise-complaint \
+  --options 'Accept|evt-good-press;Decline|evt-noise-complaint' \
   --storyline-id storyline-festival --storyline-title "Festival Season"
 
 # 2. Add the escalation cards (plain incidents — they resolve normally):
@@ -384,17 +384,26 @@ Incidents that belong to no storyline chain are listed in the
 boxes.
 
 The doc-drift test parses the table below and compares it to
-`src/card-data.csv`. Keep it in sync with the shipped content.
+`src/card-data.csv`. Keep it in sync with the shipped content. Each cell lists
+the option's candidate successor card ids (comma-separated when the option can
+fan out; `—` when terminal; the player-seen labels are `Accept` / `Reject`).
 
-| Card id | Card name | Storyline | Accept next | Reject next |
-|---------|-----------|-----------|-------------|-------------|
+| Card id | Card name | Storyline | Accept → | Reject → |
+|---------|-----------|-----------|----------|----------|
 | `evt-tax` | Tax Audit | storyline-tax | — | `evt-tax-inquiry` |
 | `evt-tax-error` | Error in Tax Return | storyline-tax | — | `evt-tax` |
 | `evt-tax-inquiry` | Inquiry Commission | storyline-tax | `evt-tax-error` | — |
 | `evt-flu-outbreak` | Flu Outbreak | storyline-health | — | `evt-pandemic` |
-| `evt-recession` | Economic Recession | storyline-economy | — | `evt-depression` |
+| `evt-recession` | Economic Recession | storyline-economy | — | `evt-depression, evt-general-strike` |
 | `evt-strike-service` | Service Workers Strike | storyline-labor | — | `evt-general-strike` |
 | `evt-popular-menu` | Popular Menu Item | storyline-restaurant | — | `evt-farm-table` |
+
+Since the migration to the `options` model (`MS-0MV8KQQQ90044CM5`, Q4=B) every
+CSV-authored option carries `effectPolicy: 'apply'`: choosing **Reject** no
+longer skips the incident's effect — it applies it and then draws the option's
+candidate successor (randomly, when the set has more than one entry). The
+migrated content kept its recognisable branches (`evt-recession` fanning out to
+`evt-depression` **or** `evt-general-strike` demonstrates the random fan-out).
 
 Terminal escalation cards (`evt-pandemic`, `evt-depression`,
 `evt-general-strike`, `evt-farm-table`) carry a storyline id for grouping but

@@ -9,4 +9,4 @@
 | Event | Description | Trigger / tier / cost | Game-state impact | Choice routing |
 |-------|-------------|-----------------------|-------------------|----------------|
 | Farm-to-Table Feature (`evt-farm-table`) | Farm-to-table features earn 400 coins and 65 reputation. | Incident · tier 5 · cost 0 | +400 coins; +65 reputation | Resolves immediately (no choice) |
-| Popular Menu Item (`evt-popular-menu`) | A popular menu item earns 300 coins. | Incident · tier 4 · cost 0 | +300 coins | Accept: effect applies → chain ends · Reject: effect skipped → Farm-to-Table Feature |
+| Popular Menu Item (`evt-popular-menu`) | A popular menu item earns 300 coins. | Incident · tier 4 · cost 0 | +300 coins | Accept: effect applies → chain ends · Reject: effect applies → Farm-to-Table Feature |

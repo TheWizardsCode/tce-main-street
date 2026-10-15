@@ -99,9 +99,12 @@ export function choiceClarityLabels(event: EventCard): ChoiceClarityLabels {
     : 'Accept: continue without applying an effect.';
 
   // Never name the escalation: only the semantic (skip + a different incident).
+  // F6 (MS-0MV8KQQQ90044CM5, Q4=B): CSV-authored options always apply the
+  // event effect, so an 'apply' Reject still leads to a different incident —
+  // say so honestly instead of implying the effect is waived.
   const reject = rejectOption?.effectPolicy === 'skip'
     ? 'Reject: refuse this consequence; a different incident will follow.'
-    : 'Reject: refuse this consequence.';
+    : 'Reject: this consequence is applied; a different incident will follow.';
 
   return { accept, reject };
 }

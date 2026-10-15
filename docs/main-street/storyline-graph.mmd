@@ -80,7 +80,8 @@ flowchart TD
   evt_popular_menu -->|Reject| evt_farm_table
   evt_recession_Accept_end(["end"])
   evt_recession -->|Accept| evt_recession_Accept_end
-  evt_recession -->|Reject| evt_depression
+  evt_recession -.->|Reject| evt_depression
+  evt_recession -.->|Reject| evt_general_strike
   evt_strike_service_Accept_end(["end"])
   evt_strike_service -->|Accept| evt_strike_service_Accept_end
   evt_strike_service -->|Reject| evt_general_strike

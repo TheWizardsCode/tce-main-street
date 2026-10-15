@@ -384,7 +384,7 @@
           "successorIds": [
             "evt-pandemic"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": 0,
@@ -922,7 +922,7 @@
           "successorIds": [
             "evt-farm-table"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": 300,
@@ -1038,9 +1038,10 @@
         {
           "label": "Reject",
           "successorIds": [
-            "evt-depression"
+            "evt-depression",
+            "evt-general-strike"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": 0,
@@ -1284,7 +1285,7 @@
           "successorIds": [
             "evt-general-strike"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": -200,
@@ -1360,7 +1361,7 @@
           "successorIds": [
             "evt-tax-inquiry"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": -300,
@@ -1394,7 +1395,7 @@
           "successorIds": [
             "evt-tax"
           ],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": -200,
@@ -1428,7 +1429,7 @@
         {
           "label": "Reject",
           "successorIds": [],
-          "effectPolicy": "skip"
+          "effectPolicy": "apply"
         }
       ],
       "coinDelta": -600,
@@ -1609,7 +1610,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": false,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-popular-menu",
@@ -1627,7 +1628,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": false,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-recession",
@@ -1642,10 +1643,19 @@
       "from": "evt-recession",
       "label": "Reject",
       "to": "evt-depression",
-      "random": false,
+      "random": true,
       "candidateIndex": 0,
       "cycle": false,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
+    },
+    {
+      "from": "evt-recession",
+      "label": "Reject",
+      "to": "evt-general-strike",
+      "random": true,
+      "candidateIndex": 1,
+      "cycle": false,
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-strike-service",
@@ -1663,7 +1673,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": false,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax",
@@ -1681,7 +1691,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": true,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax-error",
@@ -1699,7 +1709,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": true,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     },
     {
       "from": "evt-tax-inquiry",
@@ -1717,7 +1727,7 @@
       "random": false,
       "candidateIndex": 0,
       "cycle": false,
-      "effectPolicy": "skip"
+      "effectPolicy": "apply"
     }
   ],
   "cycles": [

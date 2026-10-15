@@ -111,12 +111,17 @@ describe('AC1 — manifest build is deterministic', () => {
     expect(s).not.toContain('generatedAt');
   });
 
-  it('the shipped manifest records the option model with no random branches', () => {
+  it('the shipped manifest records the option model with a random fan-out', () => {
     const manifest = buildStorylineManifest(getEventTemplates());
-    expect(manifest.edges.every((e) => !e.random)).toBe(true);
-    const node = manifest.nodes.find((n) => n.id === 'evt-flu-outbreak')!;
-    expect(node.options).toBeDefined();
-    expect(node.options.map((o) => o.label)).toEqual(['Accept', 'Reject']);
+    // The migrated economy node (F6) exercises the multi-candidate fan-out.
+    expect(manifest.edges.some((e) => e.random)).toBe(true);
+    const recession = manifest.nodes.find((n) => n.id === 'evt-recession')!;
+    expect(recession.options).toBeDefined();
+    expect(recession.options.map((o) => o.label)).toEqual(['Accept', 'Reject']);
+    expect(recession.options.find((o) => o.label === 'Reject')!.successorIds).toEqual([
+      'evt-depression',
+      'evt-general-strike',
+    ]);
   });
 
   it('parses CLI args (format/out/check)', () => {
@@ -315,7 +320,7 @@ describe('AC2/AC5 — committed artefacts match the regenerated output', () => {
       'storyline-restaurant',
       'storyline-tax',
     ]);
-    expect(manifest.edges.length).toBe(14);
+    expect(manifest.edges.length).toBe(15);
   });
 });
 
