@@ -341,14 +341,30 @@ describe('AC3c — transcript event-choice shape for shipped cards', () => {
 });
 
 describe('AC3d — AI decideEventChoice for shipped cards (Easy/Medium/Hard)', () => {
+  // F7 (MS-0MV8KQSF1004E53Y): the AI returns an option INDEX over the
+  // compiled option list and all difficulties share the least-harmful-chain
+  // rule. For the shipped content the positive node's Accept option is
+  // terminal (severity 0), so the AI picks index 0.
   for (const cardId of CHOICE_CARDS) {
-    it(`${cardId}: AI accepts positive events on all difficulties`, () => {
+    it(`${cardId}: AI picks index 0 for positive events on all difficulties`, () => {
       const template = shippedChoice(cardId) as EventCard;
       if (template.coinDelta + (template.reputationDelta ?? 0) >= 0) {
         const state = setupMainStreetGame({ seed: `ai-pos-${cardId}`, difficulty: 'Easy' });
-        expect(decideEventChoice(state, template, 'Easy')).toBe('accept');
-        expect(decideEventChoice(state, template, 'Medium')).toBe('accept');
-        expect(decideEventChoice(state, template, 'Hard')).toBe('accept');
+        expect(decideEventChoice(state, template, 'Easy')).toBe(0);
+        expect(decideEventChoice(state, template, 'Medium')).toBe(0);
+        expect(decideEventChoice(state, template, 'Hard')).toBe(0);
+      }
+    });
+
+    it(`${cardId}: decision is a valid index for every difficulty`, () => {
+      const template = shippedChoice(cardId) as EventCard;
+      const optionCount = getStorylineOptions(template).length;
+      expect(optionCount).toBeGreaterThan(0);
+      for (const difficulty of ['Easy', 'Medium', 'Hard'] as const) {
+        const state = setupMainStreetGame({ seed: `ai-idx-${cardId}-${difficulty}`, difficulty });
+        const index = decideEventChoice(state, template, difficulty);
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(index).toBeLessThan(optionCount);
       }
     });
   }

@@ -22,7 +22,7 @@ export interface MainStreetTurnControllerContext {
   finishTurnPresentation(result: TurnResult, pendingBankingHint: boolean, ): void;
   handleGameOver(result: TurnResult): void;
   presentEventChoiceDialog(): void;
-  onEventChoice(option: 'accept' | 'reject'): void;
+  onEventChoice(option: 'accept' | 'reject' | number): void;
   onPlayHeldEvent(handIndex?: number): void;
   performUndo(): void;
   performRedo(): void;

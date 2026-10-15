@@ -593,13 +593,12 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
 
     const show = (): void => {
       const overlay = s.msOverlayManager as unknown as {
-        showEventChoiceDialog?: (e: EventCard, onAccept: () => void, onReject: () => void) => void;
+        showEventChoiceDialog?: (e: EventCard, onChoose: (optionIndex: number) => void) => void;
       };
       if (overlay && typeof overlay.showEventChoiceDialog === 'function') {
         overlay.showEventChoiceDialog(
           pending.event,
-          () => tcCtx.onEventChoice('accept'),
-          () => tcCtx.onEventChoice('reject'),
+          (optionIndex) => tcCtx.onEventChoice(optionIndex),
         );
       } else {
         // Defensive fallback: no dialog support — auto-accept so a pending
@@ -628,7 +627,7 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
   
 }
 
-export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'accept' | 'reject'): void {
+export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: string | number): void {
 
     const s = tcCtx.scene;
     const pending = s.state.pendingEventChoice;
@@ -655,7 +654,9 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
           : null;
       void pushedCard;
       s.instructionText.setText(
-        `${event.name}: consequence ${option === 'accept' ? 'accepted' : 'refused'}.`,
+        typeof option === 'number'
+          ? `${event.name}: chose option ${option + 1}.`
+          : `${event.name}: consequence ${option === 'accept' ? 'accepted' : 'refused'}.`,
       );
       // Complete the deferred closing (EndCheck → next week) and present it.
       const finalResult = finishDeferredEndOfTurn(s.state);
@@ -666,8 +667,8 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
       // Stacks are empty again — disable both HUD buttons
       // (CG-0MT5Y4DL8000AKKZ).
       s.refreshUndoRedoButtons(false, false);
-      // Visual consequence for resource deltas (accepted effect), mirroring
-      // the standard incident reveal. Reject applies nothing (deltas 0) — the
+      // Visual consequence for resource deltas (applied effect), mirroring
+      // the standard incident reveal. Reject applies nothing — the
       // instruction text above is the only feedback. The reveal blocks the
       // day start until its hold completes (CG-0MTW18KFK000MM3I).
       const present = (): void => {

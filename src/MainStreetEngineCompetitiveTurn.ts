@@ -11,12 +11,13 @@ import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompet
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPiggybacks } from './MainStreetEngineEvents';
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
+import { getStorylineOptions } from './MainStreetStoryline';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -470,13 +471,16 @@ export function resolveCompetitivePendingChoice(state: MainStreetState): TurnRes
     return resolvePendingEventChoice(state);
   }
   const turnEnded = state.turn;
-  const option = decideEventChoice(state, pending.event, state.config.difficultyName);
+  const optionIndex = decideEventChoice(state, pending.event, state.config.difficultyName);
   const event = pending.event;
-  resolveEventChoice(state, option);
-  // Route an accepted incident per-owner (street-wide semantics retained) —
-  // mirrors the non-deferred path where resolveIncident + applyCompetitive
-  // EventEffects run back-to-back. Reject applies nothing.
-  if (option === 'accept') {
+  // Use the frozen draw-time snapshot when present (matches resolveEventOption).
+  const frozenOptions = pending.options ?? getStorylineOptions(event);
+  const chosenOption = frozenOptions[optionIndex];
+  resolveEventOption(state, optionIndex);
+  // Per-option effect policy (F7): competitive per-owner effects apply for
+  // every option whose policy is 'apply' (all CSV content). The legacy
+  // accept-only branch is gone — the label no longer determines the effect.
+  if (chosenOption?.effectPolicy === 'apply') {
     applyCompetitiveEventEffects(state, event, state.activePlayerId ?? 0);
   }
   state.pendingEventChoice = null;

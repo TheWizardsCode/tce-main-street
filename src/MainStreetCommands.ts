@@ -36,6 +36,7 @@ import {
   declineApplicantAction,
   letGoStaffAction,
   resolveEventChoice,
+  resolveEventOption,
   placeStaffOnBusiness,
   isStaffRelocation,
   canMoveStaffOnBusiness,
@@ -750,15 +751,20 @@ export function declineApplicantCommand(state: MainStreetState) {
  */
 export function resolveEventChoiceCommand(
   state: MainStreetState,
-  option: 'accept' | 'reject',
+  option: string | number,
 ) {
   return toCommand(
     state,
     snapshotAction(
       (s) => {
-        resolveEventChoice(s, option);
+        if (typeof option === 'number') {
+          // F7 (MS-0MV8KQSF1004E53Y): index over the arbitrary option list.
+          resolveEventOption(s, option);
+        } else {
+          resolveEventChoice(s, option as 'accept' | 'reject');
+        }
       },
-      `ResolveEventChoice ${option}`,
+      `ResolveEventChoice ${JSON.stringify(option)}`,
     ),
   );
 }

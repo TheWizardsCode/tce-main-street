@@ -329,8 +329,10 @@ export function resolvePendingEventChoice(
 ): TurnResult | null {
   const pending = state.pendingEventChoice;
   if (!pending || pending.resolved) return null;
-  const option = decideEventChoice(state, pending.event, difficulty ?? state.config.difficultyName);
-  resolveEventChoice(state, option);
+  // F7 (MS-0MV8KQSF1004E53Y): the AI picks an option index over the compiled
+  // arbitrary option list (all CSV options apply the event effect — Q4=B).
+  const optionIndex = decideEventChoice(state, pending.event, difficulty ?? state.config.difficultyName);
+  resolveEventOption(state, optionIndex);
   return finishDeferredEndOfTurn(state);
 }
 

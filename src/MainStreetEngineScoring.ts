@@ -9,6 +9,8 @@
 
 import type { EventCard } from './MainStreetCards';
 import { getEventTemplates } from './MainStreetCards';
+import { getStorylineOptions } from './MainStreetStoryline';
+import type { StorylineOption } from './MainStreetCardsTypes';
 import { applyReputationMultiplier } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
 import {
@@ -167,103 +169,88 @@ export function eventSeverity(event: EventCard): number {
 }
 
 /**
- * Difficulty-based Accept/Reject decision for a pending dual-choice incident
- * (CG-0MTSHG8RP008E128 AC22). Deterministic and side-effect free.
+ * Difficulty-based event-option decision for a pending storyline choice
+ * (CG-0MTSHG8RP008E128 AC22); reworked for the arbitrary-option model
+ * (MS-0MV8KQSF1004E53Y). Deterministic and side-effect free.
  *
- * Strategy mapping:
- * - Easy: always accept — avoid escalation risk, short-term thinking.
- * - Medium: accept when the event's effect is affordable (coins stay > 0
- *   after the projected delta); reject when it would be unaffordable.
- * - Hard (static full-chain evaluation):
- *   - Positive/neutral events (net >= 0): accept — a guaranteed benefit is
- *     never refused (rejecting only defers value to a speculative draw).
- *   - Negative events:
- *       * accepting ends the chain (acceptNextCardId null) AND the current
- *         effect is manageable → accept (the safe terminal).
- *       * otherwise compare the full chain costs — accept pays the current
- *         effect plus the accept-next card (if the chain continues); reject
- *         skips the current effect and pays only the reject-next card.
- *         Choose the cheaper path; when rejecting is
- *         AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO× costlier, accept the
- *         manageable hit instead (the escalation is "significantly worse").
- *       * if the current effect is NOT manageable (would bankrupt), reject
- *         (avoid the imminent loss) unless rejecting is also strictly worse
- *         than accepting — both paths bad → accept (deterministic default).
+ * Every compiled option applies the event's own effect (CSV content always
+ * carries `effectPolicy: 'apply'`, producer Q4=B), so the *only* differentiator
+ * between options is their successor-candidate chain. The AI therefore picks
+ * the option whose downstream chain is least harmful — the pessimistic,
+ * RNG-free static evaluation:
+ *
+ *  - chain severity = worst-case (max) severity across the option's candidate
+ *    set (a set of size 1 equals that card; an empty set is a terminal, 0);
+ *  - the chosen option minimises that value; ties resolve to the lowest index
+ *    (index 0 is the presentation-default / legacy Accept slot).
+ *
+ * The former difficulty ladder (Easy always-accept, Medium afford-and-accept /
+ * refuse-when-unaffordable, Hard accept-vs-reject full-chain compare) made
+ * sense when Reject could *skip* the current effect; with Q4=B the effect is
+ * never waived, so the ladder collapses onto one shared rule. `difficulty` is
+ * retained for API compatibility and future weighting (recorded follow-up).
  *
  * @param state      Current game state (read-only).
  * @param event      The drawn choice event (effect deferred).
- * @param difficulty Difficulty preset ('Easy' | 'Medium' | 'Hard').
- * @returns 'accept' or 'reject'.
+ * @param difficulty Difficulty preset (retained for API compatibility).
+ * @returns The index of the chosen option in the compiled option list.
  */
 export function decideEventChoice(
   state: MainStreetState,
   event: EventCard,
   difficulty: DifficultyName,
-): 'accept' | 'reject' {
-  // Positive/neutral events: the benefit is guaranteed; no difficulty
-  // refuses a free gain (reject only delays value to an unknown later draw).
-  if (event.coinDelta + event.reputationDelta >= 0) return 'accept';
+): number {
+  void state;
+  void difficulty;
+  const options = getStorylineOptions(event);
+  if (options.length === 0) return 0;
 
-  if (difficulty === 'Easy') return 'accept';
+  let best = 0;
+  let bestSeverity = Infinity;
+  options.forEach((option, index) => {
+    const severity = optionChainSeverity(option);
+    if (severity < bestSeverity) {
+      best = index;
+      bestSeverity = severity;
+    }
+  });
+  return best;
+}
 
-  const projected = projectEventCoinDelta(state, event);
-  const manageable = state.resourceBank.coins + projected > 0;
-
-  if (difficulty === 'Medium') {
-    return manageable ? 'accept' : 'reject';
+/**
+ * Pessimistic, deterministic severity of an option's candidate successor set:
+ * the worst-case (maximum) {@link eventSeverity} across the option's candidate
+ * cards; 0 for a terminal option (empty set). RNG-free so the AI never stalls
+ * and replays stay byte-identical.
+ */
+function optionChainSeverity(option: StorylineOption): number {
+  const ids =
+    option.successorIds != null && option.successorIds.length > 0
+      ? option.successorIds
+      : option.successorId
+        ? [option.successorId]
+        : [];
+  if (ids.length === 0) return 0;
+  let worst = 0;
+  for (const id of ids) {
+    const template = getEventTemplates().find((t) => t.id === id);
+    if (!template) continue;
+    worst = Math.max(worst, eventSeverity(template));
   }
-
-  // ── Hard: static full-chain evaluation ──
-  const currentCost = eventSeverity(event);
-  const acceptChainCost = currentCost + chainCardSeverity(event.acceptNextCardId);
-  const rejectChainCost = chainCardSeverity(event.rejectNextCardId);
-
-  // Accepting ends the chain (no accept-next card): the known effect is the
-  // whole story — prefer the safe terminal when we can afford it (AC22).
-  if (event.acceptNextCardId === null || event.acceptNextCardId === undefined) {
-    if (manageable) return 'accept';
-    // Unaffordable terminal: refusing skips the loss entirely (nothing is
-    // added on reject either, since rejectChainCost == 0) → reject.
-    return rejectChainCost === 0 ? 'reject' : 'accept';
-  }
-
-  // Rejecting adds nothing — refusing the current effect is free.
-  if (rejectChainCost === 0) return 'reject';
-
-  if (!manageable) {
-    // Accepting bankrupts now. Reject delays the (potentially worse) card;
-    // prefer reject unless rejecting is also the strictly worse path.
-    return rejectChainCost < acceptChainCost ? 'reject' : 'accept';
-  }
-
-  if (rejectChainCost > acceptChainCost * AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO) {
-    // The escalation is significantly worse than accepting — swallow the
-    // manageable current effect (AC22 "reject if escalation significantly
-    // worse" ⇒ prefer accept here).
-    return 'accept';
-  }
-  if (rejectChainCost < acceptChainCost) return 'reject';
-  return 'accept';
+  return worst;
 }
 
 /**
  * "Significantly worse" guard (Hard policy): when the reject path's full
- * chain cost exceeds the accept path's full chain cost by at least this
- * ratio, the policy swallows the current manageable effect rather than risk
- * the escalation (AC22 — "reject if the escalation card is significantly
- * worse" maps onto rejecting being costlier). Exported for tests.
+/**
+ * Legacy: "significantly worse" guard ratio from the accept-vs-reject Hard
+ * policy. Superseded by the arbitrary-option model (MS-0MV8KQSF1004E53Y —
+ * every option applies the effect, so there is no reject-skip cost to ratio).
+ * Retained as an exported constant for API compatibility; unused by the new
+ * decision rule.
+ * @deprecated
  */
 export const AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO = 1.5;
-
-/**
- * Looks up the next chain card template (registry lookup only — static, no
- * simulation) and returns its severity; null/absent/missing template → 0.
- */
-function chainCardSeverity(nextId: string | null | undefined): number {
-  if (!nextId) return 0;
-  const template = getEventTemplates().find((t) => t.id === nextId);
-  return template ? eventSeverity(template) : 0;
-}
 
 /**
  * Severity factor applied to a chain card's reputation delta when comparing

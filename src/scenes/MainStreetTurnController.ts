@@ -71,7 +71,7 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
     presentEventChoiceDialog(this);
   }
 
-  public onEventChoice(option: 'accept' | 'reject'): void {
+  public onEventChoice(option: 'accept' | 'reject' | number): void {
     onEventChoice(this, option);
   }
 
