@@ -22,6 +22,7 @@ import { recordMainStreetEvent } from './MainStreetTranscript';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
 import { computePurchaseCostDiscount, computeEffectiveBusinessPurchaseCost } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
+import { BASE_HAND_CAPACITY } from './MainStreetStateSetup';
 import {
   executeWeekStart,
   processEndOfTurn,
@@ -2685,6 +2686,7 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
   state.resourceBank.reputation = player.reputation;
   state.hand = player.hand;
   state.staffCards = player.staffCards;
+  state.maxHandSize = player.maxHandSize ?? BASE_HAND_CAPACITY;
   state.actionsRemaining = player.actionBudget + (state.bankedActions ?? 0);
   syncResourceBankToLedger(state);
 }
@@ -2704,6 +2706,7 @@ export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number
   player.reputation = state.resourceBank.reputation;
   player.hand = state.hand;
   player.staffCards = state.staffCards;
+  player.maxHandSize = state.maxHandSize;
   // Strip the shared banked pool back out so `actionBudget` stays the seat's
   // base daily budget; the bank is re-added by the next `bindCompetitiveSeat`.
   player.actionBudget = state.actionsRemaining - (state.bankedActions ?? 0);

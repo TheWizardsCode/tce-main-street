@@ -14,12 +14,11 @@
  *   * single-player behaviour is unchanged (base 3 plus staff
  *     `handSlotsAdded` via the existing shared `maxHandSize` path).
  *
- * The contract cases are authored **red-phase** (`it.fails`, per the repo's
- * test-first tracer-bullet convention): they must FAIL against today's
- * shared-`maxHandSize` behaviour and are flipped to a plain `it` by the
- * implementing child (MS-0MV8PX4DV003LTFP) once per-seat binding lands.
- * Guards that already hold today stay plain `it` so they keep protecting the
- * contract through the change.
+ * The contract cases were authored **red-phase** (`it.fails`, per the repo's
+ * test-first tracer-bullet convention) and flipped to plain `it` by the
+ * implementing child (MS-0MV8PX4DV003LTFP) once per-seat binding lands; they
+ * now hold as ordinary guards over that contract. Guards that already
+ * held before the change stay plain `it` so they keep protecting it.
  *
  * Every scenario uses a seeded game state, and the bind/hire/layoff paths
  * asserted here draw no RNG values (layoff's random hand-card removal is
@@ -49,9 +48,9 @@ const OPPONENTS: CompetitiveOpponentConfig[] = [
 
 /**
  * Reads a seat's own hand capacity — the per-seat `maxHandSize` declared by
- * this contract, absent until the implementing child lands. Read through an
- * `unknown` cast so this red-phase suite still type-checks today; absent
- * falls back to the base capacity for the pre-field guards.
+ * this contract and now landed by the implementing child. Read through an
+ * `unknown` cast so the suite stays robust; absent (should not happen) falls
+ * back to the base capacity.
  */
 function seatCapacity(seat: PlayerRecord): number {
   const perSeat = (seat as unknown as { maxHandSize?: number }).maxHandSize;
@@ -83,7 +82,7 @@ function hireForSeat(state: MainStreetState, playerId: number, card: StaffCard):
 
 describe('Per-seat hand capacity isolation (MS-0MV8PX0Y70006PIW)', () => {
   describe('AC1 — hiring staff for one seat increases only that seat\'s capacity', () => {
-    it.fails(
+    it(
       'a staff bonus earned by seating 0 is invisible to the other seats',
       () => {
         const state = createCompetitiveState({ seed: 'ac1-hire-seat0', playerCount: 2, opponents: OPPONENTS });
@@ -111,7 +110,7 @@ describe('Per-seat hand capacity isolation (MS-0MV8PX0Y70006PIW)', () => {
   });
 
   describe('AC2 — laying off staff for one seat decreases only that seat\'s capacity', () => {
-    it.fails(
+    it(
       'laying off a seat\'s staff returns only that seat to base, other seats keep their bonus',
       () => {
         const state = createCompetitiveState({ seed: 'ac2-layoff', playerCount: 2, opponents: OPPONENTS });
@@ -141,7 +140,7 @@ describe('Per-seat hand capacity isolation (MS-0MV8PX0Y70006PIW)', () => {
       },
     );
 
-    it.fails(
+    it(
       'a seat whose layoff would drop below base floors at the minimum of 2, independently of other seats',
       () => {
         const state = createCompetitiveState({ seed: 'ac2-min-two', playerCount: 2, opponents: OPPONENTS });
@@ -164,7 +163,7 @@ describe('Per-seat hand capacity isolation (MS-0MV8PX0Y70006PIW)', () => {
   });
 
   describe('AC3 — bind/restore round-trips each seat\'s own capacity', () => {
-    it.fails(
+    it(
       'alternating seats each observe their own capacity across bind/restore cycles',
       () => {
         const state = createCompetitiveState({ seed: 'ac3-roundtrip', playerCount: 2, opponents: OPPONENTS });

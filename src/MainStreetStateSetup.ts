@@ -219,6 +219,9 @@ export function isMarketCardRelevant(
  */
 export const UPGRADE_ELIGIBLE_DRAW_BONUS = 30;
 
+/** Base hand capacity every player starts with (staff cards can grow it). */
+export const BASE_HAND_CAPACITY = 3;
+
 /**
  * Effective refill draw weight for an upgrade card. Undeclared weights stay at
  * the baseline `1` (and are never eligibility-boosted); a declared weight adds
@@ -656,7 +659,7 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     activityLog: [],
     activeEffects: [],
     hand: [],
-    maxHandSize: 3,
+    maxHandSize: BASE_HAND_CAPACITY,
     discardPile: [],
     staffCards: [],
     soldSlots: new Array<boolean>(GRID_SIZE).fill(false),
@@ -817,6 +820,7 @@ export function createCompetitiveState(
       hand: [],
       staffCards: [],
       actionBudget: 1,
+      maxHandSize: BASE_HAND_CAPACITY,
       score: 0,
     };
     if (playerId === 0) {

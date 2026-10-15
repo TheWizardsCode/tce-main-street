@@ -242,6 +242,18 @@ export interface PlayerRecord {
    * as `actionsRemaining - bankedActions` (MS-0MUVUPWHD0032CU4).
    */
   actionBudget: number;
+  /**
+   * Seat's own maximum cards held in hand (base 3, expanded by the seat's own
+   * staff `handSlotsAdded`).
+   *
+   * `bindCompetitiveSeat` copies it onto the shared working
+   * `state.maxHandSize` and `restoreCompetitiveSeat` writes it back, so staff
+   * bonuses apply only to the employing seat
+   * (MS-0MV8PX4DV003LTFP). Set on every competitive seat by
+   * `createCompetitiveState`; absent on legacy saves and in single-player
+   * states, where the loader / setup default it to the base capacity (3).
+   */
+  maxHandSize?: number;
   /** Computed score for this player (updated each EndCheck). */
   score: number;
   /**

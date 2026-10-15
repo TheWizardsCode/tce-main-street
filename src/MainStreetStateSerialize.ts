@@ -41,7 +41,7 @@ import type {
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
 import type { StorylineOption } from './MainStreetCardsTypes';
-import { ALLOWED_START_WEEKS, deriveSeatColours } from './MainStreetStateSetup';
+import { ALLOWED_START_WEEKS, BASE_HAND_CAPACITY, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
  * Serializes Main Street runtime state into a JSON-safe checkpoint shape.
@@ -830,6 +830,19 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           : { ...player, colour: colours.get(String(player.playerId)) },
       );
     }
+  }
+
+  // ── Per-seat hand-capacity backfill (MS-0MV8PX4DV003LTFP) ──
+  // Legacy competitive saves predate the per-seat `maxHandSize`; default any
+  // seat missing the field to the base capacity (3) while preserved grown
+  // values are left untouched, so the shared-`maxHandSize` behaviour is not
+  // resurrected across a reload. Single-player (no seat records) is skipped.
+  if (state.players) {
+    state.players = state.players.map((player) =>
+      typeof player.maxHandSize === 'number'
+        ? player
+        : { ...player, maxHandSize: BASE_HAND_CAPACITY },
+    );
   }
 
   // ── Per-business employedStaff backfill (CG-0MU3BNO590066H75) ──────

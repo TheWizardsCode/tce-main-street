@@ -225,13 +225,13 @@ describe('Single-player save/load regression', () => {
 });
 
 describe('Per-seat hand capacity persistence (MS-0MV8PX0Y70006PIW)', () => {
-  // Red-phase contract for the test-first child: per-seat hand capacity must
-  // survive save/load independently of the shared scalar. Both cases FAIL
-  // against today's serialiser (which round-trips only the single shared
-  // `maxHandSize`; players carry no per-seat field); the implementing child
-  // (MS-0MV8PX4DV003LTFP) flips them to plain `it` once persistence lands.
+  // Contract for the test-first child (MS-0MV8PX0Y70006PIW), verified green
+  // by the implementing child (MS-0MV8PX4DV003LTFP): per-seat hand capacity
+  // survives save/load independently of the shared scalar. Both cases failed
+  // against the shared-`maxHandSize`-only serialiser; with the per-seat field
+  // landed they hold as plain `it` guards.
 
-  it.fails('a save/load round-trip keeps each seat\'s own hand capacity', () => {
+  it('a save/load round-trip keeps each seat\'s own hand capacity', () => {
     const state = createCompetitiveState({ seed: 'save-per-seat', playerCount: 2, opponents: [OPPONENTS[0]] });
 
     // Grow the seats asymmetrically: seat 0 +1, seat 1 +2.
@@ -249,7 +249,7 @@ describe('Per-seat hand capacity persistence (MS-0MV8PX0Y70006PIW)', () => {
     expect(restored.maxHandSize).toBe(3 + 2);
   });
 
-  it.fails(
+  it(
     'a legacy save without the per-seat field defaults each seat to the base 3 while preserved grown values are not reset',
     () => {
       const state = createCompetitiveState({ seed: 'save-legacy-per-seat', playerCount: 2, opponents: [OPPONENTS[0]] });
