@@ -242,10 +242,11 @@ resolveIncident ──(choice card)──▶ pendingEventChoice ──▶ proces
                                             finishDeferredEndOfTurn
 ```
 
-**Deterministic deck insertion.** `pushChainCard` serialises successor
-instances deterministically (`<base>-<n>`, next free serial across the incident
-deck, event deck and discards). No RNG or wall-clock is consumed, so replay and
-Monte Carlo remain deterministic.
+**Deterministic successor draw.** When an option is chosen, its successor is
+drawn at resolution time with **exactly one** seeded `state.rng()` call over the
+option's ordered candidate set (uniform; replay with the same seed yields the
+same branch). Precedence: `successorResolver` callback (if present) over the
+random draw over an empty candidate set ending the chain (`resolveStorylineOption`, `MS-0MV8KQL820077BOS` / `MS-0MUZKA9CJ000N144`).
 
 **Undo/redo.** `resolveEventChoiceCommand` (from `MainStreetCommands.ts`) is a
 snapshot-based command: undo restores the unresolved pending state (escalation
@@ -253,8 +254,10 @@ removed, resources restored), redo re-applies.
 
 **Save/load.** `pendingEventChoice` is serialised (`MainStreetStateSerialize.ts`)
 so an unresolved choice survives a save. Legacy saves without the field load
-with `pendingEventChoice = null`. `chosenOption` is `string | null` — legacy
-legacy choices store the lowercase `'accept'`/`'reject'` tokens.
+with `pendingEventChoice = null`. `chosenOption` is `string | null` — the
+chosen option's **label** is the stable token (`'Accept'`, `'Reject'`, or a
+generalised label; the legacy lowercase `'accept'`/`'reject'` tokens were
+removed in `MS-0MV8KQL820077BOS`).
 
 **Transcript.** Each resolution records
 `{ type: 'event-choice', turn, eventId, cardName, option, acceptNextCardId,
@@ -268,13 +271,17 @@ Headless turns never stall: `resolveAiEventChoice` (re-exported from
 `MainStreetAiStrategy.ts`, implemented via `resolvePendingEventChoice`) resolves
 a pending choice by difficulty and completes the deferred closing.
 
-`decideEventChoice(state, event, difficulty)`:
+`decideEventChoice(state, event, difficulty)` returns the **index** of the
+automatically-chosen option over the compiled arbitrary option list:
 
 | Difficulty | Policy |
 |------------|--------|
-| **Easy** | Always accept. |
-| **Medium** | Accept when the effect leaves coins > 0 after projecting the delta; otherwise reject. |
-| **Hard** | Static full-chain evaluation: compare the current cost + accept-chain severity against the reject-chain severity; prefer the cheaper path, and avoid bankrupting accept paths. |
+| **All** | Since every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B), the only differentiator is the successor chain: the AI picks the option whose **worst-case candidate** severity is lowest (terminal options win; ties resolve to the lowest index). Deterministic and RNG-free, so replays and Monte Carlo stay comparable. |
+
+The former Easy/Medium/Hard accept/reject ladder was superseded by this shared
+rule when the migrated model made Reject apply the effect too
+(`MS-0MV8KQSF1004E53Y`). `difficulty` remains part of the API for callers and
+future weighting (see §9 roadmap).
 
 AI resolutions produce the same `event-choice` transcript entry as a player
 choice, so replays are comparable.

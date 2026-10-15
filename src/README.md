@@ -317,9 +317,10 @@ The first row is the header. Columns common to all card families:
 | `coinDelta` | number | Coin change when the event resolves |
 | `reputationDelta` | number | Reputation change when the event resolves |
 | `effect` | string | Human-readable effect description |
-| `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses for Accept/Reject (storyline choice). See [docs/main-street/storylines.md](../docs/main-street/storylines.md). |
-| `acceptNextCardId` | string | Card queued on **Accept** (option 0, applies the effect); empty ends the chain. |
-| `rejectNextCardId` | string | Card queued on **Reject** (option 1, skips the effect); empty ends the chain. |
+| `options` | string | Arbitrary multi-outcome choice encoding `label|cardA,cardB;label2|cardC` (`;`/`|`/`,` separators). A blank cell is a non-choice card; `label|` is a terminal option. Every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B); one seeded `state.rng()` draw picks the successor uniformly at resolution time. Overrides the legacy trio below. Full grammar: [storylines.md §2.1](../docs/main-street/storylines.md#the-options-csv-column-arbitrary-multi-outcome-encoding). |
+| `hasChoices` | boolean (`true`/empty) | **Transitional** — when `true` and no `options`, the incident compiles to a two-option Accept/Reject list. Derived from a non-empty `options` cell. See [docs/main-street/storylines.md](../docs/main-street/storylines.md). |
+| `acceptNextCardId` | string | **Transitional** — card compiled onto the **Accept** option (option 0, applies the effect); empty ends the chain. Prefer `options`. |
+| `rejectNextCardId` | string | **Transitional** — card compiled onto the **Reject** option (option 1; since the Q4=B migration every compiled option applies the effect too); empty ends the chain. Prefer `options`. |
 | `storylineId` | string | Storyline grouping key (e.g. `storyline-tax`). Descriptive metadata. |
 | `storylineTitle` | string | Storyline display name (e.g. `Tax Troubles`). |
 
