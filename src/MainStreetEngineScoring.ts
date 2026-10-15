@@ -11,8 +11,13 @@ import type { EventCard } from './MainStreetCards';
 import { getEventTemplates } from './MainStreetCards';
 import { applyReputationMultiplier } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
-import { eventCoinDeltaFor } from './MainStreetEngineEvents';
-import type { MainStreetState } from './MainStreetState';
+import {
+  canAffordPiggybackJoinFully,
+  eventCoinDeltaFor,
+  piggybackJoinFullyCost,
+  projectPiggybackEventReward,
+} from './MainStreetEngineEvents';
+import type { MainStreetState, PendingPiggybackDecision } from './MainStreetState';
 import { syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
@@ -268,4 +273,151 @@ function chainCardSeverity(nextId: string | null | undefined): number {
  * both axes comparable for severity ranking. Internal heuristic constant.
  */
 const REPUTATION_SEVERITY_SCALE = 100;
+
+// ── Piggyback join-fully AI policy (MS-0MV8BG2CA007JDEX, F4) ──
+// The deterministic, RNG-free policy that decides whether an AI piggybacker
+// upgrades its automatic 50% free-ride to 100% by paying 150% of the acting
+// player's paid cost. Defined here (next to `decideEventChoice`) so the
+// engine's headless closing paths can resolve pending decisions without
+// importing the AI strategy module (which would create an import cycle); it is
+// re-exported from `MainStreetAiStrategy` as part of that module's public API.
+
+/** The outcome of the AI join-fully policy. */
+export type PiggybackPolicyDecision = 'join' | 'free-ride';
+
+/**
+ * Per-difficulty tuning for the join-fully policy.
+ *
+ * The only knob is the liquidity floor: the minimum fraction of the seat's
+ * starting coins that must remain AFTER the 150% charge. Easy is the most
+ * cautious (keeps half the starting purse in reserve), Hard the most willing
+ * to commit. The floor is what makes the policy difficulty-aware: on an
+ * otherwise identical state Easy may free-ride where Hard joins.
+ */
+export interface PiggybackDifficultyProfile {
+  /** Minimum remaining coins as a fraction of the seat's starting coins. */
+  readonly minBalanceFloorRatio: number;
+}
+
+/** Difficulty-gated liquidity floors for the join-fully policy (F4). */
+export const PIGGYBACK_DIFFICULTY_PROFILES: Record<DifficultyName, PiggybackDifficultyProfile> = {
+  Easy: { minBalanceFloorRatio: 0.5 },
+  Medium: { minBalanceFloorRatio: 0.25 },
+  Hard: { minBalanceFloorRatio: 0.1 },
+};
+
+/**
+ * Absolute coin floor the piggybacker must retain after the charge,
+ * `round(state.config.startingCoins × profile.minBalanceFloorRatio)`.
+ * Exported so the difficulty-aware threshold is directly testable.
+ */
+export function piggybackBalanceFloor(
+  state: MainStreetState,
+  difficulty: DifficultyName,
+): number {
+  const profile =
+    PIGGYBACK_DIFFICULTY_PROFILES[difficulty] ?? PIGGYBACK_DIFFICULTY_PROFILES.Medium;
+  return Math.round(state.config.startingCoins * profile.minBalanceFloorRatio);
+}
+
+/**
+ * Deterministic AI join-fully policy (F4 AC1/AC2): decides whether a seat
+ * upgrades its automatic 50% piggyback free-ride to the full 100% tier by
+ * paying the 150% charge.
+ *
+ * The decision is purely a function of the state — no RNG is consulted — so
+ * identical inputs always produce identical outputs (replay reproducibility).
+ * A seat joins only when ALL of the following hold:
+ *
+ *   1. **Affordable (AC2).** The seat can pay the exact charge
+ *      `round(1.5 × decision.paidCost)`, checked through the shared
+ *      {@link canAffordPiggybackJoinFully} predicate the application path also
+ *      uses — the AI can never attempt a join the engine would refuse.
+ *   2. **Worthwhile.** The event's projected 100%-scale reward on the seat's
+ *      OWN board (coins + reputation; `SpecificSynergy` rewards count only
+ *      the seat's own matching businesses) exceeds the 150% charge.
+ *   3. **Liquid enough.** The coins remaining after the charge stay at or
+ *      above the difficulty-visible floor ({@link piggybackBalanceFloor}), so
+ *      paying for the event never strips the purse below what the difficulty
+ *      considers a safe operating buffer.
+ *
+ * Otherwise the seat keeps the automatic free-ride. When no difficulty is
+ * supplied the seat's own `aiDifficulty` is used, falling back to the shared
+ * `state.config.difficultyName`.
+ *
+ * @param state      Competitive game state (read-only by convention).
+ * @param decision   The pending decision being resolved for one seat.
+ * @param difficulty Policy difficulty; defaults to the seat's difficulty.
+ * @returns `'join'` to take the 100% tier, otherwise `'free-ride'`.
+ */
+export function decidePiggyback(
+  state: MainStreetState,
+  decision: Readonly<PendingPiggybackDecision>,
+  difficulty: DifficultyName = state.players?.[decision.seatId]?.aiDifficulty ??
+    state.config.difficultyName,
+): PiggybackPolicyDecision {
+  // AC2: share the exact affordability predicate the engine enforces on
+  // application. An unaffordable join is never chosen (no partial charge).
+  if (!canAffordPiggybackJoinFully(state, decision.seatId, decision.paidCost)) {
+    return 'free-ride';
+  }
+  const charge = piggybackJoinFullyCost(decision.paidCost);
+  const reward = projectPiggybackEventReward(
+    state,
+    decision.event,
+    decision.seatId,
+    1.0,
+  );
+  const rewardValue = reward.coins + reward.reputation;
+  // Join only when the full own-board reward beats the 150% charge.
+  if (rewardValue <= charge) return 'free-ride';
+  const player = state.players?.[decision.seatId];
+  const remaining = (player?.coins ?? 0) - charge;
+  if (remaining < piggybackBalanceFloor(state, difficulty)) return 'free-ride';
+  return 'join';
+}
+
+/**
+ * Seat-aware default piggyback resolution policy (F4 AC3): AI-controlled
+ * seats apply {@link decidePiggyback}; every other seat keeps the automatic
+ * free-ride.
+ *
+ * This is the default the headless competitive closing uses so a day never
+ * stalls on a pending set. Human seats stay on the automatic free-ride here;
+ * the interactive join-fully prompt (F5) overrides the human path at the
+ * scene layer. Matches the `(decision, state) => boolean` seam of
+ * `resolveAllPendingPiggybacks`.
+ */
+export function decidePiggybackForSeat(
+  decision: Readonly<PendingPiggybackDecision>,
+  state: MainStreetState,
+): boolean {
+  const seat = state.players?.[decision.seatId];
+  if (seat?.controller !== 'ai') return false;
+  return (
+    decidePiggyback(state, decision, seat.aiDifficulty ?? state.config.difficultyName) ===
+    'join'
+  );
+}
+
+/**
+ * AI-only harness policy (F4 AC3/AC4): applies {@link decidePiggyback} to
+ * EVERY seat.
+ *
+ * The Monte Carlo harness (`runCompetitiveSeed`) drives all seats — including
+ * seat 0, which `createCompetitiveState` labels `human` — with AI strategies,
+ * so the head-to-head reproduction must let every seat decide via the same
+ * deterministic policy. The interactive scene keeps {@link
+ * decidePiggybackForSeat} instead, leaving the human seat for the F5 prompt.
+ */
+export function decidePiggybackForAllSeats(
+  decision: Readonly<PendingPiggybackDecision>,
+  state: MainStreetState,
+): boolean {
+  const seat = state.players?.[decision.seatId];
+  return (
+    decidePiggyback(state, decision, seat?.aiDifficulty ?? state.config.difficultyName) ===
+    'join'
+  );
+}
 

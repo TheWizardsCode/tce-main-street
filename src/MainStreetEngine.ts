@@ -54,14 +54,21 @@ export type {
 // ── Scoring ─────────────────────────────────────────────
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
+  PIGGYBACK_DIFFICULTY_PROFILES,
   computeScore,
   decideEventChoice,
+  decidePiggyback,
+  decidePiggybackForAllSeats,
+  decidePiggybackForSeat,
   effectiveWinThreshold,
   eventSeverity,
+  piggybackBalanceFloor,
   projectEventCoinDelta,
   updateCompetitiveScores,
   updateScore,
 } from './MainStreetEngineScoring';
+
+export type { PiggybackDifficultyProfile, PiggybackPolicyDecision } from './MainStreetEngineScoring';
 
 // ── WeekStart ─────────────────────────────────────────────
 export {
@@ -97,6 +104,7 @@ export {
   applyCompetitiveEventEffects,
   applyPiggybackFreeRide,
   applyPiggybackJoinFully,
+  canAffordPiggybackJoinFully,
   computeEventDeltas,
   getNextPendingPiggybackSeat,
   getPiggybackSeatIds,

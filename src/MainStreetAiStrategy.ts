@@ -1669,9 +1669,15 @@ export class MainStreetAiPlayer extends AiPlayerBase<MainStreetAiStrategy> {
 // resolve the pending choice per difficulty and finish the deferred closing).
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
-  projectEventCoinDelta,
-  eventSeverity,
+  PIGGYBACK_DIFFICULTY_PROFILES,
+  canAffordPiggybackJoinFully,
   decideEventChoice,
+  decidePiggyback,
+  decidePiggybackForAllSeats,
+  decidePiggybackForSeat,
+  eventSeverity,
+  piggybackBalanceFloor,
+  projectEventCoinDelta,
   resolvePendingEventChoice,
 } from './MainStreetEngine';
 

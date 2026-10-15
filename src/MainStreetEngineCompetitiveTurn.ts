@@ -10,7 +10,7 @@ import { executeAction } from './MainStreetEngineActions';
 import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompetitiveOngoingCosts, applyStaffOngoingCosts } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPiggybacks } from './MainStreetEngineEvents';
-import { decideEventChoice, updateCompetitiveScores } from './MainStreetEngineScoring';
+import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
 import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
@@ -198,9 +198,10 @@ export function executeCompetitiveTurn(
   }
   // F3 headless integration (epic MS-0MUYC47EL005Z69H): an eligible event
   // played mid-day raised pending piggyback decisions; settle them before the
-  // closing so the convenience/AI day loop never stalls (free-ride default —
-  // the F4 AI policy supplies the seat-aware decision through the seam).
-  resolveAllPendingPiggybacks(state);
+  // closing so the convenience/AI day loop never stalls. AI seats resolve via
+  // the F4 deterministic policy (`decidePiggybackForSeat`); human seats keep
+  // the automatic free-ride.
+  resolveAllPendingPiggybacks(state, decidePiggybackForSeat);
   return mergeMidTurnChallenges(resolveCompetitiveClosingPhases(state), midTurnCompleted);
 }
 
@@ -424,13 +425,15 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
  * {@link resolveCompetitivePendingChoice} for the dual-choice incident pause.
  *
  * @param state  Current game state (mutated).
- * @param decide Optional per-seat policy (`true` = join fully); the F4 AI
- *               policy supplies this. Omitted means free-ride for every seat.
+ * @param decide Optional per-seat policy (`true` = join fully). Defaults to
+ *               {@link decidePiggybackForSeat}: AI seats apply the F4
+ *               deterministic policy, human seats keep the free-ride.
  * @returns The finished closing result, or null when nothing was pending.
  */
 export function resolveCompetitivePendingPiggyback(
   state: MainStreetState,
-  decide?: (decision: Readonly<PendingPiggybackDecision>, state: MainStreetState) => boolean,
+  decide: (decision: Readonly<PendingPiggybackDecision>, state: MainStreetState) => boolean =
+    decidePiggybackForSeat,
 ): TurnResult | null {
   if (!hasPendingPiggyback(state)) return null;
   resolveAllPendingPiggybacks(state, decide);

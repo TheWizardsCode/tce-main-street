@@ -646,6 +646,32 @@ export function piggybackJoinFullyCost(paidCost: number): number {
   return Math.max(0, Math.round(paidCost * 1.5));
 }
 
+/**
+ * Shared affordability predicate for the join-fully tier (MS-0MV8BG2CA007JDEX
+ * AC2): true when `seatId` holds at least the exact join-fully charge
+ * `round(1.5 × paidCost)`.
+ *
+ * Used by BOTH the application path ({@link applyPiggybackJoinFully}) and the
+ * AI policy (`decidePiggyback`, `MainStreetEngineScoring`), so the AI can
+ * never choose to join when the engine would refuse the charge — the policy
+ * and the application path cannot diverge.
+ *
+ * @param state    Competitive game state (read-only).
+ * @param seatId   Piggybacker owner index.
+ * @param paidCost Cost the acting player actually paid for the event.
+ * @returns False when no player record exists for `seatId` (defensive), or
+ *          when the seat holds less than the exact charge.
+ */
+export function canAffordPiggybackJoinFully(
+  state: MainStreetState,
+  seatId: number,
+  paidCost: number,
+): boolean {
+  const player = state.players?.[seatId];
+  if (!player) return false;
+  return player.coins >= piggybackJoinFullyCost(paidCost);
+}
+
 /** Result of applying the join-fully tier (see {@link applyPiggybackJoinFully}). */
 export interface PiggybackJoinFullyResult {
   /** True when the 150% charge and 100% reward were applied; false when unaffordable (no-op). */
@@ -690,9 +716,11 @@ export function applyPiggybackJoinFully(
   }
   const charge = piggybackJoinFullyCost(paidCost);
   const reward = projectPiggybackEventReward(state, event, piggybackerOwnerId, 1.0);
-  if (player.coins < charge) {
+  if (!canAffordPiggybackJoinFully(state, piggybackerOwnerId, paidCost)) {
     // Unaffordable: option unavailable, nothing charged (never a partial
-    // charge); the caller then applies the automatic 50% free-ride.
+    // charge); the caller then applies the automatic 50% free-ride. Routed
+    // through the shared predicate so the AI policy's legality gate is the
+    // exact check the engine enforces (AC2).
     return { applied: false, charge, reward };
   }
   player.coins = player.coins - charge + reward.coins;
