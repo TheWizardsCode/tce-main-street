@@ -44,6 +44,8 @@ export interface StorylineGraphNode {
   readonly hasChoices: boolean;
   /** Number of options (0 for plain incidents). */
   readonly optionCount: number;
+  /** Ordered labelled option list (arbitrary multi-outcome model); empty for plain incidents. */
+  readonly options: readonly StorylineGraphOption[];
   /** Net coin effect (informational). */
   readonly coinDelta: number;
   /** Net reputation effect (informational). */
@@ -71,10 +73,14 @@ export interface StorylineGraphNode {
 }
 
 export interface StorylineGraphOption {
-  /** Option label, e.g. "Accept". */
+  /** Option label, e.g. "Negotiate". */
   readonly label: string;
-  /** Successor base card id, or null when the chain ends. */
-  readonly successorId: string | null;
+  /**
+   * Ordered candidate successor base card ids (the option's candidate set).
+   * Empty = terminal option — the chain ends after it is chosen. The engine
+   * draws one candidate uniformly at random at resolution time.
+   */
+  readonly successorIds: readonly string[];
   /** Whether the event's own effect applies. */
   readonly effectPolicy: 'apply' | 'skip';
 }
@@ -86,6 +92,14 @@ export interface StorylineGraphEdge {
   readonly label: string;
   /** Target base card id, or null when the chain ends. */
   readonly to: string | null;
+  /**
+   * True when this edge is one of several random-branch candidates of the
+   * same option (the option's candidate set has more than one entry) — all
+   * such edges share `from` + `label` and differ in `candidateIndex`.
+   */
+  readonly random: boolean;
+  /** 0-based index of this candidate within its option's candidate set. */
+  readonly candidateIndex: number;
   /** True when this edge participates in a cycle. */
   readonly cycle: boolean;
   /** Whether the source event's own effect applies when this option is chosen. */
@@ -161,6 +175,15 @@ export function buildStorylineManifest(
   const nodes: StorylineGraphNode[] = [];
   const edges: StorylineGraphEdge[] = [];
 
+  /** Candidate successor base ids for an option (set > legacy single). */
+  const candidateTargets = (option: StorylineOption): string[] => {
+    if (option.successorIds != null && option.successorIds.length > 0) {
+      return option.successorIds.map((id) => getBaseTypeId(id));
+    }
+    if (option.successorId) return [getBaseTypeId(option.successorId)];
+    return [];
+  };
+
   for (const base of bases) {
     const card = byBase.get(base)!;
     if (card.storylineId) storylineIds.add(card.storylineId);
@@ -174,6 +197,11 @@ export function buildStorylineManifest(
       storylineTitle: card.storylineTitle ?? null,
       hasChoices,
       optionCount: options.length,
+      options: options.map((option) => ({
+        label: option.label,
+        successorIds: candidateTargets(option),
+        effectPolicy: option.effectPolicy,
+      })),
       coinDelta: card.coinDelta,
       reputationDelta: card.reputationDelta,
       trigger: card.trigger,
@@ -187,12 +215,33 @@ export function buildStorylineManifest(
     });
 
     for (const option of options) {
-      edges.push({
-        from: base,
-        label: option.label,
-        to: option.successorId ? getBaseTypeId(option.successorId) : null,
-        cycle: false, // marked after cycle detection below
-        effectPolicy: option.effectPolicy,
+      const targets = candidateTargets(option);
+      if (targets.length === 0) {
+        // Terminal option (empty candidate set / no successor): a single
+        // chain-end edge — never a dangling link.
+        edges.push({
+          from: base,
+          label: option.label,
+          to: null,
+          random: false,
+          candidateIndex: 0,
+          cycle: false, // marked after cycle detection below
+          effectPolicy: option.effectPolicy,
+        });
+        continue;
+      }
+      // One edge per candidate so random branches of the same option are
+      // visible; `random` + `candidateIndex` distinguish the branches.
+      targets.forEach((to, candidateIndex) => {
+        edges.push({
+          from: base,
+          label: option.label,
+          to,
+          random: targets.length > 1,
+          candidateIndex,
+          cycle: false, // marked after cycle detection below
+          effectPolicy: option.effectPolicy,
+        });
       });
     }
   }
@@ -218,12 +267,14 @@ export function buildStorylineManifest(
     return inCycle ? { ...edge, cycle: true } : edge;
   });
 
-  // Deterministic edge ordering: from, then label, then to.
+  // Deterministic edge ordering: from, then label, then candidate index
+  // (declaration order within the option's candidate set), then target.
   markedEdges.sort((a, b) => {
     const from = byString(a.from, b.from);
     if (from !== 0) return from;
     const label = byString(a.label, b.label);
     if (label !== 0) return label;
+    if (a.candidateIndex !== b.candidateIndex) return a.candidateIndex - b.candidateIndex;
     return byString(a.to ?? '', b.to ?? '');
   });
 
@@ -278,7 +329,11 @@ export function renderMermaid(manifest: StorylineManifest): string {
 
   // Edges
   for (const edge of manifest.edges) {
-    const arrow = edge.cycle ? '==>' : '-->';
+    // Random-branch edges (multiple candidates of the same option) render as
+    // dotted arrows so the viewer sees they are draw-time random choices;
+    // deterministic (single-candidate) edges stay solid. Cycle edges keep the
+    // thickened arrow and take precedence for visibility.
+    const arrow = edge.cycle ? '==>' : edge.random ? '-.->' : '-->';
     const from = mermaidId(edge.from);
     if (edge.to) {
       const to = mermaidId(edge.to);

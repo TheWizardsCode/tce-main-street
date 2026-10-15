@@ -94,7 +94,7 @@
     },
     "edge": {
       "type": "object",
-      "required": ["from", "label", "to", "cycle", "effectPolicy"],
+      "required": ["from", "label", "to", "random", "candidateIndex", "cycle", "effectPolicy"],
       "additionalProperties": false,
       "properties": {
         "from": { "type": "string", "minLength": 1, "description": "Source base card id." },
@@ -102,6 +102,15 @@
         "to": {
           "type": ["string", "null"],
           "description": "Target base card id — one edge per candidate successor of the option's set; null when the chain ends."
+        },
+        "random": {
+          "type": "boolean",
+          "description": "True when this edge is one of several random-branch candidates of the same option (candidate set size > 1). Presentational in the Mermaid/SVG renders; the engine draws uniformly at random at resolution time."
+        },
+        "candidateIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-based index of this candidate within its option's ordered candidate set."
         },
         "cycle": { "type": "boolean", "description": "True when this edge participates in a cycle." },
         "effectPolicy": {
