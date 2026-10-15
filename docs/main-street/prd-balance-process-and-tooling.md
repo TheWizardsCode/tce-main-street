@@ -814,7 +814,7 @@ scripts/balance/
     "version": "1.0.0",
     "timestamp": "2026-07-23T00:00:00Z",
     "source": {
-      "cardDataCsv": "example-games/main-street/card-data.csv",
+      "cardDataCsv": "src/card-data.csv",
       "monteCarloResults": "results/latest.json",
       "baseline": "results/baseline-2026-07-01.json"
     }
@@ -1101,7 +1101,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 
 | File | Purpose | Key Interfaces |
 |------|---------|---------------|
-| `example-games/main-street/MainStreetMonteCarlo.ts` | Core harness | `MonteCarloMetrics`, `MonteCarloRunSummary`, `MonteCarloResult`, `monteCarloStrategy` |
+| `src/MainStreetMonteCarlo.ts` | Core harness | `MonteCarloMetrics`, `MonteCarloRunSummary`, `MonteCarloResult`, `monteCarloStrategy` |
 | `scripts/monte-carlo.ts` | CLI entry point | `--runs`, `--seed-prefix`, `--strategy`, `--max-turns`, `--out`, `--csv-out` |
 | `tests/main-street/monte-carlo-guardrails.test.ts` | CI guardrail test | Asserts win-rate/coin drift vs committed baseline (Medium + per-difficulty matrix) |
 | `docs/main-street/monte-carlo-sample-results.md` | Docs | Sample results interpretation |
@@ -1110,7 +1110,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 
 | File | Purpose |
 |------|---------|
-| `example-games/main-street/card-data.csv` | Source of truth for all card templates |
+| `src/card-data.csv` | Source of truth for all card templates |
 | `src/core-engine/CsvLoader.ts` | CSV parsing utility (used at build time) |
 | `src/balance-cards/` | Existing `run-balance-cards` balancing algorithm |
 

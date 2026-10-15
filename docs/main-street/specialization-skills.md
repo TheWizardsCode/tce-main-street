@@ -1,7 +1,7 @@
 # Main Street — Staff Specialization Skills: Balance Documentation
 
 > Epic CG-0MT1CIWSD003VBPK · Tasks T1–T3 (tests), Implementation I1–I5, this doc (D1, CG-0MT4WXZPX0040SA4).
-> Companion to the skill implementation in `example-games/main-street/MainStreetStaffSkills.ts`
+> Companion to the skill implementation in `src/MainStreetStaffSkills.ts`
 > (catalog + assignment), `MainStreetStaffBuffs.ts` (pure buff math), and the wiring in
 > `MainStreetAdjacency.ts` / `MainStreetEngine.ts` / `MainStreetMarket.ts`.
 

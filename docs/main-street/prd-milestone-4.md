@@ -167,7 +167,7 @@ Suggested rollback flow:
 
 ```bash
 git checkout <feature-branch>
-git log --oneline -- example-games/main-street/scenes src/ui tests/main-street
+git log --oneline -- src/scenes src/ui tests/main-street
 # Revert the specific rendering migration commit(s)
 git revert <commit-hash>
 # Re-run quality gates

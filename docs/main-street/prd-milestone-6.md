@@ -27,7 +27,7 @@ Extract reusable systems from Main Street into shared engine modules so future g
 ### In scope
 
 - Design-level extraction plan and APIs for reusable components.
-- File-level migration plan from `example-games/main-street/` to `src/*`.
+- File-level migration plan from the legacy game directory (previously under `example-games`) to the consolidated `src/*` tree.
 - Test and documentation deliverables required for implementation follow-up work.
 
 ### Out of scope
@@ -50,13 +50,13 @@ The following reusable foundations already exist and should be reused, not re-in
 
 Main Street files likely containing extraction candidates:
 
-- `example-games/main-street/MainStreetEngine.ts`
-- `example-games/main-street/MainStreetMarket.ts`
-- `example-games/main-street/MainStreetCommands.ts`
-- `example-games/main-street/MainStreetHint.ts`
-- `example-games/main-street/MainStreetSaveLoad.ts`
-- `example-games/main-street/MainStreetTranscript.ts`
-- `example-games/main-street/MainStreetAdjacency.ts`
+- `src/MainStreetEngine.ts`
+- `src/MainStreetMarket.ts`
+- `src/MainStreetCommands.ts`
+- `src/MainStreetHint.ts`
+- `src/MainStreetSaveLoad.ts`
+- `src/MainStreetTranscript.ts`
+- `src/MainStreetAdjacency.ts`
 
 ---
 
@@ -226,12 +226,12 @@ Export through barrels:
 
 Expected edit points:
 
-- `example-games/main-street/MainStreetEngine.ts`
-- `example-games/main-street/MainStreetMarket.ts`
-- `example-games/main-street/MainStreetCommands.ts`
-- `example-games/main-street/MainStreetHint.ts`
-- `example-games/main-street/MainStreetSaveLoad.ts`
-- `example-games/main-street/MainStreetTranscript.ts`
+- `src/MainStreetEngine.ts`
+- `src/MainStreetMarket.ts`
+- `src/MainStreetCommands.ts`
+- `src/MainStreetHint.ts`
+- `src/MainStreetSaveLoad.ts`
+- `src/MainStreetTranscript.ts`
 
 Approach:
 

@@ -17,7 +17,7 @@ General rule: use "fit-inside" scaling (preserve aspect ratio and ensure the who
 
 UI slot mappings (recommendations)
 
-- Market card slot (example-games/main-street): visual slot nominal size = 140 × 80 px (landscape).
+- Market card slot (src/): visual slot nominal size = 140 × 80 px (landscape).
   - Rendering: scale canonical art to fit inside the slot width (max width = 140) while preserving aspect ratio. Center vertically; allow top/bottom letterbox space.
   - Phaser: add Image with displayWidth = slotWidth, set displayHeight = (displayWidth * canonicalH / canonicalW) and position centered in slot.
 

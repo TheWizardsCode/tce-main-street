@@ -192,10 +192,10 @@ Deliver a playable walking skeleton of Main Street that a human player can compl
 | `@rule-engine` | `LegalityResult` | Move validation return type |
 | `@ui` | `CardGameScene`, `PhaseManager`, `createCardGame`, `createSceneHeader`, `HelpPanel`, `SettingsPanel`, `HelpButton`, `SettingsButton`, overlay helpers, layout helpers | Scene base, phase management, UI chrome |
 
-### 4.2 New Files (example-games/main-street/)
+### 4.2 New Files (src/)
 
 ```
-example-games/main-street/
+src/
 ├── main.ts                        # Entry point, registers with Game Selector
 ├── createMainStreetGame.ts        # Factory function (matches existing pattern)
 ├── MainStreetState.ts             # Game state types and initial state factory

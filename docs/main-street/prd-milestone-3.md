@@ -362,7 +362,7 @@ This is backwards-compatible: existing events retain their structure; new event 
 ### 5.1 MainStreetAiStrategy Interface
 
 ```typescript
-// example-games/main-street/MainStreetAiStrategy.ts
+// src/MainStreetAiStrategy.ts
 
 import type { AiStrategyBase } from '@ai/AiStrategy';
 import type { MainStreetState } from './MainStreetState';
@@ -387,7 +387,7 @@ export interface MainStreetAiStrategy extends AiStrategyBase {
 ### 5.2 RandomStrategy
 
 ```typescript
-// example-games/main-street/MainStreetAiStrategy.ts (continued)
+// src/MainStreetAiStrategy.ts (continued)
 
 import { pickRandom } from '@ai/AiUtils';
 
@@ -404,7 +404,7 @@ export const RandomStrategy: MainStreetAiStrategy = {
 ### 5.3 GreedyStrategy
 
 ```typescript
-// example-games/main-street/MainStreetAiStrategy.ts (continued)
+// src/MainStreetAiStrategy.ts (continued)
 
 import { pickBest } from '@ai/AiUtils';
 
@@ -421,7 +421,7 @@ export const GreedyStrategy: MainStreetAiStrategy = {
 ### 5.4 MainStreetAiPlayer
 
 ```typescript
-// example-games/main-street/MainStreetAiStrategy.ts (continued)
+// src/MainStreetAiStrategy.ts (continued)
 
 import { AiPlayer } from '@ai/AiStrategy';
 
@@ -444,7 +444,7 @@ export class MainStreetAiPlayer extends AiPlayer<MainStreetAiStrategy> {
 ### 5.5 HintGenerator
 
 ```typescript
-// example-games/main-street/MainStreetHint.ts
+// src/MainStreetHint.ts
 
 export interface HintResult {
   action: PlayerAction;
@@ -470,7 +470,7 @@ export function generateHint(state: Readonly<MainStreetState>): HintResult | nul
 ### 5.6 Command Implementations (Undo/Redo)
 
 ```typescript
-// example-games/main-street/MainStreetCommands.ts
+// src/MainStreetCommands.ts
 
 import type { Command } from '@core-engine/UndoRedoManager';
 
@@ -529,7 +529,7 @@ export class BuyBusinessCommand implements Command {
 ### 5.7 Monte Carlo Extension
 
 ```typescript
-// example-games/main-street/MainStreetMonteCarlo.ts (extended)
+// src/MainStreetMonteCarlo.ts (extended)
 
 // Extend the strategy type to include AI strategies
 export type MonteCarloStrategy =
@@ -686,7 +686,7 @@ The following tasks represent a suggested implementation order. Each task should
 | `UndoRedoManager` in `@core-engine` | Implemented | Available at `src/core-engine/UndoRedoManager.ts` |
 | `AiStrategyBase`, `AiPlayer`, `pickRandom`, `pickBest` in `@ai` | Implemented | Available at `src/ai/` |
 | `TranscriptRecorderBase` in `@core-engine` | Implemented | Available at `src/core-engine/TranscriptRecorder.ts` |
-| Existing Monte Carlo harness | Implemented | Available at `example-games/main-street/MainStreetMonteCarlo.ts` |
+| Existing Monte Carlo harness | Implemented | Available at `src/MainStreetMonteCarlo.ts` |
 
 ### Downstream (Blocked by M3)
 
@@ -740,7 +740,7 @@ The following tasks represent a suggested implementation order. Each task should
 > the distance to the **effective** win threshold (base / player count,
 > rounded to the nearest 50) so each seat plans toward the target it actually
 > races (MS-0MUZH6V7C0091SGE). See
-> `example-games/main-street/MainStreetAiStrategy.ts`.
+> `src/MainStreetAiStrategy.ts`.
 
 ### A.1 Action Scoring Functions
 

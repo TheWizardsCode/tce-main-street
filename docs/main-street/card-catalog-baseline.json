@@ -1,5 +1,5 @@
 {
-  "source": "Tier 1 baseline from example-games/main-street/MainStreetTiers.ts",
+  "source": "Tier 1 baseline from src/MainStreetTiers.ts",
   "capturedAt": "2026-08-21T21:21:39.411Z",
   "perTier": {
     "tier1": {

@@ -468,7 +468,7 @@ void popTextOrIcon({
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — never
   mutates state or transcript; returns immediately in replay/headless mode
   (`scene.replayMode`), no rendering or audio.
-- Reuse: `createCoinGrid` (`example-games/main-street/coin-grid.ts`) +
+- Reuse: `createCoinGrid` (`src/coin-grid.ts`) +
   `moveGameObject` + `SoundManager` + `popTextOrIcon`; no new engine
   infrastructure.
 - Reuse: `moveGameObject` + `SoundManager` + `popTextOrIcon`, `SFX_KEYS`
@@ -617,7 +617,7 @@ condensed text-only summary.
   pre-existing pairs never re-trigger on a plain refresh.
 - Geometry (CG-0MSVM3WCD007BRQP): both the static lines and the draw-in
   line use the shared `synergyLineEndpoints(pair, layout)` helper
-  (`example-games/main-street/scenes/synergyLineEndpoints.ts`) — the
+  (`src/scenes/synergyLineEndpoints.ts`) — the
   centre-to-centre segment is clipped to the two SLOT rects, so lines run
   edge-to-edge for orthogonally adjacent slots and visually corner-to-corner
   for diagonally adjacent slots (extended-range pairs are clipped to the card
