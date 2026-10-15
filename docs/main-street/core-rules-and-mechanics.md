@@ -46,7 +46,7 @@ committing changes to player-facing text or docs.
 | **Event Card** | A card that triggers a one‑off effect (e.g., Festival, Tax, Storm). **Investment** events are taken from the single market row (**1 action**, no coins at take) and held until played (cost at play); **Incident** events resolve automatically from the face-down incident deck (CG-0MSTOATDP000JNHH).
 | **Incident Deck** | A hidden face‑down deck of Incident cards (card back + remaining count only). Each turn the top card is revealed and resolved at the end of the turn; when the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (repeat‑spacing / streak limits, CG-0MSTOATDP000JNHH). A peek staff member (staff‑lookout) can look at the top card once per turn as an action.
 | **Upgrade Card** | A card that modifies a specific Business card (e.g., upgrade a Bakery to a Patisserie, increasing income and synergy range).
-| **Challenge** | A optional meta‑goal (e.g., *Build a Foodie Row*) that grants a bonus score at the end of the game if satisfied.
+| **Challenge** | A optional meta‑goal (e.g., *Build a Foodie Row*) that grants a bonus score at the end of the game if satisfied. The catalogue spans 6 categories: synergy, placement, resource, upgrade, cross-cutting and the newer **economic** category (MS-0MUI7ZJK8003HY9J), which currently holds the single **Serial Seller** challenge (sell 3+ street businesses in one game). Progress-capable challenges (e.g. Serial Seller) declare a `progress()` provider and the challenge HUD renders `<current>/<target>` (e.g. `2/3`) on their row.
 
 ---
 
@@ -527,6 +527,21 @@ All win conditions are **deterministic** given the same seed, ensuring testabili
 > Steam achievements surface only the **human** seat's completions (Q3 = A).
 > Single-player / legacy runs have no seat context and retain the run-global
 > pool and single-list summary unchanged.
+>
+> **Challenge catalogue and live progress (MS-0MUI7ZJK8003HY9J).** The pool
+> has **13 templates** across **6 categories**: the original five (synergy,
+> placement, resource, upgrade, cross-cutting) keep at least 2 templates each,
+> plus a single **economic** challenge, **Serial Seller** (`ch-serial-seller`, "Sell
+> 3 or more businesses in a single game"), which completes when the cumulative
+> count of sold street businesses (`state.soldSlots` true-entries) reaches 3.
+> Only street/tableau sales via the **Manage Card → Sell** dialog count; hand
+> sales and the legacy `sellFromTableau` path do not (Q6 = A). A challenge may
+> declare an optional `progress(state)` provider; when present the HUD tracker
+> appends `<current>/<target>` (e.g. `2/3`) to the row, updating live after each
+> action. Challenges without a provider render exactly as before. Progress and
+> completion are captured in undo/redo command snapshots, so undoing a sale
+> reverts both the count and any completion it caused, and redo re-applies them
+> exactly once.
 
 ---
 

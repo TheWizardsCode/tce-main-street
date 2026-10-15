@@ -26,6 +26,19 @@ The change is undoable and shown in the activity log, and the AI factors the
 reputation cost into its close decisions. See
 [docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
 
+## Challenges
+
+Each run presents a seeded pool of **3 challenge goals** (13 templates across 6
+categories) that grant a bonus score when satisfied. The catalogue includes the
+economic challenge **Serial Seller** (`ch-serial-seller`) — "Sell 3 or more
+businesses in a single game." — which counts only street sales via the Manage
+Card → **Sell** dialog and shows its live progress (`0/3` → `3/3`) in the
+challenge HUD tracker. Progress-capable challenges render `<current>/<target>`
+on their row; the others render unchanged. Every challenge maps 1:1 to a
+persistent Steam achievement. See
+[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md)
+and `src/MainStreetChallenges.ts`.
+
 ## Competitive ownership
 
 In human-vs-AI competitive play the shared street is owner-tagged. A seat may

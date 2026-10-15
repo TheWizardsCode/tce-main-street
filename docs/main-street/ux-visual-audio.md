@@ -944,6 +944,27 @@ condensed text-only summary.
 - Reuse: `popTextOrIcon` + `SFX_KEYS.CLICK` (both already loaded); no new
   engine infrastructure.
 
+### Challenge HUD tracker — live progress (MS-0MUI7ZJK8003HY9J)
+
+- Renderer: `refreshChallengeTracker` (`src/scenes/MainStreetRendererHud.ts`)
+  draws the challenge panel as compact rows (indicator + title + description)
+  under a `Challenges (n/N)` header.
+- Progress rows: a challenge that declares an optional `progress(state)`
+  provider renders `<current>/<target>` (e.g. `2/3`) on its row, recomputed on
+  every refresh so it updates live after each action. The pure formatter
+  `formatChallengeProgress()` (`src/MainStreetChallenges.ts`) returns the label
+  or `null` when the challenge has no provider.
+- Layout: the progress label is **right-aligned** at the description column
+  start (`challengeW * 0.42 - 6`) with a 10 px bold font, sharing the row colour
+  (`#ccbbaa` open / `#44ff44` complete) so it never overlaps the right-hand
+  description column. Rows without a progress provider are byte-for-byte
+  unchanged, so the existing 12 challenges keep their historic appearance.
+- Example: **Serial Seller** (`ch-serial-seller`) shows `0/3` → `1/3` → `2/3` →
+  `3/3` as street businesses are sold (Manage Card → Sell).
+- Presentation-only and deterministic: reads committed `state.soldSlots` (no
+  mutation, no new state field), so it is safe in replay/headless rendering and
+  is restored correctly by undo/redo snapshots.
+
 ## Competitive seat colours (F1/F2, MS-0MUWNTN8W006C7EF)
 
 In competitive (human-vs-AI) play every seat — the human and each AI opponent —
