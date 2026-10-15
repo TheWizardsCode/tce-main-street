@@ -10,7 +10,8 @@
  *  - `dangling-link`   — a `hasChoices` card links to a card id that does not exist.
  *  - `unknown-target`  — a registered option successor references a missing card.
  *  - `duplicate-id`    — two templates share the same id.
- *  - `invalid-option`  — an option has an empty label or an invalid effect policy.
+ *  - `invalid-option`  — an option has an empty/duplicate label, an invalid effect
+ *                        policy, or a malformed/empty `options` encoding.
  *  - `cycle-error`     — (opt-in) a cycle treated as invalid; not used by default.
  *
  * Informational findings (do not fail validation, AC4):
@@ -120,11 +121,30 @@ export function validateStorylines(
   // ── Per-card link validation ──
   const choiceCards: EventCard[] = [];
   const storylineIds = new Set<string>();
+  /** Options for a card or null when its `options` encoding is malformed. */
+  const compiledOptions = (card: EventCard): StorylineOption[] | null => {
+    try {
+      return optionGetter(card);
+    } catch (err) {
+      // The CSV `options` encoding is malformed (parseStorylineOptionsEncoding
+      // throws for a missing '|' separator, empty label, or a non-empty value
+      // decoding to zero options). Surface it as an actionable invalid-option
+      // issue naming the row (card id) and the `options` column rather than
+      // crashing the validator.
+      issues.push({
+        kind: 'invalid-option',
+        cardId: getBaseTypeId(card.id),
+        message: `Choice card "${getBaseTypeId(card.id)}" (row) has a malformed options column: ${(err as Error).message}`,
+      });
+      return null;
+    }
+  };
   for (const card of cards) {
     const base = getBaseTypeId(card.id);
     if (card.storylineId) storylineIds.add(card.storylineId);
 
-    const options = optionGetter(card);
+    const options = compiledOptions(card);
+    if (options === null) continue;
     const isChoice = Boolean(card.hasChoices) || options.length > 0;
     if (!isChoice) continue;
     choiceCards.push(card);
@@ -135,13 +155,26 @@ export function validateStorylines(
         cardId: base,
         message: `Choice card "${base}" has no compiled storyline options.`,
       });
+      continue;
     }
+    // Duplicate labels within a node are rejected (F4 AC2): two options with
+    // the same label would make the label unusable as a stable choice token.
+    const seenLabels = new Set<string>();
     for (const option of options) {
+      const labelKey = option.label.trim().toLowerCase();
+      if (seenLabels.has(labelKey)) {
+        issues.push({
+          kind: 'invalid-option',
+          cardId: base,
+          message: `Choice card "${base}" (row, options column) declares the option label "${option.label}" more than once.`,
+        });
+      }
+      seenLabels.add(labelKey);
       if (!option.label || option.label.trim() === '') {
         issues.push({
           kind: 'invalid-option',
           cardId: base,
-          message: `Choice card "${base}" has an option with an empty label.`,
+          message: `Choice card "${base}" (options column) has an option with an empty label.`,
         });
       }
       if (option.effectPolicy !== 'apply' && option.effectPolicy !== 'skip') {
@@ -151,14 +184,22 @@ export function validateStorylines(
           message: `Choice card "${base}" option "${option.label}" has invalid effect policy "${String(option.effectPolicy)}".`,
         });
       }
-      if (option.successorId) {
-        const target = getBaseTypeId(option.successorId);
-        if (!knownIds.has(target)) {
+      // Candidate successor sets (new model) plus the legacy single successor
+      // (registry seam): every target must resolve to a known base card id.
+      const targets =
+        option.successorIds != null && option.successorIds.length > 0
+          ? option.successorIds
+          : option.successorId
+            ? [option.successorId]
+            : [];
+      for (const target of targets) {
+        const tBase = getBaseTypeId(target);
+        if (!knownIds.has(tBase)) {
           issues.push({
             kind: 'dangling-link',
             cardId: base,
-            target,
-            message: `Choice card "${base}" option "${option.label}" links to unknown card "${target}".`,
+            target: tBase,
+            message: `Choice card "${base}" (options column) option "${option.label}" links to unknown card "${tBase}".`,
           });
         }
       }
@@ -167,15 +208,24 @@ export function validateStorylines(
 
   // ── Cycle detection over the choice graph ──
   // Build an adjacency map of base id → successor base ids (only choice cards
-  // can branch; terminal cards have no outgoing edges).
+  // can branch; terminal cards have no outgoing edges). Both candidate sets
+  // (successorIds) and the legacy single successor (successorId) participate.
   const adjacency = new Map<string, string[]>();
   for (const card of choiceCards) {
     const base = getBaseTypeId(card.id);
     const next: string[] = [];
-    for (const option of optionGetter(card)) {
-      if (option.successorId) {
-        const target = getBaseTypeId(option.successorId);
-        if (knownIds.has(target)) next.push(target);
+    const options = compiledOptions(card);
+    if (!options) continue;
+    for (const option of options) {
+      const targets =
+        option.successorIds != null && option.successorIds.length > 0
+          ? option.successorIds
+          : option.successorId
+            ? [option.successorId]
+            : [];
+      for (const target of targets) {
+        const tBase = getBaseTypeId(target);
+        if (knownIds.has(tBase)) next.push(tBase);
       }
     }
     if (next.length > 0) adjacency.set(base, next);

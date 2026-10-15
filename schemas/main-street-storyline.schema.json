@@ -73,6 +73,11 @@
         "storylineTitle": { "type": ["string", "null"] },
         "hasChoices": { "type": "boolean" },
         "optionCount": { "type": "integer", "minimum": 0 },
+        "options": {
+          "type": "array",
+          "description": "Ordered labelled option list of the arbitrary multi-outcome model (MS-0MUZKA9CJ000N144). Present on choice nodes; each option carries its candidate successor set (empty = terminal chain-end).",
+          "items": { "$ref": "#/definitions/option" }
+        },
         "coinDelta": { "type": "number" },
         "reputationDelta": { "type": "number" },
         "trigger": { "type": "string", "description": "When the event resolves (Incident/Investment)." },
@@ -93,16 +98,35 @@
       "additionalProperties": false,
       "properties": {
         "from": { "type": "string", "minLength": 1, "description": "Source base card id." },
-        "label": { "type": "string", "minLength": 1, "description": "Option label (e.g. Accept, Reject)." },
+        "label": { "type": "string", "minLength": 1, "description": "Option label (e.g. Accept, Reject, Negotiate)." },
         "to": {
           "type": ["string", "null"],
-          "description": "Target base card id, or null when the chain ends."
+          "description": "Target base card id — one edge per candidate successor of the option's set; null when the chain ends."
         },
         "cycle": { "type": "boolean", "description": "True when this edge participates in a cycle." },
         "effectPolicy": {
           "type": "string",
           "enum": ["apply", "skip"],
           "description": "Whether the source event's own effect applies when this option is chosen."
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "required": ["label", "successorIds", "effectPolicy"],
+      "additionalProperties": false,
+      "description": "One labelled player option of an arbitrary multi-outcome choice node.",
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "description": "Player-visible option label; also the stable transcript/save token." },
+        "successorIds": {
+          "type": "array",
+          "description": "Ordered candidate successor base card ids; empty = terminal chain-end. The engine draws one uniformly at random at resolution time.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "effectPolicy": {
+          "type": "string",
+          "enum": ["apply", "skip"],
+          "description": "Whether the source event's own effect applies when this option is chosen (CSV-authored options are always 'apply')."
         }
       }
     }

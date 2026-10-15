@@ -27,7 +27,7 @@ import {
 } from '../../src/scripts/storyline-author';
 import { loadTemplatesFromCsv, getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreetCards';
 import { validateStorylines } from '../../src/scripts/validate-storylines';
-import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
+import { getStorylineOptions, resetStorylineRegistry } from '../../src/MainStreetStoryline';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const VITE_NODE_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'vite-node');
@@ -245,6 +245,60 @@ describe('AC2 — self-validating, no partial write', () => {
     expect('error' in link).toBe(false);
     if (!('error' in link)) expect(link.command).toBe('link');
     expect(parseAuthorArgs(['bogus'])).toHaveProperty('error');
+  });
+});
+
+// ── F4 (MS-0MV8KQMVC009N5K3): arbitrary multi-outcome authoring ──
+
+describe('F4 — multi-outcome authoring via the options column', () => {
+  const OPTIONS_ENC = 'Negotiate|evt-fx-b,evt-fx-c;Walk away|;Escalate|evt-fx-a';
+
+  it('add-card creates a three-option node on a CSV without an options column (header upsert)', () => {
+    const result = addCard(FIXTURE_CSV, makeSpec({ options: OPTIONS_ENC }));
+    expect(result.ok, result.errors.join('; ')).toBe(true);
+
+    const parsed = parseCsv(result.csv);
+    expect(parsed.header).toContain('options');
+    const row = parsed.rows.find((r) => r[parsed.header.indexOf('id')] === 'evt-fx-new')!;
+    expect(row[parsed.header.indexOf('options')]).toBe(OPTIONS_ENC);
+
+    // Round-trips through the typed model and compiles to the three options.
+    expect(validate(result.csv).valid).toBe(true);
+    loadTemplatesFromCsv(result.csv);
+    const t = getEventTemplates().find((c) => c.id === 'evt-fx-new')!;
+    expect(getStorylineOptions(t).map((o) => o.label)).toEqual(['Negotiate', 'Walk away', 'Escalate']);
+    expect(getStorylineOptions(t).map((o) => o.successorIds)).toEqual([
+      ['evt-fx-b', 'evt-fx-c'],
+      [],
+      ['evt-fx-a'],
+    ]);
+  });
+
+  it('link (re)sets the options encoding on an existing card and keeps it valid', () => {
+    const added = addCard(FIXTURE_CSV, makeSpec({ id: 'evt-fx-multi' }));
+    expect(added.ok).toBe(true);
+
+    const linked = linkCard(added.csv, { id: 'evt-fx-multi', options: OPTIONS_ENC });
+    expect(linked.ok, linked.errors.join('; ')).toBe(true);
+    const parsed = parseCsv(linked.csv);
+    const row = parsed.rows.find((r) => r[parsed.header.indexOf('id')] === 'evt-fx-multi')!;
+    expect(row[parsed.header.indexOf('options')]).toBe(OPTIONS_ENC);
+    expect(validate(linked.csv).valid).toBe(true);
+  });
+
+  it('refuses an options encoding with a dangling candidate (self-validating, no write)', () => {
+    const result = addCard(FIXTURE_CSV, makeSpec({ options: 'Negotiate|evt-nowhere' }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toContain('evt-nowhere');
+    expect(result.csv).toBe(FIXTURE_CSV);
+  });
+
+  it('refuses a malformed options encoding, naming the card and options column', () => {
+    const result = addCard(FIXTURE_CSV, makeSpec({ options: 'NoSeparatorHere;AlsoBad' }));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(' ')).toContain('evt-fx-new');
+    expect(result.errors.join(' ')).toContain('options column');
+    expect(result.csv).toBe(FIXTURE_CSV);
   });
 });
 
