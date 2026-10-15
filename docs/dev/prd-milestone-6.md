@@ -329,11 +329,11 @@ Suggested implementation sequence:
 
 ## 12. References
 
-- `docs/main-street/the-build-gdd.md`
-- `docs/main-street/prd-milestone-1.md`
-- `docs/main-street/prd-milestone-2.md`
-- `docs/main-street/prd-milestone-3.md`
-- `docs/main-street/prd-milestone-4.md`
-- `docs/main-street/prd-milestone-5.md`
+- `docs/game/the-build-gdd.md`
+- `docs/dev/prd-milestone-1.md`
+- `docs/dev/prd-milestone-2.md`
+- `docs/dev/prd-milestone-3.md`
+- `docs/dev/prd-milestone-4.md`
+- `docs/dev/prd-milestone-5.md`
 - `docs/core-engine/spatial-rules.md`
 - Work item: CG-0MM4RG1GM0SRVENC

@@ -66,7 +66,7 @@ Event cards are split into two trigger types:
 
 ### 1.2a Storyline Choice Cards
 
-Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/main-street/storylines.md](./storylines.md)**.
+Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/game/storylines.md](./storylines.md)**.
 
 New choice nodes author an **arbitrary option list** through a single `options`
 CSV column instead of the two-way `hasChoices`/`acceptNextCardId`/
@@ -176,7 +176,7 @@ The core economic loop consists of two primary resources:
 
 ## 4. Difficulty and Balance
 
-The balancing methodology and targets for Main Street have been consolidated into a dedicated document. See [balancing-methodology.md](balancing-methodology.md) for the full methodology.
+The balancing methodology and targets for Main Street have been consolidated into a dedicated document. See [balancing-methodology.md](../dev/balancing-methodology.md) for the full methodology.
 
 > **Migrated content**: Section 4 (Difficulty and Balance), 4.1 (Provisional Numeric Balance Targets), and 4.2 (Tuning Levers) have been moved to `balancing-methodology.md`. This section now serves as a cross-reference.
 

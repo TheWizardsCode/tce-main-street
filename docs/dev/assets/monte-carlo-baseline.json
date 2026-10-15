@@ -34,7 +34,7 @@
     "generatedAt": "2026-10-15T10:55:45.538Z",
     "commitSha": "4001972c26beb1295dc89ab96ea5a70e8f20e311",
     "strategy": "banking-greedy",
-    "note": "Additive regression snapshot for BankingGreedyStrategy (CG-0MT3JMGA60091J8W AC5). Recorded on the same 200-seed / 60-turn canonical profile as the greedy block above; the greedy block is unchanged and is never replaced by this variant. Drift is reported, never silently accepted — see the drift-report workflow in tests/main-street/monte-carlo-guardrails.test.ts and docs/main-street/balance-guardrail-recommendations.md.",
+    "note": "Additive regression snapshot for BankingGreedyStrategy (CG-0MT3JMGA60091J8W AC5). Recorded on the same 200-seed / 60-turn canonical profile as the greedy block above; the greedy block is unchanged and is never replaced by this variant. Drift is reported, never silently accepted — see the drift-report workflow in tests/main-street/monte-carlo-guardrails.test.ts and docs/dev/balance-guardrail-recommendations.md.",
     "metrics": {
       "winRate": 0.56,
       "averageCoinsPerTurn": 268.17158741561457

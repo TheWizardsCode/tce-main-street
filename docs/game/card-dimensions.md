@@ -67,7 +67,7 @@ img.displayHeight = (SLOT_WIDTH * 140) / 190; // maintain aspect (canonical H / 
 img.setOrigin(0.5, 0.5);
 ```
 
-Keep this document in sync with `docs/main-street/prd-milestone-*` and `public/assets/CREDITS.md` when canonical dimensions change.
+Keep this document in sync with `docs/dev/prd-milestone-*` and `public/assets/CREDITS.md` when canonical dimensions change.
 
 ## 64×64 art zone (CG-0MTORJ5FS006B0UN, CG-0MUCM36EQ008YP4R, CG-0MUBVL4H80061B1E)
 

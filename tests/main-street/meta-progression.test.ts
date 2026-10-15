@@ -2,7 +2,7 @@
  * Meta-Progression System Tests
  *
  * Comprehensive tests covering all 7 user stories from the PRD
- * (docs/main-street/prd-milestone-2.md Section 4.3.5).
+ * (docs/dev/prd-milestone-2.md Section 4.3.5).
  *
  * US-1: Tier evaluation at end of run (reputation thresholds)
  * US-2: Challenge-based tier unlock (alternative unlock path)
@@ -218,7 +218,7 @@ describe('Meta-Progression System', () => {
     it('specific reputation thresholds follow the calibrated 12-tier ladder', () => {
       // Re-derived from a fresh Medium Monte-Carlo run (MS-0MV88T4I6000HQZG)
       // to hit the target achievement-rate staircase; see
-      // docs/main-street/tier-threshold-calibration-evidence.md.
+      // docs/dev/assets/tier-threshold-calibration-evidence.md.
       const expected = [0, 250, 750, 2650, 3100, 3300, 3600, 4000, 4300, 4600, 4900, 5500];
       for (let i = 0; i < 12; i++) {
         expect(TIER_DEFINITIONS[`tier-${i + 1}`].reputationThreshold).toBe(expected[i]);

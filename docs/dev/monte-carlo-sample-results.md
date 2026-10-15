@@ -72,7 +72,7 @@ These fields enable per-card micro metrics (pick rate, win-rate delta, survival 
 After challenges began evaluating after every action rather than only at
 end of turn (CG-0MU37CKRR008252I, producer decision Q2=A), the canonical
 greedy profile was re-run and compared against
-`docs/main-street/monte-carlo-baseline.json` (generated 2026-09-12).
+`docs/dev/assets/monte-carlo-baseline.json` (generated 2026-09-12).
 
 ```bash
 npx vite-node scripts/monte-carlo.ts --seeds 200 --seed-prefix mc-balance \
@@ -130,7 +130,7 @@ detailed mechanism explanation and recommendations.
 
 ### Re-baseline (producer approved, 2026-09-25)
 
-With no regression found, `docs/main-street/monte-carlo-baseline.json` was
+With no regression found, `docs/dev/assets/monte-carlo-baseline.json` was
 regenerated on the current dev tip (producer decision Q2, within the work item).
 The new snapshot records:
 
@@ -147,4 +147,4 @@ pass against it.
 
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and baseline management strategy that build on these Monte Carlo results.
 - **[Balancing Methodology](balancing-methodology.md)** — Technical description of the `run-balance-cards` balancing algorithm.
-- **[Playtest Scenarios](playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.
+- **[Playtest Scenarios](../game/playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.

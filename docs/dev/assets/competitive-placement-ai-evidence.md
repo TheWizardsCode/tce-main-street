@@ -43,11 +43,11 @@ Reproduce with:
 ```bash
 # After (this change; scoring at 6a369e4):
 npx vite-node src/scripts/balance/competitive-placement-report.ts --label after \
-  --out docs/main-street/competitive-placement-ai-after.json
+  --out docs/dev/assets/competitive-placement-ai-after.json
 
 # Baseline (pre-change scoring at 46a2511):
 npx vite-node src/scripts/balance/competitive-placement-report.ts --label baseline \
-  --out docs/main-street/competitive-placement-ai-baseline.json
+  --out docs/dev/assets/competitive-placement-ai-baseline.json
 ```
 
 The `commitSha` recorded inside each artefact is the checkout HEAD when the
@@ -108,7 +108,7 @@ finances its rivals.
 ### Single-player baselines unchanged (AC)
 
 The canonical single-player baselines in
-`docs/main-street/monte-carlo-baseline.json` are **not modified** by this
+`docs/dev/assets/monte-carlo-baseline.json` are **not modified** by this
 change, and the committed guardrails pass on the after state:
 
 - `tests/main-street/monte-carlo-guardrails.test.ts` — greedy and

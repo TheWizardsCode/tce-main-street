@@ -93,7 +93,7 @@ At the top of `BankingGreedyStrategy.chooseAction` (after free same-week composi
 
 The banking-aware variant is guarded like any other strategy, **additively** — the greedy baseline is never replaced:
 
-- **Snapshot.** `docs/main-street/monte-carlo-baseline.json` carries an additive `bankingGreedy` block, recorded on the same canonical 200-seed / 60-turn profile as the greedy block (`mc-balance-` seed prefix). The top-level `strategy` stays `greedy`; the banking snapshot lives beside it.
+- **Snapshot.** `docs/dev/assets/monte-carlo-baseline.json` carries an additive `bankingGreedy` block, recorded on the same canonical 200-seed / 60-turn profile as the greedy block (`mc-balance-` seed prefix). The top-level `strategy` stays `greedy`; the banking snapshot lives beside it.
 - **Regression guardrail.** `tests/main-street/monte-carlo-guardrails.test.ts` runs `banking-greedy` across Easy/Medium/Hard and asserts its Medium metrics and per-difficulty matrix stay within **winRate ±0.25** and **coins ±30%** of that snapshot — the same tolerances the greedy guardrail uses. A drift in `banking-greedy` can therefore never mask (or be masked by) a greedy/random regression.
 - **Drift is reported, never silently accepted** (policy CG-0MT4ZHRP5002QMS2). When the banking-greedy guardrail trips: run `npx vite-node scripts/balance/drift-report.ts --strategy=banking-greedy` (or `npm run balance:drift-report -- --strategy=banking-greedy`) to get the structured per-difficulty delta report, present it to the producer, and only regenerate the snapshot via `scripts/generate-main-street-monte-baseline.ts` when the shift is an intended balance change (the generator emits both the greedy and banking-greedy blocks). Without `--strategy` the drift report compares against the top-level greedy baseline, as before.
 
@@ -136,7 +136,7 @@ AI ends the turn instead.
 Both thresholds are constants in `MainStreetAiStrategy.ts`. Ratio 12 was
 calibrated on the canonical 200-seed profile after the R2 reputation re-tune;
 the before/after evidence (including the producer-approved G5 band revision)
-is in [favour-ai-evidence.md](favour-ai-evidence.md).
+is in [favour-ai-evidence.md](../dev/assets/favour-ai-evidence.md).
 
 ## Community-space move evaluation (MS-0MUX8J9KJ005ZKDW)
 
@@ -196,7 +196,7 @@ community-to-business placement ratio falling from **0.219 to 0.068** overall
 (Easy 0.226→0.073, Medium 0.206→0.055, Hard 0.228→0.080) with the win-rate
 ladder Easy ≥ Medium ≥ Hard intact (0.800 ≥ 0.720 ≥ 0.435). Full before/after
 figures, tolerances and reproduce commands are in
-[community-space-ai-evidence.md](community-space-ai-evidence.md).
+[community-space-ai-evidence.md](../dev/assets/community-space-ai-evidence.md).
 
 ### Competitive mirror (ownership-aware)
 
@@ -207,7 +207,7 @@ anchored for other seats (`own gain − opponent gain`). An opponent-only
 community space therefore scores `≤ 0` and fails the positive-score
 eligibility gate. See
 [Competitive placement: ownership-aware](#competitive-placement-ownership-aware-own--opponent)
-below and [competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md)
+below and [competitive-placement-ai-evidence.md](../dev/assets/competitive-placement-ai-evidence.md)
 for the before/after figures.
 
 ## Acquisition gates: expensive businesses and untargeted upgrades (MS-0MV5VOIV40020KXT)
@@ -312,7 +312,7 @@ rate falling from **62.4% to 0.0%**, the overall opponent-beneficial rate
 falling from **22.1% to 11.3%**, and opponent-anchored synergy falling **−48.9%**
 while own-anchored synergy rises **+22.8%** — with single-player baselines
 unchanged. Full before/after figures and commit SHAs are in
-[competitive-placement-ai-evidence.md](competitive-placement-ai-evidence.md).
+[competitive-placement-ai-evidence.md](../dev/assets/competitive-placement-ai-evidence.md).
 
 ## Competitive AI: Eliminated Seats (MS-0MUVBH589001L7NL)
 
@@ -337,7 +337,7 @@ Elimination effects on the AI:
   AI strategy change is required for an eliminated seat — it simply never acts.
 - When the **last** AI seat is eliminated the human wins by last standing and is
   offered an explicit **continue solo** opt-in (see
-  `docs/main-street/core-rules-and-mechanics.md`, Win Conditions).
+  `docs/game/core-rules-and-mechanics.md`, Win Conditions).
 
 Only the AI elimination path is special-cased; a human seat's own collapse keeps
 the existing loss semantics. Single-player (`N = 1`) is unaffected.
@@ -348,7 +348,7 @@ When any seat plays a piggyback-eligible organiser event in competitive play
 (human vs AI, N ≥ 2), every other active seat receives an automatic 50%
 free-ride share of the event's rewards and may upgrade to **join fully** — pay
 150% of the acting seat's paid cost for 100% of the rewards (see
-`docs/main-street/core-rules-and-mechanics.md` §6.1). AI seats resolve that
+`docs/game/core-rules-and-mechanics.md` §6.1). AI seats resolve that
 decision with a **deterministic, RNG-free policy**: `decidePiggyback` in
 `MainStreetEngineScoring.ts` (re-exported from `MainStreetAiStrategy`), so
 identical inputs always produce identical outputs (replay reproducibility).

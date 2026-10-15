@@ -143,9 +143,9 @@ npx tsx scripts/run-balance-cards.ts --input path/to/input.csv --output path/to/
 
 This document consolidates all balancing methodology content previously scattered across:
 
-- `docs/main-street/content-design-and-progression.md` — Section 4 (Difficulty and Balance), 4.1 (Provisional Numeric Balance Targets), 4.2 (Tuning Levers)
-- `docs/main-street/the-build-gdd.md` — Section 4 (Difficulty and Balance)
-- `docs/main-street/card-catalog.md` — Event Balance Summary table, Upgrade Cost Distribution table
+- `docs/game/content-design-and-progression.md` — Section 4 (Difficulty and Balance), 4.1 (Provisional Numeric Balance Targets), 4.2 (Tuning Levers)
+- `docs/game/the-build-gdd.md` — Section 4 (Difficulty and Balance)
+- `docs/game/card-catalog.md` — Event Balance Summary table, Upgrade Cost Distribution table
 
 The origin documents now contain cross-references to this document.
 
@@ -290,7 +290,7 @@ metrics (200 seeds, greedy):
 
 Guardrail tests (`monte-carlo-guardrails`, `monte-carlo-greedy-guardrail`,
 `monte-carlo-balance`) pass on the re-tuned presets; the committed baseline in
-[`monte-carlo-baseline.json`](monte-carlo-baseline.json) and
+[`monte-carlo-baseline.json`](./assets/monte-carlo-baseline.json) and
 `results/main-street-monte-carlo.json/.csv` were regenerated to the new values.
 
 ## Upgrade-Deck Draw Weight — Level-2 Capstone Reachability (MS-0MUYK08I1004I19W)
@@ -328,7 +328,7 @@ Level-1 prerequisite M1 (Medium) rose from 3.6–9.1% to 23.3–34.4%. The
 difficulty ladder is preserved (Easy 76.5% ≥ Medium 67.5% ≥ Hard 42.0%) and the
 Medium win rate moved −1.5 pp (within the ±5 pp band). `requiredLevel: 1` and
 `canPurchaseUpgrade()` are unchanged (US-19 preserved). The
-[`monte-carlo-baseline.json`](monte-carlo-baseline.json) snapshot (greedy +
+[`monte-carlo-baseline.json`](./assets/monte-carlo-baseline.json) snapshot (greedy +
 banking-greedy) was regenerated with producer approval (Q2(a)).
 
 ## Expensive-Tier Upgrade ROI Re-evaluation (MS-0MUR9I9WO004EW0M)
@@ -379,5 +379,5 @@ over-tuning the market in this item.
 - **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that build on this balancing algorithm.
 - **[Five-Turn Payback Rebalance — Evidence](payback-rebalance-evidence.md)** — Before/after Monte Carlo evidence for the MS-0MUQ50I1Y000B6L3 payback rebalance.
 - **[Monte Carlo Sample Results](monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness used for balance validation.
-- **[Card Catalog](card-catalog.md)** — Complete card template reference with balance-relevant stats.
-- **[Playtest Scenarios](playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.
+- **[Card Catalog](../game/card-catalog.md)** — Complete card template reference with balance-relevant stats.
+- **[Playtest Scenarios](../game/playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.

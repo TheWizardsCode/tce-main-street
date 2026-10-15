@@ -5,7 +5,7 @@
  * After the five-turn business-payback rebalance (MS-0MUQ50I1Y000B6L3),
  * community spaces and investment events were re-priced relative to the
  * ~4.87-turn business payback. The full analysis lives in
- * `docs/main-street/analysis/community-space-event-repricing.md`.
+ * `docs/dev/analysis/community-space-event-repricing.md`.
  *
  * This suite encodes the durable design invariants that motivated the change
  * (not the individual price points, which the family contract tests pin):

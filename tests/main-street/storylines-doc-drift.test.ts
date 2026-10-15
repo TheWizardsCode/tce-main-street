@@ -22,9 +22,9 @@ import { getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreet
 import { compileStorylineFromEvent } from '../../src/MainStreetStoryline';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const DOC_PATH = path.join(PROJECT_ROOT, 'docs/main-street/storylines.md');
+const DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/storylines.md');
 const README_PATH = path.join(PROJECT_ROOT, 'src/README.md');
-const CONTENT_DOC_PATH = path.join(PROJECT_ROOT, 'docs/main-street/content-design-and-progression.md');
+const CONTENT_DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/content-design-and-progression.md');
 const CSV_PATH = path.join(PROJECT_ROOT, 'src/card-data.csv');
 
 function read(file: string): string {
@@ -73,7 +73,7 @@ function parseDocumentedChains(doc: string): Array<{
 resetTemplatesToDefault();
 
 describe('AC1 — canonical doc exists and covers the required sections', () => {
-  it('docs/main-street/storylines.md exists', () => {
+  it('docs/game/storylines.md exists', () => {
     expect(fs.existsSync(DOC_PATH)).toBe(true);
   });
 
@@ -163,7 +163,7 @@ describe('AC3 — documented chains match src/card-data.csv', () => {
 describe('AC2 — cross-references in README and content-design doc', () => {
   it('src/README.md references the doc, the CSV columns and the scripts', () => {
     const readme = read(README_PATH);
-    expect(readme).toContain('docs/main-street/storylines.md');
+    expect(readme).toContain('docs/game/storylines.md');
     expect(readme).toContain('hasChoices');
     expect(readme).toContain('acceptNextCardId');
     expect(readme).toContain('rejectNextCardId');

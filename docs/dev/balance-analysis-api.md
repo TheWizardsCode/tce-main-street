@@ -343,7 +343,7 @@ const baseline = captureBaseline(metrics, runs, {
   strategy: 'greedy', difficulty: 'medium', tag: 'v1.0',
 });
 const json = JSON.stringify(baseline, null, 2);
-// Saved to docs/main-street/baselines/v1.0.json
+// Saved to docs/dev/assets/baselines/v1.0.json
 
 // Later...
 const loaded = loadBaseline(json);

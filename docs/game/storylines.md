@@ -296,10 +296,10 @@ All scripts run under `vite-node` because the card model imports
 | Command | Purpose |
 |---------|---------|
 | `npm run validate:storylines` | Validate the shipped graph. Exits `0` when valid, `1` on a dangling link, unknown target, duplicate id, invalid option. Flags: `--json`, `--csv <path>`, `--fail-on-cycle`. |
-| `npm run storylines:graph -- --format mermaid` | Regenerate `docs/main-street/storyline-graph.mmd` (choice cards as diamonds, `==>` for cycle edges). |
-| `npm run storylines:graph -- --format json` | Regenerate `docs/main-street/storyline-manifest.json` (validates against `schemas/main-street-storyline.schema.json`). |
+| `npm run storylines:graph -- --format mermaid` | Regenerate `docs/dev/assets/storyline-graph.mmd` (choice cards as diamonds, `==>` for cycle edges). |
+| `npm run storylines:graph -- --format json` | Regenerate `docs/dev/assets/storyline-manifest.json` (validates against `schemas/main-street-storyline.schema.json`). |
 | `npm run storylines:graph -- --format json --check` | Drift guard: exit `1` when the committed artefact differs from `src/card-data.csv`. |
-| `npm run storylines:graph:svg` | Render one SVG per storyline into `docs/main-street/assets/`, one document per storyline in `docs/main-street/storylines/`, the standalone-incident index, and the storyline index in `storylines.md` §7.2 — portable, viewable without a Mermaid renderer. |
+| `npm run storylines:graph:svg` | Render one SVG per storyline into `docs/game/assets/`, one document per storyline in `docs/game/storylines/`, the standalone-incident index, and the storyline index in `storylines.md` §7.2 — portable, viewable without a Mermaid renderer. |
 | `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed diagram, per-storyline document, index, or generated doc section differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
@@ -497,12 +497,12 @@ Each is captured as a work item:
 ## 11. Related documents
 
 - [`src/README.md`](../../src/README.md) — CSV column reference (includes the storyline columns) and engine contracts.
-- [`docs/main-street/content-design-and-progression.md`](./content-design-and-progression.md) — card inventory, economy and progression.
-- [`docs/main-street/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
-- [`docs/main-street/ai-strategy.md`](./ai-strategy.md) — AI strategy overview.
-- [`docs/main-street/storyline-graph.mmd`](./storyline-graph.mmd) — generated Mermaid graph (source of truth).
-- [`docs/main-street/storylines/`](./storylines/) — one document per storyline (diagram + per-event detail table): `tax.md`, `health.md`, `economy.md`, `labor.md`, `restaurant.md`.
-- [`docs/main-street/assets/`](./assets/) — rendered per-storyline graph images (viewable without a Mermaid renderer).
-- [`docs/main-street/storyline-incident-index.md`](./storyline-incident-index.md) — standalone-incident index (incidents not in any storyline).
-- [`docs/main-street/storyline-manifest.json`](./storyline-manifest.json) — generated manifest.
+- [`docs/game/content-design-and-progression.md`](./content-design-and-progression.md) — card inventory, economy and progression.
+- [`docs/game/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
+- [`docs/dev/ai-strategy.md`](../dev/ai-strategy.md) — AI strategy overview.
+- [`docs/dev/assets/storyline-graph.mmd`](../dev/assets/storyline-graph.mmd) — generated Mermaid graph (source of truth).
+- [`docs/game/storylines/`](./storylines/) — one document per storyline (diagram + per-event detail table): `tax.md`, `health.md`, `economy.md`, `labor.md`, `restaurant.md`.
+- [`docs/game/assets/`](./assets/) — rendered per-storyline graph images (viewable without a Mermaid renderer).
+- [`docs/game/storyline-incident-index.md`](./storyline-incident-index.md) — standalone-incident index (incidents not in any storyline).
+- [`docs/dev/assets/storyline-manifest.json`](../dev/assets/storyline-manifest.json) — generated manifest.
 - [`schemas/main-street-storyline.schema.json`](../../schemas/main-street-storyline.schema.json) — manifest JSON schema.

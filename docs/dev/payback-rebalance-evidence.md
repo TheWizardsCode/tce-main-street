@@ -9,7 +9,7 @@ compensating economy re-tune. Evidence is commit-stamped so every figure is
 reproducible from its SHA.
 
 > This document is a *companion* to the committed baseline
-> (`docs/main-street/monte-carlo-baseline.json`). The baseline itself is only
+> (`docs/dev/assets/monte-carlo-baseline.json`). The baseline itself is only
 > regenerated via the **drift-report-then-ask** workflow in
 > [balance-guardrail-recommendations.md](balance-guardrail-recommendations.md) §0 —
 > never silently.
@@ -88,7 +88,7 @@ Hard. This is the state the rebalance targets.
 0.62 ≥ 0.325 ≥ 0.11. The guardrail bands and the committed baseline are
 revised to the measured after-state:
 
-- `docs/main-street/monte-carlo-baseline.json` regenerated and commit-stamped
+- `docs/dev/assets/monte-carlo-baseline.json` regenerated and commit-stamped
   at `8b8fe4633d15d4c2faa4c847a8a253d1ca17cfb7`.
 - Win-rate design-intent bands: Easy 0.45–0.95, Medium 0.20–0.85, Hard
   0.05–0.60 (`tests/main-street/monte-carlo-greedy-guardrail.test.ts`).
@@ -104,5 +104,5 @@ follow-up recommendations (MS-0MUQUBKNE007NYR8) rather than absorbed here.
 > **Follow-up landed (R2, MS-0MUR9IMN60093HIE).** The reputation-source re-tune
 > (positive business / community-space `reputationPerTurn` ×4) addresses the
 > dominant Medium reputation-collapse loss mode. It regenerates
-> `docs/main-street/monte-carlo-baseline.json` (new commit stamp) as documented
+> `docs/dev/assets/monte-carlo-baseline.json` (new commit stamp) as documented
 > in [reputation-retune-evidence.md](reputation-retune-evidence.md).

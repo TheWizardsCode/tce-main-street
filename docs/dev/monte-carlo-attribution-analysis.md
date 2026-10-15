@@ -70,7 +70,7 @@ The drift-report → attribution → recommendation workflow was exercised end-t
 2. **Attribution:** Three-point analysis (baseline → control → current) isolated the per-action contribution.
 3. **Mechanistic explanation:** The planning-horizon and RNG-cascade channels were evaluated and found negligible.
 4. **Recommendation:** Delivered — no fix required.
-5. **Documentation:** Updated `docs/main-street/monte-carlo-sample-results.md` and this file.
+5. **Documentation:** Updated `docs/dev/monte-carlo-sample-results.md` and this file.
 
 ### Identified gaps
 
@@ -81,7 +81,7 @@ The drift-report → attribution → recommendation workflow was exercised end-t
 ## Re-Baseline (AC6, producer approval 2026-09-25)
 
 With the attribution complete and no regression found, the producer approved
-re-baselining (`docs/main-street/balance-guardrail-recommendations.md` §0, Q2 =
+re-baselining (`docs/dev/balance-guardrail-recommendations.md` §0, Q2 =
 within this item). The committed baseline was regenerated on the current dev tip
 via `scripts/generate-main-street-monte-baseline.ts`.
 
@@ -117,6 +117,6 @@ This confirms the harness is deterministic with the canonical seed set (mc-balan
 - **CG-0MUE03DGQ005KPZ7** — This investigation (drift attribution)
 - **CG-0MU37CKRR008252I** — Per-action challenge evaluation (the change under investigation)
 - **CG-0MU8N8B52003HCJ5** — The re-run that originally detected the drift
-- `docs/main-street/balance-guardrail-recommendations.md` — Drift-report-then-ask decision tree
-- `docs/main-street/monte-carlo-baseline.json` — Committed baseline (regenerated 2026-09-25 with `commitSha`)
-- `docs/main-street/monte-carlo-control-run.json` — Control run results (per-action DISABLED)
+- `docs/dev/balance-guardrail-recommendations.md` — Drift-report-then-ask decision tree
+- `docs/dev/assets/monte-carlo-baseline.json` — Committed baseline (regenerated 2026-09-25 with `commitSha`)
+- `docs/dev/assets/monte-carlo-control-run.json` — Control run results (per-action DISABLED)

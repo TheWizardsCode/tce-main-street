@@ -30,14 +30,14 @@ the two heuristics cannot diverge. The reputation-exchange direction
 
 ## Method
 
-Canonical profile (matches `docs/main-street/monte-carlo-baseline.json`):
+Canonical profile (matches `docs/dev/assets/monte-carlo-baseline.json`):
 200 seeds, prefix `mc-balance`, 60 max turns, greedy, Easy/Medium/Hard.
 Reproduced with:
 
 ```bash
 npx vite-node src/scripts/balance/favour-usage-report.ts --label after \
-  --out docs/main-street/favour-ai-after.json \
-  --md-out docs/main-street/favour-ai-after.md
+  --out docs/dev/assets/favour-ai-after.json \
+  --md-out docs/dev/assets/favour-ai-after.md
 ```
 
 ## Measurements
@@ -79,7 +79,7 @@ current dev base.
 - **Win-rate ladder** Easy ≥ Medium ≥ Hard: holds in every measurement
   (after: 0.735 ≥ 0.670 ≥ 0.385).
 - **Committed-baseline tolerances** (`winRate ±0.25`, `coins ±30%` against the
-  R2-updated `docs/main-street/monte-carlo-baseline.json`): all three
+  R2-updated `docs/dev/assets/monte-carlo-baseline.json`): all three
   difficulties pass (guarded by `tests/main-street/monte-carlo-guardrails.test.ts`).
 - **Medium reputation-collapse share does not increase**: falls on both
   comparisons.

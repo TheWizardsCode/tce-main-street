@@ -459,7 +459,7 @@ free-ride share** of the event's rewards, and is offered the single choice to
 pending piggyback decision per other active seat after the acting player's
 effects resolve, then pauses the shared day until each seat resolves (join fully
 or free-ride). AI seats resolve via the deterministic join-fully policy in
-`MainStreetEngineScoring` (see `docs/main-street/ai-strategy.md` §Piggyback
+`MainStreetEngineScoring` (see `docs/dev/ai-strategy.md` §Piggyback
 join-fully policy); the human seat is offered the choice through the interactive
 prompt.
 

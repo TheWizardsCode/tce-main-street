@@ -1,7 +1,7 @@
 # Tier Reputation Threshold Calibration — Evidence (MS-0MV88T4I6000HQZG)
 
 **Work item:** MS-0MV88T4I6000HQZG · `feature` · `high`
-**Source of truth:** `docs/main-street/tier-threshold-calibration-medium.json` (committed alongside this doc)
+**Source of truth:** `docs/dev/assets/tier-threshold-calibration-medium.json` (committed alongside this doc)
 **Raw harness output:** `results/tier-calibration-medium-greedy-medium.json` in `results/` (gitignored; regenerated via the command below).
 
 ## Profile

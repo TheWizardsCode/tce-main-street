@@ -5,7 +5,7 @@
  * contributor reads, so it must state the game's true genre. Main Street is an
  * **economic city builder** in which the player develops the **commercial hub
  * of a city** — not a shop-management / small-business game (see
- * `docs/main-street/core-rules-and-mechanics.md` §1, town planner revitalising
+ * `docs/game/core-rules-and-mechanics.md` §1, town planner revitalising
  * a street grid).
  *
  * This guard fails when the stale "small-business engine-builder" framing

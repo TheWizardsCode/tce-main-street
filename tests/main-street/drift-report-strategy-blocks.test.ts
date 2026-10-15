@@ -75,7 +75,7 @@ describe('selectBaselineBlock', () => {
 
   it('resolves both blocks from the committed baseline artifact', () => {
     const baseline = JSON.parse(
-      readFileSync(resolve(process.cwd(), 'docs/main-street/monte-carlo-baseline.json'), 'utf-8'),
+      readFileSync(resolve(process.cwd(), 'docs/dev/assets/monte-carlo-baseline.json'), 'utf-8'),
     ) as MonteBaseline;
 
     // The greedy entry point is never replaced by the banking-aware variant.

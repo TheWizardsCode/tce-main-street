@@ -49,14 +49,14 @@ scoring paths cannot diverge. Businesses are unchanged.
 
 ## Method
 
-Canonical profile (matches `docs/main-street/monte-carlo-baseline.json`):
+Canonical profile (matches `docs/dev/assets/monte-carlo-baseline.json`):
 200 seeds, prefix `mc-balance`, 60 max turns, greedy, Easy/Medium/Hard.
 Reproduced with:
 
 ```bash
 npx vite-node src/scripts/balance/community-space-placement-report.ts --label after \
-  --out docs/main-street/community-space-ai-after.json \
-  --md-out docs/main-street/community-space-ai-after.md
+  --out docs/dev/assets/community-space-ai-after.json \
+  --md-out docs/dev/assets/community-space-ai-after.md
 ```
 
 The report reads the new `MonteCarloRunSummary.businessPlacements` /
@@ -87,7 +87,7 @@ synergy-anchor usage is preserved, not eliminated (AC4).
 
 - **Win-rate ladder** Easy ≥ Medium ≥ Hard: holds (after: 0.800 ≥ 0.720 ≥ 0.435).
 - **Committed-baseline tolerances** (`winRate ±0.25`, `coins ±30%` against
-  `docs/main-street/monte-carlo-baseline.json`): all three difficulties pass
+  `docs/dev/assets/monte-carlo-baseline.json`): all three difficulties pass
   (guarded by `tests/main-street/monte-carlo-guardrails.test.ts`).
 
 | Difficulty | baseline win rate | after | Δ | baseline coins/turn | after | Δ% |
@@ -106,13 +106,13 @@ synergy-anchor usage is preserved, not eliminated (AC4).
 ```bash
 # Baseline (pre-change, committed artefact):
 npx vite-node src/scripts/balance/community-space-placement-report.ts --label baseline \
-  --out docs/main-street/community-space-ai-baseline.json \
-  --md-out docs/main-street/community-space-ai-baseline.md
+  --out docs/dev/assets/community-space-ai-baseline.json \
+  --md-out docs/dev/assets/community-space-ai-baseline.md
 
 # After (this change):
 npx vite-node src/scripts/balance/community-space-placement-report.ts --label after \
-  --out docs/main-street/community-space-ai-after.json \
-  --md-out docs/main-street/community-space-ai-after.md
+  --out docs/dev/assets/community-space-ai-after.json \
+  --md-out docs/dev/assets/community-space-ai-after.md
 ```
 
 > The `commitSha` recorded inside each artefact is the checkout HEAD when the

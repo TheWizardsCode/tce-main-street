@@ -9,7 +9,7 @@
 > original 20-turn design. Default difficulty presets no longer impose a
 > turn limit — games end via score threshold, all challenges, bankruptcy,
 > or reputation collapse; a turn limit is opt-in via an explicit
-> `maxTurns` config. See `docs/main-street/core-rules-and-mechanics.md`
+> `maxTurns` config. See `docs/game/core-rules-and-mechanics.md`
 > for the current rules.
 
 ---

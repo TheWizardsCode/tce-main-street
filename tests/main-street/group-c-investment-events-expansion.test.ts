@@ -55,7 +55,7 @@ interface NewEventContract {
 }
 
 // Costs re-priced by MS-0MUR9IN7L0004TO5 (investment events to a minimum
-// ~0.70x total ROI; see docs/main-street/analysis/community-space-event-repricing.md).
+// ~0.70x total ROI; see docs/dev/analysis/community-space-event-repricing.md).
 const NEW_EVENT_CONTRACTS: NewEventContract[] = [
   { id: 'evt-health-carnival', name: 'Health Carnival', cost: 350, tier: '7', targetSynergy: 'Health', coinDelta: 200, reputationDelta: 100 },
   { id: 'evt-food-tasting', name: 'Food Tasting Tour', cost: 350, tier: '7', targetSynergy: 'Food', coinDelta: 200, reputationDelta: 100 },

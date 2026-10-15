@@ -1,6 +1,6 @@
 # The Build: Game Design Document (GDD)
 
-> **Status update (CG-0MSLXJCHH001DLIO):** This historical GDD describes the original 20-turn design (``MAX_TURNS = 20``, "Turn 20" win/loss conditions). Default difficulty presets no longer impose a turn limit — games end via score threshold, all challenges, bankruptcy, or reputation collapse; a turn limit is opt-in via an explicit `maxTurns` config. See `docs/main-street/core-rules-and-mechanics.md` for the current rules. The 20-turn references below are retained for historical accuracy.
+> **Status update (CG-0MSLXJCHH001DLIO):** This historical GDD describes the original 20-turn design (``MAX_TURNS = 20``, "Turn 20" win/loss conditions). Default difficulty presets no longer impose a turn limit — games end via score threshold, all challenges, bankruptcy, or reputation collapse; a turn limit is opt-in via an explicit `maxTurns` config. See `docs/game/core-rules-and-mechanics.md` for the current rules. The 20-turn references below are retained for historical accuracy.
 
 ## Executive Summary
 
@@ -324,7 +324,7 @@ The core economic loop consists of two primary resources:
 
 ## 4. Difficulty and Balance
 
-The balancing methodology and targets for Main Street have been consolidated into a dedicated document at `docs/main-street/balancing-methodology.md`. See [balancing-methodology.md](balancing-methodology.md) for the full methodology.
+The balancing methodology and targets for Main Street have been consolidated into a dedicated document at `docs/dev/balancing-methodology.md`. See [balancing-methodology.md](../dev/balancing-methodology.md) for the full methodology.
 
 > **Migrated content**: Section 4 (Difficulty and Balance) has been moved to `balancing-methodology.md`. This section now serves as a cross-reference.
 
@@ -462,7 +462,7 @@ The GDD is implemented through incremental milestones, each with its own PRD:
 
 | Milestone | PRD Document | Work Item | Status |
 |-----------|-------------|-----------|--------|
-| **M1: Playable Core Loop (Walking Skeleton)** | [prd-milestone-1.md](prd-milestone-1.md) | CG-0MM4RDYAU1DY4OG8 | Draft |
+| **M1: Playable Core Loop (Walking Skeleton)** | [prd-milestone-1.md](../dev/prd-milestone-1.md) | CG-0MM4RDYAU1DY4OG8 | Draft |
 
 ---
 
@@ -476,7 +476,7 @@ Testing is defined per-milestone in each PRD. The overall test strategy:
 4. **Demo scripts** for headless deterministic runs producing JSON transcripts.
 5. **Playtest checklists** for manual verification of fun factor and UX.
 
-All tests are run via `npm test` (Vitest). Build validation via `npm run build`. See [prd-milestone-1.md](prd-milestone-1.md) Section 7 for the Milestone 1 test plan.
+All tests are run via `npm test` (Vitest). Build validation via `npm run build`. See [prd-milestone-1.md](../dev/prd-milestone-1.md) Section 7 for the Milestone 1 test plan.
 
 ---
 
@@ -532,7 +532,7 @@ The following mechanics from the physical design are **removed** in the digital 
 
 ### D.6 Implementation
 
-See `docs/main-street/prd-multi-use-card-economy.md` for the complete technical specification, architecture, and test coverage details.
+See `docs/dev/prd-multi-use-card-economy.md` for the complete technical specification, architecture, and test coverage details.
 
 ---
 

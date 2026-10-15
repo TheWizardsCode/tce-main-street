@@ -53,7 +53,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
 
 | Snapshot | Business | Event | Upgrade | Community Space | Staff | Total templates |
 |---|---:|---:|---:|---:|---:|---:|
-| Tier 1 baseline (`docs/main-street/card-catalog-baseline.json`) | 4 | 4 | 4 | 2 | 1 | 15 |
+| Tier 1 baseline (`docs/dev/assets/card-catalog-baseline.json`) | 4 | 4 | 4 | 2 | 1 | 15 |
 | Current catalog (`card-data.csv`) | 31 | 71 | 39 | 8 | 26 | 175 |
 | Net increase | +27 | +67 | +35 | +6 | +25 | +160 |
 
@@ -100,7 +100,7 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   the free re-roll advances the paid escalation counter
   (MS-0MTR6ZRF5007PWNZ), and relocating **any** employed staff member now costs
   1 action point (MS-0MUOSUNYR0073SI1).
-- Non-baseline card IDs are tracked in `docs/main-street/expanded-card-manifest.json`
+- Non-baseline card IDs are tracked in `docs/dev/assets/expanded-card-manifest.json`
 - The CSV gained a `piggybackable` column (MS-0MV8BFOVB000HM0W / epic
   MS-0MUYC47EL005Z69H): **exactly 16 organiser Investment events** (town-wide
   festivals, fairs, parties and celebrations — Local Festival, Wellness Fair,
@@ -134,8 +134,8 @@ Business cards are placed on the 10-slot street grid. Each generates base income
 > **Payback rebalance (MS-0MUQ50I1Y000B6L3):** business `baseIncome` is derived from a
 > cost-graded **net payback** target (`cost ÷ (baseIncome − ongoingCost)`), averaging
 > ~4.87 turns across the 30 income businesses (cheap ~3.5 → flagship ~7.0). See
-> [balancing-methodology.md](balancing-methodology.md) § Business payback rebalance and
-> [payback-rebalance-evidence.md](payback-rebalance-evidence.md).
+> [balancing-methodology.md](../dev/balancing-methodology.md) § Business payback rebalance and
+> [payback-rebalance-evidence.md](../dev/payback-rebalance-evidence.md).
 
 > **Ongoing cost field (CG-0MSVYPEZ90085SHE):** Business cards carry an `ongoingCost` CSV column value (column 29; col 28 is `newDisplayName` — the intake brief's "column 28" was a miscount) that is deducted from coins every IncomePhase — whether the card is placed on the street grid **or held in hand** (hand-held cards incur no ongoing cost per CG-0MTC31LN3000UHDY) — alongside staff and community-space costs. Deductions are clamped at 0 coins and logged. Cards with an empty `ongoingCost` CSV value default to 0. Per-card values are populated in `card-data.csv` using the balance guideline **¼ purchase price, min 25** (e.g. Teahouse costs 7 → 175 coins/turn).
 
@@ -539,7 +539,7 @@ M2 introduces two new upgrade mechanics that deepen progression decisions:
 | Cinema | IMAX (+200/+1) | Drive-In (+100/+2) | Income vs. range |
 | Day Spa | Resort Spa (+200/+1) | Wellness Center (+100/+2) | Income vs. range |
 
-**Multi-Level Upgrades** — Four Level-2 upgrades require the target business to already be at Level 1 (`requiredLevel: 1`). These apply after any Level-1 path (standard or branching), creating 2-step upgrade chains. The multi-level upgrades are the most expensive and powerful cards in the pool (cost 900–1400, income +350 to +700). Their reachability in the canonical greedy Monte Carlo profile is supported by the per-card upgrade-deck draw weight documented in [balancing-methodology.md](balancing-methodology.md#upgrade-deck-draw-weight--level-2-capstone-reachability-ms-0muyk08i1004i19w); the level gate itself is unchanged (US-19).
+**Multi-Level Upgrades** — Four Level-2 upgrades require the target business to already be at Level 1 (`requiredLevel: 1`). These apply after any Level-1 path (standard or branching), creating 2-step upgrade chains. The multi-level upgrades are the most expensive and powerful cards in the pool (cost 900–1400, income +350 to +700). Their reachability in the canonical greedy Monte Carlo profile is supported by the per-card upgrade-deck draw weight documented in [balancing-methodology.md](../dev/balancing-methodology.md#upgrade-deck-draw-weight--level-2-capstone-reachability-ms-0muyk08i1004i19w); the level gate itself is unchanged (US-19).
 
 ### Running the Monte Carlo Balance Sweep
 
@@ -578,9 +578,9 @@ This writes per-run and aggregate metrics to:
 
 ## See Also
 
-- **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that read card-data.csv alongside Monte Carlo output.
-- **[Balancing Methodology](balancing-methodology.md)** — Technical description of the `run-balance-cards` balancing algorithm.
-- **[Monte Carlo Sample Results](monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness.
+- **[Balance Process & Tooling PRD](../dev/prd-balance-process-and-tooling.md)** — Defines the structured balance review process, micro/macro metrics, and CLI tool specifications that read card-data.csv alongside Monte Carlo output.
+- **[Balancing Methodology](../dev/balancing-methodology.md)** — Technical description of the `run-balance-cards` balancing algorithm.
+- **[Monte Carlo Sample Results](../dev/monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness.
 - **[Playtest Scenarios](playtest-scenarios.md)** — Curated deterministic seeds for manual balance validation.
 
 

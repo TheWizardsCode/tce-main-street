@@ -89,7 +89,7 @@ export interface GuardrailResult {
  *
  * Bands revised by CG-0MSRKN325004ELH2 (2026-08-13) to match industry
  * practice for casual solo play and the measured post-re-tune baseline
- * (see docs/main-street/balance-guardrail-recommendations.md):
+ * (see docs/dev/balance-guardrail-recommendations.md):
  *  - winRate_greedy_medium: 30–60 → 45–75 (measured 62 on the canonical 200-seed set)
  *  - winRate_greedy_easy:   60–85 → 60–90 (measured 83.5; Easy is the learning preset)
  *
@@ -103,7 +103,7 @@ export interface GuardrailResult {
  *    CG-0MSP26Q5N002EH8P (net liquidity = finalCoins/turns).
  *    CG-0MSTOATDQ005XDET: widened to 0–2.5 after the Community Favour
  *    rep→coins fallback added measured liquidity (2.21 on the canonical
- *    200-seed set — see docs/main-street/monte-carlo-baseline.json).
+ *    200-seed set — see docs/dev/assets/monte-carlo-baseline.json).
  *    CG-0MT3J8FXG006RCOA: widened to 0–3 after the plain-count reputation
  *    score + retuned thresholds (100/120/150) deflated scores, leaving more
  *    end-of-game coins relative to turns (measured 2.69 on the canonical
@@ -125,7 +125,7 @@ export interface GuardrailResult {
  *    are revised to the measured after-state (Easy 62, Medium 32.5, Hard 11)
  *    and medianScore to 2–200 display points (measured 7.9); the primary
  *    gate remains the monotone-decreasing win-rate ladder Easy ≥ Medium ≥
- *    Hard. See docs/main-street/payback-rebalance-evidence.md.
+ *    Hard. See docs/dev/payback-rebalance-evidence.md.
  */
 export const GUARDRAIL_THRESHOLDS: Record<string, GuardrailThreshold> = {
   'winRate_greedy_medium': {

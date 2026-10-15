@@ -5,7 +5,7 @@ import { runAllCombinations } from '../MainStreetMonteCarlo';
 import { currentCommitShaFull } from './balance/baseline-blocks';
 
 /**
- * Regenerates `docs/main-street/monte-carlo-baseline.json` — the regression
+ * Regenerates `docs/dev/assets/monte-carlo-baseline.json` — the regression
  * snapshot consumed by `tests/main-street/monte-carlo-guardrails.test.ts`.
  *
  * Uses `runAllCombinations` (greedy + banking-greedy, Easy/Medium/Hard) so the
@@ -80,7 +80,7 @@ const baseline = {
       'above; the greedy block is unchanged and is never replaced by this variant. ' +
       'Drift is reported, never silently accepted — see the drift-report workflow in ' +
       'tests/main-street/monte-carlo-guardrails.test.ts and ' +
-      'docs/main-street/balance-guardrail-recommendations.md.',
+      'docs/dev/balance-guardrail-recommendations.md.',
     metrics: {
       winRate: bankingMedium.metrics.winRate,
       averageCoinsPerTurn: bankingMedium.metrics.averageCoinsPerTurn,
@@ -94,6 +94,6 @@ const baseline = {
   },
 };
 
-const outputPath = resolve(process.cwd(), 'docs/main-street/monte-carlo-baseline.json');
+const outputPath = resolve(process.cwd(), 'docs/dev/assets/monte-carlo-baseline.json');
 writeFileSync(outputPath, `${JSON.stringify(baseline, null, 2)}\n`, 'utf-8');
 console.log(`Wrote ${outputPath}`);

@@ -7,17 +7,17 @@
  * single horizontal row, producing a ~13,000px-wide strip of tiny boxes. This
  * module instead renders:
  *
- *  - `docs/main-street/assets/storyline-graph-<slug>.svg` — one diagram per
+ *  - `docs/game/assets/storyline-graph-<slug>.svg` — one diagram per
  *    storyline (its parent incident and chain), at a readable size, with a
  *    brief description and game-state impact in each box;
- *  - `docs/main-street/storylines/<slug>.md` — one document per storyline
+ *  - `docs/game/storylines/<slug>.md` — one document per storyline
  *    (its diagram plus a per-event detail table); and
- *  - `docs/main-street/storyline-incident-index.md` — the standalone incidents
+ *  - `docs/game/storyline-incident-index.md` — the standalone incidents
  *    as a compact index/table rather than boxes.
  *
  * `storylines.md` keeps the canonical reference and links to the per-storyline
  * documents. All artefacts are derived from the committed manifest
- * (`docs/main-street/storyline-graph.mmd` remains the source of truth).
+ * (`docs/dev/assets/storyline-graph.mmd` remains the source of truth).
  *
  * The renderer is **dev-only**: the `mermaid` package is a devDependency and
  * never enters the game bundle. It reuses the already-installed Playwright
@@ -55,8 +55,8 @@ import {
 } from './storyline-graph';
 import { getEventTemplates } from '../MainStreetCards';
 
-/** Directory holding the committed docs. */
-const DOCS_DIR = 'docs/main-street';
+/** Directory holding the committed gameplay docs. */
+const DOCS_DIR = 'docs/game';
 
 /** Directory holding rendered SVG assets. */
 export const ASSETS_DIR = `${DOCS_DIR}/assets`;

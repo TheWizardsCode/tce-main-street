@@ -3,7 +3,7 @@
  * Playtest Scenario Runner: Main Street
  *
  * Runs the 5 curated playtest scenarios defined in
- * docs/main-street/playtest-scenarios.md and reports pass/fail
+ * docs/game/playtest-scenarios.md and reports pass/fail
  * against expected outcomes.
  *
  * Usage:

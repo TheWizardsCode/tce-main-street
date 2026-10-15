@@ -27,12 +27,12 @@ so seeded outcomes are identical with or without instrumentation):
 ```bash
 # After (piggyback on — current dev tip):
 npx vite-node src/scripts/balance/piggyback-balance-report.ts --label after \
-  --out docs/main-street/monte-carlo-piggyback-after.json \
-  --md-out docs/main-street/monte-carlo-piggyback-after.md
+  --out docs/dev/assets/monte-carlo-piggyback-after.json \
+  --md-out docs/dev/assets/monte-carlo-piggyback-after.md
 
 # Baseline (pre-piggyback checkout 85d23dbb — copy the report script in):
 npx vite-node src/scripts/balance/piggyback-balance-report.ts --label baseline \
-  --out docs/main-street/monte-carlo-piggyback-baseline.json
+  --out docs/dev/assets/monte-carlo-piggyback-baseline.json
 
 # Same-commit control (piggyback off): set the `piggybackable` flag to false
 # for all 16 organiser rows in src/card-data.csv, then run the same command
@@ -114,10 +114,10 @@ totals (determinism also pinned by `competitive-monte-carlo.test.ts` and
 
 Artefacts:
 
-- `docs/main-street/monte-carlo-piggyback-baseline.json` (A, `85d23dbb`)
-- `docs/main-street/monte-carlo-piggyback-control.json` (B, `00a30dcf`)
-- `docs/main-street/monte-carlo-piggyback-after.json` (C, `00a30dcf`)
-- `docs/main-street/monte-carlo-piggyback-after.md` (rendered table)
+- `docs/dev/assets/monte-carlo-piggyback-baseline.json` (A, `85d23dbb`)
+- `docs/dev/assets/monte-carlo-piggyback-control.json` (B, `00a30dcf`)
+- `docs/dev/assets/monte-carlo-piggyback-after.json` (C, `00a30dcf`)
+- `docs/dev/assets/monte-carlo-piggyback-after.md` (rendered table)
 
 ## Recommendation (for the epic / balance lead)
 
@@ -126,7 +126,7 @@ Artefacts:
    of the 150% premium + conservative F4 policy, and win-rate/coin attribution
    is within Monte Carlo noise. The economy-runaway risk from stacking
    100%-reward participation is **not observed**.
-2. **Do NOT regenerate `docs/main-street/monte-carlo-baseline.json`.** That
+2. **Do NOT regenerate `docs/dev/assets/monte-carlo-baseline.json`.** That
    file is the single-player greedy guardrail and is unaffected by piggyback
    (competitive-only mechanic). It stays as the drift reference.
 3. **Monitor join-fully rate.** If a future AI strategy or difficulty tuning

@@ -35,8 +35,8 @@ import type { EventCard } from '../../src/MainStreetCardsTypes';
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const VITE_NODE_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'vite-node');
 const GRAPH_CLI = 'src/scripts/storyline-graph-cli.ts';
-const MERMAID_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-graph.mmd');
-const JSON_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-manifest.json');
+const MERMAID_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-graph.mmd');
+const JSON_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-manifest.json');
 
 /**
  * Shown in every drift-assertion failure so a stale graph/manifest is trivial

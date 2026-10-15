@@ -11,7 +11,7 @@ This document reviews and defines the optimal **pass values** for the three main
 ## 0. Drift Report & Operator Approval (CG-0MTD0F66A0005BEX)
 
 When the Monte Carlo guardrail test (`monte-carlo-guardrails.test.ts`) detects
-**drift** from the committed baseline (`docs/main-street/monte-carlo-baseline.json`),
+**drift** from the committed baseline (`docs/dev/assets/monte-carlo-baseline.json`),
 **do NOT silently regenerate the baseline**. Doing so masks real balance shifts
 and loses the audit trail of what changed.
 
@@ -91,7 +91,7 @@ Drift detected in guardrail test?
 | `scripts/balance/drift-report.ts` | Compare current results vs. baseline |
 | `scripts/generate-main-street-monte-baseline.ts` | Regenerate the baseline |
 | `tests/main-street/monte-carlo-guardrails.test.ts` | Guardrail test (reads baseline, asserts drift bounds) |
-| `docs/main-street/monte-carlo-baseline.json` | Committed regression snapshot (now stamped with `commitSha` on regeneration) |
+| `docs/dev/assets/monte-carlo-baseline.json` | Committed regression snapshot (now stamped with `commitSha` on regeneration) |
 
 **Commit tracking (AC4, CG-0MUE03DGQ005KPZ7):** `scripts/balance/drift-report.ts`
 now prints both the **baseline commit SHA** (from the baseline JSON, when
@@ -160,7 +160,7 @@ The recommended values above are the **tuned target bands** (design intent): the
 
 | Test | What it guards | Band / tolerance |
 |------|----------------|------------------|
-| `monte-carlo-guardrails.test.ts` | Drift vs the committed baseline (`docs/main-street/monte-carlo-baseline.json`) for Medium **and** the per-difficulty matrix — for `greedy` (top-level block) and additively for `banking-greedy` (the `bankingGreedy` block, CG-0MT3JMGA60091J8W AC5) | winRate ±0.25; coins ±30% |
+| `monte-carlo-guardrails.test.ts` | Drift vs the committed baseline (`docs/dev/assets/monte-carlo-baseline.json`) for Medium **and** the per-difficulty matrix — for `greedy` (top-level block) and additively for `banking-greedy` (the `bankingGreedy` block, CG-0MT3JMGA60091J8W AC5) | winRate ±0.25; coins ±30% |
 | `monte-carlo-balance.test.ts` | Whole-game smoke (market-greedy) at 20-seed PR CI | 0.20–0.96 win rate (raised from 0.80 by CG-0MSVYPEZ90085SHE: hand costs + raised incomes, then the staff-specialisation economy (CG-0MT4WXNR80090FXZ) — measured 0.95 on the mc-balance seed set) |
 
 The old 20–80% greedy test band (`monte-carlo-greedy-guardrail.test.ts`) was redundant with these two tiers and conflated "tuned target" with "regression guardrail"; it has been replaced by the per-difficulty design-intent test.
@@ -210,14 +210,14 @@ Loss decomposition (greedy, 60 turns): bankruptcy dominates on all difficulties 
 > bleeding, so the combined design shifts Medium to 12% reputation collapse /
 > 88% bankruptcy (loss-only). `tests/main-street/monte-carlo-greedy-guardrail.test.ts`
 > now guards reputation collapse 0.05–0.40 and bankruptcy 0.40–0.95. See
-> [favour-ai-evidence.md](favour-ai-evidence.md).
+> [favour-ai-evidence.md](../dev/assets/favour-ai-evidence.md).
 
 > **CG-0MUE03DGQ005KPZ7 re-baseline (2026-09-25, producer-approved):** the
 > 2026-09-12 snapshot was unratified and ~900 commits stale. A three-point
 > attribution found the drift was 100% cumulative balance change (per-action
 > challenge evaluation contributed 0.000), so the baseline was regenerated on
 > the current dev tip. The authoritative values now live in
-> `docs/main-street/monte-carlo-baseline.json` (commit-stamped): greedy Easy
+> `docs/dev/assets/monte-carlo-baseline.json` (commit-stamped): greedy Easy
 > 0.910 / Medium 0.615 / Hard 0.440; additive banking-greedy Medium 0.825.
 > See [monte-carlo-attribution-analysis.md](monte-carlo-attribution-analysis.md).
 > (Narrative table above is retained as the dated 2026-08-21 evidence; the
@@ -298,7 +298,7 @@ Where the above sources are heuristic rather than measured, this document treats
 - `tests/main-street/monte-carlo-greedy-guardrail.test.ts` — per-difficulty design-intent test (replaces the 20–80% medium-only assertion).
 - `tests/main-street/monte-carlo-guardrails.test.ts` — drift checks extended to the per-difficulty matrix.
 - `tests/main-street/monte-carlo-balance.test.ts` — removed the flawed market-greedy medianScore assertion; corrected the stale "main branch CI" comment.
-- `docs/main-street/monte-carlo-baseline.json` — added `difficultyMatrix`.
+- `docs/dev/assets/monte-carlo-baseline.json` — added `difficultyMatrix`.
 - `scripts/balance/guards/thresholds.ts` — updated bands + new `avgCoinsPerTurn_greedy_medium` threshold.
-- `docs/main-street/prd-balance-process-and-tooling.md` — §3.3 table, G1/G2/G3 notes updated.
-- `docs/main-street/playtest-scenarios.md` — stale tuning heuristics updated to the recommended bands.
+- `docs/dev/prd-balance-process-and-tooling.md` — §3.3 table, G1/G2/G3 notes updated.
+- `docs/game/playtest-scenarios.md` — stale tuning heuristics updated to the recommended bands.

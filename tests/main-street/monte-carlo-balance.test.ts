@@ -19,7 +19,7 @@ import { runMonteCarlo } from '../../src/MainStreetMonteCarlo';
 //
 // The *tuned target* bands (design intent, per difficulty) are enforced
 // separately in monte-carlo-greedy-guardrail.test.ts; see
-// docs/main-street/balance-guardrail-recommendations.md.
+// docs/dev/balance-guardrail-recommendations.md.
 //
 // Minimum seed count for detailed pacing/distribution metric assertions.
 // Below this threshold the sample is too small for the tighter bounds to be reliable.

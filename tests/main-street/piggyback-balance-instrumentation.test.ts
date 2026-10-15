@@ -5,7 +5,7 @@
  * Monte Carlo harness tallies the piggyback trade per seat
  * (`CompetitivePiggybackStats`: decisions / joins / free-rides / coins spent
  * and earned) so the before/after balance evidence can attribute win-rate and
- * coin drift to the mechanic (`docs/main-street/monte-carlo-piggyback-evidence.md`).
+ * coin drift to the mechanic (`docs/dev/monte-carlo-piggyback-evidence.md`).
  *
  * These tests pin the instrumentation contract:
  *

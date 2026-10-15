@@ -7,7 +7,7 @@
 
 > This document specifies Main Street's 5-tier meta-progression system. It defines the unlock framework, tier thresholds, card pool expansion, campaign persistence data model, and Save/Load integration pattern. Additional M2 PRD sections (expanded card pool, challenge system, difficulty presets, etc.) will be added as separate work items under the parent M2 epic.
 
-> **Status update (CG-0MSLXJCHH001DLIO):** This historical PRD's Difficulty Presets section (US-16) originally specified per-preset `maxTurns` values (25 > 20 > 15). Default difficulty presets no longer impose a turn limit — games end via score threshold, all challenges, bankruptcy, or reputation collapse; a turn limit is opt-in via an explicit `maxTurns` config. See `docs/main-street/core-rules-and-mechanics.md` for the current rules.
+> **Status update (CG-0MSLXJCHH001DLIO):** This historical PRD's Difficulty Presets section (US-16) originally specified per-preset `maxTurns` values (25 > 20 > 15). Default difficulty presets no longer impose a turn limit — games end via score threshold, all challenges, bankruptcy, or reputation collapse; a turn limit is opt-in via an explicit `maxTurns` config. See `docs/game/core-rules-and-mechanics.md` for the current rules.
 
 ---
 
@@ -180,7 +180,7 @@ Run N+1 starts with expanded card pool
 
 > Update note 3 (12-tier expansion CG-0MT3C744B009DS84): the progression was expanded from **5 tiers to 12 tiers** so each tier holds ~10-15 cards instead of ~27-30. Reputation thresholds form an anchored ladder (0, 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80) that preserves the historical anchors 8/16/32/64 at T3/T5/T7/T11 and adds an aspirational T12=80. Challenge paths are progressive: T2 any 1 challenge, T3 any 2, T4 synergy+resource, T5 3 incl. cross-cutting/placement, T6 synergy+placement+upgrade, T7 any 4, T8 synergy+resource+upgrade, T9 4 incl. cross-cutting, T10 ch-diversified, T11 ch-synergy-master, T12 both flagships. Community-space (8 cards) and staff (9 cards) are spread across as many tiers as their card counts allow (cs in 7 tiers; staff in 9 tiers) rather than forced into every tier. Tier names: T1 Foundation, T2 Rising Street, T3 Neighborhood, T4 District, T5 Midtown, T6 Metropolitan, T7 City Center, T8 Capital, T9 Iconic Quarter, T10 Historic Mile, T11 National Street, T12 Legendary Main Street. All tables above are historical; see the `tier` column in `card-data.csv` for current per-card assignments.
 
-> Update note 4 (threshold re-calibration + one-per-run cap, MS-0MV88T4I6000HQZG): reputation thresholds were re-derived from a fresh 200-seed Medium Monte-Carlo run on current HEAD to hit a target achievement-rate staircase — the share of Medium runs clearing each tier: T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%, T11 4%, T12 1%. New thresholds: **0 / 250 / 750 / 2650 / 3100 / 3300 / 3600 / 4000 / 4300 / 4600 / 4900 / 5500** (evidence: [tier-threshold-calibration-evidence.md](tier-threshold-calibration-evidence.md) + [tier-threshold-calibration-medium.json](tier-threshold-calibration-medium.json)). Unlock pacing is capped at **one tier unlock per completed run** — the lowest newly-eligible locked tier, from either the reputation or the challenge path. The old anchored ladder (0/400/800/1200/1600/2400/3200/4000/4800/5600/6400/8000) and the multi-tier burst-unlock behaviour are superseded; challenge conditions themselves are unchanged.
+> Update note 4 (threshold re-calibration + one-per-run cap, MS-0MV88T4I6000HQZG): reputation thresholds were re-derived from a fresh 200-seed Medium Monte-Carlo run on current HEAD to hit a target achievement-rate staircase — the share of Medium runs clearing each tier: T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%, T11 4%, T12 1%. New thresholds: **0 / 250 / 750 / 2650 / 3100 / 3300 / 3600 / 4000 / 4300 / 4600 / 4900 / 5500** (evidence: [tier-threshold-calibration-evidence.md](./assets/tier-threshold-calibration-evidence.md) + [tier-threshold-calibration-medium.json](./assets/tier-threshold-calibration-medium.json)). Unlock pacing is capped at **one tier unlock per completed run** — the lowest newly-eligible locked tier, from either the reputation or the challenge path. The old anchored ladder (0/400/800/1200/1600/2400/3200/4000/4800/5600/6400/8000) and the multi-tier burst-unlock behaviour are superseded; challenge conditions themselves are unchanged.
 
 ### 2.7 Historical note (superseded)
 
@@ -805,8 +805,8 @@ The following items are explicitly excluded from this spec:
 | Net increase | +24 | +49 | +31 | +104 |
 
 Verification artifacts:
-- `docs/main-street/card-catalog-baseline.json`
-- `docs/main-street/expanded-card-manifest.json`
+- `docs/dev/assets/card-catalog-baseline.json`
+- `docs/dev/assets/expanded-card-manifest.json`
 
 ### Tier 1 -- Foundation (13 templates)
 
@@ -918,7 +918,7 @@ The estimate table above predates the current economy. Thresholds were re-derive
 | T12 Legendary Main Street | 5500 |
 
 Evidence, percentile tables and rounding notes:
-[docs/main-street/tier-threshold-calibration-evidence.md](tier-threshold-calibration-evidence.md).
+[docs/dev/assets/tier-threshold-calibration-evidence.md](./assets/tier-threshold-calibration-evidence.md).
 Unlock pacing is governed by the one-per-run cap (lowest newly-eligible locked tier). Easy/Hard drift remains accepted per operator decision Q2/A.
 
 ---

@@ -13,7 +13,7 @@ item.
 ## 0. Inputs
 
 - After-state evidence: [payback-rebalance-evidence.md](payback-rebalance-evidence.md)
-- Committed baseline: `docs/main-street/monte-carlo-baseline.json` (stamped `8b8fe46`)
+- Committed baseline: `docs/dev/assets/monte-carlo-baseline.json` (stamped `8b8fe46`)
 - Macro metrics G1–G8 / micro M1–M7: `src/scripts/balance/engine/`
 
 ## 1. Economy health
@@ -66,7 +66,7 @@ Loss-only split:
 > cannot use well. Combined with R2, Medium moves to **12% reputation collapse
 > / 88% bankruptcy**, and `rep→coins` usage falls materially on every
 > difficulty. The producer approved widening the G5 band to the combined
-> design. See [favour-ai-evidence.md](favour-ai-evidence.md).
+> design. See [favour-ai-evidence.md](../dev/assets/favour-ai-evidence.md).
 
 ## 3. Synergy utilisation & diversity
 
@@ -134,7 +134,7 @@ All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
 > — is addressed separately by giving community spaces their own placement
 > value and a named business-preference penalty. See
 > [ai-strategy.md](ai-strategy.md#community-space-move-evaluation-ms-0mux8j9kj005zkdw)
-> and [community-space-ai-evidence.md](community-space-ai-evidence.md).
+> and [community-space-ai-evidence.md](../dev/assets/community-space-ai-evidence.md).
 
 ## 6. Non-recommendations (deliberately out of scope)
 

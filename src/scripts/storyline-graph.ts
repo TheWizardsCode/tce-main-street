@@ -5,9 +5,9 @@
  * graph from the typed CSV model (MS-0MUMP94S7008KTI0):
  *
  *  - `--format mermaid` → a Mermaid flowchart (committed as
- *    `docs/main-street/storyline-graph.mmd`).
+ *    `docs/dev/assets/storyline-graph.mmd`).
  *  - `--format json`    → a storyline manifest (committed as
- *    `docs/main-street/storyline-manifest.json`) that validates against
+ *    `docs/dev/assets/storyline-manifest.json`) that validates against
  *    `schemas/main-street-storyline.schema.json`.
  *
  * Determinism: all ordering is derived from sorted card ids and there is no
@@ -613,8 +613,8 @@ export function parseGraphArgs(argv: readonly string[]): StorylineGraphCliOption
   return { format, out, check: argv.includes('--check') };
 }
 
-const DEFAULT_MERMAID_OUT = 'docs/main-street/storyline-graph.mmd';
-const DEFAULT_JSON_OUT = 'docs/main-street/storyline-manifest.json';
+const DEFAULT_MERMAID_OUT = 'docs/dev/assets/storyline-graph.mmd';
+const DEFAULT_JSON_OUT = 'docs/dev/assets/storyline-manifest.json';
 
 /**
  * Runs the export CLI: builds the manifest and either writes the artefact or

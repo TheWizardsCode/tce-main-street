@@ -21,7 +21,7 @@
  *
  * Tolerances: winRate ±0.25, coins ±30% of the baseline value.
  * These tolerances are independent of this process; see
- * `docs/main-street/balance-guardrail-recommendations.md` for the full
+ * `docs/dev/balance-guardrail-recommendations.md` for the full
  * decision tree and operator approval guidance.
  */
 
@@ -69,7 +69,7 @@ interface BankingGreedyBaseline {
 }
 
 function loadBaseline(): MonteBaseline {
-  const pathToBaseline = resolve(process.cwd(), 'docs/main-street/monte-carlo-baseline.json');
+  const pathToBaseline = resolve(process.cwd(), 'docs/dev/assets/monte-carlo-baseline.json');
   return JSON.parse(readFileSync(pathToBaseline, 'utf-8')) as MonteBaseline;
 }
 
@@ -138,7 +138,7 @@ describe('Main Street Monte Carlo guardrails for expanded pool', () => {
     const banking = baseline.bankingGreedy;
     expect(
       banking,
-      'bankingGreedy snapshot missing from docs/main-street/monte-carlo-baseline.json',
+      'bankingGreedy snapshot missing from docs/dev/assets/monte-carlo-baseline.json',
     ).toBeDefined();
     expect(banking!.strategy).toBe('banking-greedy');
 

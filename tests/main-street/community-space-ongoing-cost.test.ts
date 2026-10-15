@@ -99,7 +99,7 @@ describe('Library card stats (reputation asset)', () => {
     expect(library!.synergyCoinBonus).toBeUndefined();
     expect(library!.synergyRepBonus).toBeUndefined();
     // Cost re-priced 700 -> 400 by MS-0MUR9IN7L0004TO5 (see
-    // docs/main-street/analysis/community-space-event-repricing.md).
+    // docs/dev/analysis/community-space-event-repricing.md).
     expect(library!.cost).toBe(400);
   });
 });

@@ -12,7 +12,7 @@
 > or reputation collapse; a turn limit is opt-in via an explicit
 > `maxTurns` config. The AI scoring formulas in Appendix A are superseded by
 > the threshold-distance planning horizon (`aiPlanningHorizon`: floor 5 /
-> cap 25 / scorePace 8). See `docs/main-street/core-rules-and-mechanics.md`
+> cap 25 / scorePace 8). See `docs/game/core-rules-and-mechanics.md`
 > for the current rules.
 >
 > **Scope extension (CG-0MT5X3GMA007EG30):** Competitive mode — an AI

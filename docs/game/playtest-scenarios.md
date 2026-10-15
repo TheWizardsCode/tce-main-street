@@ -60,7 +60,7 @@ Tutorial steps are defined in `src/TutorialFlow.ts` in the `UNIFIED_TUTORIAL_STE
 - `gate` — `'confirm'` for informational steps, `'action'` for action-gated steps
 - `requiredAction` — (only for action-gated steps) the in-game action required to advance
 
-All step text lives in the spreadsheet-editable English locale bundle (`src/i18n/tutorial-en.csv`, loaded via `src/i18n/tutorial-en.ts`) with card facts resolved from `card-data.csv` via `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders. See `docs/main-street/tutorial-localization.md` for the editing workflow (open the CSV, edit the `text` column, save as CSV UTF-8), the editorial rules (≤3 sentences per box, one point per box) and the step-flow table.
+All step text lives in the spreadsheet-editable English locale bundle (`src/i18n/tutorial-en.csv`, loaded via `src/i18n/tutorial-en.ts`) with card facts resolved from `card-data.csv` via `{cardName}`/`{cost}`/`{bonus}`/`{synergyCardName}` placeholders. See `docs/game/tutorial-localization.md` for the editing workflow (open the CSV, edit the `text` column, save as CSV UTF-8), the editorial rules (≤3 sentences per box, one point per box) and the step-flow table.
 
 ---
 
@@ -180,7 +180,7 @@ The player opens with two Parks and two Cafes (Food+Culture bridges), creating a
 > **Updated 2026-08-13 (CG-0MSRKN325004ELH2).** This checklist predates the
 > difficulty presets; the win-rate/median-score heuristics below are superseded
 > by the per-difficulty design-intent bands enforced in the guardrail suite
-> (see [balance-guardrail-recommendations.md](balance-guardrail-recommendations.md)
+> (see [balance-guardrail-recommendations.md](../dev/balance-guardrail-recommendations.md)
 > and PRD §3.3).
 
 Use these heuristics when evaluating card changes or rule adjustments:
@@ -237,7 +237,7 @@ npm run monte-carlo
 npx vite-node scripts/monte-carlo.ts --runs 100 --seed-prefix "mc-balance" --max-turns 25 --strategy market-greedy --out results/main-street-monte-carlo-100.json --csv-out results/main-street-monte-carlo-100.csv
 ```
 
-Latest baseline interpretation is tracked in `docs/main-street/monte-carlo-sample-results.md`.
+Latest baseline interpretation is tracked in `docs/dev/monte-carlo-sample-results.md`.
 
 For custom sweep sizes, modify the `SEED_COUNT` constant in `tests/main-street/market.integration.test.ts`.
 
@@ -251,6 +251,6 @@ Then analyse transcripts with standard JSON tools (`jq`, Python, etc.) to extrac
 
 ## See Also
 
-- **[Balance Process & Tooling PRD](prd-balance-process-and-tooling.md)** — Defines the structured balance review process and CLI tools that integrate with these playtest scenarios.
-- **[Balancing Methodology](balancing-methodology.md)** — Technical description of the `run-balance-cards` balancing algorithm.
-- **[Monte Carlo Sample Results](monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness.
+- **[Balance Process & Tooling PRD](../dev/prd-balance-process-and-tooling.md)** — Defines the structured balance review process and CLI tools that integrate with these playtest scenarios.
+- **[Balancing Methodology](../dev/balancing-methodology.md)** — Technical description of the `run-balance-cards` balancing algorithm.
+- **[Monte Carlo Sample Results](../dev/monte-carlo-sample-results.md)** — Example output from the Monte Carlo simulation harness.

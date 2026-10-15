@@ -3,7 +3,7 @@
  *
  * `MonteCarloRunSummary` records how many Community Favour exchanges the AI
  * took (`favourRepToCoinsUses` / `favourCoinsToRepUses`) so the baseline and
- * after measurements in `docs/main-street/favour-ai-baseline.json` are
+ * after measurements in `docs/dev/assets/favour-ai-baseline.json` are
  * reproducible. These tests pin that instrumentation on the canonical greedy
  * profile:
  *  - both counters are present, integral and non-negative on every run;

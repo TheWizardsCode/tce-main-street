@@ -114,7 +114,7 @@ const FAVOUR_REP_TO_COINS_MIN_REP_BUFFER = 1;
  * sweep (4–24) is recorded in work item MS-0MUVB2ZES005V83Y. The chosen
  * value keeps the per-difficulty committed-baseline tolerances (winRate
  * ±0.25, coins ±30%) and the Easy ≥ Medium ≥ Hard ladder intact while
- * materially lowering rep→coins usage. See `docs/main-street/` for the
+ * materially lowering rep→coins usage. See `docs/dev/assets/` for the
  * before/after evidence artefacts.
  */
 const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
@@ -162,7 +162,7 @@ export function aiPlanningHorizon(state: MainStreetState): number {
  * Calibrated on the canonical 200-seed / 60-turn greedy profile
  * (`src/scripts/balance/community-space-placement-report.ts`); the committed
  * before/after figures are in
- * `docs/main-street/community-space-ai-evidence.md`.
+ * `docs/dev/assets/community-space-ai-evidence.md`.
  */
 export const COMMUNITY_SPACE_SCORE_PENALTY = 600;
 
@@ -215,7 +215,7 @@ function neighbourSynergyGain(
  * there.
  *
  * Before/after competitive head-to-head evidence for this rule is recorded in
- * `docs/main-street/competitive-placement-ai-evidence.md`
+ * `docs/dev/assets/competitive-placement-ai-evidence.md`
  * (MS-0MUZFVM86003IPSM); the harness-side measurement lives in
  * `measurePlacementBenefit` (`MainStreetMonteCarlo.ts`).
  *

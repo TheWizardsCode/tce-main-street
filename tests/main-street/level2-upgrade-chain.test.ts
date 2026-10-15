@@ -2,7 +2,7 @@
  * Main Street: Level-2 upgrade chain invariant (MS-0MUXAL8HC005P9E4).
  *
  * Protects the two-step, level-gated upgrade chain described in
- * `docs/main-street/card-catalog.md` (PRD milestone 2, US-19) and pins the
+ * `docs/game/card-catalog.md` (PRD milestone 2, US-19) and pins the
  * M1/M5 metric computation used for the level-2 reachability evidence:
  *
  *  - every level-2 capstone upgrade keeps `requiredLevel: 1` in the shipped

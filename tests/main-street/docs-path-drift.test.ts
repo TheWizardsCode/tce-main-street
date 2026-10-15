@@ -10,6 +10,12 @@
  *       under `docs/`.
  * AC4 — the guard detects an injected reference (negative case).
  *
+ * The same guard enforces the two-tree documentation split
+ * (MS-0MUZK0OWJ000PQ2D AC5): the `docs/main-street/` directory must not be
+ * reintroduced — all gameplay/docs content lives under `docs/game/` and
+ * `docs/dev/` today. The `docs/main-street/` path literal is scanned too, so
+ * broken stale links cannot creep back into moved documents.
+ *
  * Binary files (e.g. `*.png` screenshots) are skipped: they cannot legally
  * contain the ASCII prefix, and reading them as UTF-8 would throw or garble
  * the scan.
@@ -23,6 +29,9 @@ import * as path from 'node:path';
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const DOCS_ROOT = path.join(PROJECT_ROOT, 'docs');
 const STALE_PREFIX = 'example-games/main-street/';
+/** The pre-restructure mixed-audience tree must never be reintroduced. */
+const LEGACY_DOCS_TREE = 'docs/main-street/';
+const FORBIDDEN_PATTERNS = [STALE_PREFIX, LEGACY_DOCS_TREE];
 
 const TEXT_EXTENSIONS = new Set([
   '.md',
@@ -56,7 +65,7 @@ function walkDocs(dir: string): string[] {
   return out;
 }
 
-/** Collect every (relative path, line) pair under `docs/` containing the stale prefix. */
+/** Collect every (relative path, line) pair under `docs/` containing a forbidden pattern. */
 function findStaleReferences(): Array<{ file: string; line: string }> {
   const hits: Array<{ file: string; line: string }> = [];
   for (const file of walkDocs(DOCS_ROOT)) {
@@ -69,7 +78,7 @@ function findStaleReferences(): Array<{ file: string; line: string }> {
       continue;
     }
     for (const [i, line] of contents.split('\n').entries()) {
-      if (line.includes(STALE_PREFIX)) {
+      if (FORBIDDEN_PATTERNS.some((pat) => line.includes(pat))) {
         hits.push({ file: path.relative(PROJECT_ROOT, file), line: `${i + 1}: ${line.trim()}` });
       }
     }
@@ -82,16 +91,31 @@ describe('docs path drift guard (AC1)', () => {
     expect(fs.existsSync(DOCS_ROOT)).toBe(true);
   });
 
-  it('no file under docs/ contains the stale example-games/main-street/ prefix', () => {
+  it('no file under docs/ contains a stale example-games/main-street/ or legacy docs/main-street/ reference', () => {
     const hits = findStaleReferences();
     expect(hits).toEqual([]);
+  });
+
+  it('the legacy docs/main-street/ directory is gone (two-tree split, MS-0MUZK0OWJ000PQ2D)', () => {
+    expect(fs.existsSync(path.join(DOCS_ROOT, 'main-street'))).toBe(false);
   });
 });
 
 describe('guard negative case (AC4)', () => {
-  it('detects an injected stale reference', () => {
+  it('detects an injected stale example-games reference', () => {
     const docPath = path.join(DOCS_ROOT, 'README-drift-probe.tmp.md');
     fs.writeFileSync(docPath, `# probe\n\nSee ${STALE_PREFIX}MainStreetEngine.ts for details.\n`);
+    try {
+      const hits = findStaleReferences();
+      expect(hits.some((h) => h.file.endsWith('README-drift-probe.tmp.md'))).toBe(true);
+    } finally {
+      fs.rmSync(docPath, { force: true });
+    }
+  });
+
+  it('detects an injected legacy docs/main-street/ reference', () => {
+    const docPath = path.join(DOCS_ROOT, 'README-drift-probe.tmp.md');
+    fs.writeFileSync(docPath, `# probe\n\nSee docs/main-street/card-catalog.md for details.\n`);
     try {
       const hits = findStaleReferences();
       expect(hits.some((h) => h.file.endsWith('README-drift-probe.tmp.md'))).toBe(true);

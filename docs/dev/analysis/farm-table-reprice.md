@@ -20,7 +20,7 @@ The escalation invariant is preserved: 400 + 65 = 465 > 300 (evt-popular-menu).
 - **Canonical profile:** 200 seeds (`mc-balance-0` … `mc-balance-199`),
   60 max turns, greedy strategy (plus the additive `banking-greedy` snapshot).
 - **Committed baseline (NOT regenerated):**
-  `docs/main-street/monte-carlo-baseline.json` — the producer-approved
+  `docs/dev/assets/monte-carlo-baseline.json` — the producer-approved
   snapshot generated 2026-10-08T17:21:03Z at commit `aeb9cc3`. Per the
   drift-report-then-ask workflow, this file is **left unchanged**; a single
   low-frequency card retune does not justify a baseline update.

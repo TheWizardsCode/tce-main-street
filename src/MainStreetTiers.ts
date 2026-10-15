@@ -21,11 +21,11 @@
  * T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%,
  * T11 4%, T12 1%. Each threshold is the corresponding percentile of the
  * end-of-run reputation distribution, rounded to a friendly value (see
- * docs/main-street/tier-threshold-calibration-evidence.md). The ladder spans the
+ * docs/dev/assets/tier-threshold-calibration-evidence.md). The ladder spans the
  * observed Medium range (~0-6385) rather than sitting far above it; the top
  * tiers remain primarily challenge-path / long-campaign reachable.
  *
- * See docs/main-street/prd-milestone-2.md Section 2 (Update note 4) and 4.3.5.
+ * See docs/dev/prd-milestone-2.md Section 2 (Update note 4) and 4.3.5.
  *
  * @module
  */

@@ -5,7 +5,7 @@
 **Date:** 2026-07-23
 **Last Updated:** 2026-08-13 (guardrail bands revised — see [balance-guardrail-recommendations.md](balance-guardrail-recommendations.md))
 
-> **Implementation Status:** Phase 2 (Core Analysis Library) is complete. The balance analysis library lives at `scripts/balance/` with the full API documented at `docs/main-street/balance-analysis-api.md`. See §10 for updated file paths.
+> **Implementation Status:** Phase 2 (Core Analysis Library) is complete. The balance analysis library lives at `scripts/balance/` with the full API documented at `docs/dev/balance-analysis-api.md`. See §10 for updated file paths.
 
 ---
 
@@ -873,7 +873,7 @@ mc-balance-002,greedy,medium,loss,bankruptcy,67,0,7,4,7,0
 
 **Extension philosophy:** Extend the harness incrementally. Items 1–3 are high-priority for the first implementation wave. Items 4–5 are secondary.
 
-### 7.2 Playtest Scenarios (`docs/main-street/playtest-scenarios.md`)
+### 7.2 Playtest Scenarios (`docs/game/playtest-scenarios.md`)
 
 **Current capabilities:**
 - 7 curated deterministic seeds with expected outcomes
@@ -1065,7 +1065,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 | C-3 | Implement global metrics engine (G1–G8) | `scripts/balance/engine/global-metrics.ts`, `tests/balance/global-metrics.test.ts` | 3 days |
 | C-4 | Implement comparison engine with guardrail evaluation | `scripts/balance/engine/comparison.ts`, `tests/balance/comparison.test.ts` | 2 days |
 | C-5 | Scaffolding, guardrail thresholds, baseline module | `scripts/balance/guards/thresholds.ts`, `scripts/balance/engine/baseline.ts`, `tests/balance/thresholds.test.ts`, `tests/balance/baseline.test.ts` | 2 days |
-| C-6 | Documentation & integration tests | `docs/main-street/balance-analysis-api.md`, `tests/balance/integration.test.ts` | 1 day |
+| C-6 | Documentation & integration tests | `docs/dev/balance-analysis-api.md`, `tests/balance/integration.test.ts` | 1 day |
 
 > **Implementation Note:** Phase 2 implementation differs from the PRD spec in the following ways:
 > - C-5 was reordered relative to C-2/C-3 (done earlier to unblock scaffold-dependent work).
@@ -1104,7 +1104,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 | `src/MainStreetMonteCarlo.ts` | Core harness | `MonteCarloMetrics`, `MonteCarloRunSummary`, `MonteCarloResult`, `monteCarloStrategy` |
 | `scripts/monte-carlo.ts` | CLI entry point | `--runs`, `--seed-prefix`, `--strategy`, `--max-turns`, `--out`, `--csv-out` |
 | `tests/main-street/monte-carlo-guardrails.test.ts` | CI guardrail test | Asserts win-rate/coin drift vs committed baseline (Medium + per-difficulty matrix) |
-| `docs/main-street/monte-carlo-sample-results.md` | Docs | Sample results interpretation |
+| `docs/dev/monte-carlo-sample-results.md` | Docs | Sample results interpretation |
 
 ### 11.2 Card Data
 
@@ -1118,7 +1118,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 
 | File | Purpose |
 |------|---------|
-| `docs/main-street/playtest-scenarios.md` | 7 curated deterministic seeds with expected outcomes |
+| `docs/game/playtest-scenarios.md` | 7 curated deterministic seeds with expected outcomes |
 | `tests/main-street/smoke-scenario.test.ts` | CI smoke test referencing playtest seed |
 
 ### 11.4 Balancing Algorithm
@@ -1127,7 +1127,7 @@ The current CSV schema is sufficient for all proposed metrics. The following cha
 |------|---------|
 | `src/balance-cards/algorithm.ts` | Core balancing algorithm (curve-fitting + tier band analysis) |
 | `scripts/run-balance-cards.ts` | CLI entry point for the balancing pass |
-| `docs/main-street/balancing-methodology.md` | Full documentation of the balancing algorithm |
+| `docs/dev/balancing-methodology.md` | Full documentation of the balancing algorithm |
 
 ### 11.5 Economy Tracking
 

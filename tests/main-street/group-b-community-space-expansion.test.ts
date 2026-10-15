@@ -52,7 +52,7 @@ interface NewCommunitySpaceContract {
 }
 
 // Costs re-priced by MS-0MUR9IN7L0004TO5 (community spaces relative to the
-// 4.87-turn business payback; see docs/main-street/analysis/community-space-event-repricing.md).
+// 4.87-turn business payback; see docs/dev/analysis/community-space-event-repricing.md).
 const NEW_COMMUNITY_SPACE_CONTRACTS: NewCommunitySpaceContract[] = [
   { id: 'cs-playground', name: 'Playground', cost: 300, baseIncome: 0, ongoingCost: 20, synergyTypes: ['Entertainment'], tier: '3', reputationPerTurn: 20 },
   { id: 'cs-community-garden', name: 'Community Garden', cost: 350, baseIncome: 0, ongoingCost: 10, synergyTypes: ['Entertainment'], tier: '4', reputationPerTurn: 40 },

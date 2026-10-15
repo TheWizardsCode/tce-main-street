@@ -6,14 +6,14 @@
  * the Community Favour `rep→coins` exchange (CG-0MSTOATDQ005XDET) and whether
  * the exchange enables profitable placements. Run on the baseline (before a
  * heuristic change) and again afterwards; the two JSON artefacts are recorded
- * in the work item and a `docs/main-street/` comparison file (AC1/AC5).
+ * in the work item and a `docs/dev/` comparison file (AC1/AC5).
  *
- * Canonical profile (matches `docs/main-street/monte-carlo-baseline.json`):
+ * Canonical profile (matches `docs/dev/assets/monte-carlo-baseline.json`):
  *   200 seeds, prefix `mc-balance`, 60 max turns, greedy, Easy/Medium/Hard.
  *
  * Usage:
  *   npx vite-node src/scripts/balance/favour-usage-report.ts \
- *     --label baseline --out docs/main-street/favour-ai-baseline.json
+ *     --label baseline --out docs/dev/assets/favour-ai-baseline.json
  *   npx vite-node src/scripts/balance/favour-usage-report.ts --json
  *
  * Outputs:

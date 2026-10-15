@@ -206,7 +206,7 @@ export interface GameConfig extends DifficultyConfig {
  *
  * Community-space / event / upgrade pricing was reviewed and any relative
  * re-valuation is tracked as follow-up work rather than changed here. See
- * docs/main-street/payback-rebalance-evidence.md.
+ * docs/dev/payback-rebalance-evidence.md.
  *
  * Difficulty-lever confirmation (MS-0MUR9IMXE0090WIV, producer decision A,
  * 2026-10-09). With liquidity slack and runs ~10–12 turns after the

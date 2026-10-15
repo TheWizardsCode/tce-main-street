@@ -19,13 +19,13 @@
  * Usage (after — from a checkout with the piggyback changes):
  *   npx vite-node src/scripts/balance/piggyback-balance-report.ts \
  *     --label after \
- *     --out docs/main-street/monte-carlo-piggyback-after.json \
- *     --md-out docs/main-street/monte-carlo-piggyback-after.md
+ *     --out docs/dev/assets/monte-carlo-piggyback-after.json \
+ *     --md-out docs/dev/assets/monte-carlo-piggyback-after.md
  *
  * Usage (baseline — from a pre-piggyback checkout, copy this script in):
  *   npx vite-node src/scripts/balance/piggyback-balance-report.ts \
  *     --label baseline \
- *     --out docs/main-street/monte-carlo-piggyback-baseline.json
+ *     --out docs/dev/assets/monte-carlo-piggyback-baseline.json
  *
  * Outputs:
  *   - JSON metrics artefact (`--out`; stdout when `--json`).
