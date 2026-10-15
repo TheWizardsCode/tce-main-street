@@ -9,9 +9,10 @@
  * see TutorialFlow.ts for the authoritative mapping): T1 centerModal, T2
  * developmentRow, T3 laundromatCard, T4 hand, T5 incidentQueue, T6
  * endTurnButton, T7 streetGrid, T8 endTurnButton, T9 investmentsRow, T10
- * festivalCard, T11 endTurnButton, T12 developmentRow, T13 developmentRow,
- * T14 endTurnButton, T15 actionButtons, T16 streetGrid, T17 endTurnButton,
- * T18 developmentRow, T19 endTurnButton, T20 streetGrid, T21 endTurnButton,
+ * festivalCard, T11 endTurnButton, T12 developmentRow, T14 endTurnButton, T15
+ * actionButtons, T16 streetGrid, T17 endTurnButton, T13 developmentRow (Costs
+ * and Reputation, immediately before T18 — MS-0MV0M9Y0W001ZMX6), T18
+ * developmentRow, T19 endTurnButton, T20 streetGrid, T21 endTurnButton,
  * T23 hand, T24 hud, T25 challengePanel, T26 completionModal).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

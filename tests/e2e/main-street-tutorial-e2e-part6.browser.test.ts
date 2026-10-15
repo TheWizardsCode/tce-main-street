@@ -68,9 +68,7 @@ async function walkToT23(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);              // T11 end -> T12
   await waitForOverlayVisible(10_000);
-  await clickRequiredBusinessCard(scene); // T12 move Bookshop -> T13
-  await waitForOverlayVisible(5_000);
-  await clickOverlayButtonByText('Next >'); // T13 Costs -> T14
+  await clickRequiredBusinessCard(scene); // T12 move Bookshop -> T14
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);              // T14 (inserted end-turn) -> T15
   await waitForOverlayVisible(10_000);
@@ -78,8 +76,10 @@ async function walkToT23(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(5_000);
   await clickStreetSlot(scene, 1);         // T16 place Bookshop -> T17
   await waitForOverlayVisible(5_000);
-  await clickEndTurn(scene);               // T17 -> T18
+  await clickEndTurn(scene);               // T17 -> T13 (Costs and Reputation)
   await waitForOverlayVisible(10_000);
+  await clickOverlayButtonByText('Next >'); // T13 Costs -> T18 (MS-0MV0M9Y0W001ZMX6)
+  await waitForOverlayVisible(5_000);
   await clickRequiredBusinessCard(scene);  // T18 move Library -> T19
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);               // T19 -> T20

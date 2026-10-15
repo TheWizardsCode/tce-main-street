@@ -66,9 +66,7 @@ async function walkToT15(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);              // T11 end -> T12
   await waitForOverlayVisible(10_000);
-  await clickRequiredBusinessCard(scene); // T12 move Bookshop -> T13
-  await waitForOverlayVisible(5_000);
-  await clickOverlayButtonByText('Next >'); // T13 Costs -> T14
+  await clickRequiredBusinessCard(scene); // T12 move Bookshop -> T14
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);              // T14 (inserted end-turn) -> T15
   await waitForOverlayVisible(10_000);
@@ -84,8 +82,10 @@ async function walkToT20(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(5_000);
   await clickStreetSlot(scene, 1);         // T16 place Bookshop -> T17
   await waitForOverlayVisible(5_000);
-  await clickEndTurn(scene);               // T17 -> T18
+  await clickEndTurn(scene);               // T17 -> T13 (Costs and Reputation, confirm)
   await waitForOverlayVisible(10_000);
+  await clickOverlayButtonByText('Next >'); // T13 Costs -> T18 (MS-0MV0M9Y0W001ZMX6)
+  await waitForOverlayVisible(5_000);
   await clickRequiredBusinessCard(scene);  // T18 move Library -> T19
   await waitForOverlayVisible(5_000);
   await clickEndTurn(scene);               // T19 -> T20
@@ -113,7 +113,7 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
     const s = scene as any;
     await walkToT15(scene);
-    expect(getStepIndex(scene)).toBe(14); // T15 Community Favour
+    expect(getStepIndex(scene)).toBe(13); // T15 Community Favour
 
     const coinsBefore = s.state.resourceBank.coins;
     const repBefore = s.state.resourceBank.reputation;
@@ -124,7 +124,7 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     expect(s.state.favourUsedThisTurn).toBe(true);
     expect(s.state.resourceBank.coins).toBe(coinsBefore + 300);
     expect(s.state.resourceBank.reputation).toBe(repBefore - 200);
-    expect(getStepIndex(scene)).toBe(15); // T16 Place the Bookshop
+    expect(getStepIndex(scene)).toBe(14); // T16 Place the Bookshop
     await saveScreenshot('t15-favour-t16');
   }, 30_000);
 
@@ -132,17 +132,17 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
     const s = scene as any;
     await walkToT15(scene);
-    expect(getStepIndex(scene)).toBe(14);
+    expect(getStepIndex(scene)).toBe(13);
     await clickCommunityFavour(scene); // T15 -> T16
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(15); // T16 Place the Bookshop
+    expect(getStepIndex(scene)).toBe(14); // T16 Place the Bookshop
 
     // T16: place the held Bookshop at LISTED 300 (×100, plan-ahead, not premium),
     // using the day's action the free favour left available.
     const coinsBeforeB = s.state.resourceBank.coins;
     await clickStreetSlot(scene, 1);
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(16); // T17 End this turn
+    expect(getStepIndex(scene)).toBe(15); // T17 End this turn
     expect(s.state.streetGrid[1]?.id.startsWith('biz-bookshop')).toBe(true);
     expect(s.state.resourceBank.coins).toBe(coinsBeforeB - 300);
     await saveScreenshot('t16-place-bookshop');
@@ -150,6 +150,9 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     // T17 closes the day now that its action has been spent.
     await clickEndTurn(scene);
     await waitForOverlayVisible(10_000);
+    expect(getStepIndex(scene)).toBe(16); // T13 Costs and Reputation (immediately before T18)
+    await clickOverlayButtonByText('Next >'); // T13 -> T18
+    await waitForOverlayVisible(5_000);
     expect(getStepIndex(scene)).toBe(17); // T18 Move the Library to hand
   }, 30_000);
 

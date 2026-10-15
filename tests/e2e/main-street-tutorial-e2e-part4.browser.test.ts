@@ -1,6 +1,7 @@
 /**
  * Main Street Tutorial E2E test — T11: End this turn (day 2→3) → T12: Move
- * the Bookshop to hand → T13: Costs and Reputation.
+ * the Bookshop to hand → T14: End this turn (T13 Costs and Reputation now
+ * sits immediately before T18, MS-0MV0M9Y0W001ZMX6).
  *
  * The two-turn plan-ahead flow (CG-0MT53NXGZ004H5AE): the Bookshop is moved
  * to hand on day 3 (split 1), and will be placed at LISTED cost on day 4
@@ -61,7 +62,7 @@ async function walkToT11(scene: Phaser.Scene): Promise<void> {
   await waitForOverlayVisible(5_000);
 }
 
-describe('Main Street Tutorial E2E — T11-T13', () => {
+describe('Main Street Tutorial E2E — T11-T14', () => {
   beforeEach(async () => {
     game = await bootGameWithTutorial();
     const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
@@ -104,9 +105,9 @@ describe('Main Street Tutorial E2E — T11-T13', () => {
     // no composite drop. The Bookshop is now in hand, awaiting day 4.
     await clickRequiredBusinessCard(scene);
     await waitForOverlayVisible(5_000);
-    expect(getStepIndex(scene)).toBe(12); // T13 Costs and Reputation
+    expect(getStepIndex(scene)).toBe(12); // T14 End this turn (T13 moved to T18's predecessor)
     const s = scene as any;
     expect(s.state.hand.some((c: any) => c.id.startsWith('biz-bookshop'))).toBe(true);
-    await saveScreenshot('t12-t13');
+    await saveScreenshot('t12-t14');
   }, 30_000);
 });

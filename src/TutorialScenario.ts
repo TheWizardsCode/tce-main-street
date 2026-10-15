@@ -29,6 +29,9 @@
  *   each day start the turn controller calls this hook, which forces the
  *   upcoming action steps' required cards into the visible line (from
  *   decks/discards), mirroring the legacy two-row scenario-placing behaviour.
+ *   MS-0MV0M9Y0W001ZMX6: the "Costs and Reputation" step T13 sits immediately
+ *   before T18, so the hook also guarantees the Library in the visible row
+ *   while T13 itself is the active step.
  *
  * ## Coin Budget (Easy / 1200 coins) — cost-at-play, two-turn plan-ahead (CG-0MT53NXGZ004H5AE)
  *
@@ -63,6 +66,11 @@
  * straight to T23, so every day spends its action and the contextual banking
  * hint is retained but not expected to fire. The income figures are approximate
  * and validated by the tutorial e2e/budget tests.
+ *
+ * MS-0MV0M9Y0W001ZMX6 moved T13 (Costs and Reputation) to sit immediately
+ * before T18 (day 6): as a confirm step it moves no coins, so this table is
+ * unchanged — the row that previously read "T12 … T14 (day 4)" now reads
+ * "T12 → T14 (day 4); T13 confirms (no coins) between T17 and T18 on day 6".
  *
  * All placements are at listed cost because each follows an End Turn
  * (plan-ahead). The rep→coins Community Favour exchange teaches the
@@ -150,7 +158,8 @@ export interface TutorialScenario {
  *   - `evt-festival` (Local Festival, $300) — T10 purchase target
  *
  * Later tutorial days force the remaining targets (Bookshop for T12,
- * Library for T18) into the line via `ensureTutorialMarketForUpcomingSteps`
+ * Library for T13/T18 — T13 explains the Library right before T18 moves it to
+ * hand) into the line via `ensureTutorialMarketForUpcomingSteps`
  * (called by the turn controller at day start).
  *
  * **Investments row is gone:** the two upgrade cards (upg-patisserie,

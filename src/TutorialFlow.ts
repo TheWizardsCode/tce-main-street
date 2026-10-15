@@ -24,10 +24,14 @@
  *
  * Day map: T1-T6 (day 1: move Laundromat), T7 (day 2: place Laundromat),
  * T8 (day 2 end), T9-T10 (day 3: More than Businesses, buy Local Festival),
- * T11 (day 3 end), T12-T14 (day 4: move Bookshop, Costs, end),
+ * T11 (day 3 end), T12-T14 (day 4: move Bookshop, end),
  * T15-T17 (day 5: Community Favour, place Bookshop, end),
- * T18-T19 (day 6: move Library, end), T20-T21 (day 7: place Library, end),
- * T23 (day 8: play Local Festival), T24-T26 (day 8: confirmations).
+ * T13, T18-T19 (day 6: Costs and Reputation, move Library, end),
+ * T20-T21 (day 7: place Library, end), T23 (day 8: play Local Festival),
+ * T24-T26 (day 8: confirmations).
+ * MS-0MV0M9Y0W001ZMX6 moved T13 (Costs and Reputation) from day 4 to sit
+ * immediately before T18, so the explanation step sees the Library it
+ * references on the market row.
  *
  * CG-0MTNMBX5Z002U0MH: inserted T8 (end-turn) before More than Businesses so
  * T7 place-business and T10 buy-event no longer share a single daily action
@@ -193,7 +197,8 @@ export interface UnifiedTutorialStepDef {
    *
    * Used for steps whose body references a card purchased earlier or guaranteed
    * by the tutorial scenario without requiring that purchase here (e.g. T7
-   * references the Laundromat; T13 references the Library).
+   * references the Laundromat; T13 references the Library — positioned right
+   * before T18 so the referenced Library is visible in the market row).
    */
   referencedCardId?: string;
   /**
@@ -359,18 +364,6 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     requiredCardId: 'biz-bookshop-0',
   },
   {
-    id: 'T13',
-    titleKey: tutorialKey('T13', 'title'),
-    bodyKey: tutorialKey('T13', 'body'),
-    // Informative cost-vs-reputation step: highlights the market row (like T2)
-    // and references cs-library so {cardName}/{cost} resolve from live card
-    // data. No action required and NO synergy mention — the placement
-    // action and the synergy rule live on T20.
-    highlightZone: 'developmentRow',
-    gate: 'confirm',
-    referencedCardId: 'cs-library',
-  },
-  {
     id: 'T14',
     // CG-0MTNMBX5Z002U0MH: end-turn inserted to split Day 4 (T12 select-business)
     // from Day 5 (T15 Community Favour). Community Favour is free
@@ -422,10 +415,29 @@ export const UNIFIED_TUTORIAL_STEPS: readonly UnifiedTutorialStepDef[] = [
     requiredAction: 'end-turn',
   },
   {
+    id: 'T13',
+    titleKey: tutorialKey('T13', 'title'),
+    bodyKey: tutorialKey('T13', 'body'),
+    // MS-0MV0M9Y0W001ZMX6: repositioned to sit IMMEDIATELY before T18 (no
+    // end-turn between), so ensureTutorialMarketForUpcomingSteps forces
+    // cs-library into the visible row while this step is active — the
+    // "builds reputation" text points at the Library the player can see
+    // (previously it sat on day 4, several steps before the Library appeared).
+    // Informative cost-vs-reputation step: highlights the market row (like
+    // T2) and references cs-library so {cardName} resolves from live card
+    // data. No action required and NO synergy mention — the placement
+    // action and the synergy rule live on T20.
+    highlightZone: 'developmentRow',
+    gate: 'confirm',
+    referencedCardId: 'cs-library',
+  },
+  {
     id: 'T18',
     titleKey: tutorialKey('T18', 'title'),
     bodyKey: tutorialKey('T18', 'body'),
-    // Day 6, split 1 of the Library purchase: move cs-library to hand.
+    // Day 6, split 1 of the Library purchase: move cs-library to hand. T13
+    // (Costs and Reputation) is the immediate predecessor, so the market row
+    // the player just saw already shows the Library.
     highlightZone: 'developmentRow',
     gate: 'action',
     requiredAction: 'select-business',

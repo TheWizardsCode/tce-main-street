@@ -23,7 +23,7 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
   it('defines exactly 25 steps', () => { expect(UNIFIED_TUTORIAL_STEPS.length).toBe(25); expect(UNIFIED_TUTORIAL_STEP_COUNT).toBe(25); });
   // MS-0MV4F04NN007H3DB removed the T22 banking day, so the IDs are contiguous
   // for T1-T21 and then continue at T23 (a stable-ID gap, not a renumber).
-  it('steps have the expected IDs T1-T21, T23-T26', () => { expect(UNIFIED_TUTORIAL_STEPS.map(s => s.id)).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13','T14','T15','T16','T17','T18','T19','T20','T21','T23','T24','T25','T26']); });
+  it('steps have the expected IDs T1-T21, T23-T26 (T13 immediately before T18)', () => { expect(UNIFIED_TUTORIAL_STEPS.map(s => s.id)).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T14','T15','T16','T17','T13','T18','T19','T20','T21','T23','T24','T25','T26']); });
   it('each step has non-empty titleKey and bodyKey', () => { for(const step of UNIFIED_TUTORIAL_STEPS){ expect(step.titleKey.length).toBeGreaterThan(0); expect(step.bodyKey.length).toBeGreaterThan(0); } });
   it('each step resolves to non-empty text via i18n', () => {
     for(const step of UNIFIED_TUTORIAL_STEPS){
@@ -143,7 +143,7 @@ describe('completeCurrentStep', () => {
   it('completes T1 and advances to step 1', () => { const s=startTutorial(createTutorialControllerState()); const {newState,completedStepId}=completeCurrentStep(s); expect(completedStepId).toBe('T1'); expect(newState.currentStepIndex).toBe(1); expect(newState.lastCompletedStepId).toBe('T1'); });
   it('returns null completedStepId when not active', () => { const {completedStepId}=completeCurrentStep(createTutorialControllerState()); expect(completedStepId).toBeNull(); });
   it('returns null completedStepId when past end (index 25)', () => { let s=startTutorial(createTutorialControllerState()); for(let i=0;i<25;i++) s=advanceTutorialStep(s); const {completedStepId}=completeCurrentStep(s); expect(completedStepId).toBeNull(); });
-  it('completes all 25 steps sequentially', () => { let s=startTutorial(createTutorialControllerState()); const ids=[]; for(let i=0;i<25;i++){ const r=completeCurrentStep(s); ids.push(r.completedStepId); s=r.newState; }; expect(ids).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13','T14','T15','T16','T17','T18','T19','T20','T21','T23','T24','T25','T26']); expect(s.currentStepIndex).toBe(25); expect(s.lastCompletedStepId).toBe('T26'); });
+  it('completes all 25 steps sequentially', () => { let s=startTutorial(createTutorialControllerState()); const ids=[]; for(let i=0;i<25;i++){ const r=completeCurrentStep(s); ids.push(r.completedStepId); s=r.newState; }; expect(ids).toEqual(['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T14','T15','T16','T17','T13','T18','T19','T20','T21','T23','T24','T25','T26']); expect(s.currentStepIndex).toBe(25); expect(s.lastCompletedStepId).toBe('T26'); });
   it('returns a new state (does not mutate)', () => { const s=startTutorial(createTutorialControllerState()); const r=completeCurrentStep(s); expect(r.newState).not.toBe(s); });
 });
 
@@ -173,27 +173,27 @@ describe('isRequiredAction', () => {
   });
   it('returns true for community-favour on T15', () => {
     let s=startTutorial(createTutorialControllerState());
-    for(let i=0;i<14;i++) s=advanceTutorialStep(s); // now on T15 (CG-0MTNMBX5Z002U0MH)
+    for(let i=0;i<13;i++) s=advanceTutorialStep(s); // now on T15 (MS-0MV0M9Y0W001ZMX6 moved T13 after T17)
     expect(getCurrentStep(s)!.id).toBe('T15');
     expect(isRequiredAction(s,'community-favour')).toBe(true);
     expect(isRequiredAction(s,'end-turn')).toBe(false);
   });
   it('returns true for place-business on T16 (Bookshop split 2/2, before the day ends)', () => {
     let s=startTutorial(createTutorialControllerState());
-    for(let i=0;i<15;i++) s=advanceTutorialStep(s);
+    for(let i=0;i<14;i++) s=advanceTutorialStep(s);
     expect(getCurrentStep(s)!.id).toBe('T16');
     expect(isRequiredAction(s,'place-business')).toBe(true);
     expect(isRequiredAction(s,'select-hand-card')).toBe(true);
   });
   it('returns true for end-turn on T17 (the day the Bookshop is placed)', () => {
     let s=startTutorial(createTutorialControllerState());
-    for(let i=0;i<16;i++) s=advanceTutorialStep(s);
+    for(let i=0;i<15;i++) s=advanceTutorialStep(s);
     expect(getCurrentStep(s)!.id).toBe('T17');
     expect(isRequiredAction(s,'end-turn')).toBe(true);
   });
-  it('returns false for actions on the informative T13 confirm step', () => {
+  it('returns false for actions on the informative T13 confirm step (immediately before T18)', () => {
     let s=startTutorial(createTutorialControllerState());
-    for(let i=0;i<12;i++) s=advanceTutorialStep(s); // now on T13 (CG-0MTNMBX5Z002U0MH)
+    for(let i=0;i<16;i++) s=advanceTutorialStep(s); // now on T13 (MS-0MV0M9Y0W001ZMX6)
     expect(getCurrentStep(s)!.id).toBe('T13');
     expect(isRequiredAction(s,'select-business')).toBe(false);
     expect(isRequiredAction(s,'place-business')).toBe(false);

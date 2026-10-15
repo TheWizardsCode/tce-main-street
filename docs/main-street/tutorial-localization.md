@@ -160,11 +160,11 @@ Tutorial text follows these editorial principles:
 | 10 | T10 | Buy the Local Festival | action (buy-event) | festivalCard (card-level) |
 | 11 | T11 | End this turn | action (end-turn) | endTurnButton |
 | 12 | T12 | Move the Bookshop to hand | action (select-business) | developmentRow |
-| 13 | T13 | Costs and Reputation | confirm | developmentRow |
-| 14 | T14 | End this turn | action (end-turn) | endTurnButton |
-| 15 | T15 | Community Favour | action (community-favour, rep→coins) | actionButtons |
-| 16 | T16 | Place the Bookshop | action (place-business) | streetGrid |
-| 17 | T17 | End this turn | action (end-turn) | endTurnButton |
+| 13 | T14 | End this turn | action (end-turn) | endTurnButton |
+| 14 | T15 | Community Favour | action (community-favour, rep→coins) | actionButtons |
+| 15 | T16 | Place the Bookshop | action (place-business) | streetGrid |
+| 16 | T17 | End this turn | action (end-turn) | endTurnButton |
+| 17 | T13 | Costs and Reputation | confirm | developmentRow |
 | 18 | T18 | Move the Library to hand | action (select-business) | developmentRow |
 | 19 | T19 | End this turn | action (end-turn) | endTurnButton |
 | 20 | T20 | Build a Library | action (place-business + synergy) | streetGrid |
@@ -178,9 +178,12 @@ Every purchase is a **two-turn plan-ahead flow** (CG-0MT53NXGZ004H5AE): move a
 card to hand in week N (its one action), End Turn, then place it from hand in week
 N+1 at its **listed cost** (another action). No same-week composite step exists,
 so no +50% premium is ever scripted. T13 (Costs and Reputation) is an
-informative step that introduces the Library's running cost vs reputation
-trade-off; the Culture synergy rule (place the Library next to the Bookshop) is
-taught by T20. T15 teaches the Community Favour rep→coins exchange
+informative step that sits **immediately before T18** (move the Library to hand,
+no end-turn between them) so the market row shows the Library while the text
+explains that it builds reputation rather than earning coins, and that a higher
+reputation brings more customers and grows income (MS-0MV0M9Y0W001ZMX6). The
+Culture synergy rule (place the Library next to the Bookshop) is taught by T20.
+T15 teaches the Community Favour rep→coins exchange
 (CG-0MSTOATDQ005XDET) — useful but not strictly required in the two-turn budget.
 The former T22 banking day was removed (MS-0MV4F04NN007H3DB), so T21 (week 7
 end) advances straight to T23 (play the held Local Festival in week 8). Every
@@ -217,6 +220,7 @@ same-week premium), so every balance stays positive (CG-0MT53NXGZ004H5AE):
 | T15 | Community Favour (200 rep → 300c) | 300 | 0 | 1335 |
 | T16 | Place Bookshop (listed $300) | 0 | 300 | 1035 |
 | T17 | End Turn + income (~391) | 391 | 0 | 1426 |
+| T13 | Costs and Reputation (confirm — no coins) | 0 | 0 | 1426 |
 | T18 | Move Library to hand | 0 | 0 | 1426 |
 | T19 | End Turn + income (~392) | 392 | 0 | 1818 |
 | T20 | Place Library (listed $700) | 0 | 700 | 1118 |
