@@ -231,7 +231,9 @@ describe('AC6 — AI choices are recorded identically to player choices', () => 
     if (!choice || choice.type !== 'event-choice') return;
     expect(choice.eventId).toContain('evt-cur');
     expect(choice.cardName).toBe('Current Event');
-    expect(['accept', 'reject']).toContain(choice.option);
+    // F3 AC3: the transcript token is the option label, not a legacy
+    // lowercase 'accept'/'reject' value.
+    expect(['Accept', 'Reject']).toContain(choice.option);
     expect(choice.acceptNextCardId).toBeNull();
     expect(choice.rejectNextCardId).toBe('evt-esc-mid');
   });

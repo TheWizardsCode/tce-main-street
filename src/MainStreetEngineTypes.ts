@@ -267,9 +267,9 @@ export interface EventChoiceResolution {
   /** The event the decision was made about. */
   event: EventCard;
   /**
-   * Which option the player chose. Legacy accept/reject resolutions use the
-   * lowercase `'accept'`/`'reject'` tokens; generalised storylines store the
-   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   * The chosen option's label token (F3 AC3): the label IS the token — e.g.
+   * 'Accept', 'Reject', or a generalised label such as 'Investigate the
+   * ledger'. The legacy lowercase 'accept'/'reject' tokens were removed.
    */
   option: string;
   /** Net coin delta applied by the chosen path (0 for reject / durations). */

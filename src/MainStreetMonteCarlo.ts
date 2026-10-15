@@ -30,7 +30,7 @@ export interface StorylineEventRecord {
   baseEventId: string;
   /** Storyline grouping key (e.g. `'storyline-tax'`), or null when ungrouped. */
   storylineId: string | null;
-  /** Choice made — legacy `'accept'`/`'reject'` tokens for two-option cards. */
+  /** Choice made — the chosen option's label token (e.g. 'Accept', 'Reject', 'Grind through'). */
   choice: string;
   /** 1-based depth of this event within its successor chain (root = 1). */
   chainDepth: number;
@@ -333,6 +333,11 @@ function deriveStorylineEvents(
     const chainDepth = pending && pending.baseId === baseEventId ? pending.depth : 1;
 
     const optionLower = event.option.toLowerCase();
+    // F3 (MS-0MV8KQL820077BOS): transcript option is the label token; the
+    // legacy 'accept'/'reject' values survive as lower-cased labels
+    // ('Accept' → 'accept'), so the accept/reject successor derivation is
+    // unchanged. Generalised labels yield no next-card id (the drawn
+    // candidate is not reconstructible from the label alone).
     const successorRaw =
       optionLower === 'accept'
         ? event.acceptNextCardId

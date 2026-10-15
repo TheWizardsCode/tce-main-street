@@ -155,8 +155,8 @@ describe('AC1 — Accept path: apply effect + push acceptNextCardId', () => {
         const expectedRepSign = template.reputationDelta >= 0 ? 1 : -1;
         expect(actualRepChange * expectedRepSign).toBeGreaterThanOrEqual(0);
       }
-      // The pending choice is resolved.
-      expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+      // The pending choice is resolved — the token is the option label (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
       expect(state.pendingEventChoice!.resolved).toBe(true);
       // Pushed card: acceptNextCardId if present, otherwise null.
       const acceptNext = template.acceptNextCardId ?? null;
@@ -199,7 +199,8 @@ describe('AC1 — Reject path: skip effect + push rejectNextCardId', () => {
         expect(res.pushedCard).toBeNull();
         expect(state.incidentDeck.length).toBe(deckLenAfterDraw);
       }
-      expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+      // The chosen token is the option label (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
       expect(state.pendingEventChoice!.resolved).toBe(true);
     });
   }
@@ -244,7 +245,8 @@ describe('AC3a — undo/redo of a resolved shipped choice', () => {
 
       // Execute: effect applied, escalation pushed if present.
       expect(state.pendingEventChoice!.resolved).toBe(true);
-      expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+      // Label token (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
       // Deck grows by one if acceptNextCardId is set, stays same otherwise.
       expect(state.incidentDeck.length).toBeGreaterThanOrEqual(deckLenAfterDraw);
 
@@ -319,7 +321,8 @@ describe('AC3c — transcript event-choice shape for shipped cards', () => {
     expect(typeof choiceEvent.turn).toBe('number');
     expect(typeof choiceEvent.eventId).toBe('string');
     expect(typeof choiceEvent.cardName).toBe('string');
-    expect(choiceEvent.option).toBe('accept');
+    // F3 AC3: the transcript token is the option label.
+    expect(choiceEvent.option).toBe('Accept');
     // Both next-card IDs present (even if undefined, the shape includes them).
     expect('acceptNextCardId' in choiceEvent).toBe(true);
     expect('rejectNextCardId' in choiceEvent).toBe(true);
@@ -407,8 +410,9 @@ describe('AC5 — regression harness smoke', () => {
 // Extends the shipped-choice harness with the arbitrary-outcome model: a
 // registered multi-candidate option must resolve to the same successor across
 // same-seed replays and consume exactly one seeded draw. The five shipped
-// storylines are migrated in F6 and F9 owns the full green gate, so these
-// tracer-bullet cases are `it.fails` until the random draw lands in F3.
+// storylines are migrated in F6 and F9 owns the full green gate; these
+// tracer-bullet cases were RED (`it.fails`) until the random draw landed in
+// F3, which flipped them to passing `it`s.
 
 const MO_HARNESS_CSV = [
   'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,hasChoices',
@@ -437,7 +441,7 @@ function multiOutcomeState(seed: string): MainStreetState {
 }
 
 describe('F1 — seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6)', () => {
-  it.fails('AC2 — same seed resolves a candidate-set option to the same successor', () => {
+  it('AC2 — same seed resolves a candidate-set option to the same successor', () => {
     registerStorylineOptions('evt-mo-h', [
       { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
     ] as unknown as StorylineOption[]);
@@ -454,7 +458,7 @@ describe('F1 — seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6)', ()
     expect(ra.pushedCard!.id).toBe(rb.pushedCard!.id);
   });
 
-  it.fails('AC2 — resolving a candidate-set option consumes exactly one seeded draw', () => {
+  it('AC2 — resolving a candidate-set option consumes exactly one seeded draw', () => {
     registerStorylineOptions('evt-mo-h', [
       { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
     ] as unknown as StorylineOption[]);

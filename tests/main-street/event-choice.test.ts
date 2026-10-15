@@ -108,8 +108,8 @@ describe('AC1 — Accept path applies the effect and pushes acceptNextCardId', (
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-chain-b');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-chain-b');
-    // State recorded the decision.
-    expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+    // State recorded the decision (label token, F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -154,7 +154,8 @@ describe('AC2 — Reject path skips the effect and pushes rejectNextCardId', () 
     // rejectNextCardId pushed instead.
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-chain-worse');
-    expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+    // Label token stored on the pending state (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -344,7 +345,8 @@ describe('AC7 — pendingEventChoice state tracks event/option/resolved', () => 
     expect(pending.resolved).toBe(false);
 
     resolveEventChoice(state, 'reject');
-    expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+    // Label token stored on the pending state (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
     expect(state.pendingEventChoice!.resolved).toBe(true);
 
     finishDeferredEndOfTurn(state);

@@ -296,10 +296,20 @@ export interface StorylineResolution {
  * Resolves a storyline option by applying its effect policy and pushing the
  * successor card.
  *
- * If the option has a `successorResolver` callback, it is invoked at
- * resolution time to determine the pushed successor (replacing
- * `option.successorId`).  A `null` / `undefined` return value ends the
- * chain.
+ * Successor precedence at resolution time (F3, AC2):
+ *
+ * 1. `successorResolver` callback (when present) — invoked for the successor
+ *    id; a `null` / `undefined` return ends the chain. Consumes no RNG.
+ * 2. Candidate set (`successorIds`) — exactly **one** seeded `state.rng()`
+ *    draw selects the successor uniformly at random (one draw per selection,
+ *    at resolution time; replay with the same seed yields the same
+ *    successor). An **empty** candidate list is a terminal option — the
+ *    chain ends without consuming a draw.
+ * 3. Legacy single `successorId` (registry/transitional seam) — pushed
+ *    directly, no draw.
+ *
+ * The `effectPolicy` is honoured regardless of how the successor is
+ * resolved: `'apply'` runs the event's effect, `'skip'` ignores it.
  *
  * @param state  Current game state (mutated by effect application).
  * @param event  The storyline event card.
@@ -322,11 +332,19 @@ export function resolveStorylineOption(
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
 
-  // Determine the successor ID: callback resolver takes priority.
-  const resolvedSuccessor =
-    option.successorResolver != null
-      ? option.successorResolver(state)
-      : option.successorId;
+  // Determine the successor ID (precedence per the doc comment above): the
+  // uniform draw consumes exactly one state.rng() call per selection.
+  let resolvedSuccessor: string | null | undefined;
+  if (option.successorResolver != null) {
+    resolvedSuccessor = option.successorResolver(state);
+  } else if (option.successorIds != null) {
+    resolvedSuccessor =
+      option.successorIds.length > 0
+        ? option.successorIds[Math.floor(state.rng() * option.successorIds.length)]
+        : null; // terminal option — the chain ends, no draw
+  } else {
+    resolvedSuccessor = option.successorId;
+  }
 
   // Push successor card if one exists.
   const pushedCard = pushChainCard(state, resolvedSuccessor);
@@ -412,7 +430,10 @@ export function recordStorylineResolution(
     turn: state.turn,
     eventId: event.id,
     cardName: event.name,
-    option: option as 'accept' | 'reject',
+    // The chosen option's label, recorded as a stable token. F3 removed the
+    // legacy lowercase 'accept'/'reject' tokens — the label IS the token
+    // (e.g. 'Accept', 'Reject', 'Grind through').
+    option,
     acceptNextCardId: acceptNext,
     rejectNextCardId: rejectNext,
   });

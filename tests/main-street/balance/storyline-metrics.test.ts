@@ -351,7 +351,10 @@ describe('Monte Carlo storyline capture', () => {
     for (const record of captured) {
       expect(record.chainDepth).toBeGreaterThanOrEqual(1);
       expect(record.turn).toBeGreaterThanOrEqual(0);
-      expect(['accept', 'reject']).toContain(record.choice);
+      // F3 (MS-0MV8KQL820077BOS AC3): the transcript/choice token is the
+      // chosen option's label ('Accept'/'Reject') — the legacy lowercase
+      // 'accept'/'reject' tokens were removed. Match case-insensitively.
+      expect(['accept', 'reject']).toContain(record.choice.toLowerCase());
       expect(record.storylineId).not.toBeNull();
       expect(record.baseEventId).not.toMatch(/-\d+$/);
     }

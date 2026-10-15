@@ -40,6 +40,7 @@ import type {
   PlayerRecord,
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
+import type { StorylineOption } from './MainStreetCardsTypes';
 import { ALLOWED_START_WEEKS, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
@@ -113,6 +114,20 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           event: structuredClone(state.pendingEventChoice.event),
           chosenOption: state.pendingEventChoice.chosenOption,
           resolved: state.pendingEventChoice.resolved,
+          // Data-only projection of the frozen option list (F3 AC4): labels,
+          // candidate sets and effect policies round-trip verbatim so a
+          // loaded save presents the exact list the player saw. Runtime
+          // callbacks (condition / successorResolver) are not serialisable
+          // and are dropped — resolution falls back to the data or to a
+          // registry/CSV recompile for callback semantics.
+          options: state.pendingEventChoice.options
+            ? state.pendingEventChoice.options.map((o) => ({
+                label: o.label,
+                successorId: o.successorId ?? null,
+                successorIds: o.successorIds ? [...o.successorIds] : undefined,
+                effectPolicy: o.effectPolicy,
+              }))
+            : undefined,
         }
       : null,
     pendingPiggyback: state.pendingPiggyback
@@ -731,6 +746,18 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           event: structuredClone((saved as unknown as { pendingEventChoice: { event: EventCard; chosenOption: string | null; resolved: boolean } }).pendingEventChoice!.event),
           chosenOption: (saved as unknown as { pendingEventChoice: { chosenOption: string | null } }).pendingEventChoice!.chosenOption,
           resolved: (saved as unknown as { pendingEventChoice: { resolved: boolean } }).pendingEventChoice!.resolved,
+          // Restore the data-only option snapshot serialised by F3 AC4 (absent
+          // on pre-F3 / legacy saves — resolution then recompiles from the
+          // event's CSV options or the runtime registry).
+          options: ((
+            saved as unknown as {
+              pendingEventChoice?: { options?: Array<{ label: string; successorId?: string | null; successorIds?: string[]; effectPolicy: 'apply' | 'skip' }> | null };
+            }
+          ).pendingEventChoice?.options ?? null)
+            ? ((saved as unknown as {
+                pendingEventChoice: { options: Array<{ label: string; successorId?: string | null; successorIds?: string[]; effectPolicy: 'apply' | 'skip' }> };
+              }).pendingEventChoice.options as unknown as StorylineOption[])
+            : undefined,
         }
       : null,
     pendingPiggyback: (saved as unknown as {

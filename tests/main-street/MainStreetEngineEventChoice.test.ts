@@ -218,8 +218,8 @@ describe('resolveEventChoice — Accept path', () => {
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-esc-audit');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-esc-audit');
-    // Pending choice resolved
-    expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+    // Pending choice resolved — the token is the option label (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -258,7 +258,8 @@ describe('resolveEventChoice — Reject path', () => {
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-esc-worse');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-esc-worse');
-    expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+    // The token is the option label (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -357,7 +358,7 @@ describe('finishDeferredEndOfTurn completes the paused turn', () => {
   });
 });
 
-// ── Multi-outcome draw contract (MS-0MV8KQHYJ003EJO6) ───────
+// ── Multi-outcome draw contract (MS-0MV8KQHYJ003EJO6 / F3) ──
 //
 // Pin the resolution half of the arbitrary-outcome contract: exactly one
 // seeded `state.rng()` draw per selection at resolution time, `pushChainCard`
@@ -367,10 +368,10 @@ describe('finishDeferredEndOfTurn completes the paused turn', () => {
 // `resolveStorylineOption`) must draw from the candidate set regardless of
 // how the option was authored.
 //
-// Each `it.fails` case is RED against the current two-way
+// These suites were RED against the two-way
 // `hasChoices`/`acceptNextCardId`/`rejectNextCardId` implementation (which
-// never draws — it resolves the single `successorId`); F3 flips them once the
-// draw lands. Guards that already hold today stay as normal `it`.
+// never drew — it resolved the single `successorId`); F3 landed the draw and
+// flipped them to passing `it`s. Guards that hold regardless stay plain `it`.
 
 /** Column header for the multi-outcome engine fixtures (all rows aligned). */
 const ENGINE_CSV_COLUMNS = [
@@ -459,7 +460,7 @@ function setupMultiOutcomeState(seed: string): MainStreetState {
 }
 
 describe('F1 — exactly one seeded rng draw per selection at resolution time', () => {
-  it.fails('AC2 — resolving a chosen option performs exactly one state.rng() draw', () => {
+  it('AC2 — resolving a chosen option performs exactly one state.rng() draw', () => {
     const state = setupMultiOutcomeState('mo-one-draw');
     processEndOfTurn(state); // draw -> pending choice
     const rngBefore = state.rngCalls;
@@ -469,7 +470,7 @@ describe('F1 — exactly one seeded rng draw per selection at resolution time', 
     expect(state.rngCalls).toBe(rngBefore + 1);
   });
 
-  it.fails('AC2 — a single-candidate set still consumes exactly one draw', () => {
+  it('AC2 — a single-candidate set still consumes exactly one draw', () => {
     const state = setupMainStreetGame({ seed: 'mo-single-draw', difficulty: 'Medium' });
     loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
     registerStorylineOptions('evt-mo-choice', [
@@ -512,7 +513,7 @@ describe('F1 — exactly one seeded rng draw per selection at resolution time', 
 });
 
 describe('F1 — seeded replay determinism for candidate-set options', () => {
-  it.fails('AC2 — same seed resolves every option to the same successor (replay pair)', () => {
+  it('AC2 — same seed resolves every option to the same successor (replay pair)', () => {
     for (const index of [0, 1]) {
       const seed = `mo-replay-${index}`;
       const a = setupMultiOutcomeState(seed);
@@ -583,7 +584,9 @@ describe('transcript recording for event choices', () => {
     if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
     expect(choiceEvent.eventId).toContain('evt-choice-test'); // instance id carries the base template id
     expect(choiceEvent.cardName).toBe('Test Choice Event');
-    expect(choiceEvent.option).toBe('reject');
+    // F3 AC3: the transcript token is the option label, not the legacy
+    // lowercase 'reject' value.
+    expect(choiceEvent.option).toBe('Reject');
     expect(choiceEvent.acceptNextCardId).toBe('evt-esc-audit');
     expect(choiceEvent.rejectNextCardId).toBe('evt-esc-worse');
   });
@@ -592,7 +595,7 @@ describe('transcript recording for event choices', () => {
 // ── F1: multi-outcome transcript label (MS-0MV8KQHYJ003EJO6) ─
 
 describe('F1 — transcript records the chosen option label for a multi-outcome node', () => {
-  it('records a stable label token for an option drawn from a candidate set', () => {
+  it('records the chosen option label as the stable token (F3 AC3)', () => {
     const recorder = new MainStreetTranscriptRecorder({ seed: 'mo-transcript' });
     setMainStreetRecorder(recorder);
     const state = setupMultiOutcomeState('mo-transcript');
@@ -606,8 +609,8 @@ describe('F1 — transcript records the chosen option label for a multi-outcome 
     if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
     expect(choiceEvent.eventId).toContain('evt-mo-choice');
     expect(choiceEvent.cardName).toBe('Multi Choice');
-    // The chosen option is recorded as a stable token; F3 replaces the legacy
-    // 'accept'/'reject' tokens with the option label.
-    expect(typeof choiceEvent.option).toBe('string');
+    // The chosen option is recorded as a stable label token (the raw label,
+    // not a legacy 'accept'/'reject' or an index).
+    expect(choiceEvent.option).toBe('Left');
   });
 });

@@ -150,11 +150,14 @@ function safeClone<T>(obj: T): T {
 }
 
 /**
- * Clones a pending choice for snapshotting, dropping the runtime-only
- * `options` snapshot whose callback functions are not cloneable.  On restore
- * the option list is recompiled from the registry against the restored
- * draw-time state, so callback semantics (including `successorResolver`) are
- * preserved across undo/redo.
+ * Clones a pending choice for snapshotting.
+ *
+ * The frozen option-list snapshot is retained so undo/redo round-trips the
+ * presenter-visible list without loss (F3 AC4): option data (label, candidate
+ * sets, effect policy) is copied by value; runtime callback functions
+ * (`condition` / `successorResolver`) are kept by reference — they are
+ * process-local and are never structured-cloned. Resolution therefore re-reads
+ * the exact draw-time list after undo/redo.
  */
 function clonePendingChoice(pending: any): any {
   if (!pending) return null;
@@ -162,6 +165,16 @@ function clonePendingChoice(pending: any): any {
     event: safeClone(pending.event),
     chosenOption: pending.chosenOption,
     resolved: pending.resolved,
+    options: pending.options
+      ? pending.options.map((o: any) => ({
+          label: o.label,
+          successorId: o.successorId ?? null,
+          successorIds: o.successorIds ? [...o.successorIds] : undefined,
+          effectPolicy: o.effectPolicy,
+          condition: o.condition,
+          successorResolver: o.successorResolver,
+        }))
+      : undefined,
   };
 }
 

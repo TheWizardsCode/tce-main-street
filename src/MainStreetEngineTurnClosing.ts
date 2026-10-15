@@ -148,22 +148,6 @@ export function resolveIncident(
 }
 
 /**
- * Maps a compiled option label to the transcript/state token.
- *
- * Legacy two-option choice cards (exactly [Accept, Reject]) keep the lowercase
- * `'accept'`/`'reject'` tokens so the transcript and pending-state shape is
- * unchanged from the pre-seam engine. Generalised storylines (any other option
- * list) record the full label, lower-cased for stable matching.
- */
-function legacyLabelToToken(label: string, optionCount: number): string {
-  const lower = label.toLowerCase();
-  if (optionCount === 2 && (lower === 'accept' || lower === 'reject')) {
-    return lower;
-  }
-  return label;
-}
-
-/**
  * Resolves the pending storyline incident by selecting the option at the
  * given index in the card's ordered option list (generalised API, AC2).
  *
@@ -221,12 +205,12 @@ export function resolveEventOption(
     }
     syncResourceBankToLedger(state);
 
-    // Transcript: recorded identically for player and AI. The legacy
-    // accept/reject successor ids are preserved for backward compatibility.
-    // Legacy two-option cards record the lowercase token ('accept'/'reject')
-    // so the transcript shape is byte-for-byte identical to the pre-seam
-    // engine; generalised multi-way storylines record the full option label.
-    const transcriptOption = legacyLabelToToken(option.label, options.length);
+    // Transcript / chosen token (F3 AC3): the chosen option's label IS the
+    // stable token — recorded identically for player and AI. The legacy
+    // 'accept'/'reject' tokens are removed; the legacy accept/reject
+    // successor ids are still carried on the event-choice entry for
+    // backward-compatible chain reconstruction (Monte Carlo metrics).
+    const transcriptOption = option.label;
     recordStorylineResolution(
       state,
       event,
@@ -249,7 +233,8 @@ export function resolveEventOption(
   // option list (e.g. a synthetic non-choice card in an existing test, or a
   // legacy save hand-crafted into the pending state). Preserve the original
   // accept/reject semantics exactly: index 0 applies the effect, index 1
-  // skips it, and the legacy successor ids drive the deck push.
+  // skips it, and the legacy successor ids drive the deck push. The token is
+  // the option label ('Accept' / 'Reject') — the label IS the token (F3 AC3).
   const appliesEffect = optionIndex === 0;
   if (!appliesEffect) {
     addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
@@ -270,22 +255,22 @@ export function resolveEventOption(
   recordStorylineResolution(
     state,
     event,
-    appliesEffect ? 'accept' : 'reject',
+    appliesEffect ? 'Accept' : 'Reject',
     event.acceptNextCardId ?? null,
     event.rejectNextCardId ?? null,
   );
   // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): story update when applicable.
   const fallbackUpdate = storyUpdateLine(
     event,
-    appliesEffect ? 'accept' : 'reject',
+    appliesEffect ? 'Accept' : 'Reject',
     coinChange,
     repChange,
   );
   if (fallbackUpdate) {
     addLog(state, fallbackUpdate, classifyEffect(coinChange, repChange));
   }
-  markChoiceResolved(pending, appliesEffect ? 'accept' : 'reject');
-  return { event, option: appliesEffect ? 'accept' : 'reject', coinChange, repChange, pushedCard };
+  markChoiceResolved(pending, appliesEffect ? 'Accept' : 'Reject');
+  return { event, option: appliesEffect ? 'Accept' : 'Reject', coinChange, repChange, pushedCard };
 }
 
 /**
@@ -298,11 +283,16 @@ export function resolveEventOption(
  * This is a thin backward-compatible wrapper over {@link resolveEventOption}:
  * legacy choice cards compile to the ordered list [Accept, Reject] — index 0
  * applies the effect, index 1 skips it — so behaviour is byte-for-byte
- * equivalent to the previous inline handling, including the lowercase
- * `chosenOption` token stored on the pending state.
+ * equivalent to the previous inline handling. Indexing works over any option
+ * count (AC4): 'accept' always maps to index 0, 'reject' to index 1 of
+ * whatever list is presented.
+ *
+ * The chosen-option token returned (and stored on the pending state) is the
+ * option label ('Accept' / 'Reject' for the legacy two-way list) — the label
+ * IS the token (F3 AC3).
  *
  * @param state  Current game state (mutated). Must have a pending unresolved choice.
- * @param option The player's decision.
+ * @param option The player's / AI's decision key.
  * @throws Error when no unresolved choice is pending.
  */
 export function resolveEventChoice(
@@ -318,10 +308,7 @@ export function resolveEventChoice(
   }
   const optionIndex = option === 'accept' ? 0 : 1;
   const result = resolveEventOption(state, optionIndex);
-  // Preserve the legacy lowercase token on the pending state for backward
-  // compatibility with existing snapshots/UI expectations.
-  pending.chosenOption = option;
-  return { ...result, option };
+  return { ...result };
 }
 
 /**

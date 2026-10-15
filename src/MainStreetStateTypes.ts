@@ -623,24 +623,29 @@ export interface PendingEventChoice {
   /** The choice event drawn from the incident deck (effect deferred). */
   event: EventCard;
   /**
-   * The chosen option label, once made; null while the dialog is showing.
-   * Legacy accept/reject choices store the lowercase `'accept'`/`'reject'`
-   * tokens for backward compatibility; generalised storylines store the
-   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   * The chosen option's label token, once made; null while the dialog is
+   * showing. F3 (MS-0MV8KQL820077BOS AC3): the label IS the token — the
+   * legacy lowercase 'accept'/'reject' tokens were removed. Legacy two-way
+   * cards therefore store 'Accept' / 'Reject' (their compiled labels);
+   * generalised storylines store the full authored label (e.g.
+   * 'Investigate the ledger').
    */
   chosenOption: string | null;
   /** False while the dialog is pending; true after the choice is applied. */
   resolved: boolean;
   /**
-   * Runtime-only snapshot of the compiled option list, captured when the
+   * Runtime snapshot of the compiled option list, captured when the
    * choice is drawn (`createPendingStorylineChoice`).  Callback `condition`s
    * are evaluated once, at draw time, and the resulting list is frozen: the
    * player selects from this snapshot at resolution time, so mutating state
    * between draw and resolution cannot change the presented options.
    *
-   * Never serialised (callbacks are functions) — a loaded save recompiles
-   * from the runtime registry instead.  Absent on legacy pending choices,
-   * where the engine falls back to recompiling.
+   * Since F3 (MS-0MV8KQL820077BOS AC4) the snapshot's data fields (label,
+   * candidate sets, effect policy) are carried through save/load and
+   * undo/redo so an arbitrary option list round-trips without loss. Callback
+   * functions (`condition` / `successorResolver`) are runtime-only: they are
+   * kept by reference in memory snapshots and dropped from saved data (the
+   * presenter-visible list itself is never lost).
    */
   options?: StorylineOption[];
 }

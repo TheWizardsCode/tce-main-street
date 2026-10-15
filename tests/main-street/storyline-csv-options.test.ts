@@ -28,6 +28,7 @@ import {
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
   getEventTemplates,
+  getBaseTypeId,
   type EventCard,
 } from '../../src/MainStreetCards';
 import {
@@ -322,8 +323,10 @@ describe('AC5 — tracer storyline row (evt-recession) resolves through the comp
     expect(state.resourceBank.coins).toBe(coinsBefore - 80);
     expect(state.pendingEventChoice!.resolved).toBe(true);
     expect(state.pendingEventChoice!.chosenOption).toBe('Grind through');
-    // The successor push (uniform random draw) lands in F3; resolution through
-    // the compiled model is complete here.
-    expect(res.pushedCard).toBeNull();
+    // F3 landed the uniform random draw: the single-candidate set
+    // ['evt-depression'] resolves to exactly that candidate (drawn once from
+    // the seeded state.rng()).
+    expect(res.pushedCard).not.toBeNull();
+    expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-depression');
   });
 });

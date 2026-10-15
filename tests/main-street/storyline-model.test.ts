@@ -280,7 +280,8 @@ describe('AC2 — legacy-equivalence: option resolution matches legacy behaviour
     expect(viaOption.resourceBank.coins).toBe(coinsBefore - 200);
     expect(viaOption.resourceBank.reputation).toBe(repBefore);
     expect(res.pushedCard?.id).toContain('evt-eq-accept');
-    expect(viaOption.pendingEventChoice!.chosenOption).toBe('accept');
+    // Label token (F3 AC3).
+    expect(viaOption.pendingEventChoice!.chosenOption).toBe('Accept');
     expect(viaOption.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -293,7 +294,8 @@ describe('AC2 — legacy-equivalence: option resolution matches legacy behaviour
 
     expect(viaOption.resourceBank.coins).toBe(coinsBefore);
     expect(res.pushedCard?.id).toContain('evt-eq-reject');
-    expect(viaOption.pendingEventChoice!.chosenOption).toBe('reject');
+    // Label token (F3 AC3).
+    expect(viaOption.pendingEventChoice!.chosenOption).toBe('Reject');
   });
 
   it('legacy accept/reject and the compiled option list produce the same outcome', () => {
@@ -957,28 +959,39 @@ describe('callback semantics survive save/load and undo', () => {
     return state;
   }
 
-  it('serialisation drops the runtime-only option snapshot', () => {
+  it('serialisation carries the option-list data but drops runtime callbacks', () => {
     const state = setupCallbackPending('persist-serialize');
     expect(state.pendingEventChoice!.options).toHaveLength(1);
 
     const saved = serializeMainStreetState(state);
-    // The serialised form never carries callbacks (they are functions).
+    // F3 AC4: the serialised form carries the presenter-visible option data
+    // (label / successorId / effectPolicy) — never the callback functions.
     expect(saved.pendingEventChoice).not.toBeNull();
-    expect((saved.pendingEventChoice as { options?: unknown }).options).toBeUndefined();
+    const serialised = (saved.pendingEventChoice as { options?: Array<Record<string, unknown>> }).options;
+    expect(serialised).toHaveLength(1);
+    expect(serialised![0].label).toBe('Branch');
+    expect(serialised![0].successorId).toBe('evt-persist-low');
+    expect('successorResolver' in serialised![0]).toBe(false);
+    expect('condition' in serialised![0]).toBe(false);
   });
 
-  it('a loaded save recompiles the option list from the runtime registry', () => {
+  it('a loaded save restores the frozen option-list data (callbacks are runtime-only)', () => {
     const state = setupCallbackPending('persist-reload');
     const saved = serializeMainStreetState(state);
     const loaded = deserializeMainStreetState(saved);
 
-    // The snapshot is gone after load…
-    expect(loaded.pendingEventChoice!.options).toBeUndefined();
-    // …but the registry still supplies the (callback-equipped) option list,
-    // so resolution works via the recompile fallback.
+    // F3 AC4: the frozen list data round-trips — the loaded pending choice
+    // presents the exact same option list (label, successorId, effectPolicy).
+    expect(loaded.pendingEventChoice!.options).toHaveLength(1);
+    expect(loaded.pendingEventChoice!.options![0].label).toBe('Branch');
+    expect(loaded.pendingEventChoice!.options![0].successorId).toBe('evt-persist-low');
+    expect(loaded.pendingEventChoice!.options![0].effectPolicy).toBe('skip');
+    // Resolution uses the frozen data: effectPolicy 'skip' leaves coins
+    // unchanged; the runtime-only successorResolver was dropped, so the
+    // legacy single-successor field decides the push (low branch).
     loaded.resourceBank.coins = 5000;
     const res = resolveEventOption(loaded, 0);
-    expect(res.pushedCard?.id).toContain('evt-persist-high');
+    expect(res.pushedCard?.id).toContain('evt-persist-low');
   });
 
   it('undo restores an unresolved callback choice that still resolves', () => {
@@ -995,11 +1008,14 @@ describe('callback semantics survive save/load and undo', () => {
     expect(state.incidentDeck.length).toBe(deckBefore + 1);
     expect(state.incidentDeck[state.incidentDeck.length - 1].id).toContain('evt-persist-low');
 
-    // Undo restores the unresolved pending choice (snapshot stripped).
+    // Undo restores the unresolved pending choice; F3 AC4 preserves the
+    // frozen option-list snapshot (labels + candidate data + runtime
+    // callbacks kept by reference) so undo/redo round-trips without loss.
     undo.undo();
     expect(state.pendingEventChoice!.resolved).toBe(false);
     expect(state.pendingEventChoice!.chosenOption).toBeNull();
-    expect(state.pendingEventChoice!.options).toBeUndefined();
+    expect(state.pendingEventChoice!.options).toHaveLength(1);
+    expect(state.pendingEventChoice!.options![0].successorId).toBe('evt-persist-low');
     expect(state.incidentDeck.length).toBe(deckBefore);
     expect(state.resourceBank.coins).toBe(coinsBefore);
 
