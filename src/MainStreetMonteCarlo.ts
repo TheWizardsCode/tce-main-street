@@ -1,6 +1,6 @@
 import { createSeededRng } from '@core-engine';
 import { setupMainStreetGame, createCompetitiveState, seedToNumber, type MainStreetState } from './MainStreetState';
-import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, type PlayerAction } from './MainStreetEngine';
+import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, projectPiggybackEventReward, piggybackJoinFullyCost, type PlayerAction } from './MainStreetEngine';
 import { canPurchaseEvent, getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from './MainStreetMarket';
 import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlayer, resolveAiEventChoice, bindCompetitiveSeat, restoreCompetitiveSeat, CompetitiveGreedyStrategy, decidePiggybackForAllSeats, type MainStreetAiStrategy } from './MainStreetAiStrategy';
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
@@ -758,6 +758,14 @@ export interface CompetitivePlayerRunSummary {
    * their loss is attributed to the seat, never to a healthy survivor.
    */
   eliminated: boolean;
+  /**
+   * Piggyback trade tally for this seat (F7 balance evidence, epic
+   * MS-0MUYC47EL005Z69H). Present only when the run was executed with a
+   * harness that tallied the F3/F4 piggyback decisions — older stored
+   * summaries and fixtures predating the counter omit it, and the
+   * pre-piggyback baseline harness reports no piggyback at all.
+   */
+  piggybackStats?: CompetitivePiggybackStats;
   /** Card IDs the player acquired (buy-business / buy-upgrade / buy-event). */
   cardsOwned: string[];
   /**
@@ -813,6 +821,51 @@ export function emptyCompetitivePlacementStats(): CompetitivePlacementStats {
     opponentTouchedPlacements: 0,
     businessOpponentBeneficialPlacements: 0,
     communitySpaceOpponentBeneficialPlacements: 0,
+  };
+}
+
+/**
+ * Per-player tally of piggyback trade in the competitive harness (F7 balance
+ * evidence, epic MS-0MUYC47EL005Z69H).
+ *
+ * Counts how often the seat was offered the piggyback decision on eligible
+ * organiser events, whether it upgraded to the full 100% tier (paying the
+ * 150% charge), and the coin/reputation that flowed through the mechanic —
+ * the inputs needed to attribute before/after win-rate drift and to detect
+ * economy runaway from stacked 100%-reward participation.
+ *
+ * The tally is additive and consumes no RNG (the decision policy is the
+ * deterministic F4 `decidePiggyback`), so instrumenting the harness never
+ * changes seeded outcomes. Every field is a non-negative count/sum across
+ * the whole run; `joins + freeRides === decisions` always holds.
+ */
+export interface CompetitivePiggybackStats {
+  /** Join-fully decisions the seat was offered (one per eligible event). */
+  decisions: number;
+  /** Decisions resolved by upgrading to the full tier (paid 150%). */
+  joins: number;
+  /** Decisions kept on the automatic 50% free-ride. */
+  freeRides: number;
+  /** Coins the seat paid in total for join-fully charges. */
+  coinsSpent: number;
+  /** Coins the seat received from piggyback rewards (free-ride + join). */
+  coinsEarned: number;
+  /** Reputation the seat received from piggyback rewards. */
+  reputationEarned: number;
+  /** Sum of the acting players' paid costs the decisions were based on. */
+  paidCostTotal: number;
+}
+
+/** A zeroed {@link CompetitivePiggybackStats} tally. */
+export function emptyCompetitivePiggybackStats(): CompetitivePiggybackStats {
+  return {
+    decisions: 0,
+    joins: 0,
+    freeRides: 0,
+    coinsSpent: 0,
+    coinsEarned: 0,
+    reputationEarned: 0,
+    paidCostTotal: 0,
   };
 }
 
@@ -1076,6 +1129,10 @@ export function runCompetitiveSeed(
     { length: playerCount },
     () => emptyCompetitivePlacementStats(),
   );
+  const piggybackStatsByPlayer: CompetitivePiggybackStats[] = Array.from(
+    { length: playerCount },
+    () => emptyCompetitivePiggybackStats(),
+  );
   let turns = 0;
 
   while (state.gameResult === 'playing' && turns < maxTurns) {
@@ -1091,7 +1148,32 @@ export function runCompetitiveSeed(
       // event raised pending decisions; settle them via the deterministic F4
       // AI policy for EVERY seat (the harness drives seat 0 with an AI
       // strategy too) and finish the deferred closing so the sim never stalls.
-      resolveCompetitivePendingPiggyback(state, decidePiggybackForAllSeats);
+      // The policy is wrapped to tally the piggyback trade (F7 balance
+      // evidence): the tally is additive and consumes no RNG, so seeded
+      // outcomes are unchanged by instrumenting.
+      resolveCompetitivePendingPiggyback(state, (decision, st) => {
+        const join = decidePiggybackForAllSeats(decision, st);
+        const stats = piggybackStatsByPlayer[decision.seatId];
+        if (stats) {
+          stats.decisions += 1;
+          stats.paidCostTotal += decision.paidCost;
+          if (join) {
+            stats.joins += 1;
+            stats.coinsSpent += piggybackJoinFullyCost(decision.paidCost);
+          } else {
+            stats.freeRides += 1;
+          }
+          const reward = projectPiggybackEventReward(
+            st,
+            decision.event,
+            decision.seatId,
+            join ? 1.0 : 0.5,
+          );
+          stats.coinsEarned += reward.coins;
+          stats.reputationEarned += reward.reputation;
+        }
+        return join;
+      });
     }
     turns++;
   }
@@ -1149,6 +1231,7 @@ export function runCompetitiveSeed(
       eliminated,
       cardsOwned: cardsOwnedByPlayer[pid],
       placementStats: placementStatsByPlayer[pid],
+      piggybackStats: piggybackStatsByPlayer[pid],
     };
   });
 
