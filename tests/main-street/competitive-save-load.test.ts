@@ -20,6 +20,9 @@ import {
   type CompetitiveOpponentConfig,
   type MainStreetState,
 } from '../../src/MainStreetState';
+import { bindCompetitiveSeat, restoreCompetitiveSeat } from '../../src/MainStreetAiStrategy';
+import { purchaseStaffCard } from '../../src/MainStreetMarket';
+import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 import {
   driveAiSeatsUntilClosing,
   endHumanMarketPhase,
@@ -58,6 +61,24 @@ function playHumanSeat(state: MainStreetState, maxActions = 16): void {
 /** Round-trips a state through the real serializer. */
 function roundTrip(state: MainStreetState): MainStreetState {
   return deserializeMainStreetState(serializeMainStreetState(state));
+}
+
+/**
+ * Deterministic staff fixture with the requested hand-slot bonus (card-data
+ * values untouched — authored per test so the contract never depends on the
+ * seeded market draw).
+ */
+function staffCard(id: string, handSlotsAdded: number): StaffCard {
+  const [template] = createStaffDeck(1);
+  return { ...template, id, handSlotsAdded } as StaffCard;
+}
+
+/** Binds a seat, hires `card` from the market row, and leaves the seat bound. */
+function hireFor(state: MainStreetState, playerId: number, card: StaffCard): void {
+  bindCompetitiveSeat(state, playerId);
+  state.market.cards.push(card);
+  state.resourceBank.coins = card.cost;
+  purchaseStaffCard(state, card.id);
 }
 
 describe('Competitive save/load — mid-day round-trip', () => {
@@ -201,6 +222,58 @@ describe('Single-player save/load regression', () => {
     expect(restored.seed).toBe('sp-legacy');
     expect(restored.config.difficultyName).toBe('Easy');
   });
+});
+
+describe('Per-seat hand capacity persistence (MS-0MV8PX0Y70006PIW)', () => {
+  // Red-phase contract for the test-first child: per-seat hand capacity must
+  // survive save/load independently of the shared scalar. Both cases FAIL
+  // against today's serialiser (which round-trips only the single shared
+  // `maxHandSize`; players carry no per-seat field); the implementing child
+  // (MS-0MV8PX4DV003LTFP) flips them to plain `it` once persistence lands.
+
+  it.fails('a save/load round-trip keeps each seat\'s own hand capacity', () => {
+    const state = createCompetitiveState({ seed: 'save-per-seat', playerCount: 2, opponents: [OPPONENTS[0]] });
+
+    // Grow the seats asymmetrically: seat 0 +1, seat 1 +2.
+    hireFor(state, 0, staffCard('save-per-seat-0', 1));
+    restoreCompetitiveSeat(state, 0);
+    hireFor(state, 1, staffCard('save-per-seat-1', 2));
+    restoreCompetitiveSeat(state, 1);
+
+    const restored = roundTrip(state);
+
+    bindCompetitiveSeat(restored, 0);
+    expect(restored.maxHandSize).toBe(3 + 1);
+    restoreCompetitiveSeat(restored, 0);
+    bindCompetitiveSeat(restored, 1);
+    expect(restored.maxHandSize).toBe(3 + 2);
+  });
+
+  it.fails(
+    'a legacy save without the per-seat field defaults each seat to the base 3 while preserved grown values are not reset',
+    () => {
+      const state = createCompetitiveState({ seed: 'save-legacy-per-seat', playerCount: 2, opponents: [OPPONENTS[0]] });
+
+      // Seat 0 grows to 4; seat 1 stays at the base.
+      hireFor(state, 0, staffCard('save-legacy-per-seat-0', 1));
+      restoreCompetitiveSeat(state, 0);
+
+      // Simulate a legacy save: drop seat 1's per-seat field entirely while
+      // seat 0's grown value is preserved.
+      const saved = JSON.parse(JSON.stringify(serializeMainStreetState(state))) as Record<string, unknown>;
+      const seats = saved.players as Array<Record<string, unknown>>;
+      delete seats[1].maxHandSize;
+
+      const restored = deserializeMainStreetState(saved as never);
+
+      // Seat 0 keeps its grown value; the field-less seat 1 defaults to base 3.
+      bindCompetitiveSeat(restored, 0);
+      expect(restored.maxHandSize).toBe(4);
+      restoreCompetitiveSeat(restored, 0);
+      bindCompetitiveSeat(restored, 1);
+      expect(restored.maxHandSize).toBe(3);
+    },
+  );
 });
 
 describe('Monte Carlo regression (single-player unchanged)', () => {
