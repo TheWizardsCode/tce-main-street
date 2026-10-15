@@ -201,10 +201,19 @@ npx vitest run tests/e2e/replay-main-street.e2e.test.ts --project unit
 
 The player hand is rendered by a **single merged `HandView`** configured in
 `MainStreetRenderer.createContainers`. One horizontal row holds any mix of
-business and event cards up to `maxHandSize` total (starting at 2, growable via
-staff upgrade cards' `handSlotsAdded`). Event cards are no longer held in a
+business and event cards up to `maxHandSize` total (base 3 per
+`BASE_HAND_CAPACITY`, growable via staff upgrade cards' `handSlotsAdded`).
+Event cards are no longer held in a
 separate slot — a purchased Investment event simply joins the shared hand and
 is played by clicking it during the Market phase.
+
+**Hand capacity is per-seat in competitive play (MS-0MV8PX4DV003LTFP).** Each
+seat carries its own `PlayerRecord.maxHandSize` (base 3 plus that seat's staff
+`handSlotsAdded`). `bindCompetitiveSeat` copies it onto the shared
+`state.maxHandSize` while the seat acts and `restoreCompetitiveSeat` writes it
+back, so a staff hand-slot bonus applies only to the seat that employs the
+staff — one seat's staff never enlarges another seat's hand. Single-player
+behaviour is unchanged: the shared field is used directly.
 
 - `handView` — the merged hand (centred on `handCenterX`, spacing `handCardW + 8`).
   `renderCard` dispatches on `card.family`: business cards render upgrade

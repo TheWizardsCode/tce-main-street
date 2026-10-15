@@ -2664,11 +2664,15 @@ function competitiveFavourScore(
  *
  * In competitive mode the engine's action primitives (`purchaseBusiness`,
  * `moveToHand`, `playBusinessFromHand`, ...) read the shared
- * `state.resourceBank` / `state.hand` / `state.actionsRemaining` fields.
+ * `state.resourceBank` / `state.hand` / `state.staffCards` /
+ * `state.maxHandSize` / `state.actionsRemaining` fields.
  * `bindCompetitiveSeat` copies the acting player's `PlayerRecord` into those
  * fields before the MarketPhase so the AI's per-player actions execute
- * against the correct owner; `restoreCompetitiveSeat` writes the shared
- * wallet back into the record afterwards. No-op in single-player states.
+ * against the correct owner — the seat's own hand capacity (base 3 plus its
+ * own staff `handSlotsAdded`) is bound as `state.maxHandSize` so staff
+ * bonuses apply only to the employing seat; `restoreCompetitiveSeat` writes
+ * the shared wallet back into the record afterwards. No-op in single-player
+ * states.
  *
  * The per-seat `actionBudget` is the *base* daily budget (base + staff
  * actions); the shared `state.bankedActions` pool is added on top here so
@@ -2692,9 +2696,9 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
 }
 
 /**
- * Writes the shared wallet / hand / staff / budget back into the acting
- * competitive player's record (the inverse of {@link bindCompetitiveSeat}).
- * No-op in single-player states.
+ * Writes the shared wallet / hand / staff / hand capacity / budget back into
+ * the acting competitive player's record (the inverse of
+ * {@link bindCompetitiveSeat}). No-op in single-player states.
  *
  * @param state    Current game state (mutated in-place).
  * @param playerId Owner index; defaults to the active player.

@@ -171,7 +171,7 @@ interface GameState {
     upgrade: UpgradeCard[];
   };
   hand: (BusinessCard | CommunitySpaceCard | UpgradeCard | EventCard)[]; // merged hand: any mix, up to maxHandSize
-  maxHandSize: number;                 // starts at 3, growable via staff handSlotsAdded (no hard cap)
+  maxHandSize: number;                 // starts at 3, growable via staff handSlotsAdded (no hard cap); per-seat in competitive play (bound seat's own capacity)
   challengesCompleted: string[]; // IDs of achieved challenges
   marketRefreshesThisTurn: number;     // re-rolls made this turn; drives the escalating paid cost, reset at WeekStart (MS-0MTR6ZRF5007PWNZ)
   investorFreeRerollUsedThisTurn: boolean; // per-turn Investor free re-roll gate, reset at WeekStart (MS-0MTISBYLS009936W)
@@ -275,6 +275,15 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > clears the following day. `restoreCompetitiveSeat` strips the bank back out
 > so `actionBudget` stays the seat's base budget. Single-player banking is
 > unchanged.
+
+> **Per-seat hand capacity in competitive play (MS-0MV8PX4DV003LTFP).** Hand
+> capacity is **per seat**: each seat's maximum hand size is its own
+> (`PlayerRecord.maxHandSize`, base 3 plus that seat's staff `handSlotsAdded`).
+> `bindCompetitiveSeat` copies the acting seat's capacity onto the shared
+> working `state.maxHandSize` and `restoreCompetitiveSeat` writes it back, so a
+> staff card's hand-slot bonus applies **only to the employing seat** — one
+> seat's staff never enlarges another seat's hand. Single-player behaviour is
+> unchanged (the shared `maxHandSize` is used directly).
 
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 

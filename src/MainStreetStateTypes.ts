@@ -448,11 +448,24 @@ export interface MainStreetState {
   activeEffects: ActiveEffect[];
   /** Cards held in the player's hand (not placed on tableau). Any mix of business, event, and upgrade cards. */
   hand: (BusinessCard | CommunitySpaceCard | EventCard | UpgradeCard)[];
-  /** Maximum number of cards the player can hold in hand (default 3, expanded by staff cards). */
+  /**
+   * Shared working hand capacity: the maximum number of cards the player can
+   * hold in hand (default 3, expanded by staff cards).
+   *
+   * In competitive play this is the **acting seat's** capacity: it is copied
+   * from the seat's own `PlayerRecord.maxHandSize` by `bindCompetitiveSeat`
+   * and written back by `restoreCompetitiveSeat`, so staff hand-slot bonuses
+   * apply only to the employing seat (MS-0MV8PX4DV003LTFP). Single-player
+   * games use this shared field directly.
+   */
   maxHandSize: number;
   /** Discard pile for cycled and sold cards (unified discard pool). */
   discardPile: BusinessCard[];
-  /** Active staff cards providing hand capacity bonuses. */
+  /**
+   * Active staff cards providing hand capacity bonuses. In competitive play
+   * this holds the **acting seat's** staff (bound per seat, mirroring
+   * `maxHandSize`); single-player games use it directly.
+   */
   staffCards: StaffCard[];
   /**
    * Tracks which street grid slots have been sold. Length = GRID_SIZE.
