@@ -442,32 +442,34 @@ void popTextOrIcon({
   (`scene.incomeCollectionActive === true`) the immediate HUD delta pop is
   suppressed so the final pop is the single landing feedback — the income
   sound/event routing (`income-gained` → `sfx-income-positive`) still runs.
-- **HUD totals count with the flights (MS-0MUYAESVU007X2U8).** While the
-  deferred window is active the HUD renders a pair of display-only running
+- **HUD totals tick ONLY at HUD-bar arrivals (MS-0MUYAESVU007X2U8).** While
+  the deferred window is active the HUD renders a pair of display-only running
   totals (`displayedCoins` / `displayedReputation`) instead of the static
-  pre-animation value. They start at `previousCoins` / `previousReputation`
-  when the deferred end-of-turn path opens and step **up**/**down** as each
-  coin/pip is delivered, so the player sees the totals build throughout the
-  show rather than only at the end (producer manual review 2026-10-16):
-  the coin total counts out per **base** coin (`countOutCoins`), per
-  **synergy** coin landing (`flyCoinsAlongLine`), per **reputation/event**
-  coin fly-in (`flyCoinsIn`) and per **negative event** fly-out
-  (`flyCoinsOut`); the reputation total counts in step with the reputation
-  coins (`flyCoinsIn`'s rep share) and the Upcoming/incident pip flights
-  (`flyCoinsToPoint` / `flyRepPips` / reveal bubbles). The grid-to-HUD
-  **collection** is a pure visual delivery of the already-counted coins; it
-  no longer re-steps the total. `displayedCoins` / `displayedReputation`
-  are snapped to the authoritative post-reconciliation values at the last
-  landing (collection finalize / incident-reveal cleanup), so the total is
-  exact — per-icon rounding and unanimated ongoing costs are absorbed there.
-  Presentation-only: nothing touches `state`, the transcript, or the
-  deferred-mutation guards; reduced-motion, tutorial and replay/headless
-  paths never initialise the counters, so they keep the existing
-  instant-final fallback. The incident's delta is flown once (the
-  `upcoming` phase) and re-enacted by the reveal bubbles, so it is counted
-  once (`scene.displayedIncomeCounted` guards the replay); the reputation
-  phase counts only the **income** reputation (the incident share, already
-  flown in `upcoming`, is subtracted).
+  pre-animation value. Producer contract (manual review 2026-10-16): *the
+  number ticks up only when the money is animating to the HUD — each time a
+  coin reaches the HUD bar location the count ticks up.* So the total is
+  **not** moved while coins/reputation are counted onto the business card
+  grids (base / synergy / events phases); it moves only when a flight whose
+  destination is the HUD arrives:
+  - **coins** — the grid-to-HUD **collection** (`collectIncomeGrids` steps
+    `displayedCoins` per icon landing) and gain flights to the HUD counter
+    (`flyCoinsToPoint`);
+  - **reputation** — the reputation-income pips flown card → HUD rep counter
+    in the **reputation** phase (`runIncomePhase` calls `flyRepPips` with the
+    income share), plus the Upcoming pip flights (`flyRepPips`) and the
+    incident-reveal bubbles.
+  Loss flights (HUD → card/panel) step **down** at departure. The totals
+  start at `previousCoins` / `previousReputation` when the deferred end-of-turn
+  path opens and are snapped to the authoritative post-reconciliation values
+  at the final landing (collection finalize / incident-reveal cleanup), so the
+  total is exact — per-icon rounding and unanimated ongoing costs are absorbed
+  there. Presentation-only: nothing touches `state`, the transcript, or the
+  deferred-mutation guards; reduced-motion, tutorial and replay/headless paths
+  never initialise the counters, so they keep the existing instant-final
+  fallback. The incident's reputation share is flown once (the `upcoming`
+  phase) and re-enacted by the reveal bubbles, so it is counted once
+  (`scene.displayedIncomeCounted` guards the replay); the reputation phase
+  therefore excludes the incident share from its HUD pip flight.
 - Week-start deferral: the controller polls `incomeCollectionActive` on a
   250ms cadence (with a 16s safety cap) before starting the next week, so
   the street refresh + HUD update never cut the show short; the street

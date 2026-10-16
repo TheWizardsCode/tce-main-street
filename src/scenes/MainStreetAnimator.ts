@@ -82,7 +82,7 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
 
   public runIncomePhase(phase: IncomePhaseKey, slots: IncomePhaseSlot[], ctx: {
     reducedMotion: boolean;
-    /** Deferred deltas so the reputation phase can count income reputation (MS-0MUYAESVU007X2U8). */
+    /** Deferred deltas so the reputation phase can fly income reputation to the HUD (MS-0MUYAESVU007X2U8 AC1). */
     pendingDeltas?: PendingEndOfTurnDeltas;
   }): void {
     runIncomePhase(this, phase, slots, ctx);
@@ -117,10 +117,8 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     from: { x: number; y: number },
     at: number,
     flightMs?: number,
-    displayDelta?: number,
-    repDisplayStep?: number,
   ): void {
-    flyCoinsIn(this, slot, amount, from, at, flightMs, displayDelta, repDisplayStep);
+    flyCoinsIn(this, slot, amount, from, at, flightMs);
   }
 
   public flyCoinsAlongLine(
@@ -130,9 +128,8 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     to: { x: number; y: number },
     at: number,
     flightMs?: number,
-    displayDelta?: number,
   ): void {
-    flyCoinsAlongLine(this, slot, amount, from, to, at, flightMs, displayDelta);
+    flyCoinsAlongLine(this, slot, amount, from, to, at, flightMs);
   }
 
   public flyCoinsOut(
@@ -141,9 +138,8 @@ export class MainStreetAnimator implements MainStreetAnimatorContext {
     to: { x: number; y: number },
     at: number,
     flightMs?: number,
-    displayDelta?: number,
   ): void {
-    flyCoinsOut(this, slot, amount, to, at, flightMs, displayDelta);
+    flyCoinsOut(this, slot, amount, to, at, flightMs);
   }
 
   public flyCoinsToPoint(

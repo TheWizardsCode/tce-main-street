@@ -200,92 +200,12 @@ describe('display-only reconciliation totals (MS-0MUYAESVU007X2U8)', () => {
 
 // ── Collection flights ──────────────────────────────────────
 
-// ── Phase-level accrual counting ────────────────────────────
-
-describe('phase-level accrual counting (MS-0MUYAESVU007X2U8)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('counts base income up per coin as it counts out onto the card', () => {
-    const { scene, scheduled } = createMockScene();
-    const animator = new MainStreetAnimator(scene);
-    scene.previousCoins = 100;
-    scene.displayedCoins = 100;
-
-    // Two icons represent the 200 base income; each reveal steps +100.
-    const slot = {
-      pd: { slotIndex: 0, baseIncome: 200, synergyBonus: 0, repBonus: 0, eventDeltas: [] },
-      displayed: 0,
-      handle: {
-        container: {
-          list: [],
-          remove: vi.fn(),
-          destroy: vi.fn(),
-          getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
-        },
-        addCoins: vi.fn().mockReturnValue({ positions: [] }),
-        getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
-      },
-    } as any;
-
-    animator.countOutCoins(slot, 200, 0);
-    // Fire only the FIRST scheduled reveal: the running total must be
-    // strictly between the pre- (100) and post-reconciliation values — the
-    // visible build-up during the phase, not a final burst.
-    scheduled[0].fn();
-    expect(scene.displayedCoins).toBe(200);
-    expect(scene.syncHudTotals).toHaveBeenCalled();
-  });
-
-  it('steps reputation income up as rep coins land (AC1 reputation parity)', () => {
-    const { scene, scheduled } = createMockScene();
-    const animator = new MainStreetAnimator(scene);
-    scene.previousCoins = 100;
-    scene.displayedCoins = 100;
-    scene.previousReputation = 300;
-    scene.displayedReputation = 300;
-
-    // One rep coin carrying the slot's repBonus; 5 reputation income to
-    // allocate across it.
-    const slot = {
-      pd: { slotIndex: 0, baseIncome: 0, synergyBonus: 0, repBonus: 500, eventDeltas: [] },
-      displayed: 0,
-      handle: {
-        container: {
-          list: [],
-          remove: vi.fn(),
-          destroy: vi.fn(),
-          getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
-        },
-        addCoins: vi.fn().mockReturnValue({ positions: [] }),
-        getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
-      },
-    } as any;
-
-    animator.runIncomePhase('reputation', [slot], {
-      reducedMotion: false,
-      pendingDeltas: { pendingCoinDelta: 0, pendingRepDelta: 5, pendingScoreDelta: 0 },
-    });
-    runScheduled(scheduled);
-    runMoveCompletes();
-
-    // The shown Reputation counter climbs with the rep coins (was frozen at
-    // the pre value the whole turn before this fix) and lands on the exact
-    // income value (5 rep across 5 coins).
-    expect(scene.displayedReputation).toBe(305);
-    expect(scene.syncHudTotals).toHaveBeenCalled();
-  });
-});
-
-// ── Collection flights ──────────────────────────────────────
-
 describe('collectIncomeGrids display counting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('does not re-count coins per icon (they accrued during the phases) and snaps exact at the last landing', () => {
+  it('counts up per collected icon and snaps exactly at the last landing', () => {
     const { scene, scheduled } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     vi.spyOn(animator, 'applyPendingDeltasOnce').mockImplementation(() => {});
@@ -303,19 +223,20 @@ describe('collectIncomeGrids display counting', () => {
       pendingDeltas: { pendingCoinDelta: 250, pendingRepDelta: 0, pendingScoreDelta: 0 },
     });
 
-    // The collection is a visual delivery of the already-counted coins: the
-    // per-icon coin steps live in the phases (base/synergy/reputation/events),
-    // so merely flying the grid to the HUD must NOT move the running total.
+    // No step until a flight actually lands.
     expect(scene.displayedCoins).toBe(100);
     runScheduled(scheduled);
-    (moveGameObject.mock.calls[0][0] as { onComplete: () => void })?.onComplete?.();
-    expect(scene.displayedCoins).toBe(100);
 
-    // Last landing: the collection snaps the running totals to the
-    // authoritative post-reconciliation values exactly once (AC5b).
-    (moveGameObject.mock.calls[1][0] as { onComplete: () => void })?.onComplete?.();
+    // First landing: strictly between pre- (100) and post- (350) values.
+    (moveGameObject.mock.calls[0][0] as { onComplete: () => void }).onComplete();
+    expect(scene.displayedCoins).toBeGreaterThan(100);
+    expect(scene.displayedCoins).toBeLessThan(350);
+    expect(scene.displayedCoins).toBe(200);
+
+    // Last landing: the collection snaps to the authoritative final value.
+    (moveGameObject.mock.calls[1][0] as { onComplete: () => void }).onComplete();
     expect(scene.displayedCoins).toBe(350);
-    // The in-place re-render happened at the snap (not per landing).
+    // Each landing re-rendered the on-screen HUD totals in place.
     expect(scene.syncHudTotals).toHaveBeenCalled();
     // The phased show is marked as counted so the incident replay cannot double-count.
     expect(scene.displayedIncomeCounted).toBe(true);
@@ -340,6 +261,78 @@ describe('collectIncomeGrids display counting', () => {
     });
 
     expect(scene.displayedCoins).toBeNull();
+  });
+});
+
+// ── Reputation-phase HUD pip flights ────────────────────────
+
+describe('runIncomePhase reputation HUD counting (MS-0MUYAESVU007X2U8 AC1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('flies income reputation as pips to the HUD rep counter, ticking per arrival', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    scene.previousCoins = 100;
+    scene.displayedCoins = 100;
+    scene.previousReputation = 300;
+    scene.displayedReputation = 300;
+
+    // One business with a reputation bonus coin stream so the phase runs.
+    const slot = {
+      pd: { slotIndex: 0, baseIncome: 0, synergyBonus: 0, repBonus: 500, eventDeltas: [] },
+      displayed: 0,
+      handle: {
+        container: {
+          list: [], remove: vi.fn(), destroy: vi.fn(),
+          getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+        },
+        addCoins: vi.fn().mockReturnValue({ positions: [] }),
+        getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+      },
+    } as any;
+
+    animator.runIncomePhase('reputation', [slot], {
+      reducedMotion: false,
+      pendingDeltas: { pendingCoinDelta: 0, pendingRepDelta: 5, pendingScoreDelta: 0 },
+    });
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    // Each reputation pip arriving at the HUD counter ticks the running total
+    // up — the whole 5-rep income lands exactly (AC1/AC5b).
+    expect(scene.displayedReputation).toBe(305);
+    expect(scene.syncHudTotals).toHaveBeenCalled();
+  });
+
+  it('does not move the reputation total when there is no income reputation', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    scene.previousReputation = 300;
+    scene.displayedReputation = 300;
+
+    const slot = {
+      pd: { slotIndex: 0, baseIncome: 0, synergyBonus: 0, repBonus: 500, eventDeltas: [] },
+      displayed: 0,
+      handle: {
+        container: {
+          list: [], remove: vi.fn(), destroy: vi.fn(),
+          getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+        },
+        addCoins: vi.fn().mockReturnValue({ positions: [] }),
+        getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+      },
+    } as any;
+
+    animator.runIncomePhase('reputation', [slot], {
+      reducedMotion: false,
+      pendingDeltas: { pendingCoinDelta: 0, pendingRepDelta: 0, pendingScoreDelta: 0 },
+    });
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    expect(scene.displayedReputation).toBe(300);
   });
 });
 

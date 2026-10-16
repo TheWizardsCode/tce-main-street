@@ -4,20 +4,26 @@
  *
  * Drives a REAL end-of-turn through the full controller wiring (endTurn →
  * animateIncomePhases → collect) and samples the on-screen HUD text at
- * intervals DURING the choreography. This is the scenario the producer's
- * manual review rejected:
+ * intervals DURING the choreography.
+ *
+ * The producer's manual reviews (2026-10-16) define the contract precisely:
  *
  *   "We want the number displayed to increase with each coin/reputation that
- *    reaches the count in the HUD. Currently we only see the total at the end
- *    of the complete animation."
+ *    reaches the count in the HUD."
+ *   "I want the number to tick up ONLY when the money is animating to the
+ *    HUD, each time a coin reach the HUD bar location the coin count should
+ *    tick up."
  *
- * These tests assert the fix end to end:
- *  - the coin total builds MID-CHOREOGRAPHY (values strictly between the pre
- *    and post reconciliation totals are visible while the show plays), not
- *    just a final burst at the collection;
- *  - the reputation total counts up in a normal turn with reputation income
- *    instead of staying frozen until the final snap;
- *  - the exact post-reconciliation value lands at the end.
+ * So the HUD totals must tick ONLY at HUD-bar arrivals — never while coins
+ * are being counted onto the business card grids (base/synergy/reputation
+ * phases) and never for reputation that stays on the board. These tests
+ * assert:
+ *  - the coin total stays at the pre value during the phases and ticks only
+ *    when grid coins reach the HUD counter during the collection, showing
+ *    intermediate values strictly between pre and post (AC5a);
+ *  - the reputation total stays at the pre value until its pips arrive at
+ *    the HUD reputation counter in the reputation phase, then it ticks;
+ *  - the exact post-reconciliation value lands at the end (AC5b).
  *
  * @module tests/main-street/hud-total-counting-live
  */
@@ -109,7 +115,7 @@ afterEach(() => {
 });
 
 describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
-  it('builds the coin total mid-choreography (strictly between pre and post) during a real turn', async () => {
+  it('ticks the coin total ONLY at HUD arrivals during the collection (intermediates strictly between pre and post)', async () => {
     game = await bootGame();
     await makeIncidentsNone(game);
     const scene = game.scene.getScene('MainStreetScene') as any;
@@ -149,15 +155,14 @@ describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
     const post = state.resourceBank.coins;
 
     const sampleVals = samples.map((s) => s.v).filter((v): v is number => v !== null);
-    // The producer's regression: a mid-flight displayed total must be
-    // strictly between the pre- and post-reconciliation values (AC5a) — i.e.
-    // the number visibly counts during the show, not only at the end.
+    // The coin total must pass through an intermediate value strictly between
+    // pre and post (each grid coin landing at the HUD ticks the count up).
     const hasIntermediate = sampleVals.some((v) => v > Math.min(pre, post) && v < Math.max(pre, post));
     expect(post).not.toBe(pre);
     expect(hasIntermediate).toBe(true);
   }, 60_000);
 
-  it('counts the reputation total up during a normal turn with reputation income', async () => {
+  it('ticks the reputation total at the HUD bar when its pips arrive in the reputation phase', async () => {
     game = await bootGame();
     await makeIncidentsNone(game);
     const scene = game.scene.getScene('MainStreetScene') as any;
@@ -194,13 +199,8 @@ describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
     });
     const postRep = state.resourceBank.reputation;
 
-    console.log('[live-rep] preRep=', preRep, 'postRep=', postRep, 'repSamples=', JSON.stringify(repSamples));
-    // The Reputation counter now counts DURING the show (a mid-show sample
-    // already moved off the pre value) — previously it stayed frozen until the
-    // final snap/refresh. AC1's reputation parity is about counting in step
-    // with the rep coins; with a single rep coin the step equals the full
-    // delta, so assert "moved before the show ended" rather than strictly
-    // between values.
+    // The Reputation counter ticks when its pips arrive at the HUD bar during
+    // the show (previously it stayed frozen until the final snap/refresh).
     expect(postRep).not.toBe(preRep);
     expect(repSamples.some((v) => v !== preRep)).toBe(true);
   }, 60_000);

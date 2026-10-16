@@ -141,7 +141,7 @@ export interface MainStreetAnimatorContext {
   animateIncomePhases(phaseData: SlotPhaseBreakdown[], options: IncomePhaseOptions ): void;
   runIncomePhase(phase: IncomePhaseKey, slots: IncomePhaseSlot[], ctx: {
     reducedMotion: boolean;
-    /** Deferred deltas so the reputation phase can count income reputation (MS-0MUYAESVU007X2U8). */
+    /** Deferred deltas so the reputation phase can fly income reputation to the HUD (MS-0MUYAESVU007X2U8 AC1). */
     pendingDeltas?: PendingEndOfTurnDeltas;
   }): void;
   eventDeltaEffects(slots: IncomePhaseSlot[]): Array<{
@@ -164,10 +164,6 @@ export interface MainStreetAnimatorContext {
     from: { x: number; y: number },
     at: number,
     flightMs?: number,
-    /** Signed display-only coin delta for this flight (MS-0MUYAESVU007X2U8). */
-    displayDelta?: number,
-    /** Per-coin reputation display share (MS-0MUYAESVU007X2U8). */
-    repDisplayStep?: number,
   ): void;
   /**
    * Flies coins from `from` to `to` (along a synergy line) and increments the
@@ -181,8 +177,6 @@ export interface MainStreetAnimatorContext {
     to: { x: number; y: number },
     at: number,
     flightMs?: number,
-    /** Signed display-only coin delta for this flight (MS-0MUYAESVU007X2U8). */
-    displayDelta?: number,
   ): void;
   flyCoinsOut(
     slot: IncomePhaseSlot,
@@ -190,8 +184,6 @@ export interface MainStreetAnimatorContext {
     to: { x: number; y: number },
     at: number,
     flightMs?: number,
-    /** Signed display-only coin delta for this flight (MS-0MUYAESVU007X2U8). */
-    displayDelta?: number,
   ): void;
   /**
    * Flies coin visuals point-to-point without touching a business grid
