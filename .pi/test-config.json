@@ -16,6 +16,15 @@
         "tests/main-street/TutorialOverlayHighlights.browser.test.ts",
         "tests/main-street/TutorialOverlayManager.browser.test.ts"
       ]
+    },
+    "main-street-hud-count": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hud-total-counting-live.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hud-total-counting-live.browser.test.ts",
+        "tests/main-street/hud-total-counting.test.ts"
+      ]
     }
   }
 }

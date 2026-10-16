@@ -446,18 +446,28 @@ void popTextOrIcon({
   deferred window is active the HUD renders a pair of display-only running
   totals (`displayedCoins` / `displayedReputation`) instead of the static
   pre-animation value. They start at `previousCoins` / `previousReputation`
-  when the deferred end-of-turn path opens, step **up** as coin/pip flights
-  land at the HUD (grid-to-HUD collection, gain card/panel → HUD flights) and
-  **down** as loss flights depart the HUD (HUD → card/panel), and are snapped
-  to the authoritative post-reconciliation values at the final landing
-  (collection finalize / incident-reveal cleanup), so the total is exact —
-  per-icon rounding and unanimated ongoing costs are absorbed there.
+  when the deferred end-of-turn path opens and step **up**/**down** as each
+  coin/pip is delivered, so the player sees the totals build throughout the
+  show rather than only at the end (producer manual review 2026-10-16):
+  the coin total counts out per **base** coin (`countOutCoins`), per
+  **synergy** coin landing (`flyCoinsAlongLine`), per **reputation/event**
+  coin fly-in (`flyCoinsIn`) and per **negative event** fly-out
+  (`flyCoinsOut`); the reputation total counts in step with the reputation
+  coins (`flyCoinsIn`'s rep share) and the Upcoming/incident pip flights
+  (`flyCoinsToPoint` / `flyRepPips` / reveal bubbles). The grid-to-HUD
+  **collection** is a pure visual delivery of the already-counted coins; it
+  no longer re-steps the total. `displayedCoins` / `displayedReputation`
+  are snapped to the authoritative post-reconciliation values at the last
+  landing (collection finalize / incident-reveal cleanup), so the total is
+  exact — per-icon rounding and unanimated ongoing costs are absorbed there.
   Presentation-only: nothing touches `state`, the transcript, or the
   deferred-mutation guards; reduced-motion, tutorial and replay/headless
   paths never initialise the counters, so they keep the existing
   instant-final fallback. The incident's delta is flown once (the
   `upcoming` phase) and re-enacted by the reveal bubbles, so it is counted
-  once (`scene.displayedIncomeCounted` guards the replay).
+  once (`scene.displayedIncomeCounted` guards the replay); the reputation
+  phase counts only the **income** reputation (the incident share, already
+  flown in `upcoming`, is subtracted).
 - Week-start deferral: the controller polls `incomeCollectionActive` on a
   250ms cadence (with a 16s safety cap) before starting the next week, so
   the street refresh + HUD update never cut the show short; the street
