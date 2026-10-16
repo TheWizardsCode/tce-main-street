@@ -58,3 +58,30 @@ A stale relative helper import in
 `tests/e2e/main-street-cheat-smoke.browser.test.ts` was corrected to the
 `@core-tests` alias in MS-0MV1HAUPR004REDJ; the file header keeps a short note
 so the failure mode is not reintroduced.
+
+## Troubleshooting: ENOSPC (`System limit for number of file watchers reached`)
+
+A full-suite run that fails with `ENOSPC: System limit for number of file
+watchers reached` from vite-node CLI subprocesses (spawned by the `unit-cli`
+tests) is an **environmental** failure, not a test-code or product-code defect.
+
+The commit under test typically passes the full suite via independent gates
+(implement finish + pre-push hook); all individual tests pass when run in
+isolation. The trigger is host inotify-watch exhaustion: orphaned long-running
+processes (e.g. a hung `npx vitest run --project browser` from a dead session)
+plus several long-lived `vite --host` dev servers can consume most of
+`fs.inotify.max_user_watches` (default 65536). Each additional worktree adds
+recursive watchers on the project root, so with many sibling worktrees a
+full-suite run trips the limit mid-collection.
+
+Diagnosis and remediation (no code changes required):
+
+1. Check the watch budget: `cat /proc/sys/fs/inotify/max_user_watches`.
+2. Find the top consumers — per-process inotify watch counts can be derived
+   from `/proc/<pid>/fdinfo/<fd>` entries of type `anon_inode:inotify`.
+3. Kill the orphaned consumer(s) once confirmed hung (parent session dead,
+   e.g. `ppid=1`, no output for hours).
+4. Re-run the suite; it should be green.
+
+Reference work item: MS-0MVA50KJN009X30C.
+
