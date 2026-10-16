@@ -499,9 +499,15 @@ The game is considered **won** when **any** of the following conditions are sati
    > preset is already a multiple of 50, so the effective target is the base
    > value. The base difficulty presets themselves are never modified; the
    > effective value is derived at consumption time.
-2. **Challenge Completion** – All **Primary Challenges** (defined in `docs/games/the-build/challenges.md`) are completed, granting an automatic win regardless of numeric score.
-3. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
-4. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
+2. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
+3. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
+
+> **Completing challenges is not a win (MS-0MVAZH5OD000Q6E4).** Clearing
+> every active challenge awards the per-challenge bonus (`challengeBonus`
+> above, `challengeBonusPoints` per completion) but **never ends the game** —
+> in single-player or competitive play the match continues until the score
+> threshold (or an opt-in turn limit / a loss condition). A full challenge
+> sweep is a scoring milestone, not a sudden end-of-game.
 
 All win conditions are **deterministic** given the same seed, ensuring testability.
 

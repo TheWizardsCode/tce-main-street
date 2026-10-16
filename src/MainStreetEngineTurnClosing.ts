@@ -623,17 +623,6 @@ export function checkEndConditions(state: MainStreetState): boolean {
   // Compute current score
   updateScore(state);
 
-  // Win: all challenges complete (only if there are active challenges)
-  if (
-    state.activeChallenges.length > 0 &&
-    state.activeChallenges.every(ac => ac.completed)
-  ) {
-    state.gameResult = 'win';
-    state.endReason = 'all_challenges';
-    addLog(state, 'Victory: All challenges completed!', 'gain');
-    return true;
-  }
-
   // Score threshold — endless-mode branch (CG-0MTIILU5V006GCN4)
   if (state.finalScore >= state.config.winThreshold) {
     if (state.config.endlessMode) {
@@ -990,17 +979,20 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * Checks for end-of-turn win/loss conditions (at EndCheck phase).
  *
  * Win conditions (checked in order):
- * 1. All challenges complete (activeChallenges.length > 0 and all completed)
- * 2. Score threshold: finalScore >= config.winThreshold — unless endless
+ * 1. Score threshold: finalScore >= config.winThreshold — unless endless
  *    mode is enabled (`config.endlessMode === true`, CG-0MTIILU5V006GCN4).
  *    In endless mode the threshold declares the win and opens the endless-
  *    continuation offer: `gameResult` is `'win'` and `endReason` is
  *    `score_threshold_continue` until the player accepts the offer via
  *    {@link continueAfterThreshold}, at which point `gameResult` returns to
  *    `'playing'` and scoring continues.
- * 3. Turn limit (opt-in): turn >= config.maxTurns with positive reputation and
+ * 2. Turn limit (opt-in): turn >= config.maxTurns with positive reputation and
  *    coins >= 0 — only fires when a config explicitly sets `maxTurns`
  *    (default presets impose no turn limit, CG-0MSLXJCHH001DLIO).
+ *
+ * Completing every active challenge is **not** a win condition
+ * (MS-0MVAZH5OD000Q6E4): it remains a scoring bonus only, and play continues
+ * until the score threshold (or an opt-in turn limit / loss condition).
  *
  * Loss conditions:
  * 1. Bankruptcy (already checked by checkImmediateLoss)
@@ -1044,24 +1036,6 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   // The human seat index (or -1 when none). A win by any other seat is a
   // loss for the human player (MS-0MUX6PMCE002I6HO AC1).
   const humanIdx = findHumanSeatId(state);
-
-  // Win: all challenges complete — shared milestone; lowest-index player takes it.
-  if (
-    state.activeChallenges.length > 0 &&
-    state.activeChallenges.every(ac => ac.completed)
-  ) {
-    const winnerIdx = 0;
-    const isHumanWin = winnerIdx === humanIdx;
-    state.gameResult = isHumanWin ? 'win' : 'loss';
-    state.endReason = 'all_challenges';
-    state.competitiveWinnerId = winnerIdx;
-    addLog(
-      state,
-      `${isHumanWin ? 'Victory' : 'Defeat'}: All challenges completed! (Player ${winnerIdx})`,
-      isHumanWin ? 'gain' : 'loss',
-    );
-    return true;
-  }
 
   // Each seat races toward the effective win threshold: the base difficulty
   // value divided by the seat count (human + AI) and rounded to the nearest

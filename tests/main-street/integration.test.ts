@@ -210,11 +210,11 @@ describe('Integration: Full Game', () => {
 
     // With high starting resources and reputation, the game reaches a win
     // (default presets impose no turn limit, so turn_limit_victory is not
-    // reachable — CG-0MSLXJCHH001DLIO). The specific win path is
-    // seed-dependent: score_threshold or all_challenges (the expanded
-    // incident pool shifts challenge-completion timing).
+    // reachable — CG-0MSLXJCHH001DLIO). The win path is the score threshold
+    // only: completing challenges is a scoring bonus, never an end condition
+    // (MS-0MVAZH5OD000Q6E4).
     expect(state.gameResult).toBe('win');
-    expect(['score_threshold', 'all_challenges']).toContain(state.endReason);
+    expect(state.endReason).toBe('score_threshold');
   });
 
   it('ends in bankruptcy when coins go below 0', () => {
@@ -712,10 +712,12 @@ describe('Integration: Challenge System', () => {
     }
   });
 
-  it('all-challenges win triggers before turn limit in a rigged scenario', () => {
-    const state = setupMainStreetGame({ seed: 'challenge-all-win' });
-    state.resourceBank.coins = 10000;
-    state.resourceBank.reputation = 3000;
+  it('completing all challenges does not win — the game continues (MS-0MVAZH5OD000Q6E4)', () => {
+    const state = setupMainStreetGame({ seed: 'challenge-all-no-win' });
+    // Enough coins for Deep Pockets (>= 3000) to complete this turn, but
+    // well below the Medium win threshold (12000) so no score win fires.
+    state.resourceBank.coins = 4000;
+    state.resourceBank.reputation = 500;
 
     // Pre-complete all but one challenge
     for (let i = 0; i < state.activeChallenges.length - 1; i++) {
@@ -734,13 +736,15 @@ describe('Integration: Challenge System', () => {
       };
     }
 
-    // With 10000 coins, Deep Pockets (>= 3000 coins) should complete on next EndCheck
+    // With 4000 coins, Deep Pockets (>= 3000 coins) completes on the next
+    // EndCheck — the pool empties but the game must keep running.
     executeWeekStart(state);
     const result = endTurnHeadless(state);
 
-    expect(state.gameResult).toBe('win');
-    expect(state.endReason).toBe('all_challenges');
-    expect(result.gameResult).toBe('win');
+    expect(state.activeChallenges.every(ac => ac.completed)).toBe(true);
+    expect(state.gameResult).toBe('playing');
+    expect(state.endReason).toBeNull();
+    expect(result.gameResult).toBe('playing');
   });
 
   it('challenge completions survive across turns (no revocation)', () => {
@@ -772,7 +776,7 @@ describe('Integration: Challenge System', () => {
     expect(state.challengesCompleted.filter(id => id === 'ch-deep-pockets')).toHaveLength(1);
   });
 
-  it('zero active challenges does not trigger all-challenges win', () => {
+  it('with zero active challenges the game simply continues', () => {
     const state = setupMainStreetGame({ seed: 'challenge-zero-no-win' });
     state.resourceBank.coins = 200;
     state.resourceBank.reputation = 20;
@@ -781,11 +785,9 @@ describe('Integration: Challenge System', () => {
     executeWeekStart(state);
     const result = endTurnHeadless(state);
 
-    // Game should not end with all_challenges when there are 0 challenges
-    if (state.endReason === 'all_challenges') {
-      throw new Error('all_challenges win should not trigger with 0 active challenges');
-    }
-    // Game either continues or ends for another reason
-    expect(result).toBeDefined();
+    // No challenge-based end condition exists; the run keeps playing.
+    expect(state.gameResult).toBe('playing');
+    expect(state.endReason).toBeNull();
+    expect(result.gameResult).toBe('playing');
   });
 });

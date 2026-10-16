@@ -983,12 +983,13 @@ describe('MainStreetEngine', () => {
     });
   });
 
-  // ── All-Challenges Win Condition ────────────────────────────
+  // ── All-Challenges Is NOT a Win Condition (MS-0MVAZH5OD000Q6E4) ──
 
-  describe('all-challenges win condition', () => {
-    it('should end game with win when all active challenges are completed', () => {
-      const state = createTestState('all-challenges-win');
-      // Set up with all challenges already completed (simulating evaluation just completed them)
+  describe('completing all challenges is not a win condition', () => {
+    it('does not end the game when all active challenges are completed', () => {
+      const state = createTestState('no-all-challenges-win');
+      // Set up with all challenges already completed (simulating evaluation
+      // just completed them).
       state.activeChallenges = [
         {
           challenge: CHALLENGE_TEMPLATES.find(c => c.id === 'ch-deep-pockets')!,
@@ -1000,17 +1001,39 @@ describe('MainStreetEngine', () => {
         },
       ];
       state.challengesCompleted = ['ch-deep-pockets', 'ch-beloved-mayor'];
-      // Keep score below WIN_THRESHOLD to prove it's the all_challenges condition winning
+      // Keep score below WIN_THRESHOLD to prove no all-challenges win fires.
       state.resourceBank.coins = 10;
       state.resourceBank.reputation = 5;
 
       const ended = checkEndConditions(state);
-      expect(ended).toBe(true);
-      expect(state.gameResult).toBe('win');
-      expect(state.endReason).toBe('all_challenges');
+      expect(ended).toBe(false);
+      expect(state.gameResult).toBe('playing');
+      expect(state.endReason).toBeNull();
     });
 
-    it('should not trigger all-challenges win when only some challenges are completed', () => {
+    it('ends via the score threshold once it is reached after the sweep', () => {
+      const state = createTestState('no-win-then-threshold');
+      state.activeChallenges = [
+        {
+          challenge: CHALLENGE_TEMPLATES.find(c => c.id === 'ch-deep-pockets')!,
+          completed: true,
+        },
+      ];
+      state.challengesCompleted = ['ch-deep-pockets'];
+      state.resourceBank.coins = 10;
+      state.resourceBank.reputation = 5;
+
+      expect(checkEndConditions(state)).toBe(false);
+
+      // Subsequent scoring crosses the threshold — the win path remains the
+      // score only.
+      state.resourceBank.coins = WIN_THRESHOLD;
+      expect(checkEndConditions(state)).toBe(true);
+      expect(state.gameResult).toBe('win');
+      expect(state.endReason).toBe('score_threshold');
+    });
+
+    it('should not trigger any win when only some challenges are completed', () => {
       const state = createTestState('partial-challenges');
       state.activeChallenges = [
         {
@@ -1027,24 +1050,24 @@ describe('MainStreetEngine', () => {
       state.resourceBank.reputation = 5;
 
       const ended = checkEndConditions(state);
-      // Should not end (score below threshold, turn < MAX_TURNS, not all challenges)
+      // Should not end (score below threshold, turn < MAX_TURNS)
       expect(ended).toBe(false);
       expect(state.gameResult).toBe('playing');
     });
 
-    it('should not trigger all-challenges win when 0 challenges are active', () => {
+    it('should not trigger any win when 0 challenges are active', () => {
       const state = createTestState('zero-challenges');
       state.activeChallenges = [];
       state.resourceBank.coins = 10;
       state.resourceBank.reputation = 5;
 
       const ended = checkEndConditions(state);
-      // Should not end from all_challenges (0/0 is not a win)
+      // No challenge-based end condition exists; 0/0 is not a win.
       expect(ended).toBe(false);
       expect(state.gameResult).toBe('playing');
     });
 
-    it('should add activity log entry for all-challenges victory', () => {
+    it('logs no victory entry for an all-challenges sweep', () => {
       const state = createTestState('all-challenges-log');
       state.activeChallenges = [
         {
@@ -1061,26 +1084,7 @@ describe('MainStreetEngine', () => {
       const victoryLog = state.activityLog.find(
         entry => entry.text.includes('All challenges completed'),
       );
-      expect(victoryLog).toBeDefined();
-      expect(victoryLog!.type).toBe('gain');
-    });
-
-    it('should check all-challenges before score threshold', () => {
-      const state = createTestState('priority-check');
-      // Both all_challenges and score_threshold would trigger
-      state.activeChallenges = [
-        {
-          challenge: CHALLENGE_TEMPLATES.find(c => c.id === 'ch-deep-pockets')!,
-          completed: true,
-        },
-      ];
-      state.challengesCompleted = ['ch-deep-pockets'];
-      state.resourceBank.coins = WIN_THRESHOLD; // Enough for score threshold too
-
-      checkEndConditions(state);
-
-      // all_challenges should win over score_threshold due to priority
-      expect(state.endReason).toBe('all_challenges');
+      expect(victoryLog).toBeUndefined();
     });
   });
 });

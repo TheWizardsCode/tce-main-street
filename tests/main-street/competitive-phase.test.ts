@@ -258,7 +258,7 @@ describe('AC2 — First-to-threshold win', () => {
     expect(s.competitiveWinnerId).toBeNull();
   });
 
-  it('all-challenges win goes to player 0 (shared milestone)', () => {
+  it('all-challenges completion does not declare a winner (MS-0MVAZH5OD000Q6E4)', () => {
     const s = comp('ac2-chal', 2);
     // Mark all challenges completed
     for (const ac of s.activeChallenges) ac.completed = true;
@@ -268,9 +268,12 @@ describe('AC2 — First-to-threshold win', () => {
     }
     s.config = { ...s.config, winThreshold: 9999 } as any;
     const ended = checkCompetitiveEndConditions(s);
-    expect(ended).toBe(true);
-    expect(s.endReason).toBe('all_challenges');
-    expect(s.competitiveWinnerId).toBe(0);
+    // A full shared-pool sweep is a scoring milestone, not an end condition:
+    // no winner is declared and play continues to the score race.
+    expect(ended).toBe(false);
+    expect(s.gameResult).toBe('playing');
+    expect(s.endReason).toBeNull();
+    expect(s.competitiveWinnerId).toBeNull();
   });
 
   it('N=3 first-to-threshold respects index order', () => {

@@ -157,9 +157,8 @@ export type EndReason =
   // it via `continueAfterThreshold` returns `gameResult` to `'playing'` and
   // keeps this marker so later EndChecks do not re-open the offer. Score
   // keeps accruing and the game only ends via the remaining conditions
-  // (bankruptcy, reputation collapse, all challenges, turn limit).
+  // (bankruptcy, reputation collapse, turn limit).
   | 'score_threshold_continue'
-  | 'all_challenges'
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | 'bankruptcy'
   | 'reputation_collapse'

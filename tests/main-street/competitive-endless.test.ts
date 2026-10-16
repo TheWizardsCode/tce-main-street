@@ -425,7 +425,7 @@ describe('AC3 — Default path (no endless flag) still ends at the threshold', (
     expect(s.endReason).toBe('score_threshold');
   });
 
-  it('all_challenges still wins regardless of endlessMode', () => {
+  it('completing all challenges does not end the game, even in endless mode (MS-0MVAZH5OD000Q6E4)', () => {
     const s = createState({ endlessMode: true });
     // Complete all active challenges
     for (const ac of s.activeChallenges) ac.completed = true;
@@ -433,8 +433,10 @@ describe('AC3 — Default path (no endless flag) still ends at the threshold', (
 
     const ended = checkEndConditions(s);
 
-    expect(ended).toBe(true);
-    expect(s.gameResult).toBe('win');
-    expect(s.endReason).toBe('all_challenges');
+    // A full challenge sweep keeps the game running (score still below the
+    // threshold); only the score race may end it.
+    expect(ended).toBe(false);
+    expect(s.gameResult).toBe('playing');
+    expect(s.endReason).toBeNull();
   });
 });

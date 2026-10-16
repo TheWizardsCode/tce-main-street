@@ -50,7 +50,7 @@ function driveToClosing(state: MainStreetState): void {
   }
 }
 
-/** Minimal completed challenge for the all-challenges end condition. */
+/** Minimal completed challenge for the challenge-summary assertions. */
 function completedChallenge(id: string, title: string): ActiveChallenge {
   return {
     challenge: {
@@ -111,14 +111,15 @@ describe('game-over summary acceptance — engine-driven endings', () => {
     expect(rows[1].badge).toBeDefined();
   });
 
-  it('competitive all-challenges completion renders the plain-language headline (AC2/AC4)', () => {
+  it('competitive all-challenges completion does not end the game (MS-0MVAZH5OD000Q6E4)', () => {
     const state = buildHumanVsAis('go-accept-challenges', 1, [[500, 5], [500, 5]]);
     state.activeChallenges = [completedChallenge('ch-accept', 'Acceptance challenge')];
 
-    expect(checkCompetitiveEndConditions(state)).toBe(true);
-    expect(state.endReason).toBe('all_challenges');
-    expect(formatEndReason(state)).toBe('All challenges completed');
+    expect(checkCompetitiveEndConditions(state)).toBe(false);
+    expect(state.endReason).toBeNull();
+    expect(state.competitiveWinnerId).toBeNull();
 
+    // The sweep is still reported as a scoring milestone on the summary.
     const summary = buildGameOverChallengeSummary(state);
     expect(summary.totalCount).toBe(1);
     expect(summary.completedCount).toBe(1);

@@ -64,7 +64,7 @@ export interface GameConfig extends DifficultyConfig {
    * Maximum number of turns before the game ends (opt-in).
    *
    * Undefined (the default) means **unlimited**: the game ends only via
-   * score threshold, all challenges complete, bankruptcy, or reputation
+   * score threshold, bankruptcy, or reputation
    * collapse. When set, the turn-based end path in `checkEndConditions`
    * fires at `turn >= maxTurns` (turn_limit_victory / turn_exhaustion).
    * Default presets do not set this field (CG-0MSLXJCHH001DLIO).
@@ -82,8 +82,7 @@ export interface GameConfig extends DifficultyConfig {
    * (`continueAfterThreshold`), which returns `gameResult` to `'playing'` so
    * the player (or players in competitive mode) can keep building; declining
    * leaves the declared win. After continuing, the game only ends via other
-   * conditions (bankruptcy, reputation collapse, all challenges complete, or
-   * turn limit).
+   * conditions (bankruptcy, reputation collapse, or turn limit).
    *
    * Default: `false` — the game ends at the threshold (existing behaviour,
    * CG-0MTIILU5V006GCN4). This is the producer's opt-in "endless mode".

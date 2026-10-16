@@ -874,8 +874,8 @@ condensed text-only summary.
 - Layout:
   - **Top band:** the title (`You Win!` / `Game Over`) plus a plain-language
     end-reason headline derived from `state.endReason` (e.g. *Bankruptcy*,
-    *Reputation collapse*, *Score threshold reached*, *All challenges
-    completed*, *Last standing*, *Turn limit exhausted*). In competitive mode a
+    *Reputation collapse*, *Score threshold reached*, *Last standing*,
+    *Turn limit exhausted*). In competitive mode a
     per-seat failure names the player concerned (e.g. `Bankruptcy — You`,
     `Reputation collapse — AI 1`), preferring the human seat.
   - **Left "Game State" column:** one row per player — `You` for the human

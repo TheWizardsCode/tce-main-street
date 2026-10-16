@@ -63,7 +63,7 @@ describe('Competitive acceptance — end-to-end drive', () => {
         expect(run.seats[run.winnerId]).toBeDefined();
       } else {
         expect(run.gameResult).toBe('loss');
-        expect(['bankruptcy', 'reputation_collapse', 'turn_exhaustion', 'all_challenges']).toContain(
+        expect(['bankruptcy', 'reputation_collapse', 'turn_exhaustion']).toContain(
           run.endReason,
         );
       }
