@@ -112,7 +112,7 @@ export function computeCsvChecksum(csvText) {
 // ---------------------------------------------------------------------------
 
 /**
- * Color map for synergy types.
+ * Color map for synergy types (bright accent palette — icons, header, art backing).
  */
 const synergyColor = {
   Food: '#E67E22',
@@ -122,6 +122,65 @@ const synergyColor = {
   Entertainment: '#E74C3C',
   Health: '#1ABC9C',
 };
+
+/**
+ * Dark synergy → card-face colour palette (MS-0MUZH51PU007POJ4).
+ *
+ * This Node generator cannot import the TypeScript module, so the values are
+ * duplicated from `MainStreetCardsUtils.CARD_FACE_PALETTE`; a test asserts the
+ * two copies agree (the existing pattern used for staff cost text).
+ */
+export const CARD_FACE_PALETTE = Object.freeze({
+  Food: '#5D4037',
+  Culture: '#1565C0',
+  Commerce: '#2E7D32',
+  Service: '#6A1B9A',
+  Entertainment: '#C62828',
+  Health: '#00838F',
+  // Fallback — previous neutral face for unknown / zero-synergy rows.
+  default: '#2f2f2f',
+});
+
+/**
+ * Resolve the card-face background from a card's synergy types
+ * (MS-0MUZH51PU007POJ4) — mirror of the TypeScript `cardFaceBackground`.
+ *
+ * - zero synergy types → the neutral default;
+ * - one synergy type   → that synergy's palette colour;
+ * - exactly two        → `{ fill, split: { top, bottom } }`;
+ * - more than two      → degrades safely to the first colour (single-tone).
+ *
+ * @param {string[]} synergyTypes synergy types in CSV order
+ * @returns {{fill: string, split: {top: string, bottom: string}|null}}
+ */
+export function cardFaceBackground(synergyTypes) {
+  const types = Array.isArray(synergyTypes) ? synergyTypes : [];
+  if (types.length === 0) {
+    return { fill: CARD_FACE_PALETTE.default, split: null };
+  }
+  const first = CARD_FACE_PALETTE[types[0]] || CARD_FACE_PALETTE.default;
+  if (types.length === 1) {
+    return { fill: first, split: null };
+  }
+  if (types.length === 2) {
+    const second = CARD_FACE_PALETTE[types[1]] || CARD_FACE_PALETTE.default;
+    return { fill: first, split: { top: first, bottom: second } };
+  }
+  // >2 synergy types: out of scope today — degrade to a single first colour.
+  return { fill: first, split: null };
+}
+
+/**
+ * Resolve the face background for a card family. Business / community-space
+ * cards use the synergy palette; every other family keeps its flat family
+ * colour (MS-0MUZH51PU007POJ4).
+ */
+function familyFaceBackground(family, trigger, synergies) {
+  if (family === 'business' || family === 'community-space') {
+    return cardFaceBackground(synergies);
+  }
+  return { fill: familyColor(family, trigger), split: null };
+}
 
 /**
  * Determine background color for a card family + trigger type.
@@ -135,35 +194,67 @@ function familyColor(family, trigger) {
   return '#333333';
 }
 
+/**
+ * Build the `<clipPath>` element for the rounded card-face rectangle
+ * (MS-0MUZH51PU007POJ4) — clips the two bridge bands to the rounded corners.
+ */
+function cardFaceClipPath(cardId, width, height) {
+  return `<clipPath id="ms-face-clip-${cardId}"><rect x="0" y="0" width="${width}" height="${height}" rx="6" ry="6" /></clipPath>`;
+}
+
+/**
+ * Build the face background markup. Single-tone faces use one rounded rect;
+ * a bridge card (split) emits two horizontal bands clipped to the rounded
+ * rectangle — top = synergyTypes[0], bottom = synergyTypes[1].
+ */
+function faceBackgroundSvg(cardId, face, width, height) {
+  if (!face.split) {
+    return `  <rect x="0" y="0" width="${width}" height="${height}" rx="6" ry="6" fill="${face.fill}" />`;
+  }
+  const mid = height / 2;
+  return `  <g clip-path="url(#ms-face-clip-${cardId})">\n` +
+    `    <rect x="0" y="0" width="${width}" height="${mid}" fill="${face.split.top}" />\n` +
+    `    <rect x="0" y="${mid}" width="${width}" height="${height - mid}" fill="${face.split.bottom}" />\n` +
+    `  </g>`;
+}
+
 // ---------------------------------------------------------------------------
 // SVG icon inlining
 // ---------------------------------------------------------------------------
 
 /**
- * Inline a synergy icon SVG file into the card SVG.
- * Falls back to a simple colored circle if the icon file doesn't exist.
+ * Inline a synergy icon SVG file into the card SVG — one icon per synergy
+ * type, at the bottom-left with an 18 px pitch (MS-0MUZH51PU007POJ4). A bridge
+ * card therefore shows both of its types, so colour is never the sole cue.
+ * Falls back to a simple coloured circle if the icon file doesn't exist.
  *
  * @param {string[]} synergies - List of synergy type names
- * @param {string} accent - Accent color string (CSS)
+ * @param {string} accent - Accent colour used for the fallback circle
  * @param {number} h - Card height in pixels
  * @param {string} iconsDir - Path to the icons directory
- * @returns {string} SVG markup for the icon
+ * @returns {string} SVG markup for the icon(s)
  */
 function buildIconMarkup(synergies, accent, h, iconsDir) {
   if (!synergies || synergies.length === 0) return '';
 
-  const key = synergies[0];
-  const iconFile = `ms-icon-${String(key).toLowerCase()}.svg`;
-  const iconPath = path.join(iconsDir, iconFile);
-  if (fs.existsSync(iconPath)) {
-    let iconSvg = fs.readFileSync(iconPath, 'utf8');
-    iconSvg = iconSvg.replace(/<\?xml[^>]*\?>\s*/i, '');
-    iconSvg = iconSvg.replace(/^\s*<svg[^>]*>/i, '').replace(/<\/svg>\s*$/i, '');
-    return `  <g class="ms-synergy-icon" aria-hidden="false" transform="translate(${GRAPHIC_X}, ${h - 22})">\n    <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="${key} icon">${iconSvg}\n    </svg>\n  </g>`;
+  const parts = [];
+  for (let i = 0; i < synergies.length; i++) {
+    const key = synergies[i];
+    const x = GRAPHIC_X + i * 18;
+    const iconFile = `ms-icon-${String(key).toLowerCase()}.svg`;
+    const iconPath = path.join(iconsDir, iconFile);
+    if (fs.existsSync(iconPath)) {
+      let iconSvg = fs.readFileSync(iconPath, 'utf8');
+      iconSvg = iconSvg.replace(/<\?xml[^>]*\?>\s*/i, '');
+      iconSvg = iconSvg.replace(/^\s*<svg[^>]*>/i, '').replace(/<\/svg>\s*$/i, '');
+      parts.push(`  <g class="ms-synergy-icon" aria-hidden="false" transform="translate(${x}, ${h - 22})">\n    <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="${key} icon">${iconSvg}\n    </svg>\n  </g>`);
+    } else {
+      // fallback dot — below the graphic, not overlapping 64×64
+      const colour = synergyColor[key] || accent;
+      parts.push(`  <circle class="ms-synergy-fallback" cx="${x + 8}" cy="${h - 14}" r="6" fill="${colour}" aria-hidden="true" />`);
+    }
   }
-
-  // fallback dot — below the graphic, not overlapping 64×64
-  return `  <circle class="ms-synergy-fallback" cx="${GRAPHIC_X + 8}" cy="${h - 14}" r="6" fill="${accent}" aria-hidden="true" />`;
+  return parts.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +352,10 @@ function graphicZoneSvgStatic(name, accent, cardId) {
  */
 export function generateCardSvg(t) {
   const w = 140, h = 80;
-  const bg = familyColor(t.family, t.trigger);
+  // Face colour (MS-0MUZH51PU007POJ4): business / community-space use the
+  // synergy palette (single colour, or a two-tone bridge split); other
+  // families keep their flat family colour.
+  const face = familyFaceBackground(t.family, t.trigger, t.synergies);
   const accent = t.synergies && t.synergies.length > 0 ? (synergyColor[t.synergies[0]] || '#cccccc') : '#cccccc';
   const displayCost = t.cost !== null ? `$${t.cost}` : '';
 
@@ -306,9 +400,9 @@ export function generateCardSvg(t) {
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/>
       <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
     </linearGradient>
-    ${artClipPath(t.id)}
+    ${artClipPath(t.id)}${face.split ? '\n    ' + cardFaceClipPath(t.id, w, h) : ''}
   </defs>
-  <rect x="0" y="0" width="${w}" height="${h}" rx="6" ry="6" fill="${bg}" />
+${faceBackgroundSvg(t.id, face, w, h)}
   <rect x="4" y="4" width="${w - 8}" height="${h - 8}" rx="4" ry="4" fill="url(#g-${t.id})" />
   <rect x="4" y="4" width="${w - 8}" height="20" rx="3" ry="3" fill="${accent}" opacity="0.18" />
 ${glyph}

@@ -76,7 +76,7 @@ export class MainStreetScene extends CardGameScene {
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true), vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle);
       return;
     }
     super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
@@ -286,6 +286,51 @@ export class MainStreetScene extends CardGameScene {
   public previousReputation: number | null = null;
 
   /**
+   * Display-only running totals shown while the end-of-turn deferred window is
+   * active (MS-0MUYAESVU007X2U8). They start at the pre-animation values and
+   * step with the reconciliation flights (coins/reputation arriving at or
+   * leaving the HUD) so the player sees the totals build, landing exactly on
+   * the post-reconciliation value. Presentation-only: never read by the engine
+   * and never a substitute for `state`. `null` means "not counting" — the HUD
+   * falls back to `previousCoins` / `previousReputation` (and then `state`),
+   * which is the reduced-motion / replay / legacy behaviour.
+   */
+  public displayedCoins: number | null = null;
+  public displayedReputation: number | null = null;
+
+  /**
+   * True once the phased income choreography has stepped the display-only
+   * totals for the current end-of-turn reconciliation. Used to avoid
+   * double-counting the incident's (a.k.a. "Upcoming") delta, which is flown
+   * once in the `upcoming` phase and again in the incident reveal
+   * (MS-0MUYAESVU007X2U8). Reset at endTurn() start and on scene creation.
+   */
+  public displayedIncomeCounted = false;
+
+  /**
+   * Live HUD total text objects, stored by `refreshHud()` (MS-0MUYAESVU007X2U8).
+   * The display-only reconciliation steps re-render them in place so the
+   * running totals visibly count without a full (transient-clearing) refresh.
+   */
+  public hudCoinText: any = null;
+  public hudRepText: any = null;
+
+  /**
+   * Live on-screen anchors of the HUD number centres, published by
+   * `refreshHud()` every time the HUD strip re-renders
+   * (MS-0MUYT57J80021CWW). `x` is the centre of the numeric portion of the
+   * `Coins: N` / `Reputation: N` label (label origin + prefix width +
+   * number-width/2), `y` is the HUD strip baseline (`hudY`). `null` before
+   * the first HUD render. Single source of truth for every coin/reputation →
+   * HUD flight destination (income collection, collection, Upcoming deltas,
+   * incident delta bubbles, sell refund, HUD delta pops); the animators
+   * consume these and fall back to the legacy approximate coordinates only
+   * when no render has happened yet.
+   */
+  public hudCoinAnchor: { x: number; y: number } | null = null;
+  public hudRepAnchor: { x: number; y: number } | null = null;
+
+  /**
    * True while the end-of-turn income collection animation is running
    * (coins/pips flying to the HUD). Suppresses the immediate HUD delta pop
    * in `animateHudValueChanges` so the collection's final "+total" pop is
@@ -477,6 +522,15 @@ export class MainStreetScene extends CardGameScene {
   // ── HUD ─────────────────────────────────────────────────
   public refreshHud(...args: any[]): any {
     return (this.msRenderer as any).refreshHud.apply(this.msRenderer, args);
+  }
+
+  /**
+   * Re-render the on-screen HUD totals in place from the display-only running
+   * totals (MS-0MUYAESVU007X2U8) — used by the reconciliation steps so the
+   * text counts without a full transient-clearing refresh.
+   */
+  public syncHudTotals(...args: any[]): any {
+    return (this.msRenderer as any).syncHudTotals.apply(this.msRenderer, args);
   }
 
   public animateHudValueChanges(...args: any[]): any {
@@ -1330,6 +1384,33 @@ export class MainStreetScene extends CardGameScene {
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showEventChoiceDialog === 'function') {
       (this.msOverlayManager as any).showEventChoiceDialog(event, onAccept, onReject);
+    }
+  }
+
+  /**
+   * Shows the human piggyback decision prompt (F5 of MS-0MUYC47EL005Z69H):
+   * join fully (pay the exact 150% charge for a 100% share, no action point)
+   * or keep the automatic 50% free-ride. Delegates to the overlay manager's
+   * showPiggybackDialog; the join-fully option is hidden when unaffordable.
+   *
+   * @param info     The exact prompt data (event, charge, affordability,
+   *                 100%/50% reward projections).
+   * @param onJoin   Called when the player joins fully.
+   * @param onKeep   Called when the player keeps the 50% share.
+   */
+  public showPiggybackDialog(
+    info: {
+      event: import('../MainStreetCards').EventCard;
+      charge: number;
+      affordable: boolean;
+      fullReward: { coins: number; reputation: number };
+      halfReward: { coins: number; reputation: number };
+    },
+    onJoin: () => void,
+    onKeep: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showPiggybackDialog === 'function') {
+      (this.msOverlayManager as any).showPiggybackDialog(info, onJoin, onKeep);
     }
   }
 

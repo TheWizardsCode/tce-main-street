@@ -40,6 +40,8 @@ export type {
   MainStreetState,
   PendingApplicant,
   PendingEventChoice,
+  PendingPiggyback,
+  PendingPiggybackDecision,
   MainStreetSerializedState,
   MilestoneRecord,
   MainStreetCampaignProgress,

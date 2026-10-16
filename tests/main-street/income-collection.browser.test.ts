@@ -7,9 +7,11 @@
  * 1. Normal play: ending the turn with producing slots on the street routes
  *    `result.income.phaseBreakdown.perSlotBreakdown` into
  *    `MainStreetAnimator.animateIncomePhases()`; `incomeCollectionActive`
- *    is set for the duration of the phased choreography (~11s) and cleared
- *    once collection completes; the day start is deferred until the show
- *    finishes.
+ *    is set for the duration of the phased choreography and cleared once
+ *    collection completes; the day start is deferred until the show finishes.
+ *    (The show now skips empty phases — MS-0MUYT436C005B4QN — so its length
+ *    is the sum over scheduled phases only; a base-only turn compacts to one
+ *    scheduled phase + collection.)
  * 2. Tutorial mode: the compact window-safe `animateIncomeCollection` is
  *    used instead (tutorial pacing unchanged); the day advances inside the
  *    usual ~1.2s window.
@@ -231,9 +233,12 @@ describe('MainStreet end-of-turn income presentation (controller wiring)', () =>
     expect(scene.incomeCollectionActive).toBe(true);
 
     // Mid-show, the controller must keep the choreography alive: the flag
-    // still holds and the day has NOT started early at ~4s into the show
+    // still holds and the day has NOT started early while the show runs
     // (the street refresh + WeekStart are deferred until collection ends).
-    await new Promise((r) => setTimeout(r, 4000));
+    // The show skips empty phases (MS-0MUYT436C005B4QN), so a base-only turn
+    // compacts to one scheduled phase (collect at the 2200ms default gap);
+    // 1500ms is safely inside the show yet well past the base count-out start.
+    await new Promise((r) => setTimeout(r, 1500));
     expect(scene.incomeCollectionActive).toBe(true);
     // CG-0MTR72P14000VO6Q: the deferred-mutation flow defers the closing
     // (EndCheck → next week) until the income collection completes — the

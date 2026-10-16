@@ -23,9 +23,11 @@
  *     (CG-0MSTOATDT009BRX2 — the two market rows were merged)
  *   T10 (festivalCard, index 9)  T11 (endTurnButton, index 10)
  *   T12 (developmentRow, index 11 — Bookshop move)
- *   T13 (developmentRow, index 12)  T14 (endTurnButton, index 13)
- *   T15 (actionButtons, index 14)  T16 (streetGrid, index 15 — Bookshop place)
- *   T17 (endTurnButton, index 16)  T18 (developmentRow, index 17 — Library move)
+ *   T14 (endTurnButton, index 12)  T15 (actionButtons, index 13 — Community Favour)
+ *   T16 (streetGrid, index 14 — Bookshop place)  T17 (endTurnButton, index 15)
+ *   T13 (developmentRow, index 16 — Costs and Reputation; MS-0MV0M9Y0W001ZMX6
+ *     positioned it immediately before T18 so the Library is on the row)
+ *   T18 (developmentRow, index 17 — Library move)
  *   T19 (endTurnButton, index 18)  T20 (streetGrid, index 19 — Library place)
  *   T21 (endTurnButton, index 20) — T22 was removed by MS-0MV4F04NN007H3DB
  *   T23 (hand, index 21)  T24 (hud, index 22)

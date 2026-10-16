@@ -18,7 +18,12 @@ export type MainStreetTranscriptEvent = (
       turn: number;
       eventId: string;
       cardName: string;
-      option: 'accept' | 'reject';
+      /**
+       * The chosen option's label token (F3 AC3) — the label IS the token
+       * (e.g. 'Accept', 'Reject', 'Grind through'). The legacy lowercase
+       * 'accept'/'reject' tokens were removed.
+       */
+      option: string;
       acceptNextCardId: string | null;
       rejectNextCardId: string | null;
     }

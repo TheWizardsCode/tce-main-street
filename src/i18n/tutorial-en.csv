@@ -34,7 +34,7 @@ tutorial.T11.body,"We can't start the festival now because we have no action poi
 tutorial.T12.title,Move the Bookshop to hand
 tutorial.T12.body,"The **{cardName}** is a Culture business that makes your festival stronger. Move it to your hand for this week's **one action** — you'll place it next week at its listed **{cost}**, not a same-week premium."
 tutorial.T13.title,Costs and Reputation
-tutorial.T13.body,Some businesses cost coins to run but bring in customers. The **{cardName}** builds your reputation.
+tutorial.T13.body,The **{cardName}** doesn't earn coins — it builds your reputation instead. A higher reputation brings more customers and grows your income.
 tutorial.T14.title,End this turn
 tutorial.T14.body,End the week to collect income and start the next week. The card you took waits in your hand until next week.
 tutorial.T15.title,Community Favour

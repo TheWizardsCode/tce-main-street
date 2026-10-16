@@ -5,9 +5,10 @@
  * (MS-0MUMP95IW002ARWJ):
  *
  *  - `add-card`   appends a new event card row (correct column count, no
- *                 duplicate id).
+ *                 duplicate id); `--options` authors an arbitrary multi-outcome
+ *                 node (`label|a,b;label2|c`) directly.
  *  - `link`       sets the choice links (`hasChoices`, `acceptNextCardId`,
- *                 `rejectNextCardId`) on an existing card.
+ *                 `rejectNextCardId`) or the `options` encoding on a card.
  *  - `set-storyline` sets `storylineId`/`storylineTitle` on an existing card.
  *
  * Every mutation is **transactional**: the new CSV is built in memory, loaded
@@ -119,6 +120,13 @@ export interface AddCardSpec {
   readonly hasChoices?: boolean;
   readonly acceptNextCardId?: string | null;
   readonly rejectNextCardId?: string | null;
+  /**
+   * Arbitrary multi-outcome `options` encoding (F4 AC4):
+   * `label|cardA,cardB;label2|cardC` — `;` separates options, `|` separates
+   * the label from its candidate successor ids, `,` separates candidates.
+   * An empty candidate list (`label|`) is a terminal option.
+   */
+  readonly options?: string;
   readonly storylineId?: string | null;
   readonly storylineTitle?: string | null;
   readonly trigger?: string;
@@ -131,6 +139,8 @@ export interface LinkSpec {
   readonly acceptNextCardId?: string | null;
   /** When provided, sets the reject-next link (null clears it). */
   readonly rejectNextCardId?: string | null;
+  /** When provided, (re)sets the arbitrary multi-outcome `options` encoding. */
+  readonly options?: string | null;
   /** When true, marks the card as a choice (hasChoices=true). */
   readonly hasChoices?: boolean;
   /** When provided, sets the storyline id. */
@@ -153,6 +163,7 @@ const COL = {
   hasChoices: 'hasChoices',
   acceptNextCardId: 'acceptNextCardId',
   rejectNextCardId: 'rejectNextCardId',
+  options: 'options',
   storylineId: 'storylineId',
   storylineTitle: 'storylineTitle',
 } as const;
@@ -171,8 +182,16 @@ function emptyRow(parsed: ParsedCsv): string[] {
 
 /** Sets a column value on a row (by header name); no-op if the column is absent. */
 function setField(parsed: ParsedCsv, row: string[], column: string, value: string): void {
-  const idx = parsed.header.indexOf(column);
-  if (idx >= 0) row[idx] = value;
+  let idx = parsed.header.indexOf(column);
+  if (idx < 0) {
+    // Column absent (transitional CSV before the `options` column lands):
+    // append it to the header and pad every existing row so the cell stays
+    // addressable and the serialised CSV parses back through the model.
+    idx = parsed.header.length;
+    parsed.header.push(column);
+    for (const r of parsed.rows) r.push('');
+  }
+  row[idx] = value;
 }
 
 /**
@@ -210,6 +229,9 @@ export function addCard(csvText: string, spec: AddCardSpec): AuthorResult {
   if (spec.hasChoices) setField(parsed, row, COL.hasChoices, 'true');
   if (spec.acceptNextCardId) setField(parsed, row, COL.acceptNextCardId, spec.acceptNextCardId);
   if (spec.rejectNextCardId) setField(parsed, row, COL.rejectNextCardId, spec.rejectNextCardId);
+  if (spec.options !== undefined && spec.options !== null) {
+    setField(parsed, row, COL.options, spec.options);
+  }
   if (spec.storylineId) setField(parsed, row, COL.storylineId, spec.storylineId);
   if (spec.storylineTitle) setField(parsed, row, COL.storylineTitle, spec.storylineTitle);
 
@@ -258,6 +280,9 @@ export function linkCard(csvText: string, spec: LinkSpec): AuthorResult {
     setField(parsed, row, COL.rejectNextCardId, spec.rejectNextCardId);
   }
   if (spec.hasChoices) setField(parsed, row, COL.hasChoices, 'true');
+  if (spec.options !== undefined && spec.options !== null) {
+    setField(parsed, row, COL.options, spec.options);
+  }
   if (spec.storylineId !== undefined && spec.storylineId !== null) {
     setField(parsed, row, COL.storylineId, spec.storylineId);
   }
@@ -364,6 +389,7 @@ export function parseAuthorArgs(argv: readonly string[]): AuthorCliOptions | { e
       hasChoices: map.get('has-choices') === 'true',
       acceptNextCardId: optional('accept-next') ?? null,
       rejectNextCardId: optional('reject-next') ?? null,
+      options: optional('options'),
       storylineId: optional('storyline-id') ?? null,
       storylineTitle: optional('storyline-title') ?? null,
       trigger: optional('trigger'),
@@ -376,6 +402,7 @@ export function parseAuthorArgs(argv: readonly string[]): AuthorCliOptions | { e
     id: map.get('id') ?? '',
     acceptNextCardId: optional('accept-next') ?? null,
     rejectNextCardId: optional('reject-next') ?? null,
+    options: optional('options') ?? null,
     hasChoices: map.get('has-choices') === 'true',
     storylineId: optional('storyline-id') ?? null,
     storylineTitle: optional('storyline-title') ?? null,

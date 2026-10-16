@@ -143,4 +143,82 @@ describe('MainStreet HUD strip layout', () => {
     expect(after.strip!.x).toBeCloseTo(before.layout.hudLeft, 0);
     expect(after.strip!.x + after.strip!.width).toBeCloseTo(before.layout.hudRight, 0);
   }, 30_000);
+
+  it('publishes coin/rep number anchors that match the rendered number centre (MS-0MUYT57J80021CWW)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+
+    // Independent check of the published anchor: the centre of the numeric
+    // portion of the `Coins: N` / `Reputation: N` label — label origin +
+    // prefix width + number-width/2 — measured via probe texts rendered with
+    // the label's exact style.
+    const expectAnchorMatches = (
+      label: Phaser.GameObjects.Text | undefined,
+      prefix: string,
+      anchor: { x: number; y: number } | null | undefined,
+    ): void => {
+      expect(label, `${prefix} label missing`).toBeDefined();
+      expect(anchor, `${prefix} anchor must be published`).toBeDefined();
+      const style = (label as unknown as { style: { toJSON: () => object } }).style.toJSON();
+      const probe = (text: string): number => {
+        const p = scene.add.text(0, 0, text, style) as Phaser.GameObjects.Text;
+        const w = p.width;
+        p.destroy();
+        return w;
+      };
+      const number = String(label!.text).slice(prefix.length);
+      const expected = label!.x + probe(prefix) + probe(number) / 2;
+      // ≤2px tolerance (AC1) — the flights land on the number, not a label-
+      // wide or gameW-fraction approximation.
+      expect(Math.abs(anchor!.x - expected)).toBeLessThanOrEqual(2);
+      expect(anchor!.y).toBeCloseTo(Number(label!.y), 0);
+    };
+
+    const before = snapshot(scene);
+    expectAnchorMatches(
+      before.texts.find((t) => t.text?.startsWith('Coins:')),
+      'Coins: ',
+      (scene as any).hudCoinAnchor,
+    );
+    expectAnchorMatches(
+      before.texts.find((t) => t.text?.startsWith('Reputation:')),
+      'Reputation: ',
+      (scene as any).hudRepAnchor,
+    );
+
+    // Layout drift resilience (AC3): re-rendering the HUD republishes the
+    // anchors from the live layout/values — the re-rendered numbers still
+    // match.
+    (scene as any).refreshHud();
+    const after = snapshot(scene);
+    expectAnchorMatches(
+      after.texts.find((t) => t.text?.startsWith('Coins:')),
+      'Coins: ',
+      (scene as any).hudCoinAnchor,
+    );
+    expectAnchorMatches(
+      after.texts.find((t) => t.text?.startsWith('Reputation:')),
+      'Reputation: ',
+      (scene as any).hudRepAnchor,
+    );
+
+    // Digit-count resilience (AC1): a large coin/reputation value widens the
+    // number, and the republished anchor must still cover the glyph centre.
+    (scene as any).state.resourceBank.coins = 1234567;
+    (scene as any).state.resourceBank.reputation = 987654;
+    (scene as any).refreshHud();
+    const wide = snapshot(scene);
+    expect(wide.texts.find((t) => t.text?.startsWith('Coins:'))!.text).toBe('Coins: 1234567');
+    expect(wide.texts.find((t) => t.text?.startsWith('Reputation:'))!.text).toBe('Reputation: 987654');
+    expectAnchorMatches(
+      wide.texts.find((t) => t.text?.startsWith('Coins:')),
+      'Coins: ',
+      (scene as any).hudCoinAnchor,
+    );
+    expectAnchorMatches(
+      wide.texts.find((t) => t.text?.startsWith('Reputation:')),
+      'Reputation: ',
+      (scene as any).hudRepAnchor,
+    );
+  }, 30_000);
 });

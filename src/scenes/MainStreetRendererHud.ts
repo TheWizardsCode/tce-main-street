@@ -10,7 +10,6 @@
  */
 
 import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
-import { continuityIndicatorLabel } from '../MainStreetStorylineUi';
 import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
@@ -215,12 +214,24 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // back to the current state outside the window (or when no pre-values
     // were captured, e.g. reduced-motion / replay paths).
     const deferredWindow = s.incomeCollectionActive === true || s.incidentRevealActive === true;
-    const coins = deferredWindow && s.previousCoins !== null
+    const deferredCoins = deferredWindow && s.previousCoins !== null
       ? s.previousCoins
       : s.state.resourceBank.coins;
-    const reputation = deferredWindow && s.previousReputation !== null
+    const deferredReputation = deferredWindow && s.previousReputation !== null
       ? s.previousReputation
       : s.state.resourceBank.reputation;
+    // Display-only running totals (MS-0MUYAESVU007X2U8): while the deferred
+    // window is active AND the reconciliation is counting, render the running
+    // totals instead of the static pre-animation value. They step with the
+    // coin/pip flights and land exactly on the post-reconciliation value; when
+    // not counting (reduced motion / replay / outside the window) this is the
+    // unchanged `deferredCoins` / `deferredReputation` fallback.
+    const coins = deferredWindow && typeof s.displayedCoins === 'number'
+      ? s.displayedCoins
+      : deferredCoins;
+    const reputation = deferredWindow && typeof s.displayedReputation === 'number'
+      ? s.displayedReputation
+      : deferredReputation;
     const { hudLeft, hudRight, hudWidth, favourBandRight, hudY } = s.layout;
 
     // Background strip — market-aligned to `hudLeft`..`hudRight` (AC2,
@@ -239,6 +250,18 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
     }).setOrigin(0, 0.5));
     s.hudContainer.add(coinText);
+    // Retain the live text object so the display-only reconciliation steps can
+    // re-render it in place (MS-0MUYAESVU007X2U8).
+    s.hudCoinText = coinText;
+
+    // Live HUD number anchors (MS-0MUYT57J80021CWW): the centre of the
+    // NUMERIC portion of each counter label (label origin + prefix width +
+    // number-width/2), NOT the centre of the whole label. The reputation
+    // label's width depends on its text, so the old whole-label centre
+    // drifted from the number; the numeric centre is what a coin/pip flight
+    // should visibly land on. Published here as the single source of truth
+    // for every coin/reputation → HUD flight destination.
+    s.hudCoinAnchor = hudNumberAnchor(coinText, 'Coins: ', String(Math.round(coins)), hudY);
 
     // Reputation — left-aligned right of the reserved Community Favour band so
     // the two never overlap once the buttons move into the strip
@@ -247,8 +270,16 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       fontSize: '16px', fontStyle: 'bold', color: '#88bbff', fontFamily: FONT_FAMILY,
     }).setOrigin(0, 0.5));
     s.hudContainer.add(repText);
+    // Retain the live text object so the display-only reconciliation steps can
+    // re-render it in place (MS-0MUYAESVU007X2U8).
+    s.hudRepText = repText;
     // Centre of the reputation text — used for the +/- delta pop position.
     const repX = repText.x + repText.width / 2;
+
+    // Live reputation number anchor (MS-0MUYT57J80021CWW) — the centre of
+    // the numeric portion of the `Reputation: N` label, published alongside
+    // the coin anchor above.
+    s.hudRepAnchor = hudNumberAnchor(repText, 'Reputation: ', String(Math.round(reputation)), hudY);
 
     // Score - right-aligned at the strip's right edge (shows x / y where y is
     // the effective win threshold — the per-seat target in competitive play,
@@ -276,19 +307,6 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Reputation (CG-0MUFAITED0088AGN).
     renderFavourButtons(s);
 
-    // Storyline continuity indicator (MS-0MUMP96XH002SJ89 AC3): a transient
-    // HUD label showing the storyline(s) currently in play. Rebuilt on every
-    // refresh (so it persists through cycles and disappears when the thread
-    // ends), positioned just above the strip's left edge.
-    const storylineLabel = continuityIndicatorLabel(s.state);
-    if (storylineLabel) {
-      const storylineText = markHudTransient(s.add.text(
-        hudLeft, hudY - HUD_BAR_HEIGHT_PX / 2 - 10, storylineLabel,
-        { fontSize: '12px', fontStyle: 'italic', color: '#ffcc88', fontFamily: FONT_FAMILY },
-      ).setOrigin(0, 1));
-      s.hudContainer.add(storylineText);
-    }
-
     // NOTE: the actions-remaining counter is intentionally NOT rendered in the
     // HUD strip. It lives in the action cluster above the End Turn button
     // (CG-0MUFAITX70081W41) so the player sees the action budget next to the
@@ -309,13 +327,35 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     }
 
     s.animateHudValueChanges({
-      coins,
-      reputation,
-      coinX: hudLeft + 70,
-      repX,
+      coins: deferredCoins,
+      reputation: deferredReputation,
+      coinX: s.hudCoinAnchor?.x ?? hudLeft + 70,
+      repX: s.hudRepAnchor?.x ?? repX,
       hudY,
     });
   
+}
+
+/**
+ * Re-render the on-screen HUD totals in place from the display-only running
+ * totals (MS-0MUYAESVU007X2U8). Called by each reconciliation step/snap so the
+ * text visibly counts without a full (transient-clearing) refresh. A no-op
+ * outside the deferred window or when the counters are not counting.
+ */
+export function syncHudTotals(renderer: MainStreetRendererContext): void {
+  const s = renderer.scene;
+  try {
+    const deferredWindow = s.incomeCollectionActive === true || s.incidentRevealActive === true;
+    if (!deferredWindow) return;
+    if (s.hudCoinText && typeof s.displayedCoins === 'number') {
+      s.hudCoinText.setText(`Coins: ${Math.round(s.displayedCoins)}`);
+    }
+    if (s.hudRepText && typeof s.displayedReputation === 'number') {
+      s.hudRepText.setText(`Reputation: ${Math.round(s.displayedReputation)}`);
+    }
+  } catch {
+    // Presentation-only — a missing/destroyed text object must never break a flight.
+  }
 }
 
 export function refreshChallengeTracker(renderer: MainStreetRendererContext): void {
@@ -1055,4 +1095,52 @@ export function animateUpcomingEffectLine(renderer: MainStreetRendererContext,
     }
     return chars;
   
+}
+
+/**
+ * Measure the rendered width of a substring (`value`) in the same font as
+ * the given Phaser Text object (MS-0MUYT57J80021CWW). Phaser syncs the
+ * canvas `font` to the label's style when it paints, so measuring on the
+ * Text's own `context` returns the exact same metrics the label uses.
+ * Defensive: a failure (e.g. mock/stub objects in tests) yields 0.
+ */
+function measureTextWidth(text: Phaser.GameObjects.Text, value: string): number {
+  try {
+    const style = (text as unknown as {
+      style?: { syncFont?: (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => void };
+    }).style;
+    const canvas = (text as unknown as { canvas?: HTMLCanvasElement }).canvas;
+    const context = (text as unknown as { context?: CanvasRenderingContext2D }).context;
+    if (style?.syncFont && canvas && context) style.syncFont(canvas, context);
+    if (context && typeof context.measureText === 'function') {
+      const measured = context.measureText(value).width;
+      return Number.isFinite(measured) ? measured : 0;
+    }
+  } catch {
+    // Presentation-only — never break the HUD render.
+  }
+  return 0;
+}
+
+/**
+ * Compute the live HUD number anchor from its rendered label text
+ * (MS-0MUYT57J80021CWW): the centre of the numeric portion — label origin +
+ * prefix width + number-width/2 — at the strip baseline `hudY`. Returns
+ * `null` only when measurement failed (callers then fall back to the legacy
+ * approximate coordinate, e.g. the very first render).
+ */
+function hudNumberAnchor(
+  text: Phaser.GameObjects.Text,
+  prefix: string,
+  numberText: string,
+  hudY: number,
+): { x: number; y: number } | null {
+  try {
+    const prefixWidth = measureTextWidth(text, prefix);
+    const numberWidth = measureTextWidth(text, numberText);
+    if (prefixWidth <= 0 && numberWidth <= 0) return null;
+    return { x: text.x + prefixWidth + numberWidth / 2, y: hudY };
+  } catch {
+    return null;
+  }
 }

@@ -1,7 +1,7 @@
 /**
  * Baseline-block selection for the Main Street Monte Carlo drift tooling.
  *
- * `docs/main-street/monte-carlo-baseline.json` records the greedy baseline at
+ * `docs/dev/assets/monte-carlo-baseline.json` records the greedy baseline at
  * the top level and the additive banking-aware snapshot under `bankingGreedy`
  * (CG-0MT3JMGA60091J8W AC5). These helpers resolve one strategy's block so the
  * drift report (`scripts/balance/drift-report.ts`) and its tests share a single
@@ -62,7 +62,7 @@ export function selectBaselineBlock(baseline: MonteBaseline, strategy?: string):
   if (!strategy || strategy === baseline.strategy) return baseline;
   if (strategy === 'banking-greedy' && baseline.bankingGreedy) return baseline.bankingGreedy;
   throw new Error(
-    `No baseline block for strategy "${strategy}" in docs/main-street/monte-carlo-baseline.json`,
+    `No baseline block for strategy "${strategy}" in docs/dev/assets/monte-carlo-baseline.json`,
   );
 }
 

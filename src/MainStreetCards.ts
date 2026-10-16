@@ -124,5 +124,9 @@ export {
   findConstrainedIncidentIndex,
   orderIncidentDeck,
   synergyColor,
+  CARD_FACE_PALETTE,
+  cardFaceBackground,
   cardLabel,
 } from './MainStreetCardsUtils';
+
+export type { CardFaceBackground } from './MainStreetCardsUtils';

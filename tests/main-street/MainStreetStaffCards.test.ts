@@ -27,6 +27,7 @@ import {
   processEndOfTurn,
   executeAction,
 } from '../../src/MainStreetEngine';
+import { purchaseStaffCard } from '../../src/MainStreetMarket';
 import { createStaffDeck, type StaffCard } from '../../src/MainStreetCards';
 
 // ── Feature Detection ───────────────────────────────────────
@@ -164,7 +165,8 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
           // Employed-applicant cards (12 specialization staff, CG-0MT4WXNR80090FXZ)
           // deliberately grant 0 hand slots; only hand-capacity staff add slots.
           expect(tpl.handSlotsAdded).toBeGreaterThanOrEqual(0);
-          // 4 = Executive premium slot capacity (Group F, CG-0MSQJ7VL9009JHF4).
+          // 4 = General Manager slot capacity; the Executive dropped to +1
+          // slot when it gained an action per week (MS-0MUYAEXBN008YC0J).
           expect(tpl.handSlotsAdded).toBeLessThanOrEqual(4);
 
           // ongoingCost should exist (0 is acceptable for cheap staff)
@@ -686,6 +688,33 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
 
       processEndOfTurn(state);
       expect(state.gameResult).toBe('playing');
+    });
+  });
+
+  // ── Single-player hand capacity unchanged (MS-0MV8PX0Y70006PIW) ──────
+  // The competitive per-seat work must leave single-player on the existing
+  // shared-`maxHandSize` path: base 3 plus the seat's staff `handSlotsAdded`.
+  // This holds today (green guard) — it pins the regression so the per-seat
+  // binding can never change single-player behaviour.
+
+  describe('Single-player hand capacity unchanged', () => {
+    it('keeps the shared-path contract: base 3, no per-seat records', () => {
+      const state = createTestState();
+      expect(state.players).toBeUndefined();
+      expect(getMaxHandSize(state)).toBe(3);
+    });
+
+    it('grows by staff handSlotsAdded through the existing purchase path', () => {
+      const state = createTestState();
+      executeWeekStart(state);
+
+      const card = ensureStaffInMarket(state);
+      state.resourceBank.coins = card.cost;
+      const initial = getMaxHandSize(state);
+
+      purchaseStaffCard(state, card.id);
+
+      expect(getMaxHandSize(state)).toBe(initial + card.handSlotsAdded);
     });
   });
 });

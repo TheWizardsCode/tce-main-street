@@ -14,7 +14,7 @@ import type { BusinessCard, EventCard, UpgradeCard, StaffCard } from '../MainStr
 import type { SynergyPair } from '../MainStreetAdjacency';
 import type { TurnResult } from '../MainStreetEngine';
 import type { DragDropPayload } from '@ui/dragDrop';
-import { startTurnPhase, endTurn, finishTurnPresentation, handleGameOver, presentEventChoiceDialog, onEventChoice, onPlayHeldEvent, performUndo, performRedo } from './MainStreetTurnControllerTurnFlow';
+import { startTurnPhase, endTurn, finishTurnPresentation, handleGameOver, presentEventChoiceDialog, onEventChoice, onPiggybackChoice, onPlayHeldEvent, performUndo, performRedo, presentPiggybackDialog } from './MainStreetTurnControllerTurnFlow';
 import { onBusinessCardClick, onEventCardClick, onFreeMarketRerollClick, onMoveStaffClick, onMoveStaffDestinationClick, cancelStaffMove, onRefreshMarketClick, onPeekClick, onCommunityFavourClick, onUpgradeCardClick, onHandUpgradeCardClick, onStaffCardClick, onHandBusinessCardClick, onHandEventCardClick, onDiscardHandCard } from './MainStreetTurnControllerMarketActions';
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
 import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
@@ -71,8 +71,16 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
     presentEventChoiceDialog(this);
   }
 
-  public onEventChoice(option: 'accept' | 'reject'): void {
+  public onEventChoice(option: 'accept' | 'reject' | number): void {
     onEventChoice(this, option);
+  }
+
+  public presentPiggybackDialog(): void {
+    presentPiggybackDialog(this);
+  }
+
+  public onPiggybackChoice(join: boolean): void {
+    onPiggybackChoice(this, join);
   }
 
   public onPlayHeldEvent(handIndex?: number): void {

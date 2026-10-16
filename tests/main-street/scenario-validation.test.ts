@@ -100,12 +100,13 @@ describe('Scenario Validation: requiredCardId references', () => {
   });
 
   it('the day-start hook actually guarantees the hook-covered targets appear in the row', () => {
-    // Day-6 start: T18 (Library move-to-hand) is upcoming; the hook must put
-    // cs-library into the visible row.
-    const t18Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T18');
+    // Day-6 start: T13 (Costs and Reputation) is the active step, sitting
+    // immediately before T18 (Library move-to-hand, MS-0MV0M9Y0W001ZMX6); the
+    // hook must put cs-library into the visible row while T13 is shown.
+    const t13Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T13');
     const controller: TutorialControllerState = {
       isActive: true,
-      currentStepIndex: t18Index,
+      currentStepIndex: t13Index,
       lastCompletedStepId: 'T17',
       exited: false,
     };
@@ -113,6 +114,19 @@ describe('Scenario Validation: requiredCardId references', () => {
     ensureTutorialMarketForUpcomingSteps(state, controller);
     expect(state.market.cards.some(c => stripSerialSuffix(c.id) === 'cs-library')).toBe(true);
     expect(state.market.cards).toHaveLength(3);
+
+    // Same guarantee holds with T18 itself as the current step.
+    const t18Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T18');
+    const t18Controller: TutorialControllerState = {
+      isActive: true,
+      currentStepIndex: t18Index,
+      lastCompletedStepId: 'T13',
+      exited: false,
+    };
+    const state2 = setupMainStreetGame({ seed: 'scenario-hook-validation' });
+    ensureTutorialMarketForUpcomingSteps(state2, t18Controller);
+    expect(state2.market.cards.some(c => stripSerialSuffix(c.id) === 'cs-library')).toBe(true);
+    expect(state2.market.cards).toHaveLength(3);
   });
 
   it('no confirm-gate step has a requiredCardId (consistency check)', () => {

@@ -425,7 +425,7 @@ export function buildScoreTooltip(
  * Explains the daily action budget: what spends an action, what is free,
  * and the banking mechanic (unused base actions carry over, capped at 2).
  * When action-granting staff are employed (`actionsPerTurn`, e.g. the
- * Manager, Director or General Manager), appends the staff action note
+ * Manager, Director, Executive or General Manager), appends the staff action note
  * (staff actions are consumed first and never bank). (CG-0MT3IOPZB005LNAR)
  */
 export function buildActionTooltip(state: MainStreetState): string {

@@ -41,7 +41,8 @@ import type {
   StaffCard,
   SynergyType,
 } from '../MainStreetCards';
-import { synergyColor } from '../MainStreetCards';
+import { synergyColor, cardFaceBackground, CARD_FACE_PALETTE } from '../MainStreetCards';
+import type { CardFaceBackground } from '../MainStreetCards';
 import { formatCurrency } from '@core-engine/I18n';
 import { getCardArtDataUriForCard } from '../MainStreetCardArt';
 
@@ -69,17 +70,9 @@ const TEXT_MIN_X = GRAPHIC_X + GRAPHIC_W + 8; // 80
 
 const FONT = 'Inter, Segoe UI, Arial, sans-serif';
 
-/** Background fill colours per card family / synergy type. */
-const CARD_BG: Record<string, string> = {
-  Food:          '#5D4037',
-  Culture:       '#1565C0',
-  Commerce:      '#2E7D32',
-  Service:       '#6A1B9A',
-  Entertainment: '#C62828',
-  Health:        '#00838F',
-  // Fallback (community-space defaults to Culture colour)
-  default:       '#2f2f2f',
-};
+/** Re-exported so the static (mjs) palette-agreement test can compare the two
+ *  copies from a single import site (MS-0MUZH51PU007POJ4). */
+export { CARD_FACE_PALETTE };
 
 // ---------------------------------------------------------------------------
 // SVG helpers
@@ -102,6 +95,37 @@ function cardArtClipId(cardId: string): string {
 /** Build the `<clipPath>` element that rounds a card's 64×64 art corners. */
 function cardArtClipPath(cardId: string): string {
   return `<clipPath id="${cardArtClipId(cardId)}"><rect x="${GRAPHIC_X}" y="${GRAPHIC_Y}" width="${GRAPHIC_W}" height="${GRAPHIC_H}" rx="4" ry="4" /></clipPath>`;
+}
+
+/** Build the clip-path id for the rounded card-face rectangle. */
+function cardFaceClipId(cardId: string): string {
+  return `ms-face-clip-${cardId}`;
+}
+
+/** Build the `<clipPath>` element for the rounded card-face rectangle. */
+function cardFaceClipPath(cardId: string, width: number, height: number): string {
+  return `<clipPath id="${cardFaceClipId(cardId)}"><rect x="0" y="0" width="${width}" height="${height}" rx="6" ry="6" /></clipPath>`;
+}
+
+/**
+ * Build the two-band card-face background for a bridge card
+ * (MS-0MUZH51PU007POJ4): top band = `split.top` (`synergyTypes[0]`),
+ * bottom band = `split.bottom` (`synergyTypes[1]`). Both bands are clipped to
+ * the rounded card rectangle so neither bleeds past the rounded corners.
+ */
+function cardFaceSplitSvg(
+  cardId: string,
+  split: { readonly top: string; readonly bottom: string },
+  width: number,
+  height: number,
+): string {
+  const mid = height / 2;
+  return [
+    `  <g clip-path="url(#${cardFaceClipId(cardId)})">`,
+    `    <rect x="0" y="0" width="${width}" height="${mid}" fill="${split.top}" />`,
+    `    <rect x="0" y="${mid}" width="${width}" height="${height - mid}" fill="${split.bottom}" />`,
+    `  </g>`,
+  ].join('\n');
 }
 
 /** Build the 64×64 left-art graphic (CG-0MTORJ5FS006B0UN).
@@ -227,16 +251,20 @@ export function generateBusinessCardSvg(
   const totalRep = (card.reputationPerTurn ?? 0) + (card.reputationBonus ?? 0);
 
   const primarySynergy = card.synergyTypes[0];
-  const bgFill = CARD_BG[primarySynergy] ?? CARD_BG.default;
+  const face = cardFaceBackground(card.synergyTypes);
+  const bgFill = face.fill;
 
-  // Header bar uses the synergy colour at low opacity
-  const headerHex = headerFill(primarySynergy);
+  // Header bar uses the synergy colour at low opacity; a zero-synergy card
+  // (no business/community-space card ships that way today, but the generator
+  // must not throw) falls back to the neutral accent used by the static path.
+  const hasSynergy = card.synergyTypes.length > 0;
+  const headerHex = hasSynergy ? headerFill(primarySynergy) : 'cccccc';
 
   // ── Dynamic text elements (CG-0MTORJ5FS006B0UN: 64×64 left-art) ───────
 
   // 64×64 graphic placeholder — top-left; high-contrast + bold letter so
   // the card stays identifiable under hand overlap and future stacking.
-  const accent = '#' + headerFill(primarySynergy);
+  const accent = hasSynergy ? '#' + headerFill(primarySynergy) : '#cccccc';
   const graphic = graphicZoneSvg(
     accent,
     (card.name || '?').trim().charAt(0).toUpperCase(),
@@ -284,6 +312,14 @@ export function generateBusinessCardSvg(
   const costCircle = `<circle cx="${costCx}" cy="${costCy}" r="12" fill="#e0c7a0" stroke="#c8b79a" stroke-width="1.5" />`;
   const costText = `<text x="${costCx}" y="${costCy + 4}" font-family="${FONT}" font-size="11" fill="#3a2a14" text-anchor="middle" font-weight="500">${formatCurrency(card.cost)}</text>`;
 
+  // Card face (MS-0MUZH51PU007POJ4): a single palette colour, or — for a
+  // bridge card (exactly two synergy types) — a two-tone split clipped to the
+  // rounded card rectangle, top = synergyTypes[0], bottom = synergyTypes[1].
+  const faceClipDef = face.split ? `\n    ${cardFaceClipPath(card.id, width, height)}` : '';
+  const faceRect = face.split
+    ? cardFaceSplitSvg(card.id, face.split, width, height)
+    : `  <rect x="0" y="0" width="${width}" height="${height}" rx="6" ry="6" fill="${bgFill}" />`;
+
   // ── Compose SVG (CG-0MTORJ5FS006B0UN: 64×64 left-art) ─────
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -293,9 +329,9 @@ export function generateBusinessCardSvg(
       <stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/>
       <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
     </linearGradient>
-    ${cardArtClipPath(card.id)}
+    ${cardArtClipPath(card.id)}${faceClipDef}
   </defs>
-  <rect x="0" y="0" width="${width}" height="${height}" rx="6" ry="6" fill="${bgFill}" />
+${faceRect}
   <rect x="4" y="4" width="${width - 8}" height="${height - 8}" rx="4" ry="4" fill="url(#g-gen-${card.id})" />
   <rect x="4" y="4" width="${width - 8}" height="20" rx="3" ry="3" fill="#${headerHex}" opacity="0.18" />
   ${graphic}
@@ -397,6 +433,10 @@ export function generateStaffCardSvg(
 
 /**
  * Determine background/accent color scheme for CSV-row-based SVG generation.
+ *
+ * Business and community-space faces are coloured by the shared synergy
+ * palette in the caller (via {@link cardFaceBackground}); this helper only
+ * resolves the flat family colours for the other families.
  */
 function cardColorScheme(family: string, trigger?: string): { bg: string; accent: string } {
   if (family === 'event') {
@@ -405,8 +445,14 @@ function cardColorScheme(family: string, trigger?: string): { bg: string; accent
   }
   if (family === 'upgrade')       return { bg: '#6B4C9A', accent: '#9B59B6' };
   if (family === 'staff')         return { bg: '#555555', accent: '#888888' };
-  if (family === 'community-space') return { bg: '#2f2f2f', accent: '#cccccc' };
-  return { bg: '#2f2f2f', accent: '#cccccc' };
+  // business / community-space: fallback used only when no synergy exists.
+  if (family === 'community-space') return { bg: CARD_FACE_PALETTE.default, accent: '#cccccc' };
+  return { bg: CARD_FACE_PALETTE.default, accent: '#cccccc' };
+}
+
+/** Parse the CSV `synergyTypes` field ("Food|Culture") into an array. */
+function parseCsvSynergies(value: string | undefined): SynergyType[] {
+  return (value || '').split('|').map((t) => t.trim()).filter(Boolean) as SynergyType[];
 }
 
 /** Build the cost badge SVG (shared helper). */
@@ -419,7 +465,10 @@ function costBadgeSvg(cost: number, width: number, height: number): string {
   );
 }
 
-/** Build the common SVG shell with defs, background, and gradient. */
+/** Build the common SVG shell with defs, background, and gradient.
+ *  `face` resolves the background rect for business/community-space cards
+ *  (single fill or a two-tone bridge split, MS-0MUZH51PU007POJ4); when
+ *  absent/undefined the flat `bgFill` rect is used (other families). */
 function svgShell(
   cardId: string,
   name: string,
@@ -427,7 +476,13 @@ function svgShell(
   innerElements: string[],
   width: number,
   height: number,
+  face?: CardFaceBackground | null,
 ): string {
+  const faceSplit = face && face.split;
+  const faceClipDef = faceSplit ? '\n    ' + cardFaceClipPath(cardId, width, height) : '';
+  const faceRect = faceSplit
+    ? cardFaceSplitSvg(cardId, faceSplit, width, height)
+    : '  <rect x="0" y="0" width="' + width + '" height="' + height + '" rx="6" ry="6" fill="' + (face ? face.fill : bgFill) + '" />';
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(name) + '">',
@@ -436,9 +491,9 @@ function svgShell(
     '      <stop offset="0" stop-color="#ffffff" stop-opacity="0.06"/>',
     '      <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>',
     '    </linearGradient>',
-    '    ' + cardArtClipPath(cardId),
+    '    ' + cardArtClipPath(cardId) + faceClipDef,
     '  </defs>',
-    '  <rect x="0" y="0" width="' + width + '" height="' + height + '" rx="6" ry="6" fill="' + bgFill + '" />',
+    faceRect,
     '  <rect x="4" y="4" width="' + (width - 8) + '" height="' + (height - 8) + '" rx="4" ry="4" fill="url(#g-' + cardId + ')" />',
   ];
   for (const elem of innerElements) {
@@ -476,13 +531,27 @@ export function generateCardSvgFromCsvRow(
   const scheme = cardColorScheme(family, trigger);
   const inner: string[] = [];
 
+  // Synergy-aware face + accent (MS-0MUZH51PU007POJ4): business and
+  // community-space faces use the shared dark palette (single colour, or a
+  // two-tone bridge split), matching the static SVG generator. The bright
+  // first-synergy colour drives the graphic backing + header bar, exactly as
+  // the static generator does; other families keep their flat family colours.
+  const synergies = parseCsvSynergies(row.synergyTypes);
+  const isSynergyFamily = family === 'business' || family === 'community-space';
+  const face = isSynergyFamily
+    ? cardFaceBackground(synergies)
+    : { fill: scheme.bg, split: null };
+  const accent = isSynergyFamily && synergies.length > 0
+    ? '#' + synergyColor(synergies[0]).toString(16).padStart(6, '0')
+    : scheme.accent;
+
   // 64×64 left-art graphic — same stacking/overlap rules as concrete generators
   // CG-0MTORJ5FS006B0UN: accent-coloured placeholder with bold initial glyph.
   const glyph = (name || '?').trim().charAt(0).toUpperCase();
-  inner.push(graphicZoneSvg(scheme.accent, glyph, getCardArtDataUriForCard(id, name), cardArtClipId(id)));
+  inner.push(graphicZoneSvg(accent, glyph, getCardArtDataUriForCard(id, name), cardArtClipId(id)));
 
   // Header bar (kept for contrast, graphic sits on top of it at y=8)
-  inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="' + scheme.accent + '" opacity="0.18" />');
+  inner.push('  <rect x="4" y="4" width="' + (width - 8) + '" height="20" rx="3" ry="3" fill="' + accent + '" opacity="0.18" />');
   // Title: right of graphic, never inside 64×64 (x ≥ TEXT_MIN_X)
   inner.push('  <text x="' + TEXT_MIN_X + '" y="19" font-family="' + FONT + '" font-size="10" fill="#ffffff" font-weight="600" text-anchor="start">' + esc(name) + '</text>');
 
@@ -525,5 +594,13 @@ export function generateCardSvgFromCsvRow(
     inner.push('  ' + costBadgeSvg(cost, width, height));
   }
 
-  return svgShell(id, name, scheme.bg, inner, width, height);
+  // Synergy icons (AC3/AC4, MS-0MUZH51PU007POJ4): one icon per synergy type
+  // at the bottom-left (18 px pitch), matching the static generator and the
+  // dynamic generateBusinessCardSvg so a bridge card shows both of its types
+  // and colour is never the sole cue.
+  for (let i = 0; i < synergies.length; i++) {
+    inner.push('  ' + synergyIconSvg(synergies[i], GRAPHIC_X + i * 18, height - 22));
+  }
+
+  return svgShell(id, name, scheme.bg, inner, width, height, face);
 }

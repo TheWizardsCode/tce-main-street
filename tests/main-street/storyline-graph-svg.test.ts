@@ -9,7 +9,7 @@
  * AC11 — Per-event detail tables: generated below each diagram.
  * AC12 — Drift guard: committed tables/docs match the regenerated ones.
  * AC13 — Per-storyline documents: one Markdown file per storyline.
- * AC14 — Assets folder: SVGs live under docs/main-street/assets/.
+ * AC14 — Assets folder: SVGs live under docs/game/assets/.
  * AC15 — Readable boxes: brief description + impact inside each box.
  *
  * The renderer (`mermaid` + Playwright Chromium) is a devDependency only.
@@ -41,12 +41,12 @@ import {
 import { getEventTemplates } from '../../src/MainStreetCards';
 
 const PROJECT_ROOT = resolve(__dirname, '../..');
-const DOC_PATH = resolve(PROJECT_ROOT, 'docs/main-street/storylines.md');
+const DOC_PATH = resolve(PROJECT_ROOT, 'docs/game/storylines.md');
 const INCIDENT_INDEX_FILE = resolve(PROJECT_ROOT, INCIDENT_INDEX_PATH);
 const ASSET_PATH = (slug: string): string =>
-  resolve(PROJECT_ROOT, `docs/main-street/assets/storyline-graph-${slug}.svg`);
+  resolve(PROJECT_ROOT, `docs/game/assets/storyline-graph-${slug}.svg`);
 const STORYLINE_DOC_PATH = (slug: string): string =>
-  resolve(PROJECT_ROOT, `docs/main-street/storylines/${slug}.md`);
+  resolve(PROJECT_ROOT, `docs/game/storylines/${slug}.md`);
 
 const EXPECTED_SLUGS = ['economy', 'health', 'labor', 'restaurant', 'tax'];
 
@@ -101,9 +101,9 @@ describe('AC7 — one diagram per storyline, scoped and readable', () => {
 });
 
 describe('AC14 — SVGs live under the docs assets folder', () => {
-  it('every page is committed as a well-formed SVG in docs/main-street/assets', () => {
+  it('every page is committed as a well-formed SVG in docs/game/assets', () => {
     for (const page of buildStorylinePages()) {
-      expect(page.svgRelPath).toBe(`docs/main-street/assets/storyline-graph-${page.slug}.svg`);
+      expect(page.svgRelPath).toBe(`docs/game/assets/storyline-graph-${page.slug}.svg`);
       expect(existsSync(ASSET_PATH(page.slug)), `missing ${page.svgRelPath}`).toBe(true);
       const svg = readAsset(page.slug);
       expect(svg.startsWith('<svg')).toBe(true);
@@ -116,7 +116,7 @@ describe('AC14 — SVGs live under the docs assets folder', () => {
 
   it('no rendered SVG remains at the old docs root path', () => {
     for (const slug of EXPECTED_SLUGS) {
-      expect(existsSync(resolve(PROJECT_ROOT, `docs/main-street/storyline-graph-${slug}.svg`))).toBe(
+      expect(existsSync(resolve(PROJECT_ROOT, `docs/game/storyline-graph-${slug}.svg`))).toBe(
         false,
       );
     }
@@ -164,7 +164,7 @@ describe('AC8 — standalone incidents are a compact index, not boxes', () => {
 describe('AC13 — one document per storyline, separated from storylines.md', () => {
   it('each storyline has its own document with its diagram and detail table', () => {
     for (const page of buildStorylinePages()) {
-      expect(page.docRelPath).toBe(`docs/main-street/storylines/${page.slug}.md`);
+      expect(page.docRelPath).toBe(`docs/game/storylines/${page.slug}.md`);
       expect(existsSync(STORYLINE_DOC_PATH(page.slug)), `missing ${page.docRelPath}`).toBe(true);
       const doc = readFileSync(STORYLINE_DOC_PATH(page.slug), 'utf-8');
       expect(doc).toContain(`# ${page.title}`);
@@ -207,7 +207,8 @@ describe('AC10 — the manifest exposes per-event detail', () => {
   it('marks every option edge with its effect policy', () => {
     const edges = manifest().edges;
     expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Accept')!.effectPolicy).toBe('apply');
-    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Reject')!.effectPolicy).toBe('skip');
+    // F6 (Q4=B): migrated CSV options always apply the event effect.
+    expect(edges.find((e) => e.from === 'evt-flu-outbreak' && e.label === 'Reject')!.effectPolicy).toBe('apply');
   });
 
   it('formats impact readably (percent, delta, duration, synergy)', () => {
@@ -228,7 +229,8 @@ describe('AC11/AC12 — detail tables and generated docs are drift-guarded', () 
     expect(table).toContain('Tax Audit (`evt-tax`)');
     expect(table).toContain('Lose 45% of your banked coins.');
     expect(table).toContain('−45% of banked coins (nominal −300 coins)');
-    expect(table).toContain('Reject: effect skipped → Inquiry Commission');
+    // F6 (Q4=B): migrated CSV options always apply the event effect.
+    expect(table).toContain('Reject: effect applies → Inquiry Commission');
   });
 
   it('the committed storyline documents match the regenerated documents', () => {

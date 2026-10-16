@@ -1,24 +1,22 @@
 /**
  * Storyline player-agency helpers (MS-0MUMP96XH002SJ89)
  *
- * Pure, Phaser-free helpers that surface named storylines, outcome feedback
- * and the active-thread continuity state to the UI. Keeping the logic here
- * (rather than in the scene) makes it unit-testable without a browser.
+ * Pure, Phaser-free helpers that surface named storylines and outcome feedback
+ * to the UI. Keeping the logic here (rather than in the scene) makes it
+ * unit-testable without a browser.
  *
  * - {@link choiceDialogTitle} / {@link choiceDialogSubtitle} — name the
  *   storyline in the choice dialog (fallback: card name).
  * - {@link storyUpdateLine} — the concise narrative "story update" emitted when
  *   a choice resolves (null for cards without a storyline).
- * - {@link getActiveStorylines} — the storylines currently in play (a card of
- *   the storyline is pending or queued), used by the HUD indicator. Persists
- *   through cycles and clears when the thread ends.
+ *
+ * The transient top-left HUD continuity indicator that previously consumed the
+ * active-storyline state was removed in MS-0MUYAF2AD0066XO9.
  *
  * @module
  */
 
 import type { EventCard } from './MainStreetCardsTypes';
-import type { MainStreetState } from './MainStreetStateTypes';
-import { getBaseTypeId } from './MainStreetCards';
 
 /** Human-readable storyline name: explicit title, else the storyline id. */
 export function storylineName(event: EventCard): string | null {
@@ -77,68 +75,4 @@ export function storyUpdateLine(
   }
   // Generalised multi-way option: name the option.
   return `Story update — ${name}: you chose "${option}"${describeDelta(coinChange, repChange)}.`;
-}
-
-/** A storyline that is currently in play. */
-export interface ActiveStoryline {
-  /** Storyline id. */
-  readonly storylineId: string;
-  /** Display name (title, falling back to the id). */
-  readonly storylineTitle: string;
-  /** Base card ids of this storyline currently pending or queued. */
-  readonly cardIds: readonly string[];
-}
-
-/**
- * Returns the storylines currently in play: a card belonging to the storyline
- * is either the pending choice or still queued in the incident deck.
- *
- * - While a choice awaits a decision, its storyline is active.
- * - When a chosen option queues a successor of the same storyline (including a
- *   cycle), the storyline stays active.
- * - When the chain ends (no successor of that storyline remains anywhere), the
- *   storyline is cleared.
- *
- * Deterministic: the result is sorted by storyline id.
- */
-export function getActiveStorylines(state: MainStreetState): ActiveStoryline[] {
-  const byId = new Map<string, { title: string; cardIds: Set<string> }>();
-
-  const consider = (card: EventCard | null | undefined): void => {
-    if (!card || !card.storylineId) return;
-    const entry = byId.get(card.storylineId) ?? {
-      title: card.storylineTitle ?? card.storylineId,
-      cardIds: new Set<string>(),
-    };
-    // Prefer an explicit title if a later card supplies one.
-    if (card.storylineTitle) entry.title = card.storylineTitle;
-    entry.cardIds.add(getBaseTypeId(card.id));
-    byId.set(card.storylineId, entry);
-  };
-
-  // The pending choice counts only while unresolved; once resolved it is
-  // consumed (its successor, if any, is now in the incident deck).
-  const pending = state.pendingEventChoice;
-  if (pending && !pending.resolved) consider(pending.event);
-  for (const card of state.incidentDeck) consider(card);
-
-  return [...byId.entries()]
-    .map(([storylineId, v]) => ({
-      storylineId,
-      storylineTitle: v.title,
-      cardIds: [...v.cardIds].sort(),
-    }))
-    .sort((a, b) => (a.storylineId < b.storylineId ? -1 : a.storylineId > b.storylineId ? 1 : 0));
-}
-
-/**
- * The HUD continuity indicator label, or null when no storyline is in play.
- * Names up to two active storylines, then summarises the rest.
- */
-export function continuityIndicatorLabel(state: MainStreetState): string | null {
-  const active = getActiveStorylines(state);
-  if (active.length === 0) return null;
-  const names = active.map((a) => a.storylineTitle);
-  if (names.length <= 2) return `Storyline: ${names.join(', ')}`;
-  return `Storyline: ${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
 }

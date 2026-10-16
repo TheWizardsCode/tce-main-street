@@ -33,7 +33,7 @@ import {
   journalTitle,
   STORY_UPDATE_PREFIX,
 } from '../../src/MainStreetStorylineJournal';
-import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
+import { resetStorylineRegistry, getStorylineOptions } from '../../src/MainStreetStoryline';
 
 function card(id: string): EventCard {
   const t = getEventTemplates().find((c) => c.id === id);
@@ -141,10 +141,12 @@ describe('AC3 — choice clarity labels', () => {
     expect(labels.accept).toContain(card('evt-tax-error').effect);
   });
 
-  it('explains skip semantics for Reject', () => {
+  it('explains the applied-but-branching semantics for Reject (F6, Q4=B)', () => {
     const labels = choiceClarityLabels(card('evt-tax-error'));
-    expect(labels.reject.toLowerCase()).toContain('refuse');
+    // CSV options always apply the effect (Q4=B), so Reject no longer claims
+    // to waive it; it still leads to a different incident.
     expect(labels.reject.toLowerCase()).toContain('different incident');
+    expect(labels.reject.toLowerCase()).toContain('applied');
   });
 
   it('does NOT reveal the escalation card id or name (both paths)', () => {
@@ -152,11 +154,13 @@ describe('AC3 — choice clarity labels', () => {
       const c = card(id);
       const labels = choiceClarityLabels(c);
       const revealed = `${labels.accept} ${labels.reject}`;
-      if (c.acceptNextCardId) expect(revealed).not.toContain(c.acceptNextCardId);
-      if (c.rejectNextCardId) {
-        expect(revealed).not.toContain(c.rejectNextCardId);
-        const successor = getEventTemplates().find((t) => t.id === c.rejectNextCardId);
-        if (successor) expect(revealed).not.toContain(successor.name);
+      const options = getStorylineOptions(c);
+      for (const option of options) {
+        for (const target of option.successorIds ?? []) {
+          expect(revealed, `${id} leaks successor id ${target}`).not.toContain(target);
+          const successor = getEventTemplates().find((t) => t.id === target);
+          if (successor) expect(revealed).not.toContain(successor.name);
+        }
       }
     }
   });

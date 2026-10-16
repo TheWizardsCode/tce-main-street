@@ -12,7 +12,7 @@ import { evaluateChallengesAfterAction } from './MainStreetChallenges';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { PlayerAction } from './MainStreetEngineTypes';
 import type { EventCard } from './MainStreetCards';
-import { purchaseBusiness, moveToHand, purchaseUpgrade, buyAndPlaceUpgrade, purchaseEvent, playBusinessFromHand, playUpgradeFromHand, playEventFromHand, discardFromHand } from './MainStreetMarket';
+import { purchaseBusiness, moveToHand, purchaseUpgrade, buyAndPlaceUpgrade, purchaseEvent, playBusinessFromHand, playUpgradeFromHand, playEventFromHand, discardFromHand, closeBusiness } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
@@ -242,6 +242,24 @@ function dispatchPlayerAction(
     case 'discard-from-hand':
       discardFromHand(state, action.handIndex);
       return null;
+    case 'close-business': {
+      // Close a street card (MS-0MURC6XO8005W57D): one action, no coins, and
+      // the reputation consequence applied inside `closeBusiness`. Mirrors
+      // the other action-spending cases: consume atomically and restore the
+      // budget if the underlying operation throws.
+      const hadBanked = (state.bankedActions ?? 0) > 0;
+      consumeAction(state);
+      try {
+        closeBusiness(state, action.slotIndex);
+        return null;
+      } catch (e) {
+        state.actionsRemaining += 1;
+        if (hadBanked) {
+          state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + 1);
+        }
+        throw e;
+      }
+    }
     case 'play-event': {
       const handIndex = action.handIndex ?? (state.hand ?? []).findIndex(c => c.family === 'event');
       if (handIndex < 0) {

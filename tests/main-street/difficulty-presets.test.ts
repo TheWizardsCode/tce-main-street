@@ -118,6 +118,7 @@ describe('DifficultyPresets Module', () => {
         'challengesPerRun',
         'incidentRepeatSpacing',
         'incidentMaxStreak',
+        'closeReputationMultiplier',
       ];
       for (const preset of [EASY_PRESET, MEDIUM_PRESET, HARD_PRESET]) {
         for (const key of requiredKeys) {
@@ -136,6 +137,7 @@ describe('DifficultyPresets Module', () => {
         'challengesPerRun',
         'incidentRepeatSpacing',
         'incidentMaxStreak',
+        'closeReputationMultiplier',
       ];
       for (const preset of [EASY_PRESET, MEDIUM_PRESET, HARD_PRESET]) {
         for (const key of numericKeys) {

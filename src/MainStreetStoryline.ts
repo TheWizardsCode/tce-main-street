@@ -106,18 +106,82 @@ export function hasRegisteredStorylineOptions(eventId: string): boolean {
 }
 
 /**
+ * Parses a CSV `options` encoding into the generalised option model.
+ *
+ * Encoding: `label|cardA,cardB;label2|cardC`
+ * - `;` separates options, `|` separates the label from its candidate card
+ *   ids, and `,` separates candidate ids.
+ * - A blank / whitespace-only encoding decodes to no options (non-choice).
+ * - An empty candidate list (`label|`) is a terminal option — the chain ends.
+ * - Every CSV-authored option carries `effectPolicy: 'apply'` (producer
+ *   Q4=B); `skip` remains available only via `registerStorylineOptions`.
+ *
+ * Parsing is deterministic: labels and candidate ids are whitespace-trimmed
+ * and empty segments/candidates are dropped. A non-empty encoding that does
+ * not decode to at least one valid option (or contains a malformed segment)
+ * is rejected with an error rather than silently ignored
+ * (MS-0MV8KQJR30007JL5 AC4).
+ *
+ * @param encoding Raw `options` cell from `src/card-data.csv`.
+ * @returns Ordered option list (empty for a blank encoding).
+ * @throws Error when the encoding is non-empty but malformed / yields no option.
+ */
+export function parseStorylineOptionsEncoding(encoding: string): StorylineOption[] {
+  const trimmed = encoding.trim();
+  if (trimmed === '') return [];
+
+  const options: StorylineOption[] = [];
+  for (const rawSegment of trimmed.split(';')) {
+    const segment = rawSegment.trim();
+    if (segment === '') continue;
+
+    const separator = segment.indexOf('|');
+    if (separator < 0) {
+      throw new Error(
+        `Invalid storyline options encoding "${encoding}": option "${segment}" is missing the "|" separator.`,
+      );
+    }
+
+    const label = segment.slice(0, separator).trim();
+    if (label === '') {
+      throw new Error(
+        `Invalid storyline options encoding "${encoding}": option "${segment}" has an empty label.`,
+      );
+    }
+
+    const successorIds = segment
+      .slice(separator + 1)
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => id !== '');
+
+    options.push({ label, successorIds, effectPolicy: 'apply' });
+  }
+
+  if (options.length === 0) {
+    throw new Error(
+      `Invalid storyline options encoding "${encoding}": no valid option decoded.`,
+    );
+  }
+  return options;
+}
+
+/**
  * Compiles a card's storyline into the generalised option model.
  *
- * Explicit registry options take precedence. Otherwise the legacy choice
- * fields are compiled:
+ * Precedence: explicit registry options > CSV `options` encoding > legacy
+ * two-way choice fields.
  *
- * - Non-choice cards (no `hasChoices`) → empty option list.
- * - Choice cards → two options:
- *   1. "Accept" (effectPolicy="apply", successorId=acceptNextCardId)
- *   2. "Reject" (effectPolicy="skip", successorId=rejectNextCardId)
+ * - A card with a non-empty `options` encoding compiles to the ordered option
+ *   list it declares (candidate successor sets, always `effectPolicy: 'apply'`).
+ * - Registered options (via `registerStorylineOptions`) take precedence over
+ *   both CSV and legacy compilation.
+ * - Non-choice cards (no `options`, no registered list, no `hasChoices`) →
+ *   empty option list.
+ * - Legacy choice cards → two options [Accept(apply), Reject(skip)].
  *
- * When `state` is provided, options whose `condition` callback returns
- * `false` are omitted from the result (draw-time filtering).
+ * When `state` is provided, registry options whose `condition` callback
+ * returns `false` are omitted from the result (draw-time filtering).
  */
 export function compileStorylineFromEvent(
   event: EventCard,
@@ -139,6 +203,13 @@ export function compileStorylineFromEvent(
       };
     }
     return { storylineId, compiledOptions: options };
+  }
+
+  if (event.options) {
+    // CSV-authored arbitrary option list (MS-0MV8KQJR30007JL5). A non-empty
+    // encoding is always a choice node; malformed encodings throw here so a
+    // bad CSV value is rejected rather than silently ignored.
+    return { storylineId, compiledOptions: parseStorylineOptionsEncoding(event.options) };
   }
 
   if (!event.hasChoices) {
@@ -174,7 +245,11 @@ export function compileStorylineFromEvent(
  * incidents. Only `hasChoices` / registered options intercept resolution.
  */
 export function eventHasStoryline(event: EventCard): boolean {
-  return Boolean(event.hasChoices) || hasRegisteredStorylineOptions(event.id);
+  return (
+    Boolean(event.hasChoices) ||
+    Boolean(event.options && event.options.trim() !== '') ||
+    hasRegisteredStorylineOptions(event.id)
+  );
 }
 
 /**
@@ -221,10 +296,20 @@ export interface StorylineResolution {
  * Resolves a storyline option by applying its effect policy and pushing the
  * successor card.
  *
- * If the option has a `successorResolver` callback, it is invoked at
- * resolution time to determine the pushed successor (replacing
- * `option.successorId`).  A `null` / `undefined` return value ends the
- * chain.
+ * Successor precedence at resolution time (F3, AC2):
+ *
+ * 1. `successorResolver` callback (when present) — invoked for the successor
+ *    id; a `null` / `undefined` return ends the chain. Consumes no RNG.
+ * 2. Candidate set (`successorIds`) — exactly **one** seeded `state.rng()`
+ *    draw selects the successor uniformly at random (one draw per selection,
+ *    at resolution time; replay with the same seed yields the same
+ *    successor). An **empty** candidate list is a terminal option — the
+ *    chain ends without consuming a draw.
+ * 3. Legacy single `successorId` (registry/transitional seam) — pushed
+ *    directly, no draw.
+ *
+ * The `effectPolicy` is honoured regardless of how the successor is
+ * resolved: `'apply'` runs the event's effect, `'skip'` ignores it.
  *
  * @param state  Current game state (mutated by effect application).
  * @param event  The storyline event card.
@@ -247,11 +332,19 @@ export function resolveStorylineOption(
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
 
-  // Determine the successor ID: callback resolver takes priority.
-  const resolvedSuccessor =
-    option.successorResolver != null
-      ? option.successorResolver(state)
-      : option.successorId;
+  // Determine the successor ID (precedence per the doc comment above): the
+  // uniform draw consumes exactly one state.rng() call per selection.
+  let resolvedSuccessor: string | null | undefined;
+  if (option.successorResolver != null) {
+    resolvedSuccessor = option.successorResolver(state);
+  } else if (option.successorIds != null) {
+    resolvedSuccessor =
+      option.successorIds.length > 0
+        ? option.successorIds[Math.floor(state.rng() * option.successorIds.length)]
+        : null; // terminal option — the chain ends, no draw
+  } else {
+    resolvedSuccessor = option.successorId;
+  }
 
   // Push successor card if one exists.
   const pushedCard = pushChainCard(state, resolvedSuccessor);
@@ -337,7 +430,10 @@ export function recordStorylineResolution(
     turn: state.turn,
     eventId: event.id,
     cardName: event.name,
-    option: option as 'accept' | 'reject',
+    // The chosen option's label, recorded as a stable token. F3 removed the
+    // legacy lowercase 'accept'/'reject' tokens — the label IS the token
+    // (e.g. 'Accept', 'Reject', 'Grind through').
+    option,
     acceptNextCardId: acceptNext,
     rejectNextCardId: rejectNext,
   });

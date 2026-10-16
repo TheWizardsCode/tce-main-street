@@ -110,6 +110,11 @@ function createMockScene(): {
       slotGap: 20,
       streetRowGap: 12,
     },
+    // Published HUD number anchors (MS-0MUYT57J80021CWW): the value the
+    // render would publish for the default gameW/HUD_Y — so every
+    // destination assertion below doubles as an anchor assertion.
+    hudCoinAnchor: { x: HUD_COIN.x, y: HUD_COIN.y },
+    hudRepAnchor: { x: HUD_REP.x, y: HUD_REP.y },
     settingsPanel: null,
     replayMode: false,
     incomeCollectionActive: false,
@@ -360,5 +365,25 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
     expect(scheduled).toHaveLength(0);
     expect(circles).toHaveLength(0);
     expect(moveGameObject).not.toHaveBeenCalled();
+  });
+
+  it('destinations come from the published HUD anchors, not the gameW fractions (MS-0MUYT57J80021CWW)', () => {
+    const { scene, scheduled, circles } = createMockScene();
+    // Publish anchors that differ from the legacy gameW * 0.25 + 70 / 0.5
+    // approximations; the flights must follow the anchors.
+    scene.hudCoinAnchor = { x: HUD_COIN.x + 100, y: HUD_Y };
+    scene.hudRepAnchor = { x: HUD_REP.x + 300, y: HUD_Y };
+    const animator = new MainStreetAnimator(scene);
+
+    // Coin gain: actor → published coin anchor.
+    const coinGain = makeSlot([{ cardId: 'e', name: 'Festival', delta: 100, kind: 'coin', attachedSlotIndex: null }]);
+    runUpcoming(animator, scene, scheduled, coinGain);
+    expect(circles[0]).toMatchObject({ x: UPCOMING.x, y: UPCOMING.y });
+    expect(lastMove()).toEqual({ destX: HUD_COIN.x + 100, destY: HUD_Y });
+
+    // Rep gain: actor → published rep anchor.
+    const repGain = makeSlot([{ cardId: 'e', name: 'Award', delta: 100, kind: 'rep', attachedSlotIndex: null }]);
+    runUpcoming(animator, scene, scheduled, repGain);
+    expect(lastMove()).toEqual({ destX: HUD_REP.x + 300, destY: HUD_Y });
   });
 });

@@ -8,7 +8,7 @@
  * community-space `reputationPerTurn` is scaled **×4**, negative sources are
  * left untouched, and the Community Favour conversion rates are unchanged
  * (measured ineffective for the greedy AI; see
- * `docs/main-street/reputation-retune-evidence.md`).
+ * `docs/dev/reputation-retune-evidence.md`).
  *
  * Acceptance criteria covered:
  *   (AC2) The re-tune is confined to the named reputation levers — no engine

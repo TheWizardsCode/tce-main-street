@@ -218,6 +218,18 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       const we = r.availableWeekEnd ? Number(r.availableWeekEnd) : undefined;
       // Parse choice-event columns (CG-0MTSHG8RP008E128)
       const hasChoices = r.hasChoices ? r.hasChoices.trim().toLowerCase() === 'true' : undefined;
+      // Parse the arbitrary multi-outcome `options` encoding
+      // (MS-0MV8KQJR30007JL5). Stored as the raw trimmed cell; compilation in
+      // MainStreetStoryline decodes it. A non-empty cell also derives
+      // `hasChoices: true` so the choice predicate stays the single source of
+      // truth for resolution/interception.
+      const options = r.options !== undefined ? r.options.trim() : '';
+      const derivesHasChoices = options !== '';
+      // Parse the per-card piggyback-eligibility flag (MS-0MV8BFOVB000HM0W / F1).
+      // Spread only when true so older templates / saves keep the field absent.
+      const piggybackable = r.piggybackable
+        ? r.piggybackable.trim().toLowerCase() === 'true'
+        : undefined;
       const acceptNextCardId = r.acceptNextCardId ? r.acceptNextCardId.trim() || null : undefined;
       const rejectNextCardId = r.rejectNextCardId ? r.rejectNextCardId.trim() || null : undefined;
       // Parse storyline metadata (MS-0MUMP93DI0018OGV / AC1)
@@ -243,7 +255,9 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
         ...(ws !== undefined && we !== undefined
           ? { availableWeekStart: ws, availableWeekEnd: we }
           : {}),
-        ...(hasChoices === true ? { hasChoices: true } : {}),
+        ...(hasChoices === true || derivesHasChoices ? { hasChoices: true } : {}),
+        ...(piggybackable === true ? { piggybackable: true } : {}),
+        ...(derivesHasChoices ? { options } : {}),
         ...(acceptNextCardId !== undefined ? { acceptNextCardId } : {}),
         ...(rejectNextCardId !== undefined ? { rejectNextCardId } : {}),
         ...(storylineId !== undefined ? { storylineId } : {}),

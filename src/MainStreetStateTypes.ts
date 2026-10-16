@@ -242,6 +242,18 @@ export interface PlayerRecord {
    * as `actionsRemaining - bankedActions` (MS-0MUVUPWHD0032CU4).
    */
   actionBudget: number;
+  /**
+   * Seat's own maximum cards held in hand (base 3, expanded by the seat's own
+   * staff `handSlotsAdded`).
+   *
+   * `bindCompetitiveSeat` copies it onto the shared working
+   * `state.maxHandSize` and `restoreCompetitiveSeat` writes it back, so staff
+   * bonuses apply only to the employing seat
+   * (MS-0MV8PX4DV003LTFP). Set on every competitive seat by
+   * `createCompetitiveState`; absent on legacy saves and in single-player
+   * states, where the loader / setup default it to the base capacity (3).
+   */
+  maxHandSize?: number;
   /** Computed score for this player (updated each EndCheck). */
   score: number;
   /**
@@ -436,11 +448,24 @@ export interface MainStreetState {
   activeEffects: ActiveEffect[];
   /** Cards held in the player's hand (not placed on tableau). Any mix of business, event, and upgrade cards. */
   hand: (BusinessCard | CommunitySpaceCard | EventCard | UpgradeCard)[];
-  /** Maximum number of cards the player can hold in hand (default 3, expanded by staff cards). */
+  /**
+   * Shared working hand capacity: the maximum number of cards the player can
+   * hold in hand (default 3, expanded by staff cards).
+   *
+   * In competitive play this is the **acting seat's** capacity: it is copied
+   * from the seat's own `PlayerRecord.maxHandSize` by `bindCompetitiveSeat`
+   * and written back by `restoreCompetitiveSeat`, so staff hand-slot bonuses
+   * apply only to the employing seat (MS-0MV8PX4DV003LTFP). Single-player
+   * games use this shared field directly.
+   */
   maxHandSize: number;
   /** Discard pile for cycled and sold cards (unified discard pool). */
   discardPile: BusinessCard[];
-  /** Active staff cards providing hand capacity bonuses. */
+  /**
+   * Active staff cards providing hand capacity bonuses. In competitive play
+   * this holds the **acting seat's** staff (bound per seat, mirroring
+   * `maxHandSize`); single-player games use it directly.
+   */
   staffCards: StaffCard[];
   /**
    * Tracks which street grid slots have been sold. Length = GRID_SIZE.
@@ -458,7 +483,8 @@ export interface MainStreetState {
   /**
    * Unused base actions banked from previous days (capped at 2).
    * Composed into the daily budget at WeekStart. Staff-derived actions
-   * (e.g. General Manager +1) are never banked — only the base action
+   * (e.g. Manager/Director/Executive/General Manager +1) are never banked —
+   * only the base action
    * banks each day. (CG-0MT3IOPZB005LNAR)
    */
   bankedActions: number;
@@ -565,6 +591,23 @@ export interface MainStreetState {
    */
   pendingEventChoice: PendingEventChoice | null;
   /**
+   * Pending piggyback decisions raised by the most recent eligible organiser
+   * event played in competitive mode (F3 of epic MS-0MUYC47EL005Z69H).
+   *
+   * Populated by {@link raisePiggybackDecisions} after the acting player's
+   * event effects resolve (N>=2 only): one unresolved entry per OTHER
+   * non-eliminated seat, in seat order. Each seat independently chooses to
+   * join fully (pay 150% of the acting player's paid cost, earn 100%) or keep
+   * the automatic 50% free-ride. Resolving the last entry clears the field.
+   *
+   * The shared closing pauses while a set is unresolved (`TurnResult
+   * .piggybackPending === true`) so the acting player's resolution always
+   * completes first and no piggyback share is silently dropped. Serialized by
+   * save/load (null default for older saves) so an unresolved set survives a
+   * save/load round-trip.
+   */
+  pendingPiggyback: PendingPiggyback | null;
+  /**
    * Transient buffer of challenge IDs completed by the most recent
    * per-action evaluation (CG-0MU37CKRR008252I). Reset to `[]` at the start
    * of every `executeAction` call and populated by
@@ -605,26 +648,71 @@ export interface PendingEventChoice {
   /** The choice event drawn from the incident deck (effect deferred). */
   event: EventCard;
   /**
-   * The chosen option label, once made; null while the dialog is showing.
-   * Legacy accept/reject choices store the lowercase `'accept'`/`'reject'`
-   * tokens for backward compatibility; generalised storylines store the
-   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   * The chosen option's label token, once made; null while the dialog is
+   * showing. F3 (MS-0MV8KQL820077BOS AC3): the label IS the token — the
+   * legacy lowercase 'accept'/'reject' tokens were removed. Legacy two-way
+   * cards therefore store 'Accept' / 'Reject' (their compiled labels);
+   * generalised storylines store the full authored label (e.g.
+   * 'Investigate the ledger').
    */
   chosenOption: string | null;
   /** False while the dialog is pending; true after the choice is applied. */
   resolved: boolean;
   /**
-   * Runtime-only snapshot of the compiled option list, captured when the
+   * Runtime snapshot of the compiled option list, captured when the
    * choice is drawn (`createPendingStorylineChoice`).  Callback `condition`s
    * are evaluated once, at draw time, and the resulting list is frozen: the
    * player selects from this snapshot at resolution time, so mutating state
    * between draw and resolution cannot change the presented options.
    *
-   * Never serialised (callbacks are functions) — a loaded save recompiles
-   * from the runtime registry instead.  Absent on legacy pending choices,
-   * where the engine falls back to recompiling.
+   * Since F3 (MS-0MV8KQL820077BOS AC4) the snapshot's data fields (label,
+   * candidate sets, effect policy) are carried through save/load and
+   * undo/redo so an arbitrary option list round-trips without loss. Callback
+   * functions (`condition` / `successorResolver`) are runtime-only: they are
+   * kept by reference in memory snapshots and dropped from saved data (the
+   * presenter-visible list itself is never lost).
    */
   options?: StorylineOption[];
+}
+
+/**
+ * One seat's pending piggyback decision (F3 of epic MS-0MUYC47EL005Z69H).
+ * Held on {@link PendingPiggyback} in seat order; each entry resolves
+ * independently.
+ */
+export interface PendingPiggybackDecision {
+  /** Owner index of the seat that must decide (never the acting seat). */
+  seatId: number;
+  /** The organiser event the acting seat played. */
+  event: EventCard;
+  /**
+   * Cost the acting player ACTUALLY paid for the event (after any acting-seat
+   * discounts) — the 150% join-fully baseline (epic Q2/Q3).
+   */
+  paidCost: number;
+  /**
+   * True when the seat chose to join fully, false when it kept the free-ride,
+   * and null while the decision is still pending.
+   */
+  chosenJoin: boolean | null;
+  /** True once the seat's tier (join-fully or free-ride) has been applied. */
+  resolved: boolean;
+}
+
+/**
+ * The set of pending piggyback decisions raised by one eligible organiser
+ * event play (F3 of epic MS-0MUYC47EL005Z69H). Stored as the typed
+ * `state.pendingPiggyback` field so it survives save/load and undo.
+ */
+export interface PendingPiggyback {
+  /** Owner index of the seat that played the organiser event. */
+  actingSeatId: number;
+  /** The organiser event the acting seat played. */
+  event: EventCard;
+  /** Cost the acting player actually paid (150% join-fully baseline). */
+  paidCost: number;
+  /** One unresolved entry per other active seat, in seat order. */
+  decisions: PendingPiggybackDecision[];
 }
 
 export interface MainStreetSerializedState {
@@ -762,6 +850,11 @@ export interface MainStreetSerializedState {
   pendingApplicant: PendingApplicant | null;
   /** Pending dual-choice incident event awaiting Accept/Reject (CG-0MTSHG8RP008E128). */
   pendingEventChoice: PendingEventChoice | null;
+  /**
+   * Pending piggyback decision set (F3 of epic MS-0MUYC47EL005Z69H). Absent /
+   * null on older saves and when no decision is pending.
+   */
+  pendingPiggyback: PendingPiggyback | null;
 }
 
 /** Record of a single milestone (tier unlock) achievement. */

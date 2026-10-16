@@ -1,13 +1,13 @@
 /**
- * Named storylines, outcome feedback & continuity indicator
- * (MS-0MUMP96XH002SJ89)
+ * Named storylines & outcome feedback (MS-0MUMP96XH002SJ89)
+ *
+ * The transient top-left HUD continuity indicator (the former AC3) was removed
+ * in MS-0MUYAF2AD0066XO9, along with its helpers.
  *
  * AC1 — Named storylines surfaced: the dialog title/subtitle use the storyline
  *       name (fallback: card name) and the activity log names the storyline.
  * AC2 — Outcome feedback: a resolved choice emits a narrative "story update"
  *       line tied to its storylineId.
- * AC3 — Continuity indicator: a storyline is active while a card of it is
- *       pending or queued, persists through cycles, and clears when it ends.
  * AC4 — Reduced motion: the presentation is instant (no animation input) —
  *       the helpers are pure and synchronous.
  * AC5 — Determinism preserved (covered by the C1 harness; smoke-checked here).
@@ -34,8 +34,6 @@ import {
   choiceDialogSubtitle,
   storylineName,
   storyUpdateLine,
-  getActiveStorylines,
-  continuityIndicatorLabel,
 } from '../../src/MainStreetStorylineUi';
 import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
 
@@ -164,85 +162,17 @@ describe('AC2 — outcome feedback line', () => {
   });
 });
 
-// ── AC3: continuity indicator ───────────────────────────────
-
-describe('AC3 — continuity indicator state', () => {
-  it('is empty when no storyline is in play', () => {
-    const state = setupMainStreetGame({ seed: 'agency-none', difficulty: 'Medium' });
-    state.incidentDeck.length = 0;
-    expect(getActiveStorylines(state)).toEqual([]);
-    expect(continuityIndicatorLabel(state)).toBeNull();
-  });
-
-  it('is active while a storyline choice is pending', () => {
-    const state = setupMainStreetGame({ seed: 'agency-pending', difficulty: 'Medium' });
-    pauseWithStoryline(state, 'evt-flu-outbreak');
-    const active = getActiveStorylines(state);
-    expect(active.map((a) => a.storylineId)).toEqual(['storyline-health']);
-    expect(active[0].storylineTitle).toBe('Public Health Crisis');
-    expect(continuityIndicatorLabel(state)).toContain('Public Health Crisis');
-  });
-
-  it('persists when a successor of the same storyline is queued', () => {
-    const state = setupMainStreetGame({ seed: 'agency-successor', difficulty: 'Medium' });
-    pauseWithStoryline(state, 'evt-flu-outbreak');
-    resolveEventChoice(state, 'reject'); // queues evt-pandemic (storyline-health)
-    const active = getActiveStorylines(state);
-    expect(active.map((a) => a.storylineId)).toEqual(['storyline-health']);
-    expect(active[0].cardIds).toContain('evt-pandemic');
-  });
-
-  it('clears when the chain ends (no successor of the storyline remains)', () => {
-    const state = setupMainStreetGame({ seed: 'agency-clear', difficulty: 'Medium' });
-    pauseWithStoryline(state, 'evt-flu-outbreak');
-    resolveEventChoice(state, 'accept'); // accept ends the chain (no successor)
-    state.incidentDeck.length = 0; // no escalation queued
-    expect(getActiveStorylines(state)).toEqual([]);
-    expect(continuityIndicatorLabel(state)).toBeNull();
-  });
-
-  it('persists through a cycle (the tax chain)', () => {
-    const state = setupMainStreetGame({ seed: 'agency-cycle', difficulty: 'Medium' });
-    pauseWithStoryline(state, 'evt-tax-inquiry');
-    // Inquiry Commission accept → evt-tax-error (same storyline).
-    resolveEventChoice(state, 'accept');
-    const active = getActiveStorylines(state);
-    expect(active.map((a) => a.storylineId)).toContain('storyline-tax');
-    expect(active[0].cardIds).toContain('evt-tax-error');
-  });
-
-  it('reports multiple concurrent storylines deterministically (sorted by id)', () => {
-    const state = setupMainStreetGame({ seed: 'agency-multi', difficulty: 'Medium' });
-    state.incidentDeck.length = 0;
-    state.incidentDeck.push({ ...card('evt-flu-outbreak'), id: 'evt-flu-outbreak-0' });
-    state.incidentDeck.push({ ...card('evt-recession'), id: 'evt-recession-0' });
-    const active = getActiveStorylines(state);
-    expect(active.map((a) => a.storylineId)).toEqual(['storyline-economy', 'storyline-health']);
-    expect(continuityIndicatorLabel(state)).toContain('Economic Downturn');
-    expect(continuityIndicatorLabel(state)).toContain('Public Health Crisis');
-  });
-
-  it('summarises more than two active storylines', () => {
-    const state = setupMainStreetGame({ seed: 'agency-summary', difficulty: 'Medium' });
-    state.incidentDeck.length = 0;
-    for (const id of ['evt-flu-outbreak', 'evt-recession', 'evt-strike-service', 'evt-tax']) {
-      state.incidentDeck.push({ ...card(id), id: `${id}-0` });
-    }
-    const label = continuityIndicatorLabel(state)!;
-    expect(label).toContain('+2 more');
-  });
-});
-
 // ── AC4: reduced motion ─────────────────────────────────────
 
 describe('AC4 — reduced-motion-safe presentation', () => {
-  it('the continuity helpers are pure and synchronous (no animation dependency)', () => {
+  it('the storyline presentation helpers are pure and synchronous (no animation dependency)', () => {
     const state = setupMainStreetGame({ seed: 'agency-pure', difficulty: 'Medium' });
-    pauseWithStoryline(state, 'evt-flu-outbreak');
-    // Calling twice yields identical output and mutates nothing observable.
-    const first = continuityIndicatorLabel(state);
-    const second = continuityIndicatorLabel(state);
-    expect(second).toBe(first);
+    const event = pauseWithStoryline(state, 'evt-flu-outbreak');
+    // Calling the pure helpers twice yields identical output and mutates
+    // nothing observable — the dialog and story-update text are static, so
+    // they need no animation input.
+    expect(choiceDialogTitle(event)).toBe(choiceDialogTitle(event));
+    expect(storyUpdateLine(event, 'accept', -10, 0)).toBe(storyUpdateLine(event, 'accept', -10, 0));
     // The pending state is untouched by presentation queries.
     expect(state.pendingEventChoice!.resolved).toBe(false);
   });

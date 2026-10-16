@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.1.21 (2026-10-16)
+> **Release focus:** This release focuses on refining progression and clarity, with each run now unlocking at most one new tier and closing businesses affecting reputation to make choices more meaningful. It also improves moment-to-moment feedback through animated HUD totals, faster end-of-turn animations, and clearer card synergy colours, while expanding content with AI-hosted town events, branching storyline choices, and a new challenge for selling three businesses.
+### Features
+- ToneForge audio is now off by default, so the game starts with stable sound. (MS-0MV76P7BN00164RF)
+- Each run now unlocks at most one new tier, making progression feel earned instead of dumping content all at once. (MS-0MV88T4I6000HQZG)
+- Follow us on Steam right from the tutorial's final step — optional and never blocks finishing. (MS-0MUN91YJ40092ZBM)
+- The top-left "Storyline:" text is gone for a cleaner HUD. (MS-0MUYAF2AD0066XO9)
+- Cards now show their synergy colours on the face, with bridge cards split top and bottom. (MS-0MUZH51PU007POJ4)
+- Coins and reputation now land right on your HUD totals when they fly in. (MS-0MUYT57J80021CWW)
+- End-of-turn animations now skip empty phases, so turns finish faster. (MS-0MUYT436C005B4QN)
+- Sell 3 businesses in one game to earn a new challenge and Steam achievement. (MS-0MUI7ZJK8003HY9J)
+- Closing a business now affects your reputation—remove popular spots to lose rep, or shut down nuisances to gain it. (MS-0MURC6XO8005W57D)
+- The tutorial now explains reputation right when you see the Library, so it's clear why it's worth building. (MS-0MV0M9Y0W001ZMX6)
+- Join town events the AI hosts: pay 150% for full rewards, or get half free. (MS-0MUYC47EL005Z69H)
+- Storyline choices can now branch in unpredictable ways, making each playthrough feel different. (MS-0MUZKA9CJ000N144)
+- The Executive now grants +1 action per week and +1 hand slot, giving you an earlier way to boost your weekly actions. (MS-0MUYAEXBN008YC0J)
+- Coins and reputation now count up or down as they arrive, instead of jumping at the end. (MS-0MUYAESVU007X2U8)
+### Bug Fixes
+- Returning players now see the banking tip again when starting a new game. (MS-0MV79JQ4H003E6BH)
+- Staff hand-size bonuses now apply only to the player who hired them. (MS-0MV8LHN5U008B9JJ)
+- The tutorial now runs without console warning spam, making real errors easier to spot. (MS-0MV26MOWT004ZCQC)
+- All documentation links now point to the correct file locations, so guides and references work as expected. (MS-0MUNC8AOL0092BE5)
+### Other
+- The game description now correctly calls Main Street an economic city builder. (MS-0MV87XZR00010HIV)
+- Gameplay guides and developer docs are now clearly separated, making it easier to find the rules and info you need. (MS-0MUZK0OWJ000PQ2D)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.20 (2026-10-14)
 > **Release focus:** This release focuses on making AI opponents smarter, more distinct, and fairer, while improving the tutorial and adding a new residential card pack with browser support for card packs. It also includes numerous reliability fixes for audio, the activity log, live site updates, and overall game startup.
 ### Features

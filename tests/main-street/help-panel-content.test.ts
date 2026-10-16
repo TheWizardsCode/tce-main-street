@@ -133,13 +133,14 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
   it('"Turn Flow" documents the weekly action economy', () => {
     const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Turn Flow')!));
     // One action per week, plus one per action-granting staff (Manager,
-    // Director, General Manager); take-to-hand and play/place each cost 1
+    // Director, Executive, General Manager); take-to-hand and play/place each cost 1
     // action, with a 1-action same-week composite.
     expect(body).toContain('end turn');
     expect(body).toContain('action-granting staff');
     expect(body).toContain('general manager');
     expect(body).toContain('manager');
     expect(body).toContain('director');
+    expect(body).toContain('executive');
     expect(body).toContain('taking a card to hand costs 1 action');
     expect(body).toContain('same-week move + play/place pair costs 1 action total');
     // Cost-at-play is preserved: coins are not charged on take-to-hand.

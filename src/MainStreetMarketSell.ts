@@ -15,6 +15,10 @@ import type { BusinessCard, CommunitySpaceCard } from './MainStreetCards';
 import { updateNeighborsOnSale, updateNeighborsOnClose, hasAdjacentSameType } from './MainStreetAdjacency';
 import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import { roundInt } from './MainStreetDifficulty';
+import {
+  computePerBusinessSkillBuffs,
+  getEmployedSpecializationSkillsForBusiness,
+} from './MainStreetStaffBuffs';
 import type { CloseResult, SellRefundBreakdown, SellResult } from './MainStreetMarketTypes';
 
 /**
@@ -218,6 +222,58 @@ export function canSellBusiness(
 /** Result returned after closing a business on the street grid. */
 
 /**
+ * Effective per-turn reputation contribution of the card at `slotIndex`,
+ * matching what the income phase credits to that slot
+ * (MS-0MURC6XO8005W57D).
+ *
+ * Starts from the card's cached `currentReputationPerTurn` (synergy and
+ * upgrades baked in) and falls back to the card's base `reputationPerTurn`
+ * when the cached value has not been calculated. Adds any per-business staff
+ * skill buffs employed at the slot, mirroring the income phase's
+ * `baseRep + buffs.reputation.flat` ledger.
+ *
+ * @param state     Current game state.
+ * @param card      The card occupying the slot.
+ * @param slotIndex Street grid slot index.
+ * @returns Effective per-turn reputation (may be negative).
+ */
+export function effectiveCardReputationPerTurn(
+  state: MainStreetState,
+  card: BusinessCard | CommunitySpaceCard,
+  slotIndex: number,
+): number {
+  const base = card.currentReputationPerTurn ?? card.reputationPerTurn ?? 0;
+  const buffs = computePerBusinessSkillBuffs(
+    getEmployedSpecializationSkillsForBusiness(state, slotIndex),
+    {
+      synergyTypes: (card as BusinessCard).synergyTypes ?? [],
+      baseIncome: (card as BusinessCard).baseIncome ?? 0,
+      ongoingCost: (card as BusinessCard).ongoingCost ?? 0,
+    },
+  );
+  return base + buffs.reputation.flat;
+}
+
+/**
+ * Signed reputation delta for closing the card at `slotIndex`
+ * (MS-0MURC6XO8005W57D): `-(effectiveRepPerTurn × closeReputationMultiplier)`.
+ *
+ * Negative for a card that contributes reputation (a penalty), positive for a
+ * nuisance card (a boost). The caller applies the reputation floor; this
+ * helper returns the raw, un-clamped delta for scoring and display.
+ *
+ * @param state     Current game state.
+ * @param slotIndex Street grid slot index.
+ * @returns Signed reputation delta (0 when the slot is empty).
+ */
+export function closeReputationDelta(state: MainStreetState, slotIndex: number): number {
+  const card = state.streetGrid[slotIndex];
+  if (!card) return 0;
+  const perTurn = effectiveCardReputationPerTurn(state, card, slotIndex);
+  return -(perTurn * state.config.closeReputationMultiplier);
+}
+
+/**
  * Checks whether a business or community-space card at the given slot can be
  * closed.
  *
@@ -287,14 +343,18 @@ export function canCloseBusiness(
  * again), the card is pushed to the unified `discardPile` (it is not removed
  * from the game), affected neighbours' cached income/reputation are
  * recalculated with the closed card no longer present, and an activity-log
- * entry is written. No coins are credited and no action is consumed at this
- * layer — the daily action is charged by `closeBusinessCommand` so that the
- * engine and command paths share the single `consumeAction` enforcement point
- * (CG-0MTCP7F9S009HARC).
+ * entry is written. Closing also applies a **reputation consequence**
+ * (MS-0MURC6XO8005W57D): the player's reputation is adjusted by
+ * `-(cardReputationPerTurn × closeReputationMultiplier)` and floored at 0, so
+ * removing a reputation-positive card is a penalty and removing a nuisance
+ * (negative per-turn reputation) is a boost. No coins are credited and no
+ * action is consumed at this layer — the daily action is charged by
+ * `closeBusinessCommand` so that the engine and command paths share the single
+ * `consumeAction` enforcement point (CG-0MTCP7F9S009HARC).
  *
  * @param state     Current game state (mutated in-place).
  * @param slotIndex Street grid slot index of the card to close.
- * @returns CloseResult on success.
+ * @returns CloseResult on success, including the applied reputation delta.
  * @throws Error if the slot is out of bounds, empty, already sold, or (in
  *         competitive mode) owned by a different seat.
  */
@@ -322,6 +382,15 @@ export function closeBusiness(
     throw new Error(ownership.reason);
   }
 
+  // Reputation consequence (MS-0MURC6XO8005W57D): compute the raw delta from
+  // the card's effective per-turn reputation BEFORE the grid is mutated, then
+  // apply it floored at 0 (the Discard precedent, CG-0MTQ7KUVF009ELQK). A
+  // clamped application reports only the reputation actually removed.
+  const rawRepDelta = closeReputationDelta(state, slotIndex);
+  const repBefore = state.resourceBank.reputation;
+  state.resourceBank.reputation = Math.max(0, repBefore + rawRepDelta);
+  const reputationDelta = state.resourceBank.reputation - repBefore;
+
   // Send the card to the unified discard pile (community-space cards share the
   // business card shape; the pile is typed as BusinessCard[]).
   state.discardPile.push(card as unknown as BusinessCard);
@@ -336,10 +405,10 @@ export function closeBusiness(
 
   addLog(
     state,
-    `Closed ${card.name} from slot ${slotIndex} (no refund, 1 action) (${describeEventEffects(0, 0)})`,
-    classifyEffect(0, 0),
+    `Closed ${card.name} from slot ${slotIndex} (no refund, 1 action, ${describeEventEffects(0, reputationDelta)})`,
+    classifyEffect(0, reputationDelta),
   );
 
-  return { card, slotIndex };
+  return { card, slotIndex, reputationDelta };
 }
 

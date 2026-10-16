@@ -18,9 +18,9 @@ import * as path from 'node:path';
 import { CARD_TIER_MAP, getStaffCardTemplates } from '../../src/MainStreetCards';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const CATALOG = path.join(PROJECT_ROOT, 'docs/main-street/card-catalog.md');
-const CONTENT = path.join(PROJECT_ROOT, 'docs/main-street/content-design-and-progression.md');
-const CORE_RULES = path.join(PROJECT_ROOT, 'docs/main-street/core-rules-and-mechanics.md');
+const CATALOG = path.join(PROJECT_ROOT, 'docs/game/card-catalog.md');
+const CONTENT = path.join(PROJECT_ROOT, 'docs/game/content-design-and-progression.md');
+const CORE_RULES = path.join(PROJECT_ROOT, 'docs/game/core-rules-and-mechanics.md');
 const SRC_README = path.join(PROJECT_ROOT, 'src/README.md');
 
 const INVESTOR_ID = 'staff-investor';

@@ -2,16 +2,19 @@
  * Content: Story-chain card wiring in the shipped CSV (CG-0MTT7FC7A000AA58 /
  * parent CG-0MTSHG8RP008E128)
  *
- * Verifies the chain-card content the producer approved 2026-09-09:
+ * Verifies the chain-card content the producer approved 2026-09-09, migrated
+ * to the arbitrary multi-outcome `options` model (MS-0MV8KQJR30007JL5 /
+ * MS-0MV8KQQQ90044CM5):
  *   Chain 1 Tax Escalation (3-step cycle):  evt-tax-error -> evt-tax -> evt-tax-inquiry (accept resets to evt-tax-error)
  *   Chain 2 Labor Unrest (2-step no reset): evt-strike-service -> evt-general-strike (terminal)
  *   Chain 3 Restaurant Opportunity (2-step):evt-popular-menu -> evt-farm-table (terminal)
  *   Chain 4 Economic Downturn (2-step):     evt-recession -> evt-depression (terminal)
  *   Health escalation (AC5 example):        evt-flu-outbreak -> evt-pandemic (terminal)
  *
- * Semantics per AC: accept = apply effect + add acceptNextCardId; reject =
- * skip effect + add rejectNextCardId. Terminal cards are plain (non-choice)
- * incidents that resolve normally when drawn — the chain ends by processing.
+ * Semantics per the migrated model (F6, producer Q4=B): every CSV-authored
+ * option carries `effectPolicy: 'apply'`, so both Accept and Reject apply the
+ * event effect; the option's candidate successor is then drawn. An empty
+ * candidate list is a terminal option (the chain ends).
  *
  * @module
  */
@@ -22,6 +25,7 @@ import {
   isDurationEventCard,
   getEventTemplates,
 } from '../../src/MainStreetCards';
+import { getStorylineOptions } from '../../src/MainStreetStoryline';
 
 type Card = EventCard & { id: string };
 
@@ -31,36 +35,44 @@ function template(id: string): Card {
   return t;
 }
 
-function allIdsResolve(links: Array<string | null | undefined>): void {
-  const ids = new Set(getEventTemplates().map((c) => c.id));
-  for (const link of links) {
-    if (link) expect(ids.has(link), `chain link ${link} not in CSV`).toBe(true);
+/** Candidate successor ids for a labelled option of a card (empty = terminal). */
+function targets(id: string, label: string): string[] {
+  const t = template(id);
+  return [...(getStorylineOptions(t).find((o) => o.label === label)?.successorIds ?? [])];
+}
+
+/** Asserts a choice card's option list matches the two-way Accept/Reject shape. */
+function expectTwoWay(id: string, accept: string | null, reject: string | null): void {
+  const c = template(id);
+  expect(c.hasChoices).toBe(true);
+  const options = getStorylineOptions(c);
+  expect(options.map((o) => o.label)).toEqual(['Accept', 'Reject']);
+  expect(options.every((o) => o.effectPolicy === 'apply')).toBe(true);
+  expect(targets(id, 'Accept')).toEqual(accept === null ? [] : [accept]);
+  expect(targets(id, 'Reject')).toEqual(reject === null ? [] : [reject]);
+}
+
+function allIdsResolve(ids: string[]): void {
+  const known = new Set(getEventTemplates().map((c) => c.id));
+  for (const id of ids) {
+    expect(known.has(id), `chain link ${id} not in CSV`).toBe(true);
   }
 }
 
 describe('Chain 1: Tax Escalation (3-step cycle, resets)', () => {
   it('Error in Tax Return: accept ends, reject -> Tax Audit', () => {
-    const c = template('evt-tax-error');
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-tax');
-    expect(c.coinDelta).toBeLessThan(0); // negative event
+    expectTwoWay('evt-tax-error', null, 'evt-tax');
+    expect(template('evt-tax-error').coinDelta).toBeLessThan(0); // negative event
   });
 
   it('Tax Audit (retrofitted): accept ends, reject -> Inquiry Commission', () => {
-    const c = template('evt-tax');
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-tax-inquiry');
+    expectTwoWay('evt-tax', null, 'evt-tax-inquiry');
   });
 
   it('Inquiry Commission: accept -> Error in Tax Return (cycle), reject ends', () => {
-    const c = template('evt-tax-inquiry');
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBe('evt-tax-error');
-    expect(c.rejectNextCardId).toBeUndefined();
-    expect(c.coinDelta).toBeLessThan(0);
-    expect(c.reputationDelta).toBeLessThan(0);
+    expectTwoWay('evt-tax-inquiry', 'evt-tax-error', null);
+    expect(template('evt-tax-inquiry').coinDelta).toBeLessThan(0);
+    expect(template('evt-tax-inquiry').reputationDelta).toBeLessThan(0);
   });
 
   it('severity escalates along the chain (2 -> 3 -> 6 coins)', () => {
@@ -71,29 +83,21 @@ describe('Chain 1: Tax Escalation (3-step cycle, resets)', () => {
 
 describe('Chain 2: Labor Unrest (2-step, no reset)', () => {
   it('Service Workers Strike: accept ends, reject -> General Strike', () => {
-    const c = template('evt-strike-service');
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-general-strike');
-    expect(c.coinDelta).toBeLessThan(0);
+    expectTwoWay('evt-strike-service', null, 'evt-general-strike');
+    expect(template('evt-strike-service').coinDelta).toBeLessThan(0);
   });
 
   it('General Strike is a terminal plain incident (chain ends when drawn)', () => {
     const c = template('evt-general-strike');
     expect(Boolean(c.hasChoices)).toBe(false);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBeUndefined();
     expect(c.coinDelta).toBeLessThan(0);
   });
 });
 
 describe('Chain 3: Restaurant Opportunity (2-step, no reset, positive)', () => {
   it('Popular Menu Item: accept ends, reject -> Farm-to-Table Feature', () => {
-    const c = template('evt-popular-menu');
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-farm-table');
-    expect(c.coinDelta).toBeGreaterThan(0); // positive event
+    expectTwoWay('evt-popular-menu', null, 'evt-farm-table');
+    expect(template('evt-popular-menu').coinDelta).toBeGreaterThan(0); // positive event
   });
 
   it('Farm-to-Table Feature is a terminal plain positive incident (better card)', () => {
@@ -110,11 +114,12 @@ describe('Chain 3: Restaurant Opportunity (2-step, no reset, positive)', () => {
 
 describe('Chain 4: Economic Downturn (2-step, no reset, duration)', () => {
   it('Economic Recession (retrofitted duration): accept ends, reject -> Depression', () => {
-    const c = template('evt-recession');
-    expect(isDurationEventCard(c)).toBe(true);
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-depression');
+    expect(isDurationEventCard(template('evt-recession'))).toBe(true);
+    // The shipped fan-out: Reject leads to depression OR a general strike.
+    expect(template('evt-recession').hasChoices).toBe(true);
+    expect(getStorylineOptions(template('evt-recession')).map((o) => o.label)).toEqual(['Accept', 'Reject']);
+    const reject = getStorylineOptions(template('evt-recession')).find((o) => o.label === 'Reject')!;
+    expect(reject.successorIds).toEqual(['evt-depression', 'evt-general-strike']);
   });
 
   it('Depression is a terminal duration card, strictly worse than the recession', () => {
@@ -134,11 +139,8 @@ describe('Chain 4: Economic Downturn (2-step, no reset, duration)', () => {
 
 describe('Health escalation (AC5 example: Flu Outbreak -> Pandemic)', () => {
   it('Flu Outbreak (retrofitted duration): accept ends, reject -> Pandemic', () => {
-    const c = template('evt-flu-outbreak');
-    expect(isDurationEventCard(c)).toBe(true);
-    expect(c.hasChoices).toBe(true);
-    expect(c.acceptNextCardId).toBeUndefined();
-    expect(c.rejectNextCardId).toBe('evt-pandemic');
+    expect(isDurationEventCard(template('evt-flu-outbreak'))).toBe(true);
+    expectTwoWay('evt-flu-outbreak', null, 'evt-pandemic');
   });
 
   it('Pandemic is a terminal duration card, worse than the flu', () => {
@@ -153,16 +155,17 @@ describe('Health escalation (AC5 example: Flu Outbreak -> Pandemic)', () => {
 });
 
 describe('Cross-chain integrity (AC4 data model / AC6 non-chain unchanged)', () => {
-  it('every chain link id resolves to a shipped template', () => {
-    allIdsResolve([
-      template('evt-tax-error').rejectNextCardId,
-      template('evt-tax').rejectNextCardId,
-      template('evt-tax-inquiry').acceptNextCardId,
-      template('evt-strike-service').rejectNextCardId,
-      template('evt-popular-menu').rejectNextCardId,
-      template('evt-recession').rejectNextCardId,
-      template('evt-flu-outbreak').rejectNextCardId,
-    ]);
+  it('every option candidate resolves to a shipped template', () => {
+    const all = [
+      evtTargets('evt-tax-error'),
+      evtTargets('evt-tax'),
+      evtTargets('evt-tax-inquiry'),
+      evtTargets('evt-strike-service'),
+      evtTargets('evt-popular-menu'),
+      evtTargets('evt-recession'),
+      evtTargets('evt-flu-outbreak'),
+    ].flat();
+    allIdsResolve(all);
   });
 
   it('non-chain one-off incidents were not retrofitted (AC6)', () => {
@@ -191,3 +194,8 @@ describe('Cross-chain integrity (AC4 data model / AC6 non-chain unchanged)', () 
     );
   });
 });
+
+/** All candidate successor ids across every option of a shipped card. */
+function evtTargets(id: string): string[] {
+  return getStorylineOptions(template(id)).flatMap((o) => o.successorIds ?? []);
+}

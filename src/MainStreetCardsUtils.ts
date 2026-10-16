@@ -416,6 +416,80 @@ export function synergyColor(type: SynergyType): number {
 }
 
 /**
+ * Dark synergy → card-face colour palette — the single source of truth for
+ * colouring a business / community-space card face by synergy type
+ * (MS-0MUZH51PU007POJ4).
+ *
+ * These are the *face* (background) colours, deliberately darker than the
+ * bright {@link synergyColor} accent palette so the white title / stat text
+ * stays legible. The bright palette continues to drive the graphic backing,
+ * header-bar tint and synergy icons.
+ *
+ * The static Node generator (`generate-main-street-card-svgs.mjs`) cannot
+ * import this TypeScript module, so it duplicates the same values; a test
+ * asserts the two palettes agree (the existing pattern used for staff cost
+ * text).
+ */
+export const CARD_FACE_PALETTE: Readonly<Record<string, string>> = Object.freeze({
+  Food:          '#5D4037',
+  Culture:       '#1565C0',
+  Commerce:      '#2E7D32',
+  Service:       '#6A1B9A',
+  Entertainment: '#C62828',
+  Health:        '#00838F',
+  // Fallback — keeps the previous neutral face for unknown / zero-synergy rows.
+  default:       '#2f2f2f',
+});
+
+/**
+ * Resolved face colouring for a card: a single fill, or — for a bridge card
+ * with exactly two synergy types — a top/bottom colour pair. `split` is null
+ * when the face is a single colour.
+ */
+export interface CardFaceBackground {
+  readonly fill: string;
+  readonly split: { readonly top: string; readonly bottom: string } | null;
+}
+
+/**
+ * Resolve the card-face background from a card's synergy types
+ * (MS-0MUZH51PU007POJ4).
+ *
+ * - zero synergy types → the neutral {@link CARD_FACE_PALETTE}.default;
+ * - one synergy type   → that synergy's palette colour;
+ * - exactly two        → a two-tone split, top = `synergyTypes[0]`,
+ *   bottom = `synergyTypes[1]`;
+ * - more than two      → degrades safely to the first colour (single-tone),
+ *   never throws (>2 is out of scope; no shipped card has more than two).
+ *
+ * Unknown synergy names fall back to the default colour rather than throwing.
+ *
+ * @param synergyTypes The card's synergy types (CSV / template order).
+ * @returns The single fill colour and, for bridge cards, the top/bottom pair.
+ */
+export function cardFaceBackground(
+  synergyTypes: readonly SynergyType[] | undefined | null,
+): CardFaceBackground {
+  const types = Array.isArray(synergyTypes) ? synergyTypes : [];
+  if (types.length === 0) {
+    return { fill: CARD_FACE_PALETTE.default, split: null };
+  }
+
+  const first = CARD_FACE_PALETTE[types[0]] ?? CARD_FACE_PALETTE.default;
+  if (types.length === 1) {
+    return { fill: first, split: null };
+  }
+
+  if (types.length === 2) {
+    const second = CARD_FACE_PALETTE[types[1]] ?? CARD_FACE_PALETTE.default;
+    return { fill: first, split: { top: first, bottom: second } };
+  }
+
+  // >2 synergy types: out of scope today — degrade to a single first colour.
+  return { fill: first, split: null };
+}
+
+/**
  * Returns a short label for a card (used in UI rendering).
  */
 export function cardLabel(card: AnyCard): string {

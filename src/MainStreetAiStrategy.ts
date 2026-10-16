@@ -22,6 +22,7 @@ import { recordMainStreetEvent } from './MainStreetTranscript';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
 import { computePurchaseCostDiscount, computeEffectiveBusinessPurchaseCost } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
+import { BASE_HAND_CAPACITY } from './MainStreetStateSetup';
 import {
   executeWeekStart,
   processEndOfTurn,
@@ -37,6 +38,7 @@ import {
   type PlayUpgradeFromHandAction,
   type PlayEventFromHandAction,
   type CommunityFavourAction,
+  type CloseBusinessAction,
 } from './MainStreetEngine';
 import {
   canPurchaseBusiness,
@@ -47,6 +49,8 @@ import {
   getEmptySlots,
   effectiveUpgradeCost,
   bestEffectiveUpgradeCost,
+  canCloseBusiness,
+  closeReputationDelta,
 } from './MainStreetMarket';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, StaffCard, SynergyType } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
@@ -110,7 +114,7 @@ const FAVOUR_REP_TO_COINS_MIN_REP_BUFFER = 1;
  * sweep (4–24) is recorded in work item MS-0MUVB2ZES005V83Y. The chosen
  * value keeps the per-difficulty committed-baseline tolerances (winRate
  * ±0.25, coins ±30%) and the Easy ≥ Medium ≥ Hard ladder intact while
- * materially lowering rep→coins usage. See `docs/main-street/` for the
+ * materially lowering rep→coins usage. See `docs/dev/assets/` for the
  * before/after evidence artefacts.
  */
 const FAVOUR_REP_TO_COINS_MIN_REWARD_RATIO = 12;
@@ -158,7 +162,7 @@ export function aiPlanningHorizon(state: MainStreetState): number {
  * Calibrated on the canonical 200-seed / 60-turn greedy profile
  * (`src/scripts/balance/community-space-placement-report.ts`); the committed
  * before/after figures are in
- * `docs/main-street/community-space-ai-evidence.md`.
+ * `docs/dev/assets/community-space-ai-evidence.md`.
  */
 export const COMMUNITY_SPACE_SCORE_PENALTY = 600;
 
@@ -211,7 +215,7 @@ function neighbourSynergyGain(
  * there.
  *
  * Before/after competitive head-to-head evidence for this rule is recorded in
- * `docs/main-street/competitive-placement-ai-evidence.md`
+ * `docs/dev/assets/competitive-placement-ai-evidence.md`
  * (MS-0MUZFVM86003IPSM); the harness-side measurement lives in
  * `measurePlacementBenefit` (`MainStreetMonteCarlo.ts`).
  *
@@ -713,6 +717,10 @@ export interface MainStreetAiStrategy extends AiStrategyBase {
  *   - `discard-from-hand`: costs the card's coin value in reputation
  *     (CG-0MTQ7KUVF009ELQK); only enumerated when the hand is full, so the AI
  *     never gratuitously discards
+ *   - `close-business`: closes a nuisance street card (negative effective
+ *     per-turn reputation) for a reputation boost (MS-0MURC6XO8005W57D); only
+ *     enumerated when the close yields a positive reputation change, so the AI
+ *     never gratuitously closes a reputation-positive card
  *   - `end-turn`: always included
  *
  * Every action returned here is guaranteed to be accepted by `executeAction`.
@@ -884,6 +892,21 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
     hand.forEach((_, handIndex) => {
       actions.push({ type: 'discard-from-hand', handIndex });
     });
+  }
+
+  // ── close-business (MS-0MURC6XO8005W57D) ─────────────────
+  // Closing a street card costs 1 action and applies the card's reputation
+  // consequence (penalty for a reputation-positive card, boost for a
+  // nuisance). Like discard (only enumerated when the hand is full), close
+  // is enumerated ONLY for nuisance cards — a negative effective per-turn
+  // reputation means removing them is a reputation *boost* — so the AI never
+  // gratuitously closes a card that props up the street's standing.
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    if (!state.streetGrid[i]) continue;
+    if (!canCloseBusiness(state, i).legal) continue;
+    if (closeReputationDelta(state, i) > 0) {
+      actions.push({ type: 'close-business', slotIndex: i });
+    }
   }
 
   // ── peek-incident-deck (staff peek skill, CG-0MSXOW6GN008ZSMN) ──
@@ -1351,6 +1374,8 @@ function pickFreeCompositePlay(
  *   4. Buy a business (best synergy placement)
  *   5. Spend the action on the best market acquisition
  *   6. Play a held Investment event with positive ROI
+ *   7. Close a nuisance street card for a reputation boost
+ *      (MS-0MURC6XO8005W57D)
  *   8. Discard from a full hand
  *   9. Community Favour fallback
  *  10. Hire staff
@@ -1446,6 +1471,20 @@ const chooseGreedyAction = (
       const bestEvent = pickBest(handEventActions, a => scorePlayEventFromHandAction(state, a), rng);
       if (scorePlayEventFromHandAction(state, bestEvent) > 0) {
         return bestEvent;
+      }
+    }
+
+    // Priority 7: close a nuisance street card (negative effective per-turn
+    // reputation) for a reputation boost (MS-0MURC6XO8005W57D). Enumerated
+    // only for nuisance cards; taken only when the close's reputation value
+    // clears the card's lost income over the horizon.
+    const closeActions = legalActions.filter(
+      a => a.type === 'close-business',
+    ) as CloseBusinessAction[];
+    if (closeActions.length > 0) {
+      const best = pickBest(closeActions, a => scoreAction(state, a), rng);
+      if (scoreAction(state, best) > 0) {
+        return best;
       }
     }
 
@@ -1631,9 +1670,15 @@ export class MainStreetAiPlayer extends AiPlayerBase<MainStreetAiStrategy> {
 // resolve the pending choice per difficulty and finish the deferred closing).
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
-  projectEventCoinDelta,
-  eventSeverity,
+  PIGGYBACK_DIFFICULTY_PROFILES,
+  canAffordPiggybackJoinFully,
   decideEventChoice,
+  decidePiggyback,
+  decidePiggybackForAllSeats,
+  decidePiggybackForSeat,
+  eventSeverity,
+  piggybackBalanceFloor,
+  projectEventCoinDelta,
   resolvePendingEventChoice,
 } from './MainStreetEngine';
 
@@ -1830,6 +1875,9 @@ function scorePlayEventFromHandAction(
  *   - `buy-event`:    `coinDelta + reputationDelta - cost` (net play value;
  *                     the take itself spends the day's one action)
  *   - `play-event`:   fixed bonus of 5 (prefer playing over end-turn)
+ *   - `close-business`: the card's reputation consequence in coin-equivalent
+ *                     value minus the card's lost income over the horizon
+ *                     (MS-0MURC6XO8005W57D)
  *   - `end-turn`:     0 (baseline / fallback)
  *
  * `horizon` is the AI planning horizon derived from the distance to the
@@ -1874,6 +1922,8 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
     }
     case 'end-turn':
       return 0;
+    case 'close-business':
+      return scoreCloseBusinessAction(state, action);
     // Action economy actions (CG-0MSTOF1N5005PK2R). Minimal scoring for now;
     // the AI strategy child (CG-0MSX41S7I009MMZN) refines budget-aware scoring.
     case 'buy-and-place':
@@ -1911,6 +1961,43 @@ export function scoreAction(state: MainStreetState, action: PlayerAction): numbe
     default:
       return 0;
   }
+}
+
+/**
+ * Scores closing the street card at `action.slotIndex`
+ * (MS-0MURC6XO8005W57D).
+ *
+ * The close's reputation consequence is converted to coin-equivalent value at
+ * the Community Favour exchange rate (`favourRepToCoinsRepCost` rep ↔
+ * `favourRepToCoinsCoinGain` coins) so it can be compared against the AI's
+ * other economic actions. A nuisance card (negative effective per-turn
+ * reputation, e.g. the Pawn Shop) therefore scores **positive** — closing it
+ * is a boost — while a reputation-positive card scores negative, so the AI
+ * avoids closing cards that prop up the street's standing. The card's lost
+ * per-turn income over the planning horizon is subtracted so a high-income
+ * card is not demolished purely for its rep delta (a real close also forfeits
+ * that slot's future earnings).
+ *
+ * @param state  Current game state (read-only by convention).
+ * @param action The close action to score.
+ * @returns Numeric score in coin-equivalent units (higher is better).
+ */
+export function scoreCloseBusinessAction(
+  state: MainStreetState,
+  action: CloseBusinessAction,
+): number {
+  const card = state.streetGrid[action.slotIndex];
+  if (!card) return 0;
+  const deltaRep = closeReputationDelta(state, action.slotIndex);
+  // Coin-equivalent value of the reputation change via the Community Favour
+  // exchange rate. Falls back to 1:1 when the config is degenerate.
+  const repToCoins = state.config.favourRepToCoinsRepCost > 0
+    ? state.config.favourRepToCoinsCoinGain / state.config.favourRepToCoinsRepCost
+    : 1;
+  const repValue = deltaRep * repToCoins;
+  const lostIncomeValue =
+    (card.currentIncome ?? card.baseIncome ?? 0) * aiPlanningHorizon(state);
+  return repValue - lostIncomeValue;
 }
 
 /**
@@ -2577,11 +2664,15 @@ function competitiveFavourScore(
  *
  * In competitive mode the engine's action primitives (`purchaseBusiness`,
  * `moveToHand`, `playBusinessFromHand`, ...) read the shared
- * `state.resourceBank` / `state.hand` / `state.actionsRemaining` fields.
+ * `state.resourceBank` / `state.hand` / `state.staffCards` /
+ * `state.maxHandSize` / `state.actionsRemaining` fields.
  * `bindCompetitiveSeat` copies the acting player's `PlayerRecord` into those
  * fields before the MarketPhase so the AI's per-player actions execute
- * against the correct owner; `restoreCompetitiveSeat` writes the shared
- * wallet back into the record afterwards. No-op in single-player states.
+ * against the correct owner — the seat's own hand capacity (base 3 plus its
+ * own staff `handSlotsAdded`) is bound as `state.maxHandSize` so staff
+ * bonuses apply only to the employing seat; `restoreCompetitiveSeat` writes
+ * the shared wallet back into the record afterwards. No-op in single-player
+ * states.
  *
  * The per-seat `actionBudget` is the *base* daily budget (base + staff
  * actions); the shared `state.bankedActions` pool is added on top here so
@@ -2599,14 +2690,15 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
   state.resourceBank.reputation = player.reputation;
   state.hand = player.hand;
   state.staffCards = player.staffCards;
+  state.maxHandSize = player.maxHandSize ?? BASE_HAND_CAPACITY;
   state.actionsRemaining = player.actionBudget + (state.bankedActions ?? 0);
   syncResourceBankToLedger(state);
 }
 
 /**
- * Writes the shared wallet / hand / staff / budget back into the acting
- * competitive player's record (the inverse of {@link bindCompetitiveSeat}).
- * No-op in single-player states.
+ * Writes the shared wallet / hand / staff / hand capacity / budget back into
+ * the acting competitive player's record (the inverse of
+ * {@link bindCompetitiveSeat}). No-op in single-player states.
  *
  * @param state    Current game state (mutated in-place).
  * @param playerId Owner index; defaults to the active player.
@@ -2618,6 +2710,7 @@ export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number
   player.reputation = state.resourceBank.reputation;
   player.hand = state.hand;
   player.staffCards = state.staffCards;
+  player.maxHandSize = state.maxHandSize;
   // Strip the shared banked pool back out so `actionBudget` stays the seat's
   // base daily budget; the bank is re-added by the next `bindCompetitiveSeat`.
   player.actionBudget = state.actionsRemaining - (state.bankedActions ?? 0);

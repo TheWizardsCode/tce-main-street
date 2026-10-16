@@ -7,7 +7,7 @@
     </linearGradient>
     <clipPath id="ms-art-clip-biz-hotel"><rect x="8" y="8" width="64" height="64" rx="4" ry="4" /></clipPath>
   </defs>
-  <rect x="0" y="0" width="140" height="80" rx="6" ry="6" fill="#2f2f2f" />
+  <rect x="0" y="0" width="140" height="80" rx="6" ry="6" fill="#6A1B9A" />
   <rect x="4" y="4" width="132" height="72" rx="4" ry="4" fill="url(#g-biz-hotel)" />
   <rect x="4" y="4" width="132" height="20" rx="3" ry="3" fill="#9B59B6" opacity="0.18" />
   <g class="ms-card-graphic" aria-hidden="true">

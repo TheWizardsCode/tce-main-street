@@ -1,3 +1,30 @@
 {
-  "timeoutPerCommand": 1800
+  "timeoutPerCommand": 1800,
+  "suiteCommands": [
+    "npm --silent test",
+    "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts"
+  ],
+  "groups": {
+    "tutorial-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/TutorialOverlayHighlights.browser.test.ts tests/main-street/TutorialOverlayManager.browser.test.ts tests/e2e/main-street-tutorial-e2e-part4.browser.test.ts tests/e2e/main-street-tutorial-e2e-part5.browser.test.ts tests/e2e/main-street-tutorial-e2e-part6.browser.test.ts"
+      ],
+      "paths": [
+        "tests/e2e/main-street-tutorial-e2e-part4.browser.test.ts",
+        "tests/e2e/main-street-tutorial-e2e-part5.browser.test.ts",
+        "tests/e2e/main-street-tutorial-e2e-part6.browser.test.ts",
+        "tests/main-street/TutorialOverlayHighlights.browser.test.ts",
+        "tests/main-street/TutorialOverlayManager.browser.test.ts"
+      ]
+    },
+    "main-street-hud-count": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hud-total-counting-live.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hud-total-counting-live.browser.test.ts",
+        "tests/main-street/hud-total-counting.test.ts"
+      ]
+    }
+  }
 }
