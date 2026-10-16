@@ -170,11 +170,22 @@ describe('Tutorial text updates (25-step two-turn restructure)', () => {
     });
   });
 
-  describe('T13 Costs and Reputation (AC: running cost vs reputation only — no synergy)', () => {
-    it('mentions running costs and reputation', () => {
+  describe('T13 Costs and Reputation (AC: builds reputation instead of earning coins; higher reputation grows income — no synergy)', () => {
+    it('explains the referenced card builds reputation instead of earning coins', () => {
       const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T13')!).body;
-      expect(body.toLowerCase()).toMatch(/cost/);
       expect(body.toLowerCase()).toMatch(/reputation/i);
+      expect(body.toLowerCase()).toMatch(/earn/);
+      expect(body.toLowerCase()).toMatch(/coins/);
+    });
+    it('explains a higher reputation brings more customers and grows income', () => {
+      const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T13')!).body;
+      expect(body.toLowerCase()).toMatch(/higher reputation/);
+      expect(body.toLowerCase()).toMatch(/customers/);
+      expect(body.toLowerCase()).toMatch(/income/);
+      // ≤3 sentences per box (editorial rule) and exactly one point.
+      const sentences = countSentences(body);
+      expect(sentences).toBeLessThanOrEqual(3);
+      expect(sentences).toBeGreaterThan(0);
     });
     it('does NOT mention Culture adjacency, the Bookshop, or a bonus (informative split)', () => {
       const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T13')!).body;
@@ -182,10 +193,12 @@ describe('Tutorial text updates (25-step two-turn restructure)', () => {
       expect(body).not.toContain('Bookshop');
       expect(body.toLowerCase()).not.toMatch(/bonus/);
     });
-    it('resolves {cardName} from card data (no raw placeholder tokens)', () => {
+    it('resolves {cardName} from card data (no raw placeholder tokens, no hardcoded card facts)', () => {
       const body = resolveTutorialStepText(UNIFIED_TUTORIAL_STEPS.find(s => s.id === 'T13')!).body;
       expect(body).toContain('Library');
       expect(body).not.toMatch(/\{[A-Za-z_]+\}/);
+      // Never hardcode a card name/cost — only the {cardName} placeholder feeds it.
+      expect(body).not.toMatch(/\$\s?\d/);
     });
   });
 

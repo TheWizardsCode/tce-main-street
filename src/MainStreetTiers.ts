@@ -15,11 +15,17 @@
  * in TypeScript and is defined below in `TIER_CONFIG`, from which
  * `TIER_DEFINITIONS` is generated.
  *
- * Expansion CG-0MT3C744B009DS84: 5 -> 12 tiers. Reputation thresholds form
- * an anchored ladder (old 5-tier anchors 800/1600/3200/6400 preserved at T3/T5/
- * T7/T11) extended to an aspirational T12=8000.
+ * Expansion CG-0MT3C744B009DS84: 5 -> 12 tiers. Reputation thresholds were
+ * re-derived from a fresh Medium Monte-Carlo run (MS-0MV88T4I6000HQZG) to hit a
+ * target achievement-rate staircase (share of Medium runs clearing each tier):
+ * T2 90%, T3 75%, T4 60%, T5 45%, T6 35%, T7 25%, T8 18%, T9 12%, T10 8%,
+ * T11 4%, T12 1%. Each threshold is the corresponding percentile of the
+ * end-of-run reputation distribution, rounded to a friendly value (see
+ * docs/dev/assets/tier-threshold-calibration-evidence.md). The ladder spans the
+ * observed Medium range (~0-6385) rather than sitting far above it; the top
+ * tiers remain primarily challenge-path / long-campaign reachable.
  *
- * See docs/main-street/prd-milestone-2.md Section 2 and 4.3.5.
+ * See docs/dev/prd-milestone-2.md Section 2 (Update note 4) and 4.3.5.
  *
  * @module
  */
@@ -132,19 +138,19 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-2 — Rising Street: any 1 completed challenge
   {
     name: 'Rising Street',
-    reputationThreshold: 400,
+    reputationThreshold: 250,
     challengeCondition: (state) => completedChallengeCount(state) >= 1,
   },
   // tier-3 — Neighborhood: any 2 completed challenges
   {
     name: 'Neighborhood',
-    reputationThreshold: 800,
+    reputationThreshold: 750,
     challengeCondition: (state) => completedChallengeCount(state) >= 2,
   },
   // tier-4 — District: 1 synergy AND 1 resource challenge
   {
     name: 'District',
-    reputationThreshold: 1200,
+    reputationThreshold: 2650,
     challengeCondition: (state) =>
       hasCompletedChallengeInCategory(state, 'synergy') &&
       hasCompletedChallengeInCategory(state, 'resource'),
@@ -152,7 +158,7 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-5 — Midtown: 3 challenges (at least 1 cross-cutting or placement)
   {
     name: 'Midtown',
-    reputationThreshold: 1600,
+    reputationThreshold: 3100,
     challengeCondition: (state) =>
       completedChallengeCount(state) >= 3 &&
       hasCompletedChallengeInCategory(state, 'cross-cutting', 'placement'),
@@ -160,7 +166,7 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-6 — Metropolitan: synergy + placement + upgrade
   {
     name: 'Metropolitan',
-    reputationThreshold: 2400,
+    reputationThreshold: 3300,
     challengeCondition: (state) =>
       hasCompletedChallengeInCategory(state, 'synergy') &&
       hasCompletedChallengeInCategory(state, 'placement') &&
@@ -169,7 +175,7 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-7 — City Center: any 4 completed challenges
   {
     name: 'City Center',
-    reputationThreshold: 3200,
+    reputationThreshold: 3600,
     challengeCondition: (state) => completedChallengeCount(state) >= 4,
   },
   // tier-8 — Capital: synergy + resource + upgrade
@@ -184,7 +190,7 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-9 — Iconic Quarter: 4 challenges incl. a cross-cutting one
   {
     name: 'Iconic Quarter',
-    reputationThreshold: 4800,
+    reputationThreshold: 4300,
     challengeCondition: (state) =>
       completedChallengeCount(state) >= 4 &&
       hasCompletedChallengeInCategory(state, 'cross-cutting'),
@@ -192,19 +198,19 @@ const TIER_CONFIG: readonly TierConfig[] = [
   // tier-10 — Historic Mile: complete ch-diversified (all 5 synergy types)
   {
     name: 'Historic Mile',
-    reputationThreshold: 5600,
+    reputationThreshold: 4600,
     challengeCondition: (state) => state.challengesCompleted.includes('ch-diversified'),
   },
   // tier-11 — National Street: complete ch-synergy-master (5+ synergy pairs)
   {
     name: 'National Street',
-    reputationThreshold: 6400,
+    reputationThreshold: 4900,
     challengeCondition: (state) => state.challengesCompleted.includes('ch-synergy-master'),
   },
   // tier-12 — Legendary Main Street: both flagship cross-cutting challenges
   {
     name: 'Legendary Main Street',
-    reputationThreshold: 8000,
+    reputationThreshold: 5500,
     challengeCondition: (state) =>
       state.challengesCompleted.includes('ch-diversified') &&
       state.challengesCompleted.includes('ch-synergy-master'),

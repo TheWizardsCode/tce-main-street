@@ -28,6 +28,7 @@ export type {
   BuyBusinessAction,
   BuyEventAction,
   BuyUpgradeAction,
+  CloseBusinessAction,
   CommunityFavourAction,
   DiscardFromHandAction,
   EndOfTurnOptions,
@@ -53,14 +54,21 @@ export type {
 // ── Scoring ─────────────────────────────────────────────
 export {
   AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO,
+  PIGGYBACK_DIFFICULTY_PROFILES,
   computeScore,
   decideEventChoice,
+  decidePiggyback,
+  decidePiggybackForAllSeats,
+  decidePiggybackForSeat,
   effectiveWinThreshold,
   eventSeverity,
+  piggybackBalanceFloor,
   projectEventCoinDelta,
   updateCompetitiveScores,
   updateScore,
 } from './MainStreetEngineScoring';
+
+export type { PiggybackDifficultyProfile, PiggybackPolicyDecision } from './MainStreetEngineScoring';
 
 // ── WeekStart ─────────────────────────────────────────────
 export {
@@ -79,6 +87,7 @@ export {
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
+  resolveCompetitivePendingPiggyback,
   setActivePlayerId,
 } from './MainStreetEngineCompetitiveTurn';
 
@@ -93,10 +102,29 @@ export {
 // ── Events ─────────────────────────────────────────────
 export {
   applyCompetitiveEventEffects,
+  applyPiggybackFreeRide,
+  applyPiggybackJoinFully,
+  canAffordPiggybackJoinFully,
   computeEventDeltas,
+  getNextPendingPiggybackSeat,
+  getPiggybackSeatIds,
+  hasPendingPiggyback,
+  isPiggybackEligible,
+  piggybackJoinFullyCost,
   playHeldEvent,
+  projectPiggybackEventReward,
+  raisePiggybackDecisions,
+  resolveAllPendingPiggybacks,
   resolveEvent,
   resolveHeldInvestment,
+  resolvePendingPiggyback,
+} from './MainStreetEngineEvents';
+
+export type {
+  PiggybackJoinFullyResult,
+  PiggybackRewardProjection,
+  PiggybackRewardScale,
+  PiggybackSeatResolution,
 } from './MainStreetEngineEvents';
 
 // ── TurnClosing ─────────────────────────────────────────────

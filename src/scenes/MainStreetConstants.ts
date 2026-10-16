@@ -309,3 +309,22 @@ export interface SceneLayout {
   logW: number;
   logH: number;
 }
+
+/**
+ * Legacy HUD coin-flight destination fallback (MS-0MUYT57J80021CWW): the
+ * approximate coordinate used ONLY before the first HUD render publishes the
+ * live coin-number anchor (`scene.hudCoinAnchor`). Kept as a single shared
+ * source so `MainStreetAnimator*` never hard-codes flight destinations.
+ */
+export function hudCoinFallback(layout: SceneLayout): { x: number; y: number } {
+  return { x: layout.gameW * 0.25 + 70, y: layout.hudY };
+}
+
+/**
+ * Legacy HUD reputation-flight destination fallback
+ * (MS-0MUYT57J80021CWW): used only before the first HUD render publishes
+ * the live reputation-number anchor (`scene.hudRepAnchor`).
+ */
+export function hudRepFallback(layout: SceneLayout): { x: number; y: number } {
+  return { x: layout.gameW * 0.5, y: layout.hudY };
+}

@@ -9,17 +9,18 @@
 import { executeAction } from './MainStreetEngineActions';
 import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompetitiveOngoingCosts, applyStaffOngoingCosts } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
-import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
-import { decideEventChoice, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveEventChoice, resolveIncident, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPiggybacks } from './MainStreetEngineEvents';
+import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
+import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
+import { getStorylineOptions } from './MainStreetStoryline';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, advanceWeek } from './MainStreetState';
+import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 
 /**
@@ -196,6 +197,12 @@ export function executeCompetitiveTurn(
   if (state.phase === 'MarketPhase') {
     endCompetitiveMarketTurn(state);
   }
+  // F3 headless integration (epic MS-0MUYC47EL005Z69H): an eligible event
+  // played mid-day raised pending piggyback decisions; settle them before the
+  // closing so the convenience/AI day loop never stalls. AI seats resolve via
+  // the F4 deterministic policy (`decidePiggybackForSeat`); human seats keep
+  // the automatic free-ride.
+  resolveAllPendingPiggybacks(state, decidePiggybackForSeat);
   return mergeMidTurnChallenges(resolveCompetitiveClosingPhases(state), midTurnCompleted);
 }
 
@@ -304,6 +311,24 @@ function finishCompetitiveClosingTail(
 }
 
 export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnResult {
+  // F3 piggyback pause (epic MS-0MUYC47EL005Z69H): an unresolved pending
+  // piggyback decision set raised mid-MarketPhase blocks the shared closing
+  // so every other active seat's share is settled first. Resolve via
+  // `resolvePendingPiggyback` / `resolveCompetitivePendingPiggyback`, then
+  // re-run the closing.
+  if (hasPendingPiggyback(state)) {
+    return {
+      income: null,
+      incident: null,
+      incidentCoinChange: 0,
+      incidentRepChange: 0,
+      gameResult: state.gameResult,
+      finalScore: state.finalScore,
+      newlyCompletedChallenges: [],
+      choicePending: false,
+      piggybackPending: true,
+    };
+  }
   // AC7 guard (CG-0MTSHG8RP008E128): a pending unresolved choice blocks the
   // shared closing sequence regardless of mode.
   if (state.pendingEventChoice && !state.pendingEventChoice.resolved) {
@@ -391,6 +416,38 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
 }
 
 /**
+ * Resolves every pending piggyback decision (free-ride by default, or the
+ * supplied policy) and then completes the deferred shared closing
+ * (F3 of epic MS-0MUYC47EL005Z69H).
+ *
+ * `resolveCompetitiveClosingPhases` pauses at the top when a pending piggyback
+ * set is unresolved. This helper settles each seat in seat order and re-runs
+ * the closing, so a headless competitive day loop never stalls. Mirrors
+ * {@link resolveCompetitivePendingChoice} for the dual-choice incident pause.
+ *
+ * @param state  Current game state (mutated).
+ * @param decide Optional per-seat policy (`true` = join fully). Defaults to
+ *               {@link decidePiggybackForSeat}: AI seats apply the F4
+ *               deterministic policy, human seats keep the free-ride.
+ * @returns The finished closing result, or null when nothing was pending.
+ */
+export function resolveCompetitivePendingPiggyback(
+  state: MainStreetState,
+  decide: (decision: Readonly<PendingPiggybackDecision>, state: MainStreetState) => boolean =
+    decidePiggybackForSeat,
+): TurnResult | null {
+  if (!hasPendingPiggyback(state)) return null;
+  resolveAllPendingPiggybacks(state, decide);
+  const result = resolveCompetitiveClosingPhases(state);
+  // The closing may itself draw a dual-choice incident; complete that pause
+  // too so a headless caller that invoked this helper never stalls.
+  if (result.choicePending) {
+    return resolveCompetitivePendingChoice(state) ?? result;
+  }
+  return result;
+}
+
+/**
  * Resolves a pending dual-choice incident drawn during a competitive closing
  * and completes the deferred shared-day closing (CG-0MTIILDBB001F01S).
  *
@@ -414,13 +471,16 @@ export function resolveCompetitivePendingChoice(state: MainStreetState): TurnRes
     return resolvePendingEventChoice(state);
   }
   const turnEnded = state.turn;
-  const option = decideEventChoice(state, pending.event, state.config.difficultyName);
+  const optionIndex = decideEventChoice(state, pending.event, state.config.difficultyName);
   const event = pending.event;
-  resolveEventChoice(state, option);
-  // Route an accepted incident per-owner (street-wide semantics retained) —
-  // mirrors the non-deferred path where resolveIncident + applyCompetitive
-  // EventEffects run back-to-back. Reject applies nothing.
-  if (option === 'accept') {
+  // Use the frozen draw-time snapshot when present (matches resolveEventOption).
+  const frozenOptions = pending.options ?? getStorylineOptions(event);
+  const chosenOption = frozenOptions[optionIndex];
+  resolveEventOption(state, optionIndex);
+  // Per-option effect policy (F7): competitive per-owner effects apply for
+  // every option whose policy is 'apply' (all CSV content). The legacy
+  // accept-only branch is gone — the label no longer determines the effect.
+  if (chosenOption?.effectPolicy === 'apply') {
     applyCompetitiveEventEffects(state, event, state.activePlayerId ?? 0);
   }
   state.pendingEventChoice = null;

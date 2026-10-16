@@ -57,8 +57,11 @@ income choreography** instead of a single fly-to-HUD burst:
   card when the effect is attached (`SpecificSynergy` / `RandomBusiness`),
   otherwise the Upcoming panel. Upcoming deltas never touch a business coin
   grid (it is reserved for credited income).
-- **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between phases — collection at
-  ≈11s. The turn controller defers the week start (250ms poll, 16s cap)
+- **Pacing:** `INCOME_PHASE_GAP_MS` (2200ms) between **scheduled** phases.
+  Empty phases are skipped (MS-0MUYT436C005B4QN): a phase with no non-zero
+  contribution shows no label and consumes no gap, so the show compacts to the
+  scheduled phases only (a fully non-empty show is still ≈11s). The turn
+  controller defers the week start (250ms poll, 16s cap)
   until the show completes, so gameplay timing is unchanged; the street
   render is deferred via `refreshAllExceptStreet` while the show runs.
 - **Tutorial:** the tutorial keeps the compact window-safe
@@ -85,7 +88,7 @@ Rules:
 - **UI:** two SLL-positioned buttons inside the **HUD strip**, between the Coins and Reputation readouts (`favourRepToCoinsButton` → `favourCoinsToRepButton`, left-to-right `[rep→coins][coins→rep]`; rendered in `MainStreetRenderer.refreshHud`). Each carries an i18n tooltip (`buildCoinsToRepTooltip` / `buildRepToCoinsTooltip`) describing the exact rate and the once-per-turn limit. They are disabled when the input resource is insufficient or the gate is spent.
 - **HUD layout:** the HUD strip is **market-aligned** (spans `hudLeft`..`hudRight`, matching the market box edges), and the **actions-remaining counter** (`2 actions left (1 banked)`) lives in the action cluster directly above the End Turn / Cancel button rather than in the strip.
 - **AI:** `enumerateLegalActions` includes the action when affordable and unused; `GreedyStrategy` uses it only when genuinely stalled (cannot afford the cheapest market card) with a reputation buffer, so it never dominates normal purchases.
-- **Tutorial:** T13 teaches the rep→coins exchange, which speeds up the $7 Library purchase under the 12-coin scenario budget; the tutorial starts with 12 coins so the exchange is available from the first week (the tutorial's two-turn plan-ahead flow budgets it, but it is not strictly required — the budget table comments in `TutorialScenario.ts` show the Library remains affordable without it).
+- **Tutorial:** T15 (Community Favour) teaches the rep→coins exchange, which speeds up the $7 Library purchase under the 12-coin scenario budget; the tutorial starts with 12 coins so the exchange is available from the first week (the tutorial's two-turn plan-ahead flow budgets it, but it is not strictly required — the budget table comments in `TutorialScenario.ts` show the Library remains affordable without it).
 - **Persistence:** `favourUsedThisTurn` is serialized with legacy-save backfill to `false`.
 
 ## Street map camera: zoom and pan (CG-0MTH9OVMC001V44E)
@@ -157,6 +160,11 @@ compatibility.
   - Defines 7 bounding-box zones for tutorial highlight areas (HUD, market, street, etc.)
   - Uses optional `w`/`h` dimensions on `NormalizedRect` for zone extents
   - Composed with the base layout via `composeResolvedLayouts()` in the tutorial system
+  - The three zones the tutorial intentionally overrides (`hand`, `endTurnButton`,
+    `incidentQueue`) are resolved through `reportTutorialLayoutIssue`
+    (`src/scenes/tutorialLayoutIssues.ts`), which keeps those documented
+    `Zone collision …` warnings quiet while still surfacing unexpected ones
+    (MS-0MV26MOWT004ZCQC)
 - Scene adapter: `src/scenes/MainStreetLayoutAdapter.ts`
 - Renderer entrypoint: `src/scenes/MainStreetRenderer.ts`
 
@@ -193,10 +201,19 @@ npx vitest run tests/e2e/replay-main-street.e2e.test.ts --project unit
 
 The player hand is rendered by a **single merged `HandView`** configured in
 `MainStreetRenderer.createContainers`. One horizontal row holds any mix of
-business and event cards up to `maxHandSize` total (starting at 2, growable via
-staff upgrade cards' `handSlotsAdded`). Event cards are no longer held in a
+business and event cards up to `maxHandSize` total (base 3 per
+`BASE_HAND_CAPACITY`, growable via staff upgrade cards' `handSlotsAdded`).
+Event cards are no longer held in a
 separate slot — a purchased Investment event simply joins the shared hand and
 is played by clicking it during the Market phase.
+
+**Hand capacity is per-seat in competitive play (MS-0MV8PX4DV003LTFP).** Each
+seat carries its own `PlayerRecord.maxHandSize` (base 3 plus that seat's staff
+`handSlotsAdded`). `bindCompetitiveSeat` copies it onto the shared
+`state.maxHandSize` while the seat acts and `restoreCompetitiveSeat` writes it
+back, so a staff hand-slot bonus applies only to the seat that employs the
+staff — one seat's staff never enlarges another seat's hand. Single-player
+behaviour is unchanged: the shared field is used directly.
 
 - `handView` — the merged hand (centred on `handCenterX`, spacing `handCardW + 8`).
   `renderCard` dispatches on `card.family`: business cards render upgrade
@@ -226,7 +243,7 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 > **Storylines.** The dual-choice incident chain mechanic (`hasChoices`,
 > `acceptNextCardId`, `rejectNextCardId`, `storylineId`, `storylineTitle`) is
 > documented in full — model, lifecycle, AI policy, tooling and an authoring
-> walkthrough — in [docs/main-street/storylines.md](../docs/main-street/storylines.md).
+> walkthrough — in [docs/game/storylines.md](../docs/game/storylines.md).
 > Tooling: `npm run validate:storylines` (static validator),
 > `npm run storylines:graph` (graph/manifest export),
 > `npm run storylines:graph:svg` (render the graph to SVG),
@@ -309,9 +326,10 @@ The first row is the header. Columns common to all card families:
 | `coinDelta` | number | Coin change when the event resolves |
 | `reputationDelta` | number | Reputation change when the event resolves |
 | `effect` | string | Human-readable effect description |
-| `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses for Accept/Reject (storyline choice). See [docs/main-street/storylines.md](../docs/main-street/storylines.md). |
-| `acceptNextCardId` | string | Card queued on **Accept** (option 0, applies the effect); empty ends the chain. |
-| `rejectNextCardId` | string | Card queued on **Reject** (option 1, skips the effect); empty ends the chain. |
+| `options` | string | Arbitrary multi-outcome choice encoding `label|cardA,cardB;label2|cardC` (`;`/`|`/`,` separators). A blank cell is a non-choice card; `label|` is a terminal option. Every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B); one seeded `state.rng()` draw picks the successor uniformly at resolution time. Overrides the legacy trio below. Full grammar: [storylines.md §2.1](../docs/game/storylines.md#the-options-csv-column-arbitrary-multi-outcome-encoding). |
+| `hasChoices` | boolean (`true`/empty) | **Transitional** — when `true` and no `options`, the incident compiles to a two-option Accept/Reject list. Derived from a non-empty `options` cell. See [docs/game/storylines.md](../docs/game/storylines.md). |
+| `acceptNextCardId` | string | **Transitional** — card compiled onto the **Accept** option (option 0, applies the effect); empty ends the chain. Prefer `options`. |
+| `rejectNextCardId` | string | **Transitional** — card compiled onto the **Reject** option (option 1; since the Q4=B migration every compiled option applies the effect too); empty ends the chain. Prefer `options`. |
 | `storylineId` | string | Storyline grouping key (e.g. `storyline-tax`). Descriptive metadata. |
 | `storylineTitle` | string | Storyline display name (e.g. `Tax Troubles`). |
 

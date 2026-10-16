@@ -22,9 +22,9 @@ import { getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreet
 import { compileStorylineFromEvent } from '../../src/MainStreetStoryline';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const DOC_PATH = path.join(PROJECT_ROOT, 'docs/main-street/storylines.md');
+const DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/storylines.md');
 const README_PATH = path.join(PROJECT_ROOT, 'src/README.md');
-const CONTENT_DOC_PATH = path.join(PROJECT_ROOT, 'docs/main-street/content-design-and-progression.md');
+const CONTENT_DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/content-design-and-progression.md');
 const CSV_PATH = path.join(PROJECT_ROOT, 'src/card-data.csv');
 
 function read(file: string): string {
@@ -38,20 +38,26 @@ function parseDocumentedChains(doc: string): Array<{
   id: string;
   name: string;
   storylineId: string;
-  acceptNext: string | null;
-  rejectNext: string | null;
+  acceptNext: string[];
+  rejectNext: string[];
 }> {
   const rows: ReturnType<typeof parseDocumentedChains> = [];
   for (const line of doc.split('\n')) {
-    // Match rows like: | `evt-tax` | Tax Audit | storyline-tax | — | `evt-tax-inquiry` |
+    // Match rows like:
+    //   | `evt-tax` | Tax Audit | storyline-tax | — | `evt-tax-inquiry` |
+    // or a fan-out cell: | — | `evt-depression, evt-general-strike` |
     const m = line.match(
       /^\|\s*`(evt-[^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(—|[^|]+?)\s*\|\s*(—|[^|]+?)\s*\|/,
     );
     if (!m) continue;
-    const unquote = (v: string): string | null => {
+    const unquote = (v: string): string[] => {
       const t = v.trim();
-      if (t === '—' || t === '') return null;
-      return t.replace(/`/g, '').trim();
+      if (t === '—' || t === '') return [];
+      return t
+        .replace(/`/g, '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s !== '');
     };
     rows.push({
       id: m[1],
@@ -67,7 +73,7 @@ function parseDocumentedChains(doc: string): Array<{
 resetTemplatesToDefault();
 
 describe('AC1 — canonical doc exists and covers the required sections', () => {
-  it('docs/main-street/storylines.md exists', () => {
+  it('docs/game/storylines.md exists', () => {
     expect(fs.existsSync(DOC_PATH)).toBe(true);
   });
 
@@ -116,8 +122,13 @@ describe('AC3 — documented chains match src/card-data.csv', () => {
       expect(card, `documented card ${row.id} missing from CSV`).toBeDefined();
       expect(card!.name, `name drift for ${row.id}`).toBe(row.name);
       expect(card!.storylineId ?? null, `storylineId drift for ${row.id}`).toBe(row.storylineId);
-      expect(card!.acceptNextCardId ?? null, `acceptNext drift for ${row.id}`).toBe(row.acceptNext);
-      expect(card!.rejectNextCardId ?? null, `rejectNext drift for ${row.id}`).toBe(row.rejectNext);
+      // F6: the doc table lists each option's candidate successor set
+      // (Accect/Reject labels); compare against the compiled option model.
+      const options = compileStorylineFromEvent(card!).compiledOptions;
+      const accept = options.find((o) => o.label === 'Accept')?.successorIds ?? [];
+      const reject = options.find((o) => o.label === 'Reject')?.successorIds ?? [];
+      expect(accept, `Accept candidates drift for ${row.id}`).toEqual(row.acceptNext);
+      expect(reject, `Reject candidates drift for ${row.id}`).toEqual(row.rejectNext);
     }
   });
 
@@ -140,18 +151,19 @@ describe('AC3 — documented chains match src/card-data.csv', () => {
   });
 
   it('the compiled option model matches the documented accept/reject semantics', () => {
-    // Documents says: Accept = option 0 (apply), Reject = option 1 (skip).
+    // Documents says: Accept = option 0, Reject = option 1; every CSV option
+    // carries effectPolicy 'apply' (Q4=B).
     const card = getEventTemplates().find((t) => t.id === 'evt-tax-error')!;
     const compiled = compileStorylineFromEvent(card);
     expect(compiled.compiledOptions[0]).toMatchObject({ label: 'Accept', effectPolicy: 'apply' });
-    expect(compiled.compiledOptions[1]).toMatchObject({ label: 'Reject', effectPolicy: 'skip' });
+    expect(compiled.compiledOptions[1]).toMatchObject({ label: 'Reject', effectPolicy: 'apply' });
   });
 });
 
 describe('AC2 — cross-references in README and content-design doc', () => {
   it('src/README.md references the doc, the CSV columns and the scripts', () => {
     const readme = read(README_PATH);
-    expect(readme).toContain('docs/main-street/storylines.md');
+    expect(readme).toContain('docs/game/storylines.md');
     expect(readme).toContain('hasChoices');
     expect(readme).toContain('acceptNextCardId');
     expect(readme).toContain('rejectNextCardId');
@@ -238,8 +250,10 @@ describe('AC7 — drift guard fails on drift', () => {
     const documented = parseDocumentedChains(mutated);
     const byId = new Map(getEventTemplates().map((t) => [t.id, t]));
     const tax = documented.find((r) => r.id === 'evt-tax')!;
-    expect(tax.rejectNext).toBe('evt-tax-WRONG');
-    // And that mutated value does NOT match the CSV.
-    expect(byId.get('evt-tax')!.rejectNextCardId).not.toBe(tax.rejectNext);
+    expect(tax.rejectNext).toEqual(['evt-tax-WRONG']);
+    // And that mutated value does NOT match the compiled CSV option model.
+    const compiled = compileStorylineFromEvent(byId.get('evt-tax')!);
+    const reject = compiled.compiledOptions.find((o) => o.label === 'Reject')?.successorIds ?? [];
+    expect(reject).not.toEqual(tax.rejectNext);
   });
 });

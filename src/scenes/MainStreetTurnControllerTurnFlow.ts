@@ -11,8 +11,8 @@ import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
 
 import { TranscriptStore, autoSaveTranscript } from '@core-engine/transcript';
 import type { EventCard } from '../MainStreetCards';
-import { playEventCommand, resolveEventChoiceCommand } from '../MainStreetCommands';
-import { applyEndOfTurnDeltas, executeWeekStart, finishDeferredEndOfTurn, finishDeferredTurnClosing, processEndOfTurn } from '../MainStreetEngine';
+import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } from '../MainStreetCommands';
+import { applyEndOfTurnDeltas, canAffordPiggybackJoinFully, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
 import { turnLabel } from '../MainStreetFormatting';
@@ -24,8 +24,11 @@ import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, mark
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { initDisplayedTotals } from './MainStreetAnimatorContext';
 import {
+  continueCompetitiveDayAfterPiggyback,
   endCompetitiveTurnDay,
+  humanSeatPiggybackPending,
   isCompetitiveState,
   startCompetitiveDay,
 } from './MainStreetTurnControllerCompetitive';
@@ -66,6 +69,10 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     s.hintUsedThisTurn = false;
     s.hintedCardId = null;
     s.hintedSlotIndex = null;
+    // Reset the scene-carried banking-hint arm: each new day opens a fresh
+    // presentation window; a hint left armed by a game-over closing must not
+    // leak into the next playthrough (MS-0MV79JQ4H003E6BH).
+    (s as any).pendingBankingHint = false;
 
     s.refreshAll();
 
@@ -154,10 +161,17 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
         })
       ) {
         pendingBankingHint = true;
-        const next = markBankingHintShown(ts);
-        void saveTutorialState(new BrowserLocalStorageAdapter(), next).catch(() => {});
+        // The one-shot flag is NOT persisted here: persistence happens only
+        // when the hint is actually presented (`advanceTurn`). Persisting at
+        // end-turn consumed the hint even on turns that pause for an event
+        // choice (the overlay is deferred past the dialog) — the flag was set
+        // but the overlay never shown, silently muting the lesson for the
+        // rest of the playthrough (MS-0MV79JQ4H003E6BH).
       }
     } catch { /* banking hint trigger must never block the turn */ }
+    // Carry the armed hint on the scene across the closing presentation so a
+    // choice-dialog pause cannot lose it (`onEventChoice` re-reads it).
+    (s as any).pendingBankingHint = pendingBankingHint;
 
     // Process end-of-turn phases (events, income, night, end check)
     // Applicant auto-decline at end-of-turn (CG-0MSTOATDU006UGAX AC6):
@@ -197,6 +211,12 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.previousCoins = s.state.resourceBank.coins;
     s.previousReputation = s.state.resourceBank.reputation;
     s.endOfTurnDeltasApplied = false;
+    // Display-only running totals (MS-0MUYAESVU007X2U8): reset here and only
+    // initialise below in the deferred animation path, so reduced-motion /
+    // tutorial / replay keep the existing instant-final behaviour.
+    s.displayedCoins = null;
+    s.displayedReputation = null;
+    s.displayedIncomeCounted = false;
     try {
       // Deferred-mutation mode: normal interactive play defers the resource
       // application until the end-of-turn animations complete. Tutorial and
@@ -206,6 +226,11 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
       const inTutorialBefore =
         (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
       const deferred = !inTutorialBefore && !reducedMotion && !s.replayMode;
+      if (deferred) {
+        // Open the display-only counters at the pre-reconciliation values so
+        // the HUD counts from the captured total as flights land/depart.
+        initDisplayedTotals(s, s.previousCoins, s.previousReputation);
+      }
       result = processEndOfTurn(
         s.state,
         deferred ? { deferResourceApplication: true } : undefined,
@@ -231,8 +256,10 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     // ── Income Phase Animation ──────────────────────────────────────
     // Presentation-only VFX (AGENTS.md rule 8 + epic CG-0MT23O6W8003AXWJ):
     // the phased income show — base → synergy → reputation → events →
-    // upcoming → grid-to-HUD collection (~11s) — runs when the turn ends
-    // with producing slots. `scene.incomeCollectionActive` gates the HUD
+    // upcoming → grid-to-HUD collection — runs when the turn ends
+    // with producing slots. Empty phases are skipped
+    // (MS-0MUYT436C005B4QN), so the show length is the sum over scheduled
+    // phases only. `scene.incomeCollectionActive` gates the HUD
     // delta pop and defers the street refresh + day start below so the
     // on-card coin grids survive the whole choreography. Never mutates
     // state or the transcript; failures are swallowed so the turn always
@@ -381,12 +408,21 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     };
     const advanceTurn = (): void => {
       // ── Banking hint presentation (CG-0MT3JK16W006A66P) ─────
-      // Non-blocking HUD-highlighting overlay, once per save. Fires
+      // Non-blocking HUD-highlighting overlay, once per playthrough. Fires
       // after the turn's gated step has advanced so it does not
       // compete with the step's own overlay. Never blocks the day
-      // start.
+      // start. The one-shot flag is persisted HERE, at actual presentation,
+      // so an end-turn that never reaches this point (event-choice pause /
+      // game-over) does not consume the hint (MS-0MV79JQ4H003E6BH).
       if (pendingBankingHint) {
+        try {
+          const ts = loadTutorialState(new BrowserLocalStorageAdapter());
+          if (!hasSeenBankingHint(ts)) {
+            void saveTutorialState(new BrowserLocalStorageAdapter(), markBankingHintShown(ts)).catch(() => {});
+          }
+        } catch { /* hint persistence must never block the closing */ }
         try { (s as any).tutorialOverlay?.showBankingHint?.(); } catch { /* presentation-only */ }
+        (s as any).pendingBankingHint = false;
       }
       if (s.incomeCollectionActive) {
         // Bounded deferral: start the next week once the choreography
@@ -436,6 +472,8 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         // post-delta values.
         s.previousCoins = null;
         s.previousReputation = null;
+        s.displayedCoins = null;
+        s.displayedReputation = null;
         s.incidentRevealActive = false;
         // Defer log rendering until after startTurnPhase has displayed
         // upcoming cards (MS-0MURBOD2E009SOM2).
@@ -557,13 +595,12 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
 
     const show = (): void => {
       const overlay = s.msOverlayManager as unknown as {
-        showEventChoiceDialog?: (e: EventCard, onAccept: () => void, onReject: () => void) => void;
+        showEventChoiceDialog?: (e: EventCard, onChoose: (optionIndex: number) => void) => void;
       };
       if (overlay && typeof overlay.showEventChoiceDialog === 'function') {
         overlay.showEventChoiceDialog(
           pending.event,
-          () => tcCtx.onEventChoice('accept'),
-          () => tcCtx.onEventChoice('reject'),
+          (optionIndex) => tcCtx.onEventChoice(optionIndex),
         );
       } else {
         // Defensive fallback: no dialog support — auto-accept so a pending
@@ -592,7 +629,7 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
   
 }
 
-export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'accept' | 'reject'): void {
+export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: string | number): void {
 
     const s = tcCtx.scene;
     const pending = s.state.pendingEventChoice;
@@ -619,7 +656,9 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
           : null;
       void pushedCard;
       s.instructionText.setText(
-        `${event.name}: consequence ${option === 'accept' ? 'accepted' : 'refused'}.`,
+        typeof option === 'number'
+          ? `${event.name}: chose option ${option + 1}.`
+          : `${event.name}: consequence ${option === 'accept' ? 'accepted' : 'refused'}.`,
       );
       // Complete the deferred closing (EndCheck → next week) and present it.
       const finalResult = finishDeferredEndOfTurn(s.state);
@@ -630,11 +669,18 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
       // Stacks are empty again — disable both HUD buttons
       // (CG-0MT5Y4DL8000AKKZ).
       s.refreshUndoRedoButtons(false, false);
-      // Visual consequence for resource deltas (accepted effect), mirroring
-      // the standard incident reveal. Reject applies nothing (deltas 0) — the
+      // Visual consequence for resource deltas (applied effect), mirroring
+      // the standard incident reveal. Reject applies nothing — the
       // instruction text above is the only feedback. The reveal blocks the
       // day start until its hold completes (CG-0MTW18KFK000MM3I).
-      const present = (): void => tcCtx.finishTurnPresentation(finalResult, false);
+      const present = (): void => {
+        // The turn paused on an event-choice dialog before the banking hint
+        // could be presented — carry the still-armed hint into the resumed
+        // closing so it is not silently swallowed (MS-0MV79JQ4H003E6BH).
+        const pendingHint = (s as any).pendingBankingHint === true;
+        (s as any).pendingBankingHint = false;
+        tcCtx.finishTurnPresentation(finalResult, pendingHint);
+      };
       if (coinChange !== 0 || repChange !== 0) {
         try {
           s.msAnimator.animateIncidentReveal({
@@ -663,13 +709,139 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: 'a
   
 }
 
-export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handIndex?: number): void {
+export function presentPiggybackDialog(tcCtx: MainStreetTurnControllerContext): void {
 
+    const s = tcCtx.scene;
+    const state = s.state;
+    // The closing pauses only when the HUMAN seat holds an unresolved
+    // piggyback decision (F5 of MS-0MUYC47EL005Z69H). Nothing to present
+    // otherwise.
+    if (!state.pendingPiggyback || !humanSeatPiggybackPending(state)) return;
+    const humanId = findHumanSeatId(state);
+    if (humanId < 0) return;
+    const decision = state.pendingPiggyback.decisions.find(
+      (d: { seatId: number; resolved: boolean }) => d.seatId === humanId && !d.resolved,
+    );
+    if (!decision) return;
+
+    // Exact prompt data (AC1): the 150% charge and the 100%/50% own-board
+    // reward projections, computed through the same helpers the engine and AI
+    // policy use so the prompt can never disagree with the application path.
+    const charge = piggybackJoinFullyCost(decision.paidCost);
+    const affordable = canAffordPiggybackJoinFully(state, humanId, decision.paidCost);
+    const fullReward = projectPiggybackEventReward(state, decision.event, humanId, 1);
+    const halfReward = projectPiggybackEventReward(state, decision.event, humanId, 0.5);
+
+    // Tutorial/hud regression guard (mirrors `presentEventChoiceDialog`): a
+    // headless tutorial can never hang waiting for dialog input — keep the
+    // automatic free-ride.
+    const tutController = (s as { tutorialController?: { isActive?: boolean } }).tutorialController;
+    if (tutController?.isActive) {
+      tcCtx.onPiggybackChoice(false);
+      return;
+    }
+    // Replay/headless guard: the competition overlay is never presented in
+    // replay, so resolve the decision headlessly (keep the automatic
+    // free-ride) — a replay can never hang on the interactive prompt.
+    if (s.replayMode === true) {
+      tcCtx.onPiggybackChoice(false);
+      return;
+    }
+
+    const show = (): void => {
+      const overlay = s.msOverlayManager as unknown as {
+        showPiggybackDialog?: (
+          info: {
+            event: EventCard;
+            charge: number;
+            affordable: boolean;
+            fullReward: { coins: number; reputation: number };
+            halfReward: { coins: number; reputation: number };
+          },
+          onJoin: () => void,
+          onKeep: () => void,
+        ) => void;
+      };
+      if (overlay && typeof overlay.showPiggybackDialog === 'function') {
+        overlay.showPiggybackDialog(
+          { event: decision.event, charge, affordable, fullReward, halfReward },
+          () => tcCtx.onPiggybackChoice(true),
+          () => tcCtx.onPiggybackChoice(false),
+        );
+      } else {
+        // Defensive fallback: no dialog support — keep the free-ride so a
+        // pending decision can never hang the game loop (regression guard).
+        tcCtx.onPiggybackChoice(false);
+      }
+    };
+
+    if (s.incomeCollectionActive) {
+      // Bounded deferral: present once the income choreography completes; a
+      // safety cap forces the dialog even if the flag is never cleared, so a
+      // pending decision can never hang the game.
+      const startAt = s.time.now + 16_000;
+      const waitForIncome = (): void => {
+        if (s.incomeCollectionActive && s.time.now < startAt) {
+          s.time.delayedCall(250, waitForIncome);
+        } else {
+          s.incomeCollectionActive = false;
+          show();
+        }
+      };
+      waitForIncome();
+    } else {
+      show();
+    }
+  
+}
+
+export function onPiggybackChoice(tcCtx: MainStreetTurnControllerContext, join: boolean): void {
+
+    const s = tcCtx.scene;
+    const state = s.state;
+    const humanId = findHumanSeatId(state);
+    if (humanId < 0) return;
+    const decision = state.pendingPiggyback?.decisions.find(
+      (d: { seatId: number; resolved: boolean }) => d.seatId === humanId && !d.resolved,
+    );
+    if (!decision) return; // nothing to decide
+    try {
+      // Resolve via the snapshot-based undoable command so the decision can
+      // be undone back to the unresolved pending state (AC1). Runs through
+      // the undo manager when one is present.
+      const cmd = resolvePiggybackCommand(state, humanId, join);
+      if (s.undoManager) s.undoManager.execute(cmd);
+      else cmd.execute();
+      s.instructionText.setText(
+        join ? 'Joined the event fully — 100% share earned!' : 'Kept the automatic 50% share.',
+      );
+    } catch (e) {
+      // Resolution failed (should not happen in normal flow): recover by
+      // keeping the free-ride so the day never stalls on a dead prompt.
+      console.error('[Piggyback] resolve failed:', e);
+      try { resolvePendingPiggyback(state, humanId, false); } catch (_) { /* ignore */ }
+      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      s.refreshAll();
+    }
+    // Continue the shared day: settle any remaining seats (AI via the F4
+    // policy), finish the deferred closing and present it — the day never
+    // stalls (AC3).
+    continueCompetitiveDayAfterPiggyback(tcCtx);
+    // The decision closed out this shared day; clear the per-turn undo stack
+    // (mirrors `onEventChoice`'s deferred-closing clear) so the piggyback
+    // resolution cannot be undone after the day advanced — undo would
+    // resurrect the pending decision mid-next-market. The command itself
+    // remains snapshot-undoable at the command layer (AC1).
+    try { s.undoManager?.clear(); } catch (_) { /* ignore */ }
+    try { s.refreshUndoRedoButtons?.(false, false); } catch (_) { /* ignore */ }
+  
+}
+
+export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handIndex?: number): void {
     const s = tcCtx.scene;
     // Allow both the one-click market path and the select-then-act
     // `event-selected` phase (CG-0MUEQ1BF000770B3).
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
-
     // Tutorial gating: only allow play-event if it's the required action or
     // the tutorial is inactive (T23 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);

@@ -1,0 +1,70 @@
+{
+  "label": "baseline",
+  "generatedAt": "2026-10-15T13:23:40.481Z",
+  "commitSha": "85d23dbb50657ed0d7948187649134ef65cd97df",
+  "profile": {
+    "seeds": 200,
+    "seedPrefix": "mc-competitive",
+    "maxTurns": 40,
+    "playerCount": 2,
+    "strategy": "competitive-greedy"
+  },
+  "runs": 200,
+  "averageTurns": 10.41,
+  "endReasons": {
+    "score_threshold": 102,
+    "bankruptcy": 55,
+    "last_standing": 32,
+    "reputation_collapse": 5,
+    "all_challenges": 6
+  },
+  "piggybackTallied": false,
+  "players": [
+    {
+      "playerId": 0,
+      "winRate": 0.615,
+      "averageScore": 4070.02,
+      "medianScore": 4340.5,
+      "averageCoins": 1991.11,
+      "losses": 77,
+      "piggyback": {
+        "decisions": 0,
+        "joins": 0,
+        "freeRides": 0,
+        "coinsSpent": 0,
+        "coinsEarned": 0,
+        "reputationEarned": 0,
+        "paidCostTotal": 0,
+        "runsWithDecisions": 0
+      }
+    },
+    {
+      "playerId": 1,
+      "winRate": 0.085,
+      "averageScore": 2747.41,
+      "medianScore": 1770,
+      "averageCoins": 1176.26,
+      "losses": 183,
+      "piggyback": {
+        "decisions": 0,
+        "joins": 0,
+        "freeRides": 0,
+        "coinsSpent": 0,
+        "coinsEarned": 0,
+        "reputationEarned": 0,
+        "paidCostTotal": 0,
+        "runsWithDecisions": 0
+      }
+    }
+  ],
+  "piggyback": {
+    "decisions": 0,
+    "joins": 0,
+    "freeRides": 0,
+    "coinsSpent": 0,
+    "coinsEarned": 0,
+    "reputationEarned": 0,
+    "paidCostTotal": 0,
+    "runsWithDecisions": 0
+  }
+}

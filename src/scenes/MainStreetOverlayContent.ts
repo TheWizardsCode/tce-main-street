@@ -23,7 +23,8 @@ import {
 } from '../MainStreetCardPacks';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { choiceDialogTitle, choiceDialogSubtitle } from '../MainStreetStorylineUi';
-import { buildJournal, journalIsEmpty, journalTitle, choiceClarityLabels } from '../MainStreetStorylineJournal';
+import { buildJournal, journalIsEmpty, journalTitle } from '../MainStreetStorylineJournal';
+import { getStorylineOptions } from '../MainStreetStoryline';
 import {
   buildGameOverChallengeSummary,
   buildGameOverPlayerRows,
@@ -977,15 +978,16 @@ export class MainStreetOverlayContent {
   }
 
   /**
-   * Shows the dual-choice incident dialog (CG-0MTSHG8RP008E128).
+   * Shows the storyline choice dialog (CG-0MTSHG8RP008E128; reworked for the
+   * arbitrary multi-outcome model in MS-0MV8KQSF1004E53Y).
    *
    * Presented when `processEndOfTurn` pauses with `choicePending` after a
-   * `hasChoices` incident was drawn (IncidentPhase). The player decides
-   * whether to Accept (the event's stated consequence applies) or Reject
-   * (the consequence is refused; an unknown escalation card is added to the
-   * incident deck). No preview of the escalation is shown — only the two
-   * buttons (AC13). Accepting or rejecting an incident is FREE (no action
-   * cost) — the player is forced to respond, not choosing to engage.
+   * choice incident was drawn (IncidentPhase). The player picks one of the
+   * node's **labelled options** (any count ≥ 1) — no hard-coded Accept/Reject
+   * buttons. Every CSV-authored option applies the event's own effect (Q4=B)
+   * and then draws a candidate successor; the dialog never previews the
+   * escalation. Choosing an option is FREE (no action cost) — the player is
+   * forced to respond.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * createOverlayBackground + createOverlayButton from @ui; ALL elements are
@@ -995,19 +997,20 @@ export class MainStreetOverlayContent {
    * Cleanup on dismissal resets `s.overlayObjects`.
    *
    * @param event    The pending choice event (effect deferred).
-   * @param onAccept Called when the player accepts the consequence.
-   * @param onReject Called when the player refuses the consequence.
+   * @param onChoose Called with the chosen option's index.
    */
   public showEventChoiceDialog(
     event: EventCard,
-    onAccept: () => void,
-    onReject: () => void,
+    onChoose: (optionIndex: number) => void,
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
 
+    const options = getStorylineOptions(event);
+    const count = Math.max(options.length, 1);
     const panelW = 500;
-    const panelH = 300;
+    const rowH = 46;
+    const panelH = 170 + count * rowH;
     const panelY = s.layout.gameH / 2 - panelH / 2;
 
     // Overlay background with semi-transparent backdrop (199 / 200 / 201).
@@ -1025,8 +1028,7 @@ export class MainStreetOverlayContent {
     );
     s.overlayObjects.push(...overlay.objects);
 
-    // Title: the storyline name when available (fallback: the card name), so
-    // the player knows which arc they are in (MS-0MUMP96XH002SJ89 AC1).
+    // Title: the storyline name when available (fallback: the card name).
     const titleText = s.add.text(s.layout.gameW / 2, panelY + 22, choiceDialogTitle(event), {
       fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
       align: 'center',
@@ -1035,8 +1037,7 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(titleText);
     s.overlayObjects.push(titleText);
 
-    // Subtitle: the specific incident within the storyline (omitted for legacy
-    // choice cards without a storyline).
+    // Subtitle: the specific incident within the storyline.
     const subtitle = choiceDialogSubtitle(event);
     if (subtitle) {
       const subtitleText = s.add.text(s.layout.gameW / 2, panelY + 50, subtitle, {
@@ -1047,11 +1048,11 @@ export class MainStreetOverlayContent {
       s.overlayObjects.push(subtitleText);
     }
 
-    // Body: what Accept does (the card's stated effect). No preview of the
-    // escalation either way — rejecting keeps the consequence unknown.
+    // Body: the incident's stated consequence. The escalation is never
+    // previewed.
     const bodyText = s.add.text(
       s.layout.gameW / 2, panelY + 78,
-      `An incident has occurred.\nAccept: ${event.effect}\nReject: refuse this consequence — a different event will replace it.`,
+      `An incident has occurred.\n${event.effect}`,
       {
         fontSize: '13px',
         color: '#ddccbb',
@@ -1064,56 +1065,186 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(bodyText);
     s.overlayObjects.push(bodyText);
 
-    // Choice clarity (MS-0MUMP97LQ006PP1D AC3): explanatory labels describing
-    // the consequence semantics (apply vs skip). They deliberately never name
-    // the escalation card — the tension is preserved.
-    const clarity = choiceClarityLabels(event);
-    const acceptClarity = s.add.text(s.layout.gameW / 2, panelY + 158, clarity.accept, {
-      fontSize: '12px', color: '#99cc99', fontFamily: FONT_FAMILY,
-      align: 'center', wordWrap: { width: panelW - 60 },
-    }).setOrigin(0.5, 0).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(acceptClarity);
-    s.overlayObjects.push(acceptClarity);
-
-    const rejectClarity = s.add.text(s.layout.gameW / 2, panelY + 190, clarity.reject, {
-      fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
-      align: 'center', wordWrap: { width: panelW - 60 },
-    }).setOrigin(0.5, 0).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(rejectClarity);
-    s.overlayObjects.push(rejectClarity);
-
-    // Accept button — label carries the event name per AC14: "Service Workers
-    // Strike (Accept)". Accepting is the safe path (no escalation).
-    const acceptBtn = createOverlayButton(
-      s, s.layout.gameW / 2 - 145, panelY + panelH - 45,
-      `${event.name} (Accept)`, 201,
-      { fontSize: '13px', color: '#88ff88', hoverColor: '#aaffaa' },
-    );
-    if (s.hudContainer) s.hudContainer.add(acceptBtn);
-    acceptBtn.on('pointerdown', () => {
-      // Button SFX always plays (reduced motion keeps sound).
-      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
-      onAccept();
+    // One button per labelled option (arbitrary count). The consequence
+    // applies whichever option the player picks (CSV content is all
+    // effectPolicy 'apply'); the dialog only ever shows the labels.
+    options.forEach((option, index) => {
+      const btn = createOverlayButton(
+        s,
+        s.layout.gameW / 2,
+        panelY + 108 + index * rowH,
+        option.label,
+        201,
+        { fontSize: '14px', color: '#aaddff', hoverColor: '#cceeff' },
+      );
+      if (s.hudContainer) s.hudContainer.add(btn);
+      btn.on('pointerdown', () => {
+        // Button SFX always plays (reduced motion keeps sound).
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onChoose(index);
+      });
+      s.overlayObjects.push(btn);
     });
-    s.overlayObjects.push(acceptBtn);
 
-    // Reject button — bare "Reject": the player accepts an unknown
-    // consequence may follow (AC15).
-    const rejectBtn = createOverlayButton(
-      s, s.layout.gameW / 2 + 145, panelY + panelH - 45,
-      'Reject', 201,
-      { fontSize: '13px', color: '#ffaa88', hoverColor: '#ffccaa' },
-    );
-    if (s.hudContainer) s.hudContainer.add(rejectBtn);
-    rejectBtn.on('pointerdown', () => {
-      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
-      onReject();
-    });
-    s.overlayObjects.push(rejectBtn);
+    // Footer: the player must choose — picking is free.
+    const footerText = s.add.text(
+      s.layout.gameW / 2, panelY + 108 + count * rowH,
+      'Choosing is free — the consequence applies regardless.',
+      {
+        fontSize: '12px', color: '#999988', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: panelW - 70 },
+      },
+    ).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(footerText);
+    s.overlayObjects.push(footerText);
+  }
+
+  /**
+   * Shows the human piggyback decision prompt (F5 of MS-0MUYC47EL005Z69H).
+   *
+   * Presented when the human seat holds a pending piggyback decision raised
+   * after another active seat organised an eligible event. The player decides
+   * whether to **join fully** (pay exactly `round(1.5 × paidCost)` coins for
+   * a 100% share — no action point spent) or **keep the automatic 50%
+   * free-ride** share. There is NO decline/skip option: the 50% share is
+   * always applied, so the prompt offers exactly the two outcomes, and an
+   * unaffordable join-fully is hidden (the free-ride applies instead).
+   *
+   * Overlay pattern compliance (AGENTS.md UI Best Practices):
+   * createOverlayBackground + createOverlayButton from @ui; ALL elements are
+   * parented into `s.hudContainer`; depths 199 (backdrop) / 200 (box) /
+   * 201 (elements). Dialog appears instantly (no fade-in — reduced-motion
+   * safe); button SFX plays through safePlaySound (respects mute/volume).
+   * Cleanup on dismissal resets `s.overlayObjects`.
+   *
+   * @param info     The exact prompt data (event, 150% charge, affordability,
+   *                 100%/50% reward projections) from the turn controller.
+   * @param onJoin   Called when the player chooses to join fully.
+   * @param onKeep   Called when the player keeps the 50% free-ride.
+   */
+  public showPiggybackDialog(
+    info: {
+      event: EventCard;
+      charge: number;
+      affordable: boolean;
+      fullReward: { coins: number; reputation: number };
+      halfReward: { coins: number; reputation: number };
+    },
+    onJoin: () => void,
+    onKeep: () => void,
+  ): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    const panelW = 520;
+    const panelH = 340;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = {
+      width: panelW,
+      height: panelH,
+      color: 0x000000,
+      alpha: 1.0,
+      depth: 200,
+    };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    // Title: the event name — the exact thing the player is piggybacking on.
+    const titleText = s.add.text(
+      s.layout.gameW / 2, panelY + 24,
+      `${info.event.name} — piggyback`,
+      {
+        fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: panelW - 60 },
+      },
+    ).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    const joinCoins = Math.round(info.fullReward.coins);
+    const joinRep = Math.round(info.fullReward.reputation);
+    const rideCoins = Math.round(info.halfReward.coins);
+    const rideRep = Math.round(info.halfReward.reputation);
+
+    // Body: the exact 150% coin cost and the reward shares (AC1).
+    const bodyText = s.add.text(
+      s.layout.gameW / 2, panelY + 64,
+      `Another seat organised this event. You already hold the automatic 50% share.\n\n` +
+        `Join fully: pay ${info.charge} coins (no action used) for a 100% share of the rewards — ` +
+        `+${joinCoins} coins / +${joinRep} reputation.\n\n` +
+        `Keep the 50% share: nothing to pay — +${rideCoins} coins / +${rideRep} reputation.`,
+      {
+        fontSize: '13px',
+        color: '#ddccbb',
+        fontFamily: FONT_FAMILY,
+        align: 'center',
+        lineSpacing: 4,
+        wordWrap: { width: panelW - 70 },
+      },
+    ).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(bodyText);
+    s.overlayObjects.push(bodyText);
+
+    // Two outcomes only — never a decline/skip (AC2).
+    if (info.affordable) {
+      const joinBtn = createOverlayButton(
+        s, s.layout.gameW / 2 - 150, panelY + panelH - 52,
+        `Join fully — ${info.charge} coins`, 201,
+        { fontSize: '13px', color: '#88ff88', hoverColor: '#aaffaa' },
+      );
+      if (s.hudContainer) s.hudContainer.add(joinBtn);
+      joinBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onJoin();
+      });
+      s.overlayObjects.push(joinBtn);
+
+      const keepBtn = createOverlayButton(
+        s, s.layout.gameW / 2 + 150, panelY + panelH - 52,
+        'Keep 50% share', 201,
+        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
+      );
+      if (s.hudContainer) s.hudContainer.add(keepBtn);
+      keepBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onKeep();
+      });
+      s.overlayObjects.push(keepBtn);
+    } else {
+      // Unaffordable join-fully: the option is hidden — only the free-ride
+      // outcome remains and it applies automatically (AC2).
+      const noteText = s.add.text(
+        s.layout.gameW / 2, panelY + panelH - 106,
+        `Joining fully needs ${info.charge} coins — you cannot afford it this week.\nThe automatic 50% share (${rideCoins}c / ${rideRep}r) applies.`,
+        {
+          fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
+          align: 'center', wordWrap: { width: panelW - 70 },
+        },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(noteText);
+      s.overlayObjects.push(noteText);
+
+      const keepBtn = createOverlayButton(
+        s, s.layout.gameW / 2, panelY + panelH - 52,
+        'Continue with my 50% share', 201,
+        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
+      );
+      if (s.hudContainer) s.hudContainer.add(keepBtn);
+      keepBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        dismissOverlay(s.overlayObjects);
+        s.overlayObjects = [];
+        onKeep();
+      });
+      s.overlayObjects.push(keepBtn);
+    }
   }
 
   /**

@@ -9,10 +9,17 @@
 
 import type { EventCard } from './MainStreetCards';
 import { getEventTemplates } from './MainStreetCards';
+import { getStorylineOptions } from './MainStreetStoryline';
+import type { StorylineOption } from './MainStreetCardsTypes';
 import { applyReputationMultiplier } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
-import { eventCoinDeltaFor } from './MainStreetEngineEvents';
-import type { MainStreetState } from './MainStreetState';
+import {
+  canAffordPiggybackJoinFully,
+  eventCoinDeltaFor,
+  piggybackJoinFullyCost,
+  projectPiggybackEventReward,
+} from './MainStreetEngineEvents';
+import type { MainStreetState, PendingPiggybackDecision } from './MainStreetState';
 import { syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
@@ -162,103 +169,88 @@ export function eventSeverity(event: EventCard): number {
 }
 
 /**
- * Difficulty-based Accept/Reject decision for a pending dual-choice incident
- * (CG-0MTSHG8RP008E128 AC22). Deterministic and side-effect free.
+ * Difficulty-based event-option decision for a pending storyline choice
+ * (CG-0MTSHG8RP008E128 AC22); reworked for the arbitrary-option model
+ * (MS-0MV8KQSF1004E53Y). Deterministic and side-effect free.
  *
- * Strategy mapping:
- * - Easy: always accept — avoid escalation risk, short-term thinking.
- * - Medium: accept when the event's effect is affordable (coins stay > 0
- *   after the projected delta); reject when it would be unaffordable.
- * - Hard (static full-chain evaluation):
- *   - Positive/neutral events (net >= 0): accept — a guaranteed benefit is
- *     never refused (rejecting only defers value to a speculative draw).
- *   - Negative events:
- *       * accepting ends the chain (acceptNextCardId null) AND the current
- *         effect is manageable → accept (the safe terminal).
- *       * otherwise compare the full chain costs — accept pays the current
- *         effect plus the accept-next card (if the chain continues); reject
- *         skips the current effect and pays only the reject-next card.
- *         Choose the cheaper path; when rejecting is
- *         AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO× costlier, accept the
- *         manageable hit instead (the escalation is "significantly worse").
- *       * if the current effect is NOT manageable (would bankrupt), reject
- *         (avoid the imminent loss) unless rejecting is also strictly worse
- *         than accepting — both paths bad → accept (deterministic default).
+ * Every compiled option applies the event's own effect (CSV content always
+ * carries `effectPolicy: 'apply'`, producer Q4=B), so the *only* differentiator
+ * between options is their successor-candidate chain. The AI therefore picks
+ * the option whose downstream chain is least harmful — the pessimistic,
+ * RNG-free static evaluation:
+ *
+ *  - chain severity = worst-case (max) severity across the option's candidate
+ *    set (a set of size 1 equals that card; an empty set is a terminal, 0);
+ *  - the chosen option minimises that value; ties resolve to the lowest index
+ *    (index 0 is the presentation-default / legacy Accept slot).
+ *
+ * The former difficulty ladder (Easy always-accept, Medium afford-and-accept /
+ * refuse-when-unaffordable, Hard accept-vs-reject full-chain compare) made
+ * sense when Reject could *skip* the current effect; with Q4=B the effect is
+ * never waived, so the ladder collapses onto one shared rule. `difficulty` is
+ * retained for API compatibility and future weighting (recorded follow-up).
  *
  * @param state      Current game state (read-only).
  * @param event      The drawn choice event (effect deferred).
- * @param difficulty Difficulty preset ('Easy' | 'Medium' | 'Hard').
- * @returns 'accept' or 'reject'.
+ * @param difficulty Difficulty preset (retained for API compatibility).
+ * @returns The index of the chosen option in the compiled option list.
  */
 export function decideEventChoice(
   state: MainStreetState,
   event: EventCard,
   difficulty: DifficultyName,
-): 'accept' | 'reject' {
-  // Positive/neutral events: the benefit is guaranteed; no difficulty
-  // refuses a free gain (reject only delays value to an unknown later draw).
-  if (event.coinDelta + event.reputationDelta >= 0) return 'accept';
+): number {
+  void state;
+  void difficulty;
+  const options = getStorylineOptions(event);
+  if (options.length === 0) return 0;
 
-  if (difficulty === 'Easy') return 'accept';
+  let best = 0;
+  let bestSeverity = Infinity;
+  options.forEach((option, index) => {
+    const severity = optionChainSeverity(option);
+    if (severity < bestSeverity) {
+      best = index;
+      bestSeverity = severity;
+    }
+  });
+  return best;
+}
 
-  const projected = projectEventCoinDelta(state, event);
-  const manageable = state.resourceBank.coins + projected > 0;
-
-  if (difficulty === 'Medium') {
-    return manageable ? 'accept' : 'reject';
+/**
+ * Pessimistic, deterministic severity of an option's candidate successor set:
+ * the worst-case (maximum) {@link eventSeverity} across the option's candidate
+ * cards; 0 for a terminal option (empty set). RNG-free so the AI never stalls
+ * and replays stay byte-identical.
+ */
+function optionChainSeverity(option: StorylineOption): number {
+  const ids =
+    option.successorIds != null && option.successorIds.length > 0
+      ? option.successorIds
+      : option.successorId
+        ? [option.successorId]
+        : [];
+  if (ids.length === 0) return 0;
+  let worst = 0;
+  for (const id of ids) {
+    const template = getEventTemplates().find((t) => t.id === id);
+    if (!template) continue;
+    worst = Math.max(worst, eventSeverity(template));
   }
-
-  // ── Hard: static full-chain evaluation ──
-  const currentCost = eventSeverity(event);
-  const acceptChainCost = currentCost + chainCardSeverity(event.acceptNextCardId);
-  const rejectChainCost = chainCardSeverity(event.rejectNextCardId);
-
-  // Accepting ends the chain (no accept-next card): the known effect is the
-  // whole story — prefer the safe terminal when we can afford it (AC22).
-  if (event.acceptNextCardId === null || event.acceptNextCardId === undefined) {
-    if (manageable) return 'accept';
-    // Unaffordable terminal: refusing skips the loss entirely (nothing is
-    // added on reject either, since rejectChainCost == 0) → reject.
-    return rejectChainCost === 0 ? 'reject' : 'accept';
-  }
-
-  // Rejecting adds nothing — refusing the current effect is free.
-  if (rejectChainCost === 0) return 'reject';
-
-  if (!manageable) {
-    // Accepting bankrupts now. Reject delays the (potentially worse) card;
-    // prefer reject unless rejecting is also the strictly worse path.
-    return rejectChainCost < acceptChainCost ? 'reject' : 'accept';
-  }
-
-  if (rejectChainCost > acceptChainCost * AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO) {
-    // The escalation is significantly worse than accepting — swallow the
-    // manageable current effect (AC22 "reject if escalation significantly
-    // worse" ⇒ prefer accept here).
-    return 'accept';
-  }
-  if (rejectChainCost < acceptChainCost) return 'reject';
-  return 'accept';
+  return worst;
 }
 
 /**
  * "Significantly worse" guard (Hard policy): when the reject path's full
- * chain cost exceeds the accept path's full chain cost by at least this
- * ratio, the policy swallows the current manageable effect rather than risk
- * the escalation (AC22 — "reject if the escalation card is significantly
- * worse" maps onto rejecting being costlier). Exported for tests.
+/**
+ * Legacy: "significantly worse" guard ratio from the accept-vs-reject Hard
+ * policy. Superseded by the arbitrary-option model (MS-0MV8KQSF1004E53Y —
+ * every option applies the effect, so there is no reject-skip cost to ratio).
+ * Retained as an exported constant for API compatibility; unused by the new
+ * decision rule.
+ * @deprecated
  */
 export const AI_EVENT_CHOICE_SIGNIFICANTLY_WORSE_RATIO = 1.5;
-
-/**
- * Looks up the next chain card template (registry lookup only — static, no
- * simulation) and returns its severity; null/absent/missing template → 0.
- */
-function chainCardSeverity(nextId: string | null | undefined): number {
-  if (!nextId) return 0;
-  const template = getEventTemplates().find((t) => t.id === nextId);
-  return template ? eventSeverity(template) : 0;
-}
 
 /**
  * Severity factor applied to a chain card's reputation delta when comparing
@@ -268,4 +260,151 @@ function chainCardSeverity(nextId: string | null | undefined): number {
  * both axes comparable for severity ranking. Internal heuristic constant.
  */
 const REPUTATION_SEVERITY_SCALE = 100;
+
+// ── Piggyback join-fully AI policy (MS-0MV8BG2CA007JDEX, F4) ──
+// The deterministic, RNG-free policy that decides whether an AI piggybacker
+// upgrades its automatic 50% free-ride to 100% by paying 150% of the acting
+// player's paid cost. Defined here (next to `decideEventChoice`) so the
+// engine's headless closing paths can resolve pending decisions without
+// importing the AI strategy module (which would create an import cycle); it is
+// re-exported from `MainStreetAiStrategy` as part of that module's public API.
+
+/** The outcome of the AI join-fully policy. */
+export type PiggybackPolicyDecision = 'join' | 'free-ride';
+
+/**
+ * Per-difficulty tuning for the join-fully policy.
+ *
+ * The only knob is the liquidity floor: the minimum fraction of the seat's
+ * starting coins that must remain AFTER the 150% charge. Easy is the most
+ * cautious (keeps half the starting purse in reserve), Hard the most willing
+ * to commit. The floor is what makes the policy difficulty-aware: on an
+ * otherwise identical state Easy may free-ride where Hard joins.
+ */
+export interface PiggybackDifficultyProfile {
+  /** Minimum remaining coins as a fraction of the seat's starting coins. */
+  readonly minBalanceFloorRatio: number;
+}
+
+/** Difficulty-gated liquidity floors for the join-fully policy (F4). */
+export const PIGGYBACK_DIFFICULTY_PROFILES: Record<DifficultyName, PiggybackDifficultyProfile> = {
+  Easy: { minBalanceFloorRatio: 0.5 },
+  Medium: { minBalanceFloorRatio: 0.25 },
+  Hard: { minBalanceFloorRatio: 0.1 },
+};
+
+/**
+ * Absolute coin floor the piggybacker must retain after the charge,
+ * `round(state.config.startingCoins × profile.minBalanceFloorRatio)`.
+ * Exported so the difficulty-aware threshold is directly testable.
+ */
+export function piggybackBalanceFloor(
+  state: MainStreetState,
+  difficulty: DifficultyName,
+): number {
+  const profile =
+    PIGGYBACK_DIFFICULTY_PROFILES[difficulty] ?? PIGGYBACK_DIFFICULTY_PROFILES.Medium;
+  return Math.round(state.config.startingCoins * profile.minBalanceFloorRatio);
+}
+
+/**
+ * Deterministic AI join-fully policy (F4 AC1/AC2): decides whether a seat
+ * upgrades its automatic 50% piggyback free-ride to the full 100% tier by
+ * paying the 150% charge.
+ *
+ * The decision is purely a function of the state — no RNG is consulted — so
+ * identical inputs always produce identical outputs (replay reproducibility).
+ * A seat joins only when ALL of the following hold:
+ *
+ *   1. **Affordable (AC2).** The seat can pay the exact charge
+ *      `round(1.5 × decision.paidCost)`, checked through the shared
+ *      {@link canAffordPiggybackJoinFully} predicate the application path also
+ *      uses — the AI can never attempt a join the engine would refuse.
+ *   2. **Worthwhile.** The event's projected 100%-scale reward on the seat's
+ *      OWN board (coins + reputation; `SpecificSynergy` rewards count only
+ *      the seat's own matching businesses) exceeds the 150% charge.
+ *   3. **Liquid enough.** The coins remaining after the charge stay at or
+ *      above the difficulty-visible floor ({@link piggybackBalanceFloor}), so
+ *      paying for the event never strips the purse below what the difficulty
+ *      considers a safe operating buffer.
+ *
+ * Otherwise the seat keeps the automatic free-ride. When no difficulty is
+ * supplied the seat's own `aiDifficulty` is used, falling back to the shared
+ * `state.config.difficultyName`.
+ *
+ * @param state      Competitive game state (read-only by convention).
+ * @param decision   The pending decision being resolved for one seat.
+ * @param difficulty Policy difficulty; defaults to the seat's difficulty.
+ * @returns `'join'` to take the 100% tier, otherwise `'free-ride'`.
+ */
+export function decidePiggyback(
+  state: MainStreetState,
+  decision: Readonly<PendingPiggybackDecision>,
+  difficulty: DifficultyName = state.players?.[decision.seatId]?.aiDifficulty ??
+    state.config.difficultyName,
+): PiggybackPolicyDecision {
+  // AC2: share the exact affordability predicate the engine enforces on
+  // application. An unaffordable join is never chosen (no partial charge).
+  if (!canAffordPiggybackJoinFully(state, decision.seatId, decision.paidCost)) {
+    return 'free-ride';
+  }
+  const charge = piggybackJoinFullyCost(decision.paidCost);
+  const reward = projectPiggybackEventReward(
+    state,
+    decision.event,
+    decision.seatId,
+    1.0,
+  );
+  const rewardValue = reward.coins + reward.reputation;
+  // Join only when the full own-board reward beats the 150% charge.
+  if (rewardValue <= charge) return 'free-ride';
+  const player = state.players?.[decision.seatId];
+  const remaining = (player?.coins ?? 0) - charge;
+  if (remaining < piggybackBalanceFloor(state, difficulty)) return 'free-ride';
+  return 'join';
+}
+
+/**
+ * Seat-aware default piggyback resolution policy (F4 AC3): AI-controlled
+ * seats apply {@link decidePiggyback}; every other seat keeps the automatic
+ * free-ride.
+ *
+ * This is the default the headless competitive closing uses so a day never
+ * stalls on a pending set. Human seats stay on the automatic free-ride here;
+ * the interactive join-fully prompt (F5) overrides the human path at the
+ * scene layer. Matches the `(decision, state) => boolean` seam of
+ * `resolveAllPendingPiggybacks`.
+ */
+export function decidePiggybackForSeat(
+  decision: Readonly<PendingPiggybackDecision>,
+  state: MainStreetState,
+): boolean {
+  const seat = state.players?.[decision.seatId];
+  if (seat?.controller !== 'ai') return false;
+  return (
+    decidePiggyback(state, decision, seat.aiDifficulty ?? state.config.difficultyName) ===
+    'join'
+  );
+}
+
+/**
+ * AI-only harness policy (F4 AC3/AC4): applies {@link decidePiggyback} to
+ * EVERY seat.
+ *
+ * The Monte Carlo harness (`runCompetitiveSeed`) drives all seats — including
+ * seat 0, which `createCompetitiveState` labels `human` — with AI strategies,
+ * so the head-to-head reproduction must let every seat decide via the same
+ * deterministic policy. The interactive scene keeps {@link
+ * decidePiggybackForSeat} instead, leaving the human seat for the F5 prompt.
+ */
+export function decidePiggybackForAllSeats(
+  decision: Readonly<PendingPiggybackDecision>,
+  state: MainStreetState,
+): boolean {
+  const seat = state.players?.[decision.seatId];
+  return (
+    decidePiggyback(state, decision, seat?.aiDifficulty ?? state.config.difficultyName) ===
+    'join'
+  );
+}
 

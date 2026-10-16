@@ -93,7 +93,7 @@ interface DriftReport {
 // ---------------------------------------------------------------------------
 
 function loadBaseline(): MonteBaseline {
-  const pathToBaseline = resolve(process.cwd(), 'docs/main-street/monte-carlo-baseline.json');
+  const pathToBaseline = resolve(process.cwd(), 'docs/dev/assets/monte-carlo-baseline.json');
   return JSON.parse(readFileSync(pathToBaseline, 'utf-8')) as MonteBaseline;
 }
 
@@ -189,7 +189,7 @@ function main(): void {
   try {
     baseline = loadBaseline();
   } catch (err) {
-    console.error(`Error: could not load baseline from docs/main-street/monte-carlo-baseline.json`);
+    console.error(`Error: could not load baseline from docs/dev/assets/monte-carlo-baseline.json`);
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -308,7 +308,7 @@ function main(): void {
     console.error('');
     console.error(`⚠️  ${report.summary.drifted} difficulty(ies) exceed tolerance.`);
     console.error('   Review the drift report and decide: regenerate baseline or investigate regression.');
-    console.error('   See docs/main-street/balance-guardrail-recommendations.md for the decision tree.');
+    console.error('   See docs/dev/balance-guardrail-recommendations.md for the decision tree.');
   }
 }
 

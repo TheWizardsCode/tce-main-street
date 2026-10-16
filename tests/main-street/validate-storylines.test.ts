@@ -47,7 +47,7 @@ const CSV_COLUMNS = [
   'reputationBonus', 'newDisplayName', 'ongoingCost', 'handSlotsAdded',
   'refreshCostDiscount', 'actionsPerTurn', 'peekOncePerTurn',
   'upgradeCostDiscount', 'art_notes', 'hasChoices', 'acceptNextCardId',
-  'rejectNextCardId', 'storylineId', 'storylineTitle',
+  'rejectNextCardId', 'options', 'storylineId', 'storylineTitle',
 ];
 
 interface CsvEventSpec {
@@ -58,8 +58,16 @@ interface CsvEventSpec {
   hasChoices?: boolean;
   acceptNextCardId?: string;
   rejectNextCardId?: string;
+  /** Arbitrary multi-outcome `options` encoding (F4). */
+  options?: string;
   storylineId?: string;
   storylineTitle?: string;
+}
+
+/** Quotes a CSV field when it contains separators/quotes (RFC-4180 subset). */
+function csvField(value: string): string {
+  if (/[,"\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
 }
 
 /** Builds a well-formed synthetic event CSV from a compact spec list. */
@@ -81,9 +89,10 @@ function buildCsv(events: CsvEventSpec[]): string {
     if (e.hasChoices) row.hasChoices = 'true';
     if (e.acceptNextCardId) row.acceptNextCardId = e.acceptNextCardId;
     if (e.rejectNextCardId) row.rejectNextCardId = e.rejectNextCardId;
+    if (e.options !== undefined) row.options = e.options;
     if (e.storylineId) row.storylineId = e.storylineId;
     if (e.storylineTitle) row.storylineTitle = e.storylineTitle;
-    lines.push(CSV_COLUMNS.map((c) => row[c] ?? '').join(','));
+    lines.push(CSV_COLUMNS.map((c) => csvField(row[c] ?? '')).join(','));
   }
   return lines.join('\n');
 }
@@ -224,6 +233,132 @@ describe('AC3 — invalid option fails', () => {
   it('a choice card with zero options is invalid', () => {
     const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
     const result = validateStorylines(cards, { getOptions: () => [] });
+    expect(result.valid).toBe(false);
+    expect(result.issues.some((i) => i.kind === 'invalid-option')).toBe(true);
+  });
+
+  it('a duplicate label within a node is invalid and names the row/options column', () => {
+    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const opts: StorylineOption[] = [
+      { label: 'Accept', successorIds: ['evt-b'], effectPolicy: 'apply' },
+      { label: 'accept', successorIds: ['evt-c'], effectPolicy: 'apply' },
+    ];
+    const result = validateStorylines(cards, { getOptions: () => opts });
+    expect(result.valid).toBe(false);
+    const issue = result.issues.find((i) => i.kind === 'invalid-option');
+    expect(issue).toBeDefined();
+    expect(issue!.cardId).toBe('evt-a');
+    expect(issue!.message).toContain('options column');
+  });
+});
+
+// ── F4 (MS-0MV8KQMVC009N5K3): arbitrary option/successor-set model ──
+
+describe('F4 — candidate successor sets (successorIds)', () => {
+  it('every candidate of a successor set must resolve to a known card', () => {
+    const cards = [
+      makeEvent({ id: 'evt-a', hasChoices: true }),
+      makeEvent({ id: 'evt-b' }),
+    ];
+    const opts: StorylineOption[] = [
+      { label: 'Negotiate', successorIds: ['evt-b', 'evt-ghost'], effectPolicy: 'apply' },
+    ];
+    const result = validateStorylines(cards, { getOptions: () => opts });
+    expect(result.valid).toBe(false);
+    const issue = result.issues.find((i) => i.kind === 'dangling-link');
+    expect(issue).toBeDefined();
+    expect(issue!.target).toBe('evt-ghost');
+    expect(issue!.message).toContain('options column');
+  });
+
+  it('an empty candidate set is a valid terminal option (no dangling check)', () => {
+    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const opts: StorylineOption[] = [
+      { label: 'Walk away', successorIds: [], effectPolicy: 'apply' },
+    ];
+    const result = validateStorylines(cards, { getOptions: () => opts });
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('three labelled options with candidate sets validate', () => {
+    const cards = [
+      makeEvent({ id: 'evt-a', hasChoices: true }),
+      makeEvent({ id: 'evt-b' }),
+      makeEvent({ id: 'evt-c' }),
+      makeEvent({ id: 'evt-d' }),
+    ];
+    const opts: StorylineOption[] = [
+      { label: 'Negotiate', successorIds: ['evt-b', 'evt-c'], effectPolicy: 'apply' },
+      { label: 'Escalate', successorIds: ['evt-d'], effectPolicy: 'apply' },
+      { label: 'Walk away', successorIds: [], effectPolicy: 'apply' },
+    ];
+    const result = validateStorylines(cards, { getOptions: () => opts });
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('cycle detection follows candidate successor sets', () => {
+    const cards = [
+      makeEvent({ id: 'evt-a', hasChoices: true }),
+      makeEvent({ id: 'evt-b', hasChoices: true }),
+    ];
+    const optsA: StorylineOption[] = [{ label: 'A', successorIds: ['evt-b'], effectPolicy: 'apply' }];
+    const optsB: StorylineOption[] = [{ label: 'B', successorIds: ['evt-a'], effectPolicy: 'apply' }];
+    const result = validateStorylines(cards, {
+      getOptions: (c) => (c.id === 'evt-a' ? optsA : optsB),
+    });
+    expect(result.valid).toBe(true); // cycles are informational by default
+    expect(result.findings.some((f) => f.kind === 'cycle')).toBe(true);
+  });
+});
+
+describe('F4 — CSV options encoding through the typed model', () => {
+  it('a multi-outcome CSV row validates and compiles to the declared options', () => {
+    const csv = buildCsv([
+      { id: 'evt-talk', options: 'Negotiate|evt-yes,evt-settle;Walk away|;Escalate|evt-bad', storylineId: 'arc-1' },
+      { id: 'evt-yes', storylineId: 'arc-1' },
+      { id: 'evt-settle', storylineId: 'arc-1' },
+      { id: 'evt-bad', storylineId: 'arc-1' },
+    ]);
+    loadTemplatesFromCsv(csv);
+    const result = validateStorylines(getEventTemplates());
+    expect(result.valid, formatStorylineReport(result)).toBe(true);
+    expect(result.choiceCardCount).toBe(1);
+  });
+
+  it('a non-empty options encoding with a dangling candidate is rejected, naming the row/column', () => {
+    const csv = buildCsv([
+      { id: 'evt-broken', options: 'Negotiate|evt-nowhere', storylineId: 'arc-1' },
+    ]);
+    loadTemplatesFromCsv(csv);
+    const result = validateStorylines(getEventTemplates());
+    expect(result.valid).toBe(false);
+    const issue = result.issues.find((i) => i.kind === 'dangling-link');
+    expect(issue).toBeDefined();
+    expect(issue!.cardId).toBe('evt-broken');
+    expect(issue!.target).toBe('evt-nowhere');
+  });
+
+  it('a malformed options encoding is surfaced as an invalid-option naming the row and options column', () => {
+    const csv = buildCsv([
+      { id: 'evt-malformed', options: 'NoSeparatorHere;AlsoBad', storylineId: 'arc-1' },
+    ]);
+    loadTemplatesFromCsv(csv);
+    const result = validateStorylines(getEventTemplates());
+    expect(result.valid).toBe(false);
+    const issue = result.issues.find((i) => i.kind === 'invalid-option');
+    expect(issue).toBeDefined();
+    expect(issue!.cardId).toBe('evt-malformed');
+    expect(issue!.message).toContain('options column');
+  });
+
+  it('a non-empty encoding decoding to zero options is invalid', () => {
+    const csv = buildCsv([
+      { id: 'evt-empty', options: ';;;', storylineId: 'arc-1' },
+    ]);
+    loadTemplatesFromCsv(csv);
+    const result = validateStorylines(getEventTemplates());
     expect(result.valid).toBe(false);
     expect(result.issues.some((i) => i.kind === 'invalid-option')).toBe(true);
   });

@@ -63,6 +63,8 @@ export {
   canSellBusiness,
   canCloseBusiness,
   closeBusiness,
+  closeReputationDelta,
+  effectiveCardReputationPerTurn,
 } from './MainStreetMarketSell';
 
 // ── Hand ────────────────────────────────────────────────────

@@ -22,7 +22,19 @@ export interface MainStreetTurnControllerContext {
   finishTurnPresentation(result: TurnResult, pendingBankingHint: boolean, ): void;
   handleGameOver(result: TurnResult): void;
   presentEventChoiceDialog(): void;
-  onEventChoice(option: 'accept' | 'reject'): void;
+  onEventChoice(option: 'accept' | 'reject' | number): void;
+  /**
+   * Presents the human piggyback decision prompt (join fully / keep 50%) when
+   * the shared competitive closing pauses on the human seat (F5 of
+   * MS-0MUYC47EL005Z69H).
+   */
+  presentPiggybackDialog(): void;
+  /**
+   * Resolves the human seat's pending piggyback decision via an undoable
+   * command and continues the shared day (F5 of MS-0MUYC47EL005Z69H).
+   * @param join True to join fully, false to keep the 50% free-ride.
+   */
+  onPiggybackChoice(join: boolean): void;
   onPlayHeldEvent(handIndex?: number): void;
   performUndo(): void;
   performRedo(): void;

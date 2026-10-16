@@ -40,7 +40,8 @@ import type {
   PlayerRecord,
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
-import { ALLOWED_START_WEEKS, deriveSeatColours } from './MainStreetStateSetup';
+import type { StorylineOption } from './MainStreetCardsTypes';
+import { ALLOWED_START_WEEKS, BASE_HAND_CAPACITY, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
  * Serializes Main Street runtime state into a JSON-safe checkpoint shape.
@@ -113,6 +114,34 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           event: structuredClone(state.pendingEventChoice.event),
           chosenOption: state.pendingEventChoice.chosenOption,
           resolved: state.pendingEventChoice.resolved,
+          // Data-only projection of the frozen option list (F3 AC4): labels,
+          // candidate sets and effect policies round-trip verbatim so a
+          // loaded save presents the exact list the player saw. Runtime
+          // callbacks (condition / successorResolver) are not serialisable
+          // and are dropped — resolution falls back to the data or to a
+          // registry/CSV recompile for callback semantics.
+          options: state.pendingEventChoice.options
+            ? state.pendingEventChoice.options.map((o) => ({
+                label: o.label,
+                successorId: o.successorId ?? null,
+                successorIds: o.successorIds ? [...o.successorIds] : undefined,
+                effectPolicy: o.effectPolicy,
+              }))
+            : undefined,
+        }
+      : null,
+    pendingPiggyback: state.pendingPiggyback
+      ? {
+          actingSeatId: state.pendingPiggyback.actingSeatId,
+          event: structuredClone(state.pendingPiggyback.event),
+          paidCost: state.pendingPiggyback.paidCost,
+          decisions: state.pendingPiggyback.decisions.map((decision) => ({
+            seatId: decision.seatId,
+            event: structuredClone(decision.event),
+            paidCost: decision.paidCost,
+            chosenJoin: decision.chosenJoin,
+            resolved: decision.resolved,
+          })),
         }
       : null,
   };
@@ -420,6 +449,14 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
     (saved as Record<string, unknown>).pendingEventChoice = null;
   }
 
+  // ── pendingPiggyback (F3 of MS-0MUYC47EL005Z69H): backfill default ─
+  // Legacy saves predate the piggyback decision mechanic; default to null
+  // (no pending decision set). Idempotent, so direct-deserialize callers are
+  // covered too.
+  if (!('pendingPiggyback' in saved)) {
+    (saved as Record<string, unknown>).pendingPiggyback = null;
+  }
+
   // ── day → week terminology rename (CG-0MTMYIHKO001QCWL) ──
   // Pre-rename saves serialized the phase as 'DayStart' and the turn-start
   // resource snapshot as dayStartCoins/dayStartRep/dayStartScore. Map them to
@@ -709,7 +746,62 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           event: structuredClone((saved as unknown as { pendingEventChoice: { event: EventCard; chosenOption: string | null; resolved: boolean } }).pendingEventChoice!.event),
           chosenOption: (saved as unknown as { pendingEventChoice: { chosenOption: string | null } }).pendingEventChoice!.chosenOption,
           resolved: (saved as unknown as { pendingEventChoice: { resolved: boolean } }).pendingEventChoice!.resolved,
+          // Restore the data-only option snapshot serialised by F3 AC4 (absent
+          // on pre-F3 / legacy saves — resolution then recompiles from the
+          // event's CSV options or the runtime registry).
+          options: ((
+            saved as unknown as {
+              pendingEventChoice?: { options?: Array<{ label: string; successorId?: string | null; successorIds?: string[]; effectPolicy: 'apply' | 'skip' }> | null };
+            }
+          ).pendingEventChoice?.options ?? null)
+            ? ((saved as unknown as {
+                pendingEventChoice: { options: Array<{ label: string; successorId?: string | null; successorIds?: string[]; effectPolicy: 'apply' | 'skip' }> };
+              }).pendingEventChoice.options as unknown as StorylineOption[])
+            : undefined,
         }
+      : null,
+    pendingPiggyback: (saved as unknown as {
+      pendingPiggyback?: {
+        actingSeatId: number;
+        event: EventCard;
+        paidCost: number;
+        decisions: Array<{
+          seatId: number;
+          event: EventCard;
+          paidCost: number;
+          chosenJoin: boolean | null;
+          resolved: boolean;
+        }>;
+      } | null;
+    })?.pendingPiggyback
+      ? (() => {
+          const pending = (saved as unknown as {
+            pendingPiggyback: {
+              actingSeatId: number;
+              event: EventCard;
+              paidCost: number;
+              decisions: Array<{
+                seatId: number;
+                event: EventCard;
+                paidCost: number;
+                chosenJoin: boolean | null;
+                resolved: boolean;
+              }>;
+            };
+          }).pendingPiggyback!;
+          return {
+            actingSeatId: pending.actingSeatId,
+            event: structuredClone(pending.event),
+            paidCost: pending.paidCost,
+            decisions: (pending.decisions ?? []).map((decision) => ({
+              seatId: decision.seatId,
+              event: structuredClone(decision.event),
+              paidCost: decision.paidCost,
+              chosenJoin: decision.chosenJoin ?? null,
+              resolved: decision.resolved ?? false,
+            })),
+          };
+        })()
       : null,
   };
 
@@ -738,6 +830,19 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           : { ...player, colour: colours.get(String(player.playerId)) },
       );
     }
+  }
+
+  // ── Per-seat hand-capacity backfill (MS-0MV8PX4DV003LTFP) ──
+  // Legacy competitive saves predate the per-seat `maxHandSize`; default any
+  // seat missing the field to the base capacity (3) while preserved grown
+  // values are left untouched, so the shared-`maxHandSize` behaviour is not
+  // resurrected across a reload. Single-player (no seat records) is skipped.
+  if (state.players) {
+    state.players = state.players.map((player) =>
+      typeof player.maxHandSize === 'number'
+        ? player
+        : { ...player, maxHandSize: BASE_HAND_CAPACITY },
+    );
   }
 
   // ── Per-business employedStaff backfill (CG-0MU3BNO590066H75) ──────

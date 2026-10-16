@@ -24,6 +24,7 @@ import {
   processEndOfTurn,
   resolveIncident,
   resolveEventChoice,
+  resolveEventOption,
   finishDeferredEndOfTurn,
   type TurnResult,
 } from '../../src/MainStreetEngine';
@@ -38,6 +39,12 @@ import {
   MainStreetTranscriptRecorder,
   setMainStreetRecorder,
 } from '../../src/MainStreetTranscript';
+import {
+  pushChainCard,
+  registerStorylineOptions,
+  resetStorylineRegistry,
+} from '../../src/MainStreetStoryline';
+import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 
 // ── Synthetic CSV (choice + escalation templates) ───────────
 
@@ -112,6 +119,7 @@ function assertTurnPaused(result: TurnResult, state: MainStreetState): void {
 afterEach(() => {
   setMainStreetRecorder(null);
   resetTemplatesToDefault();
+  resetStorylineRegistry();
 });
 
 // ── resolveIncident interception (AC1 engine) ───────────────
@@ -210,8 +218,8 @@ describe('resolveEventChoice — Accept path', () => {
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-esc-audit');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-esc-audit');
-    // Pending choice resolved
-    expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+    // Pending choice resolved — the token is the option label (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -250,7 +258,8 @@ describe('resolveEventChoice — Reject path', () => {
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-esc-worse');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-esc-worse');
-    expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+    // The token is the option label (F3 AC3).
+    expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
@@ -349,6 +358,214 @@ describe('finishDeferredEndOfTurn completes the paused turn', () => {
   });
 });
 
+// ── Multi-outcome draw contract (MS-0MV8KQHYJ003EJO6 / F3) ──
+//
+// Pin the resolution half of the arbitrary-outcome contract: exactly one
+// seeded `state.rng()` draw per selection at resolution time, `pushChainCard`
+// RNG-free, and same-seed replay determinism. The option candidates are
+// authored through the programmatic registry because the CSV `options` column
+// lands in F2 — the seam under test here (`resolveEventOption` /
+// `resolveStorylineOption`) must draw from the candidate set regardless of
+// how the option was authored.
+//
+// These suites were RED against the two-way
+// `hasChoices`/`acceptNextCardId`/`rejectNextCardId` implementation (which
+// never drew — it resolved the single `successorId`); F3 landed the draw and
+// flipped them to passing `it`s. Guards that hold regardless stay plain `it`.
+
+/** Column header for the multi-outcome engine fixtures (all rows aligned). */
+const ENGINE_CSV_COLUMNS = [
+  'family', 'id', 'name', 'cost', 'baseIncome', 'synergyTypes', 'upgradePath',
+  'maxLevel', 'reputationPerTurn', 'synergyCoinBonus', 'synergyRepBonus',
+  'description', 'tier', 'trigger', 'effect', 'target', 'targetSynergy',
+  'coinDelta', 'reputationDelta', 'duration', 'effectType', 'multiplier',
+  'targetBusiness', 'incomeBonus', 'synergyRangeBonus', 'requiredLevel',
+  'reputationBonus', 'newDisplayName', 'ongoingCost', 'handSlotsAdded',
+  'refreshCostDiscount', 'actionsPerTurn', 'peekOncePerTurn',
+  'upgradeCostDiscount', 'art_notes', 'hasChoices', 'acceptNextCardId',
+  'rejectNextCardId',
+];
+
+interface EngineChoiceSpec {
+  id: string;
+  name: string;
+  effect: string;
+  coinDelta?: number;
+  hasChoices?: boolean;
+  acceptNextCardId?: string;
+  rejectNextCardId?: string;
+}
+
+/** Builds an aligned event CSV (same two-way header used across the file). */
+function buildEngineCsv(events: EngineChoiceSpec[]): string {
+  const lines = [ENGINE_CSV_COLUMNS.join(',')];
+  for (const e of events) {
+    const row: Record<string, string> = {
+      family: 'event',
+      id: e.id,
+      name: e.name,
+      cost: '0',
+      tier: '1',
+      trigger: 'Incident',
+      effect: e.effect,
+      target: 'All',
+      coinDelta: String(e.coinDelta ?? 0),
+      reputationDelta: '0',
+    };
+    if (e.hasChoices) row.hasChoices = 'true';
+    if (e.acceptNextCardId) row.acceptNextCardId = e.acceptNextCardId;
+    if (e.rejectNextCardId) row.rejectNextCardId = e.rejectNextCardId;
+    lines.push(ENGINE_CSV_COLUMNS.map((c) => row[c] ?? '').join(','));
+  }
+  return lines.join('\n');
+}
+
+const MULTI_OUTCOME_CSV = buildEngineCsv([
+  { id: 'evt-mo-choice', name: 'Multi Choice', effect: 'Lose 100 coins', coinDelta: -100, hasChoices: true },
+  { id: 'evt-mo-a', name: 'Branch A', effect: 'Lose 10 coins', coinDelta: -10 },
+  { id: 'evt-mo-b', name: 'Branch B', effect: 'Lose 20 coins', coinDelta: -20 },
+  { id: 'evt-mo-c', name: 'Branch C', effect: 'Lose 30 coins', coinDelta: -30 },
+]);
+
+/**
+ * The multi-outcome option shape under test. `successorIds` does not exist on
+ * the public `StorylineOption` type until F2, so the fixtures here are cast.
+ */
+interface ContractOption {
+  readonly label: string;
+  readonly successorIds: readonly string[];
+  readonly effectPolicy: 'apply' | 'skip';
+  readonly successorResolver?: (state: MainStreetState) => string | null | undefined;
+}
+
+const MULTI_OUTCOME_OPTION_SPECS: ContractOption[] = [
+  { label: 'Left', successorIds: ['evt-mo-a', 'evt-mo-b'], effectPolicy: 'apply' },
+  { label: 'Right', successorIds: [], effectPolicy: 'apply' },
+];
+
+/** State with the multi-outcome node queued as the next incident. */
+function setupMultiOutcomeState(seed: string): MainStreetState {
+  // Load the synthetic pool BEFORE setup so every same-seed state builds its
+  // market/deck from an identical template pool (identical RNG consumption).
+  loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+  const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+  registerStorylineOptions(
+    'evt-mo-choice',
+    MULTI_OUTCOME_OPTION_SPECS as unknown as StorylineOption[],
+  );
+  state.phase = 'MarketPhase';
+  state.incidentDeck.length = 0;
+  state.incidentDeck.push({ ...loadTemplate('evt-mo-choice'), id: 'evt-mo-choice-0' });
+  return state;
+}
+
+describe('F1 — exactly one seeded rng draw per selection at resolution time', () => {
+  it('AC2 — resolving a chosen option performs exactly one state.rng() draw', () => {
+    const state = setupMultiOutcomeState('mo-one-draw');
+    processEndOfTurn(state); // draw -> pending choice
+    const rngBefore = state.rngCalls;
+
+    resolveEventOption(state, 0);
+
+    expect(state.rngCalls).toBe(rngBefore + 1);
+  });
+
+  it('AC2 — a single-candidate set still consumes exactly one draw', () => {
+    const state = setupMainStreetGame({ seed: 'mo-single-draw', difficulty: 'Medium' });
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    registerStorylineOptions('evt-mo-choice', [
+      { label: 'Only', successorIds: ['evt-mo-a'], effectPolicy: 'apply' },
+    ] as unknown as StorylineOption[]);
+    state.phase = 'MarketPhase';
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...loadTemplate('evt-mo-choice'), id: 'evt-mo-choice-0' });
+    processEndOfTurn(state);
+    const rngBefore = state.rngCalls;
+
+    resolveEventOption(state, 0);
+
+    expect(state.rngCalls).toBe(rngBefore + 1);
+  });
+
+  it('AC2 — pushChainCard consumes no rng', () => {
+    const state = setupMainStreetGame({ seed: 'mo-push-no-rng', difficulty: 'Medium' });
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    const rngBefore = state.rngCalls;
+
+    const pushed = pushChainCard(state, 'evt-mo-a');
+
+    expect(pushed?.id).toContain('evt-mo-a');
+    expect(state.rngCalls).toBe(rngBefore);
+  });
+
+  it('AC2 — an empty candidate set ends the chain without consuming a draw', () => {
+    const state = setupMultiOutcomeState('mo-terminal');
+    processEndOfTurn(state);
+    const deckLen = state.incidentDeck.length;
+    const rngBefore = state.rngCalls;
+
+    const res = resolveEventOption(state, 1); // 'Right' → successorIds []
+
+    expect(res.pushedCard).toBeNull();
+    expect(state.incidentDeck.length).toBe(deckLen);
+    expect(state.rngCalls).toBe(rngBefore);
+  });
+});
+
+describe('F1 — seeded replay determinism for candidate-set options', () => {
+  it('AC2 — same seed resolves every option to the same successor (replay pair)', () => {
+    for (const index of [0, 1]) {
+      const seed = `mo-replay-${index}`;
+      const a = setupMultiOutcomeState(seed);
+      const b = setupMultiOutcomeState(seed);
+      processEndOfTurn(a);
+      processEndOfTurn(b);
+
+      const ra = resolveEventOption(a, index);
+      const rb = resolveEventOption(b, index);
+
+      expect(ra.pushedCard?.id ?? null).toBe(rb.pushedCard?.id ?? null);
+      // A non-terminal option must actually push a card (the draw happened).
+      if (MULTI_OUTCOME_OPTION_SPECS[index].successorIds.length > 0) {
+        expect(ra.pushedCard).not.toBeNull();
+      }
+    }
+  });
+
+  it('AC3 — the random draw never changes the option list the player sees', () => {
+    const state = setupMultiOutcomeState('mo-visible');
+    processEndOfTurn(state);
+    const labelsBefore = state.pendingEventChoice!.options!.map((o) => o.label);
+
+    resolveEventOption(state, 0);
+
+    expect(state.pendingEventChoice!.options!.map((o) => o.label)).toEqual(labelsBefore);
+  });
+});
+
+describe('F1 — successorResolver precedence at resolution time', () => {
+  it('AC3 — a resolver overrides the candidate set and consumes no draw', () => {
+    const state = setupMainStreetGame({ seed: 'mo-resolver', difficulty: 'Medium' });
+    loadTemplatesFromCsv(MULTI_OUTCOME_CSV);
+    registerStorylineOptions('evt-mo-choice', [{
+      label: 'Directed',
+      successorIds: ['evt-mo-a', 'evt-mo-b'],
+      effectPolicy: 'apply',
+      successorResolver: () => 'evt-mo-c',
+    } as unknown as StorylineOption]);
+    state.phase = 'MarketPhase';
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...loadTemplate('evt-mo-choice'), id: 'evt-mo-choice-0' });
+    processEndOfTurn(state);
+    const rngBefore = state.rngCalls;
+
+    const res = resolveEventOption(state, 0);
+
+    expect(res.pushedCard?.id).toContain('evt-mo-c');
+    expect(state.rngCalls).toBe(rngBefore);
+  });
+});
+
 // ── Transcript recording (AC6/AC12) ─────────────────────────
 
 describe('transcript recording for event choices', () => {
@@ -367,8 +584,33 @@ describe('transcript recording for event choices', () => {
     if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
     expect(choiceEvent.eventId).toContain('evt-choice-test'); // instance id carries the base template id
     expect(choiceEvent.cardName).toBe('Test Choice Event');
-    expect(choiceEvent.option).toBe('reject');
+    // F3 AC3: the transcript token is the option label, not the legacy
+    // lowercase 'reject' value.
+    expect(choiceEvent.option).toBe('Reject');
     expect(choiceEvent.acceptNextCardId).toBe('evt-esc-audit');
     expect(choiceEvent.rejectNextCardId).toBe('evt-esc-worse');
+  });
+});
+
+// ── F1: multi-outcome transcript label (MS-0MV8KQHYJ003EJO6) ─
+
+describe('F1 — transcript records the chosen option label for a multi-outcome node', () => {
+  it('records the chosen option label as the stable token (F3 AC3)', () => {
+    const recorder = new MainStreetTranscriptRecorder({ seed: 'mo-transcript' });
+    setMainStreetRecorder(recorder);
+    const state = setupMultiOutcomeState('mo-transcript');
+    processEndOfTurn(state);
+
+    resolveEventOption(state, 0); // 'Left' (successorIds candidate set)
+
+    const events = recorder.getTranscript().events;
+    const choiceEvent = events.find((e) => e.type === 'event-choice');
+    expect(choiceEvent).toBeDefined();
+    if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
+    expect(choiceEvent.eventId).toContain('evt-mo-choice');
+    expect(choiceEvent.cardName).toBe('Multi Choice');
+    // The chosen option is recorded as a stable label token (the raw label,
+    // not a legacy 'accept'/'reject' or an index).
+    expect(choiceEvent.option).toBe('Left');
   });
 });

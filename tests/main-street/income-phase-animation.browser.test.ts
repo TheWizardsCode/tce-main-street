@@ -8,7 +8,7 @@
  * reduced-motion text-only progression, non-blocking error swallowing, and
  * the replay/headless exemption.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
@@ -159,7 +159,7 @@ describe('Main Street phased income animation', () => {
     game = null;
   });
 
-  it('runs phases in order base → synergy → reputation → events → upcoming → collect', async () => {
+  it('runs non-empty phases in order base → synergy → reputation → collect, skipping empty events/upcoming', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
     const state = scene.state as { streetGrid: Array<BusinessCard | null> };
@@ -187,10 +187,52 @@ describe('Main Street phased income animation', () => {
     await waitForCondition(() => (scene.incomeCollectionActive as boolean) === true);
 
     await waitForCondition(() => order.includes('collect'), 12_000);
-    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    // `makePhaseData()` has no event/upcoming deltas, so those empty phases are
+    // skipped outright (MS-0MUYT436C005B4QN): no phase event is reported for them.
+    expect(order).toEqual(['base', 'synergy', 'reputation', 'collect']);
 
     // The flag clears once collection completes.
     await waitForCondition(() => (scene.incomeCollectionActive as boolean) === false, 6000);
+  });
+
+  it('skips an empty phase: no label is shown and only scheduled phases are reported', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const state = scene.state as { streetGrid: Array<BusinessCard | null> };
+    // A single card with base income only — every other phase is empty.
+    state.streetGrid[0] = makeBiz('cafe-biz', 'Cafe', 3);
+    (scene as unknown as { refreshAll: () => void }).refreshAll();
+
+    await waitForCondition(() => slotCard(scene as never, 0) !== null);
+
+    const msAnimator = scene.msAnimator as {
+      animateIncomePhases: (d: SlotPhaseBreakdown[], o: { phaseGapMs: number }) => void;
+      showIncomePhaseLabel: (label: string, color: number) => void;
+    };
+    const labels: string[] = [];
+    const labelSpy = vi.spyOn(msAnimator, 'showIncomePhaseLabel').mockImplementation((label: string) => {
+      labels.push(label);
+    });
+
+    const order: IncomePhaseKey[] = [];
+    msAnimator.animateIncomePhases(
+      [{
+        slotIndex: 0,
+        businessName: 'Cafe',
+        baseIncome: 3,
+        synergyBonus: 0,
+        repBonus: 0,
+        eventDeltas: [],
+        upcomingDeltas: [],
+      }],
+      { phaseGapMs: 300, onPhase: (phase) => order.push(phase) },
+    );
+
+    await waitForCondition(() => order.includes('collect'), 6000);
+    // Only the base phase (the sole non-empty one) is labelled/reported.
+    expect(order).toEqual(['base', 'collect']);
+    expect(labels).toEqual(['Base income']);
+    labelSpy.mockRestore();
   });
 
   it('counts base coins out onto card grids and collects them to the HUD', async () => {
@@ -275,8 +317,10 @@ describe('Main Street phased income animation', () => {
     expect(joined.includes('Flu Outbreak')).toBe(true);
     expect(joined.includes('New')).toBe(true);
 
-    // Valid phases completed despite the negative event delta.
-    expect(seen).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    // Valid phases completed despite the negative event delta; the solo
+    // card forms no synergy pair and there are no upcoming deltas, so both
+    // empty phases are skipped.
+    expect(seen).toEqual(['base', 'reputation', 'events', 'collect']);
   });
 
   it('reduced motion keeps the phase/text progression but never shows coins', async () => {
@@ -306,7 +350,9 @@ describe('Main Street phased income animation', () => {
     });
 
     await waitForCondition(() => (scene.incomeCollectionActive as boolean) === false, 8000);
-    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    // Reduced motion does not reintroduce empty phases: events/upcoming are
+    // still skipped (MS-0MUYT436C005B4QN).
+    expect(order).toEqual(['base', 'synergy', 'reputation', 'collect']);
     // No coin icons ever rendered (text progression only, AC8).
     expect(coinIconsUnder(card).length).toBe(0);
   });
@@ -341,9 +387,12 @@ describe('Main Street phased income animation', () => {
       },
     });
 
-    // The choreography completes and never touches the bank.
+    // The choreography completes and never touches the bank. Only slot 1
+    // resolves to a card (slot 99 is skipped), and its repBonus (0.25) rounds
+    // to zero icons, so base is the only non-empty phase; the empty
+    // synergy/reputation/events/upcoming phases are skipped.
     await waitForCondition(() => order.includes('collect'), 8000);
-    expect(order).toEqual(['base', 'synergy', 'reputation', 'events', 'upcoming', 'collect']);
+    expect(order).toEqual(['base', 'collect']);
     expect(state.resourceBank.coins).toBe(coinsBefore);
   });
 

@@ -2,10 +2,10 @@
 
 Main Street is a single-game distribution of the
 [Tableau Card Engine](https://github.com/TheWizardsCode/Tableau-Card-Engine):
-a small-business engine-builder played card by card on a shared high street.
-This repository builds a launcher that contains exactly one playable example
-game — **Main Street** — alongside the core-owned **Gym** (always present in
-the engine's game selector).
+an economic city builder played card by card, in which the player develops the
+commercial hub of a city. This repository builds a launcher that contains
+exactly one playable example game — **Main Street** — alongside the core-owned
+**Gym** (always present in the engine's game selector).
 
 A playable web build is published automatically to:
 
@@ -13,6 +13,31 @@ A playable web build is published automatically to:
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how the Pages site is built, released and
 verified.
+
+## Closing a business
+
+Closing a non-sold street card (Manage Card → **Close**) costs **1 action and
+no coins** and removes it to the discard pile. It also **damages reputation**:
+the player's reputation changes by `−(cardReputationPerTurn ×
+closeReputationMultiplier)` (default multiplier **20**) and never drops below
+0. Closing a reputation-positive card is therefore a penalty (a Café at +20 →
+−400) while closing a nuisance card is a boost (the Pawn Shop at −10 → +200).
+The change is undoable and shown in the activity log, and the AI factors the
+reputation cost into its close decisions. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
+
+## Challenges
+
+Each run presents a seeded pool of **3 challenge goals** (13 templates across 6
+categories) that grant a bonus score when satisfied. The catalogue includes the
+economic challenge **Serial Seller** (`ch-serial-seller`) — "Sell 3 or more
+businesses in a single game." — which counts only street sales via the Manage
+Card → **Sell** dialog and shows its live progress (`0/3` → `3/3`) in the
+challenge HUD tracker. Progress-capable challenges render `<current>/<target>`
+on their row; the others render unchanged. Every challenge maps 1:1 to a
+persistent Steam achievement. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+and `src/MainStreetChallenges.ts`.
 
 ## Competitive ownership
 
@@ -30,7 +55,7 @@ continue solo. A human seat's own collapse still ends the game as a loss. The
 Game Over screen states the reason the run ended in plain language and shows
 every seat's final coins, reputation and score side by side, flagging bankrupt,
 collapsed and eliminated seats. See
-[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
 
 Competitive challenges are credited **per seat**: the shared challenge pool is
 kept, but each completion is attributed to the seat that satisfied it
@@ -39,7 +64,7 @@ bonus goes only to that seat. The Game Over screen shows a per-seat challenge
 breakdown, and the celebration, HUD and Steam achievements surface only the
 human seat's completions. Single-player play is unchanged (run-global pool,
 single-list summary). See
-[docs/main-street/core-rules-and-mechanics.md](docs/main-street/core-rules-and-mechanics.md).
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
 
 ### Competitive end-of-turn
 
@@ -155,7 +180,7 @@ npm test        # unit suite (vitest run --project unit)
 npm run build   # type-check (tsc --noEmit) + production bundle into dist/
 ```
 
-See [docs/testing.md](docs/testing.md) for the browser (headless Chromium)
+See [docs/dev/testing.md](docs/dev/testing.md) for the browser (headless Chromium)
 suite and the shared-helper import convention (`@core-tests/*` aliases).
 
 Run the game locally in watch mode:
@@ -183,7 +208,7 @@ npm run preview   # http://localhost:4173/tce-main-street/
 | `public/assets/` | Card art, audio and other static assets bundled into the build. |
 | `configs/game.json` | The single-game preset: the core-owned Gym plus Main Street. |
 | `core/` | Git submodule pointing at the Tableau Card Engine (shared engine + toolchain). |
-| `docs/` | Design, balance and localization documentation — including `docs/main-street/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). |
+| `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). |
 | `.github/workflows/deploy.yml` | GitHub Pages build-and-deploy workflow. |
 
 The `./core` submodule is pinned to a specific engine commit; update it with

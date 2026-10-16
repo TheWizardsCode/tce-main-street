@@ -17,8 +17,8 @@
  *
  * Usage:
  *   npx vite-node src/scripts/balance/competitive-placement-report.ts \
- *     --label baseline --out docs/main-street/competitive-placement-ai-baseline.json \
- *     --md-out docs/main-street/competitive-placement-ai-baseline.md
+ *     --label baseline --out docs/dev/assets/competitive-placement-ai-baseline.json \
+ *     --md-out docs/dev/assets/competitive-placement-ai-baseline.md
  *   npx vite-node src/scripts/balance/competitive-placement-report.ts --json
  *
  * Outputs:

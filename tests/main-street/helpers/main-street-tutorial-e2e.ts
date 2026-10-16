@@ -858,7 +858,7 @@ export async function clickStreetSlotExpectRejected(
   // market-to-hand. If no card is pending, select the just-moved card
   // (from justMovedHandCardId), falling back to the most recent hand card
   // — NOT index 0, which may be an un-placeable held event card (e.g. the
-  // Local Festival held from T9 while the T13 Library is the just-moved one).
+  // Local Festival held from T9 while the T18 Library is the just-moved one).
   if (s.pendingHandIndex === null && (s.state?.hand ?? []).length > 0) {
     const hand = s.state.hand;
     const justMovedIdx = hand.findIndex((c: any) => c.id === s.justMovedHandCardId);
@@ -918,7 +918,7 @@ export async function clickEndTurn(scene: Phaser.Scene, autoAdvance = true): Pro
 }
 
 /**
- * Perform the Community Favour rep→coins exchange (T13, CG-0MSTOATDQ005XDET).
+ * Perform the Community Favour rep→coins exchange (T15, CG-0MSTOATDQ005XDET).
  * Calls the turn controller's onCommunityFavourClick('rep-to-coins') — the
  * same dispatch the favour buttons use — then waits for the exchange to land
  * (gate spent) and lets the tutorial advance from the action-gated step.

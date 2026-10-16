@@ -63,6 +63,11 @@ function normaliseTfModule(mod: Record<string, unknown>): TfGeneratedModule | nu
 /**
  * Load the committed ToneForge runtime synth module.
  *
+ * Invoked **only on the opt-in path** (MS-0MV76P7BN00164RF): the dev-only
+ * ToneForge debug tool calls this via `loadMainStreetTfIntegration()` when
+ * synthesis is switched on, so the module's lazy chunk is never fetched at
+ * scene boot.
+ *
  * The module is committed to the engine repo at
  * `src/core-engine/tf-runtime/main-street-runtime-synth.mjs` and imported here
  * with a **static specifier**, so Vite/Rollup code-splits it into its own lazy

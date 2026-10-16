@@ -25,7 +25,7 @@ import { median } from './statistics';
 // =========================================================================
 
 /**
- * The five storylines shipped in `docs/main-street/storyline-manifest.json`.
+ * The five storylines shipped in `docs/dev/assets/storyline-manifest.json`.
  * Reported explicitly so a storyline that never fires appears with a zero
  * fire frequency rather than being omitted.
  */

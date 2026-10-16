@@ -135,8 +135,29 @@ describe('action-granting staff ladder', () => {
     expect(director.actionsPerTurn).toBe(1);
   });
 
-  it('only Manager, Director and General Manager grant actionsPerTurn', () => {
-    const granters = new Set(['staff-manager', 'staff-director', 'staff-general-manager']);
+  it('Executive grants +1 action/turn and a single hand slot (a trade-off from +4 slots)', () => {
+    const executive = staffTemplate('staff-executive');
+    expect(executive.cost).toBe(2000);
+    expect(executive.ongoingCost).toBe(500);
+    expect(executive.handSlotsAdded).toBe(1);
+    expect(executive.actionsPerTurn).toBe(1);
+  });
+
+  it('Executive description states the +1 hand slot and the action benefit (no longer +4 slots)', () => {
+    const executive = staffTemplate('staff-executive');
+    expect(executive.description).not.toContain('+4 slots');
+    expect(executive.description).not.toContain('major hand capacity');
+    expect(executive.description).toContain('+1 hand slot');
+    expect(executive.description.toLowerCase()).toContain('action');
+  });
+
+  it('only Manager, Director, Executive and General Manager grant actionsPerTurn', () => {
+    const granters = new Set([
+      'staff-manager',
+      'staff-director',
+      'staff-executive',
+      'staff-general-manager',
+    ]);
     for (const card of getStaffCardTemplates()) {
       if (granters.has(card.id)) {
         expect(card.actionsPerTurn, `${card.id} should grant an action`).toBe(1);
@@ -162,6 +183,16 @@ describe('action-granting staff ladder', () => {
     state.phase = 'WeekStart';
     executeWeekStart(state, true);
     // 1 base + 1 Manager + min(2, 5) banked = 4
+    expect(state.actionsRemaining).toBe(4);
+  });
+
+  it('composes 1 base + staff actions + banked (capped at 2) with an Executive employed', () => {
+    const state = setupMainStreetGame({ seed: 'compose-executive' });
+    state.staffCards.push({ ...staffTemplate('staff-executive') });
+    state.bankedActions = 5; // deliberately above the bank cap
+    state.phase = 'WeekStart';
+    executeWeekStart(state, true);
+    // 1 base + 1 Executive + min(2, 5) banked = 4
     expect(state.actionsRemaining).toBe(4);
   });
 

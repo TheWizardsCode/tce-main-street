@@ -32,6 +32,6 @@ const manifest = {
   },
 };
 
-const output = resolve(process.cwd(), 'docs/main-street/expanded-card-manifest.json');
+const output = resolve(process.cwd(), 'docs/dev/assets/expanded-card-manifest.json');
 writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
 console.log(`Wrote ${output}`);

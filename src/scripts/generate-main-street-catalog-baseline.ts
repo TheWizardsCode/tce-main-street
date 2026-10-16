@@ -43,6 +43,6 @@ const baseline = {
   },
 };
 
-const outputPath = resolve(process.cwd(), 'docs/main-street/card-catalog-baseline.json');
+const outputPath = resolve(process.cwd(), 'docs/dev/assets/card-catalog-baseline.json');
 writeFileSync(outputPath, `${JSON.stringify(baseline, null, 2)}\n`, 'utf-8');
 console.log(`Wrote ${outputPath}`);

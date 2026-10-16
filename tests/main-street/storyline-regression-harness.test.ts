@@ -13,12 +13,14 @@
  *   evt-recession     Economic Recession         → evt-depression
  *   evt-flu-outbreak  Flu Outbreak               → evt-pandemic
  *
- * AC1: Legacy choice semantics pinned — for every shipped card,
+ * AC1: Legacy-pinned semantics facts — for every shipped card,
  *       resolveIncident stashes pendingEventChoice (no effect),
- *       resolveEventChoice('accept') applies effect + pushes acceptNextCardId,
- *       resolveEventChoice('reject') skips effect + pushes rejectNextCardId.
- * AC2: Chain links resolve — acceptNextCardId / rejectNextCardId reference
- *       existing card IDs.
+ *       resolveEventChoice('accept') applies the effect and draws the Accept
+ *       option's successor from its candidate set;
+ *       resolveEventChoice('reject') ALSO applies the event effect — migrated
+ *       CSV options always carry effectPolicy 'apply' (Q4=B, F6) — then draws
+ *       the Reject option's successor.
+ * AC2: Chain links resolve — every option candidate references an existing card ID.
  * AC3: Invariant coverage — undo/redo, save/load round-trip, transcript
  *       shape, AI decision for Easy/Medium/Hard with shipped cards.
  * AC4: Tutorial exclusion pinned — choice incidents excluded.
@@ -38,11 +40,20 @@ import {
   processEndOfTurn,
   resolveIncident,
   resolveEventChoice,
+  resolveEventOption,
 } from '../../src/MainStreetEngine';
 import {
   getEventTemplates,
+  loadTemplatesFromCsv,
+  getBaseTypeId,
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
+import {
+  getStorylineOptions,
+  registerStorylineOptions,
+  resetStorylineRegistry,
+} from '../../src/MainStreetStoryline';
+import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 import {
   decideEventChoice,
 } from '../../src/MainStreetEngineScoring';
@@ -97,6 +108,7 @@ function expectChoicePending(state: MainStreetState): void {
 afterEach(() => {
   setMainStreetRecorder(null);
   resetTemplatesToDefault();
+  resetStorylineRegistry();
 });
 
 // ── AC1: Legacy choice semantics for every shipped card ─────
@@ -123,13 +135,14 @@ describe('AC1 — resolveIncident defers every shipped choice card', () => {
   }
 });
 
-describe('AC1 — Accept path: apply effect + push acceptNextCardId', () => {
+describe('AC1 — Accept path: apply effect + push the Accept option successor', () => {
   for (const cardId of CHOICE_CARDS) {
-    it(`${cardId}: accept applies the event effect and pushes acceptNextCardId`, () => {
+    it(`${cardId}: accept applies the event effect and pushes the Accept candidate`, () => {
       const state = setupMainStreetGame({ seed: `ac1-accept-${cardId}`, difficulty: 'Medium' });
       state.phase = 'MarketPhase';
       queueChoice(state, cardId);
       const template = shippedChoice(cardId) as EventCard;
+      const acceptTargets = (getStorylineOptions(template).find((o) => o.label === 'Accept')?.successorIds ?? []);
 
       processEndOfTurn(state); // pause — removes card from deck
       const deckLenAfterDraw = state.incidentDeck.length;
@@ -147,14 +160,13 @@ describe('AC1 — Accept path: apply effect + push acceptNextCardId', () => {
         const expectedRepSign = template.reputationDelta >= 0 ? 1 : -1;
         expect(actualRepChange * expectedRepSign).toBeGreaterThanOrEqual(0);
       }
-      // The pending choice is resolved.
-      expect(state.pendingEventChoice!.chosenOption).toBe('accept');
+      // The pending choice is resolved — the token is the option label (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
       expect(state.pendingEventChoice!.resolved).toBe(true);
-      // Pushed card: acceptNextCardId if present, otherwise null.
-      const acceptNext = template.acceptNextCardId ?? null;
-      if (acceptNext) {
+      // Pushed card: a member of the Accept option's candidate set, if any.
+      if (acceptTargets.length > 0) {
         expect(res.pushedCard).not.toBeNull();
-        expect(res.pushedCard!.id).toContain(acceptNext);
+        expect(acceptTargets).toContain(getBaseTypeId(res.pushedCard!.id));
         expect(state.incidentDeck.length).toBe(deckLenAfterDraw + 1);
       } else {
         expect(res.pushedCard).toBeNull();
@@ -164,34 +176,43 @@ describe('AC1 — Accept path: apply effect + push acceptNextCardId', () => {
   }
 });
 
-describe('AC1 — Reject path: skip effect + push rejectNextCardId', () => {
+describe('AC1 — Reject path: applies the effect (Q4=B) + pushes the Reject successor', () => {
   for (const cardId of CHOICE_CARDS) {
-    it(`${cardId}: reject skips the event effect and pushes rejectNextCardId`, () => {
+    it(`${cardId}: reject applies the event effect and pushes the Reject candidate`, () => {
       const state = setupMainStreetGame({ seed: `ac1-reject-${cardId}`, difficulty: 'Medium' });
       state.phase = 'MarketPhase';
       queueChoice(state, cardId);
       const coinsBefore = state.resourceBank.coins;
       const repBefore = state.resourceBank.reputation;
       const template = shippedChoice(cardId) as EventCard;
+      const rejectTargets = (getStorylineOptions(template).find((o) => o.label === 'Reject')?.successorIds ?? []);
 
       processEndOfTurn(state); // pause — removes card from deck
       const deckLenAfterDraw = state.incidentDeck.length;
       const res = resolveEventChoice(state, 'reject');
 
-      // Reject: NO effect applied.
-      expect(state.resourceBank.coins).toBe(coinsBefore);
-      expect(state.resourceBank.reputation).toBe(repBefore);
-      // Pushed card: rejectNextCardId if present, otherwise null.
-      const rejectNext = template.rejectNextCardId ?? null;
-      if (rejectNext) {
+      // F6 migration note (Q4=B): migrated CSV options always carry
+      // effectPolicy 'apply', so the former Reject branch now APPLIES the
+      // event effect instead of skipping it.
+      const actualCoinChange = state.resourceBank.coins - coinsBefore;
+      const expectedSign = template.coinDelta >= 0 ? 1 : -1;
+      expect(actualCoinChange * expectedSign).toBeGreaterThanOrEqual(0);
+      if (template.reputationDelta && template.reputationDelta !== 0) {
+        const actualRepChange = state.resourceBank.reputation - repBefore;
+        const expectedRepSign = template.reputationDelta >= 0 ? 1 : -1;
+        expect(actualRepChange * expectedRepSign).toBeGreaterThanOrEqual(0);
+      }
+      // Pushed card: a member of the Reject option's candidate set, if any.
+      if (rejectTargets.length > 0) {
         expect(res.pushedCard).not.toBeNull();
-        expect(res.pushedCard!.id).toContain(rejectNext);
+        expect(rejectTargets).toContain(getBaseTypeId(res.pushedCard!.id));
         expect(state.incidentDeck.length).toBe(deckLenAfterDraw + 1);
       } else {
         expect(res.pushedCard).toBeNull();
         expect(state.incidentDeck.length).toBe(deckLenAfterDraw);
       }
-      expect(state.pendingEventChoice!.chosenOption).toBe('reject');
+      // The chosen token is the option label (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Reject');
       expect(state.pendingEventChoice!.resolved).toBe(true);
     });
   }
@@ -199,18 +220,17 @@ describe('AC1 — Reject path: skip effect + push rejectNextCardId', () => {
 
 // ── AC2: Chain links resolve ─────────────────────────────────
 
-describe('AC2 — every acceptNextCardId / rejectNextCardId references an existing card', () => {
-  it('all chain links resolve to shipped template IDs', () => {
+describe('AC2 — every option candidate references an existing card', () => {
+  it('all candidate successor ids resolve to shipped template IDs', () => {
     const allIds = new Set(getEventTemplates().map((c) => c.id));
     for (const cardId of CHOICE_CARDS) {
-      const template = shippedChoice(cardId) as EventCard;
-      if (template.acceptNextCardId) {
-        expect(allIds.has(template.acceptNextCardId),
-          `${cardId}.acceptNextCardId (${template.acceptNextCardId}) must exist`).toBe(true);
-      }
-      if (template.rejectNextCardId) {
-        expect(allIds.has(template.rejectNextCardId),
-          `${cardId}.rejectNextCardId (${template.rejectNextCardId}) must exist`).toBe(true);
+      const options = getStorylineOptions(shippedChoice(cardId));
+      expect(options.length).toBeGreaterThan(0);
+      for (const option of options) {
+        for (const target of option.successorIds ?? []) {
+          expect(allIds.has(target),
+            `${cardId} option ${option.label} candidate ${target} must exist`).toBe(true);
+        }
       }
     }
   });
@@ -236,8 +256,9 @@ describe('AC3a — undo/redo of a resolved shipped choice', () => {
 
       // Execute: effect applied, escalation pushed if present.
       expect(state.pendingEventChoice!.resolved).toBe(true);
-      expect(state.pendingEventChoice!.chosenOption).toBe('accept');
-      // Deck grows by one if acceptNextCardId is set, stays same otherwise.
+      // Label token (F3 AC3).
+      expect(state.pendingEventChoice!.chosenOption).toBe('Accept');
+      // Deck grows by one when the Accept option has a candidate, else stays.
       expect(state.incidentDeck.length).toBeGreaterThanOrEqual(deckLenAfterDraw);
 
       // Undo: back to unresolved pending.
@@ -311,7 +332,8 @@ describe('AC3c — transcript event-choice shape for shipped cards', () => {
     expect(typeof choiceEvent.turn).toBe('number');
     expect(typeof choiceEvent.eventId).toBe('string');
     expect(typeof choiceEvent.cardName).toBe('string');
-    expect(choiceEvent.option).toBe('accept');
+    // F3 AC3: the transcript token is the option label.
+    expect(choiceEvent.option).toBe('Accept');
     // Both next-card IDs present (even if undefined, the shape includes them).
     expect('acceptNextCardId' in choiceEvent).toBe(true);
     expect('rejectNextCardId' in choiceEvent).toBe(true);
@@ -319,14 +341,30 @@ describe('AC3c — transcript event-choice shape for shipped cards', () => {
 });
 
 describe('AC3d — AI decideEventChoice for shipped cards (Easy/Medium/Hard)', () => {
+  // F7 (MS-0MV8KQSF1004E53Y): the AI returns an option INDEX over the
+  // compiled option list and all difficulties share the least-harmful-chain
+  // rule. For the shipped content the positive node's Accept option is
+  // terminal (severity 0), so the AI picks index 0.
   for (const cardId of CHOICE_CARDS) {
-    it(`${cardId}: AI accepts positive events on all difficulties`, () => {
+    it(`${cardId}: AI picks index 0 for positive events on all difficulties`, () => {
       const template = shippedChoice(cardId) as EventCard;
       if (template.coinDelta + (template.reputationDelta ?? 0) >= 0) {
         const state = setupMainStreetGame({ seed: `ai-pos-${cardId}`, difficulty: 'Easy' });
-        expect(decideEventChoice(state, template, 'Easy')).toBe('accept');
-        expect(decideEventChoice(state, template, 'Medium')).toBe('accept');
-        expect(decideEventChoice(state, template, 'Hard')).toBe('accept');
+        expect(decideEventChoice(state, template, 'Easy')).toBe(0);
+        expect(decideEventChoice(state, template, 'Medium')).toBe(0);
+        expect(decideEventChoice(state, template, 'Hard')).toBe(0);
+      }
+    });
+
+    it(`${cardId}: decision is a valid index for every difficulty`, () => {
+      const template = shippedChoice(cardId) as EventCard;
+      const optionCount = getStorylineOptions(template).length;
+      expect(optionCount).toBeGreaterThan(0);
+      for (const difficulty of ['Easy', 'Medium', 'Hard'] as const) {
+        const state = setupMainStreetGame({ seed: `ai-idx-${cardId}-${difficulty}`, difficulty });
+        const index = decideEventChoice(state, template, difficulty);
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(index).toBeLessThan(optionCount);
       }
     });
   }
@@ -391,5 +429,125 @@ describe('AC5 — regression harness smoke', () => {
       .map((c) => c.id)
       .sort();
     expect(shippedChoiceIds).toEqual(CHOICE_CARDS);
+  });
+});
+
+// ── F1: seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6) ──
+//
+// Extends the shipped-choice harness with the arbitrary-outcome model: a
+// registered multi-candidate option must resolve to the same successor across
+// same-seed replays and consume exactly one seeded draw. The five shipped
+// storylines are migrated in F6 and F9 owns the full green gate; these
+// tracer-bullet cases were RED (`it.fails`) until the random draw landed in
+// F3, which flipped them to passing `it`s.
+
+const MO_HARNESS_CSV = [
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,hasChoices',
+  'event,evt-mo-h,Multi Harness,0,1,Incident,Lose 100 coins,All,-100,0,true',
+  'event,evt-mo-h-a,Branch A,0,1,Incident,Lose 10 coins,All,-10,0,',
+  'event,evt-mo-h-b,Branch B,0,1,Incident,Lose 20 coins,All,-20,0,',
+].join('\n');
+
+/** Queues the synthetic multi-outcome node as the next incident. */
+function queueMultiOutcome(state: MainStreetState): void {
+  const t = getEventTemplates().find((c) => c.id === 'evt-mo-h');
+  if (!t) throw new Error('Synthetic multi-outcome template evt-mo-h missing');
+  state.incidentDeck.length = 0;
+  state.incidentDeck.push({ ...t, id: 'evt-mo-h-0' });
+}
+
+/** Builds an identically-seeded state with the multi-outcome node queued. */
+function multiOutcomeState(seed: string): MainStreetState {
+  // Load the synthetic pool BEFORE setup so the replay pair consumes an
+  // identical RNG stream while building its market/deck.
+  loadTemplatesFromCsv(MO_HARNESS_CSV);
+  const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+  state.phase = 'MarketPhase';
+  queueMultiOutcome(state);
+  return state;
+}
+
+describe('F1 — seeded multi-outcome replay coverage (MS-0MV8KQHYJ003EJO6)', () => {
+  it('AC2 — same seed resolves a candidate-set option to the same successor', () => {
+    registerStorylineOptions('evt-mo-h', [
+      { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+    ] as unknown as StorylineOption[]);
+
+    const a = multiOutcomeState('harness-replay');
+    processEndOfTurn(a);
+    const ra = resolveEventOption(a, 0);
+
+    const b = multiOutcomeState('harness-replay');
+    processEndOfTurn(b);
+    const rb = resolveEventOption(b, 0);
+
+    expect(ra.pushedCard).not.toBeNull();
+    expect(ra.pushedCard!.id).toBe(rb.pushedCard!.id);
+  });
+
+  it('AC2 — resolving a candidate-set option consumes exactly one seeded draw', () => {
+    registerStorylineOptions('evt-mo-h', [
+      { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+    ] as unknown as StorylineOption[]);
+
+    const state = multiOutcomeState('harness-one-draw');
+    processEndOfTurn(state);
+    const rngBefore = state.rngCalls;
+
+    resolveEventOption(state, 0);
+
+    expect(state.rngCalls).toBe(rngBefore + 1);
+  });
+});
+
+// ── F9: seeded replay pinning (MS-0MV8KQVOL0047QIK) ─────────
+//
+// Final verification item: pin the seeded replay/Monte-Carlo determinism
+// claims end-to-end. Both the PLAYER path (resolveEventOption) and the AI
+// path (resolveAiEventChoice) must resolve the same good seed to the same
+// random successor — the uniform candidate draw consumes exactly one
+// seeded state.rng() call, so same-seed runs agree and different seeds may
+// differ.
+
+const F9_OPTIONS = [
+  { label: 'Branch', successorIds: ['evt-mo-h-a', 'evt-mo-h-b'], effectPolicy: 'apply' },
+] as unknown as StorylineOption[];
+
+describe('F9 — seeded player-path replay pair (MS-0MV8KQVOL0047QIK)', () => {
+  it('same seed resolves the multi-candidate option to the same successor', () => {
+    registerStorylineOptions('evt-mo-h', F9_OPTIONS);
+    const player = (seed: string): string | null => {
+      const state = multiOutcomeState(seed);
+      processEndOfTurn(state);
+      return getBaseTypeId(resolveEventOption(state, 0).pushedCard!.id);
+    };
+    expect(player('f9-player-replay-a')).toBe(player('f9-player-replay-a'));
+    expect(player('f9-player-replay-b')).toBe(player('f9-player-replay-b'));
+    // The draw landed on one of the two candidates (fan-out exercised).
+    expect(['evt-mo-h-a', 'evt-mo-h-b']).toContain(player('f9-player-replay-a'));
+  });
+});
+
+describe('F9 — seeded AI-path replay pair (MS-0MV8KQVOL0047QIK)', () => {
+  it('same seed through resolveAiEventChoice takes the same random branch', () => {
+    registerStorylineOptions('evt-mo-h', F9_OPTIONS);
+    const run = (seed: string): { drawn: string | null; resolved: boolean } => {
+      const state = multiOutcomeState(seed);
+      processEndOfTurn(state);
+      resolveAiEventChoice(state);
+      const pushed = state.incidentDeck[0];
+      return {
+        drawn: pushed ? getBaseTypeId(pushed.id) : null,
+        resolved: state.pendingEventChoice === null,
+      };
+    };
+    // Identical inputs ⇒ identical successors (deterministic replay).
+    expect(run('f9-ai-replay-a')).toEqual(run('f9-ai-replay-a'));
+    expect(run('f9-ai-replay-b')).toEqual(run('f9-ai-replay-b'));
+    const a = run('f9-ai-replay-a');
+    // The AI resolved headlessly (no pending choice left) onto a valid
+    // candidate of the single-option node.
+    expect(a.resolved).toBe(true);
+    expect(['evt-mo-h-a', 'evt-mo-h-b']).toContain(a.drawn);
   });
 });

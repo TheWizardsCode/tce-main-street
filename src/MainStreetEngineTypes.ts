@@ -135,6 +135,18 @@ export interface CommunityFavourAction {
   direction: 'coins-to-rep' | 'rep-to-coins';
 }
 
+/**
+ * Close a street card (MS-0MURC6XO8005W57D): removes a non-sold business or
+ * community-space card for 1 action and no coins, applying the reputation
+ * consequence (penalty for reputation-positive cards, boost for nuisance
+ * cards). Exposed to the AI so its close evaluation factors the reputation
+ * cost (supersedes the former Close AC6 "no AI changes").
+ */
+export interface CloseBusinessAction {
+  type: 'close-business';
+  slotIndex: number;
+}
+
 /** Union of all player actions. */
 
 export type PlayerAction =
@@ -152,6 +164,7 @@ export type PlayerAction =
   | PlayEventAction
   | PeekIncidentAction
   | CommunityFavourAction
+  | CloseBusinessAction
   | EndTurnAction;
 
 // ── Turn Result ─────────────────────────────────────────────
@@ -195,6 +208,15 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * the deferred closing (EndCheck / next week) can run.
    */
   choicePending: boolean;
+  /**
+   * True when the shared closing paused because an eligible organiser event
+   * raised pending piggyback decisions that are not yet resolved (F3 of epic
+   * MS-0MUYC47EL005Z69H). When set, `state.pendingPiggyback` holds one
+   * unresolved entry per other active seat; the caller resolves them via
+   * `resolvePendingPiggyback` before re-running the closing. Absent/false
+   * when no piggyback decision is pending.
+   */
+  piggybackPending?: boolean;
   /**
    * True when this result came from the deferred-mutation path
    * (processEndOfTurn with `deferResourceApplication`, CG-0MTR72P14000VO6Q):
@@ -245,9 +267,9 @@ export interface EventChoiceResolution {
   /** The event the decision was made about. */
   event: EventCard;
   /**
-   * Which option the player chose. Legacy accept/reject resolutions use the
-   * lowercase `'accept'`/`'reject'` tokens; generalised storylines store the
-   * full option label (e.g. `'Accept'`, `'Investigate the ledger'`).
+   * The chosen option's label token (F3 AC3): the label IS the token — e.g.
+   * 'Accept', 'Reject', or a generalised label such as 'Investigate the
+   * ledger'. The legacy lowercase 'accept'/'reject' tokens were removed.
    */
   option: string;
   /** Net coin delta applied by the chosen path (0 for reject / durations). */

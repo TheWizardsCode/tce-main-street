@@ -19,7 +19,7 @@ interface ExpandedCardManifest {
 }
 
 function loadManifest(): ExpandedCardManifest {
-  const p = resolve(process.cwd(), 'docs/main-street/expanded-card-manifest.json');
+  const p = resolve(process.cwd(), 'docs/dev/assets/expanded-card-manifest.json');
   return JSON.parse(readFileSync(p, 'utf-8')) as ExpandedCardManifest;
 }
 

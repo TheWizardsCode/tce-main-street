@@ -52,5 +52,12 @@ export interface CloseResult {
   card: BusinessCard | CommunitySpaceCard;
   /** The slot index the closed card occupied. */
   slotIndex: number;
+  /**
+   * Signed reputation change actually applied by the close (negative =
+   * penalty, positive = boost). Clamped to the reputation floor, so on a
+   * large penalty this is smaller in magnitude than
+   * `closeReputationDelta`. (MS-0MURC6XO8005W57D)
+   */
+  reputationDelta: number;
 }
 

@@ -240,6 +240,38 @@ describe('createTutorialScenario', () => {
     expect(1200 - 400 - 300 - 700).toBe(-200); // pre-income, covered by end-turn income
   });
 
+  it('ensureTutorialMarketForUpcomingSteps puts the Library in the row when T13 is the current step (MS-0MV0M9Y0W001ZMX6)', () => {
+    // AC3 regression: T13 (Costs and Reputation) sits immediately before T18
+    // (move the Library to hand) with no end-turn between them, so the
+    // day-start hook scans from T13 through T18's cs-library requirement and
+    // forces the Library into the visible row while the explanation is shown.
+    const state = createTutorialScenario();
+    expect(state.market.cards.some(c => matchesTemplate(c.id, 'cs-library'))).toBe(false);
+
+    const t13Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T13');
+    expect(t13Index).toBeGreaterThanOrEqual(0);
+    // Guard: T13 must be immediately before T18 (no end-turn between them),
+    // otherwise the visible-row guarantee breaks again.
+    const t17Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T17');
+    const t18Index = UNIFIED_TUTORIAL_STEPS.findIndex(s => s.id === 'T18');
+    expect(t13Index - t17Index).toBe(1);
+    expect(t18Index - t13Index).toBe(1);
+
+    const controller = {
+      isActive: true,
+      currentStepIndex: t13Index,
+      lastCompletedStepId: 'T17',
+      exited: false,
+    };
+    ensureTutorialMarketForUpcomingSteps(state, controller);
+
+    const library = state.market.cards.find(c => matchesTemplate(c.id, 'cs-library'));
+    expect(library).toBeDefined();
+    expect(library!.name).toBe('Library');
+    // The row never exceeds 3 cards — a filler was displaced back to a deck.
+    expect(state.market.cards.length).toBe(MARKET_TOTAL_SLOTS);
+  });
+
   it('ensureTutorialMarketForUpcomingSteps puts the Library in the row when T18 is upcoming', () => {
     // Day-1 state has no Library (3-slot single row). Before T18 (the Library
     // move-to-hand step) the day-start hook forces cs-library into the line.

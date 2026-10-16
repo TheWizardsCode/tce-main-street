@@ -11,6 +11,8 @@
 import type { SlotIncome, SlotPhaseBreakdown, SynergyPair } from '../MainStreetAdjacency';
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import type { CoinGridHandle } from '../coin-grid';
+import type { SceneLayout } from './MainStreetConstants';
+import { hudCoinFallback, hudRepFallback } from './MainStreetConstants';
 
 export type IncomePhaseKey = 'base' | 'synergy' | 'reputation' | 'events' | 'upcoming' | 'collect';
 
@@ -21,8 +23,11 @@ export interface IncomePhaseOptions {
   /** Initial delay before the first phase (default 0). */
   startDelayMs?: number;
   /**
-   * Lifecycle hook called at each phase start (including `collect`), in
-   * both full and reduced-motion modes. Never throws into the choreography.
+   * Lifecycle hook called at each SCHEDULED phase start (including `collect`),
+   * in both full and reduced-motion modes. Empty phases are skipped entirely
+   * (MS-0MUYT436C005B4QN): they are never reported here. `index` is the phase's
+   * position among the scheduled phases (0-based; `collect` reports the count
+   * of scheduled phases). Never throws into the choreography.
    */
   onPhase?: (phase: IncomePhaseKey, index: number) => void;
   /**
@@ -71,6 +76,40 @@ export interface SynergyPhaseFlight {
   amount: number;
 }
 
+/** A published on-screen anchor: the centre of a HUD number (see `HudAnchorHost`). */
+export interface HudAnchor {
+  x: number;
+  y: number;
+}
+
+/**
+ * Host exposing the live HUD number anchors published by
+ * `MainStreetRendererHud.refreshHud()` (MS-0MUYT57J80021CWW). The scene
+ * carries them; `null` until the first HUD render.
+ */
+export interface HudAnchorHost {
+  hudCoinAnchor?: HudAnchor | null;
+  hudRepAnchor?: HudAnchor | null;
+}
+
+/**
+ * Resolve a HUD flight destination from the published number anchor — the
+ * live centre of the `Coins: N` / `Reputation: N` numeric value — falling
+ * back to the legacy approximate coordinate (see `hudCoinFallback` /
+ * `hudRepFallback`) only when no HUD render has published an anchor yet
+ * (e.g. the very first render). Single source of truth: every
+ * coin/reputation → HUD flight consumes the published anchor instead of
+ * duplicating hard-coded destination maths.
+ */
+export function hudFlightTarget(
+  host: HudAnchorHost,
+  kind: 'coin' | 'rep',
+  layout: SceneLayout,
+): HudAnchor {
+  if (kind === 'rep') return host.hudRepAnchor ?? hudRepFallback(layout);
+  return host.hudCoinAnchor ?? hudCoinFallback(layout);
+}
+
 /** MainStreetAnimator -- animation and HUD-delta helper for Main Street scene. */
 
 export interface MainStreetAnimatorContext {
@@ -102,6 +141,8 @@ export interface MainStreetAnimatorContext {
   animateIncomePhases(phaseData: SlotPhaseBreakdown[], options: IncomePhaseOptions ): void;
   runIncomePhase(phase: IncomePhaseKey, slots: IncomePhaseSlot[], ctx: {
     reducedMotion: boolean;
+    /** Deferred deltas so the reputation phase can fly income reputation to the HUD (MS-0MUYAESVU007X2U8 AC1). */
+    pendingDeltas?: PendingEndOfTurnDeltas;
   }): void;
   eventDeltaEffects(slots: IncomePhaseSlot[]): Array<{
     sourceEventId: string;
@@ -155,6 +196,8 @@ export interface MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    /** Signed delta for the display-only coin total (MS-0MUYAESVU007X2U8). */
+    displayDelta?: number,
   ): void;
   /**
    * Flies reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS AC3 —
@@ -167,6 +210,8 @@ export interface MainStreetAnimatorContext {
     amount: number,
     at: number,
     flightMs?: number,
+    /** Signed delta for the display-only reputation total (MS-0MUYAESVU007X2U8). */
+    displayDelta?: number,
   ): void;
   applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void;
   collectIncomeGrids(slots: IncomePhaseSlot[], ctx: {
@@ -397,4 +442,91 @@ export function resolveDeltaFlow(
     kind,
     delta: delta.delta,
   };
+}
+
+// ── Display-only reconciliation totals (MS-0MUYAESVU007X2U8) ────────────
+// The end-of-turn reconciliation animates coins/reputation arriving at (or
+// leaving) the HUD. To make the HUD totals build in step with that animation,
+// the renderer reads a pair of display-only running totals — `displayedCoins`
+// / `displayedReputation` on the scene — while the deferred window is active.
+// These helpers are presentation-only: they never touch engine state, the
+// transcript, or the deferred-mutation guards (`endOfTurnDeltasApplied` /
+// `applyPendingDeltasOnce`). They live in the type hub so the income and
+// incident helper modules can share them without importing each other
+// (preserving the hub-and-spoke import graph).
+
+/** Which display-only running total a step applies to. */
+export type DisplayedResource = 'coin' | 'rep';
+
+/** Minimal host shape for the display-only running totals. */
+export interface DisplayTotalsHost {
+  displayedCoins: number | null;
+  displayedReputation: number | null;
+  previousCoins: number | null;
+  previousReputation: number | null;
+  /**
+   * Optional hook to re-render the on-screen HUD totals in place after a step/
+   * snap (MS-0MUYAESVU007X2U8). The scene exposes it via `syncHudTotals`.
+   */
+  syncHudTotals?: () => void;
+}
+
+/**
+ * Initialise the display-only running totals to the pre-reconciliation values.
+ * Called only when the deferred window opens (normal, non-reduced-motion,
+ * non-replay play); reduced motion / replay / headless never initialise them,
+ * so the counters never move and the existing instant-final fallback is kept.
+ */
+export function initDisplayedTotals(
+  host: DisplayTotalsHost,
+  coins: number | null,
+  reputation: number | null,
+): void {
+  host.displayedCoins = coins;
+  host.displayedReputation = reputation;
+}
+
+/**
+ * Step one display-only running total by a signed delta (gain positive, loss
+ * negative). A no-op when the counter is not counting (`null`) or the delta is
+ * not a finite non-zero number — which is how reduced-motion / replay / legacy
+ * paths stay untouched. Integer-ish amounts are fine; the renderer rounds.
+ */
+export function stepDisplayedTotal(
+  host: DisplayTotalsHost,
+  kind: DisplayedResource,
+  delta: number,
+): void {
+  if (!Number.isFinite(delta) || delta === 0) return;
+  if (kind === 'coin') {
+    if (typeof host.displayedCoins !== 'number') return;
+    host.displayedCoins += delta;
+  } else {
+    if (typeof host.displayedReputation !== 'number') return;
+    host.displayedReputation += delta;
+  }
+  host.syncHudTotals?.();
+}
+
+/**
+ * Snap the display-only running totals to the authoritative
+ * post-reconciliation values (`previous + pendingDelta`). Called at the final
+ * landing of the reconciliation so the total lands exactly on the final value
+ * regardless of per-icon rounding or unanimated ongoing costs. A no-op when a
+ * counter is not counting (`null`).
+ */
+export function snapDisplayedTotals(
+  host: DisplayTotalsHost,
+  deltas?: PendingEndOfTurnDeltas,
+): void {
+  let touched = false;
+  if (typeof host.displayedCoins === 'number' && host.previousCoins !== null) {
+    host.displayedCoins = host.previousCoins + (deltas?.pendingCoinDelta ?? 0);
+    touched = true;
+  }
+  if (typeof host.displayedReputation === 'number' && host.previousReputation !== null) {
+    host.displayedReputation = host.previousReputation + (deltas?.pendingRepDelta ?? 0);
+    touched = true;
+  }
+  if (touched) host.syncHudTotals?.();
 }

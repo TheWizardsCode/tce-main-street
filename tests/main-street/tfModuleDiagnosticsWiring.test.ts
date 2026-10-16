@@ -1,13 +1,14 @@
 /**
  * Sibling wiring contract for the ToneForge loader diagnostics (engine item
  * CG-0MUTU0MFE0077H0F, child CG-0MUU9PP9V000UOC3; sibling item
- * MS-0MUU9QYQE006NLEZ).
+ * MS-0MUU9QYQE006NLEZ, reversed by MS-0MV76P7BN00164RF).
  *
- * The scene's async load handler forwards the loader's retained diagnostics to
- * `SoundManager.setSynthDiagnostics()` so the debug indicator can report why
+ * The opt-in loader (`loadMainStreetTfIntegration`, wired into the dev-only
+ * ToneForge debug tool) forwards the loader's retained diagnostics to
+ * `SoundManager.setSynthDiagnostics()` so the status line can report why
  * ToneForge is inactive. This test pins that end of the contract without
  * booting the whole Phaser scene: it drives the real loader and the real
- * `SoundManager` exactly as the handler does.
+ * `SoundManager` exactly as the loader does.
  *
  * The loader caches its module result in module scope, so each case imports
  * the loader dynamically after `vi.resetModules()` for isolation.
@@ -44,7 +45,7 @@ describe('mainStreet tf diagnostics -> SoundManager wiring', () => {
     const loaded = await loader.loadMainStreetTfModule();
     const diagnostics = loader.getMainStreetTfDiagnostics();
 
-    // Mirrors the scene handler: forward diagnostics on the success path.
+    // Mirrors the opt-in loader: forward diagnostics on the success path.
     manager.setSynthDiagnostics({
       factoryCount: diagnostics.factoryCount,
       lastLoadError: diagnostics.lastLoadError,
@@ -70,7 +71,7 @@ describe('mainStreet tf diagnostics -> SoundManager wiring', () => {
     await loader.loadMainStreetTfModule();
     const diagnostics = loader.getMainStreetTfDiagnostics();
 
-    // Mirrors the scene handler: forward diagnostics on the failure path.
+    // Mirrors the opt-in loader: forward diagnostics on the failure path.
     manager.setSynthDiagnostics({
       factoryCount: diagnostics.factoryCount,
       lastLoadError: diagnostics.lastLoadError,

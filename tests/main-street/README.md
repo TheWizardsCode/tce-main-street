@@ -11,7 +11,7 @@ framework changes.
 - Registry / runner: `tests/main-street/cards/CardTestRegistry.ts`
 - Definitions: `tests/main-street/cards/definitions/`
 - Meta-tests: `tests/main-street/cards/unit/CardTestFramework.test.ts`
-- Full documentation: [`docs/main-street/card-test-framework.md`](../../docs/main-street/card-test-framework.md)
+- Full documentation: [`docs/dev/card-test-framework.md`](../../docs/dev/card-test-framework.md)
 
 Run just the card suite:
 

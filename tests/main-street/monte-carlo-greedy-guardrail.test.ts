@@ -8,10 +8,10 @@ import { computeLossModeDecomposition } from '../../src/scripts/balance/engine/g
  * These assertions enforce the *tuned target bands* (design intent) for the
  * greedy AI across all three difficulty presets, using the canonical harness
  * profile (200 seeds, 60 max turns — the same profile recorded in
- * `docs/main-street/monte-carlo-baseline.json`).
+ * `docs/dev/assets/monte-carlo-baseline.json`).
  *
  * Band values and their rationale (industry practice + measured data) are
- * documented in `docs/main-street/balance-guardrail-recommendations.md` and
+ * documented in `docs/dev/balance-guardrail-recommendations.md` and
  * mirrored in PRD §3.3 and `scripts/balance/guards/thresholds.ts`.
  *
  * Catch-breakage *regression* guardrails live in separate tests:

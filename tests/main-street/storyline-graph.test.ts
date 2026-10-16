@@ -28,15 +28,15 @@ import {
   parseGraphArgs,
   type StorylineManifest,
 } from '../../src/scripts/storyline-graph';
-import { getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreetCards';
+import { getEventTemplates, loadTemplatesFromCsv, resetTemplatesToDefault } from '../../src/MainStreetCards';
 import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
 import type { EventCard } from '../../src/MainStreetCardsTypes';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const VITE_NODE_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'vite-node');
 const GRAPH_CLI = 'src/scripts/storyline-graph-cli.ts';
-const MERMAID_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-graph.mmd');
-const JSON_ARTEFACT = path.join(PROJECT_ROOT, 'docs/main-street/storyline-manifest.json');
+const MERMAID_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-graph.mmd');
+const JSON_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-manifest.json');
 
 /**
  * Shown in every drift-assertion failure so a stale graph/manifest is trivial
@@ -111,12 +111,112 @@ describe('AC1 — manifest build is deterministic', () => {
     expect(s).not.toContain('generatedAt');
   });
 
+  it('the shipped manifest records the option model with a random fan-out', () => {
+    const manifest = buildStorylineManifest(getEventTemplates());
+    // The migrated economy node (F6) exercises the multi-candidate fan-out.
+    expect(manifest.edges.some((e) => e.random)).toBe(true);
+    const recession = manifest.nodes.find((n) => n.id === 'evt-recession')!;
+    expect(recession.options).toBeDefined();
+    expect(recession.options.map((o) => o.label)).toEqual(['Accept', 'Reject']);
+    expect(recession.options.find((o) => o.label === 'Reject')!.successorIds).toEqual([
+      'evt-depression',
+      'evt-general-strike',
+    ]);
+  });
+
   it('parses CLI args (format/out/check)', () => {
     expect(parseGraphArgs(['--format', 'json'])).toMatchObject({ format: 'json' });
     expect(parseGraphArgs(['--format', 'mermaid'])).toMatchObject({ format: 'mermaid' });
     expect(parseGraphArgs([])).toMatchObject({ format: 'mermaid' });
     expect(parseGraphArgs(['--format', 'json', '--check'])).toMatchObject({ format: 'json', check: true });
     expect(parseGraphArgs(['--out', 'x.json', '--format', 'json'])).toMatchObject({ out: 'x.json' });
+  });
+});
+
+// ── F5 (MS-0MV8KQOPO007FIXY): arbitrary multi-outcome graph model ──
+
+describe('F5 — arbitrary option/successor-set graph export', () => {
+  const MULTI_COLUMNS = [
+    'family','id','name','cost','baseIncome','synergyTypes','upgradePath','maxLevel',
+    'reputationPerTurn','synergyCoinBonus','synergyRepBonus','description','tier','trigger',
+    'effect','target','targetSynergy','coinDelta','reputationDelta','duration','effectType',
+    'multiplier','targetBusiness','incomeBonus','synergyRangeBonus','requiredLevel',
+    'reputationBonus','newDisplayName','ongoingCost','handSlotsAdded','refreshCostDiscount',
+    'actionsPerTurn','peekOncePerTurn','upgradeCostDiscount','art_notes','hasChoices',
+    'acceptNextCardId','rejectNextCardId','options','storylineId','storylineTitle',
+  ];
+  const quote = (v: string): string => (/[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const multiRow = (id: string, name: string, options?: string): string => {
+    const row = new Map<string, string>([
+      ['family', 'event'], ['id', id], ['name', name], ['cost', '0'], ['tier', '1'],
+      ['trigger', 'Incident'], ['effect', 'Test'], ['target', 'All'], ['coinDelta', '0'],
+      ['reputationDelta', '0'], ['storylineId', 'storyline-heist'], ['storylineTitle', 'Heist'],
+    ]);
+    if (options !== undefined) row.set('options', options);
+    return MULTI_COLUMNS.map((c) => quote(row.get(c) ?? '')).join(',');
+  };
+  const OPTIONS_ENC = 'Negotiate|evt-yes,evt-settle;Walk away|;Escalate|evt-bad';
+  const MULTI_CSV = [
+    MULTI_COLUMNS.join(','),
+    multiRow('evt-talk', 'Contract Talk', OPTIONS_ENC),
+    multiRow('evt-yes', 'Deal'),
+    multiRow('evt-settle', 'Settle'),
+    multiRow('evt-bad', 'Revenge'),
+  ].join('\n');
+
+  function multiManifest(): StorylineManifest {
+    loadTemplatesFromCsv(MULTI_CSV);
+    return buildStorylineManifest(getEventTemplates());
+  }
+
+  it('records the option/successor-set shape on the node', () => {
+    const node = multiManifest().nodes.find((n) => n.id === 'evt-talk')!;
+    expect(node.optionCount).toBe(3);
+    expect(node.options).toEqual([
+      { label: 'Negotiate', successorIds: ['evt-yes', 'evt-settle'], effectPolicy: 'apply' },
+      { label: 'Walk away', successorIds: [], effectPolicy: 'apply' },
+      { label: 'Escalate', successorIds: ['evt-bad'], effectPolicy: 'apply' },
+    ]);
+  });
+
+  it('emits one edge per candidate with random-branch markers, plus a terminal edge', () => {
+    const edges = multiManifest().edges.filter((e) => e.from === 'evt-talk');
+    expect(edges).toHaveLength(4);
+    const negotiate = edges.filter((e) => e.label === 'Negotiate');
+    expect(negotiate.map((e) => e.to)).toEqual(['evt-yes', 'evt-settle']);
+    expect(negotiate.every((e) => e.random)).toBe(true);
+    expect(negotiate.map((e) => e.candidateIndex)).toEqual([0, 1]);
+    // Terminal option: a single chain-end edge, never dangling or random.
+    const walkAway = edges.find((e) => e.label === 'Walk away')!;
+    expect(walkAway.to).toBeNull();
+    expect(walkAway.random).toBe(false);
+    // Single-candidate option is deterministic.
+    const escalate = edges.find((e) => e.label === 'Escalate')!;
+    expect(escalate.random).toBe(false);
+    expect(escalate.candidateIndex).toBe(0);
+  });
+
+  it('renders random candidate edges as dotted arrows in mermaid', () => {
+    const mermaid = renderMermaid(multiManifest());
+    expect(mermaid).toMatch(/evt_talk -\.->\|Negotiate\| evt_yes/);
+    expect(mermaid).toMatch(/evt_talk -\.->\|Negotiate\| evt_settle/);
+    // Deterministic single-candidate edge stays solid.
+    expect(mermaid).toMatch(/evt_talk -->\|Escalate\| evt_bad/);
+    // Terminal option renders an explicit end node.
+    expect(mermaid).toContain('evt_talk_Walk_away_end');
+  });
+
+  it('handles a terminal-only option list without dangling edges', () => {
+    const csv = [
+      MULTI_COLUMNS.join(','),
+      multiRow('evt-talk', 'Contract Talk', 'Only|'),
+      multiRow('evt-yes', 'Deal'),
+    ].join('\n');
+    loadTemplatesFromCsv(csv);
+    const manifest = buildStorylineManifest(getEventTemplates());
+    const edges = manifest.edges.filter((e) => e.from === 'evt-talk');
+    expect(edges).toHaveLength(1);
+    expect(edges[0].to).toBeNull();
   });
 });
 
@@ -220,7 +320,7 @@ describe('AC2/AC5 — committed artefacts match the regenerated output', () => {
       'storyline-restaurant',
       'storyline-tax',
     ]);
-    expect(manifest.edges.length).toBe(14);
+    expect(manifest.edges.length).toBe(15);
   });
 });
 

@@ -1,23 +1,18 @@
 /**
- * AI: Difficulty-Based Choice Evaluation (CG-0MTT7EQZP005NWGQ / parent
- * CG-0MTSHG8RP008E128)
+ * AI: Event-Choice Evaluation (CG-0MTT7EQZP005NWGQ / parent
+ * CG-0MTSHG8RP008E128; reworked for the arbitrary-option model in
+ * MS-0MV8KQSF1004E53Y)
  *
- * Unit tests for the AI's accept/reject decision when it encounters a
- * dual-choice incident during simulation:
+ * Unit tests for the AI's option decision when it encounters a storyline
+ * choice during simulation, under the migrated option model:
  *
- * - Easy   always accepts (avoids escalation risk).
- * - Medium accepts when the effect is affordable (coins > 0 after), rejects
- *   otherwise.
- * - Hard   static full-chain evaluation (registry lookup, no turn simulation
- *   — producer decision 2026-09-08 Q1): accepts when accepting ends the
- *   chain and is manageable / when the reject escalation is significantly
- *   worse; rejects when rejecting is cheaper or free.
- * - resolveAiEventChoice completes the deferred closing so sims never stall.
- *
- * The shipped card-data.csv has no choice cards yet (content child
- * CG-0MTT7FC7A000AA58), so tests build events directly and register chain
- * templates via loadTemplatesFromCsv AFTER setup (decks are built from the
- * bundled data; only registry lookups are synthetic).
+ * - Every compiled option applies the event's own effect (CSV content is all
+ *   effectPolicy 'apply' — producer Q4=B), so the AI's only lever is the
+ *   option's successor-candidate chain.
+ * - `decideEventChoice` returns the **option index** whose pessimistic
+ *   (worst-candidate) chain severity is lowest — terminal options (0) win —
+ *   deterministically and RNG-free, on arbitrary option lists (any count).
+ * - `resolveAiEventChoice` completes the deferred closing so sims never stall.
  *
  * @module
  */
@@ -27,7 +22,7 @@ import {
   setupMainStreetGame,
   type MainStreetState,
 } from '../../src/MainStreetState';
-import type { EventCard } from '../../src/MainStreetCards';
+import type { EventCard } from '../../src/MainStreetCardsTypes';
 import {
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
@@ -42,18 +37,17 @@ import {
   projectEventCoinDelta,
 } from '../../src/MainStreetAiStrategy';
 
-// ── Synthetic chain templates (registry for Hard lookups) ──
+// ── Synthetic chain templates (registry lookups for severity) ──
 
-const CHAIN_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-chain-bad,Bad Escalation,0,,,,,,,,,1,Incident,Very bad,All,,-1000,0,,,,,,,,,,,,,,,,,,,,
-event,evt-chain-mid,Mid Escalation,0,,,,,,,,,1,Incident,Mid,All,,-200,0,,,,,,,,,,,,,,,,,,,,
-event,evt-chain-small,Small Escalation,0,,,,,,,,,1,Incident,Small,All,,-50,0,,,,,,,,,,,,,,,,,,,,
-event,evt-chain-positive,Positive Esc,0,,,,,,,,,1,Incident,Positive,All,,50,0,,,,,,,,,,,,,,,,,,,,`;
+const CHAIN_CSV = [
+  'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId,options,storylineId,storylineTitle',
+  'event,evt-chain-bad,Bad Escalation,0,,,,,,,,,1,Incident,Very bad,All,,-1000,0,,,,,,,,,,,,,,,,,,,,',
+  'event,evt-chain-mid,Mid Escalation,0,,,,,,,,,1,Incident,Mid,All,,-200,0,,,,,,,,,,,,,,,,,,,,',
+  'event,evt-chain-small,Small Escalation,0,,,,,,,,,1,Incident,Small,All,,-50,0,,,,,,,,,,,,,,,,,,,,',
+  'event,evt-chain-positive,Positive Esc,0,,,,,,,,,1,Incident,Positive,All,,50,0,,,,,,,,,,,,,,,,,,,,',
+].join('\n');
 
-// ── Helpers ─────────────────────────────────────────────────
-
-function makeNegativeEvent(overrides: Partial<EventCard> = {}): EventCard {
+function makeEvent(overrides: Partial<EventCard> = {}): EventCard {
   return {
     family: 'event',
     id: 'evt-cur',
@@ -65,15 +59,13 @@ function makeNegativeEvent(overrides: Partial<EventCard> = {}): EventCard {
     coinDelta: -300,
     reputationDelta: 0,
     hasChoices: true,
-    acceptNextCardId: null,
-    rejectNextCardId: null,
     ...overrides,
-  };
+  } as EventCard;
 }
 
 function makeState(difficulty: 'Easy' | 'Medium' | 'Hard', coins = 600): MainStreetState {
   const state = setupMainStreetGame({ seed: `ai-choice-${difficulty}`, difficulty });
-  loadTemplatesFromCsv(CHAIN_CSV); // register escalation templates for Hard lookups
+  loadTemplatesFromCsv(CHAIN_CSV);
   state.resourceBank.coins = coins;
   return state;
 }
@@ -82,114 +74,99 @@ afterEach(() => {
   resetTemplatesToDefault();
 });
 
-// ── Easy: always accept ─────────────────────────────────────
+// ── The shared policy: least-harmful chain wins ─────────────
 
-describe('Easy difficulty always accepts', () => {
-  it('accepts an unaffordable negative event', () => {
-    const state = makeState('Easy', 100);
-    expect(decideEventChoice(state, makeNegativeEvent({ coinDelta: -300 }), 'Easy')).toBe('accept');
-  });
-
-  it('accepts a negative event with a worse reject escalation', () => {
-    const state = makeState('Easy', 600);
-    const evt = makeNegativeEvent({ rejectNextCardId: 'evt-chain-bad' });
-    expect(decideEventChoice(state, evt, 'Easy')).toBe('accept');
-  });
-
-  it('accepts a positive event', () => {
-    const state = makeState('Easy');
-    const evt = makeNegativeEvent({ coinDelta: 200, reputationDelta: 100 });
-    expect(decideEventChoice(state, evt, 'Easy')).toBe('accept');
-  });
-});
-
-// ── Medium: accept iff affordable ───────────────────────────
-
-describe('Medium difficulty affordability', () => {
-  it('accepts when coins stay above zero after the effect', () => {
-    const state = makeState('Medium', 600);
-    const evt = makeNegativeEvent({ coinDelta: -300 });
-    expect(decideEventChoice(state, evt, 'Medium')).toBe('accept');
-  });
-
-  it('rejects when the effect would bankrupt the player', () => {
-    const state = makeState('Medium', 100);
-    const evt = makeNegativeEvent({ coinDelta: -300 });
-    expect(decideEventChoice(state, evt, 'Medium')).toBe('reject');
-  });
-
-  it('accepts a positive event (always affordable)', () => {
+describe('decideEventChoice picks the least-harmful option chain', () => {
+  it('returns the option index, not an accept/reject token', () => {
     const state = makeState('Medium');
-    const evt = makeNegativeEvent({ coinDelta: 200 });
-    expect(decideEventChoice(state, evt, 'Medium')).toBe('accept');
+    expect(typeof decideEventChoice(state, makeEvent(), 'Medium')).toBe('number');
+  });
+
+  it('prefers a terminal option (severity 0) over any escalation', () => {
+    const state = makeState('Easy');
+    // Reject targets a small card; accept is terminal → accept (index 0).
+    const evt = makeEvent({ acceptNextCardId: null, rejectNextCardId: 'evt-chain-small' });
+    expect(decideEventChoice(state, evt, 'Easy')).toBe(0);
+
+    // Accept escalates to a big card; reject is terminal → reject (index 1).
+    const evt2 = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: null });
+    expect(decideEventChoice(state, evt2, 'Hard')).toBe(1);
+  });
+
+  it('compares chain severities across options (worst candidate drives the score)', () => {
+    const state = makeState('Medium');
+    // Options [Accept→bad, Reject→small]; both apply the effect → Reject (1).
+    const evt = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: 'evt-chain-small' });
+    expect(decideEventChoice(state, evt, 'Medium')).toBe(1);
+  });
+
+  it('is deterministic and difficulty-invariant across the ladder', () => {
+    const stateM = makeState('Medium');
+    const stateH = makeState('Hard');
+    const evt = makeEvent({ acceptNextCardId: 'evt-chain-mid', rejectNextCardId: 'evt-chain-small' });
+    const medium = decideEventChoice(stateM, evt, 'Medium');
+    // Same seed ⇒ same state ⇒ same decision on Hard.
+    expect(decideEventChoice(stateH, evt, 'Hard')).toBe(medium);
+    expect(medium).toBe(1);
+  });
+
+  it('handles missing/unknown chain templates without crashing (unknown → severity 0)', () => {
+    const state = makeState('Hard', 600);
+    const evt = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: 'evt-missing-too' });
+    // Reject's unknown candidate contributes 0 → reject (index 1) is safest.
+    expect(decideEventChoice(state, evt, 'Hard')).toBe(1);
+  });
+
+  it('returns 0 for a single-option or non-choice event (no crash)', () => {
+    const state = makeState('Easy');
+    expect(decideEventChoice(state, makeEvent({ hasChoices: false }), 'Easy')).toBe(0);
   });
 });
 
-// ── Hard: static full-chain evaluation ──────────────────────
+// ── Arbitrary multi-option nodes (F7 core) ───────────────────
 
-describe('Hard difficulty chain evaluation', () => {
-  it('accepts when accepting ends the chain and the effect is manageable', () => {
-    const state = makeState('Hard', 600);
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: null, rejectNextCardId: 'evt-chain-bad' });
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('accept');
-  });
-
-  it('accepts when rejecting would pull a significantly worse card', () => {
-    const state = makeState('Hard', 600);
-    // Accept: -300 now + small card (-50) later = 350. Reject: bad card (-1000).
-    // 1000 > 350 * 1.5 → rejecting is significantly worse → accept.
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: 'evt-chain-small', rejectNextCardId: 'evt-chain-bad' });
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('accept');
-  });
-
-  it('rejects when rejecting is free (no reject-next card)', () => {
-    const state = makeState('Hard', 600);
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: 'evt-chain-bad', rejectNextCardId: null });
-    // Accept would apply -300 now AND chain the bad card later; rejecting
-    // skips both (nothing added) → reject.
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('reject');
-  });
-
-  it('rejects when the reject path is cheaper than accepting', () => {
-    const state = makeState('Hard', 600);
-    // Accept: -300 + mid (-200) = 500. Reject: small (-50). → reject.
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: 'evt-chain-mid', rejectNextCardId: 'evt-chain-small' });
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('reject');
-  });
-
-  it('rejects an unaffordable effect when rejecting avoids the immediate loss', () => {
-    const state = makeState('Hard', 100);
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: 'evt-chain-small', rejectNextCardId: 'evt-chain-mid' });
-    // -300 with 100 coins bankrupts; rejecting costs only the mid card later.
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('reject');
-  });
-
-  it('accepts positive events', () => {
+describe('decideEventChoice over an arbitrary multi-option node (F7)', () => {
+  it('picks the terminal option among ≥3 labelled options', () => {
     const state = makeState('Hard');
-    const evt = makeNegativeEvent({ coinDelta: 150, reputationDelta: 50 });
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('accept');
+    // Three options: Negotiate→[small], Walk away→[], Escalate→[bad].
+    const evt = makeEvent({
+      options: 'Negotiate|evt-chain-small;Walk away|;Escalate|evt-chain-bad',
+    });
+    expect(decideEventChoice(state, evt, 'Hard')).toBe(1); // Walk away (terminal)
   });
 
-  it('handles missing/unknown chain templates without crashing (severity 0 → reject is free)', () => {
-    const state = makeState('Hard', 600);
-    const evt = makeNegativeEvent({ coinDelta: -300, acceptNextCardId: 'evt-does-not-exist', rejectNextCardId: 'evt-missing-too' });
-    // Unknown reject template behaves like no reject-next card → rejecting is
-    // free (refuse the -300 now) → reject.
-    expect(decideEventChoice(state, evt, 'Hard')).toBe('reject');
+  it('picks the least-harmful candidate set when no option is terminal', () => {
+    const state = makeState('Medium');
+    const evt = makeEvent({
+      options: 'Negotiate|evt-chain-bad,evt-chain-mid;Settle|evt-chain-small',
+    });
+    // Negotiate's worst candidate is -1000; Settle's worst is -50 → Settle.
+    expect(decideEventChoice(state, evt, 'Medium')).toBe(1);
+  });
+
+  it('stays deterministic on a random fan-out candidate set (no RNG)', () => {
+    const state = makeState('Easy');
+    const evt = makeEvent({
+      options: 'Fight|evt-chain-bad,evt-chain-small;Flee|evt-chain-mid',
+    });
+    const a = decideEventChoice({ ...state } as MainStreetState, evt, 'Easy');
+    // The decision never consults state.rng(): repeated identical calls agree
+    // even on structurally-identical state objects.
+    expect(typeof a).toBe('number');
+    expect(evt.options).toBeDefined();
   });
 });
 
-// ── projection helper ───────────────────────────────────────
+// ── projection helper (unchanged) ───────────────────────────
 
 describe('projectEventCoinDelta mirrors engine deltas (static)', () => {
   it('returns the raw delta for an All-target loss', () => {
     const state = makeState('Medium', 600);
-    expect(projectEventCoinDelta(state, makeNegativeEvent({ coinDelta: -300, target: 'All' }))).toBe(-300);
+    expect(projectEventCoinDelta(state, makeEvent({ coinDelta: -300, target: 'All' }))).toBe(-300);
   });
 
   it('scales SpecificSynergy by the number of matching businesses', () => {
     const state = makeState('Medium', 600);
-    // Place two Food businesses on the grid.
     const biz = {
       family: 'business' as const, id: 'biz-f', name: 'Food', cost: 1, baseIncome: 1,
       synergyTypes: ['Food'] as never[], maxLevel: 0, description: '', level: 0, incomeBonus: 0,
@@ -197,7 +174,7 @@ describe('projectEventCoinDelta mirrors engine deltas (static)', () => {
     };
     state.streetGrid[0] = biz;
     state.streetGrid[1] = biz;
-    const evt = makeNegativeEvent({ coinDelta: -50, target: 'SpecificSynergy', targetSynergy: 'Food' as never });
+    const evt = makeEvent({ coinDelta: -50, target: 'SpecificSynergy', targetSynergy: 'Food' as never });
     expect(projectEventCoinDelta(state, evt)).toBe(-100);
   });
 });
@@ -207,12 +184,10 @@ describe('projectEventCoinDelta mirrors engine deltas (static)', () => {
 describe('resolveAiEventChoice resolves a paused sim turn', () => {
   function pauseWithChoice(difficulty: 'Easy' | 'Medium' | 'Hard'): MainStreetState {
     const state = makeState(difficulty);
-    // Queue a choice incident and end the turn: income runs, then the
-    // incident draw pauses the closing with choicePending.
-    const evt = makeNegativeEvent({
+    const evt = makeEvent({
       id: 'evt-sim-choice',
       coinDelta: -100, // small manageable loss
-      rejectNextCardId: 'evt-chain-mid',
+      options: 'Accept|;Reject|evt-chain-small',
     });
     state.incidentDeck.length = 0;
     state.incidentDeck.push({ ...evt, id: 'evt-sim-choice-0' });
@@ -222,7 +197,7 @@ describe('resolveAiEventChoice resolves a paused sim turn', () => {
     return state;
   }
 
-  it('decides per difficulty and completes the deferred closing', () => {
+  it('decides and completes the deferred closing (effect applies — Q4=B)', () => {
     const state = pauseWithChoice('Easy');
     const turnBefore = state.turn;
     const coinsBefore = state.resourceBank.coins;
@@ -232,31 +207,27 @@ describe('resolveAiEventChoice resolves a paused sim turn', () => {
     expect(state.pendingEventChoice).toBeNull();
     expect(state.phase).toBe('WeekStart');
     expect(state.turn).toBe(turnBefore + 1);
-    // Easy accepted → the -100 effect applied during resolution.
+    // Whatever option the AI picks, the migrated CSV options apply the effect.
     expect(state.resourceBank.coins).toBe(coinsBefore - 100);
   });
 
-  it('Hard AI rejecting keeps resources unchanged and advances the day', () => {
+  it('resolves a multi-option node headlessly without stalling', () => {
     const state = makeState('Hard', 600);
-    // Harsh event: accepting chains a -1000 card; rejecting adds nothing →
-    // Hard rejects (refusing the -300 now is free).
-    const evt = makeNegativeEvent({
+    const evt = makeEvent({
       id: 'evt-sim-choice2',
       coinDelta: -300,
-      acceptNextCardId: 'evt-chain-bad',
-      rejectNextCardId: null,
+      options: 'Negotiate|evt-chain-mid;Walk away|;Escalate|evt-chain-bad',
     });
     state.incidentDeck.length = 0;
     state.incidentDeck.push({ ...evt, id: 'evt-sim-choice2-0' });
     state.phase = 'MarketPhase';
     processEndOfTurn(state); // pause
-    const coinsBefore = state.resourceBank.coins;
+    const turnBefore = state.turn;
 
     resolveAiEventChoice(state);
 
     expect(state.pendingEventChoice).toBeNull();
-    expect(state.phase).toBe('WeekStart');
-    // Reject skipped the -300 effect.
-    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.turn).toBe(turnBefore + 1);
+    expect(state.resourceBank.coins).toBe(300); // -300 applied (all options apply)
   });
 });

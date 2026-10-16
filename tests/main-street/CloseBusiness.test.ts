@@ -29,6 +29,23 @@
  *   AC5: Sold cards are never closeable (legality + command-level guard).
  *   AC6: No AI enumeration or tutorial step changes are introduced.
  *
+ * MS-0MURC6XO8005W57D ("Closing a business damages reputation") supersedes the
+ * original Close AC6: closing now applies a reputation consequence and the AI
+ * factors that cost into its close scoring.
+ *
+ * AC references (MS-0MURC6XO8005W57D):
+ *   AC1: Closing deducts `cardReputationPerTurn × closeReputationMultiplier`
+ *        (default 20) from reputation.
+ *   AC2: The result is floored at 0; a negative-rep card yields a boost
+ *        (Pawn Shop −10 → +200) and a positive card a penalty (Café +20 → −400).
+ *   AC3: Applies to all closeable cards (businesses AND community spaces);
+ *        legality and the 1-action/no-coins cost are unchanged.
+ *   AC4: Undo restores reputation, redo re-applies it; the log reflects the
+ *        change via `describeEventEffects`/`classifyEffect`.
+ *   AC5: The AI's close scoring factors the reputation cost in.
+ *   AC6: Tests + full suite (this file).
+ *   AC7: Documentation updated.
+ *
  * @module
  */
 
@@ -45,9 +62,20 @@ import {
 } from '../../src/MainStreetCards';
 import {
   executeWeekStart,
+  executeAction,
   canPlaceFromHand,
 } from '../../src/MainStreetEngine';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
+import {
+  closeBusiness,
+  closeReputationDelta,
+  effectiveCardReputationPerTurn,
+} from '../../src/MainStreetMarketSell';
+import { closeBusinessCommand } from '../../src/MainStreetCommands';
+import {
+  scoreCloseBusinessAction,
+  enumerateLegalActions,
+} from '../../src/MainStreetAiStrategy';
 
 // ── Feature Detection ───────────────────────────────────────
 
@@ -80,17 +108,6 @@ async function probeCloseCommandAvailability(): Promise<boolean> {
   }
 }
 const CLOSE_COMMAND_AVAILABLE = await probeCloseCommandAvailability();
-
-/** True once the AI action enumerator is present (unchanged-shape guard). */
-async function probeAiEnumAvailability(): Promise<boolean> {
-  try {
-    const ai = await import('../../src/MainStreetAiStrategy');
-    return typeof (ai as any).enumerateLegalActions === 'function';
-  } catch {
-    return false; // not implemented yet
-  }
-}
-const AI_ENUM_AVAILABLE = await probeAiEnumAvailability();
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -139,6 +156,29 @@ function makeBiz(id: string, name: string, baseIncome: number, synergyTypes: str
     ongoingCost: 0,
     appliedUpgrades: [],
   } as BusinessCard;
+}
+
+/**
+ * Places a deterministic street card with a controlled reputation per turn.
+ * Sets both the base `reputationPerTurn` and the cached `currentReputationPerTurn`
+ * so the close penalty reads the effective (synergy/upgrade-augmented) value.
+ */
+function placeCardWithRep(
+  state: MainStreetState,
+  slotIndex: number,
+  repPerTurn: number,
+  baseIncome: number = 0,
+  family: 'business' | 'community-space' = 'business',
+  currentRep?: number,
+): BusinessCard | CommunitySpaceCard {
+  const card = makeBiz(`rep-${slotIndex}`, `Card ${slotIndex}`, baseIncome) as any;
+  card.family = family;
+  card.reputationPerTurn = repPerTurn;
+  card.currentReputationPerTurn = currentRep !== undefined ? currentRep : repPerTurn;
+  card.currentIncome = baseIncome;
+  state.streetGrid[slotIndex] = card;
+  state.soldSlots[slotIndex] = false;
+  return card;
 }
 
 /** Gets the sold status of a slot. */
@@ -555,31 +595,144 @@ describe('MainStreet Close Business', () => {
     );
   });
 
-  // ── AI / Tutorial Invariants (AC6) ───────────────────────
+  // ── AI Close Awareness (AC5, MS-0MURC6XO8005W57D) ─────────
 
-  describe('AI and tutorial invariants (AC6)', () => {
-    it.runIf(AI_ENUM_AVAILABLE)(
-      'should not introduce a close action to AI enumeration (out of scope)',
-      async () => {
-        const slot = firstEmptySlot(state);
-        const card = placeCardOnGrid(state, slot);
-        if (!card) return;
+  describe('AI close awareness (AC5, MS-0MURC6XO8005W57D)', () => {
+    it('scores closing a nuisance card as positive (reputation boost)', () => {
+      placeCardWithRep(state, 0, -10);
+      const score = scoreCloseBusinessAction(state, { type: 'close-business', slotIndex: 0 });
+      expect(score).toBeGreaterThan(0);
+    });
 
-        const ai = await import('../../src/MainStreetAiStrategy');
-        const actions = (ai as any).enumerateLegalActions(state) as Array<{ type: string }>;
-        // Close is a player-initiated street-management action (like street
-        // sell); the AI must not enumerate it — no action type mentions close.
-        expect(actions.some((a) => a.type.toLowerCase().includes('close'))).toBe(false);
-      },
-    );
+    it('scores closing a reputation-positive card as negative (penalty)', () => {
+      placeCardWithRep(state, 1, 20);
+      const score = scoreCloseBusinessAction(state, { type: 'close-business', slotIndex: 1 });
+      expect(score).toBeLessThan(0);
+    });
 
-    it('should not mutate tutorial state or step configuration', () => {
+    it('enumerates close-business only for nuisance cards', () => {
+      placeCardWithRep(state, 0, -10);
+      placeCardWithRep(state, 1, 20);
+      const closeSlots = enumerateLegalActions(state)
+        .filter(a => a.type === 'close-business')
+        .map(a => (a as { slotIndex: number }).slotIndex);
+      expect(closeSlots).toContain(0);
+      expect(closeSlots).not.toContain(1);
+    });
+
+    it('executes an AI close action applying the reputation boost', () => {
+      placeCardWithRep(state, 0, -10);
+      const repBefore = state.resourceBank.reputation;
+      executeAction(state, { type: 'close-business', slotIndex: 0 });
+      expect(state.streetGrid[0]).toBeNull();
+      expect(state.actionsRemaining).toBe(0);
+      expect(state.resourceBank.reputation).toBe(repBefore + 200);
+    });
+
+    it('does not mutate tutorial state or step configuration', () => {
       // This test file touches only MainStreetMarket/MainStreetCommands/
       // MainStreetAiStrategy (read-only) and shared engine helpers — the
       // TutorialState/TutorialFlow modules are intentionally untouched,
       // so no tutorial step changes are introduced by these tests.
       expect(state.gameResult).toBe('playing');
       expect(state.streetGrid).toHaveLength(GRID_SIZE);
+    });
+  });
+
+  // ── Reputation Penalty (AC1–AC4, AC6) ─────────────────────
+
+  describe('Close reputation penalty (MS-0MURC6XO8005W57D)', () => {
+    it('defaults closeReputationMultiplier to 20 on the config', () => {
+      expect(state.config.closeReputationMultiplier).toBe(20);
+    });
+
+    it('deducts cardReputationPerTurn × closeReputationMultiplier (Café +20 → −400)', () => {
+      const card = placeCardWithRep(state, 0, 20);
+      // Raise reputation above the penalty so the floor does not mask the
+      // full delta (Medium starts at 300; a −400 penalty would clamp to 0).
+      state.resourceBank.reputation = 1000;
+      const repBefore = state.resourceBank.reputation;
+      const result = closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(repBefore - 400);
+      expect(result.reputationDelta).toBe(-400);
+      expect(result.card.id).toBe(card.id);
+    });
+
+    it('gives a reputation boost for a nuisance card (Pawn Shop −10 → +200)', () => {
+      placeCardWithRep(state, 0, -10);
+      const repBefore = state.resourceBank.reputation;
+      const result = closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(repBefore + 200);
+      expect(result.reputationDelta).toBe(200);
+    });
+
+    it('floors reputation at 0 on a penalty larger than the balance', () => {
+      placeCardWithRep(state, 0, 160);
+      state.resourceBank.reputation = 100;
+      const result = closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(0);
+      expect(result.reputationDelta).toBe(-100);
+    });
+
+    it('applies the penalty to community-space cards', () => {
+      placeCardWithRep(state, 0, 5, 0, 'community-space');
+      const repBefore = state.resourceBank.reputation;
+      const result = closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(repBefore - 100);
+      expect(result.reputationDelta).toBe(-100);
+    });
+
+    it('honours a custom closeReputationMultiplier', () => {
+      state.config = { ...state.config, closeReputationMultiplier: 2 };
+      placeCardWithRep(state, 0, 20);
+      const repBefore = state.resourceBank.reputation;
+      closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(repBefore - 40);
+    });
+
+    it('uses the effective (cached) per-turn reputation, not the base value', () => {
+      // Base rep 10 but cached effective rep 30 (synergy/upgrade included).
+      placeCardWithRep(state, 0, 10, 0, 'business', 30);
+      expect(
+        effectiveCardReputationPerTurn(state, state.streetGrid[0] as BusinessCard, 0),
+      ).toBe(30);
+      state.resourceBank.reputation = 1000; // avoid the floor masking the delta
+      const repBefore = state.resourceBank.reputation;
+      closeBusiness(state, 0);
+      expect(state.resourceBank.reputation).toBe(repBefore - 600);
+    });
+
+    it('exposes the raw signed delta via closeReputationDelta', () => {
+      placeCardWithRep(state, 0, -10);
+      expect(closeReputationDelta(state, 0)).toBe(200);
+      placeCardWithRep(state, 1, 20);
+      expect(closeReputationDelta(state, 1)).toBe(-400);
+    });
+
+    it('logs the reputation change via describeEventEffects', () => {
+      placeCardWithRep(state, 0, 20);
+      state.resourceBank.reputation = 1000; // avoid the floor masking the delta
+      closeBusiness(state, 0);
+      const text = state.activityLog[state.activityLog.length - 1].text;
+      expect(text).toContain('no refund, 1 action');
+      expect(text).toMatch(/-400 rep/);
+    });
+
+    it('undo restores reputation and redo re-applies the penalty', () => {
+      placeCardWithRep(state, 0, 20);
+      state.resourceBank.reputation = 1000; // avoid the floor masking the delta
+      const repBefore = state.resourceBank.reputation;
+      const mgr = new UndoRedoManager();
+      const cmd = closeBusinessCommand(state, 0);
+
+      mgr.execute(cmd);
+      expect(state.resourceBank.reputation).toBe(repBefore - 400);
+
+      mgr.undo();
+      expect(state.resourceBank.reputation).toBe(repBefore);
+
+      mgr.redo();
+      expect(state.resourceBank.reputation).toBe(repBefore - 400);
     });
   });
 });

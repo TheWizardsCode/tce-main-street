@@ -73,7 +73,7 @@ describe('Tutorial Flow Integration - Business Selection', () => {
 
     // Complete the pickup step
     ctrl = completeCurrentStep(ctrl).newState;
-    expect(getCurrentStep(ctrl)?.id).toBe('T13');
+    expect(getCurrentStep(ctrl)?.id).toBe('T14'); // T13 moved to just before T18 (MS-0MV0M9Y0W001ZMX6)
   });
 
   it('T21 is the last end-turn and T23 (play-event) follows immediately (T22 removed)', () => {
@@ -143,7 +143,7 @@ describe('Tutorial Flow Integration - Business Selection', () => {
 
   it('T16 place-business: select-hand-card is allowed but does NOT complete the step', () => {
     let ctrl = startTutorial(createTutorialControllerState());
-    for (let i = 0; i < 15; i++) ctrl = completeCurrentStep(ctrl).newState;
+    for (let i = 0; i < 14; i++) ctrl = completeCurrentStep(ctrl).newState;
     expect(getCurrentStep(ctrl)?.id).toBe('T16');
     expect(getCurrentStep(ctrl)?.requiredAction).toBe('place-business');
 

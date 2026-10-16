@@ -22,7 +22,7 @@ end-of-turn income: one coin icon per producing slot arcs to the HUD coins
 counter (staggered `sfx-coin-pop`), rep-earning cards fly a pip to the rep
 counter, and a final `+total` pop lands when collection completes. See
 `MainStreetTurnController.endTurn()` for the trigger and
-`docs/main-street/ux-visual-audio.md` for the design notes.
+`docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: flights skipped; the HUD refresh shows the single final
   pop + income sound.
@@ -60,7 +60,7 @@ delegated to the primitive with the shared income line suppressed
   the per-seat text is still shown and the day always advances.
 - No per-owner data (single-player-free / legacy results): the condensed
   shared summary is kept.
-- See `docs/main-street/ux-visual-audio.md` for the design notes.
+- See `docs/game/ux-visual-audio.md` for the design notes.
 
 ## Ambient street pedestrians (reputation crowd)
 
@@ -81,7 +81,7 @@ show, the `reputation` phase first sends at least 25% of the crowd walking
 into occupied cells, then dissolves the in-shop figures into the coin stream
 that lands in each business's coin grid (`dissolveIntoCoins`, street-anchor
 fallback when no shops/figures — never the HUD counter). One runtime-generated
-texture is shared by every figure. See `docs/main-street/ux-visual-audio.md`
+texture is shared by every figure. See `docs/game/ux-visual-audio.md`
 for the design notes.
 
 - Presentation-only: never mutates state/transcript; every method is
@@ -99,7 +99,7 @@ coin/rep losses pop on the HUD, and the ⚠ active-effects indicator pulses
 once. The resource deltas come from `TurnResult.incidentCoinChange` /
 `incidentRepChange` (surfaced by `processEndOfTurn`). Triggered by
 `MainStreetTurnController.endTurn()`; see
-`docs/main-street/ux-visual-audio.md` for the design notes.
+`docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: sting + HUD loss pops retained; flight, flash, and
   indicator pulse skipped.
@@ -112,7 +112,7 @@ a spark expands at the midpoint, the paired cards pulse, a "Synergy!" pop
 appears, and a chime plays (`sfx-income-positive`). The placement paths in
 `MainStreetTurnController` diff `computeSynergyPairs()` before/after the
 placement (`diffNewSynergyPairs`) so ONLY new pairs animate. See
-`docs/main-street/ux-visual-audio.md` for the design notes.
+`docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: chime + minimal "Synergy!" pop retained; line, spark, and
   pulse skipped.
@@ -152,7 +152,7 @@ upgrade lands on a business: a gold sparkle burst on the card plus a
 in the transfer's `afterTransfer` hook (only when the upgrade command
 succeeded). The arrival chime is the transfer's existing end SFX
 (`sfx-upgrade-end`) — not replayed, so no double sound. See
-`docs/main-street/ux-visual-audio.md` for the design notes.
+`docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: "Level N" pop retained; sparkle burst skipped.
 
@@ -165,7 +165,7 @@ state after), then a refund coin flies from the sold slot to the HUD coins
 counter with `sfx-coin-pop` and a "+€refund" pop lands at the counter.
 Triggered by `MainStreetOverlayContent.showSellConfirmation()`'s Sell button
 (only when the sell command succeeded). See
-`docs/main-street/ux-visual-audio.md` for the design notes.
+`docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: single "+€refund" pop + coin SFX retained; demolition and
   coin flight skipped.
@@ -179,9 +179,13 @@ dialog (`MainStreetOverlayContent.showSellConfirmation`, panel 480×360):
   on the grid as an inert *sold* marker (existing behaviour).
 - **[Close]** — costs **1 action, no coins** (`closeBusinessCommand` via the
   shared `consumeAction` enforcement point); removes the card from `streetGrid`
-  into `discardPile`, recalculates neighbours, and frees the slot. Illegal
-  closes (no actions, sold slot, empty slot) produce illegal-move feedback and
-  no state change.
+  into `discardPile`, recalculates neighbours, and frees the slot. Closing also
+  applies a **reputation consequence** (MS-0MURC6XO8005W57D): reputation changes
+  by `−(cardReputationPerTurn × closeReputationMultiplier)` (default 20, floored
+  at 0), so a reputation-positive card is a penalty and a nuisance card is a
+  boost; the result is undoable and shown in the log. Illegal closes (no
+  actions, sold slot, empty slot) produce illegal-move feedback and no state
+  change.
 - **[Cancel]** — dismisses with no state change.
 
 All text/buttons are parented into `hudContainer` at depth 201 (backdrop 199,
@@ -206,7 +210,7 @@ and fades out (~800ms total) with a week-chime SFX (reused `sfx-click`).
 Triggered by `MainStreetTurnController.startTurnPhase()` (including week 1);
 skipped while the tutorial is active and on checkpoint resume. It never
 intercepts pointer events, never shifts layout, and leaves the market fully
-interactive. See `docs/main-street/ux-visual-audio.md` for the design notes.
+interactive. See `docs/game/ux-visual-audio.md` for the design notes.
 
 - Reduced motion: skipped entirely (instruction text remains the cue).
 
@@ -217,7 +221,7 @@ held event card is played from the hand: an 8-spark event-coloured burst at
 the card's position as it leaves the hand plus an event-name pop with
 `sfx-event-cheer`. Triggered by `MainStreetTurnController.onPlayHeldEvent()`
 (only when the play command succeeded; the card's hand position is captured
-before the hand re-renders). See `docs/main-street/ux-visual-audio.md` for
+before the hand re-renders). See `docs/game/ux-visual-audio.md` for
 the design notes.
 
 - Reduced motion: pop + cheer SFX retained; spark burst skipped.
@@ -248,7 +252,7 @@ Both SFX keys are convention keys (`docs/SFX_CONVENTION.md`) loaded from the
 shared default audio dir (`assets/audio/default/game-win.wav` /
 `game-lost.wav`); no new ToneForge factory. Reduced motion plays sound only;
 replay/headless skips everything (presentation-only). Non-blocking
-fire-and-forget. See `docs/main-street/ux-visual-audio.md` for design notes.
+fire-and-forget. See `docs/game/ux-visual-audio.md` for design notes.
 
 ## Undo/redo feedback notification
 
@@ -259,5 +263,5 @@ the hint bar (`popTextOrIcon`, riseY −16) plus the UI click SFX
 (`sfx-ui-click`). The action label reuses the command's `description`
 (already captured for the transcript). Reduced motion uses the pop
 fallback only (SFX retained); replay/headless skips everything
-(presentation-only). See `docs/main-street/ux-visual-audio.md` for design
+(presentation-only). See `docs/game/ux-visual-audio.md` for design
 notes.

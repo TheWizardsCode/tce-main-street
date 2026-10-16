@@ -137,7 +137,7 @@ describe('AC1: Tutorial setup uses scenario factory (not seed-based setupWithSee
   it('scenario state has correct starting resources for tutorial', () => {
     const state = createTutorialScenario();
     // Tutorial starts with the scenario's 1200 coins (CG-0MSTOATDQ005XDET
-    // reduced from 1600 so the T13 Community Favour rep→coins conversion is
+    // reduced from 1600 so the T15 Community Favour rep→coins conversion is
     // REQUIRED for the $700 Library) and 500 reputation (200 spent by the
     // conversion, leaving a safe 300).
     expect(state.resourceBank.coins).toBe(1200);
@@ -207,7 +207,7 @@ describe('AC3: All 25 tutorial steps complete with scenario-based setup', () => 
 
     expect(UNIFIED_TUTORIAL_STEPS.map((s) => s.id)).toEqual([
       'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8',
-      'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
+      'T9', 'T10', 'T11', 'T12', 'T14', 'T15', 'T16', 'T17', 'T13', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
     ]);
   });
 
@@ -230,7 +230,7 @@ describe('AC3: All 25 tutorial steps complete with scenario-based setup', () => 
     // Verify all 25 steps were completed in order
     expect(completedIds).toEqual([
       'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8',
-      'T9', 'T10', 'T11', 'T12', 'T13', 'T14', 'T15', 'T16', 'T17', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
+      'T9', 'T10', 'T11', 'T12', 'T14', 'T15', 'T16', 'T17', 'T13', 'T18', 'T19', 'T20', 'T21', 'T23', 'T24', 'T25', 'T26',
     ]);
 
     // After the 25th step completes, the controller has advanced past the end
@@ -302,7 +302,7 @@ describe('AC3: All 25 tutorial steps complete with scenario-based setup', () => 
     const afterIncome = 12 - 4 + 2.154;
     expect(afterIncome).toBeGreaterThanOrEqual(3);
 
-    // End-turn income on days 4-5 (~3.9 each) plus the optional T13
+    // End-turn income on days 4-5 (~3.9 each) plus the optional T15
     // Community Favour (+3) keep the balance well above the $7 Library.
     const beforeLibrary = afterIncome - 3 + 1.333 + 3.911 + 3.918 + 3;
     expect(beforeLibrary).toBeGreaterThanOrEqual(7);

@@ -36,6 +36,8 @@
 import { createSeededRng } from '@core-engine';
 import {
   executeAction,
+  findHumanSeatId,
+  hasPendingPiggyback,
   type PlayerAction,
   type TurnResult,
 } from '../MainStreetEngine';
@@ -46,6 +48,7 @@ import {
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
+  resolveCompetitivePendingPiggyback,
 } from '../MainStreetEngineCompetitiveTurn';
 import {
   BankingGreedyStrategy,
@@ -211,6 +214,8 @@ function describeAction(action: PlayerAction): string {
       return `played event from hand`;
     case 'discard-from-hand':
       return `discarded a hand card`;
+    case 'close-business':
+      return `closed a street card`;
     case 'community-favour':
       return `used Community Favour`;
     case 'end-turn':
@@ -326,6 +331,22 @@ export function driveAiSeatsUntilClosing(
 }
 
 /**
+ * True when the state carries a pending piggyback decision the HUMAN seat
+ * must still resolve (F5 of MS-0MUYC47EL005Z69H). The shared closing pauses
+ * on this seat: the human is prompted to join fully or keep the 50% share
+ * before the day continues.
+ */
+export function humanSeatPiggybackPending(state: MainStreetState): boolean {
+  if (!hasPendingPiggyback(state)) return false;
+  const humanId = findHumanSeatId(state);
+  if (humanId < 0) return false;
+  const pending = state.pendingPiggyback;
+  return (pending?.decisions ?? []).some(
+    (decision) => decision.seatId === humanId && !decision.resolved,
+  );
+}
+
+/**
  * Runs the shared competitive closing once every seat has acted, resolving a
  * paused dual-choice incident inline so the day never stalls.
  *
@@ -335,6 +356,20 @@ export function driveAiSeatsUntilClosing(
 export function runCompetitiveClosing(state: MainStreetState): TurnResult | null {
   if (state.phase !== 'InvestmentResolution') return null;
   const closing = resolveCompetitiveClosingPhases(state);
+  if (closing.piggybackPending) {
+    // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raised
+    // pending piggyback decisions. F5 (MS-0MV8BG5OQ003XUJW): when the
+    // human seat still holds an unresolved decision, pause instead of
+    // auto-settling — the scene presents the join-fully / keep-50% prompt
+    // (mirrors the choice-pending pause below) and `onPiggybackChoice`
+    // resumes the shared day. Otherwise settle every seat (AI seats via the
+    // F4 determininstic policy, humans via the free-ride default) so the
+    // headless/replay day never stalls.
+    if (humanSeatPiggybackPending(state)) {
+      return closing;
+    }
+    return resolveCompetitivePendingPiggyback(state) ?? closing;
+  }
   if (!closing.choicePending) return closing;
   const resolved = resolveCompetitivePendingChoice(state) ?? closing;
   // A dual-choice incident pauses the closing *after* the income phase. The
@@ -542,15 +577,65 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
   const closing = runCompetitiveClosing(state) ?? turnResultFromState(state);
   if (state.gameResult !== 'playing') {
     tcCtx.handleGameOver(closing);
+  } else if (
+    closing.piggybackPending &&
+    humanSeatPiggybackPending(state) &&
+    typeof tcCtx.presentPiggybackDialog === 'function'
+  ) {
+    // F5 (MS-0MV8BG5OQ003XUJW): the closing paused on the human seat's
+    // piggyback decision (another seat organised an eligible event). Present
+    // the join-fully / keep-50% prompt; `onPiggybackChoice` resolves via an
+    // undoable command and re-runs the closing so the day never stalls.
+    tcCtx.presentPiggybackDialog();
+  } else if (closing.piggybackPending) {
+    // No interactive prompt surface: settle the pending human decision
+    // headlessly (AI seats via the F4 policy, humans via the free-ride
+    // default) and finish the closing so the day always advances (AC3).
+    const settled =
+      resolveCompetitivePendingPiggyback(state) ?? closing;
+    presentCompetitiveDayTail(tcCtx, settled);
   } else {
-    // Competitive turn-boundary checkpoint (MS-0MUTU8JKV003UQFG): the closing
-    // has advanced the shared day to WeekStart, so persist here (the
-    // single-player path saves after processEndOfTurn).
-    try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
-    // Present the closing (income → incident → end check) before the next day
-    // starts. Bounded/non-blocking: the day always advances (AC4).
-    presentCompetitiveClosing(tcCtx, closing, () => tcCtx.startTurnPhase());
+    presentCompetitiveDayTail(tcCtx, closing);
   }
+}
+
+/**
+ * Presents the finished competitive closing (or the game-over result) then
+ * advances the shared day. Shared by the normal close path and the F5
+ * piggyback continuation so both flows report identically
+ * (checkpoint → closing summary → next day).
+ */
+export function presentCompetitiveDayTail(
+  tcCtx: MainStreetTurnControllerContext,
+  closing: TurnResult,
+): void {
+  const state: MainStreetState = tcCtx.scene.state;
+  if (state.gameResult !== 'playing') {
+    tcCtx.handleGameOver(closing);
+    return;
+  }
+  // Competitive turn-boundary checkpoint (MS-0MUTU8JKV003UQFG): the closing
+  // has advanced the shared day to WeekStart, so persist here (the
+  // single-player path saves after processEndOfTurn).
+  try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
+  // Present the closing (income → incident → end check) before the next day
+  // starts. Bounded/non-blocking: the day always advances (AC4).
+  presentCompetitiveClosing(tcCtx, closing, () => tcCtx.startTurnPhase());
+}
+
+/**
+ * Continues the shared day after the human resolves their piggyback decision
+ * (F5 of MS-0MUYC47EL005Z69H). The human seat is resolved via the undoable
+ * command in `onPiggybackChoice`; this re-runs the closing — settling any
+ * remaining seats (AI seats via the F4 deterministic policy) — and presents
+ * the finished closing so the day always advances (AC3: no stall).
+ */
+export function continueCompetitiveDayAfterPiggyback(
+  tcCtx: MainStreetTurnControllerContext,
+): void {
+  const state: MainStreetState = tcCtx.scene.state;
+  const closing = runCompetitiveClosing(state) ?? turnResultFromState(state);
+  presentCompetitiveDayTail(tcCtx, closing);
 }
 
 /**

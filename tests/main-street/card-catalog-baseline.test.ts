@@ -29,7 +29,7 @@ interface BaselineCatalog {
 }
 
 function loadBaseline(): BaselineCatalog {
-  const baselinePath = resolve(process.cwd(), 'docs/main-street/card-catalog-baseline.json');
+  const baselinePath = resolve(process.cwd(), 'docs/dev/assets/card-catalog-baseline.json');
   return JSON.parse(readFileSync(baselinePath, 'utf-8')) as BaselineCatalog;
 }
 

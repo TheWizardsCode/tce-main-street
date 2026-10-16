@@ -6,8 +6,12 @@
       <stop offset="1" stop-color="#ffffff" stop-opacity="0.02"/>
     </linearGradient>
     <clipPath id="ms-art-clip-biz-spa"><rect x="8" y="8" width="64" height="64" rx="4" ry="4" /></clipPath>
+    <clipPath id="ms-face-clip-biz-spa"><rect x="0" y="0" width="140" height="80" rx="6" ry="6" /></clipPath>
   </defs>
-  <rect x="0" y="0" width="140" height="80" rx="6" ry="6" fill="#2f2f2f" />
+  <g clip-path="url(#ms-face-clip-biz-spa)">
+    <rect x="0" y="0" width="140" height="40" fill="#6A1B9A" />
+    <rect x="0" y="40" width="140" height="40" fill="#C62828" />
+  </g>
   <rect x="4" y="4" width="132" height="72" rx="4" ry="4" fill="url(#g-biz-spa)" />
   <rect x="4" y="4" width="132" height="20" rx="3" ry="3" fill="#9B59B6" opacity="0.18" />
   <g class="ms-card-graphic" aria-hidden="true">
@@ -22,6 +26,14 @@
   <title>Service icon</title>
   <path d="M2 8h12v1H2z" fill="#9B59B6" />
   <circle cx="8" cy="6" r="2" fill="#fff" opacity="0.95" />
+
+    </svg>
+  </g>
+  <g class="ms-synergy-icon" aria-hidden="false" transform="translate(26, 58)">
+    <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Entertainment icon">
+  <title>Entertainment icon</title>
+  <polygon points="8,2 12,14 4,14" fill="#E74C3C" />
+  <circle cx="8" cy="9" r="2" fill="#fff" opacity="0.9" />
 
     </svg>
   </g>
