@@ -352,9 +352,14 @@ void popTextOrIcon({
   business** (falling back to a figure walking into it, then any shopper, then
   a street-area anchor (`pedestrianStreetAnchor`) **never** the HUD counter).
   The credited amounts (`iconsForAmount(repBonus)`), the on-card `revealInGrid`
-  landing, the `+total` pop and the phase pacing (`INCOME_PHASE_GAP_MS`) are
-  unchanged — the pedestrians are a visual source only, so the phase-sum
-  invariant and the deferred-mutation economy are untouched.
+  landing and the `+total` pop are unchanged — the pedestrians are a visual
+  source only, so the phase-sum invariant and the deferred-mutation economy
+  are untouched. Pacing (MS-0MV8LHN0W0017XU1): all producing businesses'
+  reputation flights launch near-simultaneously with only
+  `INCOME_FLIGHT_STAGGER_MS` (60ms) between businesses (no per-business
+  `getCardDelay` accumulation and no full-grid pause), mirroring the synergy
+  phase; the inter-phase gap (`INCOME_PHASE_GAP_MS`) is unchanged and the
+  gentle per-card flight-duration decrease is retained.
 - Presentation-only: the layer never mutates game state, the transcript or
   the turn flow; every method is defensive (a throwing layer is swallowed)
   so a bad frame can never stall the turn.
@@ -409,9 +414,13 @@ void popTextOrIcon({
     credited bonus) and lands in the receiver's `CoinGrid` via
     `revealInGrid` with `sfx-coin-pop`.
   - Reputation contributions fly into the grids from the on-street
-    pedestrians (see *Ambient street pedestrians* above); event contributions
-    fly in/out of the grids and also light up their `Upcoming`-panel effect
-    lines (`animateUpcomingEffectLine`).
+    pedestrians (see *Ambient street pedestrians* above), launched
+    **near-simultaneously across all businesses** (MS-0MV8LHN0W0017XU1):
+    only `INCOME_FLIGHT_STAGGER_MS` (60ms) separates one business's
+    reputation flight from the next — mirroring the synergy phase — so the
+    reputation income reads as one collective event instead of crawling from
+    card to card; event contributions fly in/out of the grids and also light
+    up their `Upcoming`-panel effect lines (`animateUpcomingEffectLine`).
   - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
     animates the end-of-turn Upcoming-card (incident/event) coin AND
     reputation deltas using **one uniform sign rule** for both resources
