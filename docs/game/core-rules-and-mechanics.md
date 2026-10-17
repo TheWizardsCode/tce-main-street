@@ -294,8 +294,9 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Move a market card to hand | 1 action | Free of coins; pays the listed cost when placed. |
 | Take an Investment event to hand | 1 action | Free of coins; pays the event's listed cost when played. An event moved and played on the **same week** is the 1-action total composite below. |
 | Play a held Investment event | 1 action | Pays the event's listed cost at play. A **same-week** play of the event just moved to hand that week is a **free composite** (the move already spent the action); an event held from a previous week costs **1 action**. |
-| Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. |
+| Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. A hand card may be placed by **dragging it onto an empty slot** (the same gesture as the market row — MS-0MV76HVE4007AOO0), which reuses the click-path placement pricing (same-week composite premium applies at 0 actions). |
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
+| Apply a hand upgrade to a business | 1 action | Pays the discounted upgrade cost at apply. A held upgrade may be applied by **dragging it onto an eligible business** (MS-0MV76HVE4007AOO0) — same gesture as the market buy-and-play, but priced from hand: a same-week upgrade (just moved to hand this week) applies **free** (no second action); one held from a previous week costs **1 action**. The drag reuses the click path's undoable `playUpgradeFromHandCommand` and level-up burst. |
 | Hire a staff card | 1 action | From the general market row. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
 | Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
@@ -310,7 +311,8 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > - The UI runs the relevant predicate (affordability, occupancy, target
 >   eligibility, tutorial gating — e.g. `canPlaceFromHand`,
 >   `canPlayUpgradeFromHand`, `canPurchaseBusiness`, `canDropBusinessCard`,
->   `canDropUpgradeCard`) **before** it clears the selection, sets
+>   `canDropUpgradeCard`, `canDropHandCard` (hand-origin drags,
+>   MS-0MV76HVE4007AOO0)) **before** it clears the selection, sets
 >   `uiPhase = 'animating'`, starts the card-transfer animation or executes the
 >   undoable command. An illegal attempt plays the standard illegal-move
 >   feedback (ILLEGAL_MOVE SFX + shake + instruction-text reason) and leaves the

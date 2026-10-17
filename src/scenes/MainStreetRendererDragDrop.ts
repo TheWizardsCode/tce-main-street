@@ -49,6 +49,14 @@ export function refreshDragDropZones(renderer: MainStreetRendererContext): void 
         data: i,
         canAccept: (payload: any) => {
           const cardId = payload.data as string;
+          // Hand-origin drags (hand → street, MS-0MV76HVE4007AOO0): the
+          // dragged card belongs to the hand, so resolve it by id there first
+          // (id → handIndex). A market-only lookup would fail for a hand card
+          // and silently reject every hand-origin drop.
+          const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+          if (handIndex >= 0) {
+            return s.msTurnController.canDropHandCard(cardId, i);
+          }
           const card = s.state.market.cards.find((c: any) => c.id === cardId);
           if (card?.family === 'upgrade') {
             return s.msTurnController.canDropUpgradeCard(cardId, i);
@@ -67,9 +75,17 @@ export function showDragHighlights(renderer: MainStreetRendererContext, cardId?:
 
     const s = renderer.scene;
     renderer.clearDragHighlights();
-    const card = cardId
+    // Hand-origin drags (hand → street, MS-0MV76HVE4007AOO0): resolve the
+    // dragged card from the HAND first (id → handIndex), falling back to the
+    // market for market-origin drags — a market-only lookup would leave the
+    // hand card undefined and mis-render the highlights as a business drag.
+    const handIndex = cardId
+      ? (s.state.hand ?? []).findIndex((c: any) => c.id === cardId)
+      : -1;
+    const handCard = handIndex >= 0 ? (s.state.hand ?? [])[handIndex] : undefined;
+    const card = handCard ?? (cardId
       ? s.state.market.cards.find((c: any) => c.id === cardId)
-      : undefined;
+      : undefined);
     const isUpgrade = card?.family === 'upgrade';
 
     const { slotW, slotH } = s.layout;
@@ -80,10 +96,20 @@ export function showDragHighlights(renderer: MainStreetRendererContext, cardId?:
       let validity: 'valid' | 'invalid';
       if (isUpgrade) {
         if (!occupied) continue; // an upgrade can only land on a business
-        validity = s.msTurnController.canDropUpgradeCard(card!.id, i) ? 'valid' : 'invalid';
+        validity = (handIndex >= 0
+          ? s.msTurnController.canDropHandCard(card!.id, i)
+          : s.msTurnController.canDropUpgradeCard(card!.id, i))
+          ? 'valid' : 'invalid';
       } else {
         if (occupied) continue; // a business can only land on an empty slot
-        validity = 'valid';
+        // Hand-origin business drags resolve validity through the same drop
+        // gate as the zone (canAccept) so unaffordable slots render red
+        // (AC3); market-origin drags keep the historical all-empty-valid
+        // behaviour.
+        validity = (handIndex >= 0
+          ? s.msTurnController.canDropHandCard(card!.id, i)
+          : true)
+          ? 'valid' : 'invalid';
       }
 
       const x = node.localX + slotW / 2;

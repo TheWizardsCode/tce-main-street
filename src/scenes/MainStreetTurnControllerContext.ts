@@ -46,6 +46,10 @@ export interface MainStreetTurnControllerContext {
   canPickUpUpgradeCard(cardId: string): boolean;
   canDropUpgradeCard(cardId: string, slotIndex: number): boolean;
   onDragDropUpgrade(payload: DragDropPayload): void;
+  canPickUpHandCard(cardId: string): boolean;
+  canDropHandCard(cardId: string, slotIndex: number): boolean;
+  onDragDropHandUpgrade(payload: DragDropPayload): void;
+  onDragDropHandBusiness(payload: DragDropPayload): void;
   hasPendingTargeting(): boolean;
   cancelPendingPlacement(): boolean;
   streetPairDims(): { cols: number; rows: number } | undefined;

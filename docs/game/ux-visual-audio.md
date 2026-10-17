@@ -128,9 +128,10 @@ playing a phantom card transfer.
   (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
   (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
   animate. Drag paths are gated by the drop zone's `canAccept`
-  (`canDropBusinessCard` / `canDropUpgradeCard`); `@ui/dragDrop` only invokes
-  the `onDrop` handler after `canAccept` returns true, so the transfer starts
-  strictly after the gate.
+  (`canDropBusinessCard` / `canDropUpgradeCard` for market-origin drags,
+  `canDropHandCard` for hand-origin drags — MS-0MV76HVE4007AOO0);
+  `@ui/dragDrop` only invokes the `onDrop` handler after `canAccept` returns
+  true, so the transfer starts strictly after the gate.
 - No failed attempt leaves `uiPhase === 'animating'`; every `afterTransfer`
   path (success or error) restores `uiPhase = 'market'`.
 - Commit-before-feedback: the command layer is the single mutation point and
@@ -170,6 +171,44 @@ playing a phantom card transfer.
   identically and clear together.
 - Reuse: the existing `dragHighlightRects` infrastructure and
   `isEligibleUpgradeTarget()` predicate; no new engine primitives.
+
+### Hand-drag gesture: upgrades and business cards (MS-0MV76HVE4007AOO0)
+
+Hand-held **upgrade** and **business / community-space** cards are draggable
+onto the street — the same one-gesture interaction as the market row — while
+the click-to-apply / click-to-place flows keep working (drag and click
+coexist, AC5; pure clicks below the drag threshold still reach
+`onHandUpgradeCardClick` / `onHandBusinessCardClick`).
+
+- **Registration.** `MainStreetRendererStreet.ts` `renderCard` registers the
+  hand card container as a `@ui/dragDrop` draggable (named
+  `ms-hand-card-<id>`, tracked in `renderer.dragDropRegistered` so refreshes
+  unregister cleanly). Event cards in hand stay click-only
+  (select-then-act) — deliberately out of drag scope.
+- **Pickup veto (AC1/AC2).** `canPickUpHandCard` vetoes the drag with illegal
+  feedback when the phase is not `market`, a targeting / selection is pending,
+  tutorial gating (`apply-upgrade` / `place-business`) forbids it, no eligible
+  business exists on the street (upgrade), or no affordable empty slot exists
+  (business; action budget spent for held cards). A same-week composite
+  (card just moved to hand this week) may be picked up at 0 actions to mirror
+  the click-path premium placement.
+- **Drop handler (AC4).** `canDropHandCard` gates the drop zone (upgrade →
+  the eligible business via `canPlayUpgradeFromHand`; business → an empty
+  affordable slot via `canPlaceFromHand`, same-week premium included). The
+  successful-drag handlers reuse the click-path post-drop source of truth:
+  `onDragDropHandUpgrade` → `applyHandUpgradeToSlot` (hand→street transfer,
+  undoable `playUpgradeFromHandCommand` — same-week composite free, held = 1
+  action, level-up burst) and `onDragDropHandBusiness` → the shared
+  `onSlotClick` hand-placement flow (listed cost, or the composite-premium
+  explainer when 0 actions remain — exactly as the click path). Invalid drops
+  snap the card back with illegal feedback and spend nothing.
+- **Highlights (AC3).** `showDragHighlights` / `refreshDragDropZones` resolve
+  the dragged card id from the HAND first (id → handIndex, then the market),
+  so a hand-origin drag paints the shared `dragHighlightRects` correctly:
+  upgrades → street businesses passing `canDropHandCard` (green `0x44ff66` /
+  red `0xff4444`), businesses → empty slots; non-target slots are skipped.
+- **Replay / reduced motion.** Registration is skipped in replay mode; the
+  drag manager's `setReducedMotion` governs snap-back, unchanged.
 
 ### Resource pop feedback (coins / reputation)
 

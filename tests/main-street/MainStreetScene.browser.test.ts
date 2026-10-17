@@ -779,20 +779,27 @@ describe('MainStreetScene browser tests', () => {
     const handSprite = scene.msRenderer.handView.getSpriteAt(handIdx) as Phaser.GameObjects.Container;
     expect(handSprite).toBeTruthy();
 
-    // Business cards in the hand now get an interactive hover rectangle
-    // wired to the full card tooltip (CG-0MT24RFIV007NQMP).
-    const hoverRect = (handSprite.list ?? []).find(
-      (obj: any) =>
-        obj instanceof Phaser.GameObjects.Rectangle &&
-        obj.input &&
-        obj.input.enabled,
-    ) as Phaser.GameObjects.Rectangle | undefined;
-    expect(hoverRect).toBeTruthy();
+    // Business cards in the hand get an interactive hover surface wired to
+    // the full card tooltip (CG-0MT24RFIV007NQMP). Market and hand drag
+    // cards are draggable containers (MS-0MV76HVE4007AOO0): when the
+    // drag-drop manager is live the CONTAINER itself is the interactive
+    // element (a child rect would swallow the drag start); otherwise the
+    // legacy interactive hover rectangle is attached. Accept either surface
+    // so the tooltip assertion covers both interaction models.
+    const hoverSurface = (handSprite.input && handSprite.input.enabled
+      ? handSprite
+      : (handSprite.list ?? []).find(
+          (obj: any) =>
+            obj instanceof Phaser.GameObjects.Rectangle &&
+            obj.input &&
+            obj.input.enabled,
+        )) as Phaser.GameObjects.Rectangle | Phaser.GameObjects.Container | undefined;
+    expect(hoverSurface).toBeTruthy();
 
     const tooltipShowSpy = vi.spyOn(scene.tooltipManager, 'show');
     const tooltipHideSpy = vi.spyOn(scene.tooltipManager, 'hide');
 
-    hoverRect!.emit('pointerover');
+    hoverSurface!.emit('pointerover');
     expect(tooltipShowSpy).toHaveBeenCalled();
     const content = tooltipShowSpy.mock.calls[0][0] as string;
     expect(content).toContain(`${familyLabel}: ${business.name}`);
@@ -800,7 +807,7 @@ describe('MainStreetScene browser tests', () => {
     expect(content).toContain('Income:');
     expect(content).toContain('Synergy:');
 
-    hoverRect!.emit('pointerout');
+    hoverSurface!.emit('pointerout');
     expect(tooltipHideSpy).toHaveBeenCalled();
 
     destroyGame(game);
