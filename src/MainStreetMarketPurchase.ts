@@ -13,7 +13,7 @@
 import type { LegalityResult } from '@rule-engine';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
-import type { BusinessCard, UpgradeCard, EventCard } from './MainStreetCards';
+import type { BusinessCard, UpgradeCard, EventCard, SynergyType } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import { resolveEvent, raisePiggybackDecisions } from './MainStreetEngine';
@@ -361,6 +361,12 @@ export function purchaseBusiness(
 
   // Arm Grand Opening placement gate (CG-0MTIOCBH400970OB).
   (state as any).businessPlacedThisTurn = true;
+  // Record the placed card's synergy types for the dynamic Grand Opening
+  // payoff (MS-0MVCS1NOH0074YY2): most recent placement wins. The market
+  // row may hold any family, but legality restricts placement to
+  // business/community-space (both expose `synergyTypes`).
+  const placedSynergies = (card as { synergyTypes?: readonly SynergyType[] }).synergyTypes ?? [];
+  (state as any).placedSynergiesThisTurn = [...placedSynergies];
 
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;

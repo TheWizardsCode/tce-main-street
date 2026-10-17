@@ -19,12 +19,12 @@
  *     redo re-applies the just-placed value.
  *  6. All tests pass with the project test suite.
  *
- * The contract cases are authored **red-phase** (`it.fails`, per the repo's
- * test-first tracer-bullet convention): they must FAIL against today's code
- * (where the field does not yet exist — reads are `undefined`) and are
- * flipped to a plain `it` by the implementing child once the state model
- * lands. Guards that already hold today stay plain `it` so they keep
- * protecting the contract through the change.
+ * The contract cases were authored **red-phase** (`it.fails`, per the repo's
+ * test-first tracer-bullet convention): they FAILED against today's code
+ * (where the field does not exist — reads are `undefined`) and were
+ * flipped to a plain `it` by the implementing child (MS-0MVCS1NOH0074YY2)
+ * once the state model landed. Guards that already held stayed plain `it`
+ * so they keep protecting the contract through the change.
  *
  * Every scenario uses a seeded game state plus deterministic fixture cards
  * pushed into the market with explicit synergy types, so the assertions
@@ -134,7 +134,7 @@ function isCleared(value: SynergyType[] | null | undefined): boolean {
 // ── AC1: Every placement path records the placed card's synergy ─
 
 describe('AC1: placement paths record placedSynergiesThisTurn', () => {
-  it.fails('purchaseBusiness records the bought card synergyTypes', () => {
+  it('purchaseBusiness records the bought card synergyTypes', () => {
     const state = marketWith('f1t-ac1-purchase', businessFixture('f1t-bakery', ['Food']));
 
     purchaseBusiness(state, 'f1t-bakery', 0);
@@ -143,7 +143,7 @@ describe('AC1: placement paths record placedSynergiesThisTurn', () => {
     expect(state.streetGrid[0]?.id).toBe('f1t-bakery');
   });
 
-  it.fails('playBusinessFromHand records the played card synergyTypes', () => {
+  it('playBusinessFromHand records the played card synergyTypes', () => {
     const state = marketWith('f1t-ac1-play-hand', businessFixture('f1t-cafe', ['Food']));
     const handIndex = moveMarketCardToHand(state, 'f1t-cafe', 'f1t-ac1-play-hand');
 
@@ -153,7 +153,7 @@ describe('AC1: placement paths record placedSynergiesThisTurn', () => {
     expect(state.streetGrid[0]?.id).toBe('f1t-cafe');
   });
 
-  it.fails('buyAndPlaceBusiness records the placed card synergyTypes', () => {
+  it('buyAndPlaceBusiness records the placed card synergyTypes', () => {
     const state = marketWith('f1t-ac1-bap', businessFixture('f1t-gallery', ['Culture', 'Entertainment']));
 
     buyAndPlaceBusiness(state, 'f1t-gallery', 0);
@@ -162,7 +162,7 @@ describe('AC1: placement paths record placedSynergiesThisTurn', () => {
     expect(state.streetGrid[0]?.id).toBe('f1t-gallery');
   });
 
-  it.fails('community-space placements populate the field symmetrically', () => {
+  it('community-space placements populate the field symmetrically', () => {
     const state = marketWith('f1t-ac1-cs', communitySpaceFixture('f1t-library', ['Culture']));
 
     purchaseBusiness(state, 'f1t-library', 0);
@@ -175,7 +175,7 @@ describe('AC1: placement paths record placedSynergiesThisTurn', () => {
 // ── AC2: Week-start reset ────────────────────────────────────
 
 describe('AC2: WeekStart resets placedSynergiesThisTurn to null/[]', () => {
-  it.fails('replaces the recorded value with a cleared one at the new day', () => {
+  it('replaces the recorded value with a cleared one at the new day', () => {
     const state = marketWith('f1t-ac2-reset', businessFixture('f1t-bakery', ['Food']));
 
     purchaseBusiness(state, 'f1t-bakery', 0);
@@ -192,7 +192,7 @@ describe('AC2: WeekStart resets placedSynergiesThisTurn to null/[]', () => {
 // ── AC3: Serialisation round-trip ────────────────────────────
 
 describe('AC3: serialise → deserialise round-trip preserves the field', () => {
-  it.fails('keeps the recorded synergy across a save/load boundary', () => {
+  it('keeps the recorded synergy across a save/load boundary', () => {
     const state = marketWith('f1t-ac3-roundtrip', businessFixture('f1t-bakery', ['Food']));
 
     purchaseBusiness(state, 'f1t-bakery', 0);
@@ -218,7 +218,7 @@ describe('AC4: legacy saves without the field backfill to null without crashing'
     expect(restored.streetGrid[0]?.id).toBe('f1t-bakery');
   });
 
-  it.fails('backfills a missing field to null on legacy saves', () => {
+  it('backfills a missing field to null on legacy saves', () => {
     const state = marketWith('f1t-ac4-backfill', businessFixture('f1t-bakery', ['Food']));
     purchaseBusiness(state, 'f1t-bakery', 0);
 
@@ -234,7 +234,7 @@ describe('AC4: legacy saves without the field backfill to null without crashing'
 // ── AC5: Undo / redo of a placement ──────────────────────────
 
 describe('AC5: undo/redo restores and re-applies the synergy value', () => {
-  it.fails('undo restores the pre-placement value and redo re-applies the placed one', () => {
+  it('undo restores the pre-placement value and redo re-applies the placed one', () => {
     const state = marketWith('f1t-ac5-undo', businessFixture('f1t-cafe', ['Food']));
     // Second fixture for the undoable placement — slot 1 is still free.
     state.market.cards.push(businessFixture('f1t-gallery', ['Culture', 'Entertainment']));

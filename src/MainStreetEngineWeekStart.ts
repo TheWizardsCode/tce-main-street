@@ -56,6 +56,9 @@ export function executeWeekStart(state: MainStreetState, skipMarketRefill: boole
   state.justMovedUpgradeCardId = null;
   // Grand Opening placement gate (CG-0MTIOCBH400970OB): new day resets the flag.
   (state as any).businessPlacedThisTurn = false;
+  // Dynamic Grand Opening synergy (MS-0MVCS1NOH0074YY2): a new day clears
+  // the recorded placed synergy — nothing has been opened this turn yet.
+  (state as any).placedSynergiesThisTurn = null;
   // Market re-roll escalation (MS-0MTR6ZRF5007PWNZ): a new turn restarts the
   // escalating refresh cost at the 500 base.
   state.marketRefreshesThisTurn = 0;
