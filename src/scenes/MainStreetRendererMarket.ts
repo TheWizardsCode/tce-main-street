@@ -450,6 +450,13 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
             pointer.downX, pointer.downY, pointer.x, pointer.y,
           );
           if (moved > dragClickDistance) return; // was a drag, not a click
+          // Re-clicking the already-selected card deselects it and suppresses
+          // the action (toggle-off, MS-0MV767QTO008JUDJ). A drag never reaches
+          // here (the moved > threshold guard above returns first).
+          if (s.marketSelectionManager.getSelected() === selection) {
+            s.marketSelectionManager.clear();
+            return;
+          }
           s.marketSelectionManager.select(selection);
           onClick(card);
         });
@@ -470,6 +477,12 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
         const hitArea = s.add.rectangle(0, 0, marketCardW, marketCardH, 0x000000, 0.001);
         hitArea.setInteractive({ useHandCursor: true });
         hitArea.on('pointerdown', () => {
+          // Re-clicking the already-selected card deselects it and suppresses
+          // the action (toggle-off, MS-0MV767QTO008JUDJ).
+          if (s.marketSelectionManager.getSelected() === selection) {
+            s.marketSelectionManager.clear();
+            return;
+          }
           s.marketSelectionManager.select(selection);
           onClick(card);
         });

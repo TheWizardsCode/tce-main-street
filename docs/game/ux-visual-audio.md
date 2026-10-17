@@ -162,7 +162,8 @@ playing a phantom card transfer.
   any animation starts. Clicking an ineligible or unaffordable business shakes
   it back with feedback while the upgrade stays selected for a retry, and no
   action or coin is spent.
-- Clearing: `cancelPendingPlacement()` (Escape / switching card) calls
+- Clearing: `cancelPendingPlacement()` (Escape / switching card / re-clicking the
+  selected card — MS-0MV767QTO008JUDJ) calls
   `clearTargetHighlights()`; applying the upgrade rebuilds the street without
   a pending card, dropping the overlays. Both targeting flows share the
   `dragHighlightRects` pool, so drag-drop and click-to-place highlights render
