@@ -222,7 +222,7 @@ function payoutDelta(state: MainStreetState, event: EventCard): number {
 // ── AC1: Food placement → 450 × Food count; Commerce-only excluded ─
 
 describe('AC1: Food placement drives the payout; Commerce-only cards are not counted', () => {
-  it.fails('pays 450 per Food grid card and ignores Commerce-only cards', () => {
+  it('pays 450 per Food grid card and ignores Commerce-only cards', () => {
     const state = singlePlayerState('f2t-ac1-food');
     placeBusiness(state, 'f2t-ac1-a', ['Food'], 0);             // opened this turn
     gridPush(state, businessFixture('f2t-ac1-b', ['Food']), 1); // pre-existing Food
@@ -234,7 +234,7 @@ describe('AC1: Food placement drives the payout; Commerce-only cards are not cou
     expect(Number.isInteger(delta)).toBe(true);
   });
 
-  it.fails('counts a Commerce card that ALSO shares the placed Food synergy', () => {
+  it('counts a Commerce card that ALSO shares the placed Food synergy', () => {
     const state = singlePlayerState('f2t-ac1-shared');
     placeBusiness(state, 'f2t-ac1-d', ['Food'], 0);
     gridPush(state, businessFixture('f2t-ac1-e', ['Commerce', 'Food']), 1);
@@ -247,7 +247,7 @@ describe('AC1: Food placement drives the payout; Commerce-only cards are not cou
 // ── AC2: Multi-synergy placement → union match counts ─────────
 
 describe('AC2: multi-synergy Food|Culture placement counts the union of matches', () => {
-  it.fails('pays for every grid card sharing ANY placed synergy, once', () => {
+  it('pays for every grid card sharing ANY placed synergy, once', () => {
     const state = singlePlayerState('f2t-ac2-union');
     placeBusiness(state, 'f2t-ac2-a', ['Food', 'Culture'], 0);  // opened this turn
     gridPush(state, businessFixture('f2t-ac2-b', ['Food']), 1); // union: Food
@@ -265,7 +265,7 @@ describe('AC2: multi-synergy Food|Culture placement counts the union of matches'
 // ── AC3: Community-space placement drives selection symmetrically ─
 
 describe('AC3: community-space placement selects the payout synergy like a business', () => {
-  it.fails('pays 450 per Culture match when a Culture community space was opened', () => {
+  it('pays 450 per Culture match when a Culture community space was opened', () => {
     const state = singlePlayerState('f2t-ac3-cs');
     placeCommunitySpace(state, 'f2t-ac3-a', ['Culture'], 0);    // opened this turn
     gridPush(state, businessFixture('f2t-ac3-b', ['Culture']), 1); // pre-existing Culture
@@ -282,7 +282,7 @@ describe('AC3: community-space placement selects the payout synergy like a busin
 // ── AC4: Competitive per-owner paths match single-player payout ─
 
 describe('AC4: competitive event effects match the single-player payout for the acting owner', () => {
-  it.fails('applyCompetitiveEventEffects pays the acting owner the dynamic payout', () => {
+  it('applyCompetitiveEventEffects pays the acting owner the dynamic payout', () => {
     // Owner 0 owns the placed Food card + a pre-existing Food card. Owner 1
     // owns a Commerce-only card that must NOT drive owner 0's payout.
     const comp = competitiveState('f2t-ac4-comp');
@@ -313,7 +313,7 @@ describe('AC4: competitive event effects match the single-player payout for the 
     expect(comp.rngCalls).toBe(rngCallsBefore);
   });
 
-  it.fails('computeOwnerEventDeltas (piggyback projection seam) matches the payout', () => {
+  it('computeOwnerEventDeltas (piggyback projection seam) matches the payout', () => {
     const comp = competitiveState('f2t-ac4-project');
     placeBusiness(comp, 'f2t-ac4-g', ['Food'], 0);
     gridPushOwned(comp, businessFixture('f2t-ac4-h', ['Food']), 1, 0);
