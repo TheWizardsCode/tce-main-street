@@ -194,6 +194,12 @@ Run the game locally in watch mode:
 npm run dev     # Vite dev server on http://localhost:3000
 ```
 
+The dev server's file watcher excludes the `.worklog/` worktree checkouts and
+the dev-output trees (`data/`, `tmp/`, `results/`, `dist/`) via
+`server.watch.ignored` (see `vite.config.ts`) — a recursive watch into
+`.worklog/worktrees/**` would exhaust `fs.inotify.max_user_watches` (ENOSPC)
+and crash the dev server (MS-0MV8M9IAF000KPNY).
+
 Serve the production bundle exactly as GitHub Pages would (see
 [DEPLOYMENT.md](DEPLOYMENT.md) for the Pages base path):
 

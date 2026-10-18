@@ -15,6 +15,7 @@ import {
   gameDiscoveryPlugin,
   resolveCoreAliases,
 } from './core/scripts/vite-game-discovery-plugin';
+import { DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin';
 import { writeCardTestResults } from './tests/main-street/cards/CardTestResultWriter';
 import { computeCsvChecksum } from './src/CsvChecksum';
 
@@ -150,6 +151,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 3000,
     open: false,
+    watch: {
+      // Exclude dev-output trees and .worklog/ worktree checkouts from the
+      // file watcher. Recursive watches into .worklog/worktrees exhaust
+      // fs.inotify.max_user_watches (ENOSPC), crashing the dev server
+      // on startup.
+      ignored: [...DEV_WATCH_IGNORE_PATTERNS],
+    },
   },
   test: {
     projects: [
