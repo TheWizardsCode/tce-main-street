@@ -22,6 +22,16 @@ const REPO_ROOT = process.cwd();
 const PAGES_PATH = '/tce-main-street/';
 
 /**
+ * Each case runs a full production/electron `vite build` in-process. Under
+ * host/CI load a single build has been measured at 73–270 s, leaving the
+ * previous 120 s ceiling almost no margin (MS-0MVFSWC5Z000013W: the sibling
+ * `pages-base-derivation` file timed out at 120 s, and a later loaded run
+ * took ~270 s per case). 600 s gives comfortable headroom without allowing
+ * a hung build to block the suite.
+ */
+const BUILD_TEST_TIMEOUT = 600_000;
+
+/**
  * Build the project into a temporary directory for the given mode,
  * restoring the previous GAMES_CONFIG afterwards.
  */
@@ -69,7 +79,7 @@ describe('vite base-path gating (GitHub Pages)', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 
   it('electron build mode emits relative ./ asset URLs and no absolute asset paths', async () => {
     const { html, outDir } = await buildToTemp('electron');
@@ -85,7 +95,7 @@ describe('vite base-path gating (GitHub Pages)', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 
   it('production build copies the full public/assets tree into outDir', async () => {
     const { outDir } = await buildToTemp('production');
@@ -106,5 +116,5 @@ describe('vite base-path gating (GitHub Pages)', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 });

@@ -16,6 +16,15 @@ const REPO_ROOT = process.cwd();
 const PAGES_PATH = '/tce-main-street/';
 
 /**
+ * Each case runs a full production/electron `vite build` plus a `vite preview`
+ * server in-process. Under host/CI load a single case has been measured at
+ * ~238 s, so the previous 120 s ceiling was itself the failure
+ * (MS-0MVFQ5ODR001R7U2). 600 s gives comfortable headroom without allowing a
+ * hung build/preview to block the suite.
+ */
+const BUILD_TEST_TIMEOUT = 600_000;
+
+/**
  * Build the project into a temporary directory and start a `vite preview`
  * server (random free port) against that directory.
  */
@@ -89,7 +98,7 @@ describe('preview smoke (GitHub Pages base path)', () => {
       await server.close();
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 
   it('electron build serves relative asset URLs at root with no Pages-path references', async () => {
     const { server, outDir, origin } = await buildAndPreview('electron');
@@ -109,5 +118,5 @@ describe('preview smoke (GitHub Pages base path)', () => {
       await server.close();
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 });

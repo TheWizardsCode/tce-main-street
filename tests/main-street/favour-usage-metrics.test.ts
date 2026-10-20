@@ -19,6 +19,9 @@ const SEEDS = Array.from({ length: 200 }, (_, i) => `mc-balance-${i}`);
 const MAX_TURNS = 60;
 
 describe('MonteCarloRunSummary — Community Favour usage counters', () => {
+  // Both 200-seed × 60-turn cases drive the full greedy simulation and sit
+  // near the project's 15 s unit default, so they declare the same explicit
+  // headroom as monte-carlo-greedy-guardrail (MS-0MVFQ5ODR001R7U2).
   it('records integral, non-negative counters on every canonical greedy run', () => {
     const { runs } = runMonteCarlo({ seeds: SEEDS, maxTurns: MAX_TURNS, strategy: 'greedy' });
     expect(runs).toHaveLength(SEEDS.length);
@@ -29,7 +32,7 @@ describe('MonteCarloRunSummary — Community Favour usage counters', () => {
       expect(Number.isInteger(run.favourCoinsToRepUses)).toBe(true);
       expect(run.favourCoinsToRepUses ?? -1).toBeGreaterThanOrEqual(0);
     }
-  });
+  }, 120_000);
 
   it('observes the greedy AI taking the rep→coins exchange', () => {
     const { runs } = runMonteCarlo({ seeds: SEEDS, maxTurns: MAX_TURNS, strategy: 'greedy' });
@@ -37,7 +40,7 @@ describe('MonteCarloRunSummary — Community Favour usage counters', () => {
     // Baseline behaviour (AC1): the stalled-turn fallback is used several
     // times per run, so the canonical 200-seed profile must record many uses.
     expect(repToCoins).toBeGreaterThan(0);
-  });
+  }, 120_000);
 
   it('is deterministic for a given seed', () => {
     const first = runMonteCarlo({ seeds: ['mc-balance-0'], maxTurns: MAX_TURNS, strategy: 'greedy' }).runs[0];
