@@ -218,6 +218,46 @@ describe('AC5 — core-engine extraction path documented', () => {
   });
 });
 
+const CORE_DOC_PATH = path.join(PROJECT_ROOT, 'core/docs/core-engine/story-line.md');
+
+describe('AC5b — core story-line reference and Main Street adapters', () => {
+  it('the core dev reference exists and documents the API, adapters and Gym demo', () => {
+    expect(fs.existsSync(CORE_DOC_PATH), 'missing core story-line reference').toBe(true);
+    const coreDoc = read(CORE_DOC_PATH);
+    for (const heading of ['## API', '## Engine adapter', '## UI adapter', '## Gym demo']) {
+      expect(coreDoc, `missing core heading ${heading}`).toContain(heading);
+    }
+    expect(coreDoc).toContain('createStorylineSystem');
+    expect(coreDoc).toContain('@story-line');
+    expect(coreDoc).toContain('GymStorylineScene');
+  });
+
+  it('the core reference is linked from the core developer docs and the Gym index', () => {
+    expect(read(path.join(PROJECT_ROOT, 'core/docs/DEVELOPER.md'))).toContain(
+      'core-engine/story-line.md',
+    );
+    expect(read(path.join(PROJECT_ROOT, 'core/docs/gym/GYM_INDEX.md'))).toContain(
+      'core-engine/story-line.md',
+    );
+  });
+
+  it('the Main Street doc describes the three modules as adapters over core', () => {
+    const doc = DOC();
+    expect(doc).toContain('mainStreetStorylineEngineAdapter');
+    expect(doc).toContain('mainStreetStorylineUiAdapter');
+    expect(doc).toContain('thin adapters');
+    expect(doc).toContain('core/docs/core-engine/story-line.md');
+  });
+
+  it('the core reference link resolves', () => {
+    const target = path.resolve(
+      path.dirname(DOC_PATH),
+      '../../core/docs/core-engine/story-line.md',
+    );
+    expect(fs.existsSync(target)).toBe(true);
+  });
+});
+
 describe('AC6 — roadmap links deferred work items', () => {
   it('lists each deferred work item id in the roadmap', () => {
     const doc = DOC();
