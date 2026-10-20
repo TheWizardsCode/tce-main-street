@@ -321,7 +321,7 @@ Events fall into two categories:
 
 | ID | Name | Trigger | Cost | Target | Synergy | Coins | Rep | Effect | Rationale |
 |----|------|---------|------|--------|---------|-------|-----|--------|-----------|
-| `evt-grand-opening` | Grand Opening Sale | Investment | 300 | SpecificSynergy | Commerce | +450 | 0 | +450 coins from a Commerce promotion. | Commerce boost with a same-turn placement gate; rewards coordinated play. |
+| `evt-grand-opening` | Grand Opening Sale | Investment | 300 | SpecificSynergy | Commerce | +450 | 0 | +450 coins for each business sharing the synergy of the business opened this turn. | Pays per business sharing the placed card's synergy; keeps the same-turn placement gate. |
 | `evt-wellness-fair` | Wellness Fair | Investment | 300 | SpecificSynergy | Health | +200 | +150 | +200 coins per Health business and +150 reputation. | Health counterpart to Local Festival. |
 | `evt-block-party` | Block Party | Investment | 500 | SpecificSynergy | Entertainment | +250 | +350 | +250 coins per Entertainment business and +350 reputation. | Expensive but high rep payoff for Entertainment. |
 | `evt-charity-drive` | Charity Drive | Investment | 900 | All | -- | 0 | +1350 | +1350 reputation from generous donations. | Pure reputation play; universal target. |

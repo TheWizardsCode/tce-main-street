@@ -17,12 +17,11 @@
  *  4. Full project suite passes.
  *
  * Red-phase convention (repo test-first tracer bullet, follow
- * MS-0MVCS7LMP001QYPM / MS-0MVCS89X70034IPI): the copy cases below are
- * authored `it.fails` — they FAIL against today's copy (`+450 coins from a
- * Commerce promotion.`) and are flipped to a plain `it` by the implementing
- * child (MS-0MVCS8EBG003RXDN). The guards that must hold both before and
- * after the copy change stay plain `it` so they keep protecting the contract
- * through the edit.
+ * MS-0MVCS7LMP001QYPM / MS-0MVCS89X70034IPI): the copy cases below were
+ * authored `it.fails` against the old copy (`+450 coins from a Commerce
+ * promotion.`) and have been flipped to plain `it` by the implementing child
+ * (MS-0MVCS8EBG003RXDN) once the copy change landed. The guards that must
+ * hold both before and after the copy change stayed plain `it` throughout.
  */
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
@@ -60,13 +59,13 @@ function grandOpeningCsvRow(): string[] {
 // ── AC1: card-data / tooltip copy ────────────────────────────
 
 describe('AC1: Grand Opening copy drops the fixed-Commerce framing', () => {
-  it.fails('card-data.csv effect text describes the placed-synergy payout, not a Commerce promotion', () => {
+  it('card-data.csv effect text describes the placed-synergy payout, not a Commerce promotion', () => {
     const effect = grandOpeningCsvRow()[14]; // column 15 (1-based) = effect
     expect(effect).not.toMatch(/commerce promotion/i);
     expect(effect).toMatch(/synerg/i);
   });
 
-  it.fails('the live tooltip for evt-grand-opening no longer says "Commerce promotion"', () => {
+  it('the live tooltip for evt-grand-opening no longer says "Commerce promotion"', () => {
     const tooltip = tooltipForGrandOpening();
     expect(tooltip).not.toMatch(/commerce promotion/i);
     expect(tooltip).toMatch(/Effect: .*synerg/i);
@@ -76,7 +75,7 @@ describe('AC1: Grand Opening copy drops the fixed-Commerce framing', () => {
 // ── AC2: catalog + analysis docs ─────────────────────────────
 
 describe('AC2: catalog and analysis docs drop the fixed-Commerce claim', () => {
-  it.fails('card-catalog.md Grand Opening entry describes the placed-synergy payout', () => {
+  it('card-catalog.md Grand Opening entry describes the placed-synergy payout', () => {
     const catalog = fs.readFileSync(
       path.join(REPO_ROOT, 'docs/game/card-catalog.md'),
       'utf8',
@@ -89,7 +88,7 @@ describe('AC2: catalog and analysis docs drop the fixed-Commerce claim', () => {
     expect(row!).toMatch(/synerg/i);
   });
 
-  it.fails('community-space-event-repricing.md documents the placed-synergy payout', () => {
+  it('community-space-event-repricing.md documents the placed-synergy payout', () => {
     const doc = fs.readFileSync(
       path.join(REPO_ROOT, 'docs/dev/analysis/community-space-event-repricing.md'),
       'utf8',

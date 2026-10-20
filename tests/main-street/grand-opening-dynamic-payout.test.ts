@@ -67,7 +67,7 @@ function grandOpening(): EventCard {
     name: 'Grand Opening Sale',
     cost: 300,
     trigger: 'Investment',
-    effect: '+450 coins from a Commerce promotion.',
+    effect: '+450 coins for each business sharing the synergy of the business opened this turn.',
     target: 'SpecificSynergy',
     targetSynergy: 'Commerce',
     coinDelta: 450,
