@@ -19,6 +19,7 @@ import {
   piggybackJoinFullyCost,
   projectPiggybackEventReward,
 } from './MainStreetEngineEvents';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 import type { MainStreetState, PendingPiggybackDecision } from './MainStreetState';
 import { syncResourceBankToLedger } from './MainStreetStateLog';
 
@@ -138,8 +139,13 @@ export function projectEventCoinDelta(state: MainStreetState, event: EventCard):
   let raw: number;
   switch (event.target) {
     case 'SpecificSynergy': {
+      // Resolution-time targets (MS-0MVCS8A0L0000H7X): Grand Opening tracks
+      // the synergy placed THIS turn via the shared resolver, so the
+      // projection can never diverge from the payout; other SpecificSynergy
+      // events keep their static target through the same helper.
+      const targets = eventSynergyTargets(state, event);
       const matchCount = state.streetGrid.filter(
-        (b) => b !== null && b.synergyTypes.includes(event.targetSynergy as never),
+        (b) => matchesEventSynergyTargets(b, targets),
       ).length;
       raw = event.coinPercentDelta !== undefined ? base : base * matchCount;
       break;

@@ -21,15 +21,16 @@
  *     marks the same dynamic-match slots. Full suite passes.
  *
  * Red-phase convention (repo test-first tracer bullet, follow MS-0MVCS7LMP001QYPM):
- * the projection-parity cases below are authored `it.fails` — they FAIL
- * against today's code, which still projects `evt-grand-opening` against the
- * static Commerce target (`projectEventCoinDelta` Sc/MainStreetEngineScoring,
+ * the projection-parity cases below were authored `it.fails` — they FAILED
+ * against the previous code, which still projected `evt-grand-opening` against
+ * the static Commerce target (`projectEventCoinDelta` Sc/MainStreetEngineScoring,
  * `countOwnSynergyMatches` scoped to `event.targetSynergy` in
- * MainStreetAiStrategy, `attachUpcomingDeltas` slot attribution) — and are
- * flipped to a plain `it` by the implementing child (MS-0MVCS8A0L0000H7X) once
- * the dynamic projection lands. The piggyback projection seam (AC3) is already
- * dynamic via `computeOwnerEventDeltas` (Feature 2), so its cases are plain
- * `it` today: they pin the parity contract the rest of the paths must move to.
+ * MainStreetAiStrategy, `attachUpcomingDeltas` slot attribution) — and are now
+ * active `it` cases, flipped by the implementing child (MS-0MVCS8A0L0000H7X)
+ * once the dynamic projection landed via the shared `eventSynergyTargets`
+ * resolver. The piggyback projection seam (AC3) was already dynamic via
+ * `computeOwnerEventDeltas` (Feature 2), so its cases stay plain `it`: they
+ * pin the parity contract the other paths have now moved to.
  *
  * Every scenario uses a seeded game state plus deterministic fixture cards
  * with explicit synergy types, so the assertions never depend on the seeded
@@ -60,6 +61,7 @@ import {
   scoreAction,
   computeCompetitiveEventValue,
 } from '../../src/MainStreetAiStrategy';
+import { eventSynergyTargets, matchesEventSynergyTargets } from '../../src/MainStreetEventSynergy';
 import { tagSlotOwnerIfCompetitive } from '../../src/MainStreetAdjacency';
 import type { BusinessCard, CommunitySpaceCard, EventCard, SynergyType } from '../../src/MainStreetCards';
 
@@ -182,7 +184,7 @@ function payoutDelta(state: MainStreetState, event: EventCard): number {
 // ── AC1: single-player projection equals the resolved payout ──
 
 describe('AC1: projectEventCoinDelta equals the resolved payout for the placed synergy', () => {
-  it.fails('projects the dynamic Food payout for a Food placement, not the static Commerce count', () => {
+  it('projects the dynamic Food payout for a Food placement, not the static Commerce count', () => {
     const state = singlePlayerState('f3t-ac1-food');
     placeBusiness(state, 'f3t-ac1-a', ['Food'], 0);             // opened this turn
     gridPush(state, businessFixture('f3t-ac1-b', ['Food']), 1); // pre-existing Food
@@ -198,7 +200,7 @@ describe('AC1: projectEventCoinDelta equals the resolved payout for the placed s
     expect(Number.isInteger(projection)).toBe(true);
   });
 
-  it.fails('projects the union of a multi-synergy Food|Culture placement, matching the payout', () => {
+  it('projects the union of a multi-synergy Food|Culture placement, matching the payout', () => {
     const state = singlePlayerState('f3t-ac1-union');
     placeBusiness(state, 'f3t-ac1-d', ['Food', 'Culture'], 0);  // opened this turn
     gridPush(state, businessFixture('f3t-ac1-e', ['Food']), 1); // union: Food
@@ -217,7 +219,7 @@ describe('AC1: projectEventCoinDelta equals the resolved payout for the placed s
 // ── AC2: competitive AI value equals the per-owner dynamic payout ─
 
 describe('AC2: computeCompetitiveEventValue equals the per-owner dynamic payout', () => {
-  it.fails('values the acting owner by the placed synergy match count, not the static Commerce count', () => {
+  it('values the acting owner by the placed synergy match count, not the static Commerce count', () => {
     // Owner 0 owns the placed Food card + a pre-existing Food card. Owner 1
     // owns a Commerce-only card that must NOT drive owner 0's value.
     const comp = competitiveState('f3t-ac2-comp');
@@ -240,7 +242,7 @@ describe('AC2: computeCompetitiveEventValue equals the per-owner dynamic payout'
     expect(comp.players![1].coins).toBe(p1Before);
   });
 
-  it.fails('counts a Commerce card that ALSO shares the placed Food synergy against the placed synergy', () => {
+  it('counts a Commerce card that ALSO shares the placed Food synergy against the placed synergy', () => {
     const comp = competitiveState('f3t-ac2-shared');
     placeBusiness(comp, 'f3t-ac2-d', ['Food'], 0);              // placed this turn
     gridPushOwned(comp, businessFixture('f3t-ac2-e', ['Commerce', 'Food']), 1, 0);
@@ -301,7 +303,7 @@ describe('AC3: piggyback projection path reflects the dynamic payout', () => {
 // ── AC4: scoreEventAction consistent with the dynamic payout ───
 
 describe('AC4: scoreEventAction is consistent with the dynamic payout', () => {
-  it.fails('scores grand opening at the dynamic payout minus the play cost', () => {
+  it('scores grand opening at the dynamic payout minus the play cost', () => {
     const state = singlePlayerState('f3t-ac4-score');
     placeBusiness(state, 'f3t-ac4-a', ['Food'], 0);             // opened this turn
     gridPush(state, businessFixture('f3t-ac4-b', ['Food']), 1); // pre-existing Food
@@ -318,10 +320,53 @@ describe('AC4: scoreEventAction is consistent with the dynamic payout', () => {
   });
 });
 
+// ── AC5: one shared resolver drives every path ──────────────
+
+describe('AC5: eventSynergyTargets is the single source of truth', () => {
+  it('resolves Grand Opening to the placed-this-turn synergy, not its static Commerce target', () => {
+    const state = singlePlayerState('f3t-ac5-resolver');
+    placeBusiness(state, 'f3t-ac5-resolver-a', ['Food', 'Culture'], 0);
+
+    const targets = eventSynergyTargets(state, grandOpening());
+
+    expect(targets).toEqual(['Food', 'Culture']);
+    expect(targets).not.toEqual(['Commerce']);
+  });
+
+  it('keeps other SpecificSynergy events on their static target (no behaviour change)', () => {
+    const state = singlePlayerState('f3t-ac5-static');
+    placeBusiness(state, 'f3t-ac5-static-a', ['Food'], 0);
+
+    const festival = {
+      family: 'event',
+      id: 'evt-festival-0',
+      name: 'Festival',
+      cost: 100,
+      trigger: 'Investment',
+      target: 'SpecificSynergy',
+      targetSynergy: 'Culture',
+      coinDelta: 50,
+      reputationDelta: 0,
+    } as unknown as EventCard;
+
+    expect(eventSynergyTargets(state, festival)).toEqual(['Culture']);
+  });
+
+  it('falls back to the static target when the dynamic override is armed but unplaced', () => {
+    const state = singlePlayerState('f3t-ac5-unplaced');
+    // Empty grid + no placement this turn: the resolver must not crash and
+    // must fall back to the static Commerce target rather than inventing one.
+    const targets = eventSynergyTargets(state, grandOpening());
+
+    expect(targets).toEqual(['Commerce']);
+    expect(matchesEventSynergyTargets(null, targets)).toBe(false);
+  });
+});
+
 // ── AC5: animation attribution marks the dynamic-match slots ───
 
 describe('AC5: attachUpcomingDeltas attributes the payout to the dynamic-match slots', () => {
-  it.fails('marks the Food-match slots for a Food placement, excluding the Commerce-only card', () => {
+  it('marks the Food-match slots for a Food placement, excluding the Commerce-only card', () => {
     const state = singlePlayerState('f3t-ac5-attrib');
     placeBusiness(state, 'f3t-ac5-a', ['Food'], 0);             // opened this turn
     gridPush(state, businessFixture('f3t-ac5-b', ['Food']), 1); // pre-existing Food

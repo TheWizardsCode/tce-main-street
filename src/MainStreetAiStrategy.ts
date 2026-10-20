@@ -54,10 +54,12 @@ import {
 } from './MainStreetMarket';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, StaffCard, SynergyType } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 import { computeProportionalCoinLoss, computeTaxAuditRate } from './MainStreetStaffBuffs';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { computeSynergyBonus, computeSynergyRepBonus, getSlotOwnerId } from './MainStreetAdjacency';
 import { computeScore, effectiveWinThreshold } from './MainStreetEngine';
+import { projectEventCoinDelta } from './MainStreetEngineScoring';
 
 // ── Scoring constants ───────────────────────────────────────
 
@@ -1798,7 +1800,12 @@ function scoreEventAction(
   ) as EventCard | undefined;
   if (!card) return 0;
 
-  return card.coinDelta + card.reputationDelta - card.cost;
+  // Project the event's actual payout rather than its static `coinDelta`
+  // (MS-0MVCS8A0L0000H7X AC2/AC4): a `SpecificSynergy` event — notably the
+  // dynamic-synergy Grand Opening — pays per matching business, so the AI's
+  // net play value must track that. `projectEventCoinDelta` shares the
+  // resolution-time synergy resolver with the live payout.
+  return projectEventCoinDelta(state, card) + card.reputationDelta - card.cost;
 }
 
 /**
@@ -1861,7 +1868,9 @@ function scorePlayEventFromHandAction(
 ): number {
   const card = (state.hand ?? [])[action.handIndex] as EventCard | undefined;
   if (!card) return 0;
-  return card.coinDelta + card.reputationDelta - card.cost;
+  // Same shared projection as {@link scoreEventAction} so taking the event
+  // and playing it value the identical dynamic payout (AC5).
+  return projectEventCoinDelta(state, card) + card.reputationDelta - card.cost;
 }
 
 // ── Public Scoring API ──────────────────────────────────────
@@ -2153,19 +2162,23 @@ function competitiveUpgradeTargets(
   return targets;
 }
 
-/** Number of the acting player's placed businesses matching `synergy`. */
+/**
+ * Number of the acting player's placed businesses matching ANY of the
+ * event's resolution-time synergy targets. Union semantics mirror the live
+ * payout through the shared {@link matchesEventSynergyTargets} predicate
+ * (MS-0MVCS8A0L0000H7X AC2).
+ */
 function countOwnSynergyMatches(
   state: MainStreetState,
-  synergy: SynergyType | undefined,
+  targets: readonly SynergyType[],
   playerId: number,
 ): number {
-  if (!synergy) return 0;
   let count = 0;
   for (let i = 0; i < state.streetGrid.length; i++) {
     const biz = state.streetGrid[i];
-    if (!biz || !biz.synergyTypes) continue;
+    if (!biz) continue;
     if (getSlotOwnerId(state, i) !== playerId) continue;
-    if (biz.synergyTypes.includes(synergy)) count += 1;
+    if (matchesEventSynergyTargets(biz, targets)) count += 1;
   }
   return count;
 }
@@ -2208,7 +2221,10 @@ export function computeCompetitiveEventValue(
     case 'RandomBusiness':
       return baseCoinDelta + event.reputationDelta;
     case 'SpecificSynergy': {
-      const matches = countOwnSynergyMatches(state, event.targetSynergy as SynergyType, pid);
+      // Resolution-time targets (MS-0MVCS8A0L0000H7X AC2): the Grand Opening
+      // values the placed-this-turn synergy, matching the per-owner payout.
+      const targets = eventSynergyTargets(state, event);
+      const matches = countOwnSynergyMatches(state, targets, pid);
       if (matches === 0) return 0;
       return (event.coinPercentDelta !== undefined ? baseCoinDelta : baseCoinDelta * matches) + event.reputationDelta;
     }

@@ -9,7 +9,7 @@
 
 import { createActiveEffect } from '@core-engine/ActiveEffect';
 import { applyCompetitiveIncome, getSlotOwnerId } from './MainStreetAdjacency';
-import type { EventCard, SynergyType, SpecializationSkill, DurationEventCard } from './MainStreetCards';
+import type { EventCard, SpecializationSkill, DurationEventCard } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
@@ -17,6 +17,11 @@ import { deserializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
+
+// Re-exported so the projection/AI/attribution consumers share ONE resolver
+// (MS-0MVCS8A0L0000H7X AC5) without importing this heavy resolution module.
+export { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
 /**
  * Resolves a single event card's effects on the game state.
@@ -103,7 +108,7 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
       // once rather than per match.
       const targets = eventSynergyTargets(state, event);
       const matchCount = state.streetGrid.filter(
-        b => b !== null && b.synergyTypes.some(s => targets.includes(s)),
+        b => matchesEventSynergyTargets(b, targets),
       ).length;
       const rawDelta = event.coinPercentDelta !== undefined
         ? baseCoinDelta
@@ -162,40 +167,6 @@ export function eventCoinDeltaFor(state: MainStreetState, event: EventCard): num
   const baseRate = Math.abs(event.coinPercentDelta);
   const rate = computeTaxAuditRate(state.staffCards ?? [], baseRate);
   return -computeProportionalCoinLoss(state.resourceBank.coins, rate);
-}
-
-/**
- * The synergy targets a `SpecificSynergy` event matches at resolution time.
- *
- * Grand Opening Sale (`evt-grand-opening`) is the one DYNAMIC-synergy event
- * (Feature 2, MS-0MVCS7LIA003J2SM): it pays out against the synergy of the
- * card placed THIS turn — `placedSynergiesThisTurn` (Feature 1 state model,
- * MS-0MVCS1NOH0074YY2) — instead of its static CSV `targetSynergy: Commerce`
- * (which remains in card-data.csv; the override is a resolution-time id
- * check, AC5).
- *
- * Union semantics (AC2): a placed `Food|Culture` card makes the event match
- * ANY grid card sharing Food OR Culture, once each — mirroring the per-card
- * `synergyTypes.includes(...)` check the existing code applies to the static
- * target. Community-space placements populate the same driving field as
- * business placements, so they select the payout synergy symmetrically (AC3).
- *
- * All OTHER `SpecificSynergy` events (festival, rainy, …) keep their static
- * single `targetSynergy` — zero behaviour change (AC6). Falls back to the
- * static target if the override is armed but no placement synergy was
- * recorded (defensive; the same-turn placement gate normally guarantees one).
- *
- * @param state Current game state (read-only).
- * @param event The `SpecificSynergy` event being resolved / projected.
- * @returns The synergy list to match grid cards against at this resolution.
- */
-function eventSynergyTargets(state: MainStreetState, event: EventCard): readonly SynergyType[] {
-  if (String(event.id).startsWith('evt-grand-opening')) {
-    const placed = state.placedSynergiesThisTurn;
-    if (placed && placed.length > 0) return placed;
-  }
-  const staticTarget = event.targetSynergy;
-  return staticTarget ? [staticTarget] : [];
 }
 
 /**
@@ -336,7 +307,7 @@ export function computeEventDeltas(
     case 'SpecificSynergy': {
       const targets = eventSynergyTargets(state, event);
       const matchCount = state.streetGrid.filter(
-        b => b !== null && b.synergyTypes.some(s => targets.includes(s)),
+        b => matchesEventSynergyTargets(b, targets),
       ).length;
       const rawDelta = event.coinPercentDelta !== undefined
         ? baseCoinDelta
@@ -520,7 +491,7 @@ function computeOwnerEventDeltas(
         const b = state.streetGrid[i];
         if (!b || !b.synergyTypes) continue;
         if (getSlotOwnerId(state, i) !== ctx.ownerId) continue;
-        if (b.synergyTypes.some(s => targets.includes(s))) matchCount += 1;
+        if (matchesEventSynergyTargets(b, targets)) matchCount += 1;
       }
       if (matchCount > 0) {
         const rawDelta = event.coinPercentDelta !== undefined
