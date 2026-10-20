@@ -54,6 +54,12 @@
       "@balance-cards/*": [
         "./core/src/balance-cards/*"
       ],
+      "@story-line": [
+        "./core/src/story-line"
+      ],
+      "@story-line/*": [
+        "./core/src/story-line/*"
+      ],
       "@core-scripts/*": [
         "./core/scripts/*"
       ],
