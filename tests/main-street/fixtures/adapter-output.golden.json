@@ -1,0 +1,79 @@
+{
+  "storylines": [
+    {
+      "storylineId": "storyline-tax",
+      "storylineTitle": "Tax Troubles",
+      "entryCardId": "evt-tax",
+      "dialogTitle": "Tax Troubles",
+      "dialogSubtitle": "Tax Audit",
+      "optionLabels": [
+        "Accept",
+        "Reject"
+      ],
+      "acceptLabel": "Accept: apply “Lose 45% of your banked coins.”.",
+      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
+      "acceptUpdate": "Story update — Tax Troubles: you accepted the consequence (-300 coins).",
+      "rejectUpdate": "Story update — Tax Troubles: you refused the consequence; the thread continues."
+    },
+    {
+      "storylineId": "storyline-health",
+      "storylineTitle": "Public Health Crisis",
+      "entryCardId": "evt-flu-outbreak",
+      "dialogTitle": "Public Health Crisis",
+      "dialogSubtitle": "Flu Outbreak",
+      "optionLabels": [
+        "Accept",
+        "Reject"
+      ],
+      "acceptLabel": "Accept: apply “All businesses generate 80% income for 5 turns. Duration reduced by Clinic/Medical Center.”.",
+      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
+      "acceptUpdate": "Story update — Public Health Crisis: you accepted the consequence.",
+      "rejectUpdate": "Story update — Public Health Crisis: you refused the consequence; the thread continues."
+    },
+    {
+      "storylineId": "storyline-economy",
+      "storylineTitle": "Economic Downturn",
+      "entryCardId": "evt-recession",
+      "dialogTitle": "Economic Downturn",
+      "dialogSubtitle": "Economic Recession",
+      "optionLabels": [
+        "Accept",
+        "Reject"
+      ],
+      "acceptLabel": "Accept: apply “All businesses generate 70% income for 4 turns. Duration reduced by Clinic/Medical Center.”.",
+      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
+      "acceptUpdate": "Story update — Economic Downturn: you accepted the consequence.",
+      "rejectUpdate": "Story update — Economic Downturn: you refused the consequence; the thread continues."
+    },
+    {
+      "storylineId": "storyline-labor",
+      "storylineTitle": "Labour Unrest",
+      "entryCardId": "evt-strike-service",
+      "dialogTitle": "Labour Unrest",
+      "dialogSubtitle": "Service Workers Strike",
+      "optionLabels": [
+        "Accept",
+        "Reject"
+      ],
+      "acceptLabel": "Accept: apply “Service staff strike: -200 coins per Service business.”.",
+      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
+      "acceptUpdate": "Story update — Labour Unrest: you accepted the consequence (-200 coins).",
+      "rejectUpdate": "Story update — Labour Unrest: you refused the consequence; the thread continues."
+    },
+    {
+      "storylineId": "storyline-restaurant",
+      "storylineTitle": "Restaurant Renaissance",
+      "entryCardId": "evt-popular-menu",
+      "dialogTitle": "Restaurant Renaissance",
+      "dialogSubtitle": "Popular Menu Item",
+      "optionLabels": [
+        "Accept",
+        "Reject"
+      ],
+      "acceptLabel": "Accept: apply “A popular menu item earns 300 coins.”.",
+      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
+      "acceptUpdate": "Story update — Restaurant Renaissance: you accepted the consequence (+300 coins).",
+      "rejectUpdate": "Story update — Restaurant Renaissance: you refused the consequence; the thread continues."
+    }
+  ]
+}
