@@ -640,73 +640,29 @@ export const DEFAULT_INCIDENT_MAX_STREAK = 2;
  */
 export const MAX_TRACKED_INCIDENT_HISTORY = 10;
 
-// ── Generalised option model (extraction seam types) ─────────
+// ── Generalised option model (generic core types) ────────────
+//
+// These types now live in the generic, game-agnostic core story-line module
+// (`@story-line`). They are re-exported here, specialised to `MainStreetState`,
+// so Main Street callers keep importing them from this module and there is a
+// single definition of the story-line model.
+
+import type {
+  CompiledStoryline as CoreCompiledStoryline,
+  StorylineOption as CoreStorylineOption,
+} from '@story-line';
 
 /**
  * A single option within a storyline's ordered option list.
- * The engine resolves options sequentially (in declaration order) until the
- * player selects one.
+ *
+ * Core generic type specialised to Main Street state (the `condition` /
+ * `successorResolver` callbacks receive a `MainStreetState`).
  */
-export interface StorylineOption {
-  /** Human-readable label for the option (e.g. "Accept", "Reject", "Investigate"). */
-  readonly label: string;
-  /**
-   * The single card ID to push when this option is chosen. Null / absent ends
-   * the chain. Retained for the programmatic registry seam and transitional
-   * legacy compilation; CSV-authored options use {@link successorIds}.
-   *
-   * @deprecated Prefer {@link successorIds} for new options.
-   */
-  readonly successorId?: string | null | undefined;
-  /**
-   * Ordered candidate successor card ids for this option (MS-0MV8KQJR30007JL5).
-   * When the option is chosen, one candidate is selected at resolution time
-   * (the random draw lands in F3); an empty list is a terminal option — the
-   * chain ends. CSV-authored options populate this field; a
-   * `successorResolver` callback (if present) keeps precedence.
-   */
-  readonly successorIds?: readonly string[];
-  /** Whether the event's intrinsic effect applies when this option is chosen. */
-  readonly effectPolicy: 'apply' | 'skip';
-  /**
-   * Optional runtime condition evaluated at draw time.
-   * If the callback returns `false` the option is omitted from the presented
-   * option list.  Evaluated once when the option list is compiled (at draw
-   * time), never at resolution.
-   *
-   * **Contract:** must be a pure function — no observable side effects.
-   * Mutating state inside a condition callback is undefined behaviour.
-   *
-   * @readonly
-   */
-  readonly condition?: (state: MainStreetState) => boolean;
-  /**
-   * Optional runtime successor resolver evaluated at resolution time.
-   * When present, the callback is invoked and its return value is used as
-   * the pushed successor card ID instead of `option.successorId`.
-   * Returns `null` or `undefined` to end the chain (no card pushed).
-   *
-   * **Contract:** must be a pure function — no observable side effects.
-   *
-   * @readonly
-   */
-  readonly successorResolver?: (state: MainStreetState) => string | null | undefined;
-}
+export type StorylineOption = CoreStorylineOption<MainStreetState>;
 
 /**
- * A compiled storyline definition extracted from a card's legacy
- * hasChoices / acceptNextCardId / rejectNextCardId fields, or from
- * explicit storyline metadata.
+ * A card's compiled storyline: the storyline id plus its ordered option list.
  *
- * Legacy compilation:
- * - `hasChoices: false` → compiledOptions is empty (non-choice card).
- * - `hasChoices: true` → two options:
- *   1. label="Accept", successorId=acceptNextCardId, effectPolicy="apply"
- *   2. label="Reject", successorId=rejectNextCardId, effectPolicy="skip"
+ * Core generic type specialised to Main Street state.
  */
-export interface CompiledStoryline {
-  /** The storyline identifier this definition belongs to. Null for non-storyline cards. */
-  readonly storylineId: string | null;
-  /** Ordered list of options; empty for non-choice cards. */
-  readonly compiledOptions: StorylineOption[];
-}
+export type CompiledStoryline = CoreCompiledStoryline<MainStreetState>;

@@ -1,9 +1,10 @@
 /**
- * Storyline player-agency helpers (MS-0MUMP96XH002SJ89)
+ * Storyline player-agency helpers — Main Street adapter over the generic core
+ * story-line module (`@story-line`).
  *
- * Pure, Phaser-free helpers that surface named storylines and outcome feedback
- * to the UI. Keeping the logic here (rather than in the scene) makes it
- * unit-testable without a browser.
+ * The naming and outcome-feedback text now come from the pluggable core UI
+ * adapter (`mainStreetStorylineUiAdapter`), which reproduces the shipped Main
+ * Street wording byte-for-byte. This module keeps the historical API surface.
  *
  * - {@link choiceDialogTitle} / {@link choiceDialogSubtitle} — name the
  *   storyline in the choice dialog (fallback: card name).
@@ -17,11 +18,11 @@
  */
 
 import type { EventCard } from './MainStreetCardsTypes';
+import { getMainStreetStorylineSystem } from './MainStreetStorylineAdapter';
 
 /** Human-readable storyline name: explicit title, else the storyline id. */
 export function storylineName(event: EventCard): string | null {
-  if (!event.storylineId) return null;
-  return event.storylineTitle ?? event.storylineId;
+  return getMainStreetStorylineSystem().ui.storylineName(event);
 }
 
 /**
@@ -29,7 +30,7 @@ export function storylineName(event: EventCard): string | null {
  * sees which arc they are in; falls back to the card name.
  */
 export function choiceDialogTitle(event: EventCard): string {
-  return storylineName(event) ?? event.name;
+  return getMainStreetStorylineSystem().ui.choiceDialogTitle(event);
 }
 
 /**
@@ -38,15 +39,7 @@ export function choiceDialogTitle(event: EventCard): string {
  * cards).
  */
 export function choiceDialogSubtitle(event: EventCard): string {
-  return event.storylineId ? event.name : '';
-}
-
-/** Formats a delta summary for the story-update line. */
-function describeDelta(coinChange: number, repChange: number): string {
-  const parts: string[] = [];
-  if (coinChange !== 0) parts.push(`${coinChange > 0 ? '+' : ''}${Math.round(coinChange)} coins`);
-  if (repChange !== 0) parts.push(`${repChange > 0 ? '+' : ''}${Math.round(repChange)} rep`);
-  return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  return getMainStreetStorylineSystem().ui.choiceDialogSubtitle(event);
 }
 
 /**
@@ -64,15 +57,10 @@ export function storyUpdateLine(
   coinChange: number,
   repChange: number,
 ): string | null {
-  const name = storylineName(event);
-  if (!name) return null;
-  const accepted = option.toLowerCase() === 'accept';
-  if (accepted) {
-    return `Story update — ${name}: you accepted the consequence${describeDelta(coinChange, repChange)}.`;
-  }
-  if (option.toLowerCase() === 'reject') {
-    return `Story update — ${name}: you refused the consequence; the thread continues.`;
-  }
-  // Generalised multi-way option: name the option.
-  return `Story update — ${name}: you chose "${option}"${describeDelta(coinChange, repChange)}.`;
+  return getMainStreetStorylineSystem().ui.storyUpdateLine(
+    event,
+    option,
+    coinChange,
+    repChange,
+  );
 }
