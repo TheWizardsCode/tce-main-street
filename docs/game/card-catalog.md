@@ -469,6 +469,12 @@ Branching upgrades offer an alternative Level-1 path for businesses that already
 | `upg-drive-in` | Upgrade to Drive-In Theater | Cinema | 700 | +200 | +2 | Turns Cinema into a Drive-In with wider community reach. | Reach-over-income alternative to IMAX (+200/+1). |
 | `upg-wellness-center` | Upgrade to Wellness Center | Day Spa | 900 | +250 | +2 | Expands into a Wellness Center with broader service footprint. | Reach alternative to Resort Spa (+200/+1). |
 
+`upg-drive-in` and `upg-wellness-center` declare the baseline deck `drawWeight`
+of 1 so they receive the refill-time eligibility bonus once their parent
+business sits at level 0 (MS-0MV035PRV002QDG4). Their cost and `incomeBonus`
+are unchanged, preserving the reach-over-income trade-off against IMAX and
+Resort Spa.
+
 ### M2 Multi-Level Upgrade Templates (4)
 
 Multi-level upgrades require the business to already be at Level 1 (`requiredLevel: 1`). They represent a second upgrade step, available only after a Level-1 upgrade (standard or branching) has been applied. These are the most powerful upgrades in the pool and serve as late-game progression rewards.
