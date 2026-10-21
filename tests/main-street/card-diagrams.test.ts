@@ -34,8 +34,10 @@ import {
 import {
   getBusinessTemplates,
   getCommunitySpaceTemplates,
+  getStaffCardTemplates,
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
+import { STAFF_SKILL_CATALOG } from '../../src/MainStreetStaffSkills';
 import { SYNERGY_TYPE_NAMES } from '../../src/MainStreetCardsTypes';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -46,6 +48,7 @@ const COMMUNITY_SPACES_ARTEFACT = path.join(
   PROJECT_ROOT,
   'docs/dev/assets/community-space-relationships.mmd',
 );
+const STAFF_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/staff-relationships.mmd');
 
 /**
  * Shown in every drift-assertion failure so a stale artefact is trivial to fix
@@ -283,6 +286,103 @@ describe('F2 — community-space relationship diagram', () => {
   });
 });
 
+// ── F3 — staff relationship diagram ─────────────────────────
+
+describe('F3 — staff relationship diagram', () => {
+  const diagram = () => buildCardDiagram('staff');
+
+  it('shows every staff card as a node', () => {
+    const nodeIds = new Set(diagram().nodes.map((node) => node.id));
+    for (const staff of getStaffCardTemplates()) {
+      expect(nodeIds.has(staff.id), `missing staff node ${staff.id}`).toBe(true);
+    }
+    expect(diagram().nodes.filter((node) => node.kind === 'staff')).toHaveLength(
+      getStaffCardTemplates().length,
+    );
+  });
+
+  it('connects each staff card to every synergy/business target it may serve', () => {
+    const d = diagram();
+    const targets = (from: string): string[] =>
+      d.edges
+        .filter((edge) => edge.from === from && !edge.to.startsWith('skill-category-'))
+        .map((edge) => edge.to)
+        .sort();
+    // health-safety → Health only; chef → Cafe/Diner/Delicatessen/Food.
+    expect(targets('staff-health-safety')).toEqual(['synergy-health']);
+    expect(targets('staff-chef')).toEqual([
+      'biz-cafe',
+      'biz-delicatessen',
+      'biz-diner',
+      'synergy-food',
+    ]);
+  });
+
+  it('does not emit edges for an empty allowed-target list (generalists keep all six)', () => {
+    const d = diagram();
+    // No staff node links to a synthetic placeholder.
+    const targets = d.edges.map((edge) => edge.to);
+    expect(targets.every((to) => !to.startsWith('unknown-'))).toBe(true);
+    // A generalist (Assistant) reaches every synergy type.
+    const assistant = d.edges
+      .filter((edge) => edge.from === 'staff-assistant')
+      .map((edge) => edge.to)
+      .sort();
+    expect(assistant).toEqual(
+      SYNERGY_TYPE_NAMES.map((s) => `synergy-${s.toLowerCase()}`).sort(),
+    );
+  });
+
+  it('shows every catalogue skill grouped under its category', () => {
+    const d = diagram();
+    const skillIds = new Set(
+      d.nodes.filter((node) => node.kind === 'skill').map((node) => node.id),
+    );
+    for (const skill of STAFF_SKILL_CATALOG) {
+      expect(skillIds.has(skill.id), `missing skill ${skill.id}`).toBe(true);
+    }
+    // Every catalogue skill is reachable from its category node.
+    for (const skill of STAFF_SKILL_CATALOG) {
+      const edge = d.edges.find(
+        (e) => e.to === skill.id && e.from === `skill-category-${skill.category}`,
+      );
+      expect(edge, `missing category edge for ${skill.id}`).toBeDefined();
+    }
+    // The four category nodes exist.
+    const categoryIds = d.nodes
+      .filter((node) => node.kind === 'skill-category')
+      .map((node) => node.id)
+      .sort();
+    expect(categoryIds).toEqual([
+      'skill-category-cost-reduction',
+      'skill-category-incident-mitigation',
+      'skill-category-income-boost',
+      'skill-category-reputation-boost',
+    ]);
+  });
+
+  it('two builds are deeply equal and sorted', () => {
+    const first = diagram();
+    expect(first).toEqual(diagram());
+    const nodeIds = first.nodes.map((node) => node.id);
+    expect(nodeIds).toEqual([...nodeIds].sort());
+  });
+
+  it('is wired into --diagram, --diagram all and --format json', () => {
+    expect(listDiagramIds()).toContain('staff');
+    expect(parseDiagramArgs(['--diagram', 'staff']).diagrams).toEqual(['staff']);
+    const manifest = buildCardDiagramsManifest(['staff']);
+    expect(manifest.diagrams[0].id).toBe('staff');
+    expect(manifest.diagrams[0].edges).toEqual(diagram().edges);
+  });
+
+  it('the committed artefact matches regeneration byte-for-byte', () => {
+    expect(fs.existsSync(STAFF_ARTEFACT)).toBe(true);
+    const committed = fs.readFileSync(STAFF_ARTEFACT, 'utf-8');
+    expect(renderDiagramMermaid(diagram()), REGEN_DIAGRAMS_HINT).toBe(committed);
+  });
+});
+
 // ── AC1/AC2: CLI end-to-end ─────────────────────────────────
 
 describe('AC1/AC2 — diagrams CLI via vite-node', () => {
@@ -337,5 +437,13 @@ describe('AC1/AC2 — diagrams CLI via vite-node', () => {
     const res = runDiagramCli(['--diagram', 'community-spaces', '--out', out]);
     expect(res.exitCode).toBe(0);
     expect(fs.readFileSync(out, 'utf-8')).toContain('cs_community_garden');
+  });
+
+  it('writes the staff diagram for --diagram staff', () => {
+    const out = path.join(tmpDir, 'staff.mmd');
+    const res = runDiagramCli(['--diagram', 'staff', '--out', out]);
+    expect(res.exitCode).toBe(0);
+    expect(fs.readFileSync(out, 'utf-8')).toContain('staff_chef');
+    expect(fs.readFileSync(out, 'utf-8')).toContain('skill_category_income_boost');
   });
 });

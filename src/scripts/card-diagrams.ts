@@ -23,7 +23,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
-import { getBusinessTemplates, getCommunitySpaceTemplates, getUpgradeTemplates } from '../MainStreetCards';
+import {
+  getBusinessTemplates,
+  getCommunitySpaceTemplates,
+  getStaffCardTemplates,
+  getUpgradeTemplates,
+} from '../MainStreetCards';
+import { getAllowedBusinessTypesForStaff } from '../MainStreetCardsUtils';
+import { STAFF_SKILL_CATALOG } from '../MainStreetStaffSkills';
 import { SYNERGY_TYPE_NAMES } from '../MainStreetCardsTypes';
 
 // ── Manifest types ──────────────────────────────────────────
@@ -220,6 +227,85 @@ function upgradeDetail(upgrade: {
   return parts.join(' · ');
 }
 
+/** Stable node id for an allowed-target business name (slugified). */
+function businessNodeId(name: string): string {
+  return `biz-token-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+}
+
+/**
+ * Builds the staff relationship diagram: every staff card as a node with one
+ * edge to each synergy type or named business it may serve (resolved through
+ * `getAllowedBusinessTypesForStaff`), plus the specialisation-skill catalogue
+ * grouped under its category nodes (one node per skill, reachable from its
+ * category).
+ *
+ * @returns The deterministic staff relationship diagram.
+ */
+export function buildStaffDiagram(): CardDiagram {
+  const staffCards = getStaffCardTemplates();
+  const businessByName = new Map(getBusinessTemplates().map((b) => [b.name, b.id]));
+  const spaceByName = new Map(getCommunitySpaceTemplates().map((c) => [c.name, c.id]));
+  const synergySet = new Set<string>(SYNERGY_TYPE_NAMES);
+
+  const nodes: DiagramNode[] = staffCards.map((staff) => ({
+    id: staff.id,
+    name: staff.name,
+    kind: 'staff',
+    detail: staff.ongoingCost > 0 ? `ongoing ${staff.ongoingCost} coins/turn` : undefined,
+  }));
+  const edges: DiagramEdge[] = [];
+  const targetNodes = new Map<string, DiagramNode>();
+
+  /** Adds a staff→target edge, creating the target node on first use. */
+  const addTarget = (staffId: string, token: string): void => {
+    let target: DiagramNode;
+    if (synergySet.has(token)) {
+      const id = synergyNodeId(token);
+      target = targetNodes.get(id) ?? { id, name: token, kind: 'synergy' };
+    } else {
+      const businessId = businessByName.get(token) ?? spaceByName.get(token);
+      if (businessId) {
+        target = targetNodes.get(businessId) ?? { id: businessId, name: token, kind: 'business' };
+      } else {
+        const id = businessNodeId(token);
+        target = targetNodes.get(id) ?? { id, name: token, kind: 'business' };
+      }
+    }
+    if (!targetNodes.has(target.id)) targetNodes.set(target.id, target);
+    edges.push({ from: staffId, to: target.id, label: token });
+  };
+
+  for (const staff of staffCards) {
+    for (const token of getAllowedBusinessTypesForStaff(staff)) {
+      addTarget(staff.id, token);
+    }
+  }
+
+  // Skill catalogue: one node per skill grouped under its category.
+  const categories = new Set(STAFF_SKILL_CATALOG.map((skill) => skill.category));
+  for (const category of categories) {
+    const id = `skill-category-${category}`;
+    nodes.push({ id, name: category.replace(/-/g, ' '), kind: 'skill-category' });
+  }
+  for (const skill of STAFF_SKILL_CATALOG) {
+    nodes.push({ id: skill.id, name: skill.name, kind: 'skill' });
+    edges.push({
+      from: `skill-category-${skill.category}`,
+      to: skill.id,
+      label: skill.effect,
+    });
+  }
+
+  nodes.push(...targetNodes.values());
+
+  return sortDiagram({
+    id: 'staff',
+    title: 'Staff relationships & specialisations',
+    nodes,
+    edges,
+  });
+}
+
 /**
  * Registry of diagram builders. Domains are added here as their builders land
  * (F2–F4); `listDiagramIds()` is the source of truth for the CLI's default
@@ -228,6 +314,7 @@ function upgradeDetail(upgrade: {
 const DIAGRAM_BUILDERS: Partial<Record<DiagramId, () => CardDiagram>> = {
   synergies: buildSynergyDiagram,
   'community-spaces': buildCommunitySpacesDiagram,
+  staff: buildStaffDiagram,
 };
 
 /** Canonical domain order (`--diagram all` and the JSON manifest). */
