@@ -52,6 +52,14 @@ const COMMUNITY_SPACES_ARTEFACT = path.join(
 const STAFF_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/staff-relationships.mmd');
 const UPGRADES_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/upgrade-chains.mmd');
 
+/** Every generated artefact, in the CLI's canonical domain order. */
+const ALL_ARTEFACTS: ReadonlyArray<{ id: string; path: string }> = [
+  { id: 'synergies', path: SYNERGIES_ARTEFACT },
+  { id: 'staff', path: STAFF_ARTEFACT },
+  { id: 'upgrades', path: UPGRADES_ARTEFACT },
+  { id: 'community-spaces', path: COMMUNITY_SPACES_ARTEFACT },
+];
+
 /**
  * Shown in every drift-assertion failure so a stale artefact is trivial to fix
  * without reading the source.
@@ -481,6 +489,74 @@ describe('F4 — upgrade chain diagram', () => {
     expect(fs.existsSync(UPGRADES_ARTEFACT)).toBe(true);
     const committed = fs.readFileSync(UPGRADES_ARTEFACT, 'utf-8');
     expect(renderDiagramMermaid(diagram()), REGEN_DIAGRAMS_HINT).toBe(committed);
+  });
+});
+
+// ── F6 — cross-domain integration, determinism & drift ──────
+
+describe('F6 — cross-domain integration and determinism', () => {
+  it('the default manifest contains all four diagrams in canonical order', () => {
+    const manifest = buildCardDiagramsManifest();
+    expect(manifest.diagrams.map((diagram) => diagram.id)).toEqual([
+      'synergies',
+      'staff',
+      'upgrades',
+      'community-spaces',
+    ]);
+    for (const diagram of manifest.diagrams) {
+      expect(diagram.nodes.length).toBeGreaterThan(0);
+      expect(diagram.edges.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('every committed artefact regenerates byte-for-byte', () => {
+    for (const artefact of ALL_ARTEFACTS) {
+      expect(fs.existsSync(artefact.path), `missing ${artefact.id} artefact`).toBe(true);
+      const committed = fs.readFileSync(artefact.path, 'utf-8');
+      const regenerated = renderDiagramMermaid(
+        buildCardDiagram(artefact.id as Parameters<typeof buildCardDiagram>[0]),
+      );
+      expect(regenerated, REGEN_DIAGRAMS_HINT).toBe(committed);
+    }
+  });
+
+  it('two full builds produce identical output (no timestamps/RNG)', () => {
+    const first = ALL_ARTEFACTS.map((artefact) =>
+      renderDiagramMermaid(buildCardDiagram(artefact.id as Parameters<typeof buildCardDiagram>[0])),
+    );
+    const second = ALL_ARTEFACTS.map((artefact) =>
+      renderDiagramMermaid(buildCardDiagram(artefact.id as Parameters<typeof buildCardDiagram>[0])),
+    );
+    expect(second).toEqual(first);
+    for (const content of first) {
+      expect(content).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    }
+  });
+
+  it('--check exits 0 across all committed artefacts', () => {
+    const res = runDiagramCli(['--check']);
+    expect(res.exitCode).toBe(0);
+    for (const artefact of ALL_ARTEFACTS) {
+      expect(res.stdout).toContain(artefact.path);
+    }
+  });
+
+  it('--check exits 1 and prints a regenerate hint when one artefact drifts', () => {
+    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tce-card-diagrams-drift-')), 'x.mmd');
+    fs.writeFileSync(out, 'flowchart LR\n', 'utf-8');
+    const res = runDiagramCli(['--diagram', 'upgrades', '--out', out, '--check']);
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain('drift');
+    expect(res.stderr).toContain('npm run docs:diagrams');
+  });
+
+  it('the existing storyline-graph artefact is still generated and drift-guarded', () => {
+    // F6 keeps the pre-existing storyline drift guard green; this asserts the
+    // artefact and its drift guard are still present after the new tooling.
+    const storylineArtefact = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-graph.mmd');
+    expect(fs.existsSync(storylineArtefact)).toBe(true);
+    const storylineTest = path.join(PROJECT_ROOT, 'tests/main-street/storyline-graph.test.ts');
+    expect(fs.existsSync(storylineTest)).toBe(true);
   });
 });
 
