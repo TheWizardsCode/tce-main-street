@@ -27,20 +27,19 @@ default**. ToneForge synth integration is **opt-in per session**
   forwards to `SoundManager.setSynthDiagnostics()` so the status line shows
   `Inactive · … · load error: <reason>`.
 - **Missing-factory fallback.** `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical
-  keys but the runtime module ships only 12 factories. A mapped key with no
-  matching factory always falls back to the WAV/Phaser path instead of going
-  silent (`tfAdapter` reports whether it handled the key;
+  keys and the committed runtime module ships all 16 factories
+  (MS-0MV8PDNDT0033TH8), so every mapped key plays through the synth. A mapped
+  key whose factory is missing would still fall back to the WAV/Phaser path
+  instead of going silent (`tfAdapter` reports whether it handled the key;
   `SoundManager.play()` falls through when it did not) — engine item
-  CG-0MUU9PSWC009CW76. The four factory-less mappings (`sfx-income-positive`,
-  `sfx-income-negative`, `sfx-income-neutral`, `sfx-challenge-complete`) are
-  **intentional** WAV-fallback cases, so the Main Street TF logger
-  (`src/tf/tfLogger.ts`) keeps their per-play
-  `[tfAdapter] Missing tf factory …` warning quiet while still forwarding any
-  unexpected missing factory or other adapter warning
-  (MS-0MV26MOWT004ZCQC). The factory-less keys are listed once in
-  `src/sfx-tf-mapping.ts` (`MAIN_STREET_TF_FACTORYLESS_KEYS` and the derived
-  `MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS`) so the mapping and the quiet list
-  cannot drift.
+  CG-0MUU9PSWC009CW76. The Main Street TF logger (`src/tf/tfLogger.ts`)
+  suppresses the per-play `[tfAdapter] Missing tf factory …` warning for any
+  key declared in `MAIN_STREET_TF_FACTORYLESS_KEYS`
+  (`src/sfx-tf-mapping.ts`, plus the derived
+  `MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS`) while still forwarding every
+  unexpected missing factory or other adapter warning (MS-0MV26MOWT004ZCQC).
+  That list is currently **empty** — the mechanism is retained so a future
+  intentional fallback cannot reintroduce console noise.
 
 ## Tutorial layout composition (quiet by design)
 

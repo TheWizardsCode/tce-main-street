@@ -2,17 +2,17 @@
  * Missing-factory fallback contract (engine item CG-0MUTU0MFE0077H0F, child
  * CG-0MUU9PSWC009CW76; sibling tracking item MS-0MUU9QYQE006NLEZ).
  *
- * `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical keys but the committed runtime
- * module ships only 12 factories, so four entries map to a factory that does
- * not exist. Because `SoundManager.play()` used to return after delegating to
- * the synth player, those keys went completely silent: no synth voice *and*
- * no WAV fallback.
+ * `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical keys and the committed runtime
+ * module ships a factory for all 16 (MS-0MV8PDNDT0033TH8). Because
+ * `SoundManager.play()` used to return after delegating to the synth player, a
+ * key without a factory went completely silent: no synth voice *and* no WAV
+ * fallback.
  *
  * The engine fix makes `tfAdapter`'s player report whether it handled the key
  * and `SoundManager` fall through to WAV when it did not. This test drives the
  * **real** mapping and the **real** loader/player and asserts that every mapped
- * key either plays a voice or falls back to the WAV player — never a silent
- * drop.
+ * key resolves to a shipped factory, and that every key either plays a voice or
+ * falls back to the WAV player — never a silent drop.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -20,7 +20,11 @@ import { SoundManager, type SoundPlayer } from '@core-engine/SoundManager';
 import { createTfPlayer } from '@core-engine/tfAdapter';
 
 import { loadMainStreetTfModule } from '../../src/tf/mainStreetTfModule';
-import { MAIN_STREET_TF_SFX_MAPPING } from '../../src/sfx-tf-mapping';
+import {
+  MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS,
+  MAIN_STREET_TF_FACTORYLESS_KEYS,
+  MAIN_STREET_TF_SFX_MAPPING,
+} from '../../src/sfx-tf-mapping';
 
 /** Records which asset keys the WAV/Phaser path was asked to play. */
 function createRecordingWavPlayer(): { player: SoundPlayer; played: string[] } {
@@ -78,28 +82,55 @@ describe('Main Street tf missing-factory fallback', () => {
     }
   });
 
-  it('the four factory-less mappings fall back to WAV', async () => {
+  it('ships a runtime factory and descriptor for every mapped key', async () => {
     const module = await loadMainStreetTfModule();
-    const { player: wavPlayer, played } = createRecordingWavPlayer();
-    const manager = new SoundManager(wavPlayer, { storage: null });
+    expect(module).toBeTruthy();
 
-    manager.setSynthIntegration(
-      createTfPlayer(module!, { keyMap: MAIN_STREET_TF_SFX_MAPPING, logger: { warn: () => {} } }),
-      MAIN_STREET_TF_SFX_MAPPING,
-    );
+    for (const [logicalKey, factoryKey] of Object.entries(MAIN_STREET_TF_SFX_MAPPING)) {
+      expect(
+        typeof module!.factories?.[factoryKey],
+        `${logicalKey} -> ${factoryKey} must have a runtime factory`,
+      ).toBe('function');
+      expect(
+        module!.descriptors?.[factoryKey],
+        `${logicalKey} -> ${factoryKey} must have a runtime descriptor`,
+      ).toBeDefined();
+    }
+  });
 
-    const factoryless = [
+  it('the synth player reports no missing factory for any mapped key', async () => {
+    const module = await loadMainStreetTfModule();
+    const warnings: string[] = [];
+    const player = createTfPlayer(module!, {
+      keyMap: MAIN_STREET_TF_SFX_MAPPING,
+      logger: { warn: (message: string) => warnings.push(message) },
+    });
+
+    for (const logicalKey of Object.keys(MAIN_STREET_TF_SFX_MAPPING)) {
+      player.play(logicalKey);
+    }
+
+    // Under Node there is no Web Audio context, so voice construction may fail
+    // (reported as `Failed to create tf voice`). That is fine: what must never
+    // happen again is a *missing factory*.
+    expect(warnings.filter((message) => message.includes('Missing tf factory'))).toEqual([]);
+  });
+
+  it('declares no factory-less keys now that all 16 mappings play through the synth', async () => {
+    // AC3: the workaround lists are empty, so the four former fallback keys are
+    // no longer suppressed as expected gaps.
+    expect(MAIN_STREET_TF_FACTORYLESS_KEYS).toEqual([]);
+    expect(MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS).toEqual([]);
+
+    const module = await loadMainStreetTfModule();
+    for (const key of [
       'sfx-income-positive',
       'sfx-income-negative',
       'sfx-income-neutral',
       'sfx-challenge-complete',
-    ] as const;
-
-    for (const key of factoryless) {
-      manager.register(key, `ms:${key}`);
-      manager.play(key);
+    ]) {
+      const factoryKey = MAIN_STREET_TF_SFX_MAPPING[key];
+      expect(typeof module!.factories?.[factoryKey]).toBe('function');
     }
-
-    expect(played).toEqual(expect.arrayContaining(factoryless.map((k) => `ms:${k}`)));
   });
 });
