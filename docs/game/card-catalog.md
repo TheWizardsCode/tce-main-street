@@ -1,6 +1,7 @@
 # Main Street: Card Catalog
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
+> **Card relationship diagrams:** the generated synergy, staff, upgrade-chain and community-space diagrams (with the regeneration and drift-guard commands) are documented in [card-diagrams.md](./card-diagrams.md).
 > **Last updated:** Synergy-coloured card faces + two-tone bridge split (MS-0MUZH51PU007POJ4)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.

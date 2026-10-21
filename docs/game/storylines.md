@@ -303,6 +303,7 @@ All scripts run under `vite-node` because the card model imports
 | `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed diagram, per-storyline document, index, or generated doc section differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
+| `npm run docs:diagrams` | Regenerate the card relationship diagrams (synergies, staff, upgrade chains, community spaces) into `docs/dev/assets/`; `--check` is the drift guard. See [card-diagrams.md](./card-diagrams.md). |
 
 **Cycle policy.** The validator reports cycles as **informational** findings
 (`RESULT: VALID`, exit `0`); pass `--fail-on-cycle` to treat them as errors. The
@@ -510,6 +511,7 @@ Each is captured as a work item:
 - [`docs/game/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
 - [`docs/dev/ai-strategy.md`](../dev/ai-strategy.md) — AI strategy overview.
 - [`docs/dev/assets/storyline-graph.mmd`](../dev/assets/storyline-graph.mmd) — generated Mermaid graph (source of truth).
+- [`docs/game/card-diagrams.md`](./card-diagrams.md) — the unified card relationship diagrams (synergies, staff, upgrade chains, community spaces) and their regeneration/drift-guard workflow.
 - [`docs/game/storylines/`](./storylines/) — one document per storyline (diagram + per-event detail table): `tax.md`, `health.md`, `economy.md`, `labor.md`, `restaurant.md`.
 - [`docs/game/assets/`](./assets/) — rendered per-storyline graph images (viewable without a Mermaid renderer).
 - [`docs/game/storyline-incident-index.md`](./storyline-incident-index.md) — standalone-incident index (incidents not in any storyline).
