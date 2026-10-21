@@ -1,0 +1,39 @@
+%%{ init: { "flowchart": { "curve": "basis" } } }%%
+flowchart LR
+
+  %% Community-space relationships — generated from src/card-data.csv; do not hand-edit.
+
+  cs_community_garden("Community Garden<br/>cs-community-garden<br/>ongoing 10 coins/turn · +40 rep/turn")
+  cs_fountain("Town Fountain<br/>cs-fountain<br/>ongoing 25 coins/turn · +40 rep/turn")
+  cs_health_kiosk("Health Kiosk<br/>cs-health-kiosk<br/>ongoing 15 coins/turn · +60 rep/turn")
+  cs_library("Library<br/>cs-library<br/>ongoing 25 coins/turn · +40 rep/turn")
+  cs_park("Park<br/>cs-park<br/>ongoing 40 coins/turn")
+  cs_playground("Playground<br/>cs-playground<br/>ongoing 20 coins/turn · +20 rep/turn")
+  cs_public_art("Public Art<br/>cs-public-art<br/>ongoing 25 coins/turn · +80 rep/turn")
+  cs_shelter("Community Shelter<br/>cs-shelter<br/>ongoing 30 coins/turn · +60 rep/turn")
+  synergy_culture(("Culture<br/>synergy-culture"))
+  synergy_entertainment(("Entertainment<br/>synergy-entertainment"))
+  synergy_health(("Health<br/>synergy-health"))
+  synergy_service(("Service<br/>synergy-service"))
+  upg_adventure_park["Adventure Park<br/>upg-adventure-park<br/>cost 300 · rep +5"]
+  upg_community_hub["Community Hub<br/>upg-community-hub<br/>cost 400 · rep +10"]
+  upg_garden["Garden<br/>upg-garden<br/>cost 300 · income +100"]
+  upg_grand_fountain["Grand Fountain<br/>upg-grand-fountain<br/>cost 300 · rep +5"]
+  upg_health_center["Health Center<br/>upg-health-center<br/>cost 400 · rep +5"]
+  upg_orchard["Orchard<br/>upg-orchard<br/>cost 300 · rep +5"]
+
+  cs_community_garden -->|Entertainment| synergy_entertainment
+  cs_community_garden -->|Orchard · level 0| upg_orchard
+  cs_fountain -->|Culture| synergy_culture
+  cs_fountain -->|Grand Fountain · level 0| upg_grand_fountain
+  cs_health_kiosk -->|Health| synergy_health
+  cs_health_kiosk -->|Health Center · level 0| upg_health_center
+  cs_library -->|Culture| synergy_culture
+  cs_library -->|Community Hub · level 0| upg_community_hub
+  cs_park -->|Entertainment| synergy_entertainment
+  cs_park -->|Garden · level 0| upg_garden
+  cs_playground -->|Entertainment| synergy_entertainment
+  cs_playground -->|Adventure Park · level 0| upg_adventure_park
+  cs_public_art -->|Culture| synergy_culture
+  cs_public_art -->|Entertainment| synergy_entertainment
+  cs_shelter -->|Service| synergy_service

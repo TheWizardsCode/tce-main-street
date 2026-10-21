@@ -42,6 +42,10 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const VITE_NODE_BIN = path.join(PROJECT_ROOT, 'node_modules', '.bin', 'vite-node');
 const DIAGRAM_CLI = 'src/scripts/card-diagrams-cli.ts';
 const SYNERGIES_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/card-synergies.mmd');
+const COMMUNITY_SPACES_ARTEFACT = path.join(
+  PROJECT_ROOT,
+  'docs/dev/assets/community-space-relationships.mmd',
+);
 
 /**
  * Shown in every drift-assertion failure so a stale artefact is trivial to fix
@@ -188,6 +192,97 @@ describe('AC4 — committed artefact matches regeneration', () => {
   });
 });
 
+// ── F2 — community-space relationship diagram ──────────────
+
+describe('F2 — community-space relationship diagram', () => {
+  const diagram = () => buildCardDiagram('community-spaces');
+
+  it('shows all eight community-space cards as nodes', () => {
+    const nodeIds = new Set(diagram().nodes.map((node) => node.id));
+    for (const space of getCommunitySpaceTemplates()) {
+      expect(nodeIds.has(space.id), `missing community-space node ${space.id}`).toBe(true);
+    }
+  });
+
+  it('connects each community space to every one of its synergy types', () => {
+    const edges = diagram().edges;
+    const expected = getCommunitySpaceTemplates().reduce(
+      (sum, card) => sum + card.synergyTypes.length,
+      0,
+    );
+    const synergyEdges = edges.filter((edge) => edge.to.startsWith('synergy-'));
+    expect(synergyEdges).toHaveLength(expected);
+    const publicArt = edges
+      .filter((edge) => edge.from === 'cs-public-art' && edge.to.startsWith('synergy-'))
+      .map((edge) => edge.to)
+      .sort();
+    expect(publicArt).toEqual(['synergy-culture', 'synergy-entertainment']);
+  });
+
+  it('reaches every community-space upgrade via its target card', () => {
+    const edges = diagram().edges;
+    const upgradeTargets = edges.filter((edge) => edge.to.startsWith('upg-'));
+    expect(upgradeTargets.map((edge) => `${edge.from}:${edge.to}`).sort()).toEqual([
+      'cs-community-garden:upg-orchard',
+      'cs-fountain:upg-grand-fountain',
+      'cs-health-kiosk:upg-health-center',
+      'cs-library:upg-community-hub',
+      'cs-park:upg-garden',
+      'cs-playground:upg-adventure-park',
+    ]);
+  });
+
+  it('labels upgrades with newDisplayName and requiredLevel', () => {
+    const d = diagram();
+    const orchard = d.nodes.find((node) => node.id === 'upg-orchard');
+    expect(orchard?.name).toBe('Orchard');
+    const edge = d.edges.find((e) => e.from === 'cs-community-garden' && e.to === 'upg-orchard');
+    expect(edge?.label).toContain('Orchard');
+    expect(edge?.label).toContain('level 0');
+  });
+
+  it('records ongoing cost and buff fields where set', () => {
+    const d = diagram();
+    const park = d.nodes.find((node) => node.id === 'cs-park');
+    expect(park?.detail).toContain('40');
+    const hub = d.nodes.find((node) => node.id === 'upg-community-hub');
+    expect(hub?.detail).toContain('rep +10');
+    const orchard = d.nodes.find((node) => node.id === 'upg-orchard');
+    expect(orchard?.detail).toContain('rep +5');
+  });
+
+  it('two builds are deeply equal and sorted', () => {
+    const first = diagram();
+    expect(first).toEqual(diagram());
+    const nodeIds = first.nodes.map((node) => node.id);
+    expect(nodeIds).toEqual([...nodeIds].sort());
+    const edgeKeys = first.edges.map((edge) => `${edge.from}\u0000${edge.to}`);
+    expect(edgeKeys).toEqual([...edgeKeys].sort());
+  });
+
+  it('is wired into --diagram and --diagram all', () => {
+    expect(listDiagramIds()).toContain('community-spaces');
+    expect(parseDiagramArgs(['--diagram', 'community-spaces']).diagrams).toEqual([
+      'community-spaces',
+    ]);
+    expect(parseDiagramArgs([]).diagrams).toContain('community-spaces');
+  });
+
+  it('emits the same manifest through --format json', () => {
+    const manifest = buildCardDiagramsManifest(['community-spaces']);
+    expect(manifest.diagrams).toHaveLength(1);
+    expect(manifest.diagrams[0].id).toBe('community-spaces');
+    expect(manifest.diagrams[0].nodes).toEqual(diagram().nodes);
+    expect(manifest.diagrams[0].edges).toEqual(diagram().edges);
+  });
+
+  it('the committed artefact matches regeneration byte-for-byte', () => {
+    expect(fs.existsSync(COMMUNITY_SPACES_ARTEFACT)).toBe(true);
+    const committed = fs.readFileSync(COMMUNITY_SPACES_ARTEFACT, 'utf-8');
+    expect(renderDiagramMermaid(diagram()), REGEN_DIAGRAMS_HINT).toBe(committed);
+  });
+});
+
 // ── AC1/AC2: CLI end-to-end ─────────────────────────────────
 
 describe('AC1/AC2 — diagrams CLI via vite-node', () => {
@@ -235,5 +330,12 @@ describe('AC1/AC2 — diagrams CLI via vite-node', () => {
     const res = runDiagramCli(['--diagram', 'nope']);
     expect(res.exitCode).not.toBe(0);
     expect(res.stderr).toContain('nope');
+  });
+
+  it('writes the community-space diagram for --diagram community-spaces', () => {
+    const out = path.join(tmpDir, 'community-spaces.mmd');
+    const res = runDiagramCli(['--diagram', 'community-spaces', '--out', out]);
+    expect(res.exitCode).toBe(0);
+    expect(fs.readFileSync(out, 'utf-8')).toContain('cs_community_garden');
   });
 });

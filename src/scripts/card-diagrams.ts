@@ -23,7 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
-import { getBusinessTemplates, getCommunitySpaceTemplates } from '../MainStreetCards';
+import { getBusinessTemplates, getCommunitySpaceTemplates, getUpgradeTemplates } from '../MainStreetCards';
 import { SYNERGY_TYPE_NAMES } from '../MainStreetCardsTypes';
 
 // ── Manifest types ──────────────────────────────────────────
@@ -48,6 +48,8 @@ export interface DiagramNode {
   readonly name: string;
   /** Visual category. */
   readonly kind: DiagramNodeKind;
+  /** Optional informational detail line (e.g. costs/buffs), when set. */
+  readonly detail?: string;
 }
 
 export interface DiagramEdge {
@@ -145,12 +147,87 @@ export function buildSynergyDiagram(): CardDiagram {
 }
 
 /**
+ * Builds the community-space relationship diagram: every community-space card
+ * as a node with one edge per synergy membership, plus each community-space
+ * upgrade reachable via `targetBusiness` (labelled with `newDisplayName` and
+ * `requiredLevel`, and carrying cost/buff details where set).
+ *
+ * @returns The deterministic community-space relationship diagram.
+ */
+export function buildCommunitySpacesDiagram(): CardDiagram {
+  const spaces = getCommunitySpaceTemplates();
+
+  const nodes: DiagramNode[] = spaces.map((space) => {
+    const detailParts: string[] = [];
+    if (space.ongoingCost > 0) detailParts.push(`ongoing ${space.ongoingCost} coins/turn`);
+    if ((space.reputationPerTurn ?? 0) > 0) detailParts.push(`+${space.reputationPerTurn} rep/turn`);
+    return {
+      id: space.id,
+      name: space.name,
+      kind: 'community-space',
+      detail: detailParts.length > 0 ? detailParts.join(' · ') : undefined,
+    };
+  });
+  const edges: DiagramEdge[] = [];
+  const usedSynergies = new Set<string>();
+
+  for (const space of spaces) {
+    for (const synergy of space.synergyTypes) {
+      usedSynergies.add(synergy);
+      edges.push({ from: space.id, to: synergyNodeId(synergy), label: synergy });
+    }
+    // One edge per community-space upgrade, labelled with the new display
+    // name and the required level (informational; the node carries buffs/cost).
+    const upgrades = getUpgradeTemplates().filter(
+      (upgrade) => upgrade.targetBusiness === space.name,
+    );
+    for (const upgrade of upgrades) {
+      nodes.push({
+        id: upgrade.id,
+        name: upgrade.newDisplayName ?? upgrade.name,
+        kind: 'upgrade',
+        detail: upgradeDetail(upgrade),
+      });
+      edges.push({
+        from: space.id,
+        to: upgrade.id,
+        label: `${upgrade.newDisplayName ?? upgrade.name} · level ${upgrade.requiredLevel ?? 0}`,
+      });
+    }
+  }
+
+  for (const synergy of usedSynergies) {
+    nodes.push({ id: synergyNodeId(synergy), name: synergy, kind: 'synergy' });
+  }
+
+  return sortDiagram({
+    id: 'community-spaces',
+    title: 'Community-space relationships',
+    nodes,
+    edges,
+  });
+}
+
+/** Formats an upgrade's cost/buff fields compactly (empty when none set). */
+function upgradeDetail(upgrade: {
+  readonly cost: number;
+  readonly incomeBonus: number;
+  readonly reputationBonus?: number;
+}): string | undefined {
+  const parts: string[] = [`cost ${upgrade.cost}`];
+  if (upgrade.incomeBonus > 0) parts.push(`income +${upgrade.incomeBonus}`);
+  if ((upgrade.reputationBonus ?? 0) > 0) parts.push(`rep +${upgrade.reputationBonus}`);
+  return parts.join(' · ');
+}
+
+/**
  * Registry of diagram builders. Domains are added here as their builders land
  * (F2–F4); `listDiagramIds()` is the source of truth for the CLI's default
  * `all` selection.
  */
 const DIAGRAM_BUILDERS: Partial<Record<DiagramId, () => CardDiagram>> = {
   synergies: buildSynergyDiagram,
+  'community-spaces': buildCommunitySpacesDiagram,
 };
 
 /** Canonical domain order (`--diagram all` and the JSON manifest). */
@@ -243,7 +320,8 @@ export function renderDiagramMermaid(diagram: CardDiagram): string {
 
   for (const node of diagram.nodes) {
     const id = mermaidId(node.id);
-    const label = mermaidLabel(`${node.name}<br/>${node.id}`);
+    const detail = node.detail ? `<br/>${node.detail}` : '';
+    const label = mermaidLabel(`${node.name}<br/>${node.id}${detail}`);
     const shape = nodeShape(node.kind, id, label);
     lines.push(`  ${shape}`);
   }
