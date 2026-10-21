@@ -404,6 +404,19 @@ function withStorylineRecorder<T>(
 }
 
 /**
+ * Reduces a runtime card instance ID to its template ID.
+ *
+ * Deck construction appends an instance counter to the template ID
+ * (`biz-spa` → `biz-spa-0`, `biz-spa-1`, …). `finalGrid` is consumed by
+ * template-derived analytics (G4 synergy diversity), so it records the
+ * template ID — strip the trailing `-<counter>` when present. Template IDs
+ * that do not end in a counter are returned unchanged.
+ */
+function toTemplateCardId(cardId: string): string {
+  return cardId.replace(/-\d+$/, '');
+}
+
+/**
  * Runs a single Monte Carlo seed to completion against the supplied state.
  *
  * Storyline `event-choice` transcript records are captured for the run and
@@ -568,7 +581,7 @@ function simulateSeed(
     storylineEvents: deriveStorylineEvents(events),
     finalGrid: state.streetGrid
       .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
-      .map(card => card.id),
+      .map(card => toTemplateCardId(card.id)),
   };
 }
 
@@ -1259,7 +1272,7 @@ export function runCompetitiveSeed(
     players,
     finalGrid: state.streetGrid
       .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
-      .map(card => card.id),
+      .map(card => toTemplateCardId(card.id)),
   };
 }
 

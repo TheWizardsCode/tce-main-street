@@ -59,6 +59,23 @@ export type {
 } from './global-metrics';
 
 export {
+  SYNERGY_DOMINANCE_THRESHOLD,
+  assembleSynergyDiversityReport,
+  buildSynergyDiversityEntry,
+  findDominantTypes,
+  formatDominanceWarnings,
+  formatSynergyDiversityJson,
+  formatSynergyDiversityMarkdown,
+} from './synergy-diversity';
+export type {
+  DominanceFinding,
+  SynergyDiversityProfile,
+  SynergyDiversityReport,
+  SynergyDiversityReportEntry,
+  SynergyDiversityRuns,
+} from './synergy-diversity';
+
+export {
   KNOWN_STORYLINE_IDS,
   computeStorylineFireFrequency,
   computeChainDepthStats,

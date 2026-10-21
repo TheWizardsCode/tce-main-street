@@ -41,6 +41,7 @@
     "package:linux": "npm run build:electron && npm run build:electron-main && electron-builder --linux --publish never",
     "package:mac": "npm run build:electron && npm run build:electron-main && electron-builder --mac --publish never",
     "balance:drift-report": "vite-node src/scripts/balance/drift-report.ts",
+    "balance:synergy-diversity-report": "vite-node src/scripts/balance/synergy-diversity-report.ts",
     "test:unit": "tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli",
     "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core"
   },
