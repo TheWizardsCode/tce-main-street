@@ -35,6 +35,7 @@ import {
   getBusinessTemplates,
   getCommunitySpaceTemplates,
   getStaffCardTemplates,
+  getUpgradeTemplates,
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
 import { STAFF_SKILL_CATALOG } from '../../src/MainStreetStaffSkills';
@@ -49,6 +50,7 @@ const COMMUNITY_SPACES_ARTEFACT = path.join(
   'docs/dev/assets/community-space-relationships.mmd',
 );
 const STAFF_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/staff-relationships.mmd');
+const UPGRADES_ARTEFACT = path.join(PROJECT_ROOT, 'docs/dev/assets/upgrade-chains.mmd');
 
 /**
  * Shown in every drift-assertion failure so a stale artefact is trivial to fix
@@ -383,6 +385,105 @@ describe('F3 — staff relationship diagram', () => {
   });
 });
 
+// ── F4 — upgrade chain diagram ──────────────────────────────
+
+describe('F4 — upgrade chain diagram', () => {
+  const diagram = () => buildCardDiagram('upgrades');
+
+  it('shows every upgrade as a node', () => {
+    const upgIds = new Set(
+      diagram()
+        .nodes.filter((node) => node.kind === 'upgrade')
+        .map((node) => node.id),
+    );
+    for (const upgrade of getUpgradeTemplates()) {
+      expect(upgIds.has(upgrade.id), `missing upgrade node ${upgrade.id}`).toBe(true);
+    }
+  });
+
+  it('roots every level-1 upgrade directly at its upgradeable card', () => {
+    const d = diagram();
+    const roots = d.nodes.filter(
+      (node) => node.kind === 'business' || node.kind === 'community-space',
+    );
+    for (const upgrade of getUpgradeTemplates()) {
+      if ((upgrade.requiredLevel ?? 0) !== 0) continue;
+      const incoming = d.edges.filter((e) => e.to === upgrade.id).map((e) => e.from);
+      expect(incoming, `${upgrade.id} must have exactly one parent`).toHaveLength(1);
+      expect(
+        roots.some((root) => root.id === incoming[0]),
+        `${upgrade.id} must branch from a card root`,
+      ).toBe(true);
+    }
+  });
+
+  it('chains each level-2 upgrade under its level-1 step only', () => {
+    const d = diagram();
+    const incoming = (id: string): string[] =>
+      d.edges.filter((e) => e.to === id).map((e) => e.from);
+    // The four level-2 chains in the shipped CSV.
+    expect(incoming('upg-grand-bakehouse')).toEqual(['upg-bread-factory']);
+    expect(incoming('upg-restaurant')).toEqual(['upg-fast-food']);
+    expect(incoming('upg-multiplex')).toEqual(['upg-imax']);
+    expect(incoming('upg-luxury-retreat')).toEqual(['upg-resort-spa']);
+    // No level-2 upgrade hangs directly off a chain root.
+    for (const id of [
+      'upg-grand-bakehouse',
+      'upg-restaurant',
+      'upg-multiplex',
+      'upg-luxury-retreat',
+    ]) {
+      const parentKinds = incoming(id).map((from) => d.nodes.find((n) => n.id === from)?.kind);
+      expect(parentKinds).toEqual(['upgrade']);
+    }
+  });
+
+  it('shows level-1 branches directly from their root', () => {
+    const d = diagram();
+    const fromRoot = (root: string, to: string): boolean =>
+      d.edges.some((e) => e.from === root && e.to === to);
+    expect(fromRoot('biz-bakery', 'upg-patisserie')).toBe(true);
+    expect(fromRoot('biz-bakery', 'upg-bread-factory')).toBe(true);
+    expect(fromRoot('biz-diner', 'upg-bistro')).toBe(true);
+    expect(fromRoot('biz-diner', 'upg-fast-food')).toBe(true);
+    expect(fromRoot('cs-park', 'upg-garden')).toBe(true);
+  });
+
+  it('labels upgrade nodes/edges with the new display name, level and cost/income detail', () => {
+    const d = diagram();
+    const grand = d.nodes.find((node) => node.id === 'upg-grand-bakehouse');
+    expect(grand?.name).toBe('Grand Bakehouse');
+    expect(grand?.detail).toContain('cost 900');
+    expect(grand?.detail).toContain('income +350');
+    const edge = d.edges.find((e) => e.to === 'upg-grand-bakehouse');
+    expect(edge?.label).toContain('Grand Bakehouse');
+    expect(edge?.label).toContain('level 1');
+  });
+
+  it('two builds are deeply equal and sorted', () => {
+    const first = diagram();
+    expect(first).toEqual(diagram());
+    const nodeIds = first.nodes.map((node) => node.id);
+    expect(nodeIds).toEqual([...nodeIds].sort());
+    const edgeKeys = first.edges.map((e) => `${e.from}\u0000${e.to}\u0000${e.label ?? ''}`);
+    expect(edgeKeys).toEqual([...edgeKeys].sort());
+  });
+
+  it('is wired into --diagram, --diagram all and --format json', () => {
+    expect(listDiagramIds()).toContain('upgrades');
+    expect(parseDiagramArgs(['--diagram', 'upgrades']).diagrams).toEqual(['upgrades']);
+    const manifest = buildCardDiagramsManifest(['upgrades']);
+    expect(manifest.diagrams[0].id).toBe('upgrades');
+    expect(manifest.diagrams[0].edges).toEqual(diagram().edges);
+  });
+
+  it('the committed artefact matches regeneration byte-for-byte', () => {
+    expect(fs.existsSync(UPGRADES_ARTEFACT)).toBe(true);
+    const committed = fs.readFileSync(UPGRADES_ARTEFACT, 'utf-8');
+    expect(renderDiagramMermaid(diagram()), REGEN_DIAGRAMS_HINT).toBe(committed);
+  });
+});
+
 // ── AC1/AC2: CLI end-to-end ─────────────────────────────────
 
 describe('AC1/AC2 — diagrams CLI via vite-node', () => {
@@ -445,5 +546,12 @@ describe('AC1/AC2 — diagrams CLI via vite-node', () => {
     expect(res.exitCode).toBe(0);
     expect(fs.readFileSync(out, 'utf-8')).toContain('staff_chef');
     expect(fs.readFileSync(out, 'utf-8')).toContain('skill_category_income_boost');
+  });
+
+  it('writes the upgrade-chains diagram for --diagram upgrades', () => {
+    const out = path.join(tmpDir, 'upgrades.mmd');
+    const res = runDiagramCli(['--diagram', 'upgrades', '--out', out]);
+    expect(res.exitCode).toBe(0);
+    expect(fs.readFileSync(out, 'utf-8')).toContain('upg_grand_bakehouse');
   });
 });

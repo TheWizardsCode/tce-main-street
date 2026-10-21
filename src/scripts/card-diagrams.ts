@@ -306,6 +306,102 @@ export function buildStaffDiagram(): CardDiagram {
   });
 }
 
+/** Fields of an upgrade card needed to build the chain diagram. */
+interface UpgradeLike {
+  readonly id: string;
+  readonly name: string;
+  readonly targetBusiness: string;
+  readonly cost: number;
+  readonly incomeBonus: number;
+  readonly reputationBonus?: number;
+  readonly newDisplayName?: string;
+  readonly requiredLevel?: number;
+}
+
+/**
+ * Resolves the parent of a multi-level upgrade inside its target's chain: the
+ * highest-income upgrade exactly one level lower (ties broken by id). This is
+ * the deterministic rule that reproduces the four shipped level-2 chains:
+ * Bread Factory → Grand Bakehouse, Fast Food → Restaurant,
+ * IMAX → Multiplex, Resort Spa → Luxury Retreat.
+ *
+ * @returns The parent upgrade, or null for a level-0 (root-branch) upgrade.
+ */
+function findUpgradeParent(
+  chain: readonly UpgradeLike[],
+  upgrade: UpgradeLike,
+): UpgradeLike | null {
+  const level = upgrade.requiredLevel ?? 0;
+  if (level === 0) return null;
+  const candidates = chain.filter((candidate) => (candidate.requiredLevel ?? 0) === level - 1);
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => {
+    if (b.incomeBonus !== a.incomeBonus) return b.incomeBonus - a.incomeBonus;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  })[0]!;
+}
+
+/**
+ * Builds the upgrade chain diagram: each upgradeable business/community space
+ * as a chain root, each level-0 upgrade branching directly from it, and each
+ * multi-level upgrade succeeding its level-1 step (so the level-2 gate is
+ * visible). Upgrade nodes are labelled with `newDisplayName` and carry
+ * cost/income/reputation detail.
+ *
+ * @returns The deterministic upgrade chain diagram.
+ */
+export function buildUpgradeDiagram(): CardDiagram {
+  const cards = [...getBusinessTemplates(), ...getCommunitySpaceTemplates()];
+  const cardByName = new Map(cards.map((card) => [card.name, card]));
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const cardKindById = new Map<string, 'business' | 'community-space'>([
+    ...getBusinessTemplates().map((card) => [card.id, 'business'] as const),
+    ...getCommunitySpaceTemplates().map((card) => [card.id, 'community-space'] as const),
+  ]);
+  const chainByCardId = new Map<string, UpgradeLike[]>();
+
+  for (const upgrade of getUpgradeTemplates()) {
+    const card = cardByName.get(upgrade.targetBusiness);
+    if (!card) continue;
+    const chain = chainByCardId.get(card.id) ?? [];
+    chain.push(upgrade);
+    chainByCardId.set(card.id, chain);
+  }
+
+  const nodes: DiagramNode[] = [];
+  const edges: DiagramEdge[] = [];
+  for (const [cardId, chain] of chainByCardId) {
+    const card = cardsById.get(cardId)!;
+    nodes.push({
+      id: card.id,
+      name: card.name,
+      kind: cardKindById.get(cardId) ?? 'business',
+      detail: card.maxLevel > 0 ? `max level ${card.maxLevel}` : undefined,
+    });
+    for (const upgrade of chain) {
+      nodes.push({
+        id: upgrade.id,
+        name: upgrade.newDisplayName ?? upgrade.name,
+        kind: 'upgrade',
+        detail: upgradeDetail(upgrade),
+      });
+      const parent = findUpgradeParent(chain, upgrade);
+      edges.push({
+        from: parent ? parent.id : cardId,
+        to: upgrade.id,
+        label: `${upgrade.newDisplayName ?? upgrade.name} · level ${upgrade.requiredLevel ?? 0}`,
+      });
+    }
+  }
+
+  return sortDiagram({
+    id: 'upgrades',
+    title: 'Upgrade chains',
+    nodes,
+    edges,
+  });
+}
+
 /**
  * Registry of diagram builders. Domains are added here as their builders land
  * (F2–F4); `listDiagramIds()` is the source of truth for the CLI's default
@@ -315,6 +411,7 @@ const DIAGRAM_BUILDERS: Partial<Record<DiagramId, () => CardDiagram>> = {
   synergies: buildSynergyDiagram,
   'community-spaces': buildCommunitySpacesDiagram,
   staff: buildStaffDiagram,
+  upgrades: buildUpgradeDiagram,
 };
 
 /** Canonical domain order (`--diagram all` and the JSON manifest). */
