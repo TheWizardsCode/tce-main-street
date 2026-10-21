@@ -94,6 +94,13 @@ export interface MonteCarloRunSummary {
    * engine's storyline metrics degrade gracefully to `null` in that case.
    */
   storylineEvents?: StorylineEventRecord[];
+  /**
+   * Card IDs of non-null slots on the street grid at the end of the run.
+   * Optional for backward compatibility with stored summaries and test
+   * fixtures predating the capture; absent is treated as an empty grid.
+   * Populated as a single shallow copy of the non-null slot card IDs.
+   */
+  finalGrid?: string[];
 }
 
 export interface MonteCarloMetrics {
@@ -559,6 +566,9 @@ function simulateSeed(
     communitySpacePlacements: loop.communitySpacePlacements,
     economyHistory: [...state.ledger.getHistory()],
     storylineEvents: deriveStorylineEvents(events),
+    finalGrid: state.streetGrid
+      .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
+      .map(card => card.id),
   };
 }
 
@@ -965,6 +975,12 @@ export interface CompetitiveRunSummary {
   turns: number;
   /** Per-player summaries (length = playerCount). */
   players: CompetitivePlayerRunSummary[];
+  /**
+   * Card IDs of non-null slots on the shared street grid at the end of the
+   * run. Optional for backward compatibility with stored summaries and test
+   * fixtures predating the capture; absent is treated as an empty grid.
+   */
+  finalGrid?: string[];
 }
 
 /** Aggregate metrics for a single owner across a batch of seeds. */
@@ -1235,7 +1251,16 @@ export function runCompetitiveSeed(
     };
   });
 
-  return { seed, winnerId, endReason, turns, players };
+  return {
+    seed,
+    winnerId,
+    endReason,
+    turns,
+    players,
+    finalGrid: state.streetGrid
+      .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
+      .map(card => card.id),
+  };
 }
 
 /**

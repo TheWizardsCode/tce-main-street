@@ -12,6 +12,10 @@
  */
 
 import type { MonteCarloRunSummary } from '../../../MainStreetMonteCarlo';
+import {
+  getBusinessTemplates,
+  getCommunitySpaceTemplates,
+} from '../../../MainStreetCardsTemplates';
 import { median, gini } from './statistics';
 
 // =========================================================================
@@ -219,40 +223,71 @@ export interface SynergyDiversityResult {
 }
 
 /**
+ * Builds a card ID → synergy types map from the active card templates.
+ *
+ * Business and community-space templates both expose `id` and
+ * `synergyTypes`. Cards without any synergy types map to an empty array, so
+ * multi-type cards (e.g. `Food|Culture`) are represented by every type they
+ * provide.
+ *
+ * @returns Mapping from card ID to its list of synergy type names.
+ */
+export function buildSynergyTypeMap(): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  const templates = [...getBusinessTemplates(), ...getCommunitySpaceTemplates()];
+
+  for (const template of templates) {
+    map[template.id] = [...template.synergyTypes];
+  }
+
+  return map;
+}
+
+/**
  * Computes G4: Synergy Diversity Index (HHI of synergy type shares).
  *
- * Requires Phase 1 `finalGrid` on run summaries.
- * Returns `null` when `finalGrid` is absent.
+ * Requires `finalGrid` on run summaries (captured from Phase 1 data).
+ * Returns `null` when no run carries `finalGrid` or when `runs` is empty.
+ *
+ * Cards with multiple synergy types count once for **each** type, so the
+ * HHI denominator is the total number of synergy-type occurrences across all
+ * final grids (not the number of cards). Unknown card IDs fall back to the
+ * `Unknown` type.
  *
  * @param runs - Monte Carlo run summaries with (optional) `finalGrid`.
- * @param synergyTypeMap - Mapping from card ID to synergy type name.
+ * @param synergyTypeMap - Mapping from card ID to its synergy type names.
  * @returns Synergy diversity result, or `null` if data absent.
  */
 export function computeSynergyDiversity(
   runs: MonteCarloRunSummary[],
-  synergyTypeMap: Record<string, string>,
+  synergyTypeMap: Record<string, readonly string[]>,
 ): SynergyDiversityResult | null {
   if (runs.length === 0) return null;
 
   const hasFinalGrid = runs.some(r => 'finalGrid' in r);
   if (!hasFinalGrid) return null;
 
-  // Count synergy type occurrences across all final grids
+  // Count synergy type occurrences across all final grids. A card with
+  // multiple types contributes +1 to each of its types.
   const synergyCounts: Record<string, number> = {};
-  let totalCards = 0;
+  let totalTypeOccurrences = 0;
 
   for (const run of runs) {
-    const grid = (run as any).finalGrid as string[] | undefined;
+    const grid = (run as { finalGrid?: string[] }).finalGrid;
     if (!grid) continue;
 
     for (const cardId of grid) {
-      const type = synergyTypeMap[cardId] ?? 'Unknown';
-      synergyCounts[type] = (synergyCounts[type] ?? 0) + 1;
-      totalCards++;
+      const mapped = synergyTypeMap[cardId];
+      const types = mapped && mapped.length > 0 ? mapped : ['Unknown'];
+
+      for (const type of types) {
+        synergyCounts[type] = (synergyCounts[type] ?? 0) + 1;
+        totalTypeOccurrences++;
+      }
     }
   }
 
-  if (totalCards === 0) {
+  if (totalTypeOccurrences === 0) {
     return { hhi: 0, synergyTypeShares: {} };
   }
 
@@ -261,7 +296,7 @@ export function computeSynergyDiversity(
   let hhiSum = 0;
 
   for (const [type, count] of Object.entries(synergyCounts)) {
-    const share = count / totalCards;
+    const share = count / totalTypeOccurrences;
     synergyTypeShares[type] = share;
     hhiSum += share * share;
   }

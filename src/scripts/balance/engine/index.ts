@@ -39,6 +39,7 @@ export {
   computeWinRateByStrategyDifficulty,
   computeScoreDistribution,
   computeEconomyHealth,
+  buildSynergyTypeMap,
   computeSynergyDiversity,
   computeLossModeDecomposition,
   computeCardUsageDiversity,
