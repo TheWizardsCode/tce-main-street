@@ -66,9 +66,9 @@ export async function loadMainStreetTfIntegration(
   return {
     player: createTfPlayer(module, {
       keyMap: MAIN_STREET_TF_SFX_MAPPING,
-      // The four factory-less mappings fall back to WAV by design; that
-      // expected fallback stays quiet while any unexpected missing factory
-      // still warns (MS-0MV26MOWT004ZCQC).
+      // Every mapped key ships a runtime factory, so no expected fallback
+      // needs suppressing; any genuinely missing factory still warns
+      // (MS-0MV8PDNDT0033TH8, MS-0MV26MOWT004ZCQC).
       logger: createMainStreetTfLogger(),
     }),
     keyMap: MAIN_STREET_TF_SFX_MAPPING,

@@ -3,14 +3,16 @@
  * (MS-0MV26MOWT004ZCQC).
  *
  * `createTfPlayer` warns through its `logger` for every key whose mapped
- * factory is absent. Main Street maps 16 logical SFX keys but the committed
- * runtime synth ships only 12 factories, so four mappings **intentionally**
- * fall back to WAV (engine contract CG-0MUU9PSWC009CW76, codified by
- * `tests/main-street/tfFallback.test.ts`). Warning on every play flooded the
- * console and drowned out genuine diagnostics.
+ * factory is absent. Main Street maps 16 logical SFX keys and the committed
+ * runtime synth ships a factory for all of them (MS-0MV8PDNDT0033TH8), so no
+ * Main Street key intentionally falls back to WAV any more. The suppression
+ * mechanism is retained for any future intentional fallback: `createTfPlayer`
+ * warns for every key whose mapped factory is absent, and the documented
+ * factory-less list is the single place to declare an expected gap
+ * (MS-0MV26MOWT004ZCQC).
  *
  * This logger suppresses the `[tfAdapter] Missing tf factory …` warning for
- * exactly those documented factory-less keys — whether reported under the
+ * exactly the documented factory-less keys — whether reported under the
  * logical `sfx-` key or under its already-mapped factory key — and forwards
  * every other message unchanged. The detection is never removed: an
  * unexpected missing factory, or any other adapter warning (failed voice
@@ -42,6 +44,10 @@ const EXPECTED_FACTORYLESS_KEYS: ReadonlySet<string> = new Set([
 /**
  * Whether `message` is the adapter's missing-factory warning for one of the
  * documented factory-less Main Street mappings.
+ *
+ * The documented list is currently empty (every mapping ships a factory), so
+ * this always returns `false` today; it remains the single suppression point
+ * for any future intentional fallback.
  *
  * @param message The exact warning message produced by `createTfPlayer`.
  */
