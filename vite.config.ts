@@ -67,12 +67,6 @@ const CLI_TEST_FILES = [
   'tests/main-street/storyline-author.test.ts',
   'tests/main-street/storyline-graph-svg.test.ts',
   'tests/main-street/harness-cli.test.ts',
-  // Spawns the `docs:diagrams` CLI through `vite-node` eight times with a
-  // 180 s subprocess budget; in the parallel `unit` project its 15 s per-test
-  // budget was regularly exceeded under host load (measured 15.5 s for
-  // `--check exits non-zero when the artefact is missing`), failing the whole
-  // suite on a purely environmental timeout (MS-0MVJPV0BV000LSLW).
-  'tests/main-street/card-diagrams.test.ts',
 ];
 
 /**

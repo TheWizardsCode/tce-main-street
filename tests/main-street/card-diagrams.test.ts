@@ -17,11 +17,24 @@
  *
  * @module
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+
+/**
+ * Generous per-test budget for this file (MS-0MVJPV0BV000LSLW).
+ *
+ * Every CLI test below cold-starts `vite-node` (`runDiagramCli`), which takes
+ * 12-15 s on an idle host and exceeded the `unit` project's 15 s budget under
+ * host load (measured 15,530 ms for "--check exits non-zero when the artefact
+ * is missing" while another suite ran concurrently), failing the whole suite
+ * on a purely environmental timeout. 60 s keeps a genuine hang diagnosable
+ * while absorbing CPU contention; the spawned CLI keeps its own 180 s
+ * subprocess cap.
+ */
+vi.setConfig({ testTimeout: 60_000 });
 
 import {
   buildCardDiagram,

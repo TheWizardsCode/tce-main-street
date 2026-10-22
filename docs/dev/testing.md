@@ -18,11 +18,11 @@ The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
 
-Subprocess/render-heavy CLI tests (`storyline-graph-svg`, `card-diagrams`, …)
-run in the serialized `unit-cli` project with a 180 s per-test budget (`see
-CLI_TEST_FILES` in `vite.config.ts`): cold `vite-node` starts under CPU load
-regularly exceed the parallel `unit` project's 15 s budget, so the two must
-never share a project.
+Tests that cold-start a CLI through `vite-node` (`card-diagrams`, the
+storyline CLI files) allow a generous per-test budget: cold starts take
+12-15 s on an idle host and regularly exceed the 15 s `unit` budget under CPU
+contention. If such a test times out, re-run rather than "fixing" a CLI that
+is fine — and prefer raising the margin over shrinking the workload.
 
 ## Prerequisites: Playwright Chromium
 
