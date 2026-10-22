@@ -18,6 +18,35 @@ The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
 
+## Prerequisites: Playwright Chromium
+
+Some **unit** tests also launch Chromium (`storyline-graph-svg.test.ts` renders
+Mermaid diagrams through `chromium.launch()`), so the Playwright browser binary
+is required even when you only run `npm test`. Install it once per machine:
+
+```bash
+npx playwright install chromium           # verify with: npx playwright install --list
+npx playwright install --with-deps chromium   # Linux: also install system libraries (may need sudo)
+```
+
+Playwright picks its browser from a **per-version** cache directory
+(`~/.cache/ms-playwright/chromium-<revision>`), so the binary must match the
+*installed* `playwright` package. When `node_modules` is refreshed ahead of the
+committed `package-lock.json`, the browser for the new revision is missing and
+the suite fails with:
+
+```
+Error: browserType.launch: Executable doesn't exist at
+  .../ms-playwright/chromium_headless_shell-<revision>/.../chrome-headless-shell
+```
+
+`npm test` runs `src/scripts/check-playwright-chromium.ts` as its `pretest`
+hook. That check is launch-free (package resolution + one `existsSync` + a
+`package-lock.json` read) and fails in under a second with the exact
+remediation commands instead of an opaque Vitest unhandled error. It also warns
+when `node_modules` drifts from the lockfile — in that case run `npm ci` first,
+then `npx playwright install chromium`.
+
 ## Import shared helpers through the core aliases
 
 The engine and its shared test helpers live in the `core` git submodule

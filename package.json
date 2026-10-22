@@ -18,6 +18,7 @@
     "storylines:graph:svg": "vite-node src/scripts/render-storyline-graph-cli.ts",
     "docs:diagrams": "vite-node src/scripts/card-diagrams-cli.ts",
     "storylines:author": "vite-node src/scripts/storyline-author-cli.ts",
+    "pretest": "tsx src/scripts/check-playwright-chromium.ts",
     "test": "tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli",
     "test:browser": "vitest run --project browser tests/main-street/cards/browser",
     "test:smoke": "bash scripts/run-smoke-tests.sh",
