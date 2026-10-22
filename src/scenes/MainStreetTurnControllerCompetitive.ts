@@ -56,6 +56,7 @@ import {
   MainStreetAiPlayer,
   RandomStrategy,
   bindCompetitiveSeat,
+  competitiveAiReserveCoins,
   resolveSeatDifficulty,
   restoreCompetitiveSeat,
   type MainStreetAiStrategy,
@@ -240,6 +241,13 @@ function defaultSeatRng(state: MainStreetState, playerId: number): () => number 
  * The bounded guard ({@link CompetitiveAiDriverOptions.maxActionsPerSeat})
  * stops a misbehaving strategy from looping forever; illegal actions and
  * strategy errors end the seat's phase rather than throwing into the scene.
+ *
+ * Every bind/restore pair passes the seat's liquidity reserve
+ * ({@link competitiveAiReserveCoins}, MS-0MVJNFESC005QJ41) so the AI cannot
+ * spend its last coins and then be bankrupted by the shared closing (ongoing
+ * costs + the day's incident) — the reported "AI bankrupt in the first turn"
+ * behaviour. The reserve only limits the AI's *spendable* view of its wallet;
+ * the seat's real balance is unchanged (see `bindCompetitiveSeat`).
  */
 function driveActiveAiSeat(
   state: MainStreetState,
@@ -254,23 +262,24 @@ function driveActiveAiSeat(
   const maxActions = options.maxActionsPerSeat ?? DEFAULT_MAX_ACTIONS_PER_AI_SEAT;
   const rng = (options.rngForSeat ?? ((id) => defaultSeatRng(state, id)))(playerId);
   const aiPlayer = createSeatAiPlayer(seat, rng);
+  const difficulty = resolveSeatDifficulty(state, playerId);
+  const reserve = competitiveAiReserveCoins(state, difficulty);
   let actions = 0;
 
   for (let guard = 0; guard < maxActions; guard++) {
     if (state.gameResult !== 'playing' || state.phase !== 'MarketPhase') break;
 
-    bindCompetitiveSeat(state, playerId);
+    bindCompetitiveSeat(state, playerId, reserve);
     let action: PlayerAction;
     try {
-      const difficulty = resolveSeatDifficulty(state, playerId);
       action = withSeatDifficulty(state, difficulty, () => aiPlayer.chooseAction(state));
     } catch {
-      restoreCompetitiveSeat(state, playerId);
+      restoreCompetitiveSeat(state, playerId, reserve);
       break;
     }
 
     if (action.type === 'end-turn') {
-      restoreCompetitiveSeat(state, playerId);
+      restoreCompetitiveSeat(state, playerId, reserve);
       break;
     }
 
@@ -278,10 +287,10 @@ function driveActiveAiSeat(
       executeAction(state, action);
     } catch {
       // Illegal action from the strategy — end this seat's MarketPhase.
-      restoreCompetitiveSeat(state, playerId);
+      restoreCompetitiveSeat(state, playerId, reserve);
       break;
     }
-    restoreCompetitiveSeat(state, playerId);
+    restoreCompetitiveSeat(state, playerId, reserve);
     actions += 1;
 
     addLog(state, playerId, describeAction(action), 'neutral');

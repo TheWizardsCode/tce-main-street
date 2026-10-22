@@ -2671,6 +2671,67 @@ function competitiveFavourScore(
     : 1;
 }
 
+// ── Competitive AI liquidity reserve (MS-0MVJNFESC005QJ41) ────
+
+/**
+ * Fraction of a seat's *starting* coins that a competitive AI seat keeps in
+ * reserve while it spends during its MarketPhase.
+ *
+ * Root cause of "Play Again does not reset the AI" (MS-0MVJNFESC005QJ41): a
+ * freshly created competitive game was already correct (every seat starts at
+ * the preset's coins/reputation), but the AI seats spent their whole purse on
+ * the opening day — e.g. hiring staff with 400 of its 600 starting coins —
+ * and were then bankrupted by that same day's incident (a flat `-200` Protest
+ * or `-500` General Strike). The result was a match decided on turn 1 with the
+ * AI eliminated, which a player reasonably read as "the AI's stats were not
+ * reset".
+ *
+ * Keeping a difficulty-gated liquidity floor stops the AI spending itself
+ * into bankruptcy range on the opening day (and every later day) while still
+ * letting it invest once it has earnings. Easier seats play more defensively
+ * (they keep a larger share back), mirroring the existing difficulty-gated
+ * liquidity floors used by the piggyback policy
+ * ({@link PIGGYBACK_DIFFICULTY_PROFILES}).
+ */
+export const COMPETITIVE_AI_RESERVE_RATIO: Record<DifficultyName, number> = {
+  Easy: 0.5,
+  Medium: 0.35,
+  Hard: 0.25,
+};
+
+/**
+ * Coins a competitive AI seat must keep out of its spending budget.
+ *
+ * `round(state.config.startingCoins × COMPETITIVE_AI_RESERVE_RATIO[difficulty])`.
+ * Derived from the shared economy's starting purse (not the seat's current
+ * wallet) so the floor is stable across a run: a seat that has grown rich may
+ * still spend freely above it, and a seat that has fallen to the floor stops
+ * buying until its income recovers.
+ *
+ * @param state      Current game state (read-only).
+ * @param difficulty Seat's decision-policy difficulty.
+ */
+export function competitiveAiReserveCoins(
+  state: MainStreetState,
+  difficulty: DifficultyName,
+): number {
+  const ratio = COMPETITIVE_AI_RESERVE_RATIO[difficulty] ?? COMPETITIVE_AI_RESERVE_RATIO.Medium;
+  return Math.max(0, Math.round((state.config.startingCoins ?? 0) * ratio));
+}
+
+/**
+ * Coins withheld from a seat's spendable balance: the reserve, capped at the
+ * seat's current coins (a seat below its floor simply has nothing to spend).
+ * Pure helper shared by {@link bindCompetitiveSeat} and
+ * {@link restoreCompetitiveSeat} so the two sides of a bind/restore pair can
+ * never disagree.
+ */
+function competitiveSeatWithheldCoins(playerCoins: number, reserveCoins: number): number {
+  if (!Number.isFinite(reserveCoins) || reserveCoins <= 0) return 0;
+  const coins = Number.isFinite(playerCoins) ? playerCoins : 0;
+  return Math.max(0, Math.min(reserveCoins, coins));
+}
+
 // ── Competitive seat binding (headless / harness driving) ─────
 
 /**
@@ -2696,13 +2757,33 @@ function competitiveFavourScore(
  * (MS-0MUVUPWHD0032CU4). `restoreCompetitiveSeat` subtracts it again so the
  * base field is never polluted by the bank across bind/restore cycles.
  *
- * @param state    Current game state (mutated in-place).
- * @param playerId Owner index; defaults to the active player.
+ * ### Liquidity reserve (`reserveCoins`, MS-0MVJNFESC005QJ41)
+ *
+ * When `reserveCoins` is non-zero the shared wallet is bound with that many
+ * coins *withheld*: every engine affordability check (and therefore every
+ * legal action the AI strategy can enumerate) sees only the seat's spendable
+ * coins, so an AI seat cannot spend itself down to its last coin and then be
+ * bankrupted by the shared closing (ongoing costs + the day's incident). This
+ * is a *view* of the wallet, not a charge: {@link restoreCompetitiveSeat}
+ * re-adds exactly the same withheld amount, so the seat's real balance is
+ * unchanged by the reserve. The withheld amount is capped at the seat's
+ * current coins and re-derived from the untouched `PlayerRecord` on restore,
+ * so bind/restore stay a matched pair. No-op (reserve ignored) in
+ * single-player states.
+ *
+ * @param state        Current game state (mutated in-place).
+ * @param playerId     Owner index; defaults to the active player.
+ * @param reserveCoins Coins withheld from the seat's spendable balance (0 =
+ *                     no reserve, the default for human seats and harnesses).
  */
-export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): void {
+export function bindCompetitiveSeat(
+  state: MainStreetState,
+  playerId?: number,
+  reserveCoins: number = 0,
+): void {
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return;
-  state.resourceBank.coins = player.coins;
+  state.resourceBank.coins = player.coins - competitiveSeatWithheldCoins(player.coins, reserveCoins);
   state.resourceBank.reputation = player.reputation;
   state.hand = player.hand;
   state.staffCards = player.staffCards;
@@ -2716,13 +2797,25 @@ export function bindCompetitiveSeat(state: MainStreetState, playerId?: number): 
  * the acting competitive player's record (the inverse of
  * {@link bindCompetitiveSeat}). No-op in single-player states.
  *
- * @param state    Current game state (mutated in-place).
- * @param playerId Owner index; defaults to the active player.
+ * `reserveCoins` must match the value passed to the balancing
+ * {@link bindCompetitiveSeat}: the withheld coins are re-added to whatever the
+ * shared wallet holds after the seat's actions, so the reserve itself is never
+ * spent (MS-0MVJNFESC005QJ41). The withheld amount is re-derived from the
+ * seat's untouched `PlayerRecord` (`player.coins` is only written here), which
+ * mirrors the bind-side cap exactly.
+ *
+ * @param state        Current game state (mutated in-place).
+ * @param playerId     Owner index; defaults to the active player.
+ * @param reserveCoins Coins withheld at bind time (0 when none was withheld).
  */
-export function restoreCompetitiveSeat(state: MainStreetState, playerId?: number): void {
+export function restoreCompetitiveSeat(
+  state: MainStreetState,
+  playerId?: number,
+  reserveCoins: number = 0,
+): void {
   const player = getCompetitivePlayer(state, playerId);
   if (!player) return;
-  player.coins = state.resourceBank.coins;
+  player.coins = state.resourceBank.coins + competitiveSeatWithheldCoins(player.coins, reserveCoins);
   player.reputation = state.resourceBank.reputation;
   player.hand = state.hand;
   player.staffCards = state.staffCards;

@@ -133,6 +133,7 @@ export type {
 export {
   appendTurnNetRow,
   applyEndOfTurnDeltas,
+  applyFirstSharedDaySolvencyGrace,
   checkCompetitiveEndConditions,
   checkCompetitiveSeatFailure,
   checkLastStanding,

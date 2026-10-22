@@ -580,6 +580,22 @@ Loss conditions are evaluated at the end of the **Night Income** phase before ch
 > reputation or synergy. The closure is a direct grid/discard operation with
 > **no action cost and no wallet change**. Single-player (`N = 1`, no
 > `players[]`) keeps the existing `checkImmediateLoss` behaviour exactly.
+>
+> **First shared day is never decided by debt (MS-0MVJNFESC005QJ41).** A
+> competitive seat cannot be bankrupted on **turn 1**: if the opening day's
+> closing (ongoing costs plus the day's incident) would leave a seat with
+> negative coins, `applyFirstSharedDaySolvencyGrace` writes the debt off to
+> `0` and logs `First-day grace: <n> coin debt written off`. The seat keeps
+> everything it bought and simply starts the next day with an empty purse;
+> bankruptcy elimination applies from **turn 2** onwards unchanged. This
+> mirrors the existing turn-1 grace for reputation collapse and prevents a
+> match being decided on its opening day (the reported "the AI went bankrupt
+> in the first turn" after `[ Play Again ]`). The AI driver additionally
+> keeps a difficulty-gated **liquidity reserve**
+> (`competitiveAiReserveCoins`: Easy 50 %, Medium 35 %, Hard 25 % of the
+> preset's starting coins) so an AI seat stops buying before it is one
+> incident away from bankruptcy; the reserve only limits the seat's spendable
+> view and is never charged.
 
 ---
 

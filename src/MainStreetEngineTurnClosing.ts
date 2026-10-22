@@ -770,6 +770,56 @@ export function checkCompetitiveSeatFailure(state: MainStreetState): Competitive
 }
 
 /**
+ * Writes off any competitive seat's opening-day debt
+ * (MS-0MVJNFESC005QJ41).
+ *
+ * A competitive match cannot be decided on its **first shared day**: a seat
+ * that finishes turn 1 with negative coins (a `-200` Protest, a `-500` General
+ * Strike, or a dual-choice incident option) has its debt floored to `0`
+ * instead of being bankrupt. Nothing else changes — the seat keeps whatever
+ * businesses/staff/reputation it bought, starts the next day with an empty
+ * purse, and bankruptcy elimination applies from turn 2 onwards exactly as
+ * before.
+ *
+ * Why a rule rather than a smarter AI: incidents are drawn from the shared
+ * deck and their size is outside any seat's control, and the opening day has
+ * no income to absorb a swing. A player who invests their starting purse on
+ * day 1 (the AI seats do this by design) could otherwise be eliminated before
+ * taking a second turn — reported as "Play Again does not reset the AI … they
+ * went bankrupt in the first turn" because the opening-day elimination looks
+ * like carried-over state. The AI driver additionally keeps a liquidity
+ * reserve ({@link competitiveAiReserveCoins}) so it rarely reaches this
+ * grace. Mirrors the existing turn-1 grace for reputation collapse
+ * (reputation also cannot end the game on the opening day).
+ *
+ * Idempotent: a second call on the same turn finds no negative wallets. Applies
+ * symmetrically to every non-eliminated seat (human and AI) and is a no-op for
+ * single-player states (no `players[]`) and from turn 2 onwards.
+ *
+ * @param state Current competitive game state (mutated in-place).
+ * @returns Total coin debt written off (0 when no grace applied).
+ */
+export function applyFirstSharedDaySolvencyGrace(state: MainStreetState): number {
+  if (!state.players || state.players.length === 0) return 0;
+  if (state.turn > 1) return 0;
+  let writtenOff = 0;
+  for (const player of state.players) {
+    if (player.eliminated) continue;
+    if (!(player.coins < 0)) continue;
+    const debt = -player.coins;
+    player.coins = 0;
+    writtenOff += debt;
+    addLog(
+      state,
+      player.playerId,
+      `First-day grace: ${debt} coin debt written off (no bankruptcy on the opening day)`,
+      'neutral',
+    );
+  }
+  return writtenOff;
+}
+
+/**
  * Closes every street slot owned by a seat as a **direct grid/discard
  * operation**: no action cost and no wallet change. The card (if any) is
  * pushed to the unified discard pile, the slot is emptied, the
@@ -947,6 +997,8 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
  * @returns `true` when the game ended / a win was declared, `false` otherwise.
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  // Opening-day grace (MS-0MVJNFESC005QJ41): no seat is bankrupt on turn 1.
+  applyFirstSharedDaySolvencyGrace(state);
   const failures = checkCompetitiveSeatFailure(state);
   if (failures.length === 0) {
     // No new failures — but a prior elimination may have left the human as the
