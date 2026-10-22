@@ -94,6 +94,41 @@ A stale relative helper import in
 `@core-tests` alias in MS-0MV1HAUPR004REDJ; the file header keeps a short note
 so the failure mode is not reintroduced.
 
+## One Phaser copy: `resolve.dedupe` and the `./core` submodule
+
+Shared runtime dependencies (`phaser`, `tone`) must resolve to **exactly one**
+copy: this repo's root `node_modules`. `vite.config.ts` enforces that with
+`resolve.dedupe: ['phaser', 'tone']` (the same guard `core/vite.config.ts`
+carries).
+
+Why it matters: this repo composes the engine from the `./core` submodule,
+which normally has **no `node_modules` of its own**, so core-owned modules (for
+example `@ui`) resolve `phaser` up to the root install. A single
+`npm install` **inside `core/`** — for instance from a core-repo session working
+in the same checkout — creates a second `phaser` at `core/node_modules/phaser`.
+Every core-owned module then loads its own copy, which is a *different module
+id* from the one the Node-environment unit tests register:
+
+- the tests mock Phaser with `vi.mock('phaser')`, resolved from the **test
+  file** against the root copy;
+- a core module importing its own copy is not covered by that mock, so real
+  Phaser is evaluated during collection and the file dies with
+  `ReferenceError: window is not defined` (17 animator/HUD test files, see
+  MS-0MVK3SF54006Y6A6).
+
+Consequences for day-to-day work:
+
+- **Never run `npm install`/`npm ci` inside `./core`** for the purpose of a
+  build or test run here — install at the repo root (`npm ci`) and let the
+  root copy serve the engine. `npm run engine:sync` (part of `npm run build`)
+  only moves the submodule checkout; it does not install dependencies.
+- If the suite suddenly fails with a wall of `ReferenceError: window is not
+  defined` collection errors, check for `core/node_modules` before debugging
+  the tests: `ls -d core/node_modules`.
+- `tests/tooling/phaser-single-copy.test.ts` guards the contract — it fails if
+  the dedupe is dropped (including by a re-scaffold) or if a nested copy
+  produces a second module identity.
+
 ## Troubleshooting: ENOSPC (`System limit for number of file watchers reached`)
 
 A full-suite run that fails with `ENOSPC: System limit for number of file

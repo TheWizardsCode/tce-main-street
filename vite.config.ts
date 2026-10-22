@@ -143,6 +143,18 @@ export default defineConfig(({ mode }) => ({
   ],
   resolve: {
     alias: resolveCoreAliases(coreRoot),
+    // Shared engine/launcher runtime deps must resolve to exactly ONE copy:
+    // this repo's `node_modules`. Core-owned modules live in the `./core`
+    // submodule, which normally has no `node_modules` of its own — but a
+    // single `npm install` *inside* `core/` (for example from a core-repo
+    // session) creates a second `phaser`, and every core-owned module then
+    // resolves its own copy. The duplicate is a different module id, so the
+    // Node-environment unit tests' `vi.mock('phaser')` — resolved from the
+    // test file against the root copy — stops applying and real Phaser is
+    // evaluated during collection (`ReferenceError: window is not defined`,
+    // 17 files, MS-0MVK3SF54006Y6A6). Deduping pins both sides to the root
+    // copy and mirrors `resolve.dedupe` in `core/vite.config.ts`.
+    dedupe: ['phaser', 'tone'],
   },
   build: {
     outDir: 'dist',
