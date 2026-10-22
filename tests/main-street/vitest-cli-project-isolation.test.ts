@@ -31,6 +31,7 @@ const CLI_TEST_FILES = [
   'tests/main-street/storyline-author.test.ts',
   'tests/main-street/storyline-graph-svg.test.ts',
   'tests/main-street/harness-cli.test.ts',
+  'tests/main-street/card-diagrams.test.ts',
 ];
 
 interface ResolvedProjectTestConfig {
