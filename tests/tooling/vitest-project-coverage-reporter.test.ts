@@ -12,10 +12,12 @@
  * @module tests/tooling/vitest-project-coverage-reporter
  */
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { TestModule, TestSpecification } from 'vitest/node';
+import type { TestModule, TestSpecification, Vitest } from 'vitest/node';
 
 import {
   createProjectCoverageReporter,
@@ -207,13 +209,30 @@ describe('formatCoverageFailure', () => {
 });
 
 describe('createProjectCoverageReporter', () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(() => {
+    while (temporaryDirectories.length > 0) {
+      fs.rmSync(temporaryDirectories.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  function temporaryReportPath(): string {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-reporter-'));
+    temporaryDirectories.push(directory);
+    return path.join(directory, 'verdict.json');
+  }
+
   function lifecycle(
     specifications: { project: string; moduleId: string }[],
     modules: { project: string; moduleId: string }[],
+    options: { reportPath?: string } = {},
   ) {
     const report = vi.fn();
     const fail = vi.fn();
-    const reporter = createProjectCoverageReporter({ report, fail });
+    const reporter = createProjectCoverageReporter({ report, fail, ...options });
+    // The reporter resolves relative paths against the Vitest root.
+    reporter.onInit?.({ config: { root: ROOT } } as unknown as Vitest);
     reporter.onTestRunStart?.(asSpecifications(specifications));
     reporter.onTestRunEnd?.(asTestModules(modules), [], 'passed');
     return { report, fail };
@@ -262,5 +281,48 @@ describe('createProjectCoverageReporter', () => {
 
     expect(fail).not.toHaveBeenCalled();
     expect(report).not.toHaveBeenCalled();
+  });
+
+  it('writes a machine-readable verdict for the npm-test wrapper', () => {
+    const reportPath = temporaryReportPath();
+    const specifications = [
+      ...UNIT_FILES.map((file) => ({ project: 'unit', moduleId: abs(file) })),
+      ...CLI_FILES.map((file) => ({ project: 'unit-cli', moduleId: abs(file) })),
+    ];
+
+    lifecycle(
+      specifications,
+      UNIT_FILES.map((file) => ({ project: 'unit', moduleId: abs(file) })),
+      { reportPath },
+    );
+
+    const verdict = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+    expect(verdict.ok).toBe(false);
+    expect(verdict.violations).toHaveLength(1);
+    expect(verdict.violations[0].project).toBe('unit-cli');
+    expect(verdict.violations[0].missing).toEqual([...CLI_FILES].sort());
+  });
+
+  it('writes an ok verdict for a complete run', () => {
+    const reportPath = temporaryReportPath();
+    const files = [
+      ...UNIT_FILES.map((file) => ({ project: 'unit', moduleId: abs(file) })),
+      ...CLI_FILES.map((file) => ({ project: 'unit-cli', moduleId: abs(file) })),
+    ];
+
+    lifecycle(files, files, { reportPath });
+
+    expect(JSON.parse(fs.readFileSync(reportPath, 'utf8'))).toEqual({
+      ok: true,
+      violations: [],
+    });
+  });
+
+  it('writes no verdict when nothing was scheduled', () => {
+    const reportPath = temporaryReportPath();
+
+    lifecycle([], [], { reportPath });
+
+    expect(fs.existsSync(reportPath)).toBe(false);
   });
 });

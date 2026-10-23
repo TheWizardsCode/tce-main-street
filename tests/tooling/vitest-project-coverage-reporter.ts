@@ -34,6 +34,7 @@
  *
  * @module tests/tooling/vitest-project-coverage-reporter
  */
+import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Reporter, TestModule, TestSpecification, Vitest } from 'vitest/node';
@@ -168,6 +169,42 @@ export interface ProjectCoverageReporterOptions {
   report?: (message: string) => void;
   /** Mark the run as failed (defaults to `process.exitCode = 1`). */
   fail?: () => void;
+  /**
+   * Write a machine-readable verdict (JSON) here. `scripts/run-tests.ts` sets
+   * `PROJECT_COVERAGE_REPORT` and enforces the verdict afterwards, which is the
+   * only place a verdict can be enforced for certain: a reporter can set
+   * `process.exitCode`, but the engine's retry runner accepts a
+   * transient-failed run whose summary says `Test Files N passed (N)` and
+   * ignores reporter output entirely (CG-0MVL21CVM003VK5H).
+   */
+  reportPath?: string;
+}
+
+/** Machine-readable verdict written for `scripts/run-tests.ts`. */
+export interface ProjectCoverageReport {
+  /** True when every scheduled file executed. */
+  ok: boolean;
+  /** Per-project detail for the files that never executed. */
+  violations: ProjectCoverageViolation[];
+}
+
+/** Environment variable that names the verdict file. */
+export const COVERAGE_REPORT_ENV = 'PROJECT_COVERAGE_REPORT';
+
+/**
+ * Write the verdict atomically (temp file + rename), so a reader never sees a
+ * half-written report. Failures are swallowed: a report-writing problem must
+ * not change the run's own result (the wrapper treats a missing report on a
+ * green run as a failure and says so).
+ */
+function writeReport(reportPath: string, report: ProjectCoverageReport): void {
+  try {
+    const temporary = `${reportPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    fs.renameSync(temporary, reportPath);
+  } catch {
+    /* the run's own exit code already carries the failure */
+  }
 }
 
 /**
@@ -182,6 +219,7 @@ export function createProjectCoverageReporter(
   const fail = options.fail ?? (() => {
     process.exitCode = 1;
   });
+  const reportPath = options.reportPath ?? process.env[COVERAGE_REPORT_ENV] ?? '';
 
   let expected: ProjectFile[] = [];
   let relativeTo = process.cwd();
@@ -205,6 +243,9 @@ export function createProjectCoverageReporter(
         moduleId: testModule.moduleId,
       }));
       const violations = findUnexecutedFiles(expected, ran, relativeTo);
+      if (reportPath) {
+        writeReport(reportPath, { ok: violations.length === 0, violations });
+      }
       if (violations.length === 0) return;
       report(formatCoverageFailure(violations));
       fail();

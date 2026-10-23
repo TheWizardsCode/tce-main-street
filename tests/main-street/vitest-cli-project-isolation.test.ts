@@ -151,12 +151,7 @@ function testFilesOnDisk(): string[] {
 
 /** `--project` values from the `npm test` scripts in `package.json`. */
 function npmTestProjectFilters(): string[] {
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'),
-  ) as { scripts?: Record<string, string> };
-  const script = pkg.scripts?.test;
-  if (!script) throw new Error('package.json declares no `test` script');
-
+  const script = npmTestScript();
   const filters: string[] = [];
   const tokens = script.split(/\s+/);
   for (let index = 0; index < tokens.length; index++) {
@@ -164,6 +159,15 @@ function npmTestProjectFilters(): string[] {
     else if (tokens[index].startsWith('--project=')) filters.push(tokens[index].slice('--project='.length));
   }
   return filters;
+}
+
+function npmTestScript(): string {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'),
+  ) as { scripts?: Record<string, string> };
+  const script = pkg.scripts?.test;
+  if (!script) throw new Error('package.json declares no `test` script');
+  return script;
 }
 
 describe('unit-cli project isolation (MS-0MV5PNIPO00940KG)', () => {
@@ -214,6 +218,19 @@ describe('npm test project selection (MS-0MVK37SK5009M0NG)', () => {
         .filter((name) => name === filter);
       expect(matches).toEqual([filter]);
     }
+  });
+
+  it('keeps the single invocation and the retry timeout behind the coverage guard', () => {
+    const script = npmTestScript();
+
+    // One Vitest invocation through the repo-local entry point, which enforces
+    // the coverage verdict afterwards (see scripts/run-tests.ts). Pointing
+    // `npm test` straight at the engine runner would drop that enforcement.
+    expect(script).toContain('scripts/run-tests.ts');
+    expect(script).toContain('--timeout-ms 720000');
+    expect(script.match(/--project/g)).toHaveLength(2);
+    // No second invocation stage.
+    expect(script).not.toContain('&&');
   });
 
   it('sequences the groups so the serialized CLI group runs before the parallel group', () => {

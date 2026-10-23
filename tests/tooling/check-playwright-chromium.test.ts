@@ -168,6 +168,10 @@ describe('npm pretest wiring', () => {
       'src/scripts/check-playwright-chromium.ts',
     );
     // `npm test` is the gate command; pretest must not be bypassed by it.
-    expect(packageJson.scripts.test).toContain('vitest-run-with-retry');
+    // The entry point is the repo-local coverage wrapper, which forwards to the
+    // engine retry runner (MS-0MVK37SK5009M0NG); the unit suite still runs
+    // through `vitest` either way.
+    expect(packageJson.scripts.test).toContain('scripts/run-tests.ts');
+    expect(packageJson.scripts.test).toContain('--project unit');
   });
 });

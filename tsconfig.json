@@ -76,6 +76,7 @@
   },
   "include": [
     "main.ts",
+    "scripts/**/*.ts",
     "env.d.ts",
     "src/**/*.ts",
     "tests/**/*.ts",

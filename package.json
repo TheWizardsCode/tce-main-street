@@ -22,7 +22,7 @@
     "docs:preview": "vitepress preview docs",
     "storylines:author": "vite-node src/scripts/storyline-author-cli.ts",
     "pretest": "tsx src/scripts/check-playwright-chromium.ts",
-    "test": "tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli",
+    "test": "tsx scripts/run-tests.ts --timeout-ms 720000 --project unit --project unit-cli",
     "test:browser": "vitest run --project browser tests/main-street/cards/browser",
     "test:smoke": "bash scripts/run-smoke-tests.sh",
     "test:dev": "bash scripts/run-dev-tests.sh",
@@ -46,7 +46,7 @@
     "package:mac": "npm run build:electron && npm run build:electron-main && electron-builder --mac --publish never",
     "balance:drift-report": "vite-node src/scripts/balance/drift-report.ts",
     "balance:synergy-diversity-report": "vite-node src/scripts/balance/synergy-diversity-report.ts",
-    "test:unit": "tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli",
+    "test:unit": "tsx scripts/run-tests.ts --timeout-ms 720000 --project unit --project unit-cli",
     "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core"
   },
   "dependencies": {

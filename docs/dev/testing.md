@@ -33,11 +33,20 @@ exits. If such a test times out, re-run rather than "fixing" a CLI that is fine
 `npm test` is a **single** Vitest invocation with two project filters:
 
 ```
-tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli
+tsx scripts/run-tests.ts --timeout-ms 720000 --project unit --project unit-cli
+   └─ tsx core/scripts/vitest-run-with-retry.ts --project unit --project unit-cli
+        └─ vitest run --project unit --project unit-cli
 ```
 
 Do not split it into one invocation per project, and do not drop either
-`--project` flag. The projects are sequenced by `sequence.groupOrder`:
+`--project` flag. `scripts/run-tests.ts` exists only to enforce the coverage
+verdict (below); all arguments are forwarded unchanged to the engine retry
+runner, which still owns retry/masking semantics and the wall-clock timeout.
+Pouring `npm test` straight at `core/scripts/vitest-run-with-retry.ts` removes
+the enforcement, which is exactly how a green gate with 376 unexecuted files
+was produced on 2026-10-23.
+
+The projects are sequenced by `sequence.groupOrder`:
 
 - `unit-cli` — `sequence.groupOrder: 0` — runs first, alone.
 - `unit` — `sequence.groupOrder: 1` — runs after the CLI group has finished.
@@ -81,6 +90,30 @@ command line **replaces** the configured list (that is Vitest's behaviour, not
 the guard's). Gate runs — `npm test`, `/skill:test`, the implement finish gate —
 must not pass `--reporter`.
 
+### The verdict is enforced outside Vitest
+
+A reporter can only print and set `process.exitCode`; it cannot override the
+engine retry runner's acceptance decision. That matters: the runner accepts any
+non-zero run whose summary reads `Test Files N passed (N)` when a transient
+signature is present, *without knowing which files the run intended to execute*.
+On 2026-10-23 a retried full-suite run executed **0 of 376** `unit` files, printed
+`Test Files 5 passed (5)`, hit the guard's `FAIL` message — and was still
+accepted as `accepted-transient` (exit 0).
+
+So the guard also writes a machine-readable verdict (`PROJECT_COVERAGE_REPORT`),
+and `scripts/run-tests.ts` enforces it after the runner exits:
+
+| Runner exit | Verdict | `npm test` result |
+|-------------|---------|-------------------|
+| 0 | complete | pass |
+| 0 | incomplete | **fail** (guard message printed) |
+| 0 | missing | **fail** ("the guard did not run") |
+| non-zero | any | fail with the runner's exit code |
+
+The engine-side fix (teach `vitest-run-with-retry.ts` the expected file set) is
+tracked separately as `CG-0MVL21CVM003VK5H` in the engine repository; until it
+lands, this wrapper is what makes an incomplete run impossible to call green.
+
 ### What a green full-suite run must contain
 
 ```bash
@@ -98,7 +131,6 @@ silent-skip defect above; re-run it. A `[vitest-worker]: Timeout calling
 "onTaskUpdate"` transient on its own is re-tried once by
 `core/scripts/vitest-run-with-retry.ts` and may be accepted, but the coverage
 guard still refuses to call an incomplete run green.
-
 ## Prerequisites: Playwright Chromium
 
 Some **unit** tests also launch Chromium (`storyline-graph-svg.test.ts` renders
