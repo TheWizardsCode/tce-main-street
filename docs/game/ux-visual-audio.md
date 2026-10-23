@@ -173,24 +173,45 @@ playing a phantom card transfer.
 
 ### Hand-drag gesture: upgrades and business cards (MS-0MV76HVE4007AOO0)
 
-Hand-held **upgrade** and **business / community-space** cards are draggable
+Hand-held **upgrade**, **business** and **community-space** cards are draggable
 onto the street — the same one-gesture interaction as the market row — while
 the click-to-apply / click-to-place flows keep working (drag and click
 coexist, AC5; pure clicks below the drag threshold still reach
-`onHandUpgradeCardClick` / `onHandBusinessCardClick`).
+`onHandUpgradeCardClick` / `onHandBusinessCardClick`). Held **event** cards
+are click-only: they keep the select-then-act `[Play]` / `[Discard]` flow and
+are never registered as draggables.
 
-- **Registration.** `MainStreetRendererStreet.ts` `renderCard` registers the
-  hand card container as a `@ui/dragDrop` draggable (named
-  `ms-hand-card-<id>`, tracked in `renderer.dragDropRegistered` so refreshes
-  unregister cleanly). Event cards in hand stay click-only
-  (select-then-act) — deliberately out of drag scope.
-- **Pickup veto (AC1/AC2).** `canPickUpHandCard` vetoes the drag with illegal
-  feedback when the phase is not `market`, a targeting / selection is pending,
-  tutorial gating (`apply-upgrade` / `place-business`) forbids it, no eligible
-  business exists on the street (upgrade), or no affordable empty slot exists
-  (business; action budget spent for held cards). A same-week composite
-  (card just moved to hand this week) may be picked up at 0 actions to mirror
-  the click-path premium placement.
+Supported hand-drag families: **business**, **community-space** and
+**upgrade**. Not supported (by design): **event** cards in hand.
+
+- **Registration (invariant by construction, MS-0MVK4E5M00021XEY).**
+  `MainStreetRendererStreet.ts` `renderCard` registers the hand card
+  container as a `@ui/dragDrop` draggable (named `ms-hand-card-<id>`); the
+  market row registers its own containers as `ms-market-card-<id>`. Both are
+tracked in `renderer.dragDropRegistered`, and each refresh path unregisters
+**only its own origin**: `refreshMarket` calls `unregisterDragDraggables`
+(market-origin scope) and `refreshPlayerHand` calls
+`unregisterHandDraggables` (hand-origin scope) before its rebuild destroys
+the containers. A market-only refresh — e.g. the debug cheat overlay calling
+`refreshMarket()` alone, or any future partial refresh — therefore leaves the
+live hand containers registered and draggable, so the invariant does **not**
+depend on the `refreshMarket` → `refreshPlayerHand` call order. Neither step
+leaves destroyed/stale containers in the registry (no stale registrations
+after any refresh path); see the code comment where the scoping is enforced
+in `MainStreetRendererDragDrop.ts`.
+- **Pickup gate (AC1/AC2).** `canPickUpHandCard` vetoes the drag with illegal
+  feedback when the phase is not `market`, when a *different* card's
+targeting / selection is pending, when tutorial gating (`apply-upgrade` /
+  `place-business`) forbids it, when no eligible business exists on the street
+  (upgrade), or when no affordable empty slot exists (business; action budget
+  spent for held cards). A same-week composite (card just moved to hand this
+  week) may be picked up at 0 actions to mirror the click-path premium
+  placement. **Click-select then drag:** a click on a hand card arms
+  `uiPhase === 'placing-from-hand'` with `pendingHandIndex`, and pickup is
+  allowed for exactly that selected card — the drag continues the selection
+  instead of being vetoed. Picking up a *different* hand card, or dragging in
+  `placing-from-hand` with nothing pending, stays vetoed; deselecting (back to
+  `uiPhase === 'market'`) restores normal pickup.
 - **Drop handler (AC4).** `canDropHandCard` gates the drop zone (upgrade →
   the eligible business via `canPlayUpgradeFromHand`; business → an empty
   affordable slot via `canPlaceFromHand`, same-week premium included). The

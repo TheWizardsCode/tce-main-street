@@ -237,12 +237,21 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
 export function canPickUpHandCard(tcCtx: MainStreetTurnControllerContext, cardId: string): boolean {
 
     const s = tcCtx.scene;
-    // A pending selection / targeting (placing-from-hand) or a non-market
-    // phase vetoes the pickup — mirror of the market pickups (AC1/AC2).
-    if (s.uiPhase !== 'market') return false;
     const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
     const card = (s.state.hand ?? [])[handIndex];
     if (!card) return false;
+
+    // Phase gate (MS-0MVK4E5M00021XEY): a drag may CONTINUE a pending
+    // click-selection on the same card — clicking a hand card arms
+    // `placing-from-hand` + `pendingHandIndex` (onHand*CardClick), and the
+    // click-select-then-drag flow must not be vetoed at pickup. Every other
+    // phase still vetoes, including `placing-from-hand` while a DIFFERENT
+    // card (or no card) is pending: a drag can never hijack another
+    // card's selection, and a plain unselected drag keeps the historical
+    // market-phase-only rule.
+    const isSelectedCard =
+      s.uiPhase === 'placing-from-hand' && s.pendingHandIndex === handIndex;
+    if (s.uiPhase !== 'market' && !isSelectedCard) return false;
 
     if (card.family === 'upgrade') {
       // Tutorial gating (apply-upgrade) — mirror of canPickUpUpgradeCard.

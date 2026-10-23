@@ -12,15 +12,15 @@
  * vetoes any pickup while `uiPhase !== 'market'`, so the drag manager
  * silently discards the drop.
  *
- * Therefore the red-phase cases below drive the click-select-then-drag
- * sequence (drag a hand card after click-selecting it) for business,
- * community-space and upgrade families — they FAIL on today's `dev` and are
- * authored `it.fails` (the repo's test-first tracer-bullet convention). The
- * implementing fix (MS-0MVK4E5M00021XEY) flips them to plain `it`. The
- * green cases pin the paths that already hold: post-refresh direct drags
- * (AC3), click-vs-drag coexistence after a refresh (AC4) and event cards
- * staying click-only (AC5). AC8: the failing assertion output is recorded
- * on the work item.
+ * Therefore the cases below drive the click-select-then-drag sequence (drag
+ * a hand card after click-selecting it) for business, community-space and
+ * upgrade families. They were authored `it.fails` (the repo's test-first
+ * tracer-bullet convention) and FAILED on `dev` before the fix; the
+ * implementing fix (MS-0MVK4E5M00021XEY) flipped them to plain `it`. The
+ * other green cases pin the paths that already held: post-refresh direct
+ * drags (AC3), click-vs-drag coexistence after a refresh (AC4) and event
+ * cards staying click-only (AC5). AC8: the failing assertion output is
+ * recorded on the work item.
  *
  * Assertions go through the scene's public interaction surface and the
  * state it mutates (`state.hand`, `state.streetGrid`, action/coin budget,
@@ -413,7 +413,7 @@ describe('Main Street hand drag after a refresh cycle (browser)', () => {
     try { localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY); } catch { /* ignore */ }
   });
 
-  it.fails('places a click-selected hand business onto an empty slot after a refresh cycle (AC1/AC8) — red-phase: fails until the fix flips it', async () => {
+  it('places a click-selected hand business onto an empty slot after a refresh cycle (AC1/AC8)', async () => {
     game = await bootGame();
     const scene = getScene(game);
     const card = makeHandCard('ClickSelect', 'business');
@@ -454,7 +454,7 @@ describe('Main Street hand drag after a refresh cycle (browser)', () => {
     expect(scene.undoManager.canUndo()).toBe(true);
   }, 60_000);
 
-  it.fails('places a click-selected hand community-space card after a refresh cycle (AC1/AC8) — red-phase: fails until the fix flips it', async () => {
+  it('places a click-selected hand community-space card after a refresh cycle (AC1/AC8)', async () => {
     game = await bootGame();
     const scene = getScene(game);
     const card = makeHandCard('ClickSelect', 'community-space');
@@ -489,7 +489,7 @@ describe('Main Street hand drag after a refresh cycle (browser)', () => {
     expect(scene.undoManager.canUndo()).toBe(true);
   }, 60_000);
 
-  it.fails('applies a click-selected hand upgrade after a refresh cycle (AC2/AC8) — red-phase: fails until the fix flips it', async () => {
+  it('applies a click-selected hand upgrade after a refresh cycle (AC2/AC8)', async () => {
     game = await bootGame();
     const scene = getScene(game);
     const { upgrade } = makeUpgradeFixture();

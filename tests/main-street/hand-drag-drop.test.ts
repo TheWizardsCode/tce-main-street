@@ -27,7 +27,7 @@ import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnControl
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
 import { getUpgradeTemplates } from '../../src/MainStreetCardsTemplates';
-import { unregisterDragDraggables } from '../../src/scenes/MainStreetRendererDragDrop';
+import { unregisterDragDraggables, unregisterHandDraggables } from '../../src/scenes/MainStreetRendererDragDrop';
 
 // ── Mocks ──────────────────────────────────────────────────
 
@@ -63,10 +63,11 @@ function createMockContainer(x = 300, y = 150, depth = 5): any {
     x,
     y,
     depth,
+    name: '',
     input: null,
     setDepth: vi.fn((d: number) => { go.depth = d; }),
     setInteractive: vi.fn(),
-    setName: vi.fn(),
+    setName: vi.fn((n: string) => { go.name = n; }),
     on: vi.fn(),
   };
   return go;
@@ -576,8 +577,8 @@ describe('pickup gate: click-select then drag (regression, fix MS-0MVK4E5M00021X
     controller = new MainStreetTurnController(scene);
   });
 
-  describe('red-phase cases (fail on today\'s dev; `it.fails` until the fix item MS-0MVK4E5M00021XEY flips to plain `it`)', () => {
-    it.fails('allows pickup of the click-selected hand business — a drag continues the selection', () => {
+  describe('red-phase cases (flipped by the fix item MS-0MVK4E5M00021XEY)', () => {
+    it('allows pickup of the click-selected hand business — a drag continues the selection', () => {
       const card = pickBusinessCard(scene);
       const idx = putCardInHand(scene, card);
       // The click flow left the card selected: uiPhase + pendingHandIndex.
@@ -587,7 +588,7 @@ describe('pickup gate: click-select then drag (regression, fix MS-0MVK4E5M00021X
       expect(controller.canPickUpHandCard(card.id)).toBe(true);
     });
 
-    it.fails('allows pickup of the click-selected hand community-space card', () => {
+    it('allows pickup of the click-selected hand community-space card', () => {
       const card = { ...pickBusinessCard(scene), family: 'community-space' };
       const idx = putCardInHand(scene, card);
       scene.uiPhase = 'placing-from-hand';
@@ -596,7 +597,7 @@ describe('pickup gate: click-select then drag (regression, fix MS-0MVK4E5M00021X
       expect(controller.canPickUpHandCard(card.id)).toBe(true);
     });
 
-    it.fails('allows pickup of the click-selected hand upgrade', () => {
+    it('allows pickup of the click-selected hand upgrade', () => {
       const { biz, upgrade } = makeUpgradeFixture();
       scene.state.streetGrid[0] = biz;
       const idx = putCardInHand(scene, upgrade);
@@ -679,6 +680,25 @@ describe('hand-drag registration invariant after refresh paths (AC6)', () => {
     return container;
   }
 
+  /**
+   * Register a market card container exactly as the renderer's
+   * drawMarketCard draggable path does (MS-0MV76HVE4007AOO0): real drag
+   * manager, live production predicates, registry bookkeeping.
+   */
+  function registerMarketCard(card: any, x = 60, y = 100): any {
+    const container = createMockContainer(x, y, 5);
+    scene.dragDropManager.registerDraggable({
+      gameObject: container,
+      data: card.id,
+      hitArea: { x: -50, y: -40, width: 100, height: 80 },
+      canPickUp: () => controller.canPickUpBusinessCard(card.id),
+      onDrop: (payload: any) => controller.onDragDropBusiness(payload),
+    });
+    registry.add(container);
+    container.setName(`ms-market-card-${card.id}`);
+    return container;
+  }
+
   /** Two-card hand: a business plus an upgrade on an eligible street slot. */
   function seededHand(): any[] {
     const { biz, upgrade } = makeUpgradeFixture();
@@ -692,18 +712,32 @@ describe('hand-drag registration invariant after refresh paths (AC6)', () => {
   it('full refresh cycle (market unregister -> hand re-register) leaves every hand container registered with no stale entries', () => {
     const hand = seededHand();
     const firstContainers = hand.map((card, i) => registerHandCard(card, 300 + i * 30));
+    const marketContainer = registerMarketCard(pickBusinessCard(scene));
 
-    // refreshMarket() → unregisterDragDraggables() clears everything.
+    // refreshMarket() → unregisterDragDraggables() is origin-scoped
+    // (MS-0MVK4E5M00021XEY): the market row's container is unregistered,
+    // but hand-origin registrations SURVIVE the market-only step.
     unregisterDragDraggables(renderer);
-    expect(registry.size).toBe(0);
-    // Unregistered containers are no longer tracked by the drag manager: a
-    // drag gesture on an unregistered container raises no depth and plays no
-    // feedback (the manager simply has no entry for it).
+    expect(registry.has(marketContainer)).toBe(false);
+    expect(registry.size).toBe(hand.length);
+    // The surviving hand containers are still tracked by the drag manager:
+    // a drag gesture on them raises depth (registered + draggable).
     dragstart(POINTER, firstContainers[0]);
-    expect(firstContainers[0].depth).toBe(5);
+    expect(firstContainers[0].depth).toBe(1000);
+    expect(scene.sound.play).not.toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
+
+    // refreshPlayerHand() → unregisterHandDraggables() clears the previous
+    // hand generation before the HandView rebuild destroys the containers,
+    // then re-registers every hand card fresh.
+    unregisterHandDraggables(renderer);
+    expect(registry.size).toBe(0);
+    // Unregistered containers are no longer tracked: a drag gesture raises
+    // no depth and plays no feedback (the manager simply has no entry).
+    dragstart(POINTER, firstContainers[1]);
+    expect(firstContainers[1].depth).toBe(5);
     expect(scene.sound.play).not.toHaveBeenCalled();
 
-    // refreshPlayerHand() → re-registers every hand card.
+    // The fresh hand generation registers as draggable.
     const freshContainers = hand.map((card, i) => registerHandCard(card, 300 + i * 30));
     expect(registry.size).toBe(hand.length);
     for (const container of freshContainers) {
@@ -713,20 +747,26 @@ describe('hand-drag registration invariant after refresh paths (AC6)', () => {
     expect(scene.sound.play).not.toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
   });
 
-  it('unregisterDragDraggables leaves no stale/destroyed container in the registry', () => {
+  it('the scoped unregister steps leave no stale/destroyed container in the registry', () => {
     const hand = seededHand();
     for (const [i, card] of hand.entries()) registerHandCard(card, 300 + i * 30);
-    expect(registry.size).toBe(2);
-    // The refreshMarket unregister step must clear the registry completely —
-    // destroyed pre-refresh containers never linger.
+    registerMarketCard(pickBusinessCard(scene));
+    expect(registry.size).toBe(3);
+    // The refreshMarket unregister step clears ONLY the market scope —
+    // destroyed pre-refresh market containers never linger, while live
+    // hand containers stay (AC4). The refreshPlayerHand step then clears
+    // the hand scope — destroyed pre-refresh hand containers never linger
+    // either (AC5). Both steps together leave the registry empty.
     unregisterDragDraggables(renderer);
+    expect(registry.size).toBe(2);
+    unregisterHandDraggables(renderer);
     expect(registry.size).toBe(0);
   });
 
-  // red-phase (fails on today's dev): registration survives a market-only
-  // refresh only once child MS-0MVK4E5M00021XEY lands the explicit guard;
-  // flips to plain `it` with that fix.
-  it.fails('hand containers stay registered after a market-only refresh (refreshMarket() without refreshPlayerHand())', () => {
+  // Red-phase (failed on today's dev): registration survives a market-only
+  // refresh only after MS-0MVK4E5M00021XEY landed the origin-scoped guard;
+  // flipped to plain `it` with that fix.
+  it('hand containers stay registered after a market-only refresh (refreshMarket() without refreshPlayerHand())', () => {
     const hand = seededHand();
     const container = registerHandCard(hand[0]);
     // Debug cheat overlay (MarketCardCheatOverlay) calls refreshMarket() ALONE

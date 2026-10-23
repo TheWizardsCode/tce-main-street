@@ -303,6 +303,18 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
 
+> **Hand-drag: click-select then drag (MS-0MVK4E5M00021XEY).** Clicking a hand
+> card arms the placing-from-hand selection; a drag started on **that same
+> card** continues the selection and resolves through the normal click-path
+> command (`playBusinessFromHandCommand` / `playUpgradeFromHandCommand`).
+> Pickup stays vetoed for a **different** hand card while another is selected,
+> and **event cards in hand are click-only** — they keep the select-then-act
+> `[Play]` / `[Discard]` flow and are never draggable. Supported hand-drag
+> families are **business**, **community-space** and **upgrade**. Hand
+> registrations survive every refresh path (a market-only refresh never strips
+> them); see `docs/game/ux-visual-audio.md` § *Hand-drag gesture* for the
+> registration invariant.
+>
 > **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
 > validated by a **non-mutating legality predicate before any mutation**, and
 > action consumption is **atomic with a successful operation** — a move that
