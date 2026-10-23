@@ -10,7 +10,7 @@ are defined in `vite.config.ts`:
 | `browser` | `tests/**/*.browser.test.ts` | Headless Chromium (Playwright) |
 
 ```bash
-npm test                                                              # unit + unit-cli
+npm test                                                              # unit-cli + unit, one invocation
 npx vitest run --project unit                                         # unit suite only
 npx vitest run --project unit-cli                                     # serialized CLI suite
 npx vitest run --project browser                                      # full browser suite
@@ -22,12 +22,82 @@ headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
 
 The `unit-cli` project is serialized by design (`fileParallelism: false` with
-`sequence.groupOrder: 1`, so it runs after the `unit` project drains): its tests
-cold-start a CLI through `vite-node`, which takes 12-15 s on an idle host and
-regularly exceeds the 15 s `unit` budget under CPU contention — running them
-concurrently produced spurious non-zero CLI exits. `npm test` runs both `unit`
-and `unit-cli`. If such a test times out, re-run rather than "fixing" a CLI
-that is fine — and prefer raising the margin over shrinking the workload.
+its own `sequence.groupOrder`): its tests cold-start a CLI through `vite-node`,
+which takes 12-15 s on an idle host and regularly exceeds the 15 s `unit` budget
+under CPU contention — running them concurrently produced spurious non-zero CLI
+exits. If such a test times out, re-run rather than "fixing" a CLI that is fine
+— and prefer raising the margin over shrinking the workload.
+
+## Deterministic invocation: the CLI group runs first
+
+`npm test` is a **single** Vitest invocation with two project filters:
+
+```
+tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli
+```
+
+Do not split it into one invocation per project, and do not drop either
+`--project` flag. The projects are sequenced by `sequence.groupOrder`:
+
+- `unit-cli` — `sequence.groupOrder: 0` — runs first, alone.
+- `unit` — `sequence.groupOrder: 1` — runs after the CLI group has finished.
+
+**Why the CLI group runs first (MS-0MVK37SK5009M0NG).** Vitest 3.2.7 executes
+`sequence.groupOrder` groups one after another with a bare `await` per group
+and no per-group error isolation. When an earlier group's pool run *rejects* —
+which a `unit` worker does when it misses the 60 s `onTaskUpdate` RPC window
+under CPU contention (`[vitest-worker]: Timeout calling "onTaskUpdate"`) — the
+group loop aborts and **every later group is silently dropped**, while the run
+still reports the files it executed as passing. With the CLI group last, a
+green `npm test` sometimes meant 375 of 380 non-browser files ran; the five CLI
+files (including the Playwright `storyline-graph-svg` render guard) were simply
+absent from the summary. Running the CLI group first makes its five files
+unskippable: nothing has run yet that could reject. The parallel group is still
+sequenced after it, so the two never share a pool run.
+
+## Guarantee: every configured project runs
+
+`vite.config.ts` wires `createProjectCoverageReporter()`
+(`tests/tooling/vitest-project-coverage-reporter.ts`) into `test.reporters`.
+The reporter records the files each project was *scheduled* to run
+(`onTestRunStart`) and compares them with the files that actually ran
+(`onTestRunEnd`). If any scheduled file never executed — a whole project coming
+up empty, or a group dropped part-way — it prints and fails the run:
+
+```text
+[project-coverage-guard] FAIL: a configured Vitest project did not run every test file.
+  project "unit-cli" executed 0 of 5 expected file(s); 5 never ran:
+      - tests/main-street/harness-cli.test.ts
+      …
+```
+
+A zero-file project can therefore never report green. Because the guard is
+spec-driven, filtered runs stay quiet: `npx vitest run --project browser
+<one file>`, `--changed` and `--shard` only "expect" the files their filters
+selected.
+
+The guard is a config-level reporter, so an explicit `--reporter=` on the
+command line **replaces** the configured list (that is Vitest's behaviour, not
+the guard's). Gate runs — `npm test`, `/skill:test`, the implement finish gate —
+must not pass `--reporter`.
+
+### What a green full-suite run must contain
+
+```bash
+npm test 2>&1 | grep -c '|unit-cli|'      # exactly 5 on a full run
+```
+
+- `Test Files <n> passed (<n>)` where `<n>` equals the number of non-browser
+  `tests/**/*.test.ts` files (`find tests -name '*.test.ts' | grep -v browser |
+  wc -l`).
+- One `|unit-cli|` line for each of the five `CLI_TEST_FILES`.
+- No `[project-coverage-guard] FAIL` line.
+
+A green run that is missing CLI lines is not a passing suite, it is the
+silent-skip defect above; re-run it. A `[vitest-worker]: Timeout calling
+"onTaskUpdate"` transient on its own is re-tried once by
+`core/scripts/vitest-run-with-retry.ts` and may be accepted, but the coverage
+guard still refuses to call an incomplete run green.
 
 ## Prerequisites: Playwright Chromium
 
