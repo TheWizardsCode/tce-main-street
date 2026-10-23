@@ -71,8 +71,29 @@ fails the build if the legacy flat tree under `docs/` is ever recreated.
 | [`*evidence.md`](dev/payback-rebalance-evidence.md) | Before/after balance evidence |
 | [`assets/`](dev/assets/) | Generated baselines, manifests and evidence JSON/MD pairs |
 
+## Browsing these docs as a site
+
+The two trees are served locally by a VitePress site with sidebar navigation
+and rendered Mermaid diagrams (MS-0MUYK064P0032374). It is a **local
+development tool only** — nothing is published by CI, and the docs toolchain is
+a dev dependency that never enters the game bundle:
+
+```bash
+npm run docs         # serve the site locally with hot reload
+npm run docs:build   # build the static site into docs/.vitepress/dist/
+npm run docs:preview # serve the built site
+```
+
+The sidebar is generated from the Markdown tree (`docs/.vitepress/sidebar.ts`),
+so a document added under `docs/game/` or `docs/dev/` is navigable straight
+away; `tests/main-street/docs-site-nav.test.ts` fails if a top-level document
+is not reachable. Mermaid fences are rendered in the browser via
+`vitepress-plugin-mermaid`; the committed storyline SVGs under
+`game/assets/` remain the canonical rendered artefacts.
+
 ## Related
 
 - [`src/README.md`](../src/README.md) — source layout, CSV column reference and
   engine contracts.
 - Root [`README.md`](../README.md) — repository overview and quickstart.
+- [`index.md`](index.md) — docs-site landing page.

@@ -17,6 +17,9 @@
     "storylines:graph": "vite-node src/scripts/storyline-graph-cli.ts",
     "storylines:graph:svg": "vite-node src/scripts/render-storyline-graph-cli.ts",
     "docs:diagrams": "vite-node src/scripts/card-diagrams-cli.ts",
+    "docs": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "storylines:author": "vite-node src/scripts/storyline-author-cli.ts",
     "pretest": "tsx src/scripts/check-playwright-chromium.ts",
     "test": "tsx core/scripts/vitest-run-with-retry.ts --timeout-ms 720000 --project unit --project unit-cli",
@@ -69,6 +72,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17",
     "vitest": "^3.0.0"
   },
   "license": "MIT"

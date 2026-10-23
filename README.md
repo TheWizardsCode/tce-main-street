@@ -194,6 +194,20 @@ Run the game locally in watch mode:
 npm run dev     # Vite dev server on http://localhost:3000
 ```
 
+The documentation has a browsable, local-only site with sidebar navigation
+and rendered Mermaid diagrams (navigation is generated from the `docs/`
+tree, so new documents appear automatically):
+
+```bash
+npm run docs         # VitePress dev server (hot reload)
+npm run docs:build   # static site into docs/.vitepress/dist/ (git-ignored)
+npm run docs:preview # serve the built site
+```
+
+See [docs/README.md](docs/README.md) and the site's landing page
+(`docs/index.md`) for details. The docs toolchain is a dev dependency only —
+it never enters the game bundle — and there is no CI publishing.
+
 The dev server's file watcher excludes the `.worklog/` worktree checkouts and
 the dev-output trees (`data/`, `tmp/`, `results/`, `dist/`) via
 `server.watch.ignored` (see `vite.config.ts`) — a recursive watch into
@@ -220,7 +234,7 @@ npm run preview   # http://localhost:4173/tce-main-street/
 | `configs/game.json` | The single-game preset: the core-owned Gym plus Main Street. |
 | `core/` | Git submodule pointing at the Tableau Card Engine (shared engine + toolchain). |
 | `configs/engine-pin.json` | Release engine pin: `{"sha": "…"}` — written only by the release process, never by dev builds. |
-| `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). |
+| `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). Served as a **local VitePress site** via `npm run docs` (see [docs/index.md](docs/index.md)). |
 | `.github/workflows/deploy.yml` | GitHub Pages build-and-deploy workflow. |
 
 The `./core` submodule pins a specific engine commit; **dev builds advance it
