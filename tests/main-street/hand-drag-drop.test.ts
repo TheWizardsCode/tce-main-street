@@ -27,6 +27,7 @@ import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnControl
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
 import { COMMON_SFX_KEYS } from '@core-engine/SoundManager';
 import { getUpgradeTemplates } from '../../src/MainStreetCardsTemplates';
+import { unregisterDragDraggables } from '../../src/scenes/MainStreetRendererDragDrop';
 
 // ── Mocks ──────────────────────────────────────────────────
 
@@ -561,5 +562,232 @@ describe('MainStreet hand drag-to-place wiring', () => {
       expect(scene.state.hand.some((c: any) => c.id === upgrade.id)).toBe(false);
       expect(scene.undoManager.canUndo()).toBe(true);
     });
+  });
+});
+
+// ── Post-refresh regression coverage (MS-0MVK4E56S0059JPY) ──────────────────
+
+describe('pickup gate: click-select then drag (regression, fix MS-0MVK4E5M00021XEY)', () => {
+  let controller: MainStreetTurnController;
+  let scene: any;
+
+  beforeEach(() => {
+    scene = createMockScene();
+    controller = new MainStreetTurnController(scene);
+  });
+
+  describe('red-phase cases (fail on today\'s dev; `it.fails` until the fix item MS-0MVK4E5M00021XEY flips to plain `it`)', () => {
+    it.fails('allows pickup of the click-selected hand business — a drag continues the selection', () => {
+      const card = pickBusinessCard(scene);
+      const idx = putCardInHand(scene, card);
+      // The click flow left the card selected: uiPhase + pendingHandIndex.
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = idx;
+      scene.pendingHandJustMoved = false;
+      expect(controller.canPickUpHandCard(card.id)).toBe(true);
+    });
+
+    it.fails('allows pickup of the click-selected hand community-space card', () => {
+      const card = { ...pickBusinessCard(scene), family: 'community-space' };
+      const idx = putCardInHand(scene, card);
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = idx;
+      scene.pendingHandJustMoved = false;
+      expect(controller.canPickUpHandCard(card.id)).toBe(true);
+    });
+
+    it.fails('allows pickup of the click-selected hand upgrade', () => {
+      const { biz, upgrade } = makeUpgradeFixture();
+      scene.state.streetGrid[0] = biz;
+      const idx = putCardInHand(scene, upgrade);
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = idx;
+      scene.pendingHandJustMoved = false;
+      expect(controller.canPickUpHandCard(upgrade.id)).toBe(true);
+    });
+  });
+
+  describe('guards the fix stays precise', () => {
+    it('still vetoes pickup of a DIFFERENT hand card while another card is click-selected', () => {
+      const cardA = pickBusinessCard(scene);
+      const idxA = putCardInHand(scene, cardA);
+      putCardInHand(scene, { ...pickBusinessCard(scene), id: 'other-biz-in-hand' });
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = idxA;
+      // cardB (index 1) is not the selected card → the pickup must stay vetoed
+      // even after the fix accepts the same-card continuation.
+      expect(controller.canPickUpHandCard(scene.state.hand[1].id)).toBe(false);
+    });
+
+    it('vetoes pickup when the phase is placing-from-hand but nothing is pending', () => {
+      const card = pickBusinessCard(scene);
+      putCardInHand(scene, card);
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = null;
+      expect(controller.canPickUpHandCard(card.id)).toBe(false);
+    });
+
+    it('allows pickup again after the selection is toggled off (deselect restores the market phase)', () => {
+      const card = pickBusinessCard(scene);
+      putCardInHand(scene, card);
+      scene.uiPhase = 'placing-from-hand';
+      scene.pendingHandIndex = 0;
+      // Clicking the card again cancels the selection (back to market phase).
+      scene.uiPhase = 'market';
+      scene.pendingHandIndex = null;
+      expect(controller.canPickUpHandCard(card.id)).toBe(true);
+    });
+  });
+});
+
+describe('hand-drag registration invariant after refresh paths (AC6)', () => {
+  let scene: any;
+  let controller: MainStreetTurnController;
+  let registry: Set<any>;
+  let renderer: any;
+  let dragstart: (pointer: any, container: any) => void;
+
+  beforeEach(() => {
+    scene = createMockScene();
+    controller = new MainStreetTurnController(scene);
+    controller.initDragDrop();
+    // The production registry the renderer maintains (MainStreetRenderer).
+    registry = new Set<any>();
+    renderer = { scene, dragDropRegistered: registry };
+    dragstart = scene.input.on.mock.calls.find((c: any[]) => c[0] === 'dragstart')![1];
+  });
+
+  /**
+   * Register a hand card container exactly as the renderer's hand renderCard
+   * callback does (MS-0MV76HVE4007AOO0): real drag manager, live production
+   * predicates, registry bookkeeping.
+   */
+  function registerHandCard(card: any, x = 300, y = 150): any {
+    const container = createMockContainer(x, y, 5);
+    scene.dragDropManager.registerDraggable({
+      gameObject: container,
+      data: card.id,
+      hitArea: { x: -50, y: -40, width: 100, height: 80 },
+      canPickUp: () => controller.canPickUpHandCard(card.id),
+      onDrop: (payload: any) =>
+        card.family === 'upgrade'
+          ? controller.onDragDropHandUpgrade(payload)
+          : controller.onDragDropHandBusiness(payload),
+    });
+    registry.add(container);
+    container.setName(`ms-hand-card-${card.id}`);
+    return container;
+  }
+
+  /** Two-card hand: a business plus an upgrade on an eligible street slot. */
+  function seededHand(): any[] {
+    const { biz, upgrade } = makeUpgradeFixture();
+    scene.state.streetGrid[0] = biz;
+    const business = pickBusinessCard(scene);
+    putCardInHand(scene, business);
+    putCardInHand(scene, upgrade);
+    return [business, upgrade];
+  }
+
+  it('full refresh cycle (market unregister -> hand re-register) leaves every hand container registered with no stale entries', () => {
+    const hand = seededHand();
+    const firstContainers = hand.map((card, i) => registerHandCard(card, 300 + i * 30));
+
+    // refreshMarket() → unregisterDragDraggables() clears everything.
+    unregisterDragDraggables(renderer);
+    expect(registry.size).toBe(0);
+    // Unregistered containers are no longer tracked by the drag manager: a
+    // drag gesture on an unregistered container raises no depth and plays no
+    // feedback (the manager simply has no entry for it).
+    dragstart(POINTER, firstContainers[0]);
+    expect(firstContainers[0].depth).toBe(5);
+    expect(scene.sound.play).not.toHaveBeenCalled();
+
+    // refreshPlayerHand() → re-registers every hand card.
+    const freshContainers = hand.map((card, i) => registerHandCard(card, 300 + i * 30));
+    expect(registry.size).toBe(hand.length);
+    for (const container of freshContainers) {
+      dragstart(POINTER, container);
+      expect(container.depth).toBe(1000); // pickup engaged → registered + draggable
+    }
+    expect(scene.sound.play).not.toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
+  });
+
+  it('unregisterDragDraggables leaves no stale/destroyed container in the registry', () => {
+    const hand = seededHand();
+    for (const [i, card] of hand.entries()) registerHandCard(card, 300 + i * 30);
+    expect(registry.size).toBe(2);
+    // The refreshMarket unregister step must clear the registry completely —
+    // destroyed pre-refresh containers never linger.
+    unregisterDragDraggables(renderer);
+    expect(registry.size).toBe(0);
+  });
+
+  // red-phase (fails on today's dev): registration survives a market-only
+  // refresh only once child MS-0MVK4E5M00021XEY lands the explicit guard;
+  // flips to plain `it` with that fix.
+  it.fails('hand containers stay registered after a market-only refresh (refreshMarket() without refreshPlayerHand())', () => {
+    const hand = seededHand();
+    const container = registerHandCard(hand[0]);
+    // Debug cheat overlay (MarketCardCheatOverlay) calls refreshMarket() ALONE
+    // (no refreshPlayerHand). Registration must survive this partial path, not
+    // rely on the later hand re-render.
+    unregisterDragDraggables(renderer);
+    dragstart(POINTER, container);
+    expect(container.depth).toBe(1000); // still draggable after the market-only refresh
+    expect(scene.sound.play).not.toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
+  });
+});
+
+describe('event cards stay click-only at the drag-module level (AC5)', () => {
+  let scene: any;
+  let controller: MainStreetTurnController;
+
+  beforeEach(() => {
+    scene = createMockScene();
+    controller = new MainStreetTurnController(scene);
+  });
+
+  it('a drag gesture on a hand event card is vetoed: the card never engages and illegal feedback plays', () => {
+    const base = pickBusinessCard(scene);
+    const eventCard = { ...base, family: 'event' };
+    scene.state.hand.push(eventCard);
+    scene.state.actionsRemaining = 1;
+
+    controller.initDragDrop();
+    const manager = scene.dragDropManager;
+    const container = createMockContainer(300, 150, 5);
+    manager.registerDraggable({
+      gameObject: container,
+      data: eventCard.id,
+      hitArea: { x: -50, y: -40, width: 100, height: 80 },
+      canPickUp: () => controller.canPickUpHandCard(eventCard.id),
+      onDrop: vi.fn(),
+    });
+
+    const evt = scene.input.on.mock.calls.find((c: any[]) => c[0] === 'dragstart')!;
+    evt[1](POINTER, container);
+
+    // Vetoed at pickup: never depth-raised (drag never engages), stays in hand.
+    expect(container.depth).toBe(5);
+    expect(container.x).toBe(300);
+    expect(container.y).toBe(150);
+    expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
+    expect(scene.state.hand.some((c: any) => c.id === eventCard.id)).toBe(true);
+    expect(scene.undoManager.canUndo()).toBe(false);
+  });
+
+  it('select-then-act stays the event interaction: clicking an event card selects it instead of starting a drag', () => {
+    const base = pickBusinessCard(scene);
+    const eventCard = { ...base, family: 'event' };
+    scene.state.hand.push(eventCard);
+    scene.state.actionsRemaining = 1;
+
+    controller.onHandEventCardClick(0);
+
+    expect(scene.uiPhase).toBe('event-selected');
+    expect(scene.pendingHandIndex).toBe(0);
+    // And the event card is still not a legal pickup target for dragging.
+    expect(controller.canPickUpHandCard(eventCard.id)).toBe(false);
   });
 });
