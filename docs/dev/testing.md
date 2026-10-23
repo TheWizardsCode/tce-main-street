@@ -1,28 +1,33 @@
 # Testing
 
-Main Street runs its suites with [Vitest](https://vitest.dev/). Two projects
+Main Street runs its suites with [Vitest](https://vitest.dev/). Three projects
 are defined in `vite.config.ts`:
 
 | Project | Test files | Environment |
 |---------|-----------|-------------|
-| `unit` | `tests/**/*.test.ts` (excludes `*.browser.test.ts`) | Node |
+| `unit` | `tests/**/*.test.ts` (excludes `*.browser.test.ts` and the `unit-cli` files) | Node, parallel (`maxWorkers: 4`) |
+| `unit-cli` | the five files in `CLI_TEST_FILES` (`validate-storylines`, `storyline-graph`, `storyline-author`, `storyline-graph-svg`, `harness-cli`) | Node, serialized (`fileParallelism: false`) |
 | `browser` | `tests/**/*.browser.test.ts` | Headless Chromium (Playwright) |
 
 ```bash
-npm test                                                        # unit suite
-npx vitest run --project browser                                # full browser suite
-npx vitest run --project browser tests/e2e/<name>.browser.test.ts   # a single file
+npm test                                                              # unit + unit-cli
+npx vitest run --project unit                                         # unit suite only
+npx vitest run --project unit-cli                                     # serialized CLI suite
+npx vitest run --project browser                                      # full browser suite
+npx vitest run --project browser tests/e2e/<name>.browser.test.ts     # a single file
 ```
 
 The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
 
-Tests that cold-start a CLI through `vite-node` (`card-diagrams`, the
-storyline CLI files) allow a generous per-test budget: cold starts take
-12-15 s on an idle host and regularly exceed the 15 s `unit` budget under CPU
-contention. If such a test times out, re-run rather than "fixing" a CLI that
-is fine — and prefer raising the margin over shrinking the workload.
+The `unit-cli` project is serialized by design (`fileParallelism: false` with
+`sequence.groupOrder: 1`, so it runs after the `unit` project drains): its tests
+cold-start a CLI through `vite-node`, which takes 12-15 s on an idle host and
+regularly exceeds the 15 s `unit` budget under CPU contention — running them
+concurrently produced spurious non-zero CLI exits. `npm test` runs both `unit`
+and `unit-cli`. If such a test times out, re-run rather than "fixing" a CLI
+that is fine — and prefer raising the margin over shrinking the workload.
 
 ## Prerequisites: Playwright Chromium
 
