@@ -1,0 +1,6 @@
+{
+  "description": "TCE Main Street test profiles for `/skill:test --type`. `full` is deliberately omitted so a bare invocation resolves to the genuine full CI suite from `.pi/test-config.json` (`suiteCommands`) and populates the audit-accepted full-suite cache entry. `unit` maps to this repo's node unit suite — the `unit` + `unit-cli` Vitest projects run by `npm test` — so implementation work can verify the cheap unit half (e.g. tests/tooling guards) without the serial browser project. Mirrors the core repo's `unit` profile.",
+  "types": {
+    "unit": ["npm --silent test"]
+  }
+}
