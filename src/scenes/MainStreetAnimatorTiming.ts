@@ -103,3 +103,15 @@ export const INCIDENT_REVEAL_HOLD_MS = 1920;
  */
 export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
 
+// ── End-of-turn income-collection wait cap (CG-0MTR72P14000VO6Q, AC5/AC7) ──
+/**
+ * Bounded safety cap (ms) for the end-of-turn income-collection deferral:
+ * the day start (AC5), the forced event-choice dialog (AC7) and the forced
+ * piggyback decision show each wait on `incomeCollectionActive` before
+ * advancing. If the choreography never clears the flag, this cap forces the
+ * day start / forced dialog regardless, so end-of-turn can never hang the
+ * game. Single-player parity value; the closing primitive's default
+ * (`MainStreetTurnControllerAnimation`) and the three turn-flow deferral
+ * sites must stay in sync with it (MS-0MVLINWHE004W4CP).
+ */
+export const INCOME_COLLECTION_CAP_MS = 16_000;
