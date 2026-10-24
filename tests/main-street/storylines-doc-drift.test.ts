@@ -224,7 +224,11 @@ describe('AC5b — core story-line reference and Main Street adapters', () => {
   it('the core dev reference exists and documents the API, adapters and Gym demo', () => {
     expect(fs.existsSync(CORE_DOC_PATH), 'missing core story-line reference').toBe(true);
     const coreDoc = read(CORE_DOC_PATH);
-    for (const heading of ['## API', '## Engine adapter', '## UI adapter', '## Gym demo']) {
+    // The engine renamed its adapter seam section to "Authoring seams
+    // (content, manifest, validator, author)" (core dev, pinned in
+    // configs/engine-pin.json), so this cross-repo contract tracks the pinned
+    // reference exactly rather than the previous "## Engine adapter" wording.
+    for (const heading of ['## API', '## Authoring seams', '## UI adapter', '## Gym demo']) {
       expect(coreDoc, `missing core heading ${heading}`).toContain(heading);
     }
     expect(coreDoc).toContain('createStorylineSystem');

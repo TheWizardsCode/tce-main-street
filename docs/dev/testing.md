@@ -131,6 +131,83 @@ silent-skip defect above; re-run it. A `[vitest-worker]: Timeout calling
 "onTaskUpdate"` transient on its own is re-tried once by
 `core/scripts/vitest-run-with-retry.ts` and may be accepted, but the coverage
 guard still refuses to call an incomplete run green.
+## Proving browser-wait reliability: the soak profiles
+
+Browser waits in `tests/main-street/MainStreetScene.browser.test.ts` are paced by
+the scene's own bounded deferrals, so their budgets are derived from production
+caps rather than hand-guessed (see `tests/tooling/wait-budget-guard.test.ts`).
+Deriving a budget does not *prove* it survives a loaded host, so the reliability
+claim is proven by a repeatable soak:
+
+```bash
+/skill:test --type soak        # 20 consecutive runs on the quiet host
+/skill:test --type soak-load   # 5 runs under $(nproc) imposed CPU burners
+```
+
+Both profiles are project-local test types declared in
+`.pi/skills_extensions/test/extension.json` and run
+`scripts/soak-browser-waits.sh`, so the soak goes through the test skill (and its
+run cache) rather than an ad-hoc `npx vitest` loop. Running the harness directly
+is equivalent:
+
+```bash
+scripts/soak-browser-waits.sh --runs 20            # quiet-host soak
+scripts/soak-browser-waits.sh --runs 20 --load     # soak under imposed load
+```
+
+Each run invokes the **canonical gate runner**
+(`npx tsx core/scripts/vitest-run-with-retry.ts --project browser
+ tests/main-street/MainStreetScene.browser.test.ts`), so retry and hang-bound
+semantics match the dev-push gate exactly — the soak measures the gate, not a
+look-alike.
+
+Behaviour:
+
+- **fail-fast** — the first failing run aborts the soak, prints that run's full
+  output, exits non-zero, and keeps its log at
+  `results/soak-browser-waits-<ts>-run-<n>.log` for triage;
+- **`--load`** — spins up `$(nproc)` CPU burners for the whole soak (teared down
+  by an `EXIT` trap, so `Ctrl-C` never leaves burners behind), and records the
+  load average before, the per-run peak and the value after;
+- **summary** — a markdown report of every run's wall time, pass/fail and peak
+  load is written to `results/soak-browser-waits-<ts>.md` (`results/` is
+  gitignored). The evidence — run count, load averages, wall times, summary
+  path and any anomaly — belongs in the work item; the generated file is a local
+  artefact, not a committed one.
+
+The harness logic itself (run loop, fail-fast, burner lifecycle, summary) is
+unit-tested in `tests/tooling/soak-browser-waits.test.ts` with mock runners, so
+it needs neither Chromium nor a real 20-run soak. `SOAK_RUNNER_CMD` is a
+test-only override. `SOAK_BURNERS` overrides the burner count: the default is
+`$(nproc)`, and a **smaller** count is the documented probe for a host whose
+ambient load already exceeds one runnable task per core (see the measured
+envelope below). A real evidence run states the burner count it used.
+
+### Measured envelope (2026-10-24, 16-core host)
+
+The soak was run on a host concurrently shared with other agent suites, so the
+"quiet" profile still saw peak load 15.3:
+
+| Profile | Burners | Peak load | Runs | Result |
+|---|---|---|---|---|
+| quiet | 0 | 15.3 | 20 | **20/20 pass** (58-95 s per run) |
+| load | 8 | 23.6 | 5 | **runs 1-2 pass** (129-137 s); run 3 failed once ambient load reached 31.3 |
+| load | 16 | 32.8 | 5 | run 1 failed at the 40 000 ms end-of-turn budget |
+
+Both under-load failures were the *same* wait — `turn to advance after
+end-of-turn presentation` — and only at load ≥ ~31 (≈2× oversubscription): the
+end-of-turn income choreography is sequential scene work, so at that load it
+runs longer in wall-clock time than the 60 s browser `testTimeout` can
+accommodate once the scene boot allowance is included. The derived budget is
+therefore already at its ceiling (40 000 ms = 16 000 ms cap + 24 000 ms margin,
++ 20 000 ms boot = the 60 000 ms hook), and every other wait in the file passes
+at that load. Raising the hook or the budget further is a design decision
+recorded on the work item, not a test-side tweak.
+
+When you re-run the soak, record the burner count next to the result — an
+under-load pass at 8 burners on a host already at load 20 is a stronger
+statement than one at 16 burners on an idle host.
+
 ## Prerequisites: Playwright Chromium
 
 Some **unit** tests also launch Chromium (`storyline-graph-svg.test.ts` renders

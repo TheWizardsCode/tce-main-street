@@ -44,6 +44,38 @@ function overlaps(a: { x: number; y: number; w: number; h: number }, b: { x: num
 }
 
 /**
+ * Fixed starvation margin (ms) for waits racing the 16 s end-of-turn
+ * income-collection cap (`INCOME_COLLECTION_CAP_MS`).
+ *
+ * The shared helper's default derivation (`max(1.5 × cap, cap + 5 s)`) yields
+ * 24 000 ms here, which the soak (MS-0MVLINY2Q004V33L) proved insufficient:
+ * under `$(nproc)` CPU burners (load ≈ 2 × cores) the deferred end-of-turn
+ * presentation stretched past 24 s, because the deferral's own cap is only
+ * enforced when Phaser's update loop runs and that loop is itself starved.
+ * The soak also measured a run needing more than 36 s at load ≈ 31, so the
+ * margin is the largest that still leaves the documented 20 s scene-boot
+ * allowance inside the browser project's 60 s `testTimeout`:
+ * 40 000 ms budget (cap + 24 s) + 20 000 ms = the 60 000 ms hook exactly, so a
+ * genuine hang still reports this wait's labelled timeout rather than being
+ * killed by the hook. Above ~2× CPU oversubscription the scene's own
+ * choreography can outlive the hook — that ceiling is recorded on the work
+ * item rather than papered over with a longer poll.
+ */
+const END_TURN_STARVATION_MARGIN_MS = 24_000;
+
+/**
+ * Fixed starvation margin (ms) for waits racing the 1.5 s transfer-duration
+ * cap (`DRAG_TRANSFER_DURATION_MAX_MS`).
+ *
+ * With such a small cap the helper's starvation *factor* contributes almost
+ * nothing, so the fixed margin carries the load tolerance: 13 500 ms budget
+ * for a 1 500 ms cap. The soak (MS-0MVLINY2Q004V33L) surfaced two 6 000 ms
+ * hand-guessed transfer waits timing out under imposed CPU load while the
+ * cap-derived waits completed, which is exactly the drift this margin fixes.
+ */
+const TRANSFER_STARVATION_MARGIN_MS = 12_000;
+
+/**
  * Local raw-timeout poll helper, kept for waits that race no production cap.
  *
  * @deprecated Use the shared, load-tolerant `waitForCondition` from
@@ -391,7 +423,11 @@ describe('MainStreetScene browser tests', () => {
       // guessed — a hand-picked 6 s could sit under a cap-retuned animation.
       await waitForCondition(
         () => (state.hand ?? []).some((c: any) => c.id === business.id),
-        { capMs: DRAG_TRANSFER_DURATION_MAX_MS, label: 'business bought to hand' },
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'business bought to hand',
+        },
       );
       const handBusiness = (state.hand ?? []).find((c: any) => c.id === business.id);
       expect(handBusiness).toBeTruthy();
@@ -476,7 +512,9 @@ describe('MainStreetScene browser tests', () => {
       destroyGame(game);
       game = null;
     }
-  }, 45_000);
+    // Sized so every cap-derived wait in this test fails with its own label
+    // rather than the hook timing the test out (browser default is 60 s).
+  }, 60_000);
 
   it('buy transfer animations end exactly at the rendered hand position (desktop + narrow viewports)', async () => {
     const viewports = [
@@ -510,7 +548,11 @@ describe('MainStreetScene browser tests', () => {
       // Same market → hand transfer cap as the single-buy wait above.
       await waitForCondition(
         () => (state.hand ?? []).some((c: any) => c.id === biz1.id),
-        { capMs: DRAG_TRANSFER_DURATION_MAX_MS, label: 'first business bought to hand' },
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'first business bought to hand',
+        },
       );
       expect(state.hand).toHaveLength(1);
       // Post-CG-0MSXIQIPJ000NDTL: no auto-selection — the phase stays market.
@@ -532,9 +574,15 @@ describe('MainStreetScene browser tests', () => {
       );
       const bizDest = (transferSpy.mock.calls[beforeBiz2][0] as any).destination;
 
-      await waitForConditionLegacy(
-        () => state.hand?.some((c: any) => c.id === biz2.id),
-        { timeoutMs: 6000, label: 'second business materialized in hand' },
+      // Transfer-cap paced: derive the budget from the cap (the 6 000 ms
+      // hand-guess the soak caught timing out under load is a regression).
+      await waitForCondition(
+        () => Boolean(state.hand?.some((c: any) => c.id === biz2.id)),
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'second business materialized in hand',
+        },
       );
       const bizIndex = state.hand.findIndex((c: any) => c.id === biz2.id);
       const bizRendered = scene.msRenderer.handView.getCardCenters()[bizIndex];
@@ -554,9 +602,14 @@ describe('MainStreetScene browser tests', () => {
         );
         const eventDest = (transferSpy.mock.calls[beforeEvent][0] as any).destination;
 
-        await waitForConditionLegacy(
+        // Transfer-cap paced — same derivation as the business transfers above.
+        await waitForCondition(
           () => (state.hand ?? []).some((c: any) => c.id === eventCard.id),
-          { timeoutMs: 6000, label: 'event materialized' },
+          {
+            capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+            floorMs: TRANSFER_STARVATION_MARGIN_MS,
+            label: 'event materialized',
+          },
         );
         const eventRendered = scene.msRenderer.handView.getCardCenters()[state.hand.findIndex((c: any) => c.id === eventCard.id)];
         expect(Math.abs(eventDest.x - eventRendered.x)).toBeLessThanOrEqual(2);
@@ -567,7 +620,9 @@ describe('MainStreetScene browser tests', () => {
       destroyGame(game);
       game = null;
     }
-  }, 45_000);
+    // Sized so every cap-derived wait in this test fails with its own label
+    // rather than the hook timing the test out (browser default is 60 s).
+  }, 60_000);
 
   it('allows pressing Enter to end the turn when legal', async () => {
     game = await bootGame();
@@ -602,7 +657,12 @@ describe('MainStreetScene browser tests', () => {
     // never be shorter than the deferral it races and it tracks a retune.
     await waitForCondition(
       () => scene.state.turn > beforeTurn,
-      { capMs: INCOME_COLLECTION_CAP_MS, intervalMs: 100, label: 'turn to advance after end-of-turn presentation' },
+      {
+        capMs: INCOME_COLLECTION_CAP_MS,
+        floorMs: END_TURN_STARVATION_MARGIN_MS,
+        intervalMs: 100,
+        label: 'turn to advance after end-of-turn presentation',
+      },
     );
 
     expect(scene.state.turn).toBeGreaterThan(beforeTurn);

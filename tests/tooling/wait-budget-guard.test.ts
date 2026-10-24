@@ -246,6 +246,20 @@ const DOCUMENTED_WAITS: readonly DocumentedWait[] = [
     capConstant: 'DRAG_TRANSFER_DURATION_MAX_MS',
     capMs: DRAG_TRANSFER_DURATION_MAX_MS,
   },
+  {
+    // Converted by the soak child (MS-0MVLINY2Q004V33L): the imposed-load soak
+    // caught this 6 000 ms hand-guess timing out while the cap-derived transfer
+    // waits completed, so it now derives from the same transfer cap.
+    label: 'second business materialized in hand',
+    capConstant: 'DRAG_TRANSFER_DURATION_MAX_MS',
+    capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+  },
+  {
+    // Same class and same soak finding as the business transfer above.
+    label: 'event materialized',
+    capConstant: 'DRAG_TRANSFER_DURATION_MAX_MS',
+    capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+  },
 ];
 
 /**
@@ -345,6 +359,14 @@ function capArgumentOf(callSource: string): string | undefined {
   return /capMs:\s*([^,}\n]+)/.exec(callSource)?.[1]?.trim();
 }
 
+/**
+ * The text passed to `floorMs:`, trimmed, when the call overrides the helper's
+ * default starvation margin (the browser suite sizes one margin per cap class).
+ */
+function floorArgumentOf(callSource: string): string | undefined {
+  return /floorMs:\s*([^,}\n]+)/.exec(callSource)?.[1]?.trim();
+}
+
 /** True when the call passes a raw timeout budget. */
 function passesRawTimeout(callSource: string): boolean {
   return /\btimeoutMs\b/.test(callSource);
@@ -393,8 +415,30 @@ function readSceneBrowserTest(): string {
   return fs.readFileSync(path.join(REPO_ROOT, SCENE_BROWSER_TEST), 'utf8');
 }
 
+/**
+ * Resolve a numeric argument that may be written as a literal (`12_000`) or as
+ * a module-level constant declared in the same source (`const X = 12_000;`).
+ *
+ * @throws {Error} when the argument is neither — a silently skipped override
+ *   would let an over-budget margin through the headroom assertion.
+ */
+function resolveNumericArgument(source: string, argument: string): number {
+  const numeric = /^(?:\d[\d_]*)$/.test(argument);
+  if (numeric) return Number(argument.replace(/_/g, ''));
+
+  const declaration = new RegExp(
+    `(?:const|let|var)\\s+${argument}\\s*=\\s*(\\d[\\d_]*)\\s*;`,
+  ).exec(source);
+  if (!declaration) {
+    throw new Error(`cannot resolve the numeric margin '${argument}' in ${SCENE_BROWSER_TEST}`);
+  }
+
+  return Number(declaration[1].replace(/_/g, ''));
+}
+
 describe('the MainStreetScene browser waits derive their budgets from the caps they race', () => {
-  const calls = extractWaitCalls(readSceneBrowserTest());
+  const source = readSceneBrowserTest();
+  const calls = extractWaitCalls(source);
 
   it('lifts the waits out of the suite (scanner sanity check)', () => {
     // If the extractor silently found (almost) nothing, every per-label
@@ -416,6 +460,30 @@ describe('the MainStreetScene browser waits derive their budgets from the caps t
       // budget is strictly longer than the cap, so no literal can be
       // reintroduced at or below it.
       expect(resolveWaitBudget({ capMs: wait.capMs })).toBeGreaterThan(wait.capMs);
+    },
+  );
+
+  it.each(DOCUMENTED_WAITS.map((wait) => [wait.label, wait] as const))(
+    "keeps the '%s' wait inside the browser testTimeout after any margin override",
+    (_label, wait) => {
+      // The suite may widen the helper's fixed starvation margin per cap class
+      // (the soak proved the default too tight under imposed load). A widened
+      // margin must still let the wait fail with its own label rather than the
+      // hook's timeout, so re-derive the *effective* budget from the call site.
+      const labelled = calls.filter((call) => call.label === wait.label);
+      for (const call of labelled) {
+        const floorArgument = floorArgumentOf(call.callSource);
+        const budgetMs = resolveWaitBudget({
+          capMs: wait.capMs,
+          ...(floorArgument === undefined
+            ? {}
+            : { floorMs: resolveNumericArgument(source, floorArgument) }),
+        });
+
+        expect(budgetMs + SCENE_BOOT_ALLOWANCE_MS).toBeLessThanOrEqual(
+          resolveBrowserTestTimeoutMs(),
+        );
+      }
     },
   );
 
