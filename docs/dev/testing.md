@@ -131,6 +131,95 @@ silent-skip defect above; re-run it. A `[vitest-worker]: Timeout calling
 "onTaskUpdate"` transient on its own is re-tried once by
 `core/scripts/vitest-run-with-retry.ts` and may be accepted, but the coverage
 guard still refuses to call an incomplete run green.
+## Load-tolerant wait budgets (browser tests)
+
+A browser test that polls for an animation-gated outcome is racing **two**
+clocks: the production cap that paces the work (a bounded deferral, a transfer
+duration) and the host's ability to run `requestAnimationFrame`. Under CPU
+contention the frames are starved, the animation stretches past its nominal
+duration, and a hand-guessed poll budget turns a correct scene into a red test.
+The retry runner
+(`core/scripts/vitest-run-with-retry.ts`) does **not** retry a
+`waitForCondition` timeout — it only retries the three known transient
+contention signatures — so a single starvation spike fails the gate. Accepting
+the flake is not an option; the budget has to be derived.
+
+### The rule
+
+**Never hard-code a wait for an animation-gated outcome.** Import the
+production cap the wait races and pass it to the shared helper
+(`@core-tests/helpers/waitForCondition`, sibling of `waitForScene.ts`):
+
+```ts
+import { waitForCondition } from '@core-tests/helpers/waitForCondition';
+import { INCOME_COLLECTION_CAP_MS } from '../../src/scenes/MainStreetAnimatorTiming';
+import { DRAG_TRANSFER_DURATION_MAX_MS } from '../../src/scenes/MainStreetConstants';
+
+await waitForCondition(() => scene.state.turn > beforeTurn, {
+  capMs: INCOME_COLLECTION_CAP_MS,          // the cap the scene may consume
+  floorMs: END_TURN_STARVATION_MARGIN_MS,   // fixed starvation margin
+  label: 'turn to advance after end-of-turn presentation',
+});
+```
+
+The helper derives the budget
+
+```
+budget = max(round(capMs * starvationFactor), capMs + floorMs)
+// defaults: starvationFactor = 1.5, floorMs = 5 000
+```
+
+and **enforces `budget > capMs` in code**, throwing when a caller configures a
+poll that is not strictly longer than the cap it documents as racing. The
+timeout message keeps the greppable shape
+`Timed out waiting for <label> after <budget>ms (cap <capMs>ms)`.
+
+- `starvationFactor` scales with the cap (useful for the long 16 000 ms
+  end-of-turn deferral);
+- `floorMs` supplies a fixed margin that a tiny cap cannot express (the
+  1 500 ms transfer cap needs a fixed margin, not a multiplier), so
+  `MainStreetScene.browser.test.ts` passes a per-class `floorMs`:
+  24 000 ms for the end-of-turn wait and 12 000 ms for the transfer waits.
+
+### The 60 s headroom rule
+
+`budget + scene-boot allowance` must stay inside the browser project's
+`testTimeout` (`60 000`, and a `20 000` boot allowance is documented in the
+guard). A wait that breaks this rule dies in the hook with an unattributed
+timeout instead of failing with its own label — so the largest legal
+end-of-turn budget is 40 000 ms. Above ~2× CPU oversubscription the scene's own
+choreography can outlive the hook; that ceiling is measured and recorded in the
+soak envelope below rather than papered over with a longer poll.
+
+### The guard
+
+`tests/tooling/wait-budget-guard.test.ts` (node `unit` project, no browser)
+fails the build when:
+
+1. any derived budget is not strictly greater than the production cap it races;
+2. the helper accepts an under-cap option set for the real constants;
+3. a documented wait stops passing `capMs: <the cap it races>` (or a raw
+   `timeoutMs` literal reappears for it, or it is routed back through the
+   per-file `waitForConditionLegacy`);
+4. the **effective** budget at the call site (including any `floorMs`
+   override) plus the boot allowance no longer fits the browser `testTimeout`.
+
+The guard imports the cap constants rather than restating budgets, so retuning
+a cap moves the check with it.
+
+### Proving it
+
+Deriving a budget does not prove it survives a loaded host; the soak below is
+the proof. Run at minimum:
+
+```bash
+/skill:test --type unit   # the guard (fast, node only)
+/skill:test --type soak   # 20 consecutive runs on the quiet host
+```
+
+and the under-load profile when touching a wait or its cap:
+`/skill:test --type soak-load`.
+
 ## Proving browser-wait reliability: the soak profiles
 
 Browser waits in `tests/main-street/MainStreetScene.browser.test.ts` are paced by
