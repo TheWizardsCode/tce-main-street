@@ -623,17 +623,6 @@ export function checkEndConditions(state: MainStreetState): boolean {
   // Compute current score
   updateScore(state);
 
-  // Win: all challenges complete (only if there are active challenges)
-  if (
-    state.activeChallenges.length > 0 &&
-    state.activeChallenges.every(ac => ac.completed)
-  ) {
-    state.gameResult = 'win';
-    state.endReason = 'all_challenges';
-    addLog(state, 'Victory: All challenges completed!', 'gain');
-    return true;
-  }
-
   // Score threshold — endless-mode branch (CG-0MTIILU5V006GCN4)
   if (state.finalScore >= state.config.winThreshold) {
     if (state.config.endlessMode) {
@@ -778,6 +767,56 @@ export function checkCompetitiveSeatFailure(state: MainStreetState): Competitive
     }
   }
   return failures;
+}
+
+/**
+ * Writes off any competitive seat's opening-day debt
+ * (MS-0MVJNFESC005QJ41).
+ *
+ * A competitive match cannot be decided on its **first shared day**: a seat
+ * that finishes turn 1 with negative coins (a `-200` Protest, a `-500` General
+ * Strike, or a dual-choice incident option) has its debt floored to `0`
+ * instead of being bankrupt. Nothing else changes — the seat keeps whatever
+ * businesses/staff/reputation it bought, starts the next day with an empty
+ * purse, and bankruptcy elimination applies from turn 2 onwards exactly as
+ * before.
+ *
+ * Why a rule rather than a smarter AI: incidents are drawn from the shared
+ * deck and their size is outside any seat's control, and the opening day has
+ * no income to absorb a swing. A player who invests their starting purse on
+ * day 1 (the AI seats do this by design) could otherwise be eliminated before
+ * taking a second turn — reported as "Play Again does not reset the AI … they
+ * went bankrupt in the first turn" because the opening-day elimination looks
+ * like carried-over state. The AI driver additionally keeps a liquidity
+ * reserve ({@link competitiveAiReserveCoins}) so it rarely reaches this
+ * grace. Mirrors the existing turn-1 grace for reputation collapse
+ * (reputation also cannot end the game on the opening day).
+ *
+ * Idempotent: a second call on the same turn finds no negative wallets. Applies
+ * symmetrically to every non-eliminated seat (human and AI) and is a no-op for
+ * single-player states (no `players[]`) and from turn 2 onwards.
+ *
+ * @param state Current competitive game state (mutated in-place).
+ * @returns Total coin debt written off (0 when no grace applied).
+ */
+export function applyFirstSharedDaySolvencyGrace(state: MainStreetState): number {
+  if (!state.players || state.players.length === 0) return 0;
+  if (state.turn > 1) return 0;
+  let writtenOff = 0;
+  for (const player of state.players) {
+    if (player.eliminated) continue;
+    if (!(player.coins < 0)) continue;
+    const debt = -player.coins;
+    player.coins = 0;
+    writtenOff += debt;
+    addLog(
+      state,
+      player.playerId,
+      `First-day grace: ${debt} coin debt written off (no bankruptcy on the opening day)`,
+      'neutral',
+    );
+  }
+  return writtenOff;
 }
 
 /**
@@ -958,6 +997,8 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
  * @returns `true` when the game ended / a win was declared, `false` otherwise.
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  // Opening-day grace (MS-0MVJNFESC005QJ41): no seat is bankrupt on turn 1.
+  applyFirstSharedDaySolvencyGrace(state);
   const failures = checkCompetitiveSeatFailure(state);
   if (failures.length === 0) {
     // No new failures — but a prior elimination may have left the human as the
@@ -990,17 +1031,20 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * Checks for end-of-turn win/loss conditions (at EndCheck phase).
  *
  * Win conditions (checked in order):
- * 1. All challenges complete (activeChallenges.length > 0 and all completed)
- * 2. Score threshold: finalScore >= config.winThreshold — unless endless
+ * 1. Score threshold: finalScore >= config.winThreshold — unless endless
  *    mode is enabled (`config.endlessMode === true`, CG-0MTIILU5V006GCN4).
  *    In endless mode the threshold declares the win and opens the endless-
  *    continuation offer: `gameResult` is `'win'` and `endReason` is
  *    `score_threshold_continue` until the player accepts the offer via
  *    {@link continueAfterThreshold}, at which point `gameResult` returns to
  *    `'playing'` and scoring continues.
- * 3. Turn limit (opt-in): turn >= config.maxTurns with positive reputation and
+ * 2. Turn limit (opt-in): turn >= config.maxTurns with positive reputation and
  *    coins >= 0 — only fires when a config explicitly sets `maxTurns`
  *    (default presets impose no turn limit, CG-0MSLXJCHH001DLIO).
+ *
+ * Completing every active challenge is **not** a win condition
+ * (MS-0MVAZH5OD000Q6E4): it remains a scoring bonus only, and play continues
+ * until the score threshold (or an opt-in turn limit / loss condition).
  *
  * Loss conditions:
  * 1. Bankruptcy (already checked by checkImmediateLoss)
@@ -1044,24 +1088,6 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   // The human seat index (or -1 when none). A win by any other seat is a
   // loss for the human player (MS-0MUX6PMCE002I6HO AC1).
   const humanIdx = findHumanSeatId(state);
-
-  // Win: all challenges complete — shared milestone; lowest-index player takes it.
-  if (
-    state.activeChallenges.length > 0 &&
-    state.activeChallenges.every(ac => ac.completed)
-  ) {
-    const winnerIdx = 0;
-    const isHumanWin = winnerIdx === humanIdx;
-    state.gameResult = isHumanWin ? 'win' : 'loss';
-    state.endReason = 'all_challenges';
-    state.competitiveWinnerId = winnerIdx;
-    addLog(
-      state,
-      `${isHumanWin ? 'Victory' : 'Defeat'}: All challenges completed! (Player ${winnerIdx})`,
-      isHumanWin ? 'gain' : 'loss',
-    );
-    return true;
-  }
 
   // Each seat races toward the effective win threshold: the base difficulty
   // value divided by the seat count (human + AI) and rounded to the nearest

@@ -9,6 +9,7 @@
  */
 
 import { computeSynergyPairs, diffNewSynergyPairs } from '../MainStreetAdjacency';
+import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult, SynergyPair } from '../MainStreetAdjacency';
 import type { PendingEndOfTurnDeltas, TurnResult } from '../MainStreetEngine';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
@@ -112,11 +113,24 @@ export interface ClosingPresentationOptions {
   /**
    * Bound (ms) for any deferred income-collection wait: both the incident
    * pre-wait and the {@link waitForIncomeCollection} advance wait. Defaults
-   * to 16_000 (single-player parity); the competitive closing passes the
-   * global closing bound so a large roster can still complete its
-   * choreography before the day advances.
+   * to {@link INCOME_COLLECTION_CAP_MS} (single-player parity); the
+   * competitive closing passes the global closing bound so a large roster
+   * can still complete its choreography before the day advances.
    */
   incomeCollectionCapMs?: number;
+}
+
+/**
+ * Returns the default bound (ms) for any deferred income-collection wait.
+ *
+ * Single source of truth for the closing primitive's default: consumers that
+ * do not pass an explicit {@link ClosingPresentationOptions.incomeCollectionCapMs}
+ * defer with this bound. Kept as an exported accessor so unit tests can pin
+ * the production default against {@link INCOME_COLLECTION_CAP_MS} without
+ * restating the literal value (MS-0MVLINWHE004W4CP).
+ */
+export function getDefaultIncomeCollectionCapMs(): number {
+  return INCOME_COLLECTION_CAP_MS;
 }
 
 /**
@@ -216,7 +230,7 @@ export function presentTurnClosing(
     const summary = options.incomeSummary ?? closingSummary(result);
     if (summary) setInstruction(s, summary);
 
-    const incomeCapMs = options.incomeCollectionCapMs ?? 16_000;
+    const incomeCapMs = options.incomeCollectionCapMs ?? INCOME_COLLECTION_CAP_MS;
 
     const complete = (): void => {
       if (options.completionText) setInstruction(s, options.completionText);

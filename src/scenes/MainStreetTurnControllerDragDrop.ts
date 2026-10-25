@@ -12,7 +12,8 @@ import { DEFAULT_DRAG_DISTANCE_THRESHOLD, createDragDropManager } from '@ui/drag
 import type { DragDropPayload } from '@ui/dragDrop';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { buyAndPlaceBusinessCommand, buyAndPlaceUpgradeCommand } from '../MainStreetCommands';
-import { canBuyAndPlaceUpgrade, canPurchaseBusiness } from '../MainStreetMarket';
+import { canBuyAndPlaceUpgrade, canPlayUpgradeFromHand, canPurchaseBusiness } from '../MainStreetMarket';
+import { canPlaceFromHand } from '../MainStreetEngineCommands';
 import {
   computeEffectiveBusinessPurchaseCost,
   computeBusinessPurchasePremium,
@@ -231,6 +232,153 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
     }
     startTransfer();
   
+}
+
+export function canPickUpHandCard(tcCtx: MainStreetTurnControllerContext, cardId: string): boolean {
+
+    const s = tcCtx.scene;
+    const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+    const card = (s.state.hand ?? [])[handIndex];
+    if (!card) return false;
+
+    // Phase gate (MS-0MVK4E5M00021XEY): a drag may CONTINUE a pending
+    // click-selection on the same card — clicking a hand card arms
+    // `placing-from-hand` + `pendingHandIndex` (onHand*CardClick), and the
+    // click-select-then-drag flow must not be vetoed at pickup. Every other
+    // phase still vetoes, including `placing-from-hand` while a DIFFERENT
+    // card (or no card) is pending: a drag can never hijack another
+    // card's selection, and a plain unselected drag keeps the historical
+    // market-phase-only rule.
+    const isSelectedCard =
+      s.uiPhase === 'placing-from-hand' && s.pendingHandIndex === handIndex;
+    if (s.uiPhase !== 'market' && !isSelectedCard) return false;
+
+    if (card.family === 'upgrade') {
+      // Tutorial gating (apply-upgrade) — mirror of canPickUpUpgradeCard.
+      const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
+      if (check && !check.allowed) return false;
+      // Action economy: a held upgrade costs one action to play; the same-week
+      // composite (just moved to hand this turn) is free.
+      const isSameWeek = s.state.justMovedUpgradeCardId != null && s.state.justMovedUpgradeCardId === card.id;
+      if (!isSameWeek && s.state.actionsRemaining <= 0) return false;
+      // AC1: veto pickup when NO eligible business exists on the street
+      // (mirror of canPickUpUpgradeCard's hasEligibleTarget, evaluated through
+      // the from-hand predicate which also covers ownership/affordability).
+      const hasEligibleTarget = s.state.streetGrid.some((slot: any, index: number) =>
+        slot !== null && canPlayUpgradeFromHand(s.state, handIndex, index).legal);
+      if (!hasEligibleTarget) return false;
+      return true;
+    }
+
+    // Hand drag support covers business AND community-space cards; event
+    // cards in hand stay click-only (select-then-act) — out of drag scope.
+    if (card.family !== 'business' && card.family !== 'community-space') return false;
+
+    // Tutorial gating (place-business) — mirror of canDropBusinessCard.
+    const checkB = (s.msLifecycleManager as any).isTutorialActionAllowed?.('place-business' as TutorialActionType);
+    if (checkB && !checkB.allowed) return false;
+
+    // AC2 action budget: a held card costs one action to place. The same-week
+    // composite (just moved to hand this turn) may be placed at the +50%
+    // premium with 0 actions — the exact click-path rule (premium dialog).
+    const sameWeek = s.justMovedHandCardId != null && s.justMovedHandCardId === card.id;
+    if (!sameWeek && s.state.actionsRemaining <= 0) return false;
+    const premiumApplies = sameWeek && s.state.actionsRemaining <= 0;
+    const premiumCost = premiumApplies
+      ? computeBusinessPurchasePremium(s.state, card.cost)
+      : undefined;
+    // AC2: pickup is vetoed when no affordable empty slot exists.
+    const hasAffordableEmptySlot = s.state.streetGrid.some((slot: any, index: number) =>
+      slot === null && canPlaceFromHand(s.state, handIndex, index, premiumCost).legal);
+    if (!hasAffordableEmptySlot) return false;
+    return true;
+
+}
+
+export function canDropHandCard(tcCtx: MainStreetTurnControllerContext, cardId: string, slotIndex: number): boolean {
+
+    const s = tcCtx.scene;
+    const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+    const card = (s.state.hand ?? [])[handIndex];
+    if (!card) return false;
+
+    if (card.family === 'upgrade') {
+      const isSameWeek = s.state.justMovedUpgradeCardId != null && s.state.justMovedUpgradeCardId === card.id;
+      if (!isSameWeek && s.state.actionsRemaining <= 0) return false;
+      const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
+      if (check && !check.allowed) return false;
+      return canPlayUpgradeFromHand(s.state, handIndex, slotIndex).legal;
+    }
+
+    // Hand business/community-space drop: only empty in-bounds slots are
+    // valid targets (canPlaceFromHand also guards occupancy + affordability).
+    if (card.family !== 'business' && card.family !== 'community-space') return false;
+    if (slotIndex < 0 || slotIndex >= s.state.streetGrid.length) return false;
+    if (s.state.streetGrid[slotIndex] !== null) return false;
+
+    const checkB = (s.msLifecycleManager as any).isTutorialActionAllowed?.('place-business' as TutorialActionType);
+    if (checkB && !checkB.allowed) return false;
+
+    // Tutorial: synergy adjacency for placing-from-hand steps (T20 etc.).
+    const controller = (s as any).tutorialController as any;
+    if (controller?.isActive) {
+      const step = controller.currentStepIndex >= 0
+        ? getCurrentStep(controller)
+        : null;
+      if (step && !isSynergyAdjacentPlacement(step, s.state.streetGrid, slotIndex)) {
+        return false;
+      }
+    }
+
+    const sameWeek = s.justMovedHandCardId != null && s.justMovedHandCardId === card.id;
+    if (!sameWeek && s.state.actionsRemaining <= 0) return false;
+    const premiumApplies = sameWeek && s.state.actionsRemaining <= 0;
+    const premiumCost = premiumApplies
+      ? computeBusinessPurchasePremium(s.state, card.cost)
+      : undefined;
+    return canPlaceFromHand(s.state, handIndex, slotIndex, premiumCost).legal;
+
+}
+
+export function onDragDropHandUpgrade(tcCtx: MainStreetTurnControllerContext, payload: DragDropPayload): void {
+
+    const s = tcCtx.scene;
+    const cardId = payload.data as string;
+    const slotIndex = payload.zoneData as number;
+    const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+    const card = (s.state.hand ?? [])[handIndex];
+    if (!card || handIndex < 0 || slotIndex == null) return;
+    if (card.family !== 'upgrade') return;
+
+    // Post-drop source of truth: reuse the click-to-apply flow verbatim —
+    // pre-flight eligibility + canPlayUpgradeFromHand, the hand→street
+    // transfer animation, the undoable playUpgradeFromHandCommand, the
+    // level-up burst, tutorial completion (same-week free / held = 1 action
+    // handled inside the command).
+    tcCtx.applyHandUpgradeToSlot(handIndex, slotIndex);
+
+}
+
+export function onDragDropHandBusiness(tcCtx: MainStreetTurnControllerContext, payload: DragDropPayload): void {
+
+    const s = tcCtx.scene;
+    const cardId = payload.data as string;
+    const slotIndex = payload.zoneData as number;
+    const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+    const card = (s.state.hand ?? [])[handIndex];
+    if (!card || handIndex < 0 || slotIndex == null) return;
+    if (card.family !== 'business' && card.family !== 'community-space') return;
+
+    // Arm the pending hand-placement state exactly as a click on the card
+    // would, then delegate to the shared onSlotClick hand branch — the
+    // post-drop source of truth (pre-flight canPlaceFromHand, composite-
+    // premium dialog when applicable, transfer, undoable
+    // playBusinessFromHandCommand).
+    s.pendingHandIndex = handIndex;
+    s.pendingHandJustMoved = s.justMovedHandCardId != null && s.justMovedHandCardId === card.id;
+    s.uiPhase = 'placing-from-hand';
+    tcCtx.onSlotClick(slotIndex);
+
 }
 
 export function canPickUpUpgradeCard(tcCtx: MainStreetTurnControllerContext, cardId: string): boolean {

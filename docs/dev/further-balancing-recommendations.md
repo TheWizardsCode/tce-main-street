@@ -106,9 +106,20 @@ Ownership frequency (Medium, share of runs where the card was owned):
 | R2 | High | Address **reputation collapse as the dominant Medium loss mode**: re-tune reputation sources or Community Favour (e.g. `favourCoinsToRepCost`, business `reputationPerTurn`) so reputation keeps pace with the slower coin economy. | 69% of Medium losses. | MS-0MUR9IMN60093HIE — **done**: positive rep/turn ×4; Medium now 32% / 68% (see reputation-retune-evidence.md). |
 | R3 | Medium | **Confirmed / no change (MS-0MUR9IMXE0090WIV).** **Win thresholds / run length are the intended difficulty lever** now that liquidity is slack. The producer confirmed the per-difficulty `winThreshold` values (Easy 10,000 / Medium 12,000 / Hard 15,000) and the absence of a `maxTurns` cap as the accepted design intent — **no preset change**. | Canonical 200-seed / 60-turn greedy (2026-10-09, comment `MS-C0MV1D0IBA001ROOU`): win rate 0.760 / 0.665 / 0.410 (ladder holds, all inside PRD bands); avgTurns 10.7 / 12.2 / 11.0. | MS-0MUR9IMXE0090WIV — **done** |
 | R4 | Medium | Re-price **community spaces / events** relative to the slower business payback (community spaces are now relatively stronger value per coin). | Intake risk note; distribution shift to cheap cards. | MS-0MUR9IN7L0004TO5 |
-| R5 | Low | Track **synergy-diversity (G4/HHI)** and placement dominance in the next re-baseline to confirm no single synergy type crowds out the others. | Intake synergy-distortion risk. | MS-0MUR9INHX001QCSE |
+| R5 | Low | Track **synergy-diversity (G4/HHI)** and placement dominance in the next re-baseline to confirm no single synergy type crowds out the others. | Intake synergy-distortion risk; now measured per difficulty. | MS-0MUR9INHX001QCSE — **done**: no dominance (max single-type share 21.4%); [report](assets/synergy-diversity-report.md). |
 
 All five follow-ups are `discovered-from:MS-0MUQ50I1Y000B6L3`.
+
+> **R5 confirmation (MS-0MUR9INHX001QCSE, 2026-10-21).** G4/HHI synergy
+> diversity is now tracked per difficulty on the canonical greedy profile
+> (200 seeds, 60 turns, `mc-balance` prefix, Easy/Medium/Hard), computed from
+> each run's `finalGrid` and the template-derived synergy type map (multi-type
+> cards count once per type). **Measured outcome: no dominance.** HHI is
+> Easy 1762, Medium 1740, Hard 1707; the largest single-type share is **21.4%
+> (Culture, Easy)**, well below the 40% dominance threshold, with no warning
+> lines emitted. Regenerate with
+> `npm run balance:synergy-diversity-report`; the committed artefact is
+> [synergy-diversity-report.md](assets/synergy-diversity-report.md).
 
 > **R3 confirmation (MS-0MUR9IMXE0090WIV, producer decision A, 2026-10-09).**
 > The R3 question — whether "tighter" should now mean raising `winThreshold`

@@ -1,0 +1,83 @@
+{
+  "seed": "storyline-parity-v1",
+  "difficulty": "Medium",
+  "steps": [
+    {
+      "template": "evt-tax-error",
+      "cardId": "evt-tax-error",
+      "choice": "accept",
+      "optionLabel": "Accept",
+      "coinChange": -200,
+      "repChange": 0,
+      "pushedBaseId": null,
+      "updateLine": "Story update — Tax Troubles: you accepted the consequence (-200 coins)."
+    },
+    {
+      "template": "evt-flu-outbreak",
+      "cardId": "evt-flu-outbreak",
+      "choice": "reject",
+      "optionLabel": "Reject",
+      "coinChange": 0,
+      "repChange": 0,
+      "pushedBaseId": "evt-pandemic",
+      "updateLine": "Story update — Public Health Crisis: you refused the consequence; the thread continues."
+    },
+    {
+      "template": "evt-recession",
+      "cardId": "evt-recession",
+      "choice": "accept",
+      "optionLabel": "Accept",
+      "coinChange": 0,
+      "repChange": 0,
+      "pushedBaseId": null,
+      "updateLine": "Story update — Economic Downturn: you accepted the consequence."
+    },
+    {
+      "template": "evt-strike-service",
+      "cardId": "evt-strike-service",
+      "choice": "reject",
+      "optionLabel": "Reject",
+      "coinChange": 0,
+      "repChange": 0,
+      "pushedBaseId": "evt-general-strike",
+      "updateLine": "Story update — Labour Unrest: you refused the consequence; the thread continues."
+    },
+    {
+      "template": "evt-popular-menu",
+      "cardId": "evt-popular-menu",
+      "choice": "accept",
+      "optionLabel": "Accept",
+      "coinChange": 311,
+      "repChange": 0,
+      "pushedBaseId": null,
+      "updateLine": "Story update — Restaurant Renaissance: you accepted the consequence (+311 coins)."
+    }
+  ],
+  "journal": [
+    {
+      "turn": 1,
+      "storyline": "Restaurant Renaissance",
+      "outcome": "you accepted the consequence (+311 coins)."
+    },
+    {
+      "turn": 1,
+      "storyline": "Labour Unrest",
+      "outcome": "you refused the consequence; the thread continues."
+    },
+    {
+      "turn": 1,
+      "storyline": "Economic Downturn",
+      "outcome": "you accepted the consequence."
+    },
+    {
+      "turn": 1,
+      "storyline": "Public Health Crisis",
+      "outcome": "you refused the consequence; the thread continues."
+    },
+    {
+      "turn": 1,
+      "storyline": "Tax Troubles",
+      "outcome": "you accepted the consequence (-200 coins)."
+    }
+  ]
+}

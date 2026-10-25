@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
+import { waitForCondition } from '@core-tests/helpers/waitForCondition';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
 import { getEventTemplates } from '../../src/MainStreetCards';
 import { canPurchaseBusiness, canPurchaseEvent, getEmptySlots } from '../../src/MainStreetMarket';
 import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
+import { INCOME_COLLECTION_CAP_MS } from '../../src/scenes/MainStreetAnimatorTiming';
+import { DRAG_TRANSFER_DURATION_MAX_MS } from '../../src/scenes/MainStreetConstants';
 
 async function bootGame(options: { width?: number; height?: number } = {}): Promise<Phaser.Game> {
   let container = document.getElementById('game-container');
@@ -40,7 +43,49 @@ function overlaps(a: { x: number; y: number; w: number; h: number }, b: { x: num
   return true;
 }
 
-async function waitForCondition(
+/**
+ * Fixed starvation margin (ms) for waits racing the 16 s end-of-turn
+ * income-collection cap (`INCOME_COLLECTION_CAP_MS`).
+ *
+ * The shared helper's default derivation (`max(1.5 × cap, cap + 5 s)`) yields
+ * 24 000 ms here, which the soak (MS-0MVLINY2Q004V33L) proved insufficient:
+ * under `$(nproc)` CPU burners (load ≈ 2 × cores) the deferred end-of-turn
+ * presentation stretched past 24 s, because the deferral's own cap is only
+ * enforced when Phaser's update loop runs and that loop is itself starved.
+ * The soak also measured a run needing more than 36 s at load ≈ 31, so the
+ * margin is the largest that still leaves the documented 20 s scene-boot
+ * allowance inside the browser project's 60 s `testTimeout`:
+ * 40 000 ms budget (cap + 24 s) + 20 000 ms = the 60 000 ms hook exactly, so a
+ * genuine hang still reports this wait's labelled timeout rather than being
+ * killed by the hook. Above ~2× CPU oversubscription the scene's own
+ * choreography can outlive the hook — that ceiling is recorded on the work
+ * item rather than papered over with a longer poll.
+ */
+const END_TURN_STARVATION_MARGIN_MS = 24_000;
+
+/**
+ * Fixed starvation margin (ms) for waits racing the 1.5 s transfer-duration
+ * cap (`DRAG_TRANSFER_DURATION_MAX_MS`).
+ *
+ * With such a small cap the helper's starvation *factor* contributes almost
+ * nothing, so the fixed margin carries the load tolerance: 13 500 ms budget
+ * for a 1 500 ms cap. The soak (MS-0MVLINY2Q004V33L) surfaced two 6 000 ms
+ * hand-guessed transfer waits timing out under imposed CPU load while the
+ * cap-derived waits completed, which is exactly the drift this margin fixes.
+ */
+const TRANSFER_STARVATION_MARGIN_MS = 12_000;
+
+/**
+ * Local raw-timeout poll helper, kept for waits that race no production cap.
+ *
+ * @deprecated Use the shared, load-tolerant `waitForCondition` from
+ * `@core-tests/helpers/waitForCondition` for any wait paced by a production
+ * timing cap: pass that cap as `capMs` so the budget is derived from it
+ * (cap + starvation margin) instead of being hand-guessed. This copy cannot
+ * express a derivation and stays only for waits with no production cap to
+ * race (e.g. UI transitions).
+ */
+async function waitForConditionLegacy(
   predicate: () => boolean,
   options: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
 ): Promise<void> {
@@ -229,7 +274,7 @@ describe('MainStreetScene browser tests', () => {
     // The market populates asynchronously during boot. Asserting on it
     // immediately raced the boot (state.market.cards empty on slow machines)
     // and flaked ~1/3 of runs — wait deterministically for it instead.
-    await waitForCondition(
+    await waitForConditionLegacy(
       () => (state.market.cards ?? []).length > 0,
       { timeoutMs: 15_000, intervalMs: 50, label: 'market populated at boot' },
     );
@@ -367,15 +412,22 @@ describe('MainStreetScene browser tests', () => {
       expect(state.streetGrid[targetSlot]).toBeNull();
       expect(scene.getHiddenTransferSourceCardCountForTest()).toBeGreaterThan(0);
 
-      await waitForCondition(
+      await waitForConditionLegacy(
         () => scene.getTransferAnimationCountForTest() > beforeBusinessAnimCount,
         { label: 'business transfer animation start' },
       );
 
       // New flow: the business is bought to hand first (market → hand transfer), then placed on the grid (hand → street placement). Post-CG-0MSXIQIPJ000NDTL: the card is NOT auto-selected; click the hand card to select it before placing.
+      // The market → hand flight is paced by the transfer-duration cap, so the
+      // budget is derived from that cap (cap + starvation margin) rather than
+      // guessed — a hand-picked 6 s could sit under a cap-retuned animation.
       await waitForCondition(
         () => (state.hand ?? []).some((c: any) => c.id === business.id),
-        { timeoutMs: 6000, label: 'business bought to hand' },
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'business bought to hand',
+        },
       );
       const handBusiness = (state.hand ?? []).find((c: any) => c.id === business.id);
       expect(handBusiness).toBeTruthy();
@@ -383,7 +435,7 @@ describe('MainStreetScene browser tests', () => {
 
       // Select the hand card to enter placing-from-hand (no auto-selection).
       scene.onHandBusinessCardClick(state.hand.findIndex((c: any) => c.id === business.id));
-      await waitForCondition(
+      await waitForConditionLegacy(
         () => scene.uiPhase === 'placing-from-hand',
         { timeoutMs: 6000, label: 'hand card selected for placement' },
       );
@@ -408,7 +460,7 @@ describe('MainStreetScene browser tests', () => {
       );
       expect(cardFaceChildren.length).toBe(0);
 
-      await waitForCondition(
+      await waitForConditionLegacy(
         () => state.streetGrid[targetSlot]?.id === business.id,
         { timeoutMs: 6000, label: 'business transfer completion' },
       );
@@ -433,12 +485,12 @@ describe('MainStreetScene browser tests', () => {
         expect((state.hand ?? []).some((c: any) => c.id === eventCard.id)).toBe(false);
         expect(scene.getHiddenTransferSourceCardCountForTest()).toBeGreaterThan(0);
 
-        await waitForCondition(
+        await waitForConditionLegacy(
           () => scene.getTransferAnimationCountForTest() > beforeEventAnimCount,
           { label: 'event transfer animation start' },
         );
 
-        await waitForCondition(
+        await waitForConditionLegacy(
           () => (state.hand ?? []).some((c: any) => c.id === eventCard.id),
           { timeoutMs: 6000, label: 'event transfer completion' },
         );
@@ -460,7 +512,9 @@ describe('MainStreetScene browser tests', () => {
       destroyGame(game);
       game = null;
     }
-  }, 45_000);
+    // Sized so every cap-derived wait in this test fails with its own label
+    // rather than the hook timing the test out (browser default is 60 s).
+  }, 60_000);
 
   it('buy transfer animations end exactly at the rendered hand position (desktop + narrow viewports)', async () => {
     const viewports = [
@@ -491,9 +545,14 @@ describe('MainStreetScene browser tests', () => {
       expect(biz1).toBeTruthy();
 
       scene.onBusinessCardClick(biz1);
+      // Same market → hand transfer cap as the single-buy wait above.
       await waitForCondition(
         () => (state.hand ?? []).some((c: any) => c.id === biz1.id),
-        { timeoutMs: 6000, label: 'first business bought to hand' },
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'first business bought to hand',
+        },
       );
       expect(state.hand).toHaveLength(1);
       // Post-CG-0MSXIQIPJ000NDTL: no auto-selection — the phase stays market.
@@ -509,15 +568,21 @@ describe('MainStreetScene browser tests', () => {
       scene.state.actionsRemaining = 1; // action economy: refill for the second purchase
       const beforeBiz2 = transferSpy.mock.calls.length;
       scene.onBusinessCardClick(biz2);
-      await waitForCondition(
+      await waitForConditionLegacy(
         () => transferSpy.mock.calls.length > beforeBiz2,
         { label: 'second business transfer started' },
       );
       const bizDest = (transferSpy.mock.calls[beforeBiz2][0] as any).destination;
 
+      // Transfer-cap paced: derive the budget from the cap (the 6 000 ms
+      // hand-guess the soak caught timing out under load is a regression).
       await waitForCondition(
-        () => state.hand?.some((c: any) => c.id === biz2.id),
-        { timeoutMs: 6000, label: 'second business materialized in hand' },
+        () => Boolean(state.hand?.some((c: any) => c.id === biz2.id)),
+        {
+          capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+          floorMs: TRANSFER_STARVATION_MARGIN_MS,
+          label: 'second business materialized in hand',
+        },
       );
       const bizIndex = state.hand.findIndex((c: any) => c.id === biz2.id);
       const bizRendered = scene.msRenderer.handView.getCardCenters()[bizIndex];
@@ -531,15 +596,20 @@ describe('MainStreetScene browser tests', () => {
         const beforeEvent = transferSpy.mock.calls.length;
         scene.uiPhase = 'market';
         scene.onEventCardClick(eventCard);
-        await waitForCondition(
+        await waitForConditionLegacy(
           () => transferSpy.mock.calls.length > beforeEvent,
           { label: 'event transfer started' },
         );
         const eventDest = (transferSpy.mock.calls[beforeEvent][0] as any).destination;
 
+        // Transfer-cap paced — same derivation as the business transfers above.
         await waitForCondition(
           () => (state.hand ?? []).some((c: any) => c.id === eventCard.id),
-          { timeoutMs: 6000, label: 'event materialized' },
+          {
+            capMs: DRAG_TRANSFER_DURATION_MAX_MS,
+            floorMs: TRANSFER_STARVATION_MARGIN_MS,
+            label: 'event materialized',
+          },
         );
         const eventRendered = scene.msRenderer.handView.getCardCenters()[state.hand.findIndex((c: any) => c.id === eventCard.id)];
         expect(Math.abs(eventDest.x - eventRendered.x)).toBeLessThanOrEqual(2);
@@ -550,7 +620,9 @@ describe('MainStreetScene browser tests', () => {
       destroyGame(game);
       game = null;
     }
-  }, 45_000);
+    // Sized so every cap-derived wait in this test fails with its own label
+    // rather than the hook timing the test out (browser default is 60 s).
+  }, 60_000);
 
   it('allows pressing Enter to end the turn when legal', async () => {
     game = await bootGame();
@@ -576,13 +648,21 @@ describe('MainStreetScene browser tests', () => {
     const ev = new KeyboardEvent('keydown', { key: 'Enter' });
     if (typeof window !== 'undefined') window.dispatchEvent(ev);
 
-    // Allow the engine to process and the (deferred, CG-0MTR72P14000VO6Q)
-    // closing presentation to complete — the day advances only after the
-    // end-of-turn animations land, so poll instead of assuming synchronous
-    // advancement.
+    // Poll for the day to advance instead of assuming synchronous
+    // advancement: the day advances only after the deferred
+    // (CG-0MTR72P14000VO6Q) closing presentation lands, and that deferral is
+    // bounded by INCOME_COLLECTION_CAP_MS — when the choreography never
+    // clears the flag the cap forces the advance. The wait budget is
+    // therefore derived from that cap (cap + starvation margin), so it can
+    // never be shorter than the deferral it races and it tracks a retune.
     await waitForCondition(
       () => scene.state.turn > beforeTurn,
-      { timeoutMs: 15_000, intervalMs: 100, label: 'turn to advance after end-of-turn presentation' },
+      {
+        capMs: INCOME_COLLECTION_CAP_MS,
+        floorMs: END_TURN_STARVATION_MARGIN_MS,
+        intervalMs: 100,
+        label: 'turn to advance after end-of-turn presentation',
+      },
     );
 
     expect(scene.state.turn).toBeGreaterThan(beforeTurn);
@@ -674,7 +754,7 @@ describe('MainStreetScene browser tests', () => {
     const state = scene.state;
 
     // The market populates asynchronously during boot. Wait deterministically.
-    await waitForCondition(
+    await waitForConditionLegacy(
       () => (state.market.cards ?? []).length > 0,
       { timeoutMs: 15_000, intervalMs: 50, label: 'market populated at boot' },
     );
@@ -694,7 +774,7 @@ describe('MainStreetScene browser tests', () => {
     // market card alpha to 1 and can land after our first refreshAll. Wait
     // for it to settle (containers exist, alpha === 1) so the dim below is
     // not clobbered by a late deal-in tween.
-    await waitForCondition(
+    await waitForConditionLegacy(
       () => {
         const row = scene.msRenderer.getMarketRowCards('market');
         const c = row[businessIdx] as Phaser.GameObjects.Container | undefined;
@@ -751,7 +831,7 @@ describe('MainStreetScene browser tests', () => {
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
     const state = scene.state;
 
-    await waitForCondition(
+    await waitForConditionLegacy(
       () => (state.market.cards ?? []).length > 0,
       { timeoutMs: 15_000, intervalMs: 50, label: 'market populated at boot' },
     );
@@ -765,11 +845,13 @@ describe('MainStreetScene browser tests', () => {
     expect(business).toBeTruthy();
     const familyLabel = business.family === 'community-space' ? 'Community Space' : 'Business';
 
-    // Buy the business into the hand (market → hand transfer flow).
+    // Buy the business into the hand (market → hand transfer flow). The
+    // transfer is paced by DRAG_TRANSFER_DURATION_MAX_MS, so the budget is
+    // derived from that cap rather than guessed.
     scene.onBusinessCardClick(business);
     await waitForCondition(
       () => (state.hand ?? []).some((c: any) => c.id === business.id),
-      { timeoutMs: 6000, label: 'business bought to hand' },
+      { capMs: DRAG_TRANSFER_DURATION_MAX_MS, label: 'business bought to hand' },
     );
     // Force a deterministic hand re-render so the hover rectangle exists
     // regardless of transfer-animation timing.
@@ -779,20 +861,27 @@ describe('MainStreetScene browser tests', () => {
     const handSprite = scene.msRenderer.handView.getSpriteAt(handIdx) as Phaser.GameObjects.Container;
     expect(handSprite).toBeTruthy();
 
-    // Business cards in the hand now get an interactive hover rectangle
-    // wired to the full card tooltip (CG-0MT24RFIV007NQMP).
-    const hoverRect = (handSprite.list ?? []).find(
-      (obj: any) =>
-        obj instanceof Phaser.GameObjects.Rectangle &&
-        obj.input &&
-        obj.input.enabled,
-    ) as Phaser.GameObjects.Rectangle | undefined;
-    expect(hoverRect).toBeTruthy();
+    // Business cards in the hand get an interactive hover surface wired to
+    // the full card tooltip (CG-0MT24RFIV007NQMP). Market and hand drag
+    // cards are draggable containers (MS-0MV76HVE4007AOO0): when the
+    // drag-drop manager is live the CONTAINER itself is the interactive
+    // element (a child rect would swallow the drag start); otherwise the
+    // legacy interactive hover rectangle is attached. Accept either surface
+    // so the tooltip assertion covers both interaction models.
+    const hoverSurface = (handSprite.input && handSprite.input.enabled
+      ? handSprite
+      : (handSprite.list ?? []).find(
+          (obj: any) =>
+            obj instanceof Phaser.GameObjects.Rectangle &&
+            obj.input &&
+            obj.input.enabled,
+        )) as Phaser.GameObjects.Rectangle | Phaser.GameObjects.Container | undefined;
+    expect(hoverSurface).toBeTruthy();
 
     const tooltipShowSpy = vi.spyOn(scene.tooltipManager, 'show');
     const tooltipHideSpy = vi.spyOn(scene.tooltipManager, 'hide');
 
-    hoverRect!.emit('pointerover');
+    hoverSurface!.emit('pointerover');
     expect(tooltipShowSpy).toHaveBeenCalled();
     const content = tooltipShowSpy.mock.calls[0][0] as string;
     expect(content).toContain(`${familyLabel}: ${business.name}`);
@@ -800,7 +889,7 @@ describe('MainStreetScene browser tests', () => {
     expect(content).toContain('Income:');
     expect(content).toContain('Synergy:');
 
-    hoverRect!.emit('pointerout');
+    hoverSurface!.emit('pointerout');
     expect(tooltipHideSpy).toHaveBeenCalled();
 
     destroyGame(game);
@@ -812,7 +901,7 @@ describe('MainStreetScene browser tests', () => {
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
     const state = scene.state;
 
-    await waitForCondition(
+    await waitForConditionLegacy(
       () => (state.market.cards ?? []).length > 0,
       { timeoutMs: 15_000, intervalMs: 50, label: 'market populated at boot' },
     );

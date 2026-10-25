@@ -18,7 +18,7 @@ import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { createContainers, refreshStreetGrid, drawStreetRoads, drawMapSlot, drawRevealedStreetSlot, createStreetPanZone, applyStreetCamera, installStreetMapMask, updateStreetMapMask, installStreetZoomControls, createZoomButton, updateStreetZoomControls, setZoomButtonEnabled, refreshStreetZoomControls, drawSynergyLines, mapNodes, getVisibleStreetNodes, getStreetRoadBands, drawBusinessSlot, applyUpgradeOverlays, updateBusinessHandSelection, drawEmptySlot } from './MainStreetRendererStreet';
 import { refreshMarket, drawMarketRow, getMarketRowCards, getMarketSlotCenter, drawMarketCard, getFrontIncidentCardCenter, refreshIncidentQueue } from './MainStreetRendererMarket';
 import { createHeader, createInstructions, refreshAll, refreshAllExceptStreet, refreshHud, syncHudTotals, refreshChallengeTracker, refreshActionButtons, refreshLog, refreshApplicant, animateUpcomingEffectLine } from './MainStreetRendererHud';
-import { unregisterDragDraggables, refreshDragDropZones, showDragHighlights, getDragHighlights, clearDragHighlights, showTargetHighlights, clearTargetHighlights } from './MainStreetRendererDragDrop';
+import { unregisterDragDraggables, unregisterHandDraggables, refreshDragDropZones, showDragHighlights, getDragHighlights, clearDragHighlights, showTargetHighlights, clearTargetHighlights } from './MainStreetRendererDragDrop';
 import { computeLayout, refreshPlayerHand, drawHeldEventCard } from './MainStreetRendererLayout';
 
 // Re-export for test imports
@@ -135,6 +135,10 @@ export class MainStreetRenderer implements MainStreetRendererContext {
 
   public unregisterDragDraggables(): void {
     unregisterDragDraggables(this);
+  }
+
+  public unregisterHandDraggables(): void {
+    unregisterHandDraggables(this);
   }
 
   public refreshDragDropZones(): void {

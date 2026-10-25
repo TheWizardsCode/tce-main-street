@@ -25,6 +25,30 @@
         "tests/main-street/hud-total-counting-live.browser.test.ts",
         "tests/main-street/hud-total-counting.test.ts"
       ]
+    },
+    "deselect-toggle-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/card-deselect.browser.test.ts tests/main-street/hint-bar-placement.browser.test.ts tests/main-street/composite-click.browser.test.ts tests/main-street/upgrade-hand-flow.browser.test.ts tests/main-street/event-card-select-then-act.browser.test.ts tests/main-street/discard-from-hand.browser.test.ts tests/main-street/hand-outlines.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/card-deselect.browser.test.ts",
+        "tests/main-street/hint-bar-placement.browser.test.ts",
+        "tests/main-street/composite-click.browser.test.ts",
+        "tests/main-street/upgrade-hand-flow.browser.test.ts",
+        "tests/main-street/event-card-select-then-act.browser.test.ts",
+        "tests/main-street/discard-from-hand.browser.test.ts",
+        "tests/main-street/hand-outlines.browser.test.ts"
+      ]
+    },
+    "hand-drag-post-refresh": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/hand-drag-drop.test.ts",
+        "npx vitest run --project browser tests/main-street/hand-drag-post-refresh.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hand-drag-drop.test.ts",
+        "tests/main-street/hand-drag-post-refresh.browser.test.ts"
+      ]
     }
   }
 }

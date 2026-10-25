@@ -9,7 +9,7 @@
  * @module
  */
 
-import { FONT_FAMILY, HandView } from '@ui';
+import { DEFAULT_DRAG_DISTANCE_THRESHOLD, FONT_FAMILY, HandView } from '@ui';
 import { mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { getSlotOwnerId, resolveSeatColour } from '../MainStreetAdjacencyOwner';
@@ -138,40 +138,109 @@ export function createContainers(renderer: MainStreetRendererContext): void {
         } else if (card.family === 'upgrade') {
           // ── Upgrade card path (CG-0MT3IYSRL001VVUP): hand-first targeting.
           // Clicking the upgrade in hand starts 'placing-from-hand' — the
-          // player then clicks the business to upgrade.
+          // player then clicks the business to upgrade. When the drag-drop
+          // manager is live the card is ALSO draggable (hand → street apply,
+          // MS-0MV76HVE4007AOO0): pickup is veto-gated (canPickUpHandCard)
+          // and the same thresholds keep pure clicks reaching
+          // onHandUpgradeCardClick (click-vs-drag coexistence, AC5).
           if (!s.replayMode) {
-            const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
-            hover.setInteractive({ useHandCursor: true });
-            hover.on('pointerover', () => {
-              const info = buildCardTooltipInfo(card, s.state.config);
-              s.tooltipManager?.show(info, container.x, container.y);
-            });
-            hover.on('pointerout', () => s.tooltipManager?.hide());
-            hover.on('pointerdown', () => {
-              s.onHandUpgradeCardClick(cardIndex);
-            });
-            container.add(hover);
+            if (s.dragDropManager) {
+              const hitAreaRect = new Phaser.Geom.Rectangle(
+                -handCardW / 2, -handCardH / 2, handCardW, handCardH,
+              );
+              s.dragDropManager.registerDraggable({
+                gameObject: container,
+                data: card.id,
+                hitArea: hitAreaRect,
+                canPickUp: () => s.msTurnController.canPickUpHandCard(card.id),
+                onDrop: (payload: any) => s.msTurnController.onDragDropHandUpgrade(payload),
+              });
+              renderer.dragDropRegistered.add(container);
+              container.setName(`ms-hand-card-${card.id}`);
+
+              const dragClickDistance =
+                s.input?.dragDistanceThreshold ?? DEFAULT_DRAG_DISTANCE_THRESHOLD;
+              container.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+                const moved = Phaser.Math.Distance.Between(
+                  pointer.downX, pointer.downY, pointer.x, pointer.y,
+                );
+                if (moved > dragClickDistance) return; // was a drag, not a click
+                s.onHandUpgradeCardClick(cardIndex);
+              });
+              container.on('pointerover', () => {
+                const info = buildCardTooltipInfo(card, s.state.config);
+                s.tooltipManager?.show(info, container.x, container.y);
+              });
+              container.on('pointerout', () => s.tooltipManager?.hide());
+            } else {
+              const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
+              hover.setInteractive({ useHandCursor: true });
+              hover.on('pointerover', () => {
+                const info = buildCardTooltipInfo(card, s.state.config);
+                s.tooltipManager?.show(info, container.x, container.y);
+              });
+              hover.on('pointerout', () => s.tooltipManager?.hide());
+              hover.on('pointerdown', () => {
+                s.onHandUpgradeCardClick(cardIndex);
+              });
+              container.add(hover);
+            }
           }
         } else {
-          // ── Business card path: upgrade overlays, tooltip, + placement click ──
+          // ── Business card path: upgrade overlays, tooltip, + placement
+          // click/drag. Click-to-place starts the placing-from-hand flow
+          // (unchanged); when the drag manager is live the card is ALSO
+          // draggable (hand → empty slot, MS-0MV76HVE4007AOO0) with pickup
+          // veto-gated by canPickUpHandCard and click-vs-drag coexistence via
+          // the same drag-threshold gate the market renderer uses (AC5).
           renderer.applyUpgradeOverlays(container, card, renderW, renderH);
 
           if (!s.replayMode) {
-            // Single interactive rectangle (mirrors the event card path):
-            // hover shows the full card tooltip, click-to-place starts the
-            // placing-from-hand flow. Hand tooltips use the default
-            // includeEventDetail: false (no coin/rep detail lines).
-            const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
-            hover.setInteractive({ useHandCursor: true });
-            hover.on('pointerover', () => {
-              const info = buildCardTooltipInfo(card, s.state.config);
-              s.tooltipManager?.show(info, container.x, container.y);
-            });
-            hover.on('pointerout', () => s.tooltipManager?.hide());
-            hover.on('pointerdown', () => {
-              s.onHandBusinessCardClick(cardIndex);
-            });
-            container.add(hover);
+            if (s.dragDropManager) {
+              const hitAreaRect = new Phaser.Geom.Rectangle(
+                -handCardW / 2, -handCardH / 2, handCardW, handCardH,
+              );
+              s.dragDropManager.registerDraggable({
+                gameObject: container,
+                data: card.id,
+                hitArea: hitAreaRect,
+                canPickUp: () => s.msTurnController.canPickUpHandCard(card.id),
+                onDrop: (payload: any) => s.msTurnController.onDragDropHandBusiness(payload),
+              });
+              renderer.dragDropRegistered.add(container);
+              container.setName(`ms-hand-card-${card.id}`);
+
+              const dragClickDistance =
+                s.input?.dragDistanceThreshold ?? DEFAULT_DRAG_DISTANCE_THRESHOLD;
+              container.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+                const moved = Phaser.Math.Distance.Between(
+                  pointer.downX, pointer.downY, pointer.x, pointer.y,
+                );
+                if (moved > dragClickDistance) return; // was a drag, not a click
+                s.onHandBusinessCardClick(cardIndex);
+              });
+              container.on('pointerover', () => {
+                const info = buildCardTooltipInfo(card, s.state.config);
+                s.tooltipManager?.show(info, container.x, container.y);
+              });
+              container.on('pointerout', () => s.tooltipManager?.hide());
+            } else {
+              // Single interactive rectangle (mirrors the event card path):
+              // hover shows the full card tooltip, click-to-place starts the
+              // placing-from-hand flow. Hand tooltips use the default
+              // includeEventDetail: false (no coin/rep detail lines).
+              const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
+              hover.setInteractive({ useHandCursor: true });
+              hover.on('pointerover', () => {
+                const info = buildCardTooltipInfo(card, s.state.config);
+                s.tooltipManager?.show(info, container.x, container.y);
+              });
+              hover.on('pointerout', () => s.tooltipManager?.hide());
+              hover.on('pointerdown', () => {
+                s.onHandBusinessCardClick(cardIndex);
+              });
+              container.add(hover);
+            }
           }
         }
 

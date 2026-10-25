@@ -1,0 +1,188 @@
+%%{ init: { "flowchart": { "curve": "basis" } } }%%
+flowchart LR
+
+  %% Staff relationships & specialisations — generated from src/card-data.csv; do not hand-edit.
+
+  biz_bakery("Bakery<br/>biz-bakery")
+  biz_cafe("Cafe<br/>biz-cafe")
+  biz_delicatessen("Delicatessen<br/>biz-delicatessen")
+  biz_diner("Diner<br/>biz-diner")
+  biz_florist("Flower Shop<br/>biz-florist")
+  biz_hardware("Hardware Store<br/>biz-hardware")
+  skill_brand_ambassador["Brand Ambassador<br/>skill-brand-ambassador"]
+  skill_category_cost_reduction["cost reduction<br/>skill-category-cost-reduction"]
+  skill_category_incident_mitigation["incident mitigation<br/>skill-category-incident-mitigation"]
+  skill_category_income_boost["income boost<br/>skill-category-income-boost"]
+  skill_category_reputation_boost["reputation boost<br/>skill-category-reputation-boost"]
+  skill_chef["Chef de Cuisine<br/>skill-chef"]
+  skill_community_builder["Community Builder<br/>skill-community-builder"]
+  skill_compliance["Compliance Officer<br/>skill-compliance"]
+  skill_cost_cutter["Cost Cutter<br/>skill-cost-cutter"]
+  skill_dj["DJ<br/>skill-dj"]
+  skill_negotiator["Negotiator<br/>skill-negotiator"]
+  skill_networker["Networker<br/>skill-networker"]
+  skill_operations_manager["Operations Manager<br/>skill-operations-manager"]
+  skill_pr_strategist["PR Strategist<br/>skill-pr-strategist"]
+  skill_quality_inspector["Quality Inspector<br/>skill-quality-inspector"]
+  skill_risk_manager["Risk Manager<br/>skill-risk-manager"]
+  skill_sales_champion["Sales Champion<br/>skill-sales-champion"]
+  skill_security_consultant["Security Consultant<br/>skill-security-consultant"]
+  skill_tech_guru["Tech Guru<br/>skill-tech-guru"]
+  skill_town_gossip["Town Gossip<br/>skill-town-gossip"]
+  staff_accountant["Accountant<br/>staff-accountant<br/>ongoing 150 coins/turn"]
+  staff_apprentice["Apprentice<br/>staff-apprentice<br/>ongoing 50 coins/turn"]
+  staff_assistant["Assistant<br/>staff-assistant<br/>ongoing 100 coins/turn"]
+  staff_baker["Baker<br/>staff-baker<br/>ongoing 80 coins/turn"]
+  staff_barista["Barista<br/>staff-barista<br/>ongoing 50 coins/turn"]
+  staff_bookkeeper["Bookkeeper<br/>staff-bookkeeper<br/>ongoing 50 coins/turn"]
+  staff_chef["Chef<br/>staff-chef<br/>ongoing 100 coins/turn"]
+  staff_customer_rep["Customer Service Rep<br/>staff-customer-rep<br/>ongoing 50 coins/turn"]
+  staff_delivery["Delivery Driver<br/>staff-delivery<br/>ongoing 50 coins/turn"]
+  staff_director["Director<br/>staff-director<br/>ongoing 400 coins/turn"]
+  staff_event_planner["Event Planner<br/>staff-event-planner<br/>ongoing 75 coins/turn"]
+  staff_executive["Executive<br/>staff-executive<br/>ongoing 500 coins/turn"]
+  staff_financial["Financial Advisor<br/>staff-financial<br/>ongoing 125 coins/turn"]
+  staff_florist["Florist<br/>staff-florist<br/>ongoing 75 coins/turn"]
+  staff_general_manager["General Manager<br/>staff-general-manager<br/>ongoing 500 coins/turn"]
+  staff_health_safety["Health & Safety Inspector<br/>staff-health-safety<br/>ongoing 100 coins/turn"]
+  staff_investor["Investor<br/>staff-investor<br/>ongoing 125 coins/turn"]
+  staff_it["IT Specialist<br/>staff-it<br/>ongoing 100 coins/turn"]
+  staff_lookout["Lookout<br/>staff-lookout<br/>ongoing 200 coins/turn"]
+  staff_maintenance["Maintenance Worker<br/>staff-maintenance<br/>ongoing 75 coins/turn"]
+  staff_manager["Manager<br/>staff-manager<br/>ongoing 250 coins/turn"]
+  staff_marketing["Marketing Consultant<br/>staff-marketing<br/>ongoing 100 coins/turn"]
+  staff_mechanic["Mechanic<br/>staff-mechanic<br/>ongoing 90 coins/turn"]
+  staff_pr["PR Officer<br/>staff-pr<br/>ongoing 100 coins/turn"]
+  staff_security["Security Guard<br/>staff-security<br/>ongoing 75 coins/turn"]
+  staff_socialite["Socialite<br/>staff-socialite<br/>ongoing 150 coins/turn"]
+  synergy_commerce(("Commerce<br/>synergy-commerce"))
+  synergy_culture(("Culture<br/>synergy-culture"))
+  synergy_entertainment(("Entertainment<br/>synergy-entertainment"))
+  synergy_food(("Food<br/>synergy-food"))
+  synergy_health(("Health<br/>synergy-health"))
+  synergy_service(("Service<br/>synergy-service"))
+
+  skill_category_cost_reduction -->|ongoing-cost-street-pct| skill_cost_cutter
+  skill_category_cost_reduction -->|refresh-cost-flat| skill_negotiator
+  skill_category_cost_reduction -->|salary-flat| skill_operations_manager
+  skill_category_incident_mitigation -->|incident-rep-damage-flat| skill_compliance
+  skill_category_incident_mitigation -->|incident-coin-damage-pct| skill_quality_inspector
+  skill_category_incident_mitigation -->|incident-probability-pct| skill_risk_manager
+  skill_category_incident_mitigation -->|incident-theft-immunity| skill_security_consultant
+  skill_category_income_boost -->|income-percent-food| skill_chef
+  skill_category_income_boost -->|income-percent-entertainment| skill_dj
+  skill_category_income_boost -->|adjacency-coin-bonus| skill_networker
+  skill_category_income_boost -->|income-flat-commerce| skill_sales_champion
+  skill_category_income_boost -->|synergy-range-entertainment| skill_tech_guru
+  skill_category_reputation_boost -->|reputation-multiplier-sources| skill_brand_ambassador
+  skill_category_reputation_boost -->|reputation-flat-all| skill_community_builder
+  skill_category_reputation_boost -->|reputation-flat-service| skill_pr_strategist
+  skill_category_reputation_boost -->|peek-incident-deck| skill_town_gossip
+  staff_accountant -->|Commerce| synergy_commerce
+  staff_accountant -->|Food| synergy_food
+  staff_accountant -->|Service| synergy_service
+  staff_apprentice -->|Commerce| synergy_commerce
+  staff_apprentice -->|Culture| synergy_culture
+  staff_apprentice -->|Entertainment| synergy_entertainment
+  staff_apprentice -->|Food| synergy_food
+  staff_apprentice -->|Health| synergy_health
+  staff_apprentice -->|Service| synergy_service
+  staff_assistant -->|Commerce| synergy_commerce
+  staff_assistant -->|Culture| synergy_culture
+  staff_assistant -->|Entertainment| synergy_entertainment
+  staff_assistant -->|Food| synergy_food
+  staff_assistant -->|Health| synergy_health
+  staff_assistant -->|Service| synergy_service
+  staff_baker -->|Bakery| biz_bakery
+  staff_baker -->|Food| synergy_food
+  staff_barista -->|Cafe| biz_cafe
+  staff_barista -->|Food| synergy_food
+  staff_bookkeeper -->|Commerce| synergy_commerce
+  staff_bookkeeper -->|Food| synergy_food
+  staff_bookkeeper -->|Service| synergy_service
+  staff_chef -->|Cafe| biz_cafe
+  staff_chef -->|Delicatessen| biz_delicatessen
+  staff_chef -->|Diner| biz_diner
+  staff_chef -->|Food| synergy_food
+  staff_customer_rep -->|Commerce| synergy_commerce
+  staff_customer_rep -->|Culture| synergy_culture
+  staff_customer_rep -->|Entertainment| synergy_entertainment
+  staff_customer_rep -->|Food| synergy_food
+  staff_customer_rep -->|Health| synergy_health
+  staff_customer_rep -->|Service| synergy_service
+  staff_delivery -->|Commerce| synergy_commerce
+  staff_delivery -->|Food| synergy_food
+  staff_director -->|Commerce| synergy_commerce
+  staff_director -->|Culture| synergy_culture
+  staff_director -->|Entertainment| synergy_entertainment
+  staff_director -->|Food| synergy_food
+  staff_director -->|Health| synergy_health
+  staff_director -->|Service| synergy_service
+  staff_event_planner -->|Entertainment| synergy_entertainment
+  staff_executive -->|Commerce| synergy_commerce
+  staff_executive -->|Culture| synergy_culture
+  staff_executive -->|Entertainment| synergy_entertainment
+  staff_executive -->|Food| synergy_food
+  staff_executive -->|Health| synergy_health
+  staff_executive -->|Service| synergy_service
+  staff_financial -->|Commerce| synergy_commerce
+  staff_florist -->|Flower Shop| biz_florist
+  staff_florist -->|Commerce| synergy_commerce
+  staff_florist -->|Culture| synergy_culture
+  staff_general_manager -->|Commerce| synergy_commerce
+  staff_general_manager -->|Culture| synergy_culture
+  staff_general_manager -->|Entertainment| synergy_entertainment
+  staff_general_manager -->|Food| synergy_food
+  staff_general_manager -->|Health| synergy_health
+  staff_general_manager -->|Service| synergy_service
+  staff_health_safety -->|Health| synergy_health
+  staff_investor -->|Commerce| synergy_commerce
+  staff_investor -->|Culture| synergy_culture
+  staff_investor -->|Entertainment| synergy_entertainment
+  staff_investor -->|Food| synergy_food
+  staff_investor -->|Health| synergy_health
+  staff_investor -->|Service| synergy_service
+  staff_it -->|Commerce| synergy_commerce
+  staff_it -->|Entertainment| synergy_entertainment
+  staff_it -->|Service| synergy_service
+  staff_lookout -->|Commerce| synergy_commerce
+  staff_lookout -->|Culture| synergy_culture
+  staff_lookout -->|Entertainment| synergy_entertainment
+  staff_lookout -->|Food| synergy_food
+  staff_lookout -->|Health| synergy_health
+  staff_lookout -->|Service| synergy_service
+  staff_maintenance -->|Commerce| synergy_commerce
+  staff_maintenance -->|Culture| synergy_culture
+  staff_maintenance -->|Entertainment| synergy_entertainment
+  staff_maintenance -->|Food| synergy_food
+  staff_maintenance -->|Health| synergy_health
+  staff_maintenance -->|Service| synergy_service
+  staff_manager -->|Commerce| synergy_commerce
+  staff_manager -->|Culture| synergy_culture
+  staff_manager -->|Entertainment| synergy_entertainment
+  staff_manager -->|Food| synergy_food
+  staff_manager -->|Health| synergy_health
+  staff_manager -->|Service| synergy_service
+  staff_marketing -->|Commerce| synergy_commerce
+  staff_marketing -->|Culture| synergy_culture
+  staff_marketing -->|Food| synergy_food
+  staff_mechanic -->|Hardware Store| biz_hardware
+  staff_mechanic -->|Service| synergy_service
+  staff_pr -->|Commerce| synergy_commerce
+  staff_pr -->|Culture| synergy_culture
+  staff_pr -->|Entertainment| synergy_entertainment
+  staff_pr -->|Food| synergy_food
+  staff_pr -->|Health| synergy_health
+  staff_pr -->|Service| synergy_service
+  staff_security -->|Commerce| synergy_commerce
+  staff_security -->|Culture| synergy_culture
+  staff_security -->|Entertainment| synergy_entertainment
+  staff_security -->|Food| synergy_food
+  staff_security -->|Health| synergy_health
+  staff_security -->|Service| synergy_service
+  staff_socialite -->|Commerce| synergy_commerce
+  staff_socialite -->|Culture| synergy_culture
+  staff_socialite -->|Entertainment| synergy_entertainment
+  staff_socialite -->|Food| synergy_food
+  staff_socialite -->|Health| synergy_health
+  staff_socialite -->|Service| synergy_service

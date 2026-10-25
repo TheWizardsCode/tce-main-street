@@ -27,20 +27,19 @@ default**. ToneForge synth integration is **opt-in per session**
   forwards to `SoundManager.setSynthDiagnostics()` so the status line shows
   `Inactive · … · load error: <reason>`.
 - **Missing-factory fallback.** `MAIN_STREET_TF_SFX_MAPPING` maps 16 logical
-  keys but the runtime module ships only 12 factories. A mapped key with no
-  matching factory always falls back to the WAV/Phaser path instead of going
-  silent (`tfAdapter` reports whether it handled the key;
+  keys and the committed runtime module ships all 16 factories
+  (MS-0MV8PDNDT0033TH8), so every mapped key plays through the synth. A mapped
+  key whose factory is missing would still fall back to the WAV/Phaser path
+  instead of going silent (`tfAdapter` reports whether it handled the key;
   `SoundManager.play()` falls through when it did not) — engine item
-  CG-0MUU9PSWC009CW76. The four factory-less mappings (`sfx-income-positive`,
-  `sfx-income-negative`, `sfx-income-neutral`, `sfx-challenge-complete`) are
-  **intentional** WAV-fallback cases, so the Main Street TF logger
-  (`src/tf/tfLogger.ts`) keeps their per-play
-  `[tfAdapter] Missing tf factory …` warning quiet while still forwarding any
-  unexpected missing factory or other adapter warning
-  (MS-0MV26MOWT004ZCQC). The factory-less keys are listed once in
-  `src/sfx-tf-mapping.ts` (`MAIN_STREET_TF_FACTORYLESS_KEYS` and the derived
-  `MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS`) so the mapping and the quiet list
-  cannot drift.
+  CG-0MUU9PSWC009CW76. The Main Street TF logger (`src/tf/tfLogger.ts`)
+  suppresses the per-play `[tfAdapter] Missing tf factory …` warning for any
+  key declared in `MAIN_STREET_TF_FACTORYLESS_KEYS`
+  (`src/sfx-tf-mapping.ts`, plus the derived
+  `MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS`) while still forwarding every
+  unexpected missing factory or other adapter warning (MS-0MV26MOWT004ZCQC).
+  That list is currently **empty** — the mechanism is retained so a future
+  intentional fallback cannot reintroduce console noise.
 
 ## Tutorial layout composition (quiet by design)
 
@@ -128,9 +127,10 @@ playing a phantom card transfer.
   (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
   (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
   animate. Drag paths are gated by the drop zone's `canAccept`
-  (`canDropBusinessCard` / `canDropUpgradeCard`); `@ui/dragDrop` only invokes
-  the `onDrop` handler after `canAccept` returns true, so the transfer starts
-  strictly after the gate.
+  (`canDropBusinessCard` / `canDropUpgradeCard` for market-origin drags,
+  `canDropHandCard` for hand-origin drags — MS-0MV76HVE4007AOO0);
+  `@ui/dragDrop` only invokes the `onDrop` handler after `canAccept` returns
+  true, so the transfer starts strictly after the gate.
 - No failed attempt leaves `uiPhase === 'animating'`; every `afterTransfer`
   path (success or error) restores `uiPhase = 'market'`.
 - Commit-before-feedback: the command layer is the single mutation point and
@@ -162,13 +162,73 @@ playing a phantom card transfer.
   any animation starts. Clicking an ineligible or unaffordable business shakes
   it back with feedback while the upgrade stays selected for a retry, and no
   action or coin is spent.
-- Clearing: `cancelPendingPlacement()` (Escape / switching card) calls
+- Clearing: `cancelPendingPlacement()` (Escape / switching card / re-clicking the
+  selected card — MS-0MV767QTO008JUDJ) calls
   `clearTargetHighlights()`; applying the upgrade rebuilds the street without
   a pending card, dropping the overlays. Both targeting flows share the
   `dragHighlightRects` pool, so drag-drop and click-to-place highlights render
   identically and clear together.
 - Reuse: the existing `dragHighlightRects` infrastructure and
   `isEligibleUpgradeTarget()` predicate; no new engine primitives.
+
+### Hand-drag gesture: upgrades and business cards (MS-0MV76HVE4007AOO0)
+
+Hand-held **upgrade**, **business** and **community-space** cards are draggable
+onto the street — the same one-gesture interaction as the market row — while
+the click-to-apply / click-to-place flows keep working (drag and click
+coexist, AC5; pure clicks below the drag threshold still reach
+`onHandUpgradeCardClick` / `onHandBusinessCardClick`). Held **event** cards
+are click-only: they keep the select-then-act `[Play]` / `[Discard]` flow and
+are never registered as draggables.
+
+Supported hand-drag families: **business**, **community-space** and
+**upgrade**. Not supported (by design): **event** cards in hand.
+
+- **Registration (invariant by construction, MS-0MVK4E5M00021XEY).**
+  `MainStreetRendererStreet.ts` `renderCard` registers the hand card
+  container as a `@ui/dragDrop` draggable (named `ms-hand-card-<id>`); the
+  market row registers its own containers as `ms-market-card-<id>`. Both are
+tracked in `renderer.dragDropRegistered`, and each refresh path unregisters
+**only its own origin**: `refreshMarket` calls `unregisterDragDraggables`
+(market-origin scope) and `refreshPlayerHand` calls
+`unregisterHandDraggables` (hand-origin scope) before its rebuild destroys
+the containers. A market-only refresh — e.g. the debug cheat overlay calling
+`refreshMarket()` alone, or any future partial refresh — therefore leaves the
+live hand containers registered and draggable, so the invariant does **not**
+depend on the `refreshMarket` → `refreshPlayerHand` call order. Neither step
+leaves destroyed/stale containers in the registry (no stale registrations
+after any refresh path); see the code comment where the scoping is enforced
+in `MainStreetRendererDragDrop.ts`.
+- **Pickup gate (AC1/AC2).** `canPickUpHandCard` vetoes the drag with illegal
+  feedback when the phase is not `market`, when a *different* card's
+targeting / selection is pending, when tutorial gating (`apply-upgrade` /
+  `place-business`) forbids it, when no eligible business exists on the street
+  (upgrade), or when no affordable empty slot exists (business; action budget
+  spent for held cards). A same-week composite (card just moved to hand this
+  week) may be picked up at 0 actions to mirror the click-path premium
+  placement. **Click-select then drag:** a click on a hand card arms
+  `uiPhase === 'placing-from-hand'` with `pendingHandIndex`, and pickup is
+  allowed for exactly that selected card — the drag continues the selection
+  instead of being vetoed. Picking up a *different* hand card, or dragging in
+  `placing-from-hand` with nothing pending, stays vetoed; deselecting (back to
+  `uiPhase === 'market'`) restores normal pickup.
+- **Drop handler (AC4).** `canDropHandCard` gates the drop zone (upgrade →
+  the eligible business via `canPlayUpgradeFromHand`; business → an empty
+  affordable slot via `canPlaceFromHand`, same-week premium included). The
+  successful-drag handlers reuse the click-path post-drop source of truth:
+  `onDragDropHandUpgrade` → `applyHandUpgradeToSlot` (hand→street transfer,
+  undoable `playUpgradeFromHandCommand` — same-week composite free, held = 1
+  action, level-up burst) and `onDragDropHandBusiness` → the shared
+  `onSlotClick` hand-placement flow (listed cost, or the composite-premium
+  explainer when 0 actions remain — exactly as the click path). Invalid drops
+  snap the card back with illegal feedback and spend nothing.
+- **Highlights (AC3).** `showDragHighlights` / `refreshDragDropZones` resolve
+  the dragged card id from the HAND first (id → handIndex, then the market),
+  so a hand-origin drag paints the shared `dragHighlightRects` correctly:
+  upgrades → street businesses passing `canDropHandCard` (green `0x44ff66` /
+  red `0xff4444`), businesses → empty slots; non-target slots are skipped.
+- **Replay / reduced motion.** Registration is skipped in replay mode; the
+  drag manager's `setReducedMotion` governs snap-back, unchanged.
 
 ### Resource pop feedback (coins / reputation)
 
@@ -312,9 +372,14 @@ void popTextOrIcon({
   business** (falling back to a figure walking into it, then any shopper, then
   a street-area anchor (`pedestrianStreetAnchor`) **never** the HUD counter).
   The credited amounts (`iconsForAmount(repBonus)`), the on-card `revealInGrid`
-  landing, the `+total` pop and the phase pacing (`INCOME_PHASE_GAP_MS`) are
-  unchanged — the pedestrians are a visual source only, so the phase-sum
-  invariant and the deferred-mutation economy are untouched.
+  landing and the `+total` pop are unchanged — the pedestrians are a visual
+  source only, so the phase-sum invariant and the deferred-mutation economy
+  are untouched. Pacing (MS-0MV8LHN0W0017XU1): all producing businesses'
+  reputation flights launch near-simultaneously with only
+  `INCOME_FLIGHT_STAGGER_MS` (60ms) between businesses (no per-business
+  `getCardDelay` accumulation and no full-grid pause), mirroring the synergy
+  phase; the inter-phase gap (`INCOME_PHASE_GAP_MS`) is unchanged and the
+  gentle per-card flight-duration decrease is retained.
 - Presentation-only: the layer never mutates game state, the transcript or
   the turn flow; every method is defensive (a throwing layer is swallowed)
   so a bad frame can never stall the turn.
@@ -369,9 +434,13 @@ void popTextOrIcon({
     credited bonus) and lands in the receiver's `CoinGrid` via
     `revealInGrid` with `sfx-coin-pop`.
   - Reputation contributions fly into the grids from the on-street
-    pedestrians (see *Ambient street pedestrians* above); event contributions
-    fly in/out of the grids and also light up their `Upcoming`-panel effect
-    lines (`animateUpcomingEffectLine`).
+    pedestrians (see *Ambient street pedestrians* above), launched
+    **near-simultaneously across all businesses** (MS-0MV8LHN0W0017XU1):
+    only `INCOME_FLIGHT_STAGGER_MS` (60ms) separates one business's
+    reputation flight from the next — mirroring the synergy phase — so the
+    reputation income reads as one collective event instead of crawling from
+    card to card; event contributions fly in/out of the grids and also light
+    up their `Upcoming`-panel effect lines (`animateUpcomingEffectLine`).
   - **Upcoming phase routing (CG-0MUA1UH3A008M4BS).** The `upcoming` phase
     animates the end-of-turn Upcoming-card (incident/event) coin AND
     reputation deltas using **one uniform sign rule** for both resources
@@ -874,8 +943,8 @@ condensed text-only summary.
 - Layout:
   - **Top band:** the title (`You Win!` / `Game Over`) plus a plain-language
     end-reason headline derived from `state.endReason` (e.g. *Bankruptcy*,
-    *Reputation collapse*, *Score threshold reached*, *All challenges
-    completed*, *Last standing*, *Turn limit exhausted*). In competitive mode a
+    *Reputation collapse*, *Score threshold reached*, *Last standing*,
+    *Turn limit exhausted*). In competitive mode a
     per-seat failure names the player concerned (e.g. `Bankruptcy — You`,
     `Reputation collapse — AI 1`), preferring the human seat.
   - **Left "Game State" column:** one row per player — `You` for the human

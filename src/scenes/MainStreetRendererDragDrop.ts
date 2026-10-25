@@ -19,14 +19,71 @@ export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
 
 // markHudTransient and clearTransientHud are now imported from src/ui/Renderer
 
+/**
+ * Name-prefix that marks a HAND-origin draggable container
+ * (MainStreetRendererStreet registers hand cards as `ms-hand-card-<id>`;
+ * the market row registers its own containers as `ms-market-card-<id>`).
+ *
+ * Registration-invariant (MS-0MVK4E5M00021XEY): the two origins are
+ * unregistered by distinct refresh steps — `refreshMarket` rebuilds only
+ * the market row and `refreshPlayerHand` rebuilds only the hand — so a
+ * market-only refresh (e.g. the debug cheat overlay calling
+ * `refreshMarket()` alone) must never strip hand-origin registrations.
+ * Rendering-order independence holds by construction: scoping by origin
+ * means whichever sequence of refresh functions runs, the hand cards end
+ * up registered whenever they are on screen.
+ */
+const HAND_DRAGGABLE_NAME_PREFIX = 'ms-hand-card-';
+
+/** True when the draggable container was registered for the hand. */
+function isHandOriginDrag(container: Phaser.GameObjects.Container): boolean {
+    return typeof container.name === 'string' &&
+        container.name.startsWith(HAND_DRAGGABLE_NAME_PREFIX);
+}
+
+/**
+ * Unregister the MARKET-origin draggables (called by `refreshMarket` before
+ * `s.marketContainer.removeAll(true)` destroys the row containers).
+ *
+ * Scoped to market-origin containers (MS-0MVK4E5M00021XEY): hand-origin
+ * registrations SURVIVE this step so a market-only refresh never leaves the
+ * hand undraggable (the old behaviour unregistered everything and relied on
+ * a later `refreshPlayerHand` re-registering the hand — a render-ordering
+ * dependency the debug overlay path broke). Live hand containers stay in
+ * `renderer.dragDropRegistered`; the hand path unregisters its own
+ * pre-refresh containers in `refreshPlayerHand` (see
+ * {@link unregisterHandDraggables}). Containers with no origin marker are
+ * treated as market-scope (the safe default).
+ */
 export function unregisterDragDraggables(renderer: MainStreetRendererContext): void {
 
     const s = renderer.scene;
     if (!s.dragDropManager) return;
-    for (const container of renderer.dragDropRegistered) {
+    for (const container of [...renderer.dragDropRegistered]) {
+      if (isHandOriginDrag(container)) continue;
+      renderer.dragDropRegistered.delete(container);
       try { s.dragDropManager.unregisterDraggable(container); } catch (_) { /* ignore */ }
     }
-    renderer.dragDropRegistered.clear();
+  
+}
+
+/**
+ * Unregister the HAND-origin draggables (called by `refreshPlayerHand`
+ * before the HandView rebuild destroys the pre-refresh containers).
+ *
+ * Pair of {@link unregisterDragDraggables}: keeps the registry free of
+ * destroyed/stale hand containers after any refresh path (AC5) while a
+ * market-only refresh leaves the live hand containers untouched.
+ */
+export function unregisterHandDraggables(renderer: MainStreetRendererContext): void {
+
+    const s = renderer.scene;
+    if (!s.dragDropManager) return;
+    for (const container of [...renderer.dragDropRegistered]) {
+      if (!isHandOriginDrag(container)) continue;
+      renderer.dragDropRegistered.delete(container);
+      try { s.dragDropManager.unregisterDraggable(container); } catch (_) { /* ignore */ }
+    }
   
 }
 
@@ -49,6 +106,14 @@ export function refreshDragDropZones(renderer: MainStreetRendererContext): void 
         data: i,
         canAccept: (payload: any) => {
           const cardId = payload.data as string;
+          // Hand-origin drags (hand → street, MS-0MV76HVE4007AOO0): the
+          // dragged card belongs to the hand, so resolve it by id there first
+          // (id → handIndex). A market-only lookup would fail for a hand card
+          // and silently reject every hand-origin drop.
+          const handIndex = (s.state.hand ?? []).findIndex((c: any) => c.id === cardId);
+          if (handIndex >= 0) {
+            return s.msTurnController.canDropHandCard(cardId, i);
+          }
           const card = s.state.market.cards.find((c: any) => c.id === cardId);
           if (card?.family === 'upgrade') {
             return s.msTurnController.canDropUpgradeCard(cardId, i);
@@ -67,9 +132,17 @@ export function showDragHighlights(renderer: MainStreetRendererContext, cardId?:
 
     const s = renderer.scene;
     renderer.clearDragHighlights();
-    const card = cardId
+    // Hand-origin drags (hand → street, MS-0MV76HVE4007AOO0): resolve the
+    // dragged card from the HAND first (id → handIndex), falling back to the
+    // market for market-origin drags — a market-only lookup would leave the
+    // hand card undefined and mis-render the highlights as a business drag.
+    const handIndex = cardId
+      ? (s.state.hand ?? []).findIndex((c: any) => c.id === cardId)
+      : -1;
+    const handCard = handIndex >= 0 ? (s.state.hand ?? [])[handIndex] : undefined;
+    const card = handCard ?? (cardId
       ? s.state.market.cards.find((c: any) => c.id === cardId)
-      : undefined;
+      : undefined);
     const isUpgrade = card?.family === 'upgrade';
 
     const { slotW, slotH } = s.layout;
@@ -80,10 +153,20 @@ export function showDragHighlights(renderer: MainStreetRendererContext, cardId?:
       let validity: 'valid' | 'invalid';
       if (isUpgrade) {
         if (!occupied) continue; // an upgrade can only land on a business
-        validity = s.msTurnController.canDropUpgradeCard(card!.id, i) ? 'valid' : 'invalid';
+        validity = (handIndex >= 0
+          ? s.msTurnController.canDropHandCard(card!.id, i)
+          : s.msTurnController.canDropUpgradeCard(card!.id, i))
+          ? 'valid' : 'invalid';
       } else {
         if (occupied) continue; // a business can only land on an empty slot
-        validity = 'valid';
+        // Hand-origin business drags resolve validity through the same drop
+        // gate as the zone (canAccept) so unaffordable slots render red
+        // (AC3); market-origin drags keep the historical all-empty-valid
+        // behaviour.
+        validity = (handIndex >= 0
+          ? s.msTurnController.canDropHandCard(card!.id, i)
+          : true)
+          ? 'valid' : 'invalid';
       }
 
       const x = node.localX + slotW / 2;

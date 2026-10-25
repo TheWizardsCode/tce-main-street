@@ -177,8 +177,13 @@ git submodule update --init --recursive
 ```bash
 npm ci          # install the exact locked dependency tree
 npm test        # unit suite (vitest run --project unit)
-npm run build   # type-check (tsc --noEmit) + production bundle into dist/
+npm run build   # engine:sync (latest engine dev) + type-check + production bundle
 ```
+
+Builds follow the dev/release split — dev builds auto-sync the `./core`
+engine submodule to the latest engine dev head, while `npm run build:release`
+compiles exactly the SHA pinned in `configs/engine-pin.json`. See
+[docs/dev/build-and-release.md](docs/dev/build-and-release.md).
 
 See [docs/dev/testing.md](docs/dev/testing.md) for the browser (headless Chromium)
 suite and the shared-helper import convention (`@core-tests/*` aliases).
@@ -188,6 +193,26 @@ Run the game locally in watch mode:
 ```bash
 npm run dev     # Vite dev server on http://localhost:3000
 ```
+
+The documentation has a browsable, local-only site with sidebar navigation
+and rendered Mermaid diagrams (navigation is generated from the `docs/`
+tree, so new documents appear automatically):
+
+```bash
+npm run docs         # VitePress dev server (hot reload)
+npm run docs:build   # static site into docs/.vitepress/dist/ (git-ignored)
+npm run docs:preview # serve the built site
+```
+
+See [docs/README.md](docs/README.md) and the site's landing page
+(`docs/index.md`) for details. The docs toolchain is a dev dependency only —
+it never enters the game bundle — and there is no CI publishing.
+
+The dev server's file watcher excludes the `.worklog/` worktree checkouts and
+the dev-output trees (`data/`, `tmp/`, `results/`, `dist/`) via
+`server.watch.ignored` (see `vite.config.ts`) — a recursive watch into
+`.worklog/worktrees/**` would exhaust `fs.inotify.max_user_watches` (ENOSPC)
+and crash the dev server (MS-0MV8M9IAF000KPNY).
 
 Serve the production bundle exactly as GitHub Pages would (see
 [DEPLOYMENT.md](DEPLOYMENT.md) for the Pages base path):
@@ -208,8 +233,10 @@ npm run preview   # http://localhost:4173/tce-main-street/
 | `public/assets/` | Card art, audio and other static assets bundled into the build. |
 | `configs/game.json` | The single-game preset: the core-owned Gym plus Main Street. |
 | `core/` | Git submodule pointing at the Tableau Card Engine (shared engine + toolchain). |
-| `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). |
+| `configs/engine-pin.json` | Release engine pin: `{"sha": "…"}` — written only by the release process, never by dev builds. |
+| `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). Served as a **local VitePress site** via `npm run docs` (see [docs/index.md](docs/index.md)). |
 | `.github/workflows/deploy.yml` | GitHub Pages build-and-deploy workflow. |
 
-The `./core` submodule is pinned to a specific engine commit; update it with
-`git submodule update --remote core` only as part of a deliberate engine bump.
+The `./core` submodule pins a specific engine commit; **dev builds advance it
+automatically** (`engine:sync`, tracked on engine `dev`), and release builds
+(`build:release`) compile exactly the SHA in `configs/engine-pin.json`. See[docs/dev/build-and-release.md](docs/dev/build-and-release.md) for the policy; never edit a dev build into a release silently — use `build:release` for pinned, reproducible output.

@@ -9,7 +9,7 @@
 
 import { createActiveEffect } from '@core-engine/ActiveEffect';
 import { applyCompetitiveIncome, getSlotOwnerId } from './MainStreetAdjacency';
-import type { EventCard, SynergyType, SpecializationSkill, DurationEventCard } from './MainStreetCards';
+import type { EventCard, SpecializationSkill, DurationEventCard } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
@@ -17,6 +17,11 @@ import { deserializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
+
+// Re-exported so the projection/AI/attribution consumers share ONE resolver
+// (MS-0MVCS8A0L0000H7X AC5) without importing this heavy resolution module.
+export { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
 /**
  * Resolves a single event card's effects on the game state.
@@ -101,8 +106,9 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
       // Count matching businesses and apply coinDelta per match. A
       // proportional event is a whole-balance effect, so its loss is applied
       // once rather than per match.
+      const targets = eventSynergyTargets(state, event);
       const matchCount = state.streetGrid.filter(
-        b => b !== null && b.synergyTypes.includes(event.targetSynergy as SynergyType),
+        b => matchesEventSynergyTargets(b, targets),
       ).length;
       const rawDelta = event.coinPercentDelta !== undefined
         ? baseCoinDelta
@@ -299,8 +305,9 @@ export function computeEventDeltas(
 
   switch (event.target) {
     case 'SpecificSynergy': {
+      const targets = eventSynergyTargets(state, event);
       const matchCount = state.streetGrid.filter(
-        b => b !== null && b.synergyTypes.includes(event.targetSynergy as SynergyType),
+        b => matchesEventSynergyTargets(b, targets),
       ).length;
       const rawDelta = event.coinPercentDelta !== undefined
         ? baseCoinDelta
@@ -362,7 +369,9 @@ export function computeEventDeltas(
  *    of matching businesses OWNED by that player (per-match rule retained)
  *    and credited to each slot owner; the reputation delta applies once per
  *    owner that owns at least one matching business (mirrors the shared
- *    resolution where rep is applied once regardless of match count).
+ *    resolution where rep is applied once regardless of match count). The
+ *    matched synergy is the resolution-time dynamic target (Feature 2,
+ *    MS-0MVCS7LIA003J2SM) for `evt-grand-opening`.
  *
  * Consumes no RNG (deterministic replay, AC3).
  *
@@ -447,7 +456,9 @@ interface OwnerEventDelta {
  *
  * - `SpecificSynergy`: coinDelta is multiplied by the count of matching
  *   businesses OWNED by that player; the reputation delta applies once when
- *   the owner holds at least one matching business.
+ *   the owner holds at least one matching business. Matched synergy is the
+ *   resolution-time dynamic target for `evt-grand-opening` (union semantics,
+ *   Feature 2 MS-0MVCS7LIA003J2SM) via {@link eventSynergyTargets}.
  * - `All` / `RandomBusiness`: flat deltas on the owner's board (proportional
  *   events are taxed on the owner's OWN banked balance).
  *
@@ -475,11 +486,12 @@ function computeOwnerEventDeltas(
   let matchCount = 0;
   switch (event.target) {
     case 'SpecificSynergy': {
+      const targets = eventSynergyTargets(state, event);
       for (let i = 0; i < state.streetGrid.length; i++) {
         const b = state.streetGrid[i];
         if (!b || !b.synergyTypes) continue;
         if (getSlotOwnerId(state, i) !== ctx.ownerId) continue;
-        if (b.synergyTypes.includes(event.targetSynergy as SynergyType)) matchCount += 1;
+        if (matchesEventSynergyTargets(b, targets)) matchCount += 1;
       }
       if (matchCount > 0) {
         const rawDelta = event.coinPercentDelta !== undefined
@@ -528,7 +540,9 @@ function computeOwnerEventDeltas(
  *    of matching businesses OWNED by that player (per-match rule retained)
  *    and credited to each slot owner; the reputation delta applies once per
  *    owner that owns at least one matching business (mirrors the shared
- *    resolution where rep is applied once regardless of match count).
+ *    resolution where rep is applied once regardless of match count). The
+ *    matched synergy is the resolution-time dynamic target (Feature 2,
+ *    MS-0MVCS7LIA003J2SM) for `evt-grand-opening`.
  *
  * Consumes no RNG (deterministic replay, AC3).
  *

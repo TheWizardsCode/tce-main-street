@@ -22,6 +22,16 @@ import { build } from 'vite';
 const REPO_ROOT = process.cwd();
 const DEFAULT_BASE = '/tce-main-street/';
 
+/**
+ * Each case runs a full production `vite build` in-process. Under host/CI
+ * load a single build has been measured at 73–270 s, so the previous 120 s
+ * ceiling was itself the failure (MS-0MVFSWC5Z000013W): the case timed out
+ * at 120 s while its siblings took 91 s / 73 s, and a later loaded run took
+ * ~270 s per case. 600 s gives comfortable headroom without allowing a hung
+ * build to block the suite indefinitely.
+ */
+const BUILD_TEST_TIMEOUT = 600_000;
+
 /** Build the production app into a temp dir, optionally overriding PAGES_BASE. */
 async function buildToTemp(pagesBase?: string): Promise<string> {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-pages-derive-'));
@@ -75,7 +85,7 @@ describe('production pages base derivation', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 
   it('honours the PAGES_BASE override for forks and custom domains', async () => {
     const outDir = await buildToTemp('/custom-base/');
@@ -87,7 +97,7 @@ describe('production pages base derivation', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 
   it('the bundled 404 guard targets the production Pages base', async () => {
     const outDir = await buildToTemp();
@@ -100,5 +110,5 @@ describe('production pages base derivation', () => {
     } finally {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, BUILD_TEST_TIMEOUT);
 });

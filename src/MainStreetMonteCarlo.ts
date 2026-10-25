@@ -94,6 +94,13 @@ export interface MonteCarloRunSummary {
    * engine's storyline metrics degrade gracefully to `null` in that case.
    */
   storylineEvents?: StorylineEventRecord[];
+  /**
+   * Card IDs of non-null slots on the street grid at the end of the run.
+   * Optional for backward compatibility with stored summaries and test
+   * fixtures predating the capture; absent is treated as an empty grid.
+   * Populated as a single shallow copy of the non-null slot card IDs.
+   */
+  finalGrid?: string[];
 }
 
 export interface MonteCarloMetrics {
@@ -397,6 +404,19 @@ function withStorylineRecorder<T>(
 }
 
 /**
+ * Reduces a runtime card instance ID to its template ID.
+ *
+ * Deck construction appends an instance counter to the template ID
+ * (`biz-spa` → `biz-spa-0`, `biz-spa-1`, …). `finalGrid` is consumed by
+ * template-derived analytics (G4 synergy diversity), so it records the
+ * template ID — strip the trailing `-<counter>` when present. Template IDs
+ * that do not end in a counter are returned unchanged.
+ */
+function toTemplateCardId(cardId: string): string {
+  return cardId.replace(/-\d+$/, '');
+}
+
+/**
  * Runs a single Monte Carlo seed to completion against the supplied state.
  *
  * Storyline `event-choice` transcript records are captured for the run and
@@ -559,6 +579,9 @@ function simulateSeed(
     communitySpacePlacements: loop.communitySpacePlacements,
     economyHistory: [...state.ledger.getHistory()],
     storylineEvents: deriveStorylineEvents(events),
+    finalGrid: state.streetGrid
+      .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
+      .map(card => toTemplateCardId(card.id)),
   };
 }
 
@@ -965,6 +988,12 @@ export interface CompetitiveRunSummary {
   turns: number;
   /** Per-player summaries (length = playerCount). */
   players: CompetitivePlayerRunSummary[];
+  /**
+   * Card IDs of non-null slots on the shared street grid at the end of the
+   * run. Optional for backward compatibility with stored summaries and test
+   * fixtures predating the capture; absent is treated as an empty grid.
+   */
+  finalGrid?: string[];
 }
 
 /** Aggregate metrics for a single owner across a batch of seeds. */
@@ -1235,7 +1264,16 @@ export function runCompetitiveSeed(
     };
   });
 
-  return { seed, winnerId, endReason, turns, players };
+  return {
+    seed,
+    winnerId,
+    endReason,
+    turns,
+    players,
+    finalGrid: state.streetGrid
+      .filter((slot): slot is BusinessCard | CommunitySpaceCard => slot !== null)
+      .map(card => toTemplateCardId(card.id)),
+  };
 }
 
 /**

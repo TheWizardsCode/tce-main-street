@@ -1,32 +1,33 @@
 /**
- * Storyline extraction seam — game-agnostic interface for the storyline
- * mechanic.
+ * Storyline model — Main Street adapter over the generic core story-line
+ * module (`@story-line`).
  *
- * This module exposes pure functions that operate on the storyline data
- * model (`CompiledStoryline`, `StorylineOption`) without reaching into
- * Main-Street-specific internals. The functions are designed to be portable
- * to the core engine in a future migration.
+ * The branching-narrative mechanics (compilation, the registered-option
+ * registry, pending-choice lifecycle and resolution) live in core so any TCE
+ * game can reuse them. This module keeps Main Street's historical API surface
+ * as thin wrappers, so callers and tests are unchanged:
  *
- * Migration notes (handoff to C6):
- * - The compiled option list is a linear, ordered sequence — no branching
- *   graph traversal beyond the single-choice resolution.
- * - `compileStorylineFromEvent` is the sole entry point for creating a
- *   `CompiledStoryline` from an `EventCard`.
- * - `resolveStorylineOption` applies the chosen option's effect policy and
- *   returns the successor card ID.
- * - The caller is responsible for pushing the successor to the deck.
- * - All functions are side-effect-free except for the effect policy
- *   evaluation (which delegates to `resolveEvent`).
+ * - {@link pushChainCard} — deterministic chain-card push.
+ * - {@link registerStorylineOptions} / {@link resetStorylineRegistry} /
+ *   {@link hasRegisteredStorylineOptions} — the programmatic option registry.
+ * - {@link parseStorylineOptionsEncoding} — CSV `options` parsing.
+ * - {@link compileStorylineFromEvent} / {@link getStorylineOptions} /
+ *   {@link storylineOptionCount} / {@link eventHasStoryline} — compilation.
+ * - {@link resolveStorylineOption} — effect policy, successor precedence and
+ *   the one-seeded-draw candidate selection.
+ * - {@link createPendingStorylineChoice} / {@link getPendingStorylineOptions} /
+ *   {@link markChoiceResolved} — pending-choice lifecycle.
+ *
+ * Main Street owns only {@link recordStorylineResolution}, which writes the
+ * Main Street transcript shape (a game-specific concern).
  *
  * @module
  */
 
 import type { EventCard, StorylineOption, CompiledStoryline } from './MainStreetCardsTypes';
-import { getEventTemplates, getBaseTypeId } from './MainStreetCards';
 import type { MainStreetState, PendingEventChoice } from './MainStreetStateTypes';
-import { resolveEvent } from './MainStreetEngineEvents';
-import { addLog } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
+import { getMainStreetStorylineSystem } from './MainStreetStorylineAdapter';
 
 /**
  * Pushes a chain successor card onto the incident deck.
@@ -43,239 +44,94 @@ export function pushChainCard(
   state: MainStreetState,
   templateId: string | null | undefined,
 ): EventCard | null {
-  if (!templateId) return null; // chain ends — nothing added (AC4/AC9)
-  const template = getEventTemplates().find((t) => t.id === templateId);
-  if (!template) {
-    addLog(state, `Chain card ${templateId} not found in card data.`, 'neutral');
-    return null;
-  }
-  const base = getBaseTypeId(template.id);
-  let maxSerial = -1;
-  const scan = (cards: readonly EventCard[]): void => {
-    for (const c of cards) {
-      if (getBaseTypeId(c.id) !== base) continue;
-      const m = c.id.match(/-(\d+)$/);
-      const n = m ? Number(m[1]) : -1;
-      if (n > maxSerial) maxSerial = n;
-    }
-  };
-  scan(state.incidentDeck);
-  scan(state.decks.event);
-  scan(state.discards.event);
-  const card: EventCard = { ...template, id: `${base}-${maxSerial + 1}` };
-  state.incidentDeck.push(card);
-  return card;
+  return getMainStreetStorylineSystem().pushChainCard(state, templateId);
 }
 
-// ── Compilation: legacy fields → generalised model ───────────
-
-/**
- * Optional explicit option registry — maps a base event id to an arbitrary
- * ordered option list. When a card id is present here it takes precedence
- * over the legacy-field compilation, allowing multi-way storylines without
- * new CSV columns. Keyed by base type id (without the instance serial).
- */
-const storylineOptionRegistry = new Map<string, StorylineOption[]>();
+// ── Compilation: registry + legacy/CSV → generalised model ──
 
 /**
  * Registers an explicit ordered option list for an event card.
  *
- * Explicit options take precedence over legacy `hasChoices` compilation, so
- * a card can declare an arbitrary number of labelled options. Callers that
- * register options are responsible for resetting the registry (see
- * {@link resetStorylineRegistry}) — typically in test teardown.
+ * Explicit options take precedence over legacy `hasChoices` compilation and the
+ * CSV `options` encoding. Callers that register options are responsible for
+ * resetting the registry (see {@link resetStorylineRegistry}).
  *
  * @param eventId Base event id (e.g. `evt-tax`, not `evt-tax-0`).
  * @param options Ordered option list (at least one option).
  */
-export function registerStorylineOptions(eventId: string, options: readonly StorylineOption[]): void {
-  storylineOptionRegistry.set(
-    eventId,
-    options.map((o) => ({ ...o })),
-  );
+export function registerStorylineOptions(
+  eventId: string,
+  options: readonly StorylineOption[],
+): void {
+  getMainStreetStorylineSystem().registerStorylineOptions(eventId, options);
 }
 
 /** Clears all explicitly registered storyline options (test isolation). */
 export function resetStorylineRegistry(): void {
-  storylineOptionRegistry.clear();
+  getMainStreetStorylineSystem().resetStorylineRegistry();
 }
 
 /** Returns true when an explicit option list is registered for the event id. */
 export function hasRegisteredStorylineOptions(eventId: string): boolean {
-  return storylineOptionRegistry.has(getBaseTypeId(eventId));
+  return getMainStreetStorylineSystem().hasRegisteredStorylineOptions(eventId);
 }
 
 /**
  * Parses a CSV `options` encoding into the generalised option model.
  *
- * Encoding: `label|cardA,cardB;label2|cardC`
- * - `;` separates options, `|` separates the label from its candidate card
- *   ids, and `,` separates candidate ids.
- * - A blank / whitespace-only encoding decodes to no options (non-choice).
- * - An empty candidate list (`label|`) is a terminal option — the chain ends.
- * - Every CSV-authored option carries `effectPolicy: 'apply'` (producer
- *   Q4=B); `skip` remains available only via `registerStorylineOptions`.
- *
- * Parsing is deterministic: labels and candidate ids are whitespace-trimmed
- * and empty segments/candidates are dropped. A non-empty encoding that does
- * not decode to at least one valid option (or contains a malformed segment)
- * is rejected with an error rather than silently ignored
- * (MS-0MV8KQJR30007JL5 AC4).
+ * Encoding: `label|cardA,cardB;label2|cardC` — see the core module for the
+ * full contract (whitespace trimming, terminal options, malformed rejection).
  *
  * @param encoding Raw `options` cell from `src/card-data.csv`.
  * @returns Ordered option list (empty for a blank encoding).
  * @throws Error when the encoding is non-empty but malformed / yields no option.
  */
 export function parseStorylineOptionsEncoding(encoding: string): StorylineOption[] {
-  const trimmed = encoding.trim();
-  if (trimmed === '') return [];
-
-  const options: StorylineOption[] = [];
-  for (const rawSegment of trimmed.split(';')) {
-    const segment = rawSegment.trim();
-    if (segment === '') continue;
-
-    const separator = segment.indexOf('|');
-    if (separator < 0) {
-      throw new Error(
-        `Invalid storyline options encoding "${encoding}": option "${segment}" is missing the "|" separator.`,
-      );
-    }
-
-    const label = segment.slice(0, separator).trim();
-    if (label === '') {
-      throw new Error(
-        `Invalid storyline options encoding "${encoding}": option "${segment}" has an empty label.`,
-      );
-    }
-
-    const successorIds = segment
-      .slice(separator + 1)
-      .split(',')
-      .map((id) => id.trim())
-      .filter((id) => id !== '');
-
-    options.push({ label, successorIds, effectPolicy: 'apply' });
-  }
-
-  if (options.length === 0) {
-    throw new Error(
-      `Invalid storyline options encoding "${encoding}": no valid option decoded.`,
-    );
-  }
-  return options;
+  return getMainStreetStorylineSystem().parseStorylineOptionsEncoding(encoding);
 }
 
 /**
  * Compiles a card's storyline into the generalised option model.
  *
  * Precedence: explicit registry options > CSV `options` encoding > legacy
- * two-way choice fields.
- *
- * - A card with a non-empty `options` encoding compiles to the ordered option
- *   list it declares (candidate successor sets, always `effectPolicy: 'apply'`).
- * - Registered options (via `registerStorylineOptions`) take precedence over
- *   both CSV and legacy compilation.
- * - Non-choice cards (no `options`, no registered list, no `hasChoices`) →
- *   empty option list.
- * - Legacy choice cards → two options [Accept(apply), Reject(skip)].
- *
- * When `state` is provided, registry options whose `condition` callback
- * returns `false` are omitted from the result (draw-time filtering).
+ * two-way choice fields. When `state` is provided, registry options whose
+ * `condition` callback returns `false` are omitted (draw-time filtering).
  */
 export function compileStorylineFromEvent(
   event: EventCard,
   state?: MainStreetState,
 ): CompiledStoryline {
-  const storylineId = event.storylineId ?? null;
-  const registered = storylineOptionRegistry.get(getBaseTypeId(event.id));
-  if (registered) {
-    const options = registered.map((o) => ({ ...o }));
-    if (state) {
-      // Filter by condition at draw time: omit options whose condition
-      // callback returns false.  Options without a condition (or whose
-      // condition returns true) are included unchanged.
-      return {
-        storylineId,
-        compiledOptions: options.filter(
-          (o) => o.condition == null || o.condition(state),
-        ),
-      };
-    }
-    return { storylineId, compiledOptions: options };
-  }
-
-  if (event.options) {
-    // CSV-authored arbitrary option list (MS-0MV8KQJR30007JL5). A non-empty
-    // encoding is always a choice node; malformed encodings throw here so a
-    // bad CSV value is rejected rather than silently ignored.
-    return { storylineId, compiledOptions: parseStorylineOptionsEncoding(event.options) };
-  }
-
-  if (!event.hasChoices) {
-    return { storylineId, compiledOptions: [] };
-  }
-
-  return {
-    storylineId,
-    compiledOptions: [
-      {
-        label: 'Accept',
-        successorId: event.acceptNextCardId ?? undefined,
-        effectPolicy: 'apply',
-      },
-      {
-        label: 'Reject',
-        successorId: event.rejectNextCardId ?? undefined,
-        effectPolicy: 'skip',
-      },
-    ],
-  };
+  return getMainStreetStorylineSystem().compileStorylineFromEvent(event, state);
 }
 
 /**
- * Returns true if the event presents a story-driven choice at resolution
- * time — i.e. it has legacy `hasChoices`, or an explicit registered option
- * list.
- *
- * NOTE: a bare `storylineId` is descriptive metadata (grouping cards into a
- * named arc) and does NOT by itself make a card a choice. Terminal
- * escalation cards (e.g. `evt-depression`, `evt-pandemic`) carry a
- * `storylineId` for grouping/journal purposes but must still resolve as plain
- * incidents. Only `hasChoices` / registered options intercept resolution.
+ * Returns true if the event presents a story-driven choice at resolution time
+ * — legacy `hasChoices`, a non-empty CSV `options` encoding, or a registered
+ * option list. A bare `storylineId` is descriptive metadata, not a choice.
  */
 export function eventHasStoryline(event: EventCard): boolean {
-  return (
-    Boolean(event.hasChoices) ||
-    Boolean(event.options && event.options.trim() !== '') ||
-    hasRegisteredStorylineOptions(event.id)
-  );
+  return getMainStreetStorylineSystem().eventHasStoryline(event);
 }
 
 /**
  * Returns the ordered option list for an event (empty when non-choice).
- * Registry-aware; the generalised accessor used by callers and the engine.
- *
- * When `state` is provided, options whose `condition` callback returns
- * `false` are omitted (draw-time filtering).
+ * When `state` is provided, condition-filtered options are omitted.
  */
 export function getStorylineOptions(
   event: EventCard,
   state?: MainStreetState,
 ): StorylineOption[] {
-  return compileStorylineFromEvent(event, state).compiledOptions;
+  return getMainStreetStorylineSystem().getStorylineOptions(event, state);
 }
 
 /**
  * Returns the number of options for a storyline event (0 for non-choice).
- * When `state` is provided, options whose `condition` callback returns
- * `false` are excluded from the count.
  */
 export function storylineOptionCount(
   event: EventCard,
   state?: MainStreetState,
 ): number {
-  return getStorylineOptions(event, state).length;
+  return getMainStreetStorylineSystem().storylineOptionCount(event, state);
 }
 
 // ── Resolution: apply a storyline option ─────────────────────
@@ -283,140 +139,55 @@ export function storylineOptionCount(
 /**
  * Result of resolving a storyline option.
  */
-export interface StorylineResolution {
-  /** The card pushed as a consequence, or null if the chain ends. */
-  readonly pushedCard: EventCard | null;
-  /** The coin change from applying the effect (if any). */
-  readonly coinChange: number;
-  /** The reputation change from applying the effect (if any). */
-  readonly repChange: number;
-}
+export type StorylineResolution = import('@story-line').StorylineResolution<EventCard>;
 
 /**
  * Resolves a storyline option by applying its effect policy and pushing the
- * successor card.
- *
- * Successor precedence at resolution time (F3, AC2):
- *
- * 1. `successorResolver` callback (when present) — invoked for the successor
- *    id; a `null` / `undefined` return ends the chain. Consumes no RNG.
- * 2. Candidate set (`successorIds`) — exactly **one** seeded `state.rng()`
- *    draw selects the successor uniformly at random (one draw per selection,
- *    at resolution time; replay with the same seed yields the same
- *    successor). An **empty** candidate list is a terminal option — the
- *    chain ends without consuming a draw.
- * 3. Legacy single `successorId` (registry/transitional seam) — pushed
- *    directly, no draw.
- *
- * The `effectPolicy` is honoured regardless of how the successor is
- * resolved: `'apply'` runs the event's effect, `'skip'` ignores it.
- *
- * @param state  Current game state (mutated by effect application).
- * @param event  The storyline event card.
- * @param option The chosen storyline option.
- * @returns The resolution result (pushed card, deltas).
+ * successor card. Successor precedence: resolver → seeded candidate draw →
+ * legacy id; a candidate draw consumes exactly one `state.rng()` call.
  */
 export function resolveStorylineOption(
   state: MainStreetState,
   event: EventCard,
   option: StorylineOption,
 ): StorylineResolution {
-  const coinsBefore = state.resourceBank.coins;
-  const repBefore = state.resourceBank.reputation;
-
-  // Apply effect if the option's policy says so.
-  if (option.effectPolicy === 'apply') {
-    resolveEvent(state, event);
-  }
-
-  const coinChange = state.resourceBank.coins - coinsBefore;
-  const repChange = state.resourceBank.reputation - repBefore;
-
-  // Determine the successor ID (precedence per the doc comment above): the
-  // uniform draw consumes exactly one state.rng() call per selection.
-  let resolvedSuccessor: string | null | undefined;
-  if (option.successorResolver != null) {
-    resolvedSuccessor = option.successorResolver(state);
-  } else if (option.successorIds != null) {
-    resolvedSuccessor =
-      option.successorIds.length > 0
-        ? option.successorIds[Math.floor(state.rng() * option.successorIds.length)]
-        : null; // terminal option — the chain ends, no draw
-  } else {
-    resolvedSuccessor = option.successorId;
-  }
-
-  // Push successor card if one exists.
-  const pushedCard = pushChainCard(state, resolvedSuccessor);
-
-  return { pushedCard, coinChange, repChange };
+  return getMainStreetStorylineSystem().resolveStorylineOption(state, event, option);
 }
 
 // ── State management: pending choice lifecycle ───────────────
 
 /**
- * Creates a new pending storyline choice from a drawn event.
- * Called by `resolveIncident` when a storyline event is drawn.
- *
- * When `state` is supplied, the compiled option list is filtered by each
- * option's `condition` callback and **snapshotted** onto the pending choice
- * (draw-time evaluation).  Resolution then reads the frozen snapshot, so
- * mutating state between draw and resolution cannot change the presented
- * options (AC3).  Omitting `state` retains the legacy behaviour of an
- * unfrozen pending choice (used by callers/tests that only need the event).
- *
- * @param event The drawn event card.
- * @param state Optional current game state; when present, freezes the
- *              condition-filtered option list onto the pending choice.
- * @returns The pending choice, or null if the event has no storyline.
+ * Creates a new pending storyline choice from a drawn event. With `state`
+ * supplied, the condition-filtered option list is snapshotted at draw time.
  */
 export function createPendingStorylineChoice(
   event: EventCard,
   state?: MainStreetState,
 ): PendingEventChoice | null {
-  if (!eventHasStoryline(event)) {
-    return null;
-  }
-  const pending: PendingEventChoice = {
+  // The core pending choice is structurally identical to `PendingEventChoice`;
+  // its snapshot array is mutable in practice, so the widened readonly type is
+  // safe to present as Main Street's mutable `options` field.
+  return getMainStreetStorylineSystem().createPendingStorylineChoice(
     event,
-    chosenOption: null,
-    resolved: false,
-  };
-  if (state) {
-    // Freeze the presented option list at draw time (AC3): condition
-    // callbacks are evaluated here and never again during resolution.
-    pending.options = getStorylineOptions(event, state);
-  }
-  return pending;
+    state,
+  ) as PendingEventChoice | null;
 }
 
 /**
- * Returns the option list presented for a pending choice.
- *
- * Prefers the draw-time snapshot captured by
- * {@link createPendingStorylineChoice} (which freezes callback conditions);
- * falls back to recompiling when no snapshot exists (legacy pending choices
- * or an unsupplied state) so behaviour remains backward compatible.
- *
- * @param pending The pending choice.
- * @param state   Current game state, used only for the fallback recompile.
+ * Returns the option list presented for a pending choice (snapshot preferred;
+ * falls back to recompiling for legacy pending choices).
  */
 export function getPendingStorylineOptions(
   pending: PendingEventChoice,
   state?: MainStreetState,
 ): StorylineOption[] {
-  if (pending.options) return pending.options;
-  return getStorylineOptions(pending.event, state);
+  return getMainStreetStorylineSystem().getPendingStorylineOptions(pending, state);
 }
 
 /**
- * Records the resolution in the transcript.
+ * Records the resolution in the Main Street transcript.
  *
- * @param state  Current game state (for turn number).
- * @param event  The resolved event card.
- * @param option The chosen option label.
- * @param acceptNext The legacy acceptNextCardId for backward compat.
- * @param rejectNext The legacy rejectNextCardId for backward compat.
+ * Main Street-specific: the generic core module has no transcript concept.
  */
 export function recordStorylineResolution(
   state: MainStreetState,
@@ -430,22 +201,17 @@ export function recordStorylineResolution(
     turn: state.turn,
     eventId: event.id,
     cardName: event.name,
-    // The chosen option's label, recorded as a stable token. F3 removed the
-    // legacy lowercase 'accept'/'reject' tokens — the label IS the token
-    // (e.g. 'Accept', 'Reject', 'Grind through').
+    // The chosen option's label, recorded as a stable token.
     option,
     acceptNextCardId: acceptNext,
     rejectNextCardId: rejectNext,
   });
 }
 
-/**
- * Marks the pending choice as resolved with the chosen option label.
- *
- * @param pending  The pending choice to resolve.
- * @param option   The chosen option label (e.g. 'Accept' | 'Reject').
- */
-export function markChoiceResolved(pending: PendingEventChoice, option: string): void {
-  pending.chosenOption = option as PendingEventChoice['chosenOption'];
-  pending.resolved = true;
+/** Marks the pending choice as resolved with the chosen option label. */
+export function markChoiceResolved(
+  pending: PendingEventChoice,
+  option: string,
+): void {
+  getMainStreetStorylineSystem().markChoiceResolved(pending, option);
 }

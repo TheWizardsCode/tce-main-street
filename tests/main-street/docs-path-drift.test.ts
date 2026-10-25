@@ -33,6 +33,8 @@ const STALE_PREFIX = 'example-games/main-street/';
 const LEGACY_DOCS_TREE = 'docs/main-street/';
 const FORBIDDEN_PATTERNS = [STALE_PREFIX, LEGACY_DOCS_TREE];
 
+/** Generated docs-site artefacts (git-ignored) are never documentation source. */
+const PRUNED_DIRS = ['.vitepress/dist', '.vitepress/cache'];
 const TEXT_EXTENSIONS = new Set([
   '.md',
   '.markdown',
@@ -51,12 +53,19 @@ function isTextFile(file: string): boolean {
   return TEXT_EXTENSIONS.has(path.extname(file).toLowerCase());
 }
 
-/** Recursively yield every file path under `docs/`. */
+/** Recursively yield every file path under `docs/`.
+ *
+ * The VitePress build output and cache (`docs/.vitepress/dist/`,
+ * `docs/.vitepress/cache/`) are pruned: they are generated, git-ignored
+ * artefacts outside the documentation source (MS-0MUYK064P0032374), and
+ * scanning them would make this guard depend on whether a docs build had run.
+ */
 function walkDocs(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (PRUNED_DIRS.some((pruned) => full === path.join(DOCS_ROOT, pruned))) continue;
       out.push(...walkDocs(full));
     } else if (entry.isFile()) {
       out.push(full);

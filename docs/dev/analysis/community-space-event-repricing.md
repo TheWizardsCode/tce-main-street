@@ -110,6 +110,8 @@ Investment events sorted by total ROI:
 | Charity Drive | 900 | 0 | 1350 | 2025 | 2.25× | Good |
 | ... | | | | | | (continues) |
 
+> **Grand Opening Sale** pays +450 for every business sharing the **placed** synergy of the card played this turn — the 1.50× figure above is a per-synergy ROI, not a fixed Commerce-only payout (MS-0MV8KSPFK006HTXG).
+
 ### Key findings
 
 - **Shopping Spree, Summer Fest, Service Week** have very low ROI (0.36–0.50×),

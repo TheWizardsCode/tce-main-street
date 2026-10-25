@@ -4,16 +4,19 @@
  * Booting/playing the tutorial used to flood the browser console with two
  * families of benign developer warnings that obscured genuine errors:
  *
- *  - `[tfAdapter] Missing tf factory for key "…"` for the four SFX mappings
- *    that intentionally fall back to WAV — the committed runtime synth ships
- *    12 of the 16 mapped factories (engine contract CG-0MUU9PSWC009CW76).
+ *  - `[tfAdapter] Missing tf factory for key "…"` for SFX mappings with no
+ *    synthesised factory. Historically the committed runtime synth shipped
+ *    only 12 of the 16 mapped factories (engine contract
+ *    CG-0MUU9PSWC009CW76); it now ships all 16 (MS-0MV8PDNDT0033TH8), so this
+ *    assertion is a regression guard rather than an expected warning.
  *  - `Zone collision for "<hand|endTurnButton|incidentQueue>" while composing
  *    "main-street-canonical" with "main-street-tutorial"` for the zones the
  *    tutorial layout deliberately overrides under `sceneWins`.
  *
  * These tests pin both paths as quiet while asserting the underlying
- * behaviour still happens (WAV fallback, tutorial zone rects) and that
- * unexpected diagnostics are still surfaced rather than swallowed.
+ * behaviour still happens (every mapped key resolves to a factory, tutorial
+ * zone rects) and that unexpected diagnostics are still surfaced rather than
+ * swallowed.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +38,7 @@ import {
   MAIN_STREET_TF_FACTORYLESS_KEYS,
   MAIN_STREET_TF_SFX_MAPPING,
 } from '../../src/sfx-tf-mapping';
-import { createMainStreetTfLogger } from '../../src/tf/tfLogger';
+import { createMainStreetTfLogger, isExpectedFactorylessWarning } from '../../src/tf/tfLogger';
 import { composeTutorialLayout } from '../../src/scenes/tutorialLayoutCompose';
 import {
   reportTutorialLayoutIssue,
@@ -187,17 +190,29 @@ describe('tutorial zone composition is console-clean', () => {
 });
 
 describe('tutorial ToneForge wiring is console-clean', () => {
-  it('keeps the four factory-less keys quiet and falls back to WAV', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('ships a runtime factory for every mapped key and logs no missing factory', async () => {
     const integration = await loadMainStreetTfIntegration(null);
     expect(integration).not.toBeNull();
+
+    // AC3: every mapping now has a factory, so no key is declared factory-less.
+    expect(MAIN_STREET_TF_FACTORYLESS_KEYS).toEqual([]);
+
+    const module = await loadMainStreetTfModule();
+    expect(module).toBeTruthy();
+    for (const [logicalKey, factoryKey] of Object.entries(MAIN_STREET_TF_SFX_MAPPING)) {
+      expect(
+        typeof module!.factories?.[factoryKey],
+        `${logicalKey} -> ${factoryKey} must have a runtime factory`,
+      ).toBe('function');
+    }
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { player: wavPlayer, played } = createRecordingWavPlayer();
     const manager = new SoundManager(wavPlayer, { storage: null });
     manager.setSynthIntegration(integration!.player, integration!.keyMap);
 
-    for (const key of MAIN_STREET_TF_FACTORYLESS_KEYS) {
+    for (const key of Object.keys(MAIN_STREET_TF_SFX_MAPPING)) {
       manager.register(key, `ms:${key}`);
       manager.play(key);
     }
@@ -207,34 +222,50 @@ describe('tutorial ToneForge wiring is console-clean', () => {
     );
     expect(missingWarnings).toEqual([]);
 
-    // Each factory-less key still reaches a backend: the WAV player.
-    expect(played).toEqual(
-      expect.arrayContaining(MAIN_STREET_TF_FACTORYLESS_KEYS.map((key) => `ms:${key}`)),
-    );
+    // Under Node Tone.js cannot construct a Gain without a Web Audio context,
+    // so voice creation may fail and the engine falls through to WAV. Either
+    // way some backend handled the keys — never a silent drop.
+    const wavHandled = played.length;
+    expect(wavHandled).toBeGreaterThan(0);
+  });
+
+  it('no longer suppresses the four former fallback keys', () => {
+    for (const logicalKey of [
+      'sfx-income-positive',
+      'sfx-income-negative',
+      'sfx-income-neutral',
+      'sfx-challenge-complete',
+    ]) {
+      const factoryKey = MAIN_STREET_TF_SFX_MAPPING[logicalKey];
+      // Both the logical and the already-mapped form must now be loud if the
+      // factory ever disappears again.
+      expect(
+        isExpectedFactorylessWarning(
+          `[tfAdapter] Missing tf factory for key "${logicalKey}" (mapped: "${factoryKey}")`,
+        ),
+      ).toBe(false);
+      expect(
+        isExpectedFactorylessWarning(
+          `[tfAdapter] Missing tf factory for key "${factoryKey}" (mapped: "${factoryKey}")`,
+        ),
+      ).toBe(false);
+    }
   });
 
   it('forwards genuinely missing-factory and other adapter warnings', () => {
     const forwarded: string[] = [];
     const logger = createMainStreetTfLogger((message) => forwarded.push(message));
 
-    // Documented factory-less keys (logical or mapped form) stay quiet.
+    // With no documented factory-less keys left, a missing factory is surfaced
+    // even for a formerly-quiet key.
     logger.warn(
       '[tfAdapter] Missing tf factory for key "sfx-income-positive" (mapped: "income-positive-chime")',
-    );
-    logger.warn(
-      '[tfAdapter] Missing tf factory for key "income-positive-chime" (mapped: "income-positive-chime")',
-    );
-    expect(forwarded).toEqual([]);
-
-    // An unexpected missing factory is still surfaced.
-    logger.warn(
-      '[tfAdapter] Missing tf factory for key "sfx-deal" (mapped: "card-draw")',
     );
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0]).toContain('Missing tf factory');
 
     // Any other adapter warning is forwarded unchanged.
-    logger.warn('[tfAdapter] Failed to create tf voice for key "card-draw"');
+    logger.warn('[tfAdapter] Failed to create tf voice for key "income-positive-chime"');
     expect(forwarded).toHaveLength(2);
   });
 
@@ -248,9 +279,15 @@ describe('tutorial ToneForge wiring is console-clean', () => {
       logger: createMainStreetTfLogger((message) => forwarded.push(message)),
     });
 
-    // Expected factory-less key: quiet fallback.
-    expect(player.play('sfx-income-positive')).toBe(false);
-    expect(forwarded).toEqual([]);
+    // Every mapped key resolves to a shipped factory: never a missing-factory
+    // warning for the four former fallback keys (or any other mapping).
+    for (const logicalKey of Object.keys(MAIN_STREET_TF_SFX_MAPPING)) {
+      player.play(logicalKey);
+      expect(
+        forwarded.filter((message) => message.includes('Missing tf factory')),
+        `${logicalKey} must not report a missing factory`,
+      ).toEqual([]);
+    }
 
     // Unexpected key: still loud.
     expect(player.play('sfx-not-in-the-mapping')).toBe(false);

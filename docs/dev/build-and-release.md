@@ -1,0 +1,77 @@
+# Build & release: engine sync vs pinned release builds
+
+Main Street composes the Tableau Card Engine as a git submodule at `./core`.
+This repo has **no CI beyond the npm builds** — `npm run build` is the
+verification vehicle — so the build scripts themselves resolve which engine is
+compiled (MS-0MVCRGKZY007DIED).
+
+## Two build policies
+
+| Script | Engine behaviour | Purpose |
+|--------|------------------|---------|
+| `npm run build` | `engine:sync` **first**: advances `./core` to the latest remote head of the branch it tracks, then type-checks and bundles | **Dev builds always compose the latest engine**, so behaviour is tested against current engine code. |
+| `npm run build:electron` | Same dev sync, Electron `vite` mode | Desktop dev builds. |
+| `npm run build:release` | `engine:verify` **instead**: pins `./core` to exactly the SHA in `configs/engine-pin.json`, then type-checks and bundles | **Deterministic, reproducible release builds** — compile exactly the recorded engine commit. |
+
+The standalone npm scripts are independently invocable:
+
+```bash
+npm run engine:sync     # dev: dirty-guard + `git submodule update --remote core`
+npm run engine:verify   # release: dirty-guard + pin check + exact checkout
+```
+
+They wrap the engine-owned script `core/scripts/engine-sync.mjs` (re-scaffolded
+into this repo's submodule by the game-repo scaffold — never edit a game-repo
+copy by hand).
+
+## Which branch `./core` tracks
+
+`.gitmodules` declares a `branch` for the submodule. For the engine this is
+**`dev`** — the branch the engine's own development lands on. Configured
+explicitly so `git submodule update --remote` follows dev (the remote's
+default branch is `main` and would otherwise lag dev).
+
+## Dev sync (`engine:sync`) — never clobber
+
+1. **Dirty guard:** if `./core` has uncommitted changes (tracked
+   modifications, staged files, or untracked files), the build **fails
+   loudly** with the offending paths — `git submodule update` is never allowed
+   to overwrite local engine work.
+2. On a clean checkout: `git submodule update --init --remote core` fetches
+   the latest remote head of the tracked branch and checks it out (detached,
+   like any build-time submodule refresh).
+3. **Offline fallback:** if the remote is unreachable, the build warns and
+   continues with the current `./core` checkout instead of failing (dev work
+   stays possible without network).
+
+After a sync the superproject records the new engine commit as a pending
+`core` change — commit it deliberately as a submodule bump; it is never
+committed automatically.
+
+## Release verify (`engine:verify`) — pin from `configs/engine-pin.json`
+
+1. **Local-modification guard:** same loud refusal as dev sync — a release
+   must compile a clean pinned engine.
+2. **Pin required:** `configs/engine-pin.json` must exist with a single `sha`
+   field (the release process writes it alongside the version bump; dev
+   builds **never** write it).
+3. **Pin must match the remote target:** the pinned SHA is compared against
+   the tip of the tracked branch. A stale pin fails the build loudly with
+   both SHAs — release verification requires network access so the pin can be
+   confirmed.
+4. **Exact checkout:** `git checkout --detach <pin>` puts `./core` at exactly
+   the pinned engine commit, then the build compiles against it.
+
+## Updating the engine / releasing
+
+- **Dev:** just build — `engine:sync` follows engine `dev` automatically.
+- **During a release:** bump the version and update
+  `configs/engine-pin.json` to the engine SHA the release is compiled
+  against, then `npm run build:release`. The submodule pointer and the pin
+  travel together.
+
+## Tests
+
+`tests/main-street/engine-submodule-sync.test.ts` covers the dirty-state
+guard and pin-mismatch failure paths (unit, offline fixtures); the canonical
+script suite lives in the engine repo (`core/tests/scripts/engine-sync.test.ts`).

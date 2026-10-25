@@ -24,6 +24,15 @@ release/
 *.local
 
 ##################################
+# Documentation site (VitePress, local-only)
+##################################
+# Build output and cache of `npm run docs:build` / `npm run docs`. The site
+# source (`docs/.vitepress/config.ts`, `sidebar.ts`) stays tracked; only the
+# generated artefacts are ignored.
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+##################################
 # TypeScript
 ##################################
 *.tsbuildinfo

@@ -18,10 +18,17 @@
  * Work items:
  *   CG-0MRYZT4ID008PFFT — E-1: Card ownership tracking
  *   CG-0MRYZTLAN00958S0 — E-3: Market offer tracking
+ *   MS-0MUR9INHX001QCSE — Parent: Track synergy diversity (G4/HHI) and
+ *     placement dominance post-rebalance (finalGrid capture, run-summary AC1).
  */
 import { describe, expect, it } from 'vitest';
 
-import { runMonteCarlo } from '../../src/MainStreetMonteCarlo';
+import { GRID_SIZE } from '../../src/MainStreetCards';
+import {
+  runCompetitiveMonteCarlo,
+  runMonteCarlo,
+  type MonteCarloRunSummary,
+} from '../../src/MainStreetMonteCarlo';
 
 describe('MonteCarloRunSummary — cardsOwned (E-1)', () => {
   it('includes cardsOwned field typed as string array', () => {
@@ -137,6 +144,85 @@ describe('MonteCarloRunSummary — marketOffers (E-3)', () => {
     const { runs } = runMonteCarlo({ seeds, maxTurns: 5, strategy: 'market-greedy' });
     for (const run of runs) {
       expect(Array.isArray(run.marketOffers)).toBe(true);
+    }
+  });
+});
+
+describe('MonteCarloRunSummary — finalGrid (MS-0MUR9INHX001QCSE)', () => {
+  it('exposes finalGrid as a string array on a single-player run summary', () => {
+    const seeds = ['mc-finalgrid-type-check'];
+    const { runs } = runMonteCarlo({ seeds, maxTurns: 5, strategy: 'market-greedy' });
+    const run = runs[0];
+
+    expect(run).toHaveProperty('finalGrid');
+    expect(Array.isArray(run.finalGrid)).toBe(true);
+    for (const cardId of run.finalGrid ?? []) {
+      expect(typeof cardId).toBe('string');
+      expect(cardId).toBeTruthy();
+    }
+  });
+
+  it('is empty when the run places no cards (only non-null slots are captured)', () => {
+    // maxTurns: 0 runs no day loop, so every street slot stays null.
+    const seeds = ['mc-finalgrid-no-placement'];
+    const { runs } = runMonteCarlo({ seeds, maxTurns: 0, strategy: 'market-greedy' });
+
+    expect(runs[0].turns).toBe(0);
+    expect(runs[0].finalGrid).toEqual([]);
+  });
+
+  it('contains the card IDs of occupied slots after placements', () => {
+    // market-greedy buys and places businesses, so the final grid is non-empty.
+    const seeds = ['mc-finalgrid-placed'];
+    const { runs } = runMonteCarlo({ seeds, maxTurns: 10, strategy: 'market-greedy' });
+    const run = runs[0];
+
+    expect(run.cardsOwned.length).toBeGreaterThanOrEqual(1);
+    expect(run.finalGrid?.length ?? 0).toBeGreaterThanOrEqual(1);
+    // One entry per occupied slot — never more than the street grid holds.
+    expect(run.finalGrid?.length ?? 0).toBeLessThanOrEqual(GRID_SIZE);
+    // Placed business/community-space cards carry their card-ID prefix.
+    expect(
+      (run.finalGrid ?? []).some(id => id.startsWith('biz-') || id.startsWith('cs-')),
+    ).toBe(true);
+  });
+
+  it('does not change the backward-compatible shape of legacy fixtures', () => {
+    // A stored/fixture summary that predates finalGrid must still satisfy the
+    // MonteCarloRunSummary type and serialise without the optional key.
+    const legacy: MonteCarloRunSummary = {
+      seed: 'legacy-fixture',
+      result: 'win',
+      endReason: 'score_threshold',
+      finalScore: 150,
+      finalCoins: 30,
+      turns: 15,
+      turnWhenGridHalf: 4,
+      turnWhenGridFull: 8,
+      noActionTurns: 0,
+      cardsOwned: ['biz-bakery'],
+      marketOffers: ['biz-bakery'],
+      economyHistory: [],
+    };
+
+    const roundTripped = JSON.parse(JSON.stringify(legacy)) as MonteCarloRunSummary;
+    expect(roundTripped.finalGrid).toBeUndefined();
+    expect('finalGrid' in roundTripped).toBe(false);
+  });
+
+  it('captures finalGrid on competitive run summaries', () => {
+    const { runs } = runCompetitiveMonteCarlo({
+      seeds: ['mc-finalgrid-competitive'],
+      maxTurns: 10,
+    });
+    const run = runs[0];
+
+    expect(run).toHaveProperty('finalGrid');
+    expect(Array.isArray(run.finalGrid)).toBe(true);
+    expect(run.finalGrid?.length ?? 0).toBeLessThanOrEqual(GRID_SIZE);
+    for (const cardId of run.finalGrid ?? []) {
+      expect(typeof cardId).toBe('string');
+      expect(cardId).toBeTruthy();
     }
   });
 });
