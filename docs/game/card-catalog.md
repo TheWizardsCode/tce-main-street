@@ -1,6 +1,7 @@
 # Main Street: Card Catalog
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
+> **Card relationship diagrams:** the generated synergy, staff, upgrade-chain and community-space diagrams (with the regeneration and drift-guard commands) are documented in [card-diagrams.md](./card-diagrams.md).
 > **Last updated:** Synergy-coloured card faces + two-tone bridge split (MS-0MUZH51PU007POJ4)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
@@ -321,7 +322,7 @@ Events fall into two categories:
 
 | ID | Name | Trigger | Cost | Target | Synergy | Coins | Rep | Effect | Rationale |
 |----|------|---------|------|--------|---------|-------|-----|--------|-----------|
-| `evt-grand-opening` | Grand Opening Sale | Investment | 300 | SpecificSynergy | Commerce | +450 | 0 | +450 coins from a Commerce promotion. | Commerce boost with a same-turn placement gate; rewards coordinated play. |
+| `evt-grand-opening` | Grand Opening Sale | Investment | 300 | SpecificSynergy | Commerce | +450 | 0 | +450 coins for each business sharing the synergy of the business opened this turn. | Pays per business sharing the placed card's synergy; keeps the same-turn placement gate. |
 | `evt-wellness-fair` | Wellness Fair | Investment | 300 | SpecificSynergy | Health | +200 | +150 | +200 coins per Health business and +150 reputation. | Health counterpart to Local Festival. |
 | `evt-block-party` | Block Party | Investment | 500 | SpecificSynergy | Entertainment | +250 | +350 | +250 coins per Entertainment business and +350 reputation. | Expensive but high rep payoff for Entertainment. |
 | `evt-charity-drive` | Charity Drive | Investment | 900 | All | -- | 0 | +1350 | +1350 reputation from generous donations. | Pure reputation play; universal target. |
@@ -468,6 +469,12 @@ Branching upgrades offer an alternative Level-1 path for businesses that already
 | `upg-fast-food` | Upgrade to Fast Food | Diner | 700 | +500 | +1 | Converts to a Fast Food outlet. Higher income, no range. | Volume alternative to Bistro (+100/+1). |
 | `upg-drive-in` | Upgrade to Drive-In Theater | Cinema | 700 | +200 | +2 | Turns Cinema into a Drive-In with wider community reach. | Reach-over-income alternative to IMAX (+200/+1). |
 | `upg-wellness-center` | Upgrade to Wellness Center | Day Spa | 900 | +250 | +2 | Expands into a Wellness Center with broader service footprint. | Reach alternative to Resort Spa (+200/+1). |
+
+`upg-drive-in` and `upg-wellness-center` declare the baseline deck `drawWeight`
+of 1 so they receive the refill-time eligibility bonus once their parent
+business sits at level 0 (MS-0MV035PRV002QDG4). Their cost and `incomeBonus`
+are unchanged, preserving the reach-over-income trade-off against IMAX and
+Resort Spa.
 
 ### M2 Multi-Level Upgrade Templates (4)
 

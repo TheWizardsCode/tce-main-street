@@ -16,6 +16,7 @@ import { createEconomyLedger } from '@rule-engine/EconomyLedger';
 import {
   type EventCard,
   type StaffCard,
+  type SynergyType,
   CSV_CHECKSUM,
   getActiveCsvData,
   getActiveCsvChecksum,
@@ -99,6 +100,7 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     justMovedEventCardId: state.justMovedEventCardId ?? null,
     justMovedUpgradeCardId: state.justMovedUpgradeCardId ?? null,
     businessPlacedThisTurn: state.businessPlacedThisTurn ?? false,
+    placedSynergiesThisTurn: state.placedSynergiesThisTurn ? structuredClone(state.placedSynergiesThisTurn) : null,
     marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
     investorFreeRerollUsedThisTurn: state.investorFreeRerollUsedThisTurn ?? false,
     players: state.players ? structuredClone(state.players) : undefined,
@@ -361,6 +363,14 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
   // Opening starts gated for the current turn.
   if (!('businessPlacedThisTurn' in saved)) {
     (saved as Record<string, unknown>).businessPlacedThisTurn = false;
+  }
+
+  // ── placedSynergiesThisTurn (MS-0MVCS1NOH0074YY2): backfill default ──
+  // Legacy saves predate the dynamic Grand Opening synergy field; default to
+  // null (nothing opened this turn so far) so old saves load with the
+  // dynamic synergy cleared for the current turn.
+  if (!('placedSynergiesThisTurn' in saved)) {
+    (saved as Record<string, unknown>).placedSynergiesThisTurn = null;
   }
 
   // ── marketRefreshesThisTurn (MS-0MTR6ZRF5007PWNZ): backfill default ──
@@ -724,6 +734,7 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     justMovedEventCardId: (saved as any).justMovedEventCardId ?? null,
     revealedPeekedCard: (saved.revealedPeekedCard as EventCard | null) ?? null,
     businessPlacedThisTurn: (saved as unknown as { businessPlacedThisTurn?: boolean })?.businessPlacedThisTurn ?? false,
+    placedSynergiesThisTurn: (saved as unknown as { placedSynergiesThisTurn?: SynergyType[] | null })?.placedSynergiesThisTurn ?? null,
     marketRefreshesThisTurn: (saved as unknown as { marketRefreshesThisTurn?: number })?.marketRefreshesThisTurn ?? 0,
     investorFreeRerollUsedThisTurn: (saved as unknown as { investorFreeRerollUsedThisTurn?: boolean })?.investorFreeRerollUsedThisTurn ?? false,
     justMovedUpgradeCardId: (saved as unknown as { justMovedUpgradeCardId?: string | null })?.justMovedUpgradeCardId ?? null,

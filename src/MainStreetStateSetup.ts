@@ -671,6 +671,7 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     justMovedEventCardId: null,
     justMovedUpgradeCardId: null,
     businessPlacedThisTurn: false,
+    placedSynergiesThisTurn: null,
     marketRefreshesThisTurn: 0,
     investorFreeRerollUsedThisTurn: false,
     players: undefined,

@@ -33,6 +33,14 @@ export function computeLayout(_renderer: MainStreetRendererContext): SceneLayout
 export function refreshPlayerHand(renderer: MainStreetRendererContext): void {
 
     const s = renderer.scene;
+    // Unregister the previous generation of hand-origin draggables BEFORE
+    // the HandView rebuild destroys their containers, so the drag manager
+    // and `renderer.dragDropRegistered` never hold stale/destroyed
+    // references after a refresh (AC5). Registration invariant
+    // (MS-0MVK4E5M00021XEY): each refresh path unregisters exactly the
+    // containers it rebuilds — refreshMarket keeps hand cards live, this
+    // step clears them and re-registers the fresh ones below.
+    renderer.unregisterHandDraggables();
     // handContainer zone kept for backward-compat (zone-metadata tests)
     s.handContainer.removeAll(true);
 

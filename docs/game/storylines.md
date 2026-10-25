@@ -178,9 +178,9 @@ interface StorylineOption {
 **Contract (read-only, pure).** Both callbacks are typed as pure functions
 over `MainStreetState`. They must not mutate state or perform side effects;
 mutating state inside a callback is undefined behaviour. The callback type is a
-thin abstraction over a state shape that a future core engine can match, so the
-game-agnostic seam is preserved — no Main Street internals are baked into the
-callback signature.
+thin abstraction over a state shape that the generic core engine consumes
+(`@story-line`), so no Main Street internals are baked into the callback
+signature.
 
 **Not serialisable.** Callbacks are registered programmatically via
 `registerStorylineOptions`; they are never authored in CSV or the
@@ -303,6 +303,7 @@ All scripts run under `vite-node` because the card model imports
 | `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed diagram, per-storyline document, index, or generated doc section differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
 | `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
+| `npm run docs:diagrams` | Regenerate the card relationship diagrams (synergies, staff, upgrade chains, community spaces) into `docs/dev/assets/`; `--check` is the drift guard. See [card-diagrams.md](./card-diagrams.md). |
 
 **Cycle policy.** The validator reports cycles as **informational** findings
 (`RESULT: VALID`, exit `0`); pass `--fail-on-cycle` to treat them as errors. The
@@ -438,46 +439,55 @@ Before committing a storyline change:
 
 ## 9. Core-engine extraction path
 
-The mechanic is Main-Street-specific today but sits behind a deliberately
-**game-agnostic seam** so it can move to the core engine later (producer
-decision, 2026-09-29: Main Street-specific now, designed to move).
+The mechanic has been extracted into the generic, game-agnostic core module
+[`@story-line`](../../core/docs/core-engine/story-line.md)
+([`core/src/story-line/`](../../core/src/story-line/)). Main Street is now a
+**consumer**: the three story-line modules are thin adapters over the core
+system, so there is one implementation of compilation, resolution and the
+journal helpers.
 
-**The seam** is [`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts):
+**The adapters** ([`src/MainStreetStorylineAdapter.ts`](../../src/MainStreetStorylineAdapter.ts)):
 
-- `compileStorylineFromEvent(event)` / `getStorylineOptions(event)` — pure, no state.
-- `registerStorylineOptions` / `resetStorylineRegistry` — the option registry.
-- `createPendingStorylineChoice(event)` — builds the pending state.
-- `resolveStorylineOption(state, event, option)` — applies `effectPolicy`, pushes the successor.
-- `pushChainCard(state, templateId)` — deterministic deck insertion.
-- `markChoiceResolved` / `recordStorylineResolution`.
+- `mainStreetStorylineEngineAdapter` maps the core engine seam onto
+  `MainStreetState`: seeded `rng()`, `resolveEvent` effect application, the
+  activity log, and the incident-deck chain-card sink.
+- `mainStreetStorylineUiAdapter` supplies Main Street's presentation (names,
+  dialog labels, story-update lines, journal formatting). It is the core
+  default implementation, which was extracted from Main Street, so the shipped
+  wording is unchanged.
+- `getMainStreetStorylineSystem()` composes them lazily.
 
-Callers (engine, UI, scripts) never reach into Main-Street-only resolution
-internals: they go through these functions, and the generalised engine entry
-point `resolveEventOption(state, optionIndex)`.
+**The Main Street API surface is unchanged**, delegating to the system:
+[`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts) —
+`compileStorylineFromEvent`, `getStorylineOptions`,
+`registerStorylineOptions` / `resetStorylineRegistry`,
+`createPendingStorylineChoice`, `resolveStorylineOption`, `pushChainCard`,
+`markChoiceResolved`; [`src/MainStreetStorylineJournal.ts`](../../src/MainStreetStorylineJournal.ts)
+and [`src/MainStreetStorylineUi.ts`](../../src/MainStreetStorylineUi.ts) delegate
+the journal/clarity/name/update helpers. `resolveEventOption` in the engine
+remains the generalised entry point.
 
-**Migration notes (from C2):**
+**Migration notes:**
 
-- The option list is a **linear ordered sequence**; resolution selects one
-  option by index. There is no branching graph traversal.
-- `compileStorylineFromEvent` is the sole compilation entry point. It accepts
-  an optional `state` argument; when supplied, options whose `condition`
-  callback returns `false` are omitted from the compiled list (draw-time
-  filtering). `getStorylineOptions(event, state)` threads the same argument
-  through.
-- `resolveStorylineOption` applies the effect policy, then resolves the
-  successor — preferring `option.successorResolver(state)` when present and
-  falling back to `option.successorId`; the **caller** pushes it.
-- **Callback type contract:** `condition` / `successorResolver` are pure,
-  read-only functions over `MainStreetState`. They carry no Main Street
-  internals beyond the public state shape, so a future core engine can match
-  the signature. They are runtime-only — never serialised, never validated,
-  never exported to the graph.
-- The seam depends only on a state shape and a template registry supplied by the
-  caller — no Main Street globals are baked in.
-- Portability caveat: `pushChainCard` currently uses the Main Street template
-  registry (`getEventTemplates`); a core move would inject that registry.
+- Core owns the semantics: legacy/CSV compilation, registry precedence,
+  draw-time condition filtering, `apply` / `skip`, successor precedence
+  (`successorResolver` → one seeded candidate draw → legacy id) and
+  deterministic `${base}-${maxSerial+1}` chain naming.
+- A candidate selection consumes exactly **one** `state.rng()` draw at
+  resolution time; terminal options consume no draw. Replay with the same seed
+  is byte-for-byte identical, guarded by the behaviour-preservation parity gate
+  in `tests/main-street/storyline-behaviour-parity.test.ts` and its golden
+  fixtures.
+- `condition` / `successorResolver` remain pure callbacks over
+  `MainStreetState`; they are runtime-only and never serialised.
+- `MainStreetCardsTypes.ts` re-exports the generic `StorylineOption` /
+  `CompiledStoryline` types from core (specialised to `MainStreetState`), so
+  there is no duplicate type definition.
+- Main-Street-specific concerns stay game-side: the transcript
+  (`recordStorylineResolution`), the overlay presentation, and the
+  graph/manifest tooling.
 
----
+Full generic reference: [`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md).
 
 ## 10. Roadmap
 
@@ -501,6 +511,7 @@ Each is captured as a work item:
 - [`docs/game/core-rules-and-mechanics.md`](./core-rules-and-mechanics.md) — turn structure and end-of-turn sequence.
 - [`docs/dev/ai-strategy.md`](../dev/ai-strategy.md) — AI strategy overview.
 - [`docs/dev/assets/storyline-graph.mmd`](../dev/assets/storyline-graph.mmd) — generated Mermaid graph (source of truth).
+- [`docs/game/card-diagrams.md`](./card-diagrams.md) — the unified card relationship diagrams (synergies, staff, upgrade chains, community spaces) and their regeneration/drift-guard workflow.
 - [`docs/game/storylines/`](./storylines/) — one document per storyline (diagram + per-event detail table): `tax.md`, `health.md`, `economy.md`, `labor.md`, `restaurant.md`.
 - [`docs/game/assets/`](./assets/) — rendered per-storyline graph images (viewable without a Mermaid renderer).
 - [`docs/game/storyline-incident-index.md`](./storyline-incident-index.md) — standalone-incident index (incidents not in any storyline).

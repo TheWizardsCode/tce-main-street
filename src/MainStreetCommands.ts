@@ -11,6 +11,7 @@
 
 import { toCommand, type ReversibleAction } from '@core-engine/ActionCommands';
 import { evaluateChallengesAfterAction } from './MainStreetChallenges';
+import type { SynergyType } from './MainStreetCards';
 import type { MainStreetState } from './MainStreetState';
 import {
   purchaseBusiness,
@@ -77,6 +78,8 @@ interface MarketActionSnapshot {
   discardPile: any | null;
   /** Grand Opening placement gate — captured so undo restores the per-turn flag. */
   businessPlacedThisTurn: boolean | null;
+  /** Dynamic Grand Opening synergy — captured so undo restores the pre-placement synergy (MS-0MVCS1NOH0074YY2). */
+  placedSynergiesThisTurn: SynergyType[] | null;
   /** Market re-roll escalation counter — captured so undo restores the inflated price (MS-0MTR6ZRF5007PWNZ). */
   marketRefreshesThisTurn: number | null;
   /** Investor free re-roll gate — captured so undo restores availability (MS-0MTISBYLS009936W). */
@@ -204,6 +207,7 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // card (the card is pushed to `discardPile` by `closeBusiness`).
     discardPile: safeClone(state.discardPile ?? []),
     businessPlacedThisTurn: (state as any).businessPlacedThisTurn ?? false,
+    placedSynergiesThisTurn: safeClone((state as any).placedSynergiesThisTurn ?? null),
     marketRefreshesThisTurn: state.marketRefreshesThisTurn ?? 0,
     investorFreeRerollUsedThisTurn: state.investorFreeRerollUsedThisTurn ?? false,
     actionsRemaining: state.actionsRemaining,
@@ -246,6 +250,9 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   state.discardPile = (snap.discardPile ?? []) as any;
   if (snap.businessPlacedThisTurn !== null && snap.businessPlacedThisTurn !== undefined) {
     (state as any).businessPlacedThisTurn = snap.businessPlacedThisTurn;
+  }
+  if ('placedSynergiesThisTurn' in snap) {
+    (state as any).placedSynergiesThisTurn = snap.placedSynergiesThisTurn;
   }
   if (snap.marketRefreshesThisTurn !== null && snap.marketRefreshesThisTurn !== undefined) {
     state.marketRefreshesThisTurn = snap.marketRefreshesThisTurn;

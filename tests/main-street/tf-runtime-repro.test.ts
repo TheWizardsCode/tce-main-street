@@ -10,7 +10,7 @@
  * threw `param must be an AudioParam`, making every factory unplayable and so
  * leaving ToneForge silent. **That conclusion was a Node-environment
  * artefact**: with no Web Audio context, Tone.js's `Param` assertion fails for
- * *any* `Gain` construction. In a real browser all 12 factories construct
+ * *any* `Gain` construction. In a real browser all 16 factories construct
  * successfully, and an enabled opt-in session ends up with an active synth
  * player.
  *
@@ -46,6 +46,10 @@ const RUNTIME_FACTORY_KEYS = [
   'construction-lite-hammer',
   'construction-lite-saw',
   'crowd-cheer',
+  'income-positive-chime',
+  'income-negative-chime',
+  'income-neutral-chime',
+  'success-fanfare',
 ] as const;
 
 /** Minimal WAV player that records calls, used as the fallback target. */

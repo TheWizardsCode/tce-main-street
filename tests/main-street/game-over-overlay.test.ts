@@ -169,7 +169,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
 
   it('renders the two labelled columns, title and headline in single-player', () => {
     const { scene, texts } = makeScene({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       resourceBank: { coins: 42, reputation: 7 },
       finalScore: 123,
     });
@@ -177,7 +177,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
 
     const rendered = texts.map((t) => t.text);
     expect(rendered).toContain('You Win!');
-    expect(rendered).toContain('All challenges completed');
+    expect(rendered).toContain('Score threshold reached');
     expect(rendered).toContain('Game State');
     expect(rendered).toContain('Summary');
     // Single-player synthesises the sole row from the shared wallet.
@@ -230,7 +230,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
 
   it('renders a per-seat challenge breakdown in competitive mode', () => {
     const { scene, texts } = makeScene({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       turn: 2,
       players: [
         player({ playerId: 0, coins: 100, reputation: 10, score: 40 }),
@@ -257,7 +257,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
 
   it('shows an em dash for a competitive seat with no completions', () => {
     const { scene, texts } = makeScene({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       turn: 2,
       players: [
         player({ playerId: 0, coins: 100, reputation: 10, score: 40 }),
@@ -277,7 +277,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
 
   it('retains the single-list challenge format in single-player mode', () => {
     const { scene, texts } = makeScene({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       activeChallenges: [
         { challenge: { id: 'ch-1', title: 'First challenge' }, completed: true },
         { challenge: { id: 'ch-2', title: 'Second challenge' }, completed: false },
@@ -371,7 +371,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
   });
 
   it('does not offer Enter Endless Mode for any other end reason', () => {
-    const endReasons = ['bankruptcy', 'score_threshold', 'last_standing', 'all_challenges', null] as const;
+    const endReasons = ['bankruptcy', 'score_threshold', 'last_standing', null] as const;
     for (const endReason of endReasons) {
       ui.buttons.length = 0;
       const { scene } = makeScene({ endReason });

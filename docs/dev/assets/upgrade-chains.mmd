@@ -1,0 +1,115 @@
+%%{ init: { "flowchart": { "curve": "basis" } } }%%
+flowchart LR
+
+  %% Upgrade chains — generated from src/card-data.csv; do not hand-edit.
+
+  biz_arcade("Arcade<br/>biz-arcade<br/>max level 1")
+  biz_bakery("Bakery<br/>biz-bakery<br/>max level 2")
+  biz_barbershop("Barbershop<br/>biz-barbershop<br/>max level 1")
+  biz_bookshop("Bookshop<br/>biz-bookshop<br/>max level 1")
+  biz_boutique("Boutique<br/>biz-boutique<br/>max level 1")
+  biz_cafe("Cafe<br/>biz-cafe<br/>max level 1")
+  biz_cinema("Cinema<br/>biz-cinema<br/>max level 2")
+  biz_clinic("Clinic<br/>biz-clinic<br/>max level 1")
+  biz_delicatessen("Delicatessen<br/>biz-delicatessen<br/>max level 1")
+  biz_dentist("Dentist<br/>biz-dentist<br/>max level 1")
+  biz_diner("Diner<br/>biz-diner<br/>max level 2")
+  biz_florist("Flower Shop<br/>biz-florist<br/>max level 1")
+  biz_food_truck("Food Truck<br/>biz-food-truck<br/>max level 1")
+  biz_gallery("Art Gallery<br/>biz-gallery<br/>max level 1")
+  biz_gym("Gym<br/>biz-gym<br/>max level 1")
+  biz_hardware("Hardware Store<br/>biz-hardware<br/>max level 1")
+  biz_juice_bar("Juice Bar<br/>biz-juice-bar<br/>max level 1")
+  biz_laundromat("Laundromat<br/>biz-laundromat<br/>max level 1")
+  biz_pawnshop("Pawn Shop<br/>biz-pawnshop<br/>max level 1")
+  biz_private_clinic("Private Clinic<br/>biz-private-clinic<br/>max level 1")
+  biz_spa("Day Spa<br/>biz-spa<br/>max level 2")
+  biz_tailor("Tailor<br/>biz-tailor<br/>max level 1")
+  biz_teahouse("Teahouse<br/>biz-teahouse<br/>max level 1")
+  biz_toy_store("Toy Store<br/>biz-toy-store<br/>max level 1")
+  biz_yoga_studio("Yoga Studio<br/>biz-yoga-studio<br/>max level 1")
+  cs_community_garden("Community Garden<br/>cs-community-garden<br/>max level 1")
+  cs_fountain("Town Fountain<br/>cs-fountain<br/>max level 1")
+  cs_health_kiosk("Health Kiosk<br/>cs-health-kiosk<br/>max level 1")
+  cs_library("Library<br/>cs-library<br/>max level 1")
+  cs_park("Park<br/>cs-park<br/>max level 1")
+  cs_playground("Playground<br/>cs-playground<br/>max level 1")
+  upg_adventure_park["Adventure Park<br/>upg-adventure-park<br/>cost 300 · rep +5"]
+  upg_bespoke_tailor["Bespoke Tailor<br/>upg-bespoke-tailor<br/>cost 400 · income +100"]
+  upg_bistro["Bistro<br/>upg-bistro<br/>cost 300 · income +100"]
+  upg_bread_factory["Bread Factory<br/>upg-bread-factory<br/>cost 700 · income +500 · rep +100"]
+  upg_community_hub["Community Hub<br/>upg-community-hub<br/>cost 400 · rep +10"]
+  upg_dental_clinic["Dental Clinic<br/>upg-dental-clinic<br/>cost 600 · income +200"]
+  upg_designer_store["Designer Store<br/>upg-designer-store<br/>cost 600 · income +200 · rep +100"]
+  upg_drive_in["Drive-In Theater<br/>upg-drive-in<br/>cost 700 · income +200 · rep +100"]
+  upg_dry_cleaners["Dry Cleaners<br/>upg-dry-cleaners<br/>cost 300 · income +100"]
+  upg_fast_food["Fast Food<br/>upg-fast-food<br/>cost 700 · income +500 · rep +100"]
+  upg_fitness_center["Fitness Center<br/>upg-fitness-center<br/>cost 500 · income +150"]
+  upg_gaming_lounge["Gaming Lounge<br/>upg-gaming-lounge<br/>cost 700 · income +200 · rep +100"]
+  upg_garden["Garden<br/>upg-garden<br/>cost 300 · income +100"]
+  upg_garden_center["Garden Center<br/>upg-garden-center<br/>cost 700 · income +200 · rep +100"]
+  upg_gourmet_deli["Gourmet Deli<br/>upg-gourmet-deli<br/>cost 400 · income +150"]
+  upg_gourmet_truck["Gourmet Truck<br/>upg-gourmet-truck<br/>cost 300 · income +150"]
+  upg_grand_bakehouse["Grand Bakehouse<br/>upg-grand-bakehouse<br/>cost 900 · income +350 · rep +100"]
+  upg_grand_fountain["Grand Fountain<br/>upg-grand-fountain<br/>cost 300 · rep +5"]
+  upg_health_center["Health Center<br/>upg-health-center<br/>cost 400 · rep +5"]
+  upg_home_improvement["Home Improvement<br/>upg-home-improvement<br/>cost 700 · income +200 · rep +100"]
+  upg_imax["IMAX Theater<br/>upg-imax<br/>cost 700 · income +300 · rep +100"]
+  upg_luxury_retreat["Luxury Retreat<br/>upg-luxury-retreat<br/>cost 1400 · income +700 · rep +100"]
+  upg_medical_center["Medical Center<br/>upg-medical-center<br/>cost 300 · rep +10"]
+  upg_multiplex["Multiplex<br/>upg-multiplex<br/>cost 1400 · income +700 · rep +100"]
+  upg_museum["Museum<br/>upg-museum<br/>cost 600 · income +200 · rep +100"]
+  upg_orchard["Orchard<br/>upg-orchard<br/>cost 300 · rep +5"]
+  upg_patisserie["Patisserie<br/>upg-patisserie<br/>cost 300 · income +100"]
+  upg_private_medical_center["Private Medical Center<br/>upg-private-medical-center<br/>cost 700 · income +450 · rep +100"]
+  upg_readers_cafe["Reader's Café<br/>upg-readers-cafe<br/>cost 300 · income +100 · rep +10"]
+  upg_resort_spa["Resort Spa<br/>upg-resort-spa<br/>cost 900 · income +350 · rep +100"]
+  upg_restaurant["Restaurant<br/>upg-restaurant<br/>cost 1400 · income +550 · rep +100"]
+  upg_roastery["Roastery<br/>upg-roastery<br/>cost 900 · income +300 · rep +100"]
+  upg_salon["Salon<br/>upg-salon<br/>cost 900 · income +300 · rep +100"]
+  upg_smoothie_bar["Smoothie Bar<br/>upg-smoothie-bar<br/>cost 400 · income +100"]
+  upg_tea_lounge["Tea Lounge<br/>upg-tea-lounge<br/>cost 400 · income +100 · rep +10"]
+  upg_toy_warehouse["Toy Warehouse<br/>upg-toy-warehouse<br/>cost 400 · income +100"]
+  upg_vintage_shop["Vintage Shop<br/>upg-vintage-shop<br/>cost 300 · income +100"]
+  upg_wellness_center["Wellness Center<br/>upg-wellness-center<br/>cost 900 · income +250 · rep +100"]
+  upg_wellness_retreat["Wellness Retreat<br/>upg-wellness-retreat<br/>cost 500 · income +150"]
+
+  biz_arcade -->|Gaming Lounge · level 0| upg_gaming_lounge
+  biz_bakery -->|Bread Factory · level 0| upg_bread_factory
+  biz_bakery -->|Patisserie · level 0| upg_patisserie
+  biz_barbershop -->|Salon · level 0| upg_salon
+  biz_bookshop -->|Reader's Café · level 0| upg_readers_cafe
+  biz_boutique -->|Designer Store · level 0| upg_designer_store
+  biz_cafe -->|Roastery · level 0| upg_roastery
+  biz_cinema -->|Drive-In Theater · level 0| upg_drive_in
+  biz_cinema -->|IMAX Theater · level 0| upg_imax
+  biz_clinic -->|Medical Center · level 0| upg_medical_center
+  biz_delicatessen -->|Gourmet Deli · level 0| upg_gourmet_deli
+  biz_dentist -->|Dental Clinic · level 0| upg_dental_clinic
+  biz_diner -->|Bistro · level 0| upg_bistro
+  biz_diner -->|Fast Food · level 0| upg_fast_food
+  biz_florist -->|Garden Center · level 0| upg_garden_center
+  biz_food_truck -->|Gourmet Truck · level 0| upg_gourmet_truck
+  biz_gallery -->|Museum · level 0| upg_museum
+  biz_gym -->|Fitness Center · level 0| upg_fitness_center
+  biz_hardware -->|Home Improvement · level 0| upg_home_improvement
+  biz_juice_bar -->|Smoothie Bar · level 0| upg_smoothie_bar
+  biz_laundromat -->|Dry Cleaners · level 0| upg_dry_cleaners
+  biz_pawnshop -->|Vintage Shop · level 0| upg_vintage_shop
+  biz_private_clinic -->|Private Medical Center · level 0| upg_private_medical_center
+  biz_spa -->|Resort Spa · level 0| upg_resort_spa
+  biz_spa -->|Wellness Center · level 0| upg_wellness_center
+  biz_tailor -->|Bespoke Tailor · level 0| upg_bespoke_tailor
+  biz_teahouse -->|Tea Lounge · level 0| upg_tea_lounge
+  biz_toy_store -->|Toy Warehouse · level 0| upg_toy_warehouse
+  biz_yoga_studio -->|Wellness Retreat · level 0| upg_wellness_retreat
+  cs_community_garden -->|Orchard · level 0| upg_orchard
+  cs_fountain -->|Grand Fountain · level 0| upg_grand_fountain
+  cs_health_kiosk -->|Health Center · level 0| upg_health_center
+  cs_library -->|Community Hub · level 0| upg_community_hub
+  cs_park -->|Garden · level 0| upg_garden
+  cs_playground -->|Adventure Park · level 0| upg_adventure_park
+  upg_bread_factory -->|Grand Bakehouse · level 1| upg_grand_bakehouse
+  upg_fast_food -->|Restaurant · level 1| upg_restaurant
+  upg_imax -->|Multiplex · level 1| upg_multiplex
+  upg_resort_spa -->|Luxury Retreat · level 1| upg_luxury_retreat

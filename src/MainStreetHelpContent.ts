@@ -83,12 +83,12 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
         'Earn income and score through card value + synergy + reputation.\n' +
         'Buy upgrades to improve existing businesses.\n' +
         'Hold event cards and play them when timing is best.\n' +
-        'Complete challenges for bonus points and instant-win conditions.\n' +
+        'Complete challenges for bonus points that count toward your score.\n' +
         'Challenges are checked after every action, so completing one updates\n' +
         'your score and tracker immediately; the end of turn only catches\n' +
         'challenges satisfied by income or incidents.\n' +
         'Manage coins and reputation to build the best street — games end\n' +
-        'when you win (score threshold / all challenges) or lose\n' +
+        'when you reach the score threshold or lose\n' +
         '(bankruptcy / reputation collapse). There is no turn limit.',
     },
     {

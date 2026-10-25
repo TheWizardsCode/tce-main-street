@@ -14,10 +14,11 @@
 2. [Statistics (`engine/statistics.ts`)](#engine-statistics)
 3. [Card Metrics (`engine/card-metrics.ts`)](#engine-card-metrics)
 4. [Global Metrics (`engine/global-metrics.ts`)](#engine-global-metrics)
-5. [Storyline Metrics (`engine/storyline-metrics.ts`)](#engine-storyline-metrics)
-6. [Comparison (`engine/comparison.ts`)](#engine-comparison)
-7. [Baseline (`engine/baseline.ts`)](#engine-baseline)
-8. [Guardrail Thresholds (`guards/thresholds.ts`)](#guards-thresholds)
+5. [Synergy Diversity Report (`engine/synergy-diversity.ts`)](#engine-synergy-diversity)
+6. [Storyline Metrics (`engine/storyline-metrics.ts`)](#engine-storyline-metrics)
+7. [Comparison (`engine/comparison.ts`)](#engine-comparison)
+8. [Baseline (`engine/baseline.ts`)](#engine-baseline)
+9. [Guardrail Thresholds (`guards/thresholds.ts`)](#guards-thresholds)
 
 ---
 
@@ -143,7 +144,8 @@ Macro-level global metrics (G1–G8). Functions depending on Phase 1 data return
 | `computeWinRateByStrategyDifficulty(runs, labels)` | `WinRateMatrixEntry` | G1: Win rate for a strategy × difficulty cell. |
 | `computeScoreDistribution(runs)` | `ScoreDistributionResult` | G2: Full score statistics (median, mean, Q1, Q3, IQR, stdDev, min, max). |
 | `computeEconomyHealth(runs)` | `EconomyHealthResult \| null` | G3: avgCoins/turn, bankruptcy rate, tightness index. |
-| `computeSynergyDiversity(runs, typeMap)` | `SynergyDiversityResult \| null` | G4: HHI of synergy type shares across final grids. |
+| `buildSynergyTypeMap()` | `Record<string, string[]>` | Builds card ID → synergy types from the active business and community-space templates. |
+| `computeSynergyDiversity(runs, synergyTypeMap)` | `SynergyDiversityResult \| null` | G4: HHI of synergy type shares across final grids; `synergyTypeMap` is `Record<string, readonly string[]>`. |
 | `computeLossModeDecomposition(runs)` | `LossModeDecompositionResult` | G5: bankruptcy/reputation/timeout shares. |
 | `computeCardUsageDiversity(runs)` | `CardUsageDiversityResult \| null` | G6: Gini coefficient of card frequencies in won runs. |
 | `computeTurnByTurnSnapshots(runs)` | `TurnByTurnSnapshotsResult \| null` | G7: avg coins/rep/score per turn trajectory. |
@@ -164,6 +166,27 @@ interface CardMetricSummary { cardId: string; winRateDelta: number | null; pickR
 interface TrapCardPrevalenceResult { trapCardCount: number; trapCardIds: string[]; trapCardImpact: number }
 ```
 
+### Multi-type synergy and `finalGrid`
+
+G4 depends on two Phase 1 contracts:
+
+- **`MonteCarloRunSummary.finalGrid`** — optional `string[]` capturing the
+  **template** card IDs of the non-null street-grid slots at run end
+  (single-player `simulateSeed`, and `CompetitiveRunSummary` from the shared
+  grid). Optional for backward compatibility with stored summaries and
+  fixtures; absent means G4 returns `null`. Runtime deck instances append an
+  instance counter (`biz-spa-0`); the capture strips it so consumers always
+  see the template ID.
+- **`buildSynergyTypeMap()`** — `Record<string, string[]>`, built from
+  `getBusinessTemplates()` and `getCommunitySpaceTemplates()`; each card maps
+  to its full `synergyTypes` list (empty for cards without synergy types).
+
+`computeSynergyDiversity()` counts **every** synergy type a card provides: a
+multi-type card with types `A` and `B` contributes +1 to `A` and +1 to `B`, so
+the HHI denominator is the total number of synergy-type occurrences (not the
+number of cards). Unknown card IDs fall back to the `Unknown` type. Shares are
+`count / totalTypeOccurrences`; HHI is `Σ share² × 10000`.
+
 ### Examples
 
 ```ts
@@ -183,7 +206,68 @@ const sd = computeScoreDistribution(runs);
 // G5
 const lm = computeLossModeDecomposition(runs);
 // { totalLosses: 1, shares: { bankruptcy: 1, reputation_collapse: 0, turn_exhaustion: 0 }, counts: {...} }
+
+// G4 (multi-type aware)
+const synergyTypeMap = buildSynergyTypeMap();
+const g4 = computeSynergyDiversity(runs, synergyTypeMap);
+// { hhi: 2800, synergyTypeShares: { Food: 0.4, Commerce: 0.2, ... } }
+// A card with ['Food', 'Culture'] adds +1 to each type.
 ```
+
+---
+
+## `engine/synergy-diversity.ts` {#engine-synergy-diversity}
+
+Pure helpers behind the G4 synergy-diversity report CLI
+(`scripts/balance/synergy-diversity-report.ts`). The CLI runs the canonical
+Monte Carlo profile and writes
+[`docs/dev/assets/synergy-diversity-report.md`](assets/synergy-diversity-report.md).
+
+A synergy type is **dominant** when its share of synergy-type occurrences in a
+difficulty is **strictly greater than 40%** (`share > 0.40`); exactly 40% is
+not dominant. Findings are reported on stderr and in the markdown table.
+
+### Exports
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `SYNERGY_DOMINANCE_THRESHOLD` | `0.4` | Dominance threshold (strictly greater than). |
+| `findDominantTypes(shares, threshold?)` | `string[]` | Sorted types whose share exceeds the threshold. |
+| `buildSynergyDiversityEntry(difficulty, runs, map, threshold?)` | `SynergyDiversityReportEntry` | G4 entry for one difficulty. |
+| `assembleSynergyDiversityReport(entries, threshold?)` | `{ entries, dominance }` | Assembles entries and derives dominance findings. |
+| `formatDominanceWarnings(findings, threshold?)` | `string[]` | One warning line per finding. |
+| `formatSynergyDiversityMarkdown(report, threshold?)` | `string` | Markdown summary table plus warnings. |
+| `formatSynergyDiversityJson(report)` | `string` | Stable JSON representation. |
+
+### Types
+
+```ts
+interface DominanceFinding { difficulty: string; synergyType: string; share: number }
+interface SynergyDiversityReportEntry { difficulty: string; runs: number; hhi: number; synergyTypeShares: Record<string, number>; dominantTypes: string[] }
+interface SynergyDiversityProfile { seeds: number; seedPrefix: string; maxTurns: number; strategy: string }
+interface SynergyDiversityReport { label: string; generatedAt: string; commitSha: string | null; profile: SynergyDiversityProfile; entries: SynergyDiversityReportEntry[]; dominance: DominanceFinding[] }
+interface SynergyDiversityRuns { difficulty: string; runs: readonly MonteCarloRunSummary[] }
+```
+
+### CLI
+
+```bash
+# Canonical profile (200 seeds, 60 turns, greedy, Easy/Medium/Hard)
+npm run balance:synergy-diversity-report
+
+# Explicit profile; --difficulty filters (omit it for all three difficulties)
+npx vite-node src/scripts/balance/synergy-diversity-report.ts \
+  --seeds 200 --maxTurns 40 --difficulty Medium --json
+
+# Optional JSON artefact alongside the default markdown output
+npx vite-node src/scripts/balance/synergy-diversity-report.ts \
+  --out docs/dev/assets/synergy-diversity-report.json
+```
+
+Outputs: JSON on stdout with `--json` (and to `--out` when supplied); markdown
+summary table to `--md-out` (default
+`docs/dev/assets/synergy-diversity-report.md`); one stderr warning line per
+dominance finding.
 
 ---
 
@@ -424,8 +508,10 @@ const result = evaluateGuardrails({
 | | `IqrResult`, `ConfidenceIntervalResult` |
 | `engine/card-metrics` | `computePickRate`, `computeWinRateDelta`, `computeCostToIncomeRatio`, `computeSynergyUtilization`, `computeUpgradeAdoption`, `computeEventImpactScore`, `computeSurvivalRate` |
 | | `PickRateResult`, `WinRateDeltaResult`, `CostToIncomeInput`, `SynergyUtilizationResult`, `UpgradeAdoptionResult`, `EventImpactResult`, `SurvivalRateResult`, `CardDeltas` |
-| `engine/global-metrics` | `computeWinRateByStrategyDifficulty`, `computeScoreDistribution`, `computeEconomyHealth`, `computeSynergyDiversity`, `computeLossModeDecomposition`, `computeCardUsageDiversity`, `computeTurnByTurnSnapshots`, `computeTrapCardPrevalence` |
+| `engine/global-metrics` | `computeWinRateByStrategyDifficulty`, `computeScoreDistribution`, `computeEconomyHealth`, `buildSynergyTypeMap`, `computeSynergyDiversity`, `computeLossModeDecomposition`, `computeCardUsageDiversity`, `computeTurnByTurnSnapshots`, `computeTrapCardPrevalence` |
 | | `WinRateMatrixEntry`, `ScoreDistributionResult`, `EconomyHealthResult`, `SynergyDiversityResult`, `LossModeDecompositionResult`, `CardUsageDiversityResult`, `TurnByTurnSnapshotsResult`, `TrapCardPrevalenceResult`, `CardMetricSummary` |
+| `engine/synergy-diversity` | `SYNERGY_DOMINANCE_THRESHOLD`, `findDominantTypes`, `buildSynergyDiversityEntry`, `assembleSynergyDiversityReport`, `formatDominanceWarnings`, `formatSynergyDiversityMarkdown`, `formatSynergyDiversityJson` |
+| | `DominanceFinding`, `SynergyDiversityReportEntry`, `SynergyDiversityProfile`, `SynergyDiversityReport`, `SynergyDiversityRuns` |
 | `engine/storyline-metrics` | `computeStorylineFireFrequency`, `computeChainDepthStats`, `computeCycleStats`, `computeChoiceWinRateDelta`, `KNOWN_STORYLINE_IDS` |
 | | `StorylineFireStat`, `StorylineFireFrequencyResult`, `StorylineChainDepthStat`, `ChainDepthStatsResult`, `StorylineCycleStat`, `CycleStatsResult`, `ChoiceWinRateDeltaResult` |
 | `engine/comparison` | `compareMetrics` |

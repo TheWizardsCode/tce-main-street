@@ -75,6 +75,10 @@ describe('AC1 — Deterministic head-to-head execution', () => {
     expect(run.endReason).toBe('max_turns_cap');
   });
 
+  // 200 seeded head-to-head runs are CPU-bound (~8–12 s on a quiet host), so
+  // an explicit timeout keeps the case clear of the project's 15 s unit
+  // default under CI/agent load — matching monte-carlo-greedy-guardrail
+  // (MS-0MVFQ5ODR001R7U2).
   it('should run ≥200 seeds in the batch harness', () => {
     const seeds = makeSeeds(200);
     const result = runCompetitiveMonteCarlo({ seeds, maxTurns: 30 });
@@ -87,7 +91,7 @@ describe('AC1 — Deterministic head-to-head execution', () => {
       expect(run.turns).toBeGreaterThan(0);
       expect(run.players).toHaveLength(2);
     }
-  });
+  }, 120_000);
 });
 
 // ── AC2: Per-player metrics ──────────────────────────────────

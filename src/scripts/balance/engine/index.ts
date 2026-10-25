@@ -39,6 +39,7 @@ export {
   computeWinRateByStrategyDifficulty,
   computeScoreDistribution,
   computeEconomyHealth,
+  buildSynergyTypeMap,
   computeSynergyDiversity,
   computeLossModeDecomposition,
   computeCardUsageDiversity,
@@ -56,6 +57,23 @@ export type {
   TrapCardPrevalenceResult,
   CardMetricSummary,
 } from './global-metrics';
+
+export {
+  SYNERGY_DOMINANCE_THRESHOLD,
+  assembleSynergyDiversityReport,
+  buildSynergyDiversityEntry,
+  findDominantTypes,
+  formatDominanceWarnings,
+  formatSynergyDiversityJson,
+  formatSynergyDiversityMarkdown,
+} from './synergy-diversity';
+export type {
+  DominanceFinding,
+  SynergyDiversityProfile,
+  SynergyDiversityReport,
+  SynergyDiversityReportEntry,
+  SynergyDiversityRuns,
+} from './synergy-diversity';
 
 export {
   KNOWN_STORYLINE_IDS,

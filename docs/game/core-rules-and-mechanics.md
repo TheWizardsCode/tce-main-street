@@ -294,14 +294,27 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Move a market card to hand | 1 action | Free of coins; pays the listed cost when placed. |
 | Take an Investment event to hand | 1 action | Free of coins; pays the event's listed cost when played. An event moved and played on the **same week** is the 1-action total composite below. |
 | Play a held Investment event | 1 action | Pays the event's listed cost at play. A **same-week** play of the event just moved to hand that week is a **free composite** (the move already spent the action); an event held from a previous week costs **1 action**. |
-| Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. |
+| Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. A hand card may be placed by **dragging it onto an empty slot** (the same gesture as the market row — MS-0MV76HVE4007AOO0), which reuses the click-path placement pricing (same-week composite premium applies at 0 actions). |
 | Direct buy-and-place (market→street) | 1 action | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP). |
+| Apply a hand upgrade to a business | 1 action | Pays the discounted upgrade cost at apply. A held upgrade may be applied by **dragging it onto an eligible business** (MS-0MV76HVE4007AOO0) — same gesture as the market buy-and-play, but priced from hand: a same-week upgrade (just moved to hand this week) applies **free** (no second action); one held from a previous week costs **1 action**. The drag reuses the click path's undoable `playUpgradeFromHandCommand` and level-up burst. |
 | Hire a staff card | 1 action | From the general market row. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
 | Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
 
 > **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
 
+> **Hand-drag: click-select then drag (MS-0MVK4E5M00021XEY).** Clicking a hand
+> card arms the placing-from-hand selection; a drag started on **that same
+> card** continues the selection and resolves through the normal click-path
+> command (`playBusinessFromHandCommand` / `playUpgradeFromHandCommand`).
+> Pickup stays vetoed for a **different** hand card while another is selected,
+> and **event cards in hand are click-only** — they keep the select-then-act
+> `[Play]` / `[Discard]` flow and are never draggable. Supported hand-drag
+> families are **business**, **community-space** and **upgrade**. Hand
+> registrations survive every refresh path (a market-only refresh never strips
+> them); see `docs/game/ux-visual-audio.md` § *Hand-drag gesture* for the
+> registration invariant.
+>
 > **Legality before action spend (MS-0MUUDWIXG009IB0W).** An action-type move is
 > validated by a **non-mutating legality predicate before any mutation**, and
 > action consumption is **atomic with a successful operation** — a move that
@@ -310,7 +323,8 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > - The UI runs the relevant predicate (affordability, occupancy, target
 >   eligibility, tutorial gating — e.g. `canPlaceFromHand`,
 >   `canPlayUpgradeFromHand`, `canPurchaseBusiness`, `canDropBusinessCard`,
->   `canDropUpgradeCard`) **before** it clears the selection, sets
+>   `canDropUpgradeCard`, `canDropHandCard` (hand-origin drags,
+>   MS-0MV76HVE4007AOO0)) **before** it clears the selection, sets
 >   `uiPhase = 'animating'`, starts the card-transfer animation or executes the
 >   undoable command. An illegal attempt plays the standard illegal-move
 >   feedback (ILLEGAL_MOVE SFX + shake + instruction-text reason) and leaves the
@@ -346,7 +360,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > Upgrade and event actions (CG-0MT3IYSRL001VVUP, CG-0MTFWBNL30043ZBM): taking an **upgrade** or **Investment event** from the market into hand, and playing either from hand, each consume **1 action** — they are action-type operations, not free operations. They are listed in the action-economy table above.
 
-> Cancelling a pending selection (CG-0MT3IYSRL001VVUP): after selecting a hand card the next street click places (business) or applies (upgrade) it. Pressing **Escape** cancels that targeting and returns to the market phase; the card stays in hand and the weekly action already spent on the move is unaffected, so re-selecting and playing it later the same week still costs no second action. Escape only toggles the Settings panel when no targeting is in progress.
+> Cancelling a pending selection (CG-0MT3IYSRL001VVUP): after selecting a hand card the next street click places (business) or applies (upgrade) it. Pressing **Escape** cancels that targeting and returns to the market phase; the card stays in hand and the weekly action already spent on the move is unaffected, so re-selecting and playing it later the same week still costs no second action. Escape only toggles the Settings panel when no targeting is in progress. Re-clicking the already-selected card also cancels — a re-click on the selected hand card (business, upgrade or held event) deselects it and returns to market exactly like the action-bar **Cancel** button (MS-0MV767QTO008JUDJ); a re-click on an already-selected market (Development row) card clears its selection without triggering the card's action.
 
 > Sell price (CG-0MT5XO7DI0066QCT): the sell refund mirrors the buy-and-place premium (1.5× purchase + upgrades) and adds the card's current synergy value, so emergency cash reflects what the card actually earns on the grid. A card with no synergies still recovers more than before (`/2 → ×1.5`); a well-synergised card recovers coins **plus** rep-derived value automatically. The breakdown is visible before the player confirms.
 
@@ -499,9 +513,15 @@ The game is considered **won** when **any** of the following conditions are sati
    > preset is already a multiple of 50, so the effective target is the base
    > value. The base difficulty presets themselves are never modified; the
    > effective value is derived at consumption time.
-2. **Challenge Completion** – All **Primary Challenges** (defined in `docs/games/the-build/challenges.md`) are completed, granting an automatic win regardless of numeric score.
-3. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
-4. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
+2. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
+3. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
+
+> **Completing challenges is not a win (MS-0MVAZH5OD000Q6E4).** Clearing
+> every active challenge awards the per-challenge bonus (`challengeBonus`
+> above, `challengeBonusPoints` per completion) but **never ends the game** —
+> in single-player or competitive play the match continues until the score
+> threshold (or an opt-in turn limit / a loss condition). A full challenge
+> sweep is a scoring milestone, not a sudden end-of-game.
 
 All win conditions are **deterministic** given the same seed, ensuring testability.
 
@@ -572,6 +592,22 @@ Loss conditions are evaluated at the end of the **Night Income** phase before ch
 > reputation or synergy. The closure is a direct grid/discard operation with
 > **no action cost and no wallet change**. Single-player (`N = 1`, no
 > `players[]`) keeps the existing `checkImmediateLoss` behaviour exactly.
+>
+> **First shared day is never decided by debt (MS-0MVJNFESC005QJ41).** A
+> competitive seat cannot be bankrupted on **turn 1**: if the opening day's
+> closing (ongoing costs plus the day's incident) would leave a seat with
+> negative coins, `applyFirstSharedDaySolvencyGrace` writes the debt off to
+> `0` and logs `First-day grace: <n> coin debt written off`. The seat keeps
+> everything it bought and simply starts the next day with an empty purse;
+> bankruptcy elimination applies from **turn 2** onwards unchanged. This
+> mirrors the existing turn-1 grace for reputation collapse and prevents a
+> match being decided on its opening day (the reported "the AI went bankrupt
+> in the first turn" after `[ Play Again ]`). The AI driver additionally
+> keeps a difficulty-gated **liquidity reserve**
+> (`competitiveAiReserveCoins`: Easy 50 %, Medium 35 %, Hard 25 % of the
+> preset's starting coins) so an AI seat stops buying before it is one
+> incident away from bankruptcy; the reserve only limits the seat's spendable
+> view and is never charged.
 
 ---
 

@@ -12,7 +12,7 @@
 import type { LegalityResult } from '@rule-engine';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
-import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard } from './MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard, SynergyType } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import type { PurchaseResult } from './MainStreetMarketTypes';
 import {
@@ -146,6 +146,10 @@ export function playBusinessFromHand(
   // Record ownership on the owner-tagged grid (competitive; no-op single-player).
   tagSlotOwnerIfCompetitive(state, slotIndex);
   (state as any).businessPlacedThisTurn = true;
+  // Record the played/placed card's synergy types for the dynamic Grand
+  // Opening payoff (MS-0MVCS1NOH0074YY2): most recent placement wins.
+  const placedSynergies = (card as { synergyTypes?: readonly SynergyType[] }).synergyTypes ?? [];
+  (state as any).placedSynergiesThisTurn = [...placedSynergies];
 
   addLog(
     state,

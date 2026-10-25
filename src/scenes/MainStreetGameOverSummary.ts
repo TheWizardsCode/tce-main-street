@@ -36,7 +36,6 @@ import {
 const END_REASON_HEADLINES: Record<Exclude<EndReason, null>, string> = {
   score_threshold: 'Score threshold reached',
   score_threshold_continue: 'Score threshold reached — enter endless mode to continue',
-  all_challenges: 'All challenges completed',
   turn_limit_victory: 'Turn limit survived',
   bankruptcy: 'Bankruptcy',
   reputation_collapse: 'Reputation collapse',

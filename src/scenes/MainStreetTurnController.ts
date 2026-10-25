@@ -17,7 +17,7 @@ import type { DragDropPayload } from '@ui/dragDrop';
 import { startTurnPhase, endTurn, finishTurnPresentation, handleGameOver, presentEventChoiceDialog, onEventChoice, onPiggybackChoice, onPlayHeldEvent, performUndo, performRedo, presentPiggybackDialog } from './MainStreetTurnControllerTurnFlow';
 import { onBusinessCardClick, onEventCardClick, onFreeMarketRerollClick, onMoveStaffClick, onMoveStaffDestinationClick, cancelStaffMove, onRefreshMarketClick, onPeekClick, onCommunityFavourClick, onUpgradeCardClick, onHandUpgradeCardClick, onStaffCardClick, onHandBusinessCardClick, onHandEventCardClick, onDiscardHandCard } from './MainStreetTurnControllerMarketActions';
 import { onSlotClick, onSellCard, applyHandUpgradeToSlot, hasPendingTargeting, cancelPendingPlacement, streetPairDims } from './MainStreetTurnControllerPlaceSell';
-import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade } from './MainStreetTurnControllerDragDrop';
+import { initDragDrop, canPickUpBusinessCard, canDropBusinessCard, onDragDropBusiness, canPickUpUpgradeCard, canDropUpgradeCard, onDragDropUpgrade, canPickUpHandCard, canDropHandCard, onDragDropHandUpgrade, onDragDropHandBusiness } from './MainStreetTurnControllerDragDrop';
 import { animateMarketDealIn, animateMarketSwap, animateNewSynergyPairs } from './MainStreetTurnControllerAnimation';
 import { canHumanSeatAct, continueCompetitiveLastStanding, continueEndlessMode } from './MainStreetTurnControllerCompetitive';
 
@@ -128,6 +128,24 @@ export class MainStreetTurnController implements MainStreetTurnControllerContext
   public onDragDropUpgrade(payload: DragDropPayload): void {
     if (!canHumanSeatAct(this.scene.state)) return;
     onDragDropUpgrade(this, payload);
+  }
+
+  public canPickUpHandCard(cardId: string): boolean {
+    return canPickUpHandCard(this, cardId);
+  }
+
+  public canDropHandCard(cardId: string, slotIndex: number): boolean {
+    return canDropHandCard(this, cardId, slotIndex);
+  }
+
+  public onDragDropHandUpgrade(payload: DragDropPayload): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
+    onDragDropHandUpgrade(this, payload);
+  }
+
+  public onDragDropHandBusiness(payload: DragDropPayload): void {
+    if (!canHumanSeatAct(this.scene.state)) return;
+    onDragDropHandBusiness(this, payload);
   }
 
   public hasPendingTargeting(): boolean {

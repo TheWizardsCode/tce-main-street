@@ -50,7 +50,6 @@ import { buildHumanVsAis } from './helpers/competitive-fixtures';
 const END_REASON_MAP: Record<Exclude<EndReason, null>, true> = {
   score_threshold: true,
   score_threshold_continue: true,
-  all_challenges: true,
   turn_limit_victory: true,
   bankruptcy: true,
   reputation_collapse: true,
@@ -210,7 +209,6 @@ describe('END_REASONS', () => {
   it('includes every documented game-over reason', () => {
     for (const reason of [
       'score_threshold',
-      'all_challenges',
       'turn_limit_victory',
       'bankruptcy',
       'reputation_collapse',
@@ -271,7 +269,7 @@ describe('makeGameOverState', () => {
 
   it('applies the single-player override to the shared wallet and final score', () => {
     const state = makeGameOverState({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       seats: [{ coins: 42, reputation: 7, score: 123 }],
     });
 
@@ -283,7 +281,7 @@ describe('makeGameOverState', () => {
 
   it('carries the run-global completed challenges', () => {
     const state = makeGameOverState({
-      endReason: 'all_challenges',
+      endReason: 'score_threshold',
       challengesCompleted: ['ch-funding', 'ch-expansion'],
     });
 
@@ -320,7 +318,6 @@ describe('makeSinglePlayerGameOverState / makeCompetitiveGameOverState', () => {
 const EXPECTED_HEADLINES: Record<Exclude<EndReason, null>, string> = {
   score_threshold: 'Score threshold reached',
   score_threshold_continue: 'Score threshold reached — enter endless mode to continue',
-  all_challenges: 'All challenges completed',
   turn_limit_victory: 'Turn limit survived',
   bankruptcy: 'Bankruptcy',
   reputation_collapse: 'Reputation collapse',
@@ -363,7 +360,7 @@ describe('formatEndReason', () => {
 
 describe('buildGameOverPlayerRows', () => {
   it('synthesises the single You row from the shared wallet', () => {
-    const state = makeSinglePlayerGameOverState('all_challenges', {
+    const state = makeSinglePlayerGameOverState('score_threshold', {
       seats: [{ coins: 123, reputation: 9, score: 456 }],
     });
     const rows = buildGameOverPlayerRows(state);
@@ -458,7 +455,7 @@ describe('failure / elimination badges', () => {
 
 describe('buildGameOverChallengeSummary', () => {
   it('reports the run-global challenge completion state', () => {
-    const state = makeSinglePlayerGameOverState('all_challenges');
+    const state = makeSinglePlayerGameOverState('score_threshold');
     state.activeChallenges = [
       activeChallenge('ch-1', 'First challenge', true),
       activeChallenge('ch-2', 'Second challenge', false),

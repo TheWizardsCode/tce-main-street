@@ -49,7 +49,7 @@ describe('Main Street ToneForge opt-in', () => {
     const loader = vi.fn(async () => ({
       player: synth,
       keyMap: { 'sfx-deal': 'card-draw' },
-      diagnostics: { factoryCount: 12 },
+      diagnostics: { factoryCount: 16 },
     }));
     const tool = createToneForgeStatusTool(manager, { loadIntegration: loader });
     manager.register('sfx-deal', 'ms:sfx-deal');
@@ -79,9 +79,10 @@ describe('Main Street ToneForge opt-in', () => {
     expect(wav.play).toHaveBeenCalledWith('ms:sfx-deal');
   });
 
-  it('keeps the WAV fallback for a mapped key with no matching factory after opt-in', async () => {
+  it('keeps the WAV fallback for a mapped key that the synth could not handle after opt-in', async () => {
     const wav = createMockPlayer();
-    // A synth player that reports the key as unhandled (missing factory).
+    // A synth player that reports the key as unhandled (e.g. its voice could
+    // not be constructed).
     const synth: SoundPlayer = {
       play: vi.fn(() => false),
       stop: vi.fn(),
@@ -101,8 +102,8 @@ describe('Main Street ToneForge opt-in', () => {
 
     manager.play('sfx-challenge-complete');
 
-    // The synth had no factory, so the sound falls back to WAV rather than
-    // going silent (CG-0MUU9PSWC009CW76).
+    // The synth reported the key as unhandled, so the sound falls back to WAV
+    // rather than going silent (CG-0MUU9PSWC009CW76).
     expect(synth.play).toHaveBeenCalledWith('success-fanfare');
     expect(wav.play).toHaveBeenCalledWith('ms:sfx-challenge-complete');
   });

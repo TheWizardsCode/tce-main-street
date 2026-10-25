@@ -323,3 +323,88 @@ describe('expensive-tier ROI re-evaluation (MS-0MUR9I9WO004EW0M)', () => {
     }
   });
 });
+
+// ── Residual expensive-tier branching upgrades (MS-0MV035PRV002QDG4) ──
+
+/**
+ * `upg-drive-in` (Cinema) and `upg-wellness-center` (Day Spa) were the last two
+ * expensive-tier level-0 upgrades at 0 % M1 on Medium: they carried no declared
+ * `drawWeight`, so they never received the refill-time eligibility bonus and
+ * surfaced almost exclusively while their parent business was absent (and
+ * therefore unbuyable). Declaring the baseline weight `1` opts them into the
+ * bonus without inflating their ineligible share of the deck — the lever is the
+ * `+30` eligibility bonus, not a bigger base weight.
+ *
+ * These tests pin the shipped values so a future change must consciously
+ * revisit the tuning, and pin the capstone weights that guard against the
+ * branching cards starving the level-2 capstones (AC2 of the work item).
+ */
+const RESIDUAL_BRANCH_UPGRADES = [
+  { id: 'upg-drive-in', cost: 700, incomeBonus: 200, targetBusiness: 'Cinema' },
+  { id: 'upg-wellness-center', cost: 900, incomeBonus: 250, targetBusiness: 'Day Spa' },
+] as const;
+
+describe('residual expensive-tier branching upgrades (MS-0MV035PRV002QDG4)', () => {
+  const templates = getUpgradeTemplates();
+
+  it.each(RESIDUAL_BRANCH_UPGRADES)(
+    '$id declares drawWeight 1 without changing its price or level-0 gate',
+    ({ id, cost, incomeBonus, targetBusiness }) => {
+      const template = templates.find(t => t.id === id);
+      expect(template, `${id} template missing`).toBeDefined();
+      // `1` (declared) rather than `undefined` (unset) is what enables the
+      // eligibility bonus; the two are NOT interchangeable.
+      expect(template!.drawWeight).toBe(1);
+      expect(template!.cost).toBe(cost);
+      expect(template!.incomeBonus).toBe(incomeBonus);
+      expect(template!.requiredLevel).toBe(0);
+      expect(template!.targetBusiness).toBe(targetBusiness);
+    },
+  );
+
+  it.each(RESIDUAL_BRANCH_UPGRADES)(
+    '$id carries the declared weight onto every deck copy',
+    ({ id }) => {
+      const deckCards = createUpgradeDeck(2).filter(c => c.id.startsWith(`${id}-`));
+      expect(deckCards.length).toBe(2);
+      for (const card of deckCards) expect(card.drawWeight).toBe(1);
+    },
+  );
+
+  it.each(CAPSTONE_IDS)(
+    '%s keeps its capstone drawWeight of 3 (branching boost must not starve it)',
+    id => {
+      const template = templates.find(t => t.id === id);
+      expect(template, `${id} template missing`).toBeDefined();
+      expect(template!.drawWeight).toBe(3);
+    },
+  );
+
+  it('surfaces a declared-weight-1 upgrade aggressively once its parent is eligible', () => {
+    // Declared weight 1 + eligibility bonus (30) against eight undeclared
+    // baselines (1 each): ~79 % of upgrade draws when the parent sits at the
+    // required level, ~11 % when it does not.
+    const deck = [
+      upgradeFixture('upg-branch', 1, { requiredLevel: 0 }),
+      ...Array.from({ length: 8 }, (_, i) => upgradeFixture(`upg-base-${i}`, undefined)),
+    ];
+
+    const countBranch = (streetLevel?: number): number => {
+      let n = 0;
+      for (let i = 0; i < 120; i++) {
+        const state = stateWithUpgradeDeck(
+          deck.map(c => ({ ...c })),
+          `branch-eligibility-${streetLevel}-${i}`,
+          streetLevel,
+        );
+        if (drawnUpgradeId(state) === 'upg-branch') n++;
+      }
+      return n;
+    };
+
+    const eligible = countBranch(0);
+    const ineligible = countBranch();
+    expect(eligible).toBeGreaterThan(ineligible);
+    expect(eligible).toBeGreaterThanOrEqual(72); // conservative floor of ~60 %
+  });
+});

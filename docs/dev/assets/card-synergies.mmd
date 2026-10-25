@@ -1,0 +1,100 @@
+%%{ init: { "flowchart": { "curve": "basis" } } }%%
+flowchart LR
+
+  %% Card synergies — generated from src/card-data.csv; do not hand-edit.
+
+  biz_arcade("Arcade<br/>biz-arcade")
+  biz_bakery("Bakery<br/>biz-bakery")
+  biz_barbershop("Barbershop<br/>biz-barbershop")
+  biz_bookshop("Bookshop<br/>biz-bookshop")
+  biz_boutique("Boutique<br/>biz-boutique")
+  biz_cafe("Cafe<br/>biz-cafe")
+  biz_charity_shop("Charity Shop<br/>biz-charity-shop")
+  biz_cinema("Cinema<br/>biz-cinema")
+  biz_clinic("Clinic<br/>biz-clinic")
+  biz_craft_shop("Craft Shop<br/>biz-craft-shop")
+  biz_delicatessen("Delicatessen<br/>biz-delicatessen")
+  biz_dentist("Dentist<br/>biz-dentist")
+  biz_diner("Diner<br/>biz-diner")
+  biz_florist("Flower Shop<br/>biz-florist")
+  biz_food_truck("Food Truck<br/>biz-food-truck")
+  biz_gallery("Art Gallery<br/>biz-gallery")
+  biz_gym("Gym<br/>biz-gym")
+  biz_hardware("Hardware Store<br/>biz-hardware")
+  biz_hotel("Grand Hotel<br/>biz-hotel")
+  biz_juice_bar("Juice Bar<br/>biz-juice-bar")
+  biz_laundromat("Laundromat<br/>biz-laundromat")
+  biz_music_store("Music Store<br/>biz-music-store")
+  biz_pawnshop("Pawn Shop<br/>biz-pawnshop")
+  biz_pharmacy("Pharmacy<br/>biz-pharmacy")
+  biz_physio("Physiotherapist<br/>biz-physio")
+  biz_private_clinic("Private Clinic<br/>biz-private-clinic")
+  biz_spa("Day Spa<br/>biz-spa")
+  biz_tailor("Tailor<br/>biz-tailor")
+  biz_teahouse("Teahouse<br/>biz-teahouse")
+  biz_toy_store("Toy Store<br/>biz-toy-store")
+  biz_yoga_studio("Yoga Studio<br/>biz-yoga-studio")
+  cs_community_garden("Community Garden<br/>cs-community-garden")
+  cs_fountain("Town Fountain<br/>cs-fountain")
+  cs_health_kiosk("Health Kiosk<br/>cs-health-kiosk")
+  cs_library("Library<br/>cs-library")
+  cs_park("Park<br/>cs-park")
+  cs_playground("Playground<br/>cs-playground")
+  cs_public_art("Public Art<br/>cs-public-art")
+  cs_shelter("Community Shelter<br/>cs-shelter")
+  synergy_commerce(("Commerce<br/>synergy-commerce"))
+  synergy_culture(("Culture<br/>synergy-culture"))
+  synergy_entertainment(("Entertainment<br/>synergy-entertainment"))
+  synergy_food(("Food<br/>synergy-food"))
+  synergy_health(("Health<br/>synergy-health"))
+  synergy_service(("Service<br/>synergy-service"))
+
+  biz_arcade -->|Entertainment| synergy_entertainment
+  biz_bakery -->|Food| synergy_food
+  biz_barbershop -->|Service| synergy_service
+  biz_bookshop -->|Culture| synergy_culture
+  biz_boutique -->|Commerce| synergy_commerce
+  biz_cafe -->|Culture| synergy_culture
+  biz_cafe -->|Food| synergy_food
+  biz_charity_shop -->|Culture| synergy_culture
+  biz_cinema -->|Entertainment| synergy_entertainment
+  biz_clinic -->|Health| synergy_health
+  biz_craft_shop -->|Culture| synergy_culture
+  biz_delicatessen -->|Food| synergy_food
+  biz_dentist -->|Health| synergy_health
+  biz_diner -->|Food| synergy_food
+  biz_florist -->|Commerce| synergy_commerce
+  biz_florist -->|Culture| synergy_culture
+  biz_food_truck -->|Entertainment| synergy_entertainment
+  biz_food_truck -->|Food| synergy_food
+  biz_gallery -->|Culture| synergy_culture
+  biz_gallery -->|Entertainment| synergy_entertainment
+  biz_gym -->|Health| synergy_health
+  biz_hardware -->|Service| synergy_service
+  biz_hotel -->|Service| synergy_service
+  biz_juice_bar -->|Food| synergy_food
+  biz_juice_bar -->|Health| synergy_health
+  biz_laundromat -->|Service| synergy_service
+  biz_music_store -->|Entertainment| synergy_entertainment
+  biz_pawnshop -->|Commerce| synergy_commerce
+  biz_pharmacy -->|Health| synergy_health
+  biz_physio -->|Health| synergy_health
+  biz_physio -->|Service| synergy_service
+  biz_private_clinic -->|Health| synergy_health
+  biz_spa -->|Entertainment| synergy_entertainment
+  biz_spa -->|Service| synergy_service
+  biz_tailor -->|Service| synergy_service
+  biz_teahouse -->|Culture| synergy_culture
+  biz_teahouse -->|Food| synergy_food
+  biz_toy_store -->|Commerce| synergy_commerce
+  biz_yoga_studio -->|Culture| synergy_culture
+  biz_yoga_studio -->|Health| synergy_health
+  cs_community_garden -->|Entertainment| synergy_entertainment
+  cs_fountain -->|Culture| synergy_culture
+  cs_health_kiosk -->|Health| synergy_health
+  cs_library -->|Culture| synergy_culture
+  cs_park -->|Entertainment| synergy_entertainment
+  cs_playground -->|Entertainment| synergy_entertainment
+  cs_public_art -->|Culture| synergy_culture
+  cs_public_art -->|Entertainment| synergy_entertainment
+  cs_shelter -->|Service| synergy_service

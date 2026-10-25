@@ -110,7 +110,10 @@ describe('Main Street greedy AI per-difficulty design-intent guardrails', () => 
     // catastrophic score collapse.
     expect(medium.metrics.medianScore).toBeGreaterThanOrEqual(200);
     expect(medium.metrics.medianScore).toBeLessThanOrEqual(20000);
-  });
+    // 200 seeded Medium runs are CPU-bound and sit near the project's 15 s
+    // unit default; declare the same explicit headroom as the sibling cases
+    // in this file (MS-0MVFQ5ODR001R7U2).
+  }, 120_000);
 
   // MS-0MUR9IMN60093HIE (reputation-source re-tune): before the re-tune the
   // Medium loss-only split was 69% reputation collapse / 30% bankruptcy — the

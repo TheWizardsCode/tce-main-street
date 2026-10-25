@@ -19,12 +19,10 @@ export const MAIN_STREET_TF_SFX_MAPPING: Record<string, string> = {
   'sfx-upgrade-start': 'construction-lite-hammer',
   'sfx-upgrade-end': 'construction-lite-saw',
   'sfx-event-cheer': 'crowd-cheer',
-  // The four entries below intentionally have NO ToneForge factory: the
-  // committed runtime synth ships 12 of these 16 mappings, and these keys fall
-  // back to the WAV/Phaser path (engine contract CG-0MUU9PSWC009CW76). They are
-  // listed in MAIN_STREET_TF_FACTORYLESS_KEYS and their factories in
-  // MAIN_STREET_TF_FACTORYLESS_FACTORY_KEYS, so the Main Street tf logger
-  // keeps the expected fallback quiet (MS-0MV26MOWT004ZCQC).
+  // The runtime synth ships a factory for all 16 of these mappings
+  // (MS-0MV8PDNDT0033TH8). A mapped key whose factory is missing still falls
+  // back to the WAV/Phaser path (engine contract CG-0MUU9PSWC009CW76), but no
+  // Main Street key relies on that fallback any more.
   'sfx-income-positive': 'income-positive-chime',
   'sfx-income-negative': 'income-negative-chime',
   'sfx-income-neutral': 'income-neutral-chime',
@@ -35,18 +33,18 @@ export const MAIN_STREET_TF_SFX_MAPPING: Record<string, string> = {
  * Logical SFX keys that intentionally map to a factory the runtime module does
  * not ship.
  *
- * These keys are not silent drops: they fall back to the WAV/Phaser path, and
- * the fallback is the intended design (the synth factory for each is a larger,
- * separate effort). The Main Street tf logger suppresses the otherwise-per-play
- * `[tfAdapter] Missing tf factory …` warning for these known-benign keys while
- * leaving every unexpected missing factory loud (MS-0MV26MOWT004ZCQC).
+ * **Currently empty:** the committed runtime synth ships a factory for all 16
+ * Main Street mappings (MS-0MV8PDNDT0033TH8), so every key plays through the
+ * synth. The declaration is retained (rather than removed) so a future
+ * intentional WAV fallback can be recorded here without reintroducing
+ * per-play `[tfAdapter] Missing tf factory …` noise.
+ *
+ * Should a key ever be listed here it is not a silent drop: it falls back to
+ * the WAV/Phaser path, and the Main Street tf logger suppresses the
+ * otherwise-per-play warning for it while leaving every unexpected missing
+ * factory loud (MS-0MV26MOWT004ZCQC).
  */
-export const MAIN_STREET_TF_FACTORYLESS_KEYS: readonly string[] = [
-  'sfx-income-positive',
-  'sfx-income-negative',
-  'sfx-income-neutral',
-  'sfx-challenge-complete',
-];
+export const MAIN_STREET_TF_FACTORYLESS_KEYS: readonly string[] = [];
 
 /**
  * The factory keys the {@link MAIN_STREET_TF_FACTORYLESS_KEYS} map to.

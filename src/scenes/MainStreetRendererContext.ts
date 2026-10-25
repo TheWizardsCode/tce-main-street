@@ -53,6 +53,10 @@ export interface MainStreetRendererContext {
   refreshStreetZoomControls(): void;
   drawSynergyLines(): void;
   unregisterDragDraggables(): void;
+  // MS-0MVK4E5M00021XEY: origin-scoped unregister for the hand rebuild path —
+  // see `unregisterDragDraggables`/`unregisterHandDraggables` in
+  // MainStreetRendererDragDrop.ts (registration invariant by construction).
+  unregisterHandDraggables(): void;
   refreshDragDropZones(): void;
   mapNodes(): MapSlotNode[];
   getVisibleStreetNodes(): MapSlotNode[];

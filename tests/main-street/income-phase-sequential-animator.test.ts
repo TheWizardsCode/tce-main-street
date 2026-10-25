@@ -5,10 +5,16 @@
  * Verifies the one-card-at-a-time model introduced for
  * `MainStreetAnimator.animateIncomePhases()`:
  *
- *  - within a phase, card 0's count-out / coin flights are fully scheduled
- *    before card 1's begin (no parallel overlap);
+ *  - within the sequential phases (base/events/upcoming), card 0's count-out
+ *    / coin flights are fully scheduled before card 1's begin (no parallel
+ *    overlap);
  *  - the inter-card delay decreases progressively for successive cards;
  *  - later cards use shorter coin-flight durations (animation speed-up);
+ *  - the reputation phase is the near-instant exception
+ *    (MS-0MV8LHN0W0017XU1): its flights launch within the small
+ *    `INCOME_FLIGHT_STAGGER_MS` (60ms) stagger window — no per-business
+ *    `getCardDelay` accumulation — while retaining the gentle per-card
+ *    duration decrease;
  *  - reduced motion and replay/headless exemptions are unchanged.
  *
  * Runs in the Node unit environment with Phaser + UI modules mocked. The
@@ -85,6 +91,7 @@ vi.mock('../../src/coin-grid', async (importOriginal) => {
 import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
 import type { SlotPhaseBreakdown } from '../../src/MainStreetAdjacency';
 import type { IncomePhaseKey } from '../../src/scenes/MainStreetAnimator';
+import { INCOME_FLIGHT_STAGGER_MS } from '../../src/scenes/MainStreetAnimatorTiming';
 
 interface ScheduledCall {
   delay: number;
@@ -217,6 +224,30 @@ function collectCountOutSchedule(
   return result;
 }
 
+/**
+ * Fires a phase dispatch and returns the absolute scheduled delay of every
+ * coin flight it launches (one per icon). For rep-only data the within-flight
+ * icon stagger (`currentCoinStagger`) is constant across businesses, so the
+ * gaps between these delays are exactly the launch offsets between
+ * businesses — what the near-instant model constrains.
+ */
+function collectFlightLaunchDelays(
+  scheduled: ScheduledCall[],
+  dispatchIndex: number,
+): number[] {
+  const firstNew = scheduled.length;
+  scheduled[dispatchIndex].fn();
+  const newCalls = scheduled.slice(firstNew);
+
+  const delays: number[] = [];
+  for (const call of newCalls) {
+    const before = moveGameObject.mock.calls.length;
+    call.fn();
+    if (moveGameObject.mock.calls.length > before) delays.push(call.delay);
+  }
+  return delays;
+}
+
 /** Fires a phase dispatch and returns the coin-flight durations it launches. */
 function collectFlightDurations(
   scheduled: ScheduledCall[],
@@ -284,12 +315,15 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     expect(gaps[1]).toBeGreaterThan(gaps[2]);
   });
 
-  it('speeds up coin flights for later cards (AC4)', () => {
+  it('speeds up coin flights for later cards (AC4), near-instant reputation launch (MS-0MV8LHN0W0017XU1)', () => {
     const { scene, scheduled } = createMockScene(3);
     const animator = new MainStreetAnimator(scene);
 
-    // Base is empty (0), so the sole scheduled phase is reputation; one icon
-    // per card (repBonus 100) → dispatch index 0.
+    // Re-based onto the near-instant reputation model: flights now START
+    // within the small stagger window (no per-business delay), but the gentle
+    // per-card duration decrease (getFlightDuration) is retained, so later
+    // cards still fly faster. Base is empty (0), so the sole scheduled phase
+    // is reputation; one icon per card (repBonus 100) → dispatch index 0.
     animator.animateIncomePhases(makePhaseData([0, 0, 0], [100, 100, 100]), { phaseGapMs: 100_000 });
 
     const durations = collectFlightDurations(scheduled, 0);
@@ -297,6 +331,32 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     // Later cards fly faster: durations strictly decrease.
     expect(durations[0]).toBeGreaterThan(durations[1]);
     expect(durations[1]).toBeGreaterThan(durations[2]);
+  });
+
+  it('launches all reputation flights within the small stagger window — no inter-business delay (AC6)', () => {
+    const { scene, scheduled } = createMockScene(4);
+    const animator = new MainStreetAnimator(scene);
+
+    // Rep-only data: base/synergy are empty, so reputation is the first
+    // scheduled phase (dispatch index 0) — one coin icon per producing
+    // business (repBonus 100 = 1 icon). A zero-bonus slot sits mid-roster to
+    // prove it is skipped WITHOUT accumulating delay.
+    animator.animateIncomePhases(makePhaseData([0, 0, 0, 0], [100, 0, 100, 100]), {
+      phaseGapMs: 100_000,
+    });
+
+    const delays = collectFlightLaunchDelays(scheduled, 0);
+    expect(delays).toHaveLength(3);
+
+    // No getCardDelay accumulation between businesses: successive profits
+    // start only INCOME_FLIGHT_STAGGER_MS apart (the synergy-phase stagger),
+    // and the entire phase launches within (n-1) × 60 ms — never the old
+    // sequential 500ms→120ms per-business delays.
+    const sorted = [...delays].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i] - sorted[i - 1]).toBe(INCOME_FLIGHT_STAGGER_MS);
+    }
+    expect(sorted[sorted.length - 1] - sorted[0]).toBe(2 * INCOME_FLIGHT_STAGGER_MS);
   });
 
   it('runs only non-empty phases, in order, then collect (skip semantics)', () => {

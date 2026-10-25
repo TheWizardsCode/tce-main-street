@@ -1,0 +1,8 @@
+{
+  "description": "TCE Main Street test profiles for `/skill:test --type`. `full` is deliberately omitted so a bare invocation resolves to the genuine full CI suite from `.pi/test-config.json` (`suiteCommands`) and populates the audit-accepted full-suite cache entry. `unit` maps to this repo's node unit suite — the `unit` + `unit-cli` Vitest projects run by `npm test` — so implementation work can verify the cheap unit half (e.g. tests/tooling guards) without the serial browser project. Mirrors the core repo's `unit` profile. `soak` runs the browser-wait soak harness (`scripts/soak-browser-waits.sh`) — 20 consecutive MainStreetScene.browser.test.ts runs through the canonical retry runner — and `soak-load` repeats a shorter soak under `$nproc` imposed CPU burners (a bounded under-load probe: the AC is at least one full under-load pass, and each run is a full serial browser file). Both write per-run evidence to `results/soak-browser-waits-<ts>.md` and are the policy-compliant way to prove load-tolerant wait reliability (MS-0MVLINY2Q004V33L).",
+  "types": {
+    "unit": ["npm --silent test"],
+    "soak": ["bash scripts/soak-browser-waits.sh --runs 20"],
+    "soak-load": ["bash scripts/soak-browser-waits.sh --runs 5 --load"]
+  }
+}

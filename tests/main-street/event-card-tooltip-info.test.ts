@@ -67,7 +67,7 @@ describe('SpecificSynergy events — no misleading raw delta line (AC2)', () => 
     const events: Partial<EventCard>[] = [
       { id: 'evt-festival', name: 'Local Festival', effect: '+2 coins to Culture businesses.', target: 'SpecificSynergy', targetSynergy: 'Culture', coinDelta: 2, reputationDelta: 1 },
       { id: 'evt-inspection', name: 'Health Inspection', effect: '-2 coins per Food business.', target: 'SpecificSynergy', targetSynergy: 'Food', coinDelta: -2, reputationDelta: -1 },
-      { id: 'evt-grand-opening', name: 'Grand Opening', effect: '+3 coins from Commerce promotion.', target: 'SpecificSynergy', targetSynergy: 'Commerce', coinDelta: 4.5, reputationDelta: 0 },
+      { id: 'evt-grand-opening', name: 'Grand Opening', effect: '+3 coins for each business sharing the synergy of the business opened this turn.', target: 'SpecificSynergy', targetSynergy: 'Commerce', coinDelta: 4.5, reputationDelta: 0 },
     ];
 
     for (const ev of events) {

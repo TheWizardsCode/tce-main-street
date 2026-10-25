@@ -209,7 +209,7 @@ describe('MainStreet game-over feedback', () => {
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
     const s = scene as any;
 
-    s.state.endReason = 'all_challenges';
+    s.state.endReason = 'score_threshold';
     s.showGameOverOverlay(gameOverResult(true), []);
 
     await waitForCondition(() => findOverlayText(scene, 'Summary').length > 0, {
@@ -217,7 +217,7 @@ describe('MainStreet game-over feedback', () => {
       label: 'two-column game-over summary',
     });
     expect(findOverlayText(scene, 'Game State').length).toBeGreaterThan(0);
-    expect(findOverlayText(scene, 'All challenges completed').length).toBeGreaterThan(0);
+    expect(findOverlayText(scene, 'Score threshold reached').length).toBeGreaterThan(0);
     expect(findOverlayText(scene, 'You:').length).toBeGreaterThan(0);
   }, 30_000);
 

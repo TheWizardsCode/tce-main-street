@@ -20,6 +20,10 @@ export const INCOME_FLIGHT_MS = 600;
  * Stagger between successive synergy-line coin flights / icons
  * (CG-0MTV6LZEA003YS3E): each synergy pair animates in both directions, one
  * stream per line, offset by this amount so the parallel flights stay readable.
+ * Also the per-business launch stagger for the reputation phase
+ * (MS-0MV8LHN0W0017XU1): reputation coins/pips launch near-simultaneously,
+ * one business every 60 ms, mirroring the synergy phase — the sequential
+ * replaceable per-business delay was removed.
  */
 export const INCOME_FLIGHT_STAGGER_MS = 60;
 /** Stagger between grid-to-HUD collection flights within one card. */
@@ -30,7 +34,9 @@ export const INCOME_COLLECT_STAGGER_MS = 80;
 // completes fully before the next begins, with decreasing delay and
 // increasing speed between successive cards.
 
-/** Starting delay before each card's animation (base/synergy/rep phases). */
+/** Starting delay before each card's animation (base/events/upcoming phases).
+ * The reputation phase does not use it: reputation flights launch near-instantly
+ * with only `INCOME_FLIGHT_STAGGER_MS` between businesses (MS-0MV8LHN0W0017XU1). */
 export const INCOME_BASE_CARD_DELAY_MS = 500;
 /** How much the inter-card delay decreases per successive card. */
 export const INCOME_CARD_DELAY_DECREMENT_MS = 80;
@@ -97,3 +103,15 @@ export const INCIDENT_REVEAL_HOLD_MS = 1920;
  */
 export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
 
+// ── End-of-turn income-collection wait cap (CG-0MTR72P14000VO6Q, AC5/AC7) ──
+/**
+ * Bounded safety cap (ms) for the end-of-turn income-collection deferral:
+ * the day start (AC5), the forced event-choice dialog (AC7) and the forced
+ * piggyback decision show each wait on `incomeCollectionActive` before
+ * advancing. If the choreography never clears the flag, this cap forces the
+ * day start / forced dialog regardless, so end-of-turn can never hang the
+ * game. Single-player parity value; the closing primitive's default
+ * (`MainStreetTurnControllerAnimation`) and the three turn-flow deferral
+ * sites must stay in sync with it (MS-0MVLINWHE004W4CP).
+ */
+export const INCOME_COLLECTION_CAP_MS = 16_000;

@@ -537,7 +537,7 @@
       "coinDelta": 450,
       "reputationDelta": 0,
       "trigger": "Investment",
-      "effect": "+450 coins from a Commerce promotion.",
+      "effect": "+450 coins for each business sharing the synergy of the business opened this turn.",
       "target": "SpecificSynergy",
       "targetSynergy": "Commerce",
       "cost": 300,

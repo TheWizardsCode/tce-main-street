@@ -19,7 +19,7 @@ import { SFX_KEYS } from './MainStreetConstants';
 // import this controller module do not pull in browser-only UI modules.
 import { discardCard } from '@ui/discardCard';
 import { executeAction } from '../MainStreetEngine';
-import { turnLabel } from '../MainStreetFormatting';
+import { turnLabel, weekLabel } from '../MainStreetFormatting';
 import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, canUseFreeMarketReroll } from '../MainStreetMarket';
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
@@ -698,6 +698,48 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
   
 }
 
+/**
+ * Clears a pending hand-card selection and returns the scene to the market
+ * phase — the shared cleanup for the action-bar **Cancel** button and for
+ * re-clicking an already-selected hand card (toggle-off,
+ * MS-0MV767QTO008JUDJ).
+ *
+ * Behaviourally identical to Cancel: the card remains in the hand, the
+ * selection border and any market-row selection are cleared, the same-week
+ * move trackers are reset, the hint bar returns to the standard market
+ * instruction, and no action/coin/log/undo side effects occur.
+ */
+export function cancelHandSelection(tcCtx: MainStreetTurnControllerContext): void {
+
+    const s = tcCtx.scene;
+    s.pendingHandIndex = null;
+    s.pendingHandJustMoved = false;
+    s.justMovedHandCardId = null;
+    if (s.state) s.state.justMovedUpgradeCardId = null;
+
+    // Clear any market-row selection (Cancel parity) before returning.
+    if (typeof s.clearMarketSelection === 'function') s.clearMarketSelection();
+
+    s.uiPhase = 'market';
+
+    // Drop the hand selection highlight (null clears every border).
+    if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {
+      s.msRenderer.updateBusinessHandSelection(null);
+    }
+
+    // Reset the HintBar to the standard market instruction (Cancel parity).
+    const marketHint =
+      `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`;
+    if (s.hintBar && typeof s.hintBar.setText === 'function') {
+      s.hintBar.setText(marketHint);
+    } else if (s.instructionText && typeof s.instructionText.setText === 'function') {
+      s.instructionText.setText(marketHint);
+    }
+
+    s.refreshAll();
+  
+}
+
 export function onHandUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, index: number): void {
 
     const s = tcCtx.scene;
@@ -720,8 +762,13 @@ export function onHandUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, i
     // costs one action.
     const isSameWeek = s.state.justMovedUpgradeCardId === hand[index]?.id;
 
-    // Switching selection while already targeting is allowed.
+    // Re-clicking the already-selected upgrade toggles it off (Cancel parity,
+    // MS-0MV767QTO008JUDJ). Switching to a different card is still allowed.
     if (s.uiPhase === 'placing-from-hand' && s.pendingHandIndex !== null) {
+      if (s.pendingHandIndex === index) {
+        cancelHandSelection(tcCtx);
+        return;
+      }
       s.pendingHandIndex = index;
       s.pendingHandJustMoved = isSameWeek;
       s.instructionText.setText(`Click a business to apply "${hand[index]?.name ?? 'upgrade'}"`);
@@ -860,9 +907,14 @@ export function onHandBusinessCardClick(tcCtx: MainStreetTurnControllerContext, 
       return;
     }
 
-    // When already in placing-from-hand, switching selection is allowed
-    // (preserving existing customClickFn behavior)
+    // When already in placing-from-hand, re-clicking the same business card
+    // toggles the selection off (Cancel parity, MS-0MV767QTO008JUDJ);
+    // clicking a different card switches the selection as before.
     if (s.uiPhase === 'placing-from-hand' && s.pendingHandIndex !== null) {
+      if (s.pendingHandIndex === index) {
+        cancelHandSelection(tcCtx);
+        return;
+      }
       s.pendingHandIndex = index;
       // Placing is free only if the selected card is the one just moved from
       // the market this turn (CG-0MSXIQIPJ000NDTL); any other hand card costs
@@ -933,6 +985,13 @@ export function onHandEventCardClick(
     const card = hand[index];
     if (!card || card.family !== 'event') return;
     if (s.uiPhase !== 'market' && s.uiPhase !== 'event-selected') return;
+
+    // Re-clicking the already-selected held event toggles it off (Cancel
+    // parity, MS-0MV767QTO008JUDJ) instead of re-affirming the selection.
+    if (s.uiPhase === 'event-selected' && s.pendingHandIndex === index) {
+      cancelHandSelection(tcCtx);
+      return;
+    }
 
     s.pendingHandIndex = index;
     s.pendingHandJustMoved = false;

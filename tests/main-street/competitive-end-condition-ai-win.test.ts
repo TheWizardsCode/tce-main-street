@@ -1,9 +1,10 @@
 /**
  * Main Street: Competitive end-condition AI-win tests (MS-0MUX6PMCE002I6HO).
  *
- * Verifies that when an AI player wins (reaches score threshold, completes
- * all challenges, or wins turn limit), the human sees `gameResult = 'loss'`
- * and the correct `competitiveWinnerId` is set.
+ * Verifies that when an AI player wins (reaches score threshold or wins
+ * turn limit), the human sees `gameResult = 'loss'` and the correct
+ * `competitiveWinnerId` is set. Completing all challenges is no longer a
+ * win condition (MS-0MVAZH5OD000Q6E4) and is asserted not to set a winner.
  *
  * @module tests/main-street/competitive-end-condition-ai-win
  */
@@ -100,36 +101,36 @@ describe('AI threshold win → human sees loss (AC1)', () => {
   });
 });
 
-describe('All challenges complete → correct human/AI win attribution (AC1)', () => {
-  it('shared challenge milestone credited to AI (human not seat 0) → human sees loss', () => {
-    // The all_challenges milestone is shared and credited to the
-    // lowest-index seat (0). Place the human at seat 1 so the credit
-    // goes to an AI and the human must see a loss.
-    const state = buildCompetitiveState({ seed: 'ai-challenges-win', playerCount: 2 });
+describe('All challenges complete → no winner declared (MS-0MVAZH5OD000Q6E4)', () => {
+  it('shared challenge milestone never credits a seat — no loss for the human', () => {
+    // The retired all_challenges milestone used to be credited to the
+    // lowest-index seat (0), forcing a loss when the human was not seat 0.
+    // Place the human at seat 1 so a resurrected win would be visible.
+    const state = buildCompetitiveState({ seed: 'ai-challenges-no-win', playerCount: 2 });
     state.players![0].controller = 'ai';
     state.players![1].controller = 'human';
     state.activeChallenges.forEach(ac => { ac.completed = true; });
 
     const result = evaluateEndConditions(state);
-    expect(result.ended).toBe(true);
-    expect(result.gameResult).toBe('loss');
-    expect(result.endReason).toBe('all_challenges');
-    expect(result.competitiveWinnerId).toBe(0);
+    expect(result.ended).toBe(false);
+    expect(result.gameResult).toBe('playing');
+    expect(result.endReason).toBeNull();
+    expect(result.competitiveWinnerId).toBeNull();
   });
 
-  it('human at seat 0 wins challenges → gameResult is win', () => {
-    const state = buildHumanVsAis('human-challenges-win', 1, [
+  it('human completes every challenge → the game still races to the score', () => {
+    const state = buildHumanVsAis('human-challenges-no-win', 1, [
       [20, 10],
       [10, 1],
-    ]);
+    ], baseThreshold(2));
 
     state.activeChallenges.forEach(ac => { ac.completed = true; });
-
+    // Sweep is not a win: the human stays below the effective threshold
+    // (50) and the match continues.
     const result = evaluateEndConditions(state);
-    expect(result.ended).toBe(true);
-    expect(result.gameResult).toBe('win');
-    expect(result.endReason).toBe('all_challenges');
-    expect(result.competitiveWinnerId).toBe(0);
+    expect(result.ended).toBe(false);
+    expect(result.gameResult).toBe('playing');
+    expect(result.competitiveWinnerId).toBeNull();
   });
 });
 

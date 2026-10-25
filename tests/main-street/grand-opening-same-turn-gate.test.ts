@@ -38,7 +38,7 @@ function makeGrandOpening(): EventCard {
     cost: 300,
     family: 'event',
     trigger: 'Investment',
-    effectDescription: '+3 coins from a Commerce promotion.',
+    effectDescription: '+3 coins for each business sharing the synergy of the business opened this turn.',
     target: 'SpecificSynergy',
     targetSynergy: 'Commerce',
     coinDelta: 450,

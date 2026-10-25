@@ -505,8 +505,9 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
         // (MS-0MUYGFWXK003QFYB, reworked MS-0MUZ4WB290024ZGQ): each business's
         // coin stream dissolves out of a figure standing inside that business
         // — or any shop occupant / a street-area anchor when none are inside
-        // a shop — never the HUD reputation counter. The credited amounts,
-        // on-card `revealInGrid` landing and pacing are unchanged.
+        // a shop — never the HUD reputation counter. The credited amounts and
+        // on-card `revealInGrid` landing are unchanged; pacing is the
+        // near-instant model below.
         const slotCenters = slots.map((sl) => ({
           ...animator.getStreetSlotCenter(sl.pd.slotIndex),
           slotIndex: sl.pd.slotIndex,
@@ -538,27 +539,38 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
           0,
         );
         const hudRepTarget = hudFlightTarget(s, 'rep', s.layout);
-        let delayOffset = 0;
+        // Near-instant launch (MS-0MV8LHN0W0017XU1): every producing
+        // business's reputation coins/pips start with only the small
+        // synergy-phase stagger (`INCOME_FLIGHT_STAGGER_MS`) between flights
+        // — mirroring the synergy phase — instead of the sequential
+        // per-business `getCardDelay` accumulation and full-grid pause. No
+        // business waits for a prior business's reputation to finish before
+        // launching; the whole phase launches within (n-1) × 60 ms. The gentle
+        // per-card duration decrease (`getFlightDuration`) is retained for
+        // readability. Sources, credited amounts and HUD-pip weighting are
+        // unchanged. The phase no longer mutates the shared `currentCoinStagger`
+        // (`reduceCoinStaggerAfterCard`) — base/events/upcoming own that
+        // sequential bookkeeping — so only the reputation cards' 20% stagger
+        // reduction is removed from later phases' pacing.
+        let at = 0;
         for (let si = 0; si < numSlots; si++) {
           const slot = slots[si];
           const amount = Math.max(0, roundHalf(slot.pd.repBonus));
-          if (iconsForAmount(amount) === 0) {
-            delayOffset += animator.getCardDelay(numSlots, si);
-            continue;
-          }
+          // Zero-bonus slots are skipped outright — they accumulate no launch
+          // delay in the near-instant model.
+          if (iconsForAmount(amount) === 0) continue;
           const from = sources[si] ?? streetAnchor;
           const flightMs = animator.getFlightDuration(numSlots, si);
-          animator.flyCoinsIn(slot, amount, from, delayOffset, flightMs);
+          animator.flyCoinsIn(slot, amount, from, at, flightMs);
           // Reputation income flies card → HUD rep counter, ticking per pip
           // landing (the display-only running total; see flyRepPips). Each
           // exporting slot carries its proportional share of incomeRep.
           if (incomeRep > 0 && totalRepBonus > 0) {
             const slotRepShare = incomeRep * (amount / totalRepBonus);
-            animator.flyRepPips(from, hudRepTarget, slotRepShare, delayOffset, flightMs, slotRepShare);
+            animator.flyRepPips(from, hudRepTarget, slotRepShare, at, flightMs, slotRepShare);
           }
-          const pauseMs = INCOME_CARD_FULL_PAUSE_MULTIPLIER * animator.currentCoinStagger;
-          delayOffset += animator.getCardDelay(numSlots, si) + pauseMs;
-          animator.reduceCoinStaggerAfterCard();
+          // Per-business launch stagger only — the synergy-phase model.
+          at += INCOME_FLIGHT_STAGGER_MS;
         }
         break;
       }

@@ -23,6 +23,7 @@ import type {
   UpgradeCard,
   StaffCard,
   IncidentBalanceState,
+  SynergyType,
 } from './MainStreetCards';
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
@@ -157,9 +158,8 @@ export type EndReason =
   // it via `continueAfterThreshold` returns `gameResult` to `'playing'` and
   // keeps this marker so later EndChecks do not re-open the offer. Score
   // keeps accruing and the game only ends via the remaining conditions
-  // (bankruptcy, reputation collapse, all challenges, turn limit).
+  // (bankruptcy, reputation collapse, turn limit).
   | 'score_threshold_continue'
-  | 'all_challenges'
   | 'turn_limit_victory' // opt-in: only when a config sets maxTurns (CG-0MSLXJCHH001DLIO)
   | 'bankruptcy'
   | 'reputation_collapse'
@@ -533,6 +533,15 @@ export interface MainStreetState {
    */
   businessPlacedThisTurn?: boolean;
   /**
+   * The synergy types of the most recently placed business/community-space
+   * card this turn (MS-0MVCS1NOH0074YY2). Drives the dynamic Grand Opening
+   * payoff: which synergy was "opened" (placed) this turn. Set by the same
+   * three placement paths that arm `businessPlacedThisTurn` (purchaseBusiness,
+   * playBusinessFromHand, buyAndPlaceBusiness); null/undefined when nothing
+   * has been placed since the last `WeekStart`.
+   */
+  placedSynergiesThisTurn?: SynergyType[] | null;
+  /**
    * Number of market research (re-roll) actions taken so far this turn
    * (MS-0MTR6ZRF5007PWNZ). Drives the escalating refresh cost — the first
    * re-roll costs `REFRESH_MARKET_COST` (500), each subsequent one 250 more —
@@ -831,6 +840,8 @@ export interface MainStreetSerializedState {
   justMovedUpgradeCardId?: string | null;
   /** Whether a business has been placed onto the street grid this turn (CG-0MTIOCBH400970OB). Gates Grand Opening Sale. */
   businessPlacedThisTurn?: boolean;
+  /** Synergy types of the most recently placed card this turn (MS-0MVCS1NOH0074YY2); drives the dynamic Grand Opening synergy. Backfilled to null for legacy saves. */
+  placedSynergiesThisTurn?: SynergyType[] | null;
   /** Number of market re-rolls taken this turn (MS-0MTR6ZRF5007PWNZ); drives the escalating refresh cost. Backfilled to 0 for legacy saves. */
   marketRefreshesThisTurn: number;
   /** Whether the Investor free market re-roll has been used this turn (MS-0MTISBYLS009936W). Backfilled to false for legacy saves. */

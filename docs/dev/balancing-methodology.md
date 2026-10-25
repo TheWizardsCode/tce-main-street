@@ -369,10 +369,72 @@ level-2 capstones keep `requiredLevel: 1`, and their Medium pick rates remain
 non-trivial (`upg-grand-bakehouse` 11.3 %, `upg-restaurant` 10.5 %,
 `upg-multiplex` 7.7 %, `upg-luxury-retreat` 2.0 %); per-card M1 at ~50–70
 appearances is coarse, so the residual variance is small-n noise. The
-branching prerequisites `upg-drive-in` and `upg-wellness-center` remain below
+branching prerequisites `upg-drive-in` and `upg-wellness-center` remained below
 target (they compete with the standard path weighted by
-MS-0MUYK08I1004I19W); that residual is tracked separately rather than
-over-tuning the market in this item.
+MS-0MUYK08I1004I19W); that residual was tracked separately rather than
+over-tuning the market in this item — see the next section.
+
+## Residual Expensive-Tier Branching Upgrades (MS-0MV035PRV002QDG4)
+
+The last two expensive-tier level-0 branching upgrades — `upg-drive-in`
+(Cinema, cost 700) and `upg-wellness-center` (Day Spa, cost 900) — stayed at or
+near **0 % M1** on the canonical `mc-balance` Medium profile after the
+re-evaluations above. The cause was *not* price: neither card declared a
+`drawWeight`, so neither ever received the refill-time eligibility bonus
+(`UPGRADE_ELIGIBLE_DRAW_BONUS = 30`). Their upgrade-slot appearances were
+therefore uncorrelated with owning the parent business, and the slot almost
+always surfaced them while the parent was absent — and hence unbuyable. Only
+16 (Drive-In) and 14 (Wellness Center) of 200 Medium runs ever saw them in the
+market at all.
+
+**Change (card data only; no engine-rule change).** Both cards declare the
+baseline `drawWeight` of **1**:
+
+| Upgrade | Target (level 0) | Cost | `incomeBonus` | `drawWeight` |
+|---|---|---:|---:|---:|
+| `upg-drive-in` | Cinema | 700 | 200 | — → **1** |
+| `upg-wellness-center` | Day Spa | 900 | 250 | — → **1** |
+
+Declaring `1` opts the card into the eligibility bonus *without* inflating its
+ineligible share of the deck: an undeclared weight is `1` and is never
+boosted, a declared `1` becomes `31` whenever its parent sits at
+`requiredLevel`. Cost and `incomeBonus` are deliberately untouched so the
+reach-over-income trade-off against IMAX / Resort Spa (pinned by
+`tests/main-street/upgrades.test.ts`) is preserved. A `drawWeight` of `2` was
+measured first and rejected: it inflated the ineligible share of the deck and
+left `upg-luxury-retreat` at 4.5 % M1 (below the 5 % capstone floor).
+
+**Before/after M1 pick rate** (greedy, 200 seeds, prefix `mc-balance`,
+60 turns; before = this item's `dev` base, after = this change):
+
+| Upgrade | Difficulty | Before M1 | After M1 |
+|---|---|---:|---:|
+| `upg-drive-in` | Medium | 0.0 % (0/16) | **31.4 % (11/35)** |
+| `upg-wellness-center` | Medium | 7.1 % (1/14) | **45.5 % (10/22)** |
+| `upg-drive-in` | Easy | 0.0 % (0/18) | 25.7 % (9/35) |
+| `upg-wellness-center` | Easy | 7.7 % (1/13) | 27.3 % (6/22) |
+| `upg-drive-in` | Hard | 0.0 % (0/19) | 10.7 % (3/28) |
+| `upg-wellness-center` | Hard | 0.0 % (0/11) | 7.7 % (1/13) |
+
+The level-2 capstones are not starved (Medium M1 before → after):
+`upg-grand-bakehouse` 12.2 % (6/49) → 12.2 % (6/49), `upg-restaurant`
+16.7 % (7/42) → 18.2 % (8/44), `upg-multiplex` 13.6 % (8/59) → 18.6 %
+(11/59), `upg-luxury-retreat` 6.8 % (3/44) → 9.5 % (4/42) — all clear the 5 %
+floor. The difficulty ladder holds (Easy 73.0 % ≥ Medium 60.5 % ≥ Hard 27.5 %;
+before: 73.5 % / 61.0 % / 27.5 %), and the Medium win rate moved −0.5 pp (well
+inside the ±5 pp band).
+
+Reproduce with:
+
+```bash
+npx tsx src/scripts/monte-carlo.ts --sweep --sweep-strategies greedy \
+  --seeds 200 --seed-prefix mc-balance --maxTurns 60 --out /tmp/mc.json
+```
+
+M1 per card is `purchases / market appearances` (`computePickRate` in
+`src/scripts/balance/engine/card-metrics.ts`); at ~40–60 appearances per card
+a single purchase moves M1 by ~2 pp, so the direction (0 % → double-digit) is
+the meaningful signal.
 
 ## See Also
 

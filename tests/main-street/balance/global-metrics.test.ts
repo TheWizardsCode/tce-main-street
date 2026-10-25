@@ -13,6 +13,10 @@ import type { MonteCarloRunSummary } from '../../../src/MainStreetMonteCarlo';
 
 /**
  * Helper to create a MonteCarloRunSummary with optional extended fields.
+ *
+ * File references parent work item MS-0MUR9INHX001QCSE (Track synergy
+ * diversity (G4/HHI) and placement dominance post-rebalance) — the G4
+ * multi-type contract is pinned by this file's tests (C1, MS-0MVFR4OC10073K0F).
  */
 function makeRun(overrides: Partial<MonteCarloRunSummary> & {
   cardsOwned?: string[];
@@ -179,18 +183,18 @@ describe('computeEconomyHealth (G3)', () => {
 // G4: Synergy Diversity
 // ========================================================================
 describe('computeSynergyDiversity (G4)', () => {
-  it('computes HHI from synergy types in final grids', () => {
+  it('computes HHI from single-type synergy cards (unchanged behaviour)', () => {
     const runs = [
       makeRun({ finalGrid: ['biz-bakery', 'biz-cafe', 'biz-hardware'] }),
       makeRun({ finalGrid: ['biz-bookshop', 'biz-gallery'] }),
     ];
-    // Mock synergyTypeMap lookup
-    const synergyTypeMap: Record<string, string> = {
-      'biz-bakery': 'Food',
-      'biz-cafe': 'Food',
-      'biz-hardware': 'Commerce',
-      'biz-bookshop': 'Culture',
-      'biz-gallery': 'Entertainment',
+    // Mock synergyTypeMap lookup — one type per card, as before.
+    const synergyTypeMap: Record<string, string[]> = {
+      'biz-bakery': ['Food'],
+      'biz-cafe': ['Food'],
+      'biz-hardware': ['Commerce'],
+      'biz-bookshop': ['Culture'],
+      'biz-gallery': ['Entertainment'],
     };
     const result = computeSynergyDiversity(runs, synergyTypeMap);
     expect(result).not.toBeNull();
@@ -199,6 +203,64 @@ describe('computeSynergyDiversity (G4)', () => {
       // HHI = 0.4^2 + 0.2^2 + 0.2^2 + 0.2^2 = 0.16 + 0.04 + 0.04 + 0.04 = 0.28 => 2800
       expect(result.hhi).toBeCloseTo(2800, 0);
       expect(result.synergyTypeShares.Food).toBeCloseTo(0.4, 1);
+    }
+  });
+
+  it('counts a multi-type card once for each of its synergy types', () => {
+    // A card with types A and B contributes +1 to type A count and +1 to type B count.
+    const runs = [makeRun({ finalGrid: ['biz-dual'] })];
+    const synergyTypeMap: Record<string, string[]> = {
+      'biz-dual': ['Food', 'Culture'],
+    };
+    const result = computeSynergyDiversity(runs, synergyTypeMap);
+    expect(result).not.toBeNull();
+    if (result) {
+      // Denominator = 2 occurrences. Shares: Food=1/2, Culture=1/2.
+      // HHI = 0.25 + 0.25 = 0.5 => 5000.
+      expect(result.hhi).toBeCloseTo(5000, 0);
+      expect(result.synergyTypeShares.Food).toBeCloseTo(0.5, 3);
+      expect(result.synergyTypeShares.Culture).toBeCloseTo(0.5, 3);
+    }
+  });
+
+  it('uses total synergy-type occurrences as the HHI denominator', () => {
+    // One single-type card (Commerce) and one multi-type card (Food, Culture)
+    // → 3 type occurrences, even though only 2 cards are on the grid.
+    const runs = [makeRun({ finalGrid: ['biz-shop', 'biz-dual'] })];
+    const synergyTypeMap: Record<string, string[]> = {
+      'biz-shop': ['Commerce'],
+      'biz-dual': ['Food', 'Culture'],
+    };
+    const result = computeSynergyDiversity(runs, synergyTypeMap);
+    expect(result).not.toBeNull();
+    if (result) {
+      const shares = result.synergyTypeShares;
+      expect(shares.Commerce).toBeCloseTo(1 / 3, 3);
+      expect(shares.Food).toBeCloseTo(1 / 3, 3);
+      expect(shares.Culture).toBeCloseTo(1 / 3, 3);
+      // Shares sum to 1 across the 3 occurrences.
+      expect(shares.Commerce + shares.Food + shares.Culture).toBeCloseTo(1, 3);
+      // HHI = 3 * (1/3)^2 = 1/3 => 3333.33
+      expect(result.hhi).toBeCloseTo(3333, 0);
+    }
+  });
+
+  it('maps unknown card IDs to Unknown as before', () => {
+    const runs = [makeRun({ finalGrid: ['biz-mystery'] })];
+    const result = computeSynergyDiversity(runs, {});
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.synergyTypeShares.Unknown).toBeCloseTo(1, 3);
+      expect(result.hhi).toBe(10000);
+    }
+  });
+
+  it('returns zero HHI for a present but empty final grid', () => {
+    const result = computeSynergyDiversity([makeRun({ finalGrid: [] })], {});
+    expect(result).not.toBeNull();
+    if (result) {
+      expect(result.hhi).toBe(0);
+      expect(result.synergyTypeShares).toEqual({});
     }
   });
 

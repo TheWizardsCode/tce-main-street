@@ -20,6 +20,7 @@ import { computePerBusinessSkillBuffs, getEmployedSpecializationSkillsForBusines
 import type { GridDims } from './MainStreetAdjacencyGeometry';
 import { hasAdjacentSameType, resolveNeighbors } from './MainStreetAdjacencyGeometry';
 import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
 /**
  * Resolves the effective per-card coin synergy rate for a card.
@@ -970,7 +971,11 @@ export function attachUpcomingDeltas(
   const soldSlots = state.soldSlots ?? [];
   let indices: number[];
   if (target === 'SpecificSynergy') {
-    const synergy = event.targetSynergy;
+    // Resolution-time targets (MS-0MVCS8A0L0000H7X AC4): Grand Opening
+    // attributes the payout to the slots matching the placed-this-turn
+    // synergy via the shared resolver, so the animator flags the same slots
+    // the engine pays.
+    const targets = eventSynergyTargets(state, event);
     indices = grid
       .map((_card, i) => i)
       .filter((i) => {
@@ -979,8 +984,9 @@ export function attachUpcomingDeltas(
           card !== null &&
           card !== undefined &&
           !soldSlots[i] &&
-          (card as BusinessCard | CommunitySpaceCard).synergyTypes.includes(
-            synergy as SynergyType,
+          matchesEventSynergyTargets(
+            card as BusinessCard | CommunitySpaceCard,
+            targets,
           )
         );
       });

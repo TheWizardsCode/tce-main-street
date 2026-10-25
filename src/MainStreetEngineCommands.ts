@@ -9,7 +9,7 @@
 
 import { updateNeighborsOnPlacement, updateNeighborsOnSale, tagSlotOwnerIfCompetitive, getSlotOwnerId } from './MainStreetAdjacency';
 import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
-import type { BusinessCard, CommunitySpaceCard, StaffCard } from './MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, StaffCard, SynergyType } from './MainStreetCards';
 import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
@@ -768,6 +768,13 @@ export function buyAndPlaceBusiness(
   // Record ownership on the owner-tagged grid (competitive; no-op single-player).
   tagSlotOwnerIfCompetitive(state, slotIndex);
   (state as any).businessPlacedThisTurn = true;
+  // Record the placed card's synergy types for the dynamic Grand Opening
+  // payoff (MS-0MVCS1NOH0074YY2): most recent placement wins. The drag-drop
+  // path may hand over a minimal card object without `synergyTypes`; fall
+  // back to an empty array so the field is always populated (real
+  // business/community-space cards always carry synergy data).
+  const placedSynergies = (card as { synergyTypes?: readonly SynergyType[] }).synergyTypes ?? [];
+  (state as any).placedSynergiesThisTurn = [...placedSynergies];
 
   addLog(
     state,

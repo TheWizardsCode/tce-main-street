@@ -248,6 +248,11 @@ paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rende
 > `npm run storylines:graph` (graph/manifest export),
 > `npm run storylines:graph:svg` (render the graph to SVG),
 > `npm run storylines:author` (safe authoring helper).
+>
+> **Card relationship diagrams.** Synergies, staff eligibility, upgrade chains
+> and community-space relationships are rendered by `npm run docs:diagrams` into
+> `docs/dev/assets/` (drift-guarded with `--check`); see
+> [docs/game/card-diagrams.md](../docs/game/card-diagrams.md).
 
 All card template data is defined in a single CSV file:
 

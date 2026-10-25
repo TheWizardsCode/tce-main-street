@@ -80,7 +80,11 @@ the block corners. During the phased income
 show, the `reputation` phase first sends at least 25% of the crowd walking
 into occupied cells, then dissolves the in-shop figures into the coin stream
 that lands in each business's coin grid (`dissolveIntoCoins`, street-anchor
-fallback when no shops/figures — never the HUD counter). One runtime-generated
+fallback when no shops/figures — never the HUD counter). All producing
+businesses' reputation flights launch **near-simultaneously** — only
+`INCOME_FLIGHT_STAGGER_MS` (60ms) between businesses, mirroring the synergy
+phase (MS-0MV8LHN0W0017XU1) — so the reputation income reads as one
+collective event rather than a card-by-card crawl. One runtime-generated
 texture is shared by every figure. See `docs/game/ux-visual-audio.md`
 for the design notes.
 
