@@ -293,6 +293,18 @@ choice, so replays are comparable.
 All scripts run under `vite-node` because the card model imports
 `card-data.csv` through Vite's `?raw` query.
 
+> **Where the authoring toolchain lives.** The *generic* story-line authoring
+toolkit — content model + content adapter, CSV/checksum, deterministic
+manifest/Mermaid generator, static validator, transactional author API and the
+visual editor — now ships in core
+([`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md),
+[`core/docs/DEVELOPER.md`](../../core/docs/DEVELOPER.md), `src/story-line/content/`
+and `src/story-line/editor/` in the core repo). Main Street's commands in this
+section remain game-side wrappers over its own typed CSV model; supplying a
+Main Street `ContentAdapter` so the core CLIs and the
+`npm run storylines:editor` visual editor can drive this content is tracked in
+the core worklog (`CG-0MVNE47TC0048WZ9`).
+
 | Command | Purpose |
 |---------|---------|
 | `npm run validate:storylines` | Validate the shipped graph. Exits `0` when valid, `1` on a dangling link, unknown target, duplicate id, invalid option. Flags: `--json`, `--csv <path>`, `--fail-on-cycle`. |
@@ -484,8 +496,15 @@ remains the generalised entry point.
   `CompiledStoryline` types from core (specialised to `MainStreetState`), so
   there is no duplicate type definition.
 - Main-Street-specific concerns stay game-side: the transcript
-  (`recordStorylineResolution`), the overlay presentation, and the
-  graph/manifest tooling.
+  (`recordStorylineResolution`), the overlay presentation, and this repo's
+  `validate:storylines` / `storylines:graph` / `storylines:author` CLIs (bound
+  to the typed `card-data.csv` model).
+- The **generic authoring toolchain** (content adapter, CSV/checksum,
+  manifest/Mermaid, validator, transactional author API) and the **visual
+  editor** (`npm run storylines:editor`) live in core rather than this repo; see
+  `core/docs/core-engine/story-line.md` and `core/docs/DEVELOPER.md`. A Main
+  Street content adapter is tracked in the core worklog
+  (`CG-0MVNE47TC0048WZ9`).
 
 Full generic reference: [`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md).
 
@@ -500,7 +519,15 @@ Each is captured as a work item:
 | Done | Render the committed Mermaid graph to SVG in the docs build and link it here. Delivered by `MS-0MUNB54KU005084C` (see §7.2). | `MS-0MUNB54KU005084C` |
 | Low | Extend options with conditional/cost-gated effects (`StorylineOption` was designed to grow). | `MS-0MUNB58TK0025CB9` |
 | Low | Callback escape hatch: arbitrary `condition` / `successorResolver` callbacks on storyline options. | `MS-0MUPORT1Z000QX8N` |
-| Low | Visual storyline authoring editor backed by the manifest and the transactional author API. | `MS-0MUNB5D7K001GH19` |
+| Done | Visual storyline authoring editor backed by the manifest and the transactional author API. Shipped in core as `npm run storylines:editor` (see below). | `MS-0MUNB5D7K001GH19` |
+
+**Delivered:** the visual editor now ships in core as
+`npm run storylines:editor` — a local viewer plus guided, validated card and
+story-line editing over the same transactional author API (work item
+`MS-0MUNB5D7K001GH19`, delivered in core by `CG-0MVHZ1P1I000PVQ1`). It is a
+core developer tool, documented in `core/docs/core-engine/story-line.md` and
+`core/docs/DEVELOPER.md`; this repo's own authoring commands above are
+unchanged.
 
 ---
 
