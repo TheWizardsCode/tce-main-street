@@ -62,6 +62,46 @@ committed automatically.
 4. **Exact checkout:** `git checkout --detach <pin>` puts `./core` at exactly
    the pinned engine commit, then the build compiles against it.
 
+## Composition matrix: which engine does each invocation compose?
+
+Every test/build invocation composes whatever `./core` happens to be checked
+out. Worktrees created by the implement tooling only run
+`git submodule update --init --recursive`, which checks out the gitlink
+recorded by the commit they were forked from — a commit that can silently
+predate the pin — so a green suite can report success without ever seeing the
+pinned engine code. The engine-checkout preflight (`npm run engine:check`,
+wired as the Vitest root `test.globalSetup`;
+`tests/tooling/engine-checkout-precheck.ts`) makes the composed engine
+explicit on every run and fails loudly when it is not the pin or a
+descendant of it.
+
+| Invocation | `./core` checkout | Gate |
+|---|---|---|
+| `npm test` (Vitest `unit` + `unit-cli`) | as checked out — the preflight must accept it (pin, or a descendant of the pin) | preflight fail → run aborts |
+| changed-scope gate (`npx vitest run <files>`) | as checked out — same preflight | preflight fail → run aborts |
+| dev-push browser gate (`npx vitest run --project browser …`) | as checked out — same preflight | preflight fail → run aborts |
+| `npm run build` / `build:electron` | engine dev head **after** `engine:sync` | `engine:sync` dirty guard |
+| `npm run build:release` | **detached at the pin** after `engine:verify` | `engine:verify` pin match + dirty guard |
+| freshly created worktree | whatever gitlink its branch recorded, **until** `engine:sync` runs | the preflight fails such a test run loudly, naming the composed SHA, the pin SHA and the exact remediation |
+
+### Preflight behaviour and the bypass
+
+The preflight decides from the **local commit graph only** (`git merge-base
+--is-ancestor`): it never fetches and never consults a cached `origin/dev`
+ref, so airgapped worktrees with stale refs still gate correctly. It accepts
+the pin or any descendant of the pin (the post-`npm run build` checkout the
+dev workflow deliberately creates), fails on a behind or diverged checkout,
+on a pin commit missing from the local `./core` clone, on an unreadable pin
+file and on an uninitialised `./core`, and merely warns on a dirty `./core`.
+The failure message names the composed SHA, the pin SHA and the `npm run
+engine:sync` remediation.
+
+Deliberate bypass: `ENGINE_CHECKOUT_CHECK=warn|off` downgrades (warn) or
+suppresses (off) the failure; every use is logged. The Vitest wiring is a
+documented LOCAL SURGICAL ADDITION to the auto-generated `vite.config.ts`,
+held in place by `tests/main-street/vite-config-engine-check-guard.test.ts`;
+a re-scaffold cannot silently drop the gate.
+
 ## Updating the engine / releasing
 
 - **Dev:** just build — `engine:sync` follows engine `dev` automatically.
@@ -75,3 +115,8 @@ committed automatically.
 `tests/main-street/engine-submodule-sync.test.ts` covers the dirty-state
 guard and pin-mismatch failure paths (unit, offline fixtures); the canonical
 script suite lives in the engine repo (`core/tests/scripts/engine-sync.test.ts`).
+`tests/main-street/engine-checkout-precheck.test.ts` covers the composition
+preflight (pin / ahead / behind / missing-pin / uninitialised / bypass,
+offline fixtures) and
+`tests/main-street/vite-config-engine-check-guard.test.ts` guards the Vitest
+wiring.

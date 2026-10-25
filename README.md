@@ -172,6 +172,14 @@ If you cloned without `--recurse-submodules`, initialise it afterwards:
 git submodule update --init --recursive
 ```
 
+**Tests verify the composed engine.** A fresh worktree checks out whatever
+gitlink its branch recorded, which can silently lag the engine pin in
+`configs/engine-pin.json`. Every Vitest run therefore passes an engine-checkout
+preflight (`npm run engine:check`) that fails loudly — naming the composed SHA,
+the pin SHA and the exact remediation — when `./core` is not the pinned engine
+or a descendant of it; run `npm run engine:sync` in a fresh worktree before
+testing (see [docs/dev/build-and-release.md](docs/dev/build-and-release.md)).
+
 ## Install, test and build
 
 ```bash
@@ -239,4 +247,7 @@ npm run preview   # http://localhost:4173/tce-main-street/
 
 The `./core` submodule pins a specific engine commit; **dev builds advance it
 automatically** (`engine:sync`, tracked on engine `dev`), and release builds
-(`build:release`) compile exactly the SHA in `configs/engine-pin.json`. See[docs/dev/build-and-release.md](docs/dev/build-and-release.md) for the policy; never edit a dev build into a release silently — use `build:release` for pinned, reproducible output.
+(`build:release`) compile exactly the SHA in `configs/engine-pin.json`. Every
+test run states which engine it composed via the engine-checkout preflight
+(`npm run engine:check`) and fails loudly when the checkout is not the pin or
+a descendant of it. See[docs/dev/build-and-release.md](docs/dev/build-and-release.md) for the policy; never edit a dev build into a release silently — use `build:release` for pinned, reproducible output.

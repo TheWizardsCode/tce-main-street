@@ -8,11 +8,14 @@
  * LOCAL SURGICAL ADDITIONS not present in the scaffold template (precedent:
  * MS-0MV8M9IAF000KPNY): the exported `CLI_TEST_FILES` + `unit-cli` project
  * (MS-0MV5PNIPO00940KG), the `unit`/`unit-cli` `sequence.groupOrder` split
- * with `unit-cli` first, and the `projectCoverageReporter` guard
- * (MS-0MVK37SK5009M0NG). A re-scaffold drops all of these; the guards in
- * `tests/main-street/vitest-cli-project-isolation.test.ts` and
- * `tests/main-street/testing-docs-projects.test.ts` fail loudly if they are
- * lost.
+ * with `unit-cli` first, the `projectCoverageReporter` guard
+ * (MS-0MVK37SK5009M0NG), and the engine-checkout preflight registered as the
+ * root `test.globalSetup` (MS-0MVO26G5H0054SNV). A re-scaffold drops all of
+ * these; the guards in
+ * `tests/main-street/vitest-cli-project-isolation.test.ts`,
+ * `tests/main-street/testing-docs-projects.test.ts` and
+ * `tests/main-street/vite-config-engine-check-guard.test.ts` fail loudly if
+ * they are lost.
  *
  * The engine toolchain (the config-driven game-discovery plugin and the core
  * path aliases) is imported from the sibling core checkout at `./core`.
@@ -185,6 +188,17 @@ export default defineConfig(({ mode }) => ({
     },
   },
   test: {
+    // Engine-checkout preflight (MS-0MVO26G5H0054SNV) — LOCAL SURGICAL
+    // ADDITION. Every Vitest invocation in this repo (`npm test`, the
+    // changed-scope gate's direct `npx vitest run <files>`, the dev-push
+    // browser gate) inherits this root setting, so each run states which
+    // `./core` commit it composed and fails loudly when that checkout is
+    // behind (or diverged from) `configs/engine-pin.json` instead of
+    // returning a green suite that never saw the pinned engine. The check is
+    // offline (local commit graph only) and sub-second; the config-level
+    // hook is the only place that also covers direct Vitest runs, which a
+    // `pretest`-only hook would miss. Manual: `npm run engine:check`.
+    globalSetup: ['./tests/tooling/engine-checkout-precheck.ts'],
     // Loud zero-coverage guard (MS-0MVK37SK5009M0NG): fails the run when a
     // project that was scheduled contributed no files — or fewer files than the
     // run intended — naming the project and the files that never executed.

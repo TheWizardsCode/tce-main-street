@@ -17,6 +17,10 @@ npx vitest run --project browser                                      # full bro
 npx vitest run --project browser tests/e2e/<name>.browser.test.ts     # a single file
 ```
 
+Every one of these invocations — including the changed-scope gate's direct
+`npx vitest run <files>` calls — passes through the **engine-checkout
+preflight** first (below).
+
 The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
@@ -325,6 +329,32 @@ hook. That check is launch-free (package resolution + one `existsSync` + a
 remediation commands instead of an opaque Vitest unhandled error. It also warns
 when `node_modules` drifts from the lockfile — in that case run `npm ci` first,
 then `npx playwright install chromium`.
+
+## Engine checkout preflight: which engine did this test compose?
+
+A Vitest run composes whatever `./core` happens to be checked out — and in a
+fresh worktree that is the gitlink the branch recorded at fork time, which can
+silently predate the engine pin in `configs/engine-pin.json`. So the root
+`vite.config.ts` registers a `test.globalSetup`
+(`tests/tooling/engine-checkout-precheck.ts`, MS-0MVO26G5H0054SNV) that every
+invocation inherits — `npm test`, the changed-scope gate's direct
+`npx vitest run <files>` calls and the dev-push browser gate — and fails the
+run loudly when `./core` is not the pinned engine or a descendant of it,
+naming the composed SHA, the pin SHA and the `npm run engine:sync`
+remediation. On a pass it logs the composed engine identity (short SHA plus
+`git describe` tag when available) alongside the pin, once per process.
+
+The check is offline (local commit graph only — `git merge-base
+--is-ancestor`, never a fetch or a cached `origin/dev` ref) and sub-second.
+A dirty `./core` is warned about but never fails the run. Deliberate bypass:
+`ENGINE_CHECKOUT_CHECK=warn|off`, logged every time it is used. The same code
+path is available manually as `npm run engine:check` (exit 0/1). The Vitest
+wiring is a documented LOCAL SURGICAL ADDITION to the engine-owned
+auto-generated config, held by
+`tests/main-street/vite-config-engine-check-guard.test.ts`; the pass/fail
+branches are covered by `tests/main-street/engine-checkout-precheck.test.ts`
+(offline fixtures). See the composition matrix in
+[docs/dev/build-and-release.md](build-and-release.md#composition-matrix-which-engine-does-each-invocation-compose).
 
 ## Import shared helpers through the core aliases
 
