@@ -103,6 +103,25 @@ describe('AC1 — canonical doc exists and covers the required sections', () => 
     }
   });
 
+  it('documents the cost-aware presented-list AI policy (§4)', () => {
+    const doc = DOC();
+    const start = doc.indexOf('## 4. AI policy');
+    const end = doc.indexOf('## 5. Tooling');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const policy = doc.slice(start, end);
+    // The AI scores only the draw-time filtered list and projects the core
+    // option fields (cost / extraEffect) into its value; pinned by the
+    // `cost-aware scoring` cases in MainStreetAiEventChoice.test.ts.
+    expect(policy).toContain('presented option list');
+    expect(policy).toContain('getPendingStorylineOptions');
+    expect(policy).toContain('getStorylineOptions');
+    expect(policy).toContain('`cost`');
+    expect(policy).toContain('`extraEffect`');
+    expect(policy).toContain('REPUTATION_SEVERITY_SCALE');
+    expect(policy).toMatch(/lowest\s+index/);
+  });
+
   it('documents undo/redo, save/load and the transcript shape', () => {
     const doc = DOC();
     expect(doc).toContain('Undo/redo');

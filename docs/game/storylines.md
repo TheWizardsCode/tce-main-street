@@ -206,8 +206,11 @@ registerStorylineOptions('evt-nationalise', [
 ]);
 ```
 
-The AI path needs no changes: `decideEventChoice` selects from the presented
-option list, which `condition` has already filtered at draw time.
+The AI path needs no option-list special-casing: `decideEventChoice` selects
+from the presented option list, which the draw-time compile has already
+filtered by `condition` **and** affordability (`cost`), so the AI never sees an
+option the player would not have been offered. It does fold the presented
+options' `cost` / `extraEffect` deltas into its value (§4).
 
 ---
 
@@ -271,12 +274,45 @@ Headless turns never stall: `resolveAiEventChoice` (re-exported from
 `MainStreetAiStrategy.ts`, implemented via `resolvePendingEventChoice`) resolves
 a pending choice by difficulty and completes the deferred closing.
 
-`decideEventChoice(state, event, difficulty)` returns the **index** of the
-automatically-chosen option over the compiled arbitrary option list:
+`decideEventChoice(state, event, difficulty, pending?)` returns the **index** of
+the automatically-chosen option **in the presented option list**:
 
-| Difficulty | Policy |
-|------------|--------|
-| **All** | Since every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B), the only differentiator is the successor chain: the AI picks the option whose **worst-case candidate** severity is lowest (terminal options win; ties resolve to the lowest index). Deterministic and RNG-free, so replays and Monte Carlo stay comparable. |
+- **Presented list only.** When the optional `pending` choice is supplied (the
+  normal AI resolve path) the AI reads the frozen draw-time snapshot via
+  `getPendingStorylineOptions(pending, state)`; the 3-argument form compiles the
+  event against the current state via `getStorylineOptions(event, state)`. Both
+  apply the draw-time filtering of the core presented-list compile — `condition`
+  **and** affordability (`cost`) — so the AI can never select an option the
+  player would not have been offered. The returned index addresses that
+  presented list, never the raw unfiltered one.
+- **Projected value, lowest wins.** Each presented option is scored by its
+  projected value (table below); the option with the lowest projected value is
+  chosen.
+
+| Term | Contribution to the projected option value |
+|------|--------------------------------------------|
+| **Successor chain** | Worst-case (maximum) severity across the option's candidate set — a terminal option (no candidates) scores 0. Every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B), so the chain is the severity lever. |
+| **`cost`** | `cost.coins` + `cost.reputation` × `REPUTATION_SEVERITY_SCALE`: the player **pays** it, so it adds to the value. |
+| **`extraEffect`** | `extraEffect.coins` + `extraEffect.reputation` × `REPUTATION_SEVERITY_SCALE`: the player **receives** it, so it subtracts from the value. |
+
+`REPUTATION_SEVERITY_SCALE` (100) is the same weight the severity model uses, so
+coins and reputation stay comparable in both terms. Ties resolve to the **lowest
+index** (index 0 is the presentation-default / legacy Accept slot). Options with
+neither `cost` nor `extraEffect` project a delta of 0, so legacy binary choice
+cards keep their pre-existing selection exactly (pinned by the storyline
+regression harness).
+
+The policy is a pure function of state and option and consumes no RNG (no
+`state.rng`, `Math.random` or clock), so repeated calls on identical input
+return the same index and seeded replays and Monte Carlo runs stay
+byte-identical. `cost` / `extraEffect` are core option fields — their contract
+(including the draw-time affordability gate and payment at resolution) is
+documented once in
+[`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md);
+this section only describes how the AI projects them into option value. The
+cost-gated, frozen-snapshot, extra-effect and tie-break cases are pinned by the
+`cost-aware scoring` cases in
+[`tests/main-street/MainStreetAiEventChoice.test.ts`](../../tests/main-street/MainStreetAiEventChoice.test.ts).
 
 The former Easy/Medium/Hard accept/reject ladder was superseded by this shared
 rule when the migrated model made Reject apply the effect too
