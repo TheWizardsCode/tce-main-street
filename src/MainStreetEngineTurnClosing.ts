@@ -331,7 +331,14 @@ export function resolvePendingEventChoice(
   if (!pending || pending.resolved) return null;
   // F7 (MS-0MV8KQSF1004E53Y): the AI picks an option index over the compiled
   // arbitrary option list (all CSV options apply the event effect — Q4=B).
-  const optionIndex = decideEventChoice(state, pending.event, difficulty ?? state.config.difficultyName);
+  // Cost-aware (MS-0MVNU5EEC006ZCTF): the pending choice makes the AI score
+  // exactly the presented (frozen, cost-filtered) option list.
+  const optionIndex = decideEventChoice(
+    state,
+    pending.event,
+    difficulty ?? state.config.difficultyName,
+    pending,
+  );
   resolveEventOption(state, optionIndex);
   return finishDeferredEndOfTurn(state);
 }

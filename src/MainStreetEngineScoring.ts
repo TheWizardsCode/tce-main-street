@@ -9,7 +9,7 @@
 
 import type { EventCard } from './MainStreetCards';
 import { getEventTemplates } from './MainStreetCards';
-import { getStorylineOptions } from './MainStreetStoryline';
+import { getPendingStorylineOptions, getStorylineOptions } from './MainStreetStoryline';
 import type { StorylineOption } from './MainStreetCardsTypes';
 import { applyReputationMultiplier } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
@@ -20,7 +20,7 @@ import {
   projectPiggybackEventReward,
 } from './MainStreetEngineEvents';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
-import type { MainStreetState, PendingPiggybackDecision } from './MainStreetState';
+import type { MainStreetState, PendingEventChoice, PendingPiggybackDecision } from './MainStreetState';
 import { syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
@@ -177,18 +177,36 @@ export function eventSeverity(event: EventCard): number {
 /**
  * Difficulty-based event-option decision for a pending storyline choice
  * (CG-0MTSHG8RP008E128 AC22); reworked for the arbitrary-option model
- * (MS-0MV8KQSF1004E53Y). Deterministic and side-effect free.
+ * (MS-0MV8KQSF1004E53Y) and made cost-aware (MS-0MVNU5EEC006ZCTF).
+ * Deterministic and side-effect free.
+ *
+ * **Presented-list contract.** The AI must only consider the options the
+ * player would actually be offered, so the option list is always the
+ * state-aware compile: the frozen draw-time snapshot
+ * ({@link getPendingStorylineOptions}) when a `pending` choice is supplied,
+ * otherwise {@link getStorylineOptions} with the current state (which applies
+ * the same draw-time condition/cost filtering). The returned index therefore
+ * addresses that presented list — never the raw, unfiltered one.
  *
  * Every compiled option applies the event's own effect (CSV content always
- * carries `effectPolicy: 'apply'`, producer Q4=B), so the *only* differentiator
- * between options is their successor-candidate chain. The AI therefore picks
- * the option whose downstream chain is least harmful — the pessimistic,
- * RNG-free static evaluation:
+ * carries `effectPolicy: 'apply'`, producer Q4=B), so the differentiators
+ * between options are their successor-candidate chain and their declared
+ * `cost` / `extraEffect` resource movement. The AI therefore picks the option
+ * with the lowest **projected value** — the pessimistic, RNG-free static
+ * evaluation:
  *
  *  - chain severity = worst-case (max) severity across the option's candidate
  *    set (a set of size 1 equals that card; an empty set is a terminal, 0);
- *  - the chosen option minimises that value; ties resolve to the lowest index
- *    (index 0 is the presentation-default / legacy Accept slot).
+ *  - value delta = `cost.coins` + `cost.reputation` ×
+ *    {@link REPUTATION_SEVERITY_SCALE}, minus `extraEffect.coins` +
+ *    `extraEffect.reputation` × {@link REPUTATION_SEVERITY_SCALE} — i.e. the
+ *    player pays the cost and receives the extra effect;
+ *  - the chosen option minimises `chain severity + value delta`; ties resolve
+ *    to the lowest index (index 0 is the presentation-default / legacy Accept
+ *    slot).
+ *
+ * With no `cost` and no `extraEffect` the value delta is 0, so legacy binary
+ * choice cards keep their pre-existing selection exactly.
  *
  * The former difficulty ladder (Easy always-accept, Medium afford-and-accept /
  * refuse-when-unaffordable, Hard accept-vs-reject full-chain compare) made
@@ -199,25 +217,29 @@ export function eventSeverity(event: EventCard): number {
  * @param state      Current game state (read-only).
  * @param event      The drawn choice event (effect deferred).
  * @param difficulty Difficulty preset (retained for API compatibility).
- * @returns The index of the chosen option in the compiled option list.
+ * @param pending    Optional pending choice; when supplied its frozen
+ *                   draw-time snapshot is the presented list.
+ * @returns The index of the chosen option in the presented option list.
  */
 export function decideEventChoice(
   state: MainStreetState,
   event: EventCard,
   difficulty: DifficultyName,
+  pending?: PendingEventChoice | null,
 ): number {
-  void state;
   void difficulty;
-  const options = getStorylineOptions(event);
+  const options = pending
+    ? getPendingStorylineOptions(pending, state)
+    : getStorylineOptions(event, state);
   if (options.length === 0) return 0;
 
   let best = 0;
-  let bestSeverity = Infinity;
+  let bestValue = Infinity;
   options.forEach((option, index) => {
-    const severity = optionChainSeverity(option);
-    if (severity < bestSeverity) {
+    const value = optionChainSeverity(option) + optionValueDelta(option);
+    if (value < bestValue) {
       best = index;
-      bestSeverity = severity;
+      bestValue = value;
     }
   });
   return best;
@@ -244,6 +266,25 @@ function optionChainSeverity(option: StorylineOption): number {
     worst = Math.max(worst, eventSeverity(template));
   }
   return worst;
+}
+
+/**
+ * Deterministic, signed value delta for an option's declared resource
+ * movement, folded into {@link decideEventChoice} so the lowest projected
+ * value wins: the player **pays** `cost` and **receives** `extraEffect`, so
+ * cost adds severity and the extra effect subtracts from it. Reputation uses
+ * the same {@link REPUTATION_SEVERITY_SCALE} as {@link eventSeverity} so both
+ * axes stay comparable. Pure (no RNG, no clock) so seeded replays stay
+ * byte-identical.
+ */
+function optionValueDelta(option: StorylineOption): number {
+  const cost = option.cost;
+  const extra = option.extraEffect;
+  const costValue =
+    (cost?.coins ?? 0) + (cost?.reputation ?? 0) * REPUTATION_SEVERITY_SCALE;
+  const extraValue =
+    (extra?.coins ?? 0) + (extra?.reputation ?? 0) * REPUTATION_SEVERITY_SCALE;
+  return costValue - extraValue;
 }
 
 /**

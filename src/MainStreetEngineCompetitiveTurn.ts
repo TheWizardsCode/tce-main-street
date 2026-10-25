@@ -17,7 +17,7 @@ import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
-import { getStorylineOptions } from './MainStreetStoryline';
+import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -471,10 +471,17 @@ export function resolveCompetitivePendingChoice(state: MainStreetState): TurnRes
     return resolvePendingEventChoice(state);
   }
   const turnEnded = state.turn;
-  const optionIndex = decideEventChoice(state, pending.event, state.config.difficultyName);
+  // Cost-aware (MS-0MVNU5EEC006ZCTF): pass the pending choice so the AI scores
+  // the presented (frozen, cost-filtered) list that `resolveEventOption` uses.
+  const optionIndex = decideEventChoice(
+    state,
+    pending.event,
+    state.config.difficultyName,
+    pending,
+  );
   const event = pending.event;
   // Use the frozen draw-time snapshot when present (matches resolveEventOption).
-  const frozenOptions = pending.options ?? getStorylineOptions(event);
+  const frozenOptions = getPendingStorylineOptions(pending, state);
   const chosenOption = frozenOptions[optionIndex];
   resolveEventOption(state, optionIndex);
   // Per-option effect policy (F7): competitive per-owner effects apply for

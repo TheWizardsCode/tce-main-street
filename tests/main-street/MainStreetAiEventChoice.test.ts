@@ -16,9 +16,9 @@
  * - Cost-aware scoring (MS-0MVNU5BRZ0087L1E): `decideEventChoice` answers
  *   with an index into the **presented** option list (the draw-time
  *   cost-filtered snapshot) and projects `cost` / `extraEffect` deltas into
- *   the option value. The contract cases below are authored `it.fails`
+ *   the option value. The contract cases below were authored `it.fails`
  *   (repo red-phase tracer-bullet convention) against the chain-severity-only
- *   policy and are flipped to plain `it` by MS-0MVNU5EEC006ZCTF.
+ *   policy and were flipped to plain `it` by MS-0MVNU5EEC006ZCTF.
  *
  * @module
  */
@@ -191,10 +191,9 @@ describe('decideEventChoice over an arbitrary multi-option node (F7)', () => {
 // lowest value wins, ties resolve to the lowest index.
 
 /**
- * Target contract for {@link decideEventChoice}: the implementing child adds
- * the optional fourth `pending` parameter. The cast keeps this file compiling
- * (and `npm run build` green) until then; the 3-argument form stays valid, so
- * the current policy is exercised exactly as today.
+ * Signature of {@link decideEventChoice}: the optional fourth `pending`
+ * parameter selects the frozen draw-time snapshot as the presented list. The
+ * 3-argument form stays valid and behaves exactly as before.
  */
 type PresentedDecide = (
   state: MainStreetState,
@@ -203,7 +202,7 @@ type PresentedDecide = (
   pending?: PendingEventChoice | null,
 ) => number;
 
-const decidePresented = decideEventChoice as PresentedDecide;
+const decidePresented: PresentedDecide = decideEventChoice;
 
 describe('cost-aware scoring', () => {
   /** Registers a cost-bearing option list (registry reset in `afterEach`). */
@@ -211,7 +210,7 @@ describe('cost-aware scoring', () => {
     registerStorylineOptions(eventId, options);
   }
 
-  it.fails(
+  it(
     'never selects a cost-gated option the draw-time filter dropped',
     () => {
       // 200 coins: the 900-coin bribe is unaffordable, so the presented list
@@ -249,7 +248,7 @@ describe('cost-aware scoring', () => {
     },
   );
 
-  it.fails(
+  it(
     'reads the frozen draw-time snapshot for a pending choice',
     () => {
       const state = makeState('Medium', 600);
@@ -288,7 +287,7 @@ describe('cost-aware scoring', () => {
     },
   );
 
-  it.fails(
+  it(
     'prefers an extra-effect option once its delta is counted',
     () => {
       const state = makeState('Medium', 600);
@@ -348,7 +347,7 @@ describe('cost-aware scoring', () => {
     expect(decidePresented(state, evt, 'Medium')).toBe(0);
   });
 
-  it.fails(
+  it(
     'lets the cheap-but-costly chain win just past the cost break-even',
     () => {
       const state = makeState('Medium', 600);
@@ -373,7 +372,7 @@ describe('cost-aware scoring', () => {
     },
   );
 
-  it.fails(
+  it(
     'weights reputation cost at REPUTATION_SEVERITY_SCALE (100)',
     () => {
       const state = makeState('Medium', 600);
