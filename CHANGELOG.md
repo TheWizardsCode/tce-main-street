@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.22 (2026-10-25)
+> **Release focus:** This release focuses on improving gameplay flow and reliability, with drag-and-drop card play, easier card deselection, and reworked challenge, reputation, and Grand Opening Sale rewards. It also strengthens the storyline engine, balance monitoring, and build/test infrastructure so updates ship consistently.
+### Features
+- Dev builds now always use the latest engine, and releases are reproducible. (MS-0MVCRGKZY007DIED)
+- Completing all challenges now earns bonus points instead of instantly ending the game. (MS-0MVAZH5OD000Q6E4)
+- Reputation bonuses now land all at once instead of one business at a time. (MS-0MV8LHN0W0017XU1)
+- Storylines now run on a shared engine, so branching card stories stay consistent and reliable. (MS-0MVCRQ475009CDZI)
+- Drag cards straight from your hand onto the street to play them in one gesture. (MS-0MV76HVE4007AOO0)
+- Grand Opening Sale now rewards businesses matching the synergy you opened that turn. (MS-0MV8KSPFK006HTXG)
+- Click a selected card again to deselect it and cancel without using the Cancel button. (MS-0MV767QTO008JUDJ)
+- Adds internal analytics to better balance storyline events and choices. (MS-0MUNB4ZXQ0081EX7)
+- Expensive upgrade paths now appear more often, making them a viable investment choice. (MS-0MV035PRV002QDG4)
+- New reference diagrams make card synergies, staff coverage and upgrade chains easy to explore. (MS-0MUYK5BEC007L61X)
+- Added balance monitoring to keep card synergy types varied and prevent one strategy from dominating. (MS-0MUR9INHX001QCSE)
+- All Main Street sound effects now play through the synth for a more consistent audio experience. (MS-0MV8PDNDT0033TH8)
+### Bug Fixes
+- Fixed false test failures so game updates ship reliably. (MS-0MVFQ5ODR001R7U2)
+- New games now always start fresh, and no player can be knocked out on the first day. (MS-0MVJNFESC005QJ41)
+- Fixes a test setup issue so game features relying on Phaser load reliably in all tests. (MS-0MVK3SF54006Y6A6)
+- Test runs now reliably include all CLI tests, so a green result truly means everything passed. (MS-0MVK37SK5009M0NG)
+- Engine updates now ship in sync with the game, preventing version mismatch errors. (MS-0MVMOH2N3000T63F)
+- Dev server and tests now run reliably from the main checkout without hitting file-watcher limits. (MS-0MV8M9IAF000KPNY)
+- End-of-turn and card-transfer tests no longer fail on busy machines, so the build stays reliably green. (MS-0MVK2ACLN004VVIJ)
+- Cards in your hand can now be dragged onto the street again, even after buying, selling or placing. (MS-0MVJN9UDS005312W)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.21 (2026-10-16)
 > **Release focus:** This release focuses on refining progression and clarity, with each run now unlocking at most one new tier and closing businesses affecting reputation to make choices more meaningful. It also improves moment-to-moment feedback through animated HUD totals, faster end-of-turn animations, and clearer card synergy colours, while expanding content with AI-hosted town events, branching storyline choices, and a new challenge for selling three businesses.
 ### Features
