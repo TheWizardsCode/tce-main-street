@@ -191,6 +191,66 @@ export interface PendingEndOfTurnDeltas {
   pendingScoreDelta?: number;
 }
 
+/**
+ * End-of-turn ledger for one single-player closing (MS-0MVP45KZV006TMUK).
+ *
+ * Reporting-only data for the Turn Summary dialog (parent MS-0MVL6HMDP004WI41):
+ * it mirrors deltas already applied (or, on the deferred path, returned as
+ * {@link PendingEndOfTurnDeltas}) so reading it consumes no RNG and mutates no
+ * state. Populated by `processEndOfTurn` for the deferred and legacy paths;
+ * absent (`undefined`) for competitive closings and for hand-built results.
+ *
+ * Conventions:
+ * - `incomeByPhase` mirrors `IncomeResult.phaseBreakdown`: the four subtotals
+ *   sum to the coins the income phase credited.
+ * - `ongoingCosts` are **signed** coin deltas (zero or negative), mirroring the
+ *   ongoing-cost helpers' return values.
+ * - `oneOffDeltas` are non-recurring signed deltas — pre-closing MarketPhase
+ *   spending/earning (purchases, sales, event plays, Community Favour) plus any
+ *   closing effect outside income, ongoing costs and the incident — so the
+ *   ledger reconciles exactly:
+ *   `netCoinChange = incomeByPhase (sum) + ongoingCosts (sum) +
+ *   incidentCoinChange + oneOffDeltas.coins`; reputation reconciles the same
+ *   way against `income.repDelta` and `incidentRepChange`.
+ */
+export interface TurnLedger {
+  /** Per-phase coin income subtotals (sums to the income phase's credited coins). */
+  incomeByPhase: {
+    base: number;
+    synergy: number;
+    reputation: number;
+    events: number;
+  };
+  /** Ongoing (recurring) expense subtotals, signed (zero or negative). */
+  ongoingCosts: {
+    staff: number;
+    community: number;
+    business: number;
+  };
+  /** Net coin delta from the resolved incident (negative = loss). */
+  incidentCoinChange: number;
+  /** Net reputation delta from the resolved incident (negative = loss). */
+  incidentRepChange: number;
+  /** Non-recurring coin/reputation deltas (see {@link TurnOneOffDeltas}). */
+  oneOffDeltas: {
+    coins: number;
+    reputation: number;
+  };
+  /** Net coin change for the day (closing coins − day-start coins). */
+  netCoinChange: number;
+  /** Net reputation change for the day (closing rep − day-start rep). */
+  netRepChange: number;
+  /** Net score change for the day (closing score − day-start score). */
+  netScoreChange: number;
+  /**
+   * Businesses standing on the street at closing, keyed by owner id as a
+   * string (`String(playerId)`; `'0'` in single-player). Owner-keyed so the
+   * competitive per-player panel can reuse the same data later; sold slots
+   * are excluded (they no longer run as businesses).
+   */
+  businessesOwned: Record<string, number>;
+}
+
 export interface TurnResult extends PendingEndOfTurnDeltas {
   /** Income earned during the income phase. */
   income: IncomeResult | null;
@@ -243,6 +303,19 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * `PlayerRecord`, so reading it consumes no RNG and mutates no state.
    */
   playerIncome?: OwnerIncomeResult[];
+  /**
+   * End-of-turn ledger (MS-0MVP45KZV006TMUK): per-phase income subtotals,
+   * ongoing-cost subtotals, incident and one-off deltas, net coin/reputation/
+   * score change for the day, and the businesses owned at closing. Populated
+   * by `processEndOfTurn` for both the deferred and the legacy single-player
+   * paths (refreshed against the final state by the deferred closing), so a
+   * Turn Summary can render every value from committed engine data. Absent
+   * for competitive closings and for hand-built results — consumers must
+   * treat it as optional. A paused result (pending event choice / piggyback)
+   * carries a day-to-date ledger: the net rows are still measured against the
+   * day-start snapshot, but the closing phases have not run yet.
+   */
+  turnLedger?: TurnLedger;
 }
 
 /**

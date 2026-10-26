@@ -13,9 +13,12 @@ import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffO
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, hasPendingPiggyback, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
-import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
+import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnLedger, TurnResult } from './MainStreetEngineTypes';
+import { roundInt } from './MainStreetDifficulty';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
+import type { IncomeResult } from './MainStreetAdjacency';
+import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, EventCard } from './MainStreetCards';
 import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
@@ -344,6 +347,141 @@ export function resolvePendingEventChoice(
 }
 
 /**
+ * Ongoing-cost subtotals for one turn, as signed coin deltas (zero or
+ * negative). Shared alias of the ledger field so the engine and the ledger
+ * builder cannot drift (MS-0MVP45KZV006TMUK).
+ */
+type TurnOngoingCosts = TurnLedger['ongoingCosts'];
+
+/** Everything the end-of-turn ledger reports, measured at one moment in time. */
+interface TurnLedgerInputs {
+  /** Income phase result (null when the income phase did not run). */
+  income: IncomeResult | null;
+  /** Ongoing-cost subtotals measured as the closing applied them. */
+  ongoingCosts: TurnOngoingCosts;
+  /** Net coin delta from the resolved incident. */
+  incidentCoinChange: number;
+  /** Net reputation delta from the resolved incident. */
+  incidentRepChange: number;
+  /** Coin balance to measure the net change against (closing or projected). */
+  coins: number;
+  /** Reputation balance to measure the net change against (closing or projected). */
+  reputation: number;
+  /** Score to measure the net change against (closing or projected). */
+  score: number;
+}
+
+/**
+ * Counts the businesses standing on the street per owner
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * Keys are owner ids as strings (`String(playerId)`; `'0'` in single-player) so
+ * the map is owner-keyed and JSON-serialisable, ready for the deferred
+ * competitive per-player panel. Sold slots are excluded: a sold business no
+ * longer runs as a business on the street.
+ */
+function countBusinessesOwnedByOwner(state: MainStreetState): Record<string, number> {
+  const owned: Record<string, number> = {};
+  const soldSlots = state.soldSlots ?? [];
+  for (let slotIndex = 0; slotIndex < state.streetGrid.length; slotIndex++) {
+    const card = state.streetGrid[slotIndex];
+    if (!card || card.family !== 'business') continue;
+    if (soldSlots[slotIndex]) continue;
+    const ownerKey = String(getSlotOwnerId(state, slotIndex));
+    owned[ownerKey] = (owned[ownerKey] ?? 0) + 1;
+  }
+  return owned;
+}
+
+/**
+ * Builds the end-of-turn ledger for the turn currently being closed
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * Day-start snapshots (`weekStart*`, written at WeekStart) are the baseline for
+ * the net rows, so the ledger covers the whole day — the MarketPhase spending
+ * included — not just the closing phases. The one-off deltas are the residual
+ * of that reconciliation (see {@link TurnLedger}), which is why the ledger
+ * always balances even when a closing phase clamps a deduction (e.g. an
+ * unaffordable staff salary). Integer-rounded because the reputation coin
+ * multiplier splits its bonus proportionally across slots.
+ *
+ * Read-only with respect to `state`: it only reads the grid/snapshots.
+ */
+function buildTurnLedger(state: MainStreetState, inputs: TurnLedgerInputs): TurnLedger {
+  // Day-start snapshot fallback keeps legacy/hand-built states (no snapshot)
+  // from reporting a bogus net change.
+  const startCoins = state.weekStartCoins ?? state.resourceBank.coins;
+  const startRep = state.weekStartRep ?? state.resourceBank.reputation;
+  const startScore = state.weekStartScore ?? state.finalScore;
+
+  let base = 0;
+  let synergy = 0;
+  let reputation = 0;
+  let events = 0;
+  for (const slot of inputs.income?.phaseBreakdown?.perSlotBreakdown ?? []) {
+    base += slot.baseIncome;
+    synergy += slot.synergyBonus;
+    reputation += slot.repBonus;
+    for (const delta of slot.eventDeltas) events += delta.delta;
+  }
+  const incomeByPhase = {
+    base: roundInt(base),
+    synergy: roundInt(synergy),
+    reputation: roundInt(reputation),
+    events: roundInt(events),
+  };
+
+  const netCoinChange = roundInt(inputs.coins - startCoins);
+  const netRepChange = roundInt(inputs.reputation - startRep);
+  const incomeCoins =
+    incomeByPhase.base + incomeByPhase.synergy + incomeByPhase.reputation + incomeByPhase.events;
+  const ongoingTotal =
+    inputs.ongoingCosts.staff + inputs.ongoingCosts.community + inputs.ongoingCosts.business;
+
+  return {
+    incomeByPhase,
+    ongoingCosts: { ...inputs.ongoingCosts },
+    incidentCoinChange: inputs.incidentCoinChange,
+    incidentRepChange: inputs.incidentRepChange,
+    oneOffDeltas: {
+      coins: netCoinChange - incomeCoins - ongoingTotal - inputs.incidentCoinChange,
+      reputation:
+        netRepChange - (inputs.income?.repDelta ?? 0) - inputs.incidentRepChange,
+    },
+    netCoinChange,
+    netRepChange,
+    netScoreChange: roundInt(inputs.score - startScore),
+    businessesOwned: countBusinessesOwnedByOwner(state),
+  };
+}
+
+/**
+ * Rebuilds a deferred result's ledger against the now-final state
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * `processEndOfTurn` reports the deferred ledger before the scene applies the
+ * pending deltas (it can only project the closing balances), and the closing
+ * tail that follows can still move the score (challenge completions, EndCheck
+ * recompute). Rebuilding keeps the attribution measured at pause time (the
+ * ongoing-cost subtotals) while replacing the net rows/closing balances with
+ * the authoritative post-closing values. No-op when the result carries no
+ * ledger (hand-built results).
+ */
+function refreshDeferredTurnLedger(state: MainStreetState, result: TurnResult): void {
+  const ledger = result.turnLedger;
+  if (!ledger) return;
+  result.turnLedger = buildTurnLedger(state, {
+    income: result.income,
+    ongoingCosts: ledger.ongoingCosts,
+    incidentCoinChange: result.incidentCoinChange,
+    incidentRepChange: result.incidentRepChange,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
+}
+
+/**
  * Processes the end of the MarketPhase (after player clicks End Turn).
  * Runs through all remaining phases automatically:
  *   InvestmentResolution -> IncomePhase -> IncidentPhase -> EndCheck
@@ -365,6 +503,24 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   const coinsAtTurnStart = state.resourceBank.coins;
   const repAtTurnStart = state.resourceBank.reputation;
   const scoreAtTurnStart = state.finalScore;
+  // Ongoing-cost subtotals measured by the closing helpers (signed, zero when a
+  // family has no costs) — reported through the turn ledger so the summary can
+  // break expenses down per category (MS-0MVP45KZV006TMUK).
+  const ongoingCosts: TurnOngoingCosts = { staff: 0, community: 0, business: 0 };
+
+  // Helper that builds the ledger against the CURRENT state balances. Used by
+  // the early-return paths (income phase hasn't run) and where the closing has
+  // already applied everything.
+  const ledgerAtCurrentState = (income: IncomeResult | null): TurnLedger =>
+    buildTurnLedger(state, {
+      income,
+      ongoingCosts,
+      incidentCoinChange: 0,
+      incidentRepChange: 0,
+      coins: state.resourceBank.coins,
+      reputation: state.resourceBank.reputation,
+      score: state.finalScore,
+    });
 
   // AC7 (CG-0MTSHG8RP008E128): while a dual-choice incident is pending and
   // unresolved, the closing sequence must NOT proceed to IncomePhase — the
@@ -383,6 +539,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
   }
   // F3 piggyback pause (epic MS-0MUYC47EL005Z69H): an unresolved piggyback
@@ -403,6 +560,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
   }
   if (state.phase !== 'MarketPhase') {
@@ -445,6 +603,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
   }
 
@@ -460,6 +619,12 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
 
   // Apply business card ongoing costs (street-placed cards only)
   const businessDelta = applyBusinessOngoingCosts(state, applyOpts);
+
+  // Ledger expense attribution: the helpers return the signed delta actually
+  // charged (clamped when coins ran short), which is what the summary reports.
+  ongoingCosts.staff = staffDelta;
+  ongoingCosts.community = communityDelta;
+  ongoingCosts.business = businessDelta;
 
   // Phase: IncidentPhase
   state.phase = 'IncidentPhase';
@@ -525,6 +690,17 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       // scene applies them (idempotently) so the income lands when the turn
       // pauses, exactly as in the legacy UX.
       requiresDeferredClosing: true,
+      // Ledger with the paused turn's attribution and the projected closing
+      // balances (the scene applies the deltas before presenting anything).
+      turnLedger: buildTurnLedger(state, {
+        income,
+        ongoingCosts,
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+        coins: state.resourceBank.coins + pendingCoinDelta,
+        reputation: state.resourceBank.reputation + pendingRepDelta,
+        score: state.finalScore,
+      }),
     };
   }
 
@@ -547,6 +723,18 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingRepDelta,
       pendingScoreDelta: 0, // challenges evaluated at closing (safety net; normally completed per-action)
       requiresDeferredClosing: true,
+      // Projected closing balances: the scene applies the pending deltas after
+      // the end-of-turn animations, then finishDeferredTurnClosing refreshes
+      // the ledger against the final state (score / closing balances).
+      turnLedger: buildTurnLedger(state, {
+        income,
+        ongoingCosts,
+        incidentCoinChange,
+        incidentRepChange,
+        coins: state.resourceBank.coins + pendingCoinDelta,
+        reputation: state.resourceBank.reputation + pendingRepDelta,
+        score: state.finalScore,
+      }),
     };
   }
 
@@ -562,6 +750,17 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   closed.pendingCoinDelta = state.resourceBank.coins - coinsAtTurnStart;
   closed.pendingRepDelta = state.resourceBank.reputation - repAtTurnStart;
   closed.pendingScoreDelta = state.finalScore - scoreAtTurnStart;
+  // Legacy closings applied every delta in place, so the ledger measures the
+  // authoritative post-closing balances against the day-start snapshot.
+  closed.turnLedger = buildTurnLedger(state, {
+    income,
+    ongoingCosts,
+    incidentCoinChange,
+    incidentRepChange,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
   return closed;
 }
 
@@ -1263,13 +1462,28 @@ export function finishDeferredEndOfTurn(state: MainStreetState): TurnResult {
   // its effect applied (accept) or refused (reject), and the escalation (if
   // any) is already on the deck top — nothing remains deferred.
   state.pendingEventChoice = null;
-  return runSinglePlayerTurnClosing(state, {
+  const result = runSinglePlayerTurnClosing(state, {
     income: null, // income for this turn was already applied & presented
     incident: null, // the incident consequence was presented by resolveEventChoice
     incidentCoinChange: 0,
     incidentRepChange: 0,
     turnEnded,
   });
+  // Best-effort ledger for the resumed closing (MS-0MVP45KZV006TMUK): the
+  // paused turn's income/ongoing-cost attribution does not reach this tail
+  // (the paused TurnResult is not carried here), so those subtotals report 0
+  // and the residual lands in `oneOffDeltas`. The net rows and closing
+  // balances are authoritative, so the ledger still reconciles exactly.
+  result.turnLedger = buildTurnLedger(state, {
+    income: null,
+    ongoingCosts: { staff: 0, community: 0, business: 0 },
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
+  return result;
 }
 
 /**
@@ -1336,7 +1550,7 @@ export function finishDeferredTurnClosing(
   // post-incident check). Banner emitted first, then the net row.
   if (checkImmediateLoss(state)) {
     appendTurnNetRow(state, turnEnded);
-    return {
+    const closed: TurnResult = {
       ...result,
       gameResult: state.gameResult,
       finalScore: state.finalScore,
@@ -1344,6 +1558,9 @@ export function finishDeferredTurnClosing(
       choicePending: false,
       pendingScoreDelta,
     };
+    // Refresh the ledger against the now-final state (MS-0MVP45KZV006TMUK).
+    refreshDeferredTurnLedger(state, closed);
+    return closed;
   }
 
   // 4. EndCheck (game-over evaluation — AC4: runs after the animations and
@@ -1369,7 +1586,7 @@ export function finishDeferredTurnClosing(
   //    (CG-0MT5W7UJJ0065MEZ AC3). Reads the post-delta resources.
   appendTurnNetRow(state, turnEnded);
 
-  return {
+  const closed: TurnResult = {
     ...result,
     gameResult: state.gameResult,
     finalScore: state.finalScore,
@@ -1377,6 +1594,11 @@ export function finishDeferredTurnClosing(
     choicePending: false,
     pendingScoreDelta,
   };
+  // Refresh the ledger against the now-final state (MS-0MVP45KZV006TMUK): the
+  // projected closing balances from processEndOfTurn are replaced by the
+  // authoritative post-closing ones (score included).
+  refreshDeferredTurnLedger(state, closed);
+  return closed;
 }
 
 // ── Headless Choice Policy (CG-0MTT7FC7A000AA58 Q1 / CG-0MTSHG8RP008E128) ──
