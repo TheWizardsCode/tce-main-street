@@ -933,6 +933,43 @@ condensed text-only summary.
 - Reuse: `popTextOrIcon` + tweened circles (same deterministic pattern as
   `animateLevelUp`) + `SFX_KEYS.EVENT_CHEER`; no new engine infrastructure.
 
+### Turn Summary panel model (turn-ledger summary)
+
+- Model: `src/scenes/MainStreetTurnSummary.ts` (pure, no Phaser import) —
+  `buildTurnSummary(state, result)` turns the committed `TurnResult.turnLedger`
+  (MS-0MVP45KZV006TMUK) plus `MainStreetState` into the whole Turn Summary
+  dialog content (MS-0MVP45WBA001GAVY, parent MS-0MVL6HMDP004WI41).
+- Reported values, for the turn just closed:
+  - **Businesses owned** — one owner-keyed row per `businessesOwned` key
+    (`ownerId` / `playerId`, `label`, `isHuman`, count + wallet). The dialog
+    currently renders the single human seat (`humanOwner`); the multi-owner
+    rows are already present for a future per-player panel.
+  - **Income subtotals per phase** — base / synergy / reputation / events,
+    plus `incomeTotal` (the four rows sum to the income phase's credited
+    coins).
+  - **Ongoing expenses per category** — staff / community / business, plus
+    `expensesTotal` (signed: zero or negative).
+  - **Incident and one-off deltas** — the resolved incident name plus its
+    coin/reputation delta, and the non-recurring (market / event-play /
+    other) coin/reputation delta.
+  - **Net change** — coin / reputation / score for the day.
+  - **Closing balances** — coin / reputation / score, derived as
+    `day-start snapshot + ledger net`, the ledger's own reconciliation
+    identity (the deferred closing refreshes the net rows against the final
+    state, so closing balances are the post-turn values and stay
+    integer-consistent with the displayed rows).
+- Read-only: never mutates state, consumes no RNG, and never touches the
+  save-point ordering (the checkpoint stays in `finalizeTurn`).
+- Competitive closings carry no ledger, so `buildTurnSummary` returns `null`
+  and the dialog is not presented (parent AC4).
+- Tests: `tests/main-street/turn-summary-model.test.ts` (one test per
+  surfaced value, owner-keyed shape, and a real-engine
+  `processEndOfTurn` integration test); engine ledger coverage lives in
+  `tests/main-street/end-of-turn-ledger.test.ts`.
+- The overlay itself (`showTurnSummaryDialog` with **[ Next Turn ]** and the
+  disabled **[ Bank Loan ]** seam) is a follow-up child of
+  MS-0MVL6HMDP004WI41; this section documents only the pure model.
+
 ### Game-over panel (two-column summary)
 
 - Renderer: `MainStreetOverlayContent.showGameOverOverlay()`.
