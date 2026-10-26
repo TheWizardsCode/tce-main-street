@@ -49,6 +49,24 @@
         "tests/main-street/hand-drag-drop.test.ts",
         "tests/main-street/hand-drag-post-refresh.browser.test.ts"
       ]
+    },
+    "upgrade-drag-browser": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/upgrade-drag-pricing.test.ts tests/main-street/upgrade-action-economy.test.ts tests/main-street/financial-advisor-upgrade-discount.test.ts tests/main-street/drag.test.ts",
+        "npx vitest run --project browser tests/main-street/upgrade-drag-drop.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetTurnControllerDragDrop.ts",
+        "src/scenes/MainStreetRendererDragDrop.ts",
+        "src/scenes/MainStreetRendererMarket.ts",
+        "src/MainStreetMarketPurchase.ts",
+        "src/MainStreetMarket.ts",
+        "src/MainStreetCommands.ts",
+        "src/MainStreetEngineTypes.ts",
+        "tests/main-street/upgrade-drag-pricing.test.ts",
+        "tests/main-street/upgrade-drag-drop.browser.test.ts",
+        "tests/main-street/upgrade-action-economy.test.ts"
+      ]
     }
   }
 }

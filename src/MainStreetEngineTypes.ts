@@ -92,16 +92,21 @@ export interface BuyAndPlaceAction {
 
 /**
  * Buy an upgrade from the market and apply it in one step (drag-drop path,
- * CG-0MT3IYSRL001VVUP). Charges a +50% premium on the upgrade's cost and
+ * CG-0MT3IYSRL001VVUP). Without overrides it charges a +50% premium and
  * consumes 1 action.
+ *
+ * Composite parity (MS-0MVKT3TZF0091IHC): with 2+ actions remaining the UI
+ * supplies the discounted listed cost as `priceOverride` and `extraActions: 1`
+ * (drag + placement); with ≤ 1 action it leaves both unset and the premium +
+ * explainer path applies.
  */
 export interface BuyAndPlaceUpgradeAction {
   type: 'buy-and-place-upgrade';
   cardId: string;
   targetSlot?: number;
-  /** Optional listed-price override for GM 2-action parity (see buyAndPlaceUpgrade). */
+  /** Optional listed-price override for the 2-action parity path (see buyAndPlaceUpgrade). */
   priceOverride?: number;
-  /** Additional daily actions to consume alongside the drag's action (GM parity). */
+  /** Additional daily actions to consume alongside the drag's action (parity path: 1). */
   extraActions?: number;
 }
 

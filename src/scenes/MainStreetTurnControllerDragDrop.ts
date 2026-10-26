@@ -12,7 +12,7 @@ import { DEFAULT_DRAG_DISTANCE_THRESHOLD, createDragDropManager } from '@ui/drag
 import type { DragDropPayload } from '@ui/dragDrop';
 import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { buyAndPlaceBusinessCommand, buyAndPlaceUpgradeCommand } from '../MainStreetCommands';
-import { canBuyAndPlaceUpgrade, canPlayUpgradeFromHand, canPurchaseBusiness } from '../MainStreetMarket';
+import { canBuyAndPlaceUpgrade, canPlayUpgradeFromHand, canPurchaseBusiness, computeUpgradeDragPricing, upgradeDragVetoReason } from '../MainStreetMarket';
 import { canPlaceFromHand } from '../MainStreetEngineCommands';
 import {
   computeEffectiveBusinessPurchaseCost,
@@ -40,6 +40,26 @@ export function initDragDrop(tcCtx: MainStreetTurnControllerContext): void {
       },
       onDragEnd: () => {
         try { s.msRenderer?.clearDragHighlights?.(); } catch (_) { /* ignore */ }
+      },
+      // Illegal-drag feedback (MS-0MVKT3TZF0091IHC AC4): keep the existing
+      // shake + illegal-move SFX (reduced-motion aware, via the same helper
+      // the click paths use) AND state the underlying legality reason in the
+      // instruction text, reusing the LegalityResult wording rather than a
+      // generic message. Applies to a vetoed pickup and a rejected drop.
+      onIllegal: (payload) => {
+        try {
+          playIllegalFeedback(payload?.gameObject as any, s);
+          const cardId = typeof payload?.data === 'string' ? payload.data : undefined;
+          if (!cardId) return;
+          const card = s.state.market.cards.find((c: any) => c.id === cardId);
+          if (card?.family !== 'upgrade') return;
+          // A rejected drop carries the target slot (`zoneData`), so its
+          // reason comes from the drop gate's own LegalityResult; a vetoed
+          // pickup has no slot yet and explains its own checks.
+          const slot = typeof payload?.zoneData === 'number' ? payload.zoneData : undefined;
+          const reason = upgradeDragVetoReason(s.state, cardId, slot);
+          if (reason) s.instructionText.setText(reason);
+        } catch (_) { /* illegal feedback must never crash the drag lifecycle */ }
       },
     });
   
@@ -390,13 +410,18 @@ export function canPickUpUpgradeCard(tcCtx: MainStreetTurnControllerContext, car
     const card = s.state.market.cards.find((c: any) => c.id === cardId);
     if (!card || card.family !== 'upgrade') return false;
 
-    // The premium is charged up front, and at least one eligible business must
-    // exist to drop onto.
-    const premiumCost = Math.ceil(card.cost * 1.5 * 2) / 2;
-    if (s.state.resourceBank.coins < premiumCost) return false;
-    const hasEligibleTarget = s.state.streetGrid.some((slot: any, index: number) =>
-      slot !== null && canBuyAndPlaceUpgrade(s.state, cardId, index).legal);
-    if (!hasEligibleTarget) return false;
+    // Composite-parity pricing (MS-0MVKT3TZF0091IHC): the pickup gate reasons
+    // about the SAME price the execution charges, resolved through the shared
+    // helper (listed cost at ≥ 2 actions, discount-first premium at ≤ 1
+    // action), and it never vetoes a pickup that some eligible target would
+    // legally accept — including a target carrying a per-business upgrade
+    // discount.
+    const hasLegalDropTarget = s.state.streetGrid.some((slot: any, index: number) => {
+      if (slot === null) return false;
+      const pricing = computeUpgradeDragPricing(s.state, card, index);
+      return canBuyAndPlaceUpgrade(s.state, cardId, index, pricing.price).legal;
+    });
+    if (!hasLegalDropTarget) return false;
 
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
     if (check && !check.allowed) return false;
@@ -409,7 +434,14 @@ export function canDropUpgradeCard(tcCtx: MainStreetTurnControllerContext, cardI
 
     const s = tcCtx.scene;
     if (s.state.actionsRemaining <= 0) return false;
-    if (!canBuyAndPlaceUpgrade(s.state, cardId, slotIndex).legal) return false;
+    const card = s.state.market.cards.find((c: any) => c.id === cardId);
+    if (!card || card.family !== 'upgrade') return false;
+
+    // Composite-parity pricing: the drop-zone acceptance (canAccept and the
+    // green/red highlights) prices the drop exactly as the command will —
+    // listed cost at ≥ 2 actions, discount-first premium at ≤ 1 action.
+    const pricing = computeUpgradeDragPricing(s.state, card, slotIndex);
+    if (!canBuyAndPlaceUpgrade(s.state, cardId, slotIndex, pricing.price).legal) return false;
 
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
     if (check && !check.allowed) return false;
@@ -432,48 +464,76 @@ export function onDragDropUpgrade(tcCtx: MainStreetTurnControllerContext, payloa
     const dropSource = { x: payload.gameObject?.x ?? 0, y: payload.gameObject?.y ?? 0 };
     const cardName = card.name;
 
-    s.tooltipManager?.hide();
-    s.clearMarketSelection();
-    s.hiddenTransferSourceCardIds.add(cardId);
-    s.uiPhase = 'animating';
-    s.instructionText.setText(`Applying "${cardName}"...`);
-    s.refreshAll();
+    // Composite-parity pricing (MS-0MVKT3TZF0091IHC): resolve the price and
+    // action spend ONCE through the shared helper that also drives both
+    // gates, then pass them to the undoable command unchanged.
+    const pricing = computeUpgradeDragPricing(s.state, card, slotIndex);
+    const priceOverride = pricing.premiumApplies ? undefined : pricing.price;
 
-    const afterTransfer = (): void => {
-      try {
-        const cmd = buyAndPlaceUpgradeCommand(s.state, cardId, slotIndex);
-        s.undoManager.execute(cmd);
-        s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-        try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-and-place-upgrade', cardId, slotIndex }, description: cmd.description }); } catch (_) {}
-        try { s.gameEvents?.emit('card:placed', { cardId, slotIndex }); } catch (_) {}
-        s.instructionText.setText(`Applied "${cardName}" to slot ${slotIndex} (50% premium)`);
-      } catch (e) {
-        console.error('[MS] DragBuyAndPlaceUpgrade failed', e);
-        const container = s.msRenderer?.getMarketRowCards?.()?.[sourceIndex] ?? s.actionContainer ?? null;
-        playIllegalFeedback(container, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
-      }
-
-      s.hiddenTransferSourceCardIds.delete(cardId);
-      s.uiPhase = 'market';
+    const startTransfer = (): void => {
+      s.tooltipManager?.hide();
+      s.clearMarketSelection();
+      s.hiddenTransferSourceCardIds.add(cardId);
+      s.uiPhase = 'animating';
+      s.instructionText.setText(`Applying "${cardName}"...`);
       s.refreshAll();
-      s.refreshStreetGrid();
-      s.refreshActionButtons();
-      try {
-        (s.msLifecycleManager as any).onTutorialActionComplete?.('apply-upgrade' as TutorialActionType);
-      } catch (_) { /* ignore */ }
+
+      const afterTransfer = (): void => {
+        try {
+          const cmd = buyAndPlaceUpgradeCommand(s.state, cardId, slotIndex, priceOverride, pricing.extraActions);
+          s.undoManager.execute(cmd);
+          s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+          try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-and-place-upgrade', cardId, slotIndex }, description: cmd.description }); } catch (_) {}
+          try { s.gameEvents?.emit('card:placed', { cardId, slotIndex }); } catch (_) {}
+          s.instructionText.setText(pricing.premiumApplies
+            ? `Applied "${cardName}" to slot ${slotIndex} (50% premium)`
+            : `Applied "${cardName}" to slot ${slotIndex} (listed price)`);
+        } catch (e) {
+          console.error('[MS] DragBuyAndPlaceUpgrade failed', e);
+          const container = s.msRenderer?.getMarketRowCards?.()?.[sourceIndex] ?? s.actionContainer ?? null;
+          playIllegalFeedback(container, s);
+          s.instructionText.setText(`Error: ${(e as Error).message}`);
+        }
+
+        s.hiddenTransferSourceCardIds.delete(cardId);
+        s.uiPhase = 'market';
+        s.refreshAll();
+        s.refreshStreetGrid();
+        s.refreshActionButtons();
+        try {
+          (s.msLifecycleManager as any).onTutorialActionComplete?.('apply-upgrade' as TutorialActionType);
+        } catch (_) { /* ignore */ }
+      };
+
+      const destination = s.getStreetSlotCenter(slotIndex);
+      const distancePx = Math.hypot(destination.x - dropSource.x, destination.y - dropSource.y);
+      void s.animateTransferFromMarket({
+        cardId,
+        family: 'upgrade',
+        row: 'market',
+        slotIndex: sourceIndex,
+        source: dropSource,
+        destination,
+        duration: computeDragTransferDuration(distancePx),
+      }).then(afterTransfer);
     };
 
-    const destination = s.getStreetSlotCenter(slotIndex);
-    const distancePx = Math.hypot(destination.x - dropSource.x, destination.y - dropSource.y);
-    void s.animateTransferFromMarket({
-      cardId,
-      family: 'upgrade',
-      row: 'market',
-      slotIndex: sourceIndex,
-      source: dropSource,
-      destination,
-      duration: computeDragTransferDuration(distancePx),
-    }).then(afterTransfer);
+    if (pricing.premiumApplies) {
+      // ≤ 1 action → premium explainer dialog before purchase, matching the
+      // business drag (CG-0MT24X0SX007RLHN). Proceed commits; Cancel returns
+      // the card to the market row with no coins and no actions spent. The
+      // persisted "Don't show this again" preference is honoured by the
+      // dialog itself.
+      s.showBuyAndPlacePremiumDialog(cardName, startTransfer, () => {
+        s.uiPhase = 'market';
+        s.instructionText.setText(`"${cardName}" stays in the market — buy cancelled.`);
+        try { s.msRenderer?.clearDragHighlights?.(); } catch (_) { /* ignore */ }
+        s.refreshAll();
+        s.refreshStreetGrid();
+        s.refreshActionButtons();
+      });
+      return;
+    }
+    startTransfer();
   
 }

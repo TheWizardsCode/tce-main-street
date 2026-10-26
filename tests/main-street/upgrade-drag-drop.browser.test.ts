@@ -38,6 +38,7 @@ import {
   type UpgradeCard,
 } from '../../src/MainStreetCards';
 import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
+import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
 
 const GAME_W = 1280;
 const GAME_H = 720;
@@ -70,6 +71,9 @@ async function bootGame(): Promise<Phaser.Game> {
     TUTORIAL_STATE_STORAGE_KEY,
     JSON.stringify({ schemaVersion: 1, status: 'skipped', completedAt: null, lastStepId: null }),
   );
+  // Start every test with the premium explainer enabled so the dialog path is
+  // observable; premium-drag tests opt into the persisted "don't show" pref.
+  try { localStorage.removeItem(PREMIUM_DIALOG_DISMISSED_KEY); } catch { /* ignore */ }
 
   let container = document.getElementById('game-container');
   if (container) container.remove();
@@ -348,6 +352,21 @@ async function releaseDrag(
 }
 
 /**
+ * Fire the drag manager's `dragstart` handler directly (deterministic probe).
+ *
+ * A real pointer gesture against a *vetoed* pickup never engages the drag, so
+ * `beginDrag({ expectEngage: false })` cannot retry it: under browser CPU
+ * contention the hit zone may not be live yet and the veto (and its
+ * instruction-text reason) would never run. Emitting `dragstart` on the
+ * scene's input plugin exercises the exact module handler the real gesture
+ * reaches, without depending on pointer hit-testing.
+ */
+function emitDragStart(scene: Scene, container: any): void {
+  stepGame(scene);
+  scene.input.emit('dragstart', scene.input.activePointer, container);
+}
+
+/**
  * A level-0 upgrade plus a matching base-level business template, so the flow
  * can be exercised end to end (mirrors upgrade-hand-flow.browser.test.ts).
  */
@@ -384,7 +403,7 @@ function premiumOf(cost: number): number {
  */
 function setupUpgradeScene(
   scene: Scene,
-  opts: { actions?: number; coins?: number; businessLevel?: number } = {},
+  opts: { actions?: number; coins?: number; businessLevel?: number; banked?: number } = {},
 ): { biz: BusinessCard; upgrade: UpgradeCard } {
   const { biz, upgrade } = makeUpgradeFixture();
   const level = opts.businessLevel ?? 0;
@@ -399,6 +418,7 @@ function setupUpgradeScene(
   scene.state.hand = [];
   scene.state.resourceBank.coins = opts.coins ?? 2000;
   scene.state.actionsRemaining = opts.actions ?? 1;
+  scene.state.bankedActions = opts.banked ?? 0;
   scene.state.justMovedUpgradeCardId = null;
 
   scene.pendingHandIndex = null;
@@ -460,6 +480,7 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     destroyGame(game);
     game = null;
     try { localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(PREMIUM_DIALOG_DISMISSED_KEY); } catch { /* ignore */ }
   });
 
   it('advertises the +50% premium and makes the dragged upgrade follow the cursor', async () => {
@@ -509,6 +530,9 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
   it('dropping an upgrade on an eligible business buys and plays it at the premium', async () => {
     game = await bootGame();
     const scene = getScene(game);
+    // The persisted "Don't show this again" preference keeps this test focused
+    // on the drag mechanics; the dialog flow has dedicated tests below.
+    try { localStorage.setItem(PREMIUM_DIALOG_DISMISSED_KEY, 'true'); } catch { /* ignore */ }
     const { upgrade } = setupUpgradeScene(scene, { actions: 1, coins: 2000 });
     const container = await waitForMarketStable(scene, upgrade.id);
     const target = scene.getStreetSlotCenter(0);
@@ -538,15 +562,21 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
   it('rejects a drop on an ineligible business with a snap-back and no action spent', async () => {
     game = await bootGame();
     const scene = getScene(game);
-    // Business sits at level 1 while the upgrade requires level 0.
+    // Slot 0 sits at level 1 while the upgrade requires level 0; slot 2 is a
+    // valid level-0 target, so the pickup is legal and the rejection happens
+    // at the DROP gate (which must explain why).
     const { upgrade } = setupUpgradeScene(scene, { actions: 1, businessLevel: 1 });
+    scene.state.streetGrid[2] = { ...scene.state.streetGrid[0]!, id: 'eligible-lvl0', level: 0 };
+    scene.refreshAll();
+    // Spy on the instruction text: an async SVG-prewarm refresh may reset it
+    // after the gesture, so assert the reason was WRITTEN, not its final value.
+    const setTextSpy = vi.spyOn(scene.instructionText, 'setText');
     let container = await waitForMarketStable(scene, upgrade.id);
     const originX = container.x;
     const originY = container.y;
     const target = scene.getStreetSlotCenter(0);
 
     container = await beginDrag(scene, container, {
-      expectEngage: false,
       resolve: () => findMarketCardContainer(scene, upgrade.id),
     });
     await releaseDrag(scene, target.x, target.y, 500);
@@ -557,9 +587,14 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     expect(container.y).toBeCloseTo(originY, 0);
     expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
     expect(scene.state.streetGrid[0]?.level).toBe(1);
+    expect(scene.state.streetGrid[2]?.level).toBe(0);
     expect(scene.state.actionsRemaining).toBe(1);
     expect(scene.state.resourceBank.coins).toBe(2000);
     expect(scene.undoManager.canUndo()).toBe(false);
+    // The rejected drop explains itself with the drop gate's legality reason.
+    expect(setTextSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Business at slot 0 is not a valid target for this upgrade.'),
+    );
   }, 60_000);
 
   it('dims the upgrade, vetoes the drag, and explains the reason when no actions remain', async () => {
@@ -584,15 +619,14 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     // The full card details are preserved alongside the reason.
     expect(String(showSpy.mock.calls[0][0])).toContain(`Upgrade: ${upgrade.name}`);
 
-    // A full gesture leaves the card exactly where it started.  The pickup is
-    // vetoed (no actions), so the drag is not expected to engage.
+    // With the budget spent the card is dimmed and never registered as
+    // draggable, so there is no gesture to make: it stays exactly where it is
+    // and the hover tooltip above is the explanation (no-action vetoes have no
+    // dragstart to hook).
     const originX = container.x;
     const originY = container.y;
-    container = await beginDrag(scene, container, {
-      expectEngage: false,
-      resolve: () => findMarketCardContainer(scene, upgrade.id),
-    });
-    await releaseDrag(scene, scene.getStreetSlotCenter(0).x, scene.getStreetSlotCenter(0).y, 400);
+    emitDragStart(scene, container);
+    await wait(50);
 
     expect(container.x).toBeCloseTo(originX, 0);
     expect(container.y).toBeCloseTo(originY, 0);
@@ -600,9 +634,170 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
   }, 60_000);
 
+  it('applies the upgrade at the listed price and spends both actions on a 2-action day (reported case)', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    // Reported scenario: a Bookshop on the board, a 300-cost Bookshop upgrade
+    // in the market, 348 coins and 2 actions (1 banked). The undiscounted
+    // premium (450) is unaffordable, but the composite-parity listed price is
+    // not — the drag must be accepted, charged at the listed cost.
+    const { upgrade } = setupUpgradeScene(scene, {
+      actions: 2,
+      coins: 348,
+      banked: 1,
+    });
+    scene.state.streetGrid[0]!.name = 'Bookshop';
+    upgrade.targetBusiness = 'Bookshop';
+    upgrade.cost = 300;
+    scene.refreshAll();
+
+    const dialogSpy = vi.spyOn(scene, 'showBuyAndPlacePremiumDialog');
+    const container = await waitForMarketStable(scene, upgrade.id);
+    const target = scene.getStreetSlotCenter(0);
+
+    await beginDrag(scene, container, {
+      resolve: () => findMarketCardContainer(scene, upgrade.id),
+    });
+    await releaseDrag(scene, target.x, target.y);
+
+    await waitForCondition(
+      () => scene.state.streetGrid[0]?.level === 1,
+      'upgrade applied at the listed price after the drop',
+      10_000,
+      scene,
+    );
+
+    // No premium dialog and no premium wording on the parity path.
+    expect(dialogSpy).not.toHaveBeenCalled();
+    expect(String(scene.instructionText?.text ?? '')).not.toMatch(/premium/i);
+    // Listed cost charged (300 deducted → 48 left) and BOTH actions consumed;
+    // the banked action is spent per action.
+    expect(scene.state.resourceBank.coins).toBe(48);
+    expect(scene.state.actionsRemaining).toBe(0);
+    expect(scene.state.bankedActions).toBe(0);
+    expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(false);
+    expect(scene.undoManager.canUndo()).toBe(true);
+
+    // Undo restores the card, the business level, the coins AND both actions
+    // (banked decrement included); redo re-applies (AC6).
+    scene.undoManager.undo();
+    expect(scene.state.streetGrid[0]?.level).toBe(0);
+    expect(scene.state.resourceBank.coins).toBe(348);
+    expect(scene.state.actionsRemaining).toBe(2);
+    expect(scene.state.bankedActions).toBe(1);
+    expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
+    scene.undoManager.redo();
+    expect(scene.state.streetGrid[0]?.level).toBe(1);
+    expect(scene.state.resourceBank.coins).toBe(48);
+    expect(scene.state.actionsRemaining).toBe(0);
+    expect(scene.state.bankedActions).toBe(0);
+  }, 60_000);
+
+  it('fires the premium explainer at 1 action and commits the premium on Proceed', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    const { upgrade } = setupUpgradeScene(scene, { actions: 1, coins: 2000 });
+
+    // Capture the dialog callbacks without rendering the overlay so the test
+    // can assert fire-before-purchase and drive Proceed deterministically.
+    let onProceed: (() => void) | undefined;
+    let onCancel: (() => void) | undefined;
+    vi.spyOn(scene, 'showBuyAndPlacePremiumDialog').mockImplementation(
+      (_name: string, proceed: () => void, cancel: () => void) => {
+        onProceed = proceed;
+        onCancel = cancel;
+      },
+    );
+
+    const container = await waitForMarketStable(scene, upgrade.id);
+    const target = scene.getStreetSlotCenter(0);
+    await beginDrag(scene, container, {
+      resolve: () => findMarketCardContainer(scene, upgrade.id),
+    });
+    await releaseDrag(scene, target.x, target.y);
+
+    // The dialog fires BEFORE the purchase — nothing has been committed yet.
+    await waitForCondition(() => !!onProceed, 'premium explainer to fire', 10_000, scene);
+    expect(scene.state.resourceBank.coins).toBe(2000);
+    expect(scene.state.actionsRemaining).toBe(1);
+    expect(scene.state.streetGrid[0]?.level).toBe(0);
+
+    onProceed!();
+    await waitForCondition(
+      () => scene.state.streetGrid[0]?.level === 1,
+      'premium purchase to commit on Proceed',
+      10_000,
+      scene,
+    );
+
+    // Discount-first premium (`ceil(cost × 1.5 × 2) / 2`), exactly one action.
+    expect(scene.state.resourceBank.coins).toBe(2000 - premiumOf(upgrade.cost));
+    expect(scene.state.actionsRemaining).toBe(0);
+    expect(String(scene.instructionText?.text ?? '')).toMatch(/premium/i);
+    expect(onCancel).toBeTypeOf('function');
+  }, 60_000);
+
+  it('cancelling the premium explainer leaves the card in the market row and spends nothing', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    const { upgrade } = setupUpgradeScene(scene, { actions: 1, coins: 2000 });
+
+    let onCancel: (() => void) | undefined;
+    vi.spyOn(scene, 'showBuyAndPlacePremiumDialog').mockImplementation(
+      (_name: string, _proceed: () => void, cancel: () => void) => {
+        onCancel = cancel;
+      },
+    );
+
+    const container = await waitForMarketStable(scene, upgrade.id);
+    const target = scene.getStreetSlotCenter(0);
+    await beginDrag(scene, container, {
+      resolve: () => findMarketCardContainer(scene, upgrade.id),
+    });
+    await releaseDrag(scene, target.x, target.y);
+
+    await waitForCondition(() => !!onCancel, 'premium explainer to fire', 10_000, scene);
+    onCancel!();
+    await wait(50);
+
+    expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
+    expect(scene.state.streetGrid[0]?.level).toBe(0);
+    expect(scene.state.resourceBank.coins).toBe(2000);
+    expect(scene.state.actionsRemaining).toBe(1);
+    expect(scene.undoManager.canUndo()).toBe(false);
+    expect(scene.uiPhase).toBe('market');
+  }, 60_000);
+
+  it('states the affordability reason in the instruction text on a vetoed pickup', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    // 1 action + 348 coins: the 300-cost upgrade's premium (450) is
+    // unaffordable, so pickup is vetoed — and the reason must be surfaced
+    // alongside the existing illegal-move SFX/shake.
+    const { upgrade } = setupUpgradeScene(scene, { actions: 1, coins: 348 });
+    upgrade.cost = 300;
+    const setTextSpy = vi.spyOn(scene.instructionText, 'setText');
+    const container = await waitForMarketStable(scene, upgrade.id);
+    const originX = container.x;
+    const originY = container.y;
+
+    emitDragStart(scene, container);
+    await wait(50);
+
+    // Illegal feedback still happens: the card never leaves the row (the
+    // 5px shake is the illegal-move feedback itself)…
+    expect(Math.abs(container.x - originX)).toBeLessThanOrEqual(6);
+    expect(container.y).toBeCloseTo(originY, 0);
+    expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
+    // …and the instruction text explains WHY with the legality wording.
+    expect(setTextSpy).toHaveBeenCalledWith('Need 450 at premium, have 348.');
+  }, 60_000);
+
   it('animates the transfer from the drop location and plays the upgrade SFX', async () => {
     game = await bootGame();
     const scene = getScene(game);
+    // 1-action day: the premium dialog would otherwise gate the transfer.
+    try { localStorage.setItem(PREMIUM_DIALOG_DISMISSED_KEY, 'true'); } catch { /* ignore */ }
     const { upgrade } = setupUpgradeScene(scene, { actions: 1 });
     let container = await waitForMarketStable(scene, upgrade.id);
     const originX = container.x;

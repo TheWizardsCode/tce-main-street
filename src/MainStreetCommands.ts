@@ -603,14 +603,21 @@ export function buyAndPlaceBusinessCommand(
 
 /**
  * Command: Buy & Place Upgrade directly onto a business (drag-drop path,
- * CG-0MT3IYSRL001VVUP). Consumes 1 action and charges the +50% premium
- * (Math.ceil(cost * 1.5 * 2) / 2, matching business buy-and-place).
+ * CG-0MT3IYSRL001VVUP). Without overrides it consumes 1 action and charges
+ * the +50% premium (Math.ceil(cost * 1.5 * 2) / 2, matching business
+ * buy-and-place).
+ *
+ * Composite parity (MS-0MVKT3TZF0091IHC): the UI resolves one price/action
+ * pair from `actionsRemaining` and passes it here unchanged — on the 2+-action
+ * listed-cost path `priceOverride` is the discounted listed cost and
+ * `extraActions` is 1 (drag + placement); on the ≤ 1-action premium path both
+ * are left unset (premium replaces the placement action). The undo snapshot
+ * restores both consumed actions and the banked decrement.
  *
  * @param priceOverride Optional price to charge instead of the +50% premium
- *                      (listed cost for GM parity on 2-action days — when
- *                      supplied, still consumes 1 action).
- * @param extraActions  Additional daily actions to consume (GM parity — 1 on
- *                      Golden Mile days where the composite consumes 2 actions).
+ *                      (discounted listed cost on the 2-action parity path).
+ * @param extraActions  Additional daily actions to consume (1 on the parity
+ *                      path, where the drag also pays the placement action).
  */
 export function buyAndPlaceUpgradeCommand(
   state: MainStreetState,

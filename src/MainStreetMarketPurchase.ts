@@ -44,6 +44,33 @@ export function effectiveUpgradeCost(
 }
 
 /**
+ * Street-grid slots holding a business this upgrade card can target: matching
+ * business name, exactly the required level, and still below `maxLevel`.
+ *
+ * Deliberately excludes ownership and affordability — those are gated by
+ * {@link canBuyAndPlaceUpgrade}, so a caller asking "could any target accept
+ * this drop?" gets the same answer the drop gate gives.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+function eligibleUpgradeTargetSlots(
+  state: MainStreetState,
+  card: UpgradeCard,
+): number[] {
+  const requiredLevel = card.requiredLevel ?? 0;
+  const slots: number[] = [];
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    const biz = state.streetGrid[i];
+    if (biz === null) continue;
+    if (biz.name !== card.targetBusiness) continue;
+    if (biz.level !== requiredLevel) continue;
+    if (biz.level >= biz.maxLevel) continue;
+    slots.push(i);
+  }
+  return slots;
+}
+
+/**
  * Lowest effective upgrade cost across every eligible target business on the
  * street (used when no target slot is known yet, e.g. AI bank planning).
  * Falls back to the listed cost when no business is eligible.
@@ -57,19 +84,149 @@ export function bestEffectiveUpgradeCost(
   card: UpgradeCard,
 ): number {
   let best = card.cost;
-  const requiredLevel = card.requiredLevel ?? 0;
-  for (let i = 0; i < state.streetGrid.length; i++) {
-    const biz = state.streetGrid[i];
-    if (
-      biz !== null &&
-      biz.name === card.targetBusiness &&
-      biz.level === requiredLevel &&
-      biz.level < biz.maxLevel
-    ) {
-      best = Math.min(best, effectiveUpgradeCost(state, card, i));
-    }
+  for (const slot of eligibleUpgradeTargetSlots(state, card)) {
+    best = Math.min(best, effectiveUpgradeCost(state, card, slot));
   }
   return best;
+}
+
+/**
+ * The +50% drag/composite premium on an upgrade's **already discounted**
+ * listed cost (`Math.ceil(cost * 1.5 * 2) / 2`).
+ *
+ * Ordering (CG-0MTKMGL66004I0PC): callers must pass the discounted listed
+ * cost, so the per-business upgrade discount is never compounded by the
+ * premium.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ */
+export function upgradeDragPremiumOf(discountedListedCost: number): number {
+  return Math.ceil(discountedListedCost * 1.5 * 2) / 2;
+}
+
+/**
+ * Resolved price/action pair for a market→business **upgrade drag**.
+ *
+ * @see computeUpgradeDragPricing
+ */
+export interface UpgradeDragPricing {
+  /** Discounted listed cost at the resolved target (discount first, no premium). */
+  listedCost: number;
+  /** Discounted listed cost with the +50% premium, rounded up to 0.5. */
+  premiumCost: number;
+  /** Price the drag charges: listed at ≥ 2 actions, premium at ≤ 1 action. */
+  price: number;
+  /** Extra actions consumed on top of the drag's own action (1 on parity). */
+  extraActions: number;
+  /** True when the +50% premium applies (≤ 1 action remaining). */
+  premiumApplies: boolean;
+}
+
+/**
+ * Resolves ONE price/action pair for a market→business upgrade drag from the
+ * current daily action budget — the single source of truth shared by the
+ * pickup veto, the drop-zone acceptance (`canAccept` / highlights) and the
+ * executed undoable command (MS-0MVKT3TZF0091IHC).
+ *
+ * Composite parity (CG-0MT24X0SX007RLHN), identical to the business drag:
+ *
+ * - **≥ 2 actions** — charge the discounted **listed** cost and consume the
+ *   drag's action plus the placement action (`extraActions: 1`), so the drag
+ *   is never cheaper than the click composite.
+ * - **≤ 1 action** — charge the discount-first **+50% premium** and consume
+ *   only the drag's own action (`extraActions: 0`); the premium replaces the
+ *   placement action.
+ *
+ * The per-business upgrade discount is applied to the LISTED cost first
+ * (CG-0MTKMGL66004I0PC).
+ *
+ * @param state            Current game state (read-only).
+ * @param card             The upgrade card in the market.
+ * @param targetSlot       Target business slot. When omitted (e.g. the pickup
+ *                         gate, which has no slot yet) the cheapest eligible
+ *                         target is used, falling back to the card's listed
+ *                         cost when no business is eligible.
+ * @param actionsRemaining Daily action budget to price against (defaults to
+ *                         `state.actionsRemaining`).
+ * @returns The resolved pricing.
+ */
+export function computeUpgradeDragPricing(
+  state: MainStreetState,
+  card: UpgradeCard,
+  targetSlot?: number,
+  actionsRemaining: number = state.actionsRemaining,
+): UpgradeDragPricing {
+  let listedCost: number;
+  if (targetSlot !== undefined) {
+    listedCost = effectiveUpgradeCost(state, card, targetSlot);
+  } else {
+    listedCost = bestEffectiveUpgradeCost(state, card);
+  }
+
+  const premiumCost = upgradeDragPremiumOf(listedCost);
+  const premiumApplies = actionsRemaining <= 1;
+
+  return {
+    listedCost,
+    premiumCost,
+    price: premiumApplies ? premiumCost : listedCost,
+    extraActions: premiumApplies ? 0 : 1,
+    premiumApplies,
+  };
+}
+
+/**
+ * Human-readable reason an upgrade drag is illegal, or `undefined` when it is
+ * legal (MS-0MVKT3TZF0091IHC AC4).
+ *
+ * Reuses the drop gate's `LegalityResult` reason when a target slot is known,
+ * so a rejected drop explains itself with the same wording the execution
+ * would use. Without a slot (a vetoed pickup) the reason covers the pickup
+ * gate's own checks: no actions, no eligible business, or the coins needed at
+ * the applicable (premium or listed) price.
+ *
+ * @param state      Current game state (read-only).
+ * @param cardId     ID of the Upgrade card in the market.
+ * @param targetSlot Optional drop target slot.
+ * @returns A reason string, or `undefined` when the drag would be legal.
+ */
+export function upgradeDragVetoReason(
+  state: MainStreetState,
+  cardId: string,
+  targetSlot?: number,
+): string | undefined {
+  const card = state.market.cards.find(
+    c => c.id === cardId && c.family === 'upgrade',
+  ) as UpgradeCard | undefined;
+  if (!card) return 'This card is not in the upgrade market.';
+
+  if (state.actionsRemaining <= 0) {
+    return 'No actions remaining this week. End your turn to start next week.';
+  }
+
+  if (targetSlot !== undefined) {
+    const pricing = computeUpgradeDragPricing(state, card, targetSlot);
+    const legality = canBuyAndPlaceUpgrade(state, cardId, targetSlot, pricing.price);
+    return legality.legal ? undefined : legality.reason;
+  }
+
+  const slots = eligibleUpgradeTargetSlots(state, card);
+  if (slots.length === 0) return 'No valid business to upgrade.';
+
+  const pricing = computeUpgradeDragPricing(state, card);
+  if (state.resourceBank.coins < pricing.price) {
+    return pricing.premiumApplies
+      ? `Need ${pricing.price} at premium, have ${state.resourceBank.coins}.`
+      : `Need ${pricing.price}, have ${state.resourceBank.coins}.`;
+  }
+
+  // Affordability is satisfied for the cheapest target — the pickup is legal
+  // when ANY eligible target would accept the drop at the shared price.
+  const anyLegal = slots.some((slot) => {
+    const slotPricing = computeUpgradeDragPricing(state, card, slot);
+    return canBuyAndPlaceUpgrade(state, cardId, slot, slotPricing.price).legal;
+  });
+  return anyLegal ? undefined : 'No valid business to upgrade.';
 }
 
 /**
@@ -657,14 +814,17 @@ export function purchaseUpgrade(
  * {@link canPurchaseUpgrade} (which only requires *some* eligible business
  * on the street), the drop must land on a business that matches the
  * upgrade's `targetBusiness` at exactly its `requiredLevel` and is still
- * below `maxLevel`. Affordability is checked against the +50% premium — the
- * price the drag-drop actually charges, not the listed cost.
+ * below `maxLevel`. Affordability defaults to the discount-first +50%
+ * premium; the controller passes the ONE price resolved by
+ * {@link computeUpgradeDragPricing} (listed cost on the 2+-action parity
+ * path, premium at ≤ 1 action) so the gate, the highlights and the executed
+ * command can never disagree (MS-0MVKT3TZF0091IHC).
  *
  * @param state      Current game state (read-only).
  * @param cardId     ID of the Upgrade card in the market.
  * @param targetSlot Street grid slot the card was dropped on.
- * @param priceOverride Optional price replacing the +50% premium (GC parity
- *                      paths charge the listed cost instead).
+ * @param priceOverride Optional price replacing the +50% premium (the parity
+ *                      path charges the discounted listed cost instead).
  * @returns LegalityResult indicating whether the drop may be applied.
  */
 export function canBuyAndPlaceUpgrade(
@@ -707,9 +867,10 @@ export function canBuyAndPlaceUpgrade(
   // to the LISTED base cost FIRST, then the +50% drag premium — the discount
   // is never compounded by the premium. The click path (purchaseUpgrade)
   // charges the discounted base cost, so the discount is reflected in both.
-  const discount = computeUpgradeCostDiscount(state, targetSlot);
-  const discountedCost = Math.max(0, card.cost - discount);
-  const premiumCost = Math.ceil(discountedCost * 1.5 * 2) / 2;
+  // The premium formula itself is shared with the parity price helper
+  // (computeUpgradeDragPricing) so the gates can never drift.
+  const discountedCost = effectiveUpgradeCost(state, card, targetSlot);
+  const premiumCost = upgradeDragPremiumOf(discountedCost);
   const price = priceOverride ?? premiumCost;
   if (state.resourceBank.coins < price) {
     return {
@@ -723,8 +884,8 @@ export function canBuyAndPlaceUpgrade(
 
 /**
  * Buys an upgrade from the market and applies it in one step (drag-drop
- * path, CG-0MT3IYSRL001VVUP). Charges a +50% premium on the upgrade's
- * cost.
+ * path, CG-0MT3IYSRL001VVUP). Charges the discount-first +50% premium unless
+ * `priceOverride` supplies the parity path's discounted listed cost.
  *
  * @param state      Current game state (mutated in-place).
  * @param cardId     ID of the Upgrade card in the market.
@@ -773,9 +934,9 @@ export function buyAndPlaceUpgrade(
   //
   // Ordering (CG-0MTKMGL66004I0PC): discount the LISTED base cost first,
   // THEN apply the premium. The click path charges the discounted base cost.
-  const discount = computeUpgradeCostDiscount(state, businessIndex);
-  const discountedCost = Math.max(0, card.cost - discount);
-  const premiumCost = Math.ceil(discountedCost * 1.5 * 2) / 2;
+  // The shared price helper keeps the gates and this execution in lock-step.
+  const discountedCost = effectiveUpgradeCost(state, card, businessIndex);
+  const premiumCost = upgradeDragPremiumOf(discountedCost);
   const price = priceOverride ?? premiumCost;
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to buy-and-place ${card.name}${priceOverride !== undefined ? '' : ' at premium'}. Need ${price}, have ${state.resourceBank.coins}.`);
