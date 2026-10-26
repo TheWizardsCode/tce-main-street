@@ -67,6 +67,17 @@
         "tests/main-street/upgrade-drag-drop.browser.test.ts",
         "tests/main-street/upgrade-action-economy.test.ts"
       ]
+    },
+    "turn-summary-dialog-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetOverlayContent.ts",
+        "src/scenes/MainStreetScene.ts",
+        "src/scenes/MainStreetTurnSummary.ts",
+        "tests/main-street/turn-summary-dialog.browser.test.ts"
+      ]
     }
   }
 }

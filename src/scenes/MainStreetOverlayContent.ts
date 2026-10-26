@@ -30,6 +30,7 @@ import {
   buildGameOverPlayerRows,
   formatEndReason,
 } from './MainStreetGameOverSummary';
+import type { TurnSummary } from './MainStreetTurnSummary';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
@@ -46,6 +47,15 @@ import {
 // Default English strings are registered at module-load time (merges with the
 // other Main Street 'en' bundles).
 registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
+
+/**
+ * Formats a signed integer for dialog rows as `+N` / `-N` / `0`. Coins are
+ * whole numbers (integer economy, CG-0MTIO1M15001E9Y6), so no rounding is
+ * applied here.
+ */
+function formatSigned(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
+}
 
 export class MainStreetOverlayContent {
   constructor(private readonly scene: any) {}
@@ -1099,6 +1109,211 @@ export class MainStreetOverlayContent {
     ).setOrigin(0.5, 0).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(footerText);
     s.overlayObjects.push(footerText);
+  }
+
+  /**
+   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT).
+   *
+   * Presented after the end-of-turn animations complete (gated into the
+   * deferred closing by MS-0MVP46Q8X003419R). Renders the turn just closed
+   * from the Phaser-free {@link buildTurnSummary} model (child
+   * MS-0MVP45WBA001GAVY): businesses owned, per-phase income, per-category
+   * ongoing expenses, incident and one-off deltas, the net change and the
+   * closing balances. `[ Next Turn ]` is the primary action and resumes the
+   * closing flow via {@link onNextTurn}; `[ Bank Loan ]` is **always**
+   * rendered disabled with an explanatory hint, behind the
+   * `onBankLoanAction` seam that MS-0MVL6DZI0000F6CG (Bank Loans) will
+   * replace — it is never shown enabled by this item.
+   *
+   * Overlay pattern compliance (AGENTS.md UI Best Practices):
+   * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
+   * elements are parented into `s.hudContainer`; depths 199 (backdrop) /
+   * 200 (box) / 201 (elements). Instant appearance (no fade-in —
+   * reduced-motion safe); `[ Next Turn ]` plays its SFX via `safePlaySound`
+   * (mute/volume respected). Dismissal resets `s.overlayObjects`.
+   *
+   * @param summary          The turn's rendered summary model.
+   * @param onNextTurn       Called when the player clicks [ Next Turn ].
+   * @param onBankLoanAction Wiring seam for MS-0MVL6DZI0000F6CG; never
+   *                          invoked while loans are unimplemented.
+   */
+  public showTurnSummaryDialog(
+    summary: TurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: () => void,
+  ): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    // Wiring seam retained for MS-0MVL6DZI0000F6CG (Bank Loans). The button
+    // stays disabled in this item, so the callback is deliberately never
+    // invoked here.
+    void onBankLoanAction;
+
+    const centerX = s.layout.gameW / 2;
+    const panelW = 640;
+    const panelH = 560;
+    const panelX = centerX - panelW / 2;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+    const leftX = panelX + 32;
+    const rightX = panelX + 344;
+    const colTop = panelY + 92;
+
+    // Backdrop 199 / box 200 (createOverlayBackground), elements 201 below.
+    const boxConfig = {
+      width: panelW,
+      height: panelH,
+      color: 0x000000,
+      alpha: 1.0,
+      depth: 200,
+    };
+    const overlay = createOverlayBackground(
+      s,
+      { depth: 199, alpha: 0.6 },
+      boxConfig,
+    );
+    s.overlayObjects.push(...overlay.objects);
+
+    /** Adds a depth-201 element, parenting it into the HUD container. */
+    const addText = (
+      x: number,
+      y: number,
+      text: string,
+      style: Record<string, unknown>,
+      originX = 0,
+      originY = 0,
+    ): void => {
+      const obj = s.add.text(x, y, text, style)
+        .setOrigin(originX, originY)
+        .setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(obj);
+      s.overlayObjects.push(obj);
+    };
+
+    // ── Title band ────────────────────────────────────────────────
+    addText(centerX, panelY + 30, 'Turn Summary', {
+      fontSize: '24px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }, 0.5);
+    addText(centerX, panelY + 60, `Day ${summary.turn}`, {
+      fontSize: '15px', color: '#bbaa88', fontFamily: FONT_FAMILY,
+    }, 0.5);
+
+    // ── Left column: income, expenses, businesses owned ──────────
+    let y = colTop;
+    addText(leftX, y, 'Income', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    y += 22;
+    for (const row of summary.income) {
+      addText(leftX, y, `${row.label}: ${formatSigned(row.coins)}`, {
+        fontSize: '13px', color: row.coins < 0 ? '#ff8888' : '#ddccbb', fontFamily: FONT_FAMILY,
+      });
+      y += 20;
+    }
+    addText(leftX, y, `Income total: ${formatSigned(summary.incomeTotal)}`, {
+      fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
+    });
+    y += 28;
+    addText(leftX, y, 'Expenses', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    y += 22;
+    for (const row of summary.expenses) {
+      // Ongoing costs are signed (zero or negative) — render them as-is.
+      addText(leftX, y, `${row.label}: ${formatSigned(row.coins)}`, {
+        fontSize: '13px', color: '#ff8888', fontFamily: FONT_FAMILY,
+      });
+      y += 20;
+    }
+    addText(leftX, y, `Expenses total: ${formatSigned(summary.expensesTotal)}`, {
+      fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
+    });
+    y += 28;
+    addText(leftX, y, `Businesses owned: ${summary.humanOwner?.businessesOwned ?? 0}`, {
+      fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+    });
+
+    // ── Right column: incident, one-off, net, closing ─────────────
+    let ry = colTop;
+    addText(rightX, ry, 'Incident', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    ry += 22;
+    addText(rightX, ry,
+      `${summary.incidentName ?? 'No incident'} — Coins ${formatSigned(summary.incident.coins)}, Rep ${formatSigned(summary.incident.reputation)}`,
+      {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+        wordWrap: { width: panelW - (rightX - panelX) - 32 },
+      },
+    );
+    ry += 30;
+    addText(rightX, ry, 'One-off changes', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    ry += 22;
+    addText(rightX, ry,
+      `Coins ${formatSigned(summary.oneOff.coins)}, Rep ${formatSigned(summary.oneOff.reputation)}`,
+      {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      },
+    );
+    ry += 30;
+    addText(rightX, ry, 'Net change', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    ry += 22;
+    addText(rightX, ry,
+      `Coins ${formatSigned(summary.net.coins)}, Rep ${formatSigned(summary.net.reputation)}, Score ${formatSigned(summary.net.score)}`,
+      {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      },
+    );
+    ry += 30;
+    addText(rightX, ry, 'Closing balances', {
+      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    });
+    ry += 22;
+    addText(rightX, ry,
+      `Coins ${summary.closing.coins}, Rep ${summary.closing.reputation}, Score ${summary.closing.score}`,
+      {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      },
+    );
+
+    // ── Actions ───────────────────────────────────────────────────
+    const btnY = panelY + panelH - 60;
+
+    // Primary action: resumes the deferred closing flow via onNextTurn.
+    const nextTurnBtn = createOverlayButton(
+      s, centerX - 120, btnY,
+      '[ Next Turn ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
+    nextTurnBtn.on('pointerdown', () => {
+      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+      onNextTurn();
+    });
+    s.overlayObjects.push(nextTurnBtn);
+
+    // [ Bank Loan ] is always rendered disabled (AC4): muted colour, no
+    // interactivity, and an explanatory hint. The onBankLoanAction seam above
+    // is what MS-0MVL6DZI0000F6CG (Bank Loans) replaces to enable it.
+    const bankLoanBtn = createOverlayButton(
+      s, centerX + 120, btnY,
+      '[ Bank Loan ]', 201,
+      { color: '#6b6459', hoverColor: '#6b6459' },
+    );
+    bankLoanBtn.disableInteractive();
+    if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
+    s.overlayObjects.push(bankLoanBtn);
+
+    addText(centerX, panelY + panelH - 24,
+      'Bank loans are not available yet — coming in a future update.', {
+        fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
+        wordWrap: { width: panelW - 60 },
+      }, 0.5);
   }
 
   /**

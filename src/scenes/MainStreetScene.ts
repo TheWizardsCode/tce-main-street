@@ -1415,6 +1415,32 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
+   * per-phase income, per-category ongoing expenses, incident and one-off
+   * deltas, the net change and the closing balances, with a primary
+   * [ Next Turn ] action and an always-disabled [ Bank Loan ] affordance.
+   * Delegates to the overlay manager's showTurnSummaryDialog.
+   *
+   * @param summary          The turn's rendered summary model.
+   * @param onNextTurn       Called when the player clicks [ Next Turn ].
+   * @param onBankLoanAction Seam for the future loans feature
+   *                          (MS-0MVL6DZI0000F6CG); unused today.
+   */
+  public showTurnSummaryDialog(
+    summary: import('./MainStreetTurnSummary').TurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showTurnSummaryDialog === 'function') {
+      (this.msOverlayManager as any).showTurnSummaryDialog(summary, onNextTurn, onBankLoanAction);
+    } else {
+      // No overlay manager (headless/tests): continue the closing rather than
+      // strand the turn.
+      onNextTurn();
+    }
+  }
+
+  /**
    * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D): past storyline
    * choices and outcomes, or a sensible empty state. Delegates to the overlay
    * manager's showStorylineJournalDialog.
