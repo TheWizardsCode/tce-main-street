@@ -972,14 +972,24 @@ condensed text-only summary.
 - Overlay: `MainStreetOverlayContent.showTurnSummaryDialog()`
   (MS-0MVP46AMO002SZUT) renders the model above — instant (no fade-in, so it
   is reduced-motion safe), overlay-pattern compliant (`hudContainer`
-  parenting, depths 199/200/201, dismissal via `s.overlayObjects`) — with
-  **[ Next Turn ]** as the primary action and an always-disabled
-  **[ Bank Loan ]** seam reserved for MS-0MVL6DZI0000F6CG.
+  parenting, depths 199/200/201, dismissal via `s.overlayObjects`). It shows
+  a `Turn Summary` / `Day <n>` title, then two columns: **left** income per
+  phase (base / synergy / reputation / events) with its total, ongoing
+  expenses per category (staff / community / business) with its total, and
+  **businesses owned** for the human seat; **right** the resolved incident
+  (name + coin/reputation delta), the one-off changes, the net coin /
+  reputation / score change and the closing coin / reputation / score
+  balances. The actions are **[ Next Turn ]** (primary) and an
+  always-disabled **[ Bank Loan ]** carrying the hint *“Bank loans are not
+  available yet — coming in a future update.”* — the seam reserved for
+  MS-0MVL6DZI0000F6CG (Bank Loans), which replaces only the
+  `onBankLoanAction` wiring; this item never enables it.
   `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
   overlay manager (headless), continues the closing instead of stranding the
   turn.
-- Gate (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
-  `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`.
+- When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
+  `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
+  every closing animation (phased income show + incident reveal) has finished.
   `finishTurnPresentation` hands the shared closing primitive
   (`presentTurnClosing`) a gate callback instead of `advanceTurn` directly, so
   the dialog is presented only after all end-of-turn animations complete and
