@@ -14,6 +14,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissTurnSummaryDialog } from './helpers/turn-summary-dialog';
 import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
 import { getEventTemplates } from '../../src/MainStreetCards';
 
@@ -833,6 +834,9 @@ describe('MainStreet Activity Log content regression (MS-0MV14JDUG000E1V6)', () 
     forceSafeIncidents(scene);
     const beforeTurn = scene.state.turn;
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    // The deferred closing gates the next day behind the Turn Summary dialog
+    // (MS-0MVP46Q8X003419R); dismiss it so the advance-wait below is unchanged.
+    await dismissTurnSummaryDialog(scene);
     await waitForCondition(() => scene.state.turn > beforeTurn, 15_000);
 
     // The deferred flush renders the accumulated entries once the closing

@@ -237,6 +237,15 @@ const DOCUMENTED_WAITS: readonly DocumentedWait[] = [
     capMs: INCOME_COLLECTION_CAP_MS,
   },
   {
+    // Turn Summary gate (MS-0MVP46Q8X003419R): the deferred closing presents
+    // the summary dialog only after the income choreography finishes
+    // collecting, so this wait races the same income-collection cap as the
+    // turn-advance wait it precedes.
+    label: 'Turn Summary dialog after end-of-turn presentation',
+    capConstant: 'INCOME_COLLECTION_CAP_MS',
+    capMs: INCOME_COLLECTION_CAP_MS,
+  },
+  {
     label: 'business bought to hand',
     capConstant: 'DRAG_TRANSFER_DURATION_MAX_MS',
     capMs: DRAG_TRANSFER_DURATION_MAX_MS,
@@ -516,8 +525,15 @@ describe('the MainStreetScene browser waits derive their budgets from the caps t
 });
 
 describe('the documented-wait scan fails closed on a reintroduced literal', () => {
-  const turnWait = DOCUMENTED_WAITS[0];
-  const buyWait = DOCUMENTED_WAITS[1];
+  /** Select a documented wait by label (positions shift as waits are added). */
+  function documentedWait(label: string): DocumentedWait {
+    const wait = DOCUMENTED_WAITS.find((entry) => entry.label === label);
+    if (!wait) throw new Error(`no documented wait labelled '${label}'`);
+    return wait;
+  }
+
+  const turnWait = documentedWait('turn to advance after end-of-turn presentation');
+  const buyWait = documentedWait('business bought to hand');
 
   interface RegressionCase {
     /** What the synthetic source reintroduces. */

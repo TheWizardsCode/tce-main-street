@@ -25,6 +25,7 @@ import type { MainStreetTurnControllerContext } from './MainStreetTurnController
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
 import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { buildTurnSummary } from './MainStreetTurnSummary';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
 import {
   continueCompetitiveDayAfterPiggyback,
@@ -530,12 +531,132 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // competitive. The tutorial keeps its window-safe pacing by skipping the
     // reveal (`animateIncident: false`); reduced motion / replay delegate to the
     // animator so its own pacing is unchanged (`delegateReducedMotionIncident`).
-    presentTurnClosing(tcCtx, result, advanceTurn, {
+    //
+    // The Turn Summary gate (MS-0MVP46Q8X003419R) intercepts the deferred
+    // closing: the day no longer advances straight off the animations — the
+    // summary dialog is presented first and `advanceTurn` runs only once the
+    // player clicks [ Next Turn ]. Reduced-motion / tutorial / replay (already
+    // non-deferred) keep the existing auto-advance pacing.
+    const afterClosing = shouldGateTurnSummary(tcCtx, result)
+      ? () => presentTurnSummaryGate(tcCtx, result, advanceTurn)
+      : advanceTurn;
+    presentTurnClosing(tcCtx, result, afterClosing, {
       animateIncident: !inTutorial,
       delegateReducedMotionIncident: true,
       pendingDeltas: deferred ? result : undefined,
     });
   
+}
+
+/**
+ * Whether the Turn Summary dialog gates the deferred closing
+ * (MS-0MVP46Q8X003419R, parent AC1/AC4).
+ *
+ * The dialog is presented only on the deferred single-player closing path:
+ *
+ *  - `requiresDeferredClosing` — the turn is mid-closing with its deltas
+ *    un-applied; the dialog is the gate in front of `finalizeTurn`. Every
+ *    legacy/immediate closing (reduced motion, tutorial, replay, the resumed
+ *    event-choice tail) already ran its closing and advances untouched.
+ *  - replay — headless/replay never presents UI.
+ *  - reduced motion — keeps the existing auto-advance pacing (no extra click
+ *    to sit through).
+ *  - tutorial — keeps its window-safe step pacing.
+ *  - competitive — operator decision (parent AC4): competitive closings keep
+ *    their per-seat closing text (`perSeatClosingSummary`) and never present
+ *    the single-player summary dialog.
+ */
+export function shouldGateTurnSummary(
+  tcCtx: MainStreetTurnControllerContext,
+  result: TurnResult,
+): boolean {
+  const s = tcCtx.scene;
+  if (result.requiresDeferredClosing !== true) return false;
+  if (s.replayMode === true) return false;
+  if (s.settingsPanel?.reducedMotion === true) return false;
+  if ((s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true) {
+    return false;
+  }
+  try {
+    if (isCompetitiveState(s.state)) return false;
+  } catch {
+    // Defensive: an unreadable state keeps the legacy pacing (never stall).
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Presents the Turn Summary dialog and resumes the deferred closing on
+ * [ Next Turn ] (MS-0MVP46Q8X003419R, parent AC1–AC3).
+ *
+ * Runs where `advanceTurn` used to: after the closing animations completed.
+ *
+ *  1. Applies any outstanding deferred deltas under the scene's
+ *     `endOfTurnDeltasApplied` exactly-once guard (AC3) — the income/incident
+ *     animation completions normally got there first, so this is a no-op
+ *     there, and `finalizeTurn`'s own guard covers the rest.
+ *  2. Builds the dialog content through the Phaser-free
+ *     {@link buildTurnSummary} model from the committed ledger.
+ *  3. Delegates to `scene.showTurnSummaryDialog`, whose `onNextTurn` callback
+ *     is `advanceTurn` — so the banking hint, the income-collection wait and
+ *     `finalizeTurn` all run after the dialog is dismissed (AC2/AC5).
+ *
+ * Never stalls: a result without a ledger (competitive / hand-built), a
+ * failing model build or a scene without dialog support advances immediately,
+ * matching the previous pacing.
+ */
+export function presentTurnSummaryGate(
+  tcCtx: MainStreetTurnControllerContext,
+  result: TurnResult,
+  onNextTurn: () => void,
+): void {
+  const s = tcCtx.scene;
+
+  // AC3: the panel renders the committed post-delta turn, applied once.
+  const show = (): void => {
+    if (!s.endOfTurnDeltasApplied) {
+      try {
+        applyEndOfTurnDeltas(s.state, result);
+        s.endOfTurnDeltasApplied = true;
+      } catch { /* presentation-only — the closing finalizer re-guards */ }
+    }
+
+    let summary: ReturnType<typeof buildTurnSummary> = null;
+    try {
+      summary = buildTurnSummary(s.state, result);
+    } catch { /* presentation-only — never strand the closing */ }
+
+    if (!summary || typeof s.showTurnSummaryDialog !== 'function') {
+      // No ledger (competitive-shaped / hand-built result) or no overlay
+      // surface (headless) — keep the previous advance behaviour.
+      onNextTurn();
+      return;
+    }
+
+    s.showTurnSummaryDialog(summary, onNextTurn);
+  };
+
+  // AC1: the dialog appears after ALL end-of-turn animations complete. The no-
+  // incident presentation completes before the phased income collection has
+  // finished collecting, so wait for the choreography (bounded by the same
+  // safety cap as `advanceTurn`) before rendering; the incident-reveal path
+  // already waited for collection inside `presentTurnClosing`. A clock-less
+  // scene (headless) proceeds immediately.
+  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
+    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
+    const waitForIncome = (): void => {
+      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
+        s.time.delayedCall(250, waitForIncome);
+      } else {
+        s.incomeCollectionActive = false;
+        show();
+      }
+    };
+    waitForIncome();
+  } else {
+    show();
+  }
 }
 
 export function handleGameOver(tcCtx: MainStreetTurnControllerContext, result: TurnResult): void {

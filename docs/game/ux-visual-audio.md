@@ -966,9 +966,42 @@ condensed text-only summary.
   surfaced value, owner-keyed shape, and a real-engine
   `processEndOfTurn` integration test); engine ledger coverage lives in
   `tests/main-street/end-of-turn-ledger.test.ts`.
-- The overlay itself (`showTurnSummaryDialog` with **[ Next Turn ]** and the
-  disabled **[ Bank Loan ]** seam) is a follow-up child of
-  MS-0MVL6HMDP004WI41; this section documents only the pure model.
+
+### Turn Summary dialog and the closing gate
+
+- Overlay: `MainStreetOverlayContent.showTurnSummaryDialog()`
+  (MS-0MVP46AMO002SZUT) renders the model above — instant (no fade-in, so it
+  is reduced-motion safe), overlay-pattern compliant (`hudContainer`
+  parenting, depths 199/200/201, dismissal via `s.overlayObjects`) — with
+  **[ Next Turn ]** as the primary action and an always-disabled
+  **[ Bank Loan ]** seam reserved for MS-0MVL6DZI0000F6CG.
+  `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
+  overlay manager (headless), continues the closing instead of stranding the
+  turn.
+- Gate (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
+  `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`.
+  `finishTurnPresentation` hands the shared closing primitive
+  (`presentTurnClosing`) a gate callback instead of `advanceTurn` directly, so
+  the dialog is presented only after all end-of-turn animations complete and
+  the next day starts only when the player clicks **[ Next Turn ]** — that
+  click runs `advanceTurn`, which presents any pending banking hint first, then
+  waits out any running income choreography (bounded) and runs `finalizeTurn`
+  (checkpoint + `startTurnPhase`).
+- Scope: deferred single-player closings only. Reduced motion, the tutorial,
+  replay/headless and the resumed event-choice/piggyback tails keep the
+  existing auto-advance pacing, and competitive closings never present it
+  (per-seat `perSeatClosingSummary` text is unchanged; parent AC4).
+- Idempotence: the deferred deltas are applied under the scene's
+  `endOfTurnDeltasApplied` exactly-once guard before the panel renders (the
+  income/incident animation completions normally got there first), and the
+  gate also waits out a running income choreography (bounded by
+  `INCOME_COLLECTION_CAP_MS`) so the panel never opens over live animation.
+- Never stalls: a result without a ledger, a failing model build or a missing
+  dialog surface advances immediately, matching the pre-gate pacing.
+- Tests: `tests/main-street/turn-summary-gate.test.ts` (gate on/off per mode,
+  `onNextTurn` continuation, delta ordering/idempotence, banking-hint
+  ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
+  (overlay rendering in a real Phaser scene).
 
 ### Game-over panel (two-column summary)
 
