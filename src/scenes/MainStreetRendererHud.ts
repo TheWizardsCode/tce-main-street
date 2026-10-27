@@ -20,7 +20,7 @@ import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import type { PendingApplicant } from '../MainStreetState';
 import { resolveLogSeatColour } from '../MainStreetStateLog';
-import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H } from './MainStreetConstants';
+import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
 import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -237,11 +237,13 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Background strip — market-aligned to `hudLeft`..`hudRight` (AC2,
     // CG-0MUFAISSZ002TE1B). `setOrigin(0, 0.5)` makes x the left edge, so the
     // strip spans exactly [hudLeft, hudLeft + hudWidth] with no half-width maths.
+    // Opaque panel alpha (0.85) shared with the market box / hand panel / Activity
+    // Log so the strip reads as a solid section (MS-0MVPWQIPZ002PHPD AC2).
     const strip = markHudTransient(
-      s.add.rectangle(hudLeft, hudY, hudWidth, HUD_BAR_HEIGHT_PX, 0x1a1408, 0.6),
+      s.add.rectangle(hudLeft, hudY, hudWidth, HUD_BAR_HEIGHT_PX, PANEL_FILL, PANEL_FILL_ALPHA),
     );
     strip.setOrigin(0, 0.5);
-    strip.setStrokeStyle(1, BOX_STROKE, 0.5);
+    strip.setStrokeStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
     s.hudContainer.add(strip);
 
     // Coins - left-aligned at the strip's left edge

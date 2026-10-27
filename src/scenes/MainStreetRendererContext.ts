@@ -24,6 +24,8 @@ export interface MainStreetRendererContext {
   createHeader(): void;
   computeLayout(): SceneLayout;
   createContainers(): void;
+  /** Draw the persistent opaque panel behind the player hand (AC3). */
+  drawHandPanel(): void;
   createInstructions(): void;
   refreshAll(): void;
   refreshAllExceptStreet(): void;

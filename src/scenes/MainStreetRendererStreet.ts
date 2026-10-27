@@ -18,7 +18,7 @@ import { synergyColor } from '../MainStreetCards';
 import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
-import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
+import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec, circularDistance, sampleShaderGradient, shouldAnimateShaderEffect, wrapShaderPhase } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -84,7 +84,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
       baseX: handX + handCardW / 2,
       baseY: handY,
       centerX: handCenterX,
-      spacing: handCardW + 8,
+      spacing: handCardW + HAND_SLOT_PITCH_PAD,
       cardWidth: handCardW - 4,
       cardHeight: handCardH - 4,
       showLabels: false,
@@ -293,11 +293,12 @@ export function createContainers(renderer: MainStreetRendererContext): void {
       'logContainer',
     );
 
-    // Panel background
+    // Panel background — the reference treatment every opaque play panel
+    // shares (`PANEL_FILL` @ `PANEL_FILL_ALPHA`, 1 px `BOX_STROKE`).
     const bg = s.add.graphics();
-    bg.fillStyle(0x1a1408, 0.85);
+    bg.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
     bg.fillRoundedRect(0, 0, s.layout.logW, s.layout.logH, 4);
-    bg.lineStyle(1, BOX_STROKE, 0.5);
+    bg.lineStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
     bg.strokeRoundedRect(0, 0, s.layout.logW, s.layout.logH, 4);
     s.logContainer.add(bg);
 
@@ -338,8 +339,72 @@ export function createContainers(renderer: MainStreetRendererContext): void {
   
 }
 
-export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
+/**
+ * Destroy the persistent hand panel, if one exists.
+ *
+ * The panel is a root-level display object (not a child of `handContainer`), so
+ * it is not removed by `handContainer.removeAll(true)`; `refreshPlayerHand`
+ * therefore rebuilds it explicitly to stay in sync with the live capacity. The
+ * `active` guard keeps the teardown idempotent after a scene shutdown has
+ * already destroyed every display object (scene restart / shutdown).
+ */
+function destroyHandPanel(renderer: MainStreetRendererContext): void {
 
+    const s = renderer.scene;
+    const panel = s.handPanelGraphics as Phaser.GameObjects.Graphics | undefined;
+    if (panel && panel.active) {
+      try { panel.destroy(); } catch (_) { /* already torn down */ }
+    }
+    s.handPanelGraphics = undefined;
+  
+}
+
+/**
+ * Draw the persistent opaque panel behind the player hand
+ * (MS-0MVPWQIPZ002PHPD AC3/AC4/AC5).
+ *
+ * Uses the shared Activity Log treatment (`PANEL_FILL` @ `PANEL_FILL_ALPHA`,
+ * 1 px `BOX_STROKE` border, `BOX_RADIUS` corners) so the market box, the hand
+ * panel and the HUD strip cannot drift apart. The panel is:
+ *
+ * - **sized from the capacity row** — `maxSlots × (handCardW + 8)`, centred on
+ *   `handCenterX` — so a staff hire/lay-off (`maxHandSize` change) grows or
+ *   shrinks it without clipping cards or ghost capacity outlines;
+ * - **behind the hand layer** — {@link HAND_PANEL_DEPTH} sits below every hand
+ *   card and ghost outline (the ghosts use negative depths) and the panel is
+ *   confined to the hand band, below the street plot and its bottom road band;
+ * - **non-interactive** — `setInteractive` is never called, so hand-card
+ *   clicks, hand→street drags and market→hand drops behave exactly as before.
+ *
+ * All geometry comes from the SLL layout authority (`s.layout`); only the panel
+ * padding is a local constant.
+ */
+export function drawHandPanel(renderer: MainStreetRendererContext): void {
+
+    const s = renderer.scene;
+    destroyHandPanel(renderer);
+
+    const maxSlots = Math.max(0, Number(s.state?.maxHandSize) || 0);
+    if (maxSlots === 0) return;
+
+    const { handCenterX, handY, handCardW, handCardH } = s.layout;
+    const width = maxSlots * (handCardW + HAND_SLOT_PITCH_PAD);
+    const height = handCardH + HAND_PANEL_PAD * 2;
+    const x = handCenterX - width / 2;
+    const y = handY - handCardH / 2 - HAND_PANEL_PAD;
+
+    const panel = s.add.graphics();
+    panel.setName(HAND_PANEL_NAME);
+    panel.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+    panel.fillRoundedRect(x, y, width, height, BOX_RADIUS);
+    panel.lineStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
+    panel.strokeRoundedRect(x, y, width, height, BOX_RADIUS);
+    panel.setDepth(HAND_PANEL_DEPTH);
+    s.handPanelGraphics = panel;
+  
+}
+
+export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     const s = renderer.scene;
     s.ensureStreetCamera?.();
     s.streetContainer.removeAll(true);

@@ -78,6 +78,17 @@
         "src/scenes/MainStreetTurnSummary.ts",
         "tests/main-street/turn-summary-dialog.browser.test.ts"
       ]
+    },
+    "hand-panel-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hand-panel.browser.test.ts tests/main-street/hud-strip-layout.browser.test.ts tests/main-street/panel-opacity.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hand-panel.browser.test.ts",
+        "tests/main-street/hud-strip-layout.browser.test.ts",
+        "tests/main-street/panel-opacity.browser.test.ts",
+        "tests/main-street/helpers/panelTreatment.ts"
+      ]
     }
   }
 }

@@ -242,6 +242,12 @@ export class MainStreetScene extends CardGameScene {
   public marketContainer!: Phaser.GameObjects.Container;
   public incidentQueueContainer!: Phaser.GameObjects.Container;
   public handContainer!: Phaser.GameObjects.Container;
+  /**
+   * Persistent opaque panel behind the player hand (MS-0MVPWQIPZ002PHPD).
+   * Root-level so it renders below every hand-layer object; rebuilt by
+   * `refreshPlayerHand` and destroyed with the scene's display list.
+   */
+  public handPanelGraphics?: Phaser.GameObjects.Graphics;
 
   public actionContainer!: Phaser.GameObjects.Container;
 

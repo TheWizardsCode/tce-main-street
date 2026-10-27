@@ -18,7 +18,7 @@ import { canRefreshMarket } from '../MainStreetMarket';
 import { buildMarketRerollControl } from './MainStreetHudTooltips';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill } from '../MainStreetStaffSkills';
-import { BOX_FILL, BOX_RADIUS, BOX_STROKE, CARD_BACK_TEMPLATE } from './MainStreetConstants';
+import { BOX_RADIUS, BOX_STROKE, CARD_BACK_TEMPLATE, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -49,13 +49,15 @@ export function refreshMarket(renderer: MainStreetRendererContext): void {
 
     // Wider section background — edges read from the single layout authority
     // (marketLeft/marketRight), never recomputed inline (CG-0MUFAIS8W0011LGQ).
+    // Opaque Activity Log treatment (MS-0MVPWQIPZ002PHPD AC1): the previous
+    // `BOX_FILL` @ 0.3 let roads and the map grid read through the section.
     const bgLeft = marketLeft;
     const bgRight = marketRight;
     const totalH = marketRowH + 30;
     const bgBox = s.add.graphics();
-    bgBox.fillStyle(BOX_FILL, 0.3);
+    bgBox.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
     bgBox.fillRoundedRect(bgLeft, marketTop - 10, bgRight - bgLeft, totalH, BOX_RADIUS);
-    bgBox.lineStyle(1, BOX_STROKE, 0.4);
+    bgBox.lineStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
     bgBox.strokeRoundedRect(bgLeft, marketTop - 10, bgRight - bgLeft, totalH, BOX_RADIUS);
     s.marketContainer.add(bgBox);
 

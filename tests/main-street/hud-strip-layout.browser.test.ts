@@ -18,6 +18,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { BOX_STROKE } from '../../src/scenes/MainStreetConstants';
+import { PANEL_FILL_ALPHA, PANEL_FILL_COLOR } from './helpers/panelTreatment';
 
 const TUTORIAL_STATE_KEY = 'tce-main-street-tutorial-state';
 
@@ -142,6 +144,25 @@ describe('MainStreet HUD strip layout', () => {
     expect(after.strip).toBeDefined();
     expect(after.strip!.x).toBeCloseTo(before.layout.hudLeft, 0);
     expect(after.strip!.x + after.strip!.width).toBeCloseTo(before.layout.hudRight, 0);
+  }, 30_000);
+
+  // Opaque HUD strip (parent MS-0MVKTB6WS000VLWK AC3). The strip used to be
+  // `0x1a1408` at alpha 0.6, which let the map backdrop read through it; the
+  // contract is the shared panel alpha (0.85) with the same `BOX_STROKE` token
+  // the Activity Log / market / hand panels use, so the surfaces cannot drift.
+  // Red phase: `it.fails` until MS-0MVPWQIPZ002PHPD raises the alpha.
+  it('HUD strip uses the shared 0.85 opaque panel treatment (AC3; MS-0MVPWQIPZ002PHPD)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+
+    const strip = snapshot(scene).strip;
+    expect(strip, 'HUD strip rectangle not found').toBeDefined();
+
+    expect(strip!.isFilled, 'HUD strip must be a filled rectangle').toBe(true);
+    expect(strip!.fillColor, 'HUD strip fill colour').toBe(PANEL_FILL_COLOR);
+    expect(strip!.fillAlpha, 'HUD strip fill alpha').toBeCloseTo(PANEL_FILL_ALPHA, 2);
+    expect(strip!.strokeColor, 'HUD strip border colour').toBe(BOX_STROKE);
+    expect(strip!.lineWidth, 'HUD strip border width').toBe(1);
   }, 30_000);
 
   it('publishes coin/rep number anchors that match the rendered number centre (MS-0MUYT57J80021CWW)', async () => {

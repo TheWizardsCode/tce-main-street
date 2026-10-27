@@ -44,6 +44,14 @@ export function refreshPlayerHand(renderer: MainStreetRendererContext): void {
     // handContainer zone kept for backward-compat (zone-metadata tests)
     s.handContainer.removeAll(true);
 
+    // Persistent opaque panel behind the hand cards and ghost outlines
+    // (MS-0MVPWQIPZ002PHPD AC3/AC4). Drawn from the live capacity on every
+    // refresh so it tracks `maxHandSize` and is never lost to the
+    // `removeAll(true)` rebuild above; it is a root-level object at
+    // `HAND_PANEL_DEPTH`, i.e. below every hand-layer object, and it is
+    // non-interactive so hand clicks/drags are unaffected (AC5).
+    renderer.drawHandPanel();
+
     // Render the merged hand (any mix of business and event cards) via the
     // single HandView — HandView gracefully handles an empty array.
     const hand = s.state.hand ?? [];
