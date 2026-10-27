@@ -197,3 +197,24 @@ export function canTakeLoan(
 export function optionsFor(state: Pick<MainStreetState, 'config'>): readonly LoanOption[] {
   return state.config.loanOptions ?? DEFAULT_LOAN_OPTIONS;
 }
+
+/**
+ * Applies one scheduled repayment to a loan, returning the loan's next state
+ * or `null` when this payment retires it.
+ *
+ * Pure: the caller (the closing sequence, slice MS-0MVPWS885006O5QR) performs
+ * the wallet debit and the activity-log row; this helper owns only the
+ * turn-count bookkeeping, so "retired after `termTurns` payments with no
+ * further deductions" is one tested rule (parent AC3) shared by every
+ * consumer (repayment pass, headless close, bailout bookkeeping).
+ *
+ * @param loan The loan as it stood before this payment.
+ * @returns The loan with `turnsRemaining` decremented, or `null` when this
+ *          payment was the last one (the loan is retired and must be
+ *          removed from `state.loans`).
+ */
+export function applyLoanPayment(loan: ActiveLoan): ActiveLoan | null {
+  const turnsRemaining = loan.turnsRemaining - 1;
+  if (turnsRemaining <= 0) return null;
+  return { ...loan, turnsRemaining };
+}

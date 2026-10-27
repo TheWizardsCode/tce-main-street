@@ -35,6 +35,8 @@ import {
 import { takeLoanCommand } from '../../src/MainStreetCommands';
 import {
   DEFAULT_LOAN_OPTIONS,
+  applyLoanPayment,
+  buildActiveLoan,
   canTakeLoan,
   loanPerTurnRepayment,
   loanTotalRepayment,
@@ -467,5 +469,52 @@ describe('loan persistence', () => {
     const coinsBefore = loaded.resourceBank.coins;
     takeLoan(loaded, 0);
     expect(loaded.resourceBank.coins).toBe(coinsBefore + 300);
+  });
+});
+
+// ── Retirement: termTurns payments, then nothing more ───────
+
+describe('applyLoanPayment (retirement after termTurns)', () => {
+  it('retires a 3-turn loan exactly on the third payment', () => {
+    const state = setupMainStreetGame({ seed: 'loans-retire' });
+    const loan = buildActiveLoan(state, DEFAULT_LOAN_OPTIONS[0]);
+
+    const after1 = applyLoanPayment(loan);
+    expect(after1).not.toBeNull();
+    expect(after1!.turnsRemaining).toBe(2);
+
+    const after2 = applyLoanPayment(after1!);
+    expect(after2!.turnsRemaining).toBe(1);
+
+    const after3 = applyLoanPayment(after2!);
+    expect(after3).toBeNull();
+  });
+
+  it('applies exactly six payments to a 600/6 loan, then retires it', () => {
+    const state = setupMainStreetGame({ seed: 'loans-retire-2' });
+    let loan: ReturnType<typeof buildActiveLoan> | null =
+      buildActiveLoan(state, DEFAULT_LOAN_OPTIONS[1]);
+    let paymentsApplied = 0;
+    while (loan !== null) {
+      loan = applyLoanPayment(loan);
+      paymentsApplied += 1;
+    }
+    // 600/6 → six payments of 110, then retirement (no seventh deduction).
+    expect(paymentsApplied).toBe(6);
+  });
+
+  it('changes only the turn counter, leaving the pre-computed money untouched', () => {
+    const state = setupMainStreetGame({ seed: 'loans-retire-3' });
+    const loan = buildActiveLoan(state, DEFAULT_LOAN_OPTIONS[2]);
+    const after = applyLoanPayment(loan)!;
+
+    expect(after).toMatchObject({
+      ownerId: loan.ownerId,
+      principal: loan.principal,
+      totalRepayment: loan.totalRepayment,
+      perTurnRepayment: loan.perTurnRepayment,
+      termTurns: loan.termTurns,
+    });
+    expect(after.turnsRemaining).toBe(loan.turnsRemaining - 1);
   });
 });
