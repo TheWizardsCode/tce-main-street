@@ -109,8 +109,9 @@ describe('Main Street Tutorial E2E — Part 1', () => {
     if (s.uiPhase !== 'market') { s.uiPhase = 'market'; }
     try { s.onBusinessCardClick(wrongCard); } catch (_) { /* ignore */ }
     expect(getStepIndex(scene)).toBe(2);
-    const instructionText = s.instructionText?.text ?? '';
-    expect(instructionText).toContain('not the card you should buy');
+    // Transient feedback surfaces the refusal (the persistent instruction
+    // line was removed by MS-0MVPWQK3U003DIR6).
+    expect(String(s.lastFeedback?.text ?? '')).toContain('not the card you should buy');
     await clickRequiredBusinessCard(scene);
     await waitForOverlayVisible(5_000);
     expect(getStepIndex(scene)).toBe(3);

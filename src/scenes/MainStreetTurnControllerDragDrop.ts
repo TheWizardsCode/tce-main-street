@@ -7,6 +7,7 @@
  */
 
 import { playIllegalFeedback, matchesRequiredCard } from './MainStreetTurnControllerUtils';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 
 import { DEFAULT_DRAG_DISTANCE_THRESHOLD, createDragDropManager } from '@ui/dragDrop';
 import type { DragDropPayload } from '@ui/dragDrop';
@@ -58,7 +59,7 @@ export function initDragDrop(tcCtx: MainStreetTurnControllerContext): void {
           // pickup has no slot yet and explains its own checks.
           const slot = typeof payload?.zoneData === 'number' ? payload.zoneData : undefined;
           const reason = upgradeDragVetoReason(s.state, cardId, slot);
-          if (reason) s.instructionText.setText(reason);
+flashError(s, reason);
         } catch (_) { /* illegal feedback must never crash the drag lifecycle */ }
       },
     });
@@ -178,7 +179,6 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
       s.clearMarketSelection();
       s.hiddenTransferSourceCardIds.add(cardId);
       s.uiPhase = 'animating';
-      s.instructionText.setText(`Moving "${cardName}" to hand...`);
       s.refreshAll();
 
       const afterTransfer = (): void => {
@@ -191,7 +191,7 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
           s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
           try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-and-place', cardId, slotIndex }, description: cmd.description }); } catch (_) {}
           try { s.gameEvents?.emit('card:placed', { cardId, slotIndex }); } catch (_) {}
-          s.instructionText.setText(premiumApplies
+          flashConfirmation(s, premiumApplies
             ? `Placed "${cardName}" on slot ${slotIndex} (50% premium)`
             : `Placed "${cardName}" on slot ${slotIndex}`);
         } catch (e) {
@@ -199,7 +199,7 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
           const msg = (e as Error).message;
           const container = s.msRenderer?.getMarketRowCards?.()?.[sourceIndex] ?? s.actionContainer ?? null;
           playIllegalFeedback(container, s);
-          s.instructionText.setText(`Error: ${msg}`);
+    flashError(s, `Error: ${msg}`);
         }
 
         s.hiddenTransferSourceCardIds.delete(cardId);
@@ -242,7 +242,7 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
       // row (no coins deducted, no action consumed).
       s.showBuyAndPlacePremiumDialog(cardName, startTransfer, () => {
         s.uiPhase = 'market';
-        s.instructionText.setText(`"${cardName}" stays in the market — buy cancelled.`);
+        flashConfirmation(s, `"${cardName}" stays in the market — buy cancelled.`);
         try { s.msRenderer?.clearDragHighlights?.(); } catch (_) { /* ignore */ }
         s.refreshAll();
         s.refreshStreetGrid();
@@ -475,7 +475,6 @@ export function onDragDropUpgrade(tcCtx: MainStreetTurnControllerContext, payloa
       s.clearMarketSelection();
       s.hiddenTransferSourceCardIds.add(cardId);
       s.uiPhase = 'animating';
-      s.instructionText.setText(`Applying "${cardName}"...`);
       s.refreshAll();
 
       const afterTransfer = (): void => {
@@ -485,14 +484,14 @@ export function onDragDropUpgrade(tcCtx: MainStreetTurnControllerContext, payloa
           s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
           try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-and-place-upgrade', cardId, slotIndex }, description: cmd.description }); } catch (_) {}
           try { s.gameEvents?.emit('card:placed', { cardId, slotIndex }); } catch (_) {}
-          s.instructionText.setText(pricing.premiumApplies
+          flashConfirmation(s, pricing.premiumApplies
             ? `Applied "${cardName}" to slot ${slotIndex} (50% premium)`
             : `Applied "${cardName}" to slot ${slotIndex} (listed price)`);
         } catch (e) {
           console.error('[MS] DragBuyAndPlaceUpgrade failed', e);
           const container = s.msRenderer?.getMarketRowCards?.()?.[sourceIndex] ?? s.actionContainer ?? null;
           playIllegalFeedback(container, s);
-          s.instructionText.setText(`Error: ${(e as Error).message}`);
+    flashError(s, `Error: ${(e as Error).message}`);
         }
 
         s.hiddenTransferSourceCardIds.delete(cardId);
@@ -526,7 +525,7 @@ export function onDragDropUpgrade(tcCtx: MainStreetTurnControllerContext, payloa
       // dialog itself.
       s.showBuyAndPlacePremiumDialog(cardName, startTransfer, () => {
         s.uiPhase = 'market';
-        s.instructionText.setText(`"${cardName}" stays in the market — buy cancelled.`);
+        flashConfirmation(s, `"${cardName}" stays in the market — buy cancelled.`);
         try { s.msRenderer?.clearDragHighlights?.(); } catch (_) { /* ignore */ }
         s.refreshAll();
         s.refreshStreetGrid();

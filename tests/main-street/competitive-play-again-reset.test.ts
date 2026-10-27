@@ -88,7 +88,6 @@ function makeCompetitiveScene(state: MainStreetState): any {
     hintUsedThisTurn: false,
     hintedCardId: null,
     hintedSlotIndex: null,
-    instructionText: { setText: () => {} },
     cardSvgLoadPromise: new Promise<void>(() => {}),
     prewarmVisibleCardTextures: () => {},
     refreshAll: () => {},

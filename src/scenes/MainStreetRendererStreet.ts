@@ -256,8 +256,6 @@ export function createContainers(renderer: MainStreetRendererContext): void {
         if (s.uiPhase === 'placing-from-hand') {
           s.pendingHandIndex = cardIndex;
           renderer.updateBusinessHandSelection(cardIndex);
-          const cardName = s.state.hand?.[cardIndex]?.name ?? 'card';
-          s.instructionText.setText(`Click an empty slot to place "${cardName}"`);
         }
       },
       // Ghost capacity outlines (CG-0MT6ER7YY003G680): show one slot per
@@ -667,7 +665,7 @@ export function installStreetZoomControls(renderer: MainStreetRendererContext): 
   
 }
 
-export function createZoomButton(renderer: MainStreetRendererContext, 
+export function createZoomButton(renderer: MainStreetRendererContext,
     x: number,
     y: number,
     size: number,
@@ -998,7 +996,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
   
 }
 
-export function applyUpgradeOverlays(renderer: MainStreetRendererContext, 
+export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
     container: Phaser.GameObjects.Container,
     biz: BusinessCard | CommunitySpaceCard,
     width: number,

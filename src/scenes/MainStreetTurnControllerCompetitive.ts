@@ -34,6 +34,7 @@
  */
 
 import { createSeededRng } from '@core-engine';
+import { flashConfirmation } from './MainStreetFeedback';
 import {
   executeAction,
   findHumanSeatId,
@@ -502,10 +503,9 @@ function presentPerSeatCompetitiveClosing(
   // AC3: per-seat income feedback from each seat's own authoritative total.
   // Set before the choreography so reduced motion / replay / headless still
   // receive the text; the shared host total is never shown.
-  try { s.instructionText?.setText?.('Resolving end-of-turn effects...'); } catch { /* presentation-only */ }
   const summary = perSeatClosingSummary(seats);
   if (summary) {
-    try { s.instructionText?.setText?.(summary); } catch { /* presentation-only */ }
+    flashConfirmation(s, summary);
   }
 
   // AC1 (amended by the producer audit of 2026-10-08): one phase-major sweep
@@ -562,7 +562,6 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
   const state: MainStreetState = s.state;
 
   s.uiPhase = 'animating';
-  try { s.instructionText?.setText?.('AI opponents are taking their turns...'); } catch { /* presentation-only */ }
   try { s.refreshActionButtons?.(); } catch { /* presentation-only */ }
 
   if (state.gameResult === 'playing') {

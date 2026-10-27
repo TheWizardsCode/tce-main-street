@@ -400,7 +400,6 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
       });
     s.createHeader();
     s.createContainers();
-    s.createInstructions();
     // Street-map camera (CG-0MTH9OVMC001V44E): install the viewport mask and
     // register the always-available zoom/pan controls once the street
     // container exists.
@@ -715,9 +714,6 @@ export function handleResize(lmCtx: MainStreetLifecycleManagerContext): void {
     try { s.msPedestrians?.resize?.(); } catch (_) { /* presentation-only */ }
     s.challengeContainer.setPosition(s.layout.challengeX, s.layout.challengeY);
     s.logContainer.setPosition(s.layout.logX, s.layout.logY);
-    // Centre instruction text in the main content area (between left margin and right column)
-    const instructionCX = Math.round(s.layout.logX / 2);
-    s.instructionText.setPosition(instructionCX, s.layout.instructionY);
     s.refreshAll();
   
 }

@@ -25,7 +25,6 @@ function createMockScene(): any {
     state: setupMainStreetGame({ seed: 'hand-click-test' }),
     uiPhase: 'market',
     pendingHandIndex: null,
-    instructionText: { setText: vi.fn() },
     refreshAll: vi.fn(),
     overlayObjects: [],
     hudContainer: null,
@@ -44,7 +43,6 @@ function createMockScene(): any {
     // controller after every undo-stack mutation.
     refreshUndoRedoButtons: vi.fn(),
     refreshAllAction: vi.fn(),
-    hintBar: null,
     msLifecycleManager: {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
@@ -93,7 +91,6 @@ function createMockScene(): any {
     streetX: 40,
     streetRowGap: 12,
     streetCols: 5,
-    instructionY: 680,
     actionY: 620,
     actionButtonH: 28,
     actionButtonW: 100,
@@ -140,7 +137,8 @@ describe('Hand business card click', () => {
 
       expect(scene.pendingHandIndex).toBe(0);
       expect(scene.uiPhase).toBe('placing-from-hand');
-      expect(scene.instructionText.setText).toHaveBeenCalled();
+      // The old phase-guidance line is dropped (no persistent text / pop).
+      expect(scene.lastFeedback).toBeUndefined();
       expect(scene.refreshAll).toHaveBeenCalled();
     });
 
@@ -160,8 +158,9 @@ describe('Hand business card click', () => {
 
       // Should not change since we're not in market phase
       expect(scene.pendingHandIndex).toBeNull();
-      // instructionText should not have been called by this handler
-      // (only refreshAll might be called if phase check passes)
+      // no persistent instruction text is set by this handler — the phase
+      // guidance line was removed (MS-0MVPWQK3U003DIR6)
+      expect(scene.lastFeedback).toBeUndefined();
     });
 
     it('does nothing during animating phase', () => {
@@ -302,9 +301,7 @@ describe('Hand business card click', () => {
       // Should have been blocked by tutorial
       expect(scene.pendingHandIndex).toBeNull();
       expect(scene.uiPhase).toBe('market');
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(
-        'Complete the highlighted step first.',
-      );
+      expect(scene.lastFeedback?.text).toBe('Complete the highlighted step first.');
     });
   });
 });

@@ -1,25 +1,14 @@
 /**
- * Main Street placement hint-bar regression tests.
+ * Main Street: no persistent instruction/hint line (browser)
  *
- * Regression guard for CG-0MT24DCPS0034610 (hint text obscured by hand).
+ * Rewritten for MS-0MVPWQK3U003DIR6 (parent AC4). The persistent bottom-band
+ * instruction/hint line (shared `HintBar` + `instructionText`) is gone. These
+ * browser tests boot the real MainStreetScene and assert:
  *
- * Previously the phase-specific placement hint ("Card in hand (N) — click an
- * empty slot to place" / "Place \"[name]\" -- click an empty slot") was
- * rendered with `s.add.text(...)` inline at the action area (actionY - 4),
- * directly behind the hand-card sprites and therefore visually obscured.
- *
- * This work item moved that text onto the shared `HintBar` component at the
- * bottom-centre of the screen (`s.hintBar.setText(...)`). These browser tests
- * boot the real MainStreetScene and assert:
- *
- *   AC1: the phase-specific hint text is NO LONGER rendered inline in the
- *        action container (no stray text objects at the action area).
- *   AC2: the hint text is displayed via the shared HintBar (the bottom-centre
- *        text object referenced by `s.instructionText`, which is the same
- *        object).
- *   AC3: on returning from placing-from-hand / placing-business to market
- *        (via the real Cancel action button), the hint bar is reset to the
- *        standard market instruction.
+ *   AC1: no `hintBar`/`instructionText` exists on the scene at all.
+ *   AC2: entering placing-from-hand renders no persistent inline text in the
+ *        action container and surfaces no guidance pop text.
+ *   AC3: Cancel returns to market without resurrecting a persistent line.
  *
  * @module tests/main-street/hint-bar-placement.browser
  */
@@ -142,9 +131,16 @@ async function waitForSettled(scene: Scene): Promise<void> {
   throw new Error('Timed out waiting for market rendering to settle');
 }
 
-/** Current hint text shown by the shared HintBar at the bottom of the screen. */
-function hintText(scene: Scene): string {
-  return String(scene.hintBar?.textObject?.text ?? '');
+/** Last surfaced transient feedback text ('' when none). */
+function feedbackText(scene: Scene): string {
+  return String(scene.lastFeedback?.text ?? '');
+}
+
+/** All rendered text labels in the scene root (including transient pop text). */
+function renderedTexts(scene: Scene): string[] {
+  return ((scene.children?.list ?? []) as any[])
+    .filter((o) => o?.type === 'Text' && typeof o.text === 'string')
+    .map((o) => String(o.text));
 }
 
 /** True if any text object remains rendered inline in the action container. */
@@ -175,7 +171,7 @@ async function clickCancelButton(scene: Scene): Promise<void> {
   await wait(60);
 }
 
-describe('Main Street placement hint is shown via HintBar (browser)', () => {
+describe('Main Street has no persistent instruction line (browser)', () => {
   let game: Phaser.Game | null = null;
 
   afterEach(() => {
@@ -191,14 +187,17 @@ describe('Main Street placement hint is shown via HintBar (browser)', () => {
     localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY);
   });
 
-  it('shows the placing-from-hand hint in the HintBar, not inline, then resets on cancel', async () => {
+  it('creates no hint bar and shows no persistent placement line', async () => {
     game = await bootGame();
     const scene = getScene(game);
     await waitForMarketReady(scene);
     await waitForSettled(scene);
 
-    scene.state.resourceBank.coins = 2000;
+    // AC1: neither the shared HintBar nor the legacy instruction text exists.
+    expect(scene.hintBar).toBeUndefined();
+    expect(scene.instructionText).toBeUndefined();
 
+    scene.state.resourceBank.coins = 2000;
     const targetSlot = getEmptySlots(scene.state)[0];
     expect(targetSlot).toBeGreaterThanOrEqual(0);
     const business = scene.state.market.cards.find((c: any) =>
@@ -219,25 +218,56 @@ describe('Main Street placement hint is shown via HintBar (browser)', () => {
       'placing-from-hand phase',
     );
 
-    // AC2: the phase-specific hint appears in the shared HintBar text.
-    await waitForCondition(
-      () => hintText(scene).toLowerCase().includes('click an empty slot'),
-      'placing hint in HintBar',
-    );
-
-    // AC1: no standalone hint text object remains inline in the action container.
+    // AC2: the phase guidance line is dropped — no persistent text in the
+    // action container and no guidance pop text is surfaced (the earlier
+    // move-to-hand confirmation legitimately remains in the feedback record).
     expect(hasInlineActionText(scene)).toBe(false);
+    expect(feedbackText(scene)).not.toContain('click an empty slot');
 
-    // AC3: clicking the real Cancel button returns to market and resets the
-    // hint bar to the standard market instruction.
+    // AC3: Cancel returns to market with no persistent line.
     await clickCancelButton(scene);
     await waitForCondition(
       () => scene.uiPhase === 'market',
       'back to market after cancel',
     );
-    const resetText = hintText(scene).toLowerCase();
-    expect(resetText).toContain('buy cards from the market');
-    expect(resetText).not.toContain('click an empty slot');
-    expect(resetText).not.toContain('card in hand');
+    expect(scene.hintBar).toBeUndefined();
+    expect(scene.instructionText).toBeUndefined();
+    expect(feedbackText(scene)).not.toContain('buy cards from the market');
+  });
+
+  it('surfaces a refusal as transient pop text with no persistent line', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    await waitForMarketReady(scene);
+    await waitForSettled(scene);
+
+    scene.state.resourceBank.coins = 2000;
+    scene.state.actionsRemaining = 0;
+
+    const slot = getEmptySlots(scene.state)[0];
+    const business = scene.state.market.cards.find((c: any) =>
+      c && canPurchaseBusiness(scene.state, c.id, slot).legal,
+    );
+    expect(business).toBeTruthy();
+    scene.onBusinessCardClick(business);
+
+    // The refusal is surfaced through the transient channel and rendered…
+    expect(String(scene.lastFeedback?.text ?? '')).toContain('No actions remaining');
+    expect(scene.lastFeedback?.kind).toBe('error');
+    expect(renderedTexts(scene).some((t) => t.includes('No actions remaining'))).toBe(true);
+    // …with no persistent instruction/hint line.
+    expect(scene.instructionText).toBeUndefined();
+    expect(scene.hintBar).toBeUndefined();
+  });
+
+  it('keeps the action row position independent of the removed line', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    await waitForMarketReady(scene);
+
+    const rects = scene.getSectionRectsForTest();
+    expect(rects).not.toHaveProperty('instruction');
+    expect(rects.action.y).toBe(scene.layout.actionY + 4);
+    expect(rects.action.h).toBe(scene.layout.actionButtonH);
   });
 });

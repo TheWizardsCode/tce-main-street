@@ -209,11 +209,11 @@ describe('Main Street Tutorial E2E — T15-T20', () => {
     const start = Date.now();
     while (
       Date.now() - start < 5_000 &&
-      !String(s.instructionText?.text ?? '').includes('next to')
+      !String(s.lastFeedback?.text ?? '').includes('next to')
     ) {
       await new Promise((r) => setTimeout(r, 50));
     }
-    expect(String(s.instructionText?.text ?? '')).toContain('next to');
+    expect(String(s.lastFeedback?.text ?? '')).toContain('next to');
 
     // No soft-lock regression: the slot stays empty, the Library stays in
     // hand, and the tutorial is still on T20 so the player can retry.

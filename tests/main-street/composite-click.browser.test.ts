@@ -174,7 +174,7 @@ async function waitForPremiumDialog(scene: Scene, label = 'premium dialog to app
     // phase with an Error instruction and never opens the dialog. Detect that
     // end state (phase market = no transfer in flight) and surface the actual
     // reason in ~1s rather than a bare 60s timeout.
-    const instruction = (scene as any).instructionText?.text as string | undefined;
+    const instruction = (scene as any).lastFeedback?.text as string | undefined;
     if (scene.uiPhase === 'market' && typeof instruction === 'string' && instruction.includes('Error:')) {
       throw new Error(`Premium placement rejected before dialog: ${instruction}`);
     }

@@ -139,9 +139,9 @@ function hasHandSelectionBorder(scene: Scene): boolean {
   );
 }
 
-/** Current hint-bar text. */
+/** Last surfaced transient feedback text ('' when none). */
 function hintText(scene: Scene): string {
-  return String(scene.hintBar?.textObject?.text ?? '');
+  return String(scene.lastFeedback?.text ?? '');
 }
 
 /** First grid-placeable (business/community-space) market card. */
@@ -203,7 +203,11 @@ describe('Card re-click toggle-off (browser, real pointer pipeline)', () => {
     expect(scene.pendingHandIndex).toBeNull();
     expect(scene.pendingHandJustMoved).toBe(false);
     expect(hasHandSelectionBorder(scene)).toBe(false);
-    expect(hintText(scene).toLowerCase()).toContain('buy cards from the market');
+    // The standard market instruction is a dropped guidance line: cancel must
+    // leave no persistent line (the earlier move-to-hand confirmation is the
+    // last surfaced feedback and is not a market-instruction reset).
+    expect(hintText(scene)).not.toContain('buy cards from the market');
+    expect(hintText(scene)).not.toContain('click an empty slot');
 
     // The card stays in the hand; nothing is placed, spent or logged.
     expect((scene.state.hand ?? []).length).toBe(handBefore);

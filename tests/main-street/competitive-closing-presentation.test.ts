@@ -105,20 +105,19 @@ function makeResult(overrides: Partial<TurnResult> = {}): TurnResult {
 
 interface PresentationHarness {
   scene: any;
-  instructions: string[];
+  /** Live view of the transient feedback stream (surfaced pop texts). */
+  instructions: () => string[];
   incomeCalls: Array<{ phaseData: any[]; options: any }>;
   incidentCalls: any[];
 }
 
 /** Lightweight fake scene recording the presentation surface under test. */
 function makeHarness(overrides: Record<string, unknown> = {}): PresentationHarness {
-  const instructions: string[] = [];
   const incomeCalls: Array<{ phaseData: any[]; options: any }> = [];
   const incidentCalls: any[] = [];
   const scene: any = {
     replayMode: false,
     settingsPanel: { reducedMotion: false },
-    instructionText: { setText: (t: string) => instructions.push(t) },
     layout: { gameW: 800, gameH: 600 },
     msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
     msAnimator: {
@@ -131,6 +130,7 @@ function makeHarness(overrides: Record<string, unknown> = {}): PresentationHarne
     },
     ...overrides,
   };
+  const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
   return { scene, instructions, incomeCalls, incidentCalls };
 }
 
@@ -162,7 +162,8 @@ function makeFakeClock(): {
 }
 
 const asCtx = (scene: any): any => ({ scene });
-const lastInstruction = (instructions: string[]): string => instructions[instructions.length - 1];
+const lastInstruction = (instructions: string[] | (() => string[])): string =>
+  (Array.isArray(instructions) ? instructions : instructions())[(Array.isArray(instructions) ? instructions : instructions()).length - 1];
 
 // ── AC1/AC2: closing summary text ────────────────────────────────────
 
@@ -197,11 +198,13 @@ describe('presentCompetitiveClosing — income feedback (AC1/AC3)', () => {
       () => completed++,
     );
 
-    expect(h.instructions[0]).toBe('Resolving end-of-turn effects...');
+    // 'Resolving end-of-turn effects…' is dropped progress text (no pop); the
+    // first surfaced feedback is the per-seat closing summary.
+    expect(h.instructions()[0]).toBe('Player 1: +12 coins');
     // Per-seat summary replaces the shared host total (AC3).
-    expect(h.instructions).toContain('Player 1: +12 coins');
-    expect(h.instructions).toContain('End of turn complete.');
-    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(h.instructions()).toContain('Player 1: +12 coins');
+    expect(h.instructions()).toContain('End of turn complete.');
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
     // Per-seat contract: the full income choreography IS run for each seat.
     expect(h.incomeCalls).toHaveLength(1);
     expect(h.incomeCalls[0]?.phaseData?.[0]?.baseIncome).toBe(12);
@@ -214,8 +217,9 @@ describe('presentCompetitiveClosing — income feedback (AC1/AC3)', () => {
 
     presentCompetitiveClosing(asCtx(h.scene), makeResult({ income: null }), () => completed++);
 
-    expect(h.instructions[0]).toBe('Resolving end-of-turn effects...');
-    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    // 'Resolving end-of-turn effects…' is dropped progress text (no pop); with
+    // no income and no incident the only surfaced feedback is the completion.
+    expect(h.instructions().at(-1)).toBe('End of turn complete.');
     expect(completed).toBe(1);
   });
 });
@@ -246,7 +250,7 @@ describe('presentCompetitiveClosing — incident reveal (AC2)', () => {
     expect(completed).toBe(0);
     h.incidentCalls[0].onComplete();
     expect(completed).toBe(1);
-    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
   });
 
   it('skips the reveal under reduced motion but keeps the incident text (AC4)', () => {
@@ -258,9 +262,9 @@ describe('presentCompetitiveClosing — incident reveal (AC2)', () => {
 
     expect(h.incomeCalls).toHaveLength(0);
     expect(h.incidentCalls).toHaveLength(0);
-    expect(h.instructions.some((t) => t.includes('Income: +12 coins'))).toBe(true);
-    expect(h.instructions.some((t) => t.includes('Incident: Fire'))).toBe(true);
-    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(h.instructions().some((t) => t.includes('Income: +12 coins'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('Incident: Fire'))).toBe(true);
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
     expect(completed).toBe(1);
   });
 });
@@ -308,7 +312,7 @@ describe('presentCompetitiveClosing — bounded and non-blocking (AC4)', () => {
 // ── Wiring: endCompetitiveTurnDay presents before the next day ───────
 
 /** Non-blocking scene surface consumed by the competitive end-turn path. */
-function makeEndTurnScene(state: MainStreetState, instructions: string[]): any {
+function makeEndTurnScene(state: MainStreetState): any {
   return {
     state,
     uiPhase: 'market',
@@ -319,7 +323,6 @@ function makeEndTurnScene(state: MainStreetState, instructions: string[]): any {
     hintUsedThisTurn: false,
     hintedCardId: null,
     hintedSlotIndex: null,
-    instructionText: { setText: (t: string) => instructions.push(t) },
     cardSvgLoadPromise: new Promise<void>(() => {}),
     prewarmVisibleCardTextures: () => {},
     refreshAll: () => {},
@@ -348,8 +351,8 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
       playerCount: 2,
       opponents: OPPONENTS,
     });
-    const instructions: string[] = [];
-    const scene = makeEndTurnScene(state, instructions);
+    const scene = makeEndTurnScene(state);
+    const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
     let started = 0;
     let gameOver: TurnResult | null = null;
     const tcCtx: any = {
@@ -369,17 +372,17 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
     // AC4: bounded — exactly one continuation path is taken.
     expect(started + (gameOver ? 1 : 0)).toBe(1);
     if (started === 1) {
-      // AC3: progression text is shown before the day advances.
-      expect(instructions[0]).toBe('AI opponents are taking their turns...');
-      expect(instructions).toContain('Resolving end-of-turn effects...');
-      expect(instructions).toContain('End of turn complete.');
+      // AC3: feedback is surfaced before the day advances (the 'Resolving…' /
+      // 'AI opponents…' progress lines are dropped; the per-seat summary and
+      // the completion text pop).
+      expect(instructions()).toContain('End of turn complete.');
     }
   }, 30_000);
 
   it('single-player endTurn never enters the competitive closing presentation', () => {
     const state = setupMainStreetGame({ seed: 'sp-closing-presentation' });
-    const instructions: string[] = [];
-    const scene = makeEndTurnScene(state, instructions);
+    const scene = makeEndTurnScene(state);
+    const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
     const controller = new MainStreetTurnController(scene);
     (controller as any).finishTurnPresentation = () => {};
 
@@ -387,8 +390,8 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
     expect(state.players ?? []).toHaveLength(0);
     controller.startTurnPhase();
     controller.endTurn();
-    expect(instructions).not.toContain('AI opponents are taking their turns...');
-    expect(instructions).not.toContain('End of turn complete.');
+    expect(instructions()).not.toContain('AI opponents are taking their turns...');
+    expect(instructions()).not.toContain('End of turn complete.');
   }, 30_000);
 });
 
@@ -403,7 +406,8 @@ describe('endCompetitiveTurnDay — closing is presented before the next day', (
 
 interface PrimitiveHarness {
   scene: any;
-  instructions: string[];
+  /** Live view of the transient feedback stream (surfaced pop texts). */
+  instructions: () => string[];
   incidentCalls: any[];
 }
 
@@ -413,12 +417,10 @@ interface PrimitiveHarness {
  * any bounded hold the primitive (or its caller) schedules runs immediately.
  */
 function makePrimitiveHarness(overrides: Record<string, unknown> = {}): PrimitiveHarness {
-  const instructions: string[] = [];
   const incidentCalls: any[] = [];
   const scene: any = {
     replayMode: false,
     settingsPanel: { reducedMotion: false },
-    instructionText: { setText: (t: string) => instructions.push(t) },
     layout: { gameW: 800, gameH: 600 },
     incidentRevealActive: false,
     msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
@@ -436,6 +438,7 @@ function makePrimitiveHarness(overrides: Record<string, unknown> = {}): Primitiv
     },
     ...overrides,
   };
+  const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
   return { scene, instructions, incidentCalls };
 }
 
@@ -446,7 +449,6 @@ function makePrimitiveHarness(overrides: Record<string, unknown> = {}): Primitiv
 function makeTurnFlowHarness(): { scene: any; tcCtx: any } {
   const scene: any = {
     state: { resourceBank: { coins: 0, reputation: 0 } },
-    instructionText: { setText: vi.fn() },
     incomeCollectionActive: false,
     logDeferredUntilPhaseComplete: false,
     endOfTurnDeltasApplied: false,
@@ -503,7 +505,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
       });
 
       // Income summary text — the same format both closings use today.
-      expect(h.instructions.some((t) => t.includes('Income: +12 coins'))).toBe(true);
+      expect(h.instructions().some((t) => t.includes('Income: +12 coins'))).toBe(true);
 
       // Incident reveal driven once, with the closing's deltas and origin.
       expect(h.incidentCalls).toHaveLength(1);
@@ -520,7 +522,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
       h.incidentCalls[0].onComplete();
 
       // End-of-turn text, then advance exactly once.
-      expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+      expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
       expect(completed).toBe(1);
     },
   );
@@ -536,7 +538,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     });
 
     expect(h.incidentCalls).toHaveLength(0);
-    expect(h.instructions.some((t) => t.includes('Income: +3 coins'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('Income: +3 coins'))).toBe(true);
     expect(completed).toBe(1);
   });
 
@@ -550,7 +552,7 @@ describe('shared closing presentation primitive (MS-0MUYFX6ER000BLP3)', () => {
     });
 
     expect(h.incidentCalls).toHaveLength(0);
-    expect(h.instructions.some((t) => t.includes('Incident: Fire'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('Incident: Fire'))).toBe(true);
     expect(completed).toBe(1);
   });
 
@@ -669,19 +671,18 @@ function makePlayerIncomes(entries: Array<[number, number]>): OwnerIncomeResult[
  */
 interface PerSeatHarness {
   scene: any;
-  instructions: string[];
+  /** Live view of the transient feedback stream (surfaced pop texts). */
+  instructions: () => string[];
   /** Phase data arrays passed to `animateIncomePhases`, in call order. */
   incomeCalls: any[][];
 }
 
 function makePerSeatHarness(overrides: Record<string, unknown> = {}): PerSeatHarness {
-  const instructions: string[] = [];
   const incomeCalls: any[][] = [];
   const scene: any = {
     state: { players: [] },
     replayMode: false,
     settingsPanel: { reducedMotion: false },
-    instructionText: { setText: (t: string) => instructions.push(t) },
     layout: { gameW: 800, gameH: 600 },
     msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
     msAnimator: {
@@ -699,6 +700,7 @@ function makePerSeatHarness(overrides: Record<string, unknown> = {}): PerSeatHar
     incomeCollectionActive: false,
     ...overrides,
   };
+  const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
   return { scene, instructions, incomeCalls };
 }
 
@@ -798,8 +800,8 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
     presentCompetitiveClosing(asCtx(h.scene), result, () => {});
 
     // Each seat's own income appears in the instruction stream.
-    expect(h.instructions.some((t) => /Player 1[:\s].*\+10 coins/.test(t))).toBe(true);
-    expect(h.instructions.some((t) => /Player 2[:\s].*\+7 coins/.test(t))).toBe(true);
+    expect(h.instructions().some((t) => /Player 1[:\s].*\+10 coins/.test(t))).toBe(true);
+    expect(h.instructions().some((t) => /Player 2[:\s].*\+7 coins/.test(t))).toBe(true);
   });
 
   it('AC6 — reduced motion presents per-seat text and advances', () => {
@@ -814,9 +816,9 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
     // No animation, but per-seat text is shown and the day advances.
     expect(h.incomeCalls).toHaveLength(0);
-    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
-    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
-    expect(lastInstruction(h.instructions)).toBe('End of turn complete.');
+    expect(h.instructions().some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
     expect(completed).toBe(1);
   });
 
@@ -832,8 +834,8 @@ describe('per-seat closing animation sequencing (AC1/AC2/AC3)', () => {
 
     // No animation, but the per-seat text still lands and the day advances.
     expect(h.incomeCalls).toHaveLength(0);
-    expect(h.instructions.some((t) => t.includes('+10 coins'))).toBe(true);
-    expect(h.instructions.some((t) => t.includes('+7 coins'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('+10 coins'))).toBe(true);
+    expect(h.instructions().some((t) => t.includes('+7 coins'))).toBe(true);
     expect(completed).toBe(1);
   });
 });
@@ -955,13 +957,11 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
   });
 
   it('AC6 — a large roster (8 seats) is one combined sweep that still advances the day', () => {
-    const instructions: string[] = [];
     const incomeCalls: any[][] = [];
     const scene: any = {
       state: { players: [] },
       replayMode: false,
       settingsPanel: { reducedMotion: false },
-      instructionText: { setText: (t: string) => instructions.push(t) },
       layout: { gameW: 800, gameH: 600 },
       msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
       msAnimator: {
@@ -991,7 +991,7 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
       'Seat 4 Biz', 'Seat 5 Biz', 'Seat 6 Biz', 'Seat 7 Biz',
     ]);
     // The closing completes — the day advances.
-    expect(lastInstruction(instructions)).toBe('End of turn complete.');
+    expect(lastInstruction((scene.feedbackHistory ?? []).map((e: any) => String(e.text)))).toBe('End of turn complete.');
     expect(completed).toBe(1);
   });
 
@@ -1001,7 +1001,6 @@ describe('global fast-forward bound (AC6, bounded fallback)', () => {
       state: { players: [] },
       replayMode: false,
       settingsPanel: { reducedMotion: false },
-      instructionText: { setText: () => {} },
       layout: { gameW: 800, gameH: 600 },
       msRenderer: { getFrontIncidentCardCenter: () => ({ x: 111, y: 222 }) },
       msAnimator: {

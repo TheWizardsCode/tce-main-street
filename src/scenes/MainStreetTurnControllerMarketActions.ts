@@ -8,6 +8,7 @@
  */
 
 import { playIllegalFeedback, matchesRequiredCard } from './MainStreetTurnControllerUtils';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { FONT_FAMILY } from '@ui/constants';
@@ -19,7 +20,7 @@ import { SFX_KEYS } from './MainStreetConstants';
 // import this controller module do not pull in browser-only UI modules.
 import { discardCard } from '@ui/discardCard';
 import { executeAction } from '../MainStreetEngine';
-import { turnLabel, weekLabel } from '../MainStreetFormatting';
+import { turnLabel } from '../MainStreetFormatting';
 import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, canUseFreeMarketReroll } from '../MainStreetMarket';
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
@@ -39,7 +40,7 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
     // costs the daily action — gate before the transfer animation so the
     // player gets immediate feedback instead of a mid-flight error.
     if (s.state.actionsRemaining <= 0) {
-      s.instructionText.setText('No actions remaining this week. End your turn to start next week.');
+      flashError(s, 'No actions remaining this week. End your turn to start next week.');
       const containers0 = s.msRenderer?.getMarketRowCards?.();
       const cardIndex0 = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const target0 = containers0?.[cardIndex0] ?? null;
@@ -50,7 +51,7 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
     // Tutorial gating: only allow select-business if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('select-business' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const containers1 = s.msRenderer?.getMarketRowCards?.();
       const cardIndex1 = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const target1 = containers1?.[cardIndex1] ?? null;
@@ -73,17 +74,11 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
         );
         const requiredName = requiredCard?.name ?? 'the specified card';
         const msg = `This is not the card you should buy right now. Please buy ${requiredName} first.`;
-        s.instructionText.setText(msg);
+        flashError(s, msg);
         const containers2 = s.msRenderer?.getMarketRowCards?.();
         const cardIndex2 = s.state.market.cards.findIndex((c: any) => c.id === card.id);
         const target2 = containers2?.[cardIndex2] ?? null;
         playIllegalFeedback(target2, s);
-        // Clear the error message after 2 seconds so the overlay remains visible
-        s.time.delayedCall(2000, () => {
-          if (s.instructionText?.text === msg) {
-            s.instructionText.setText('Complete the highlighted step.');
-          }
-        });
         return;
       }
     }
@@ -99,7 +94,7 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
       const cardIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const target = containers?.[cardIndex] ?? null;
       playIllegalFeedback(target, s);
-      s.instructionText.setText(`Hand full: ${handCheck.reason ?? 'Place or sell a card first.'}`);
+      flashError(s, `Hand full: ${handCheck.reason ?? 'Place or sell a card first.'}`);
       return;
     }
 
@@ -112,7 +107,6 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
 
     s.clearMarketSelection();
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Moving "${cardName}" to hand...`);
     s.hiddenTransferSourceCardIds.add(card.id);
     s.refreshAll();
 
@@ -123,7 +117,7 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
         try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'move-to-hand', cardId: card.id }, description: cmd.description }); } catch (_) {}
         try { s.gameEvents?.emit('card:placed', { cardId: card.id }); } catch (_) {}
-        s.instructionText.setText(`"${cardName}" moved to hand (1 action)!`);
+        flashConfirmation(s, `"${cardName}" moved to hand (1 action)!`);
 
         // No auto-selection (CG-0MSXIQIPJ000NDTL): the card rests in hand,
         // unselected. The player must explicitly click the hand card when
@@ -133,11 +127,10 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
         s.pendingHandJustMoved = false;
         s.justMovedHandCardId = card.id;
         s.uiPhase = 'market';
-        s.instructionText.setText(`"${cardName}" is in hand — click the card to select it, then an empty slot to place.`);
       } catch (e) {
         console.error('[MS] BuyBusinessToHand failed', e);
         playIllegalFeedback(s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
         s.uiPhase = 'market';
       }
 
@@ -178,7 +171,7 @@ export function onEventCardClick(tcCtx: MainStreetTurnControllerContext, card: E
     // Tutorial gating: only allow buy-event if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('buy-event' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const containersE = s.msRenderer?.getMarketRowCards?.();
       const cardIndexE = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const targetE = containersE?.[cardIndexE] ?? s.actionContainer ?? null;
@@ -200,17 +193,11 @@ export function onEventCardClick(tcCtx: MainStreetTurnControllerContext, card: E
         );
         const requiredName = requiredCard?.name ?? 'the specified event card';
         const msg = `This is not the card you should buy right now. Please buy ${requiredName} first.`;
-        s.instructionText.setText(msg);
+        flashError(s, msg);
         const containersE2 = s.msRenderer?.getMarketRowCards?.();
         const cardIndexE2 = s.state.market.cards.findIndex((c: any) => c.id === card.id);
         const targetE2 = containersE2?.[cardIndexE2] ?? s.actionContainer ?? null;
         playIllegalFeedback(targetE2, s);
-        // Clear the error message after 2 seconds
-        s.time.delayedCall(2000, () => {
-          if (s.instructionText?.text === msg) {
-            s.instructionText.setText('Complete the highlighted step.');
-          }
-        });
         return;
       }
     }
@@ -226,14 +213,13 @@ export function onEventCardClick(tcCtx: MainStreetTurnControllerContext, card: E
       const cardIndexE3 = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const targetE3 = containersE3?.[cardIndexE3] ?? s.actionContainer ?? null;
       playIllegalFeedback(targetE3, s);
-      s.instructionText.setText(`Cannot buy event: ${legality.reason ?? 'unknown'}`);
+      flashError(s, `Cannot buy event: ${legality.reason ?? 'unknown'}`);
       return;
     }
 
     const sourceIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
 
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Moving event "${card.name}" to hand...`);
     s.hiddenTransferSourceCardIds.add(card.id);
     s.refreshAll();
 
@@ -245,11 +231,11 @@ export function onEventCardClick(tcCtx: MainStreetTurnControllerContext, card: E
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
         try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-event', cardId: card.id }, description: cmd.description }); } catch (_) {}
         try { s.gameEvents?.emit('card:placed', { cardId: card.id }); } catch (_) {}
-        s.instructionText.setText(`Moved event to hand (1 action): "${card.name}"`);
+        flashConfirmation(s, `Moved event to hand (1 action): "${card.name}"`);
       } catch (e) {
         console.error('[MS] MoveEventToHand failed', e);
         playIllegalFeedback(s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
       }
 
       s.hiddenTransferSourceCardIds.delete(card.id);
@@ -286,13 +272,12 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
 
     const legality = canRefreshMarket(s.state);
     if (!legality.legal) {
-      s.instructionText.setText(`Cannot research: ${legality.reason ?? 'unknown'}`);
+      flashError(s, `Cannot research: ${legality.reason ?? 'unknown'}`);
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Researching the market...');
     s.refreshAll();
 
     // Capture the outgoing row before the command replaces it — the swap
@@ -304,12 +289,12 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
       s.undoManager.execute(cmd);
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'refresh-market' }, description: cmd.description }); } catch (_) {}
-      s.instructionText.setText('Market researched');
+      flashConfirmation(s, 'Market researched');
       addLog(s.state, 'Researched market (via UI)', 'neutral');
       refreshed = true;
     } catch (e) {
       console.error('[MS] RefreshMarket failed', e);
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
     }
 
     s.uiPhase = 'market';
@@ -326,13 +311,12 @@ export function onFreeMarketRerollClick(tcCtx: MainStreetTurnControllerContext):
 
     const legality = canUseFreeMarketReroll(s.state);
     if (!legality.legal) {
-      s.instructionText.setText(`Cannot free re-roll: ${legality.reason ?? 'unknown'}`);
+      flashError(s, `Cannot free re-roll: ${legality.reason ?? 'unknown'}`);
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Investor free re-roll...');
     s.refreshAll();
 
     // Capture the outgoing row before the command replaces it — the swap
@@ -344,11 +328,11 @@ export function onFreeMarketRerollClick(tcCtx: MainStreetTurnControllerContext):
       s.undoManager.execute(cmd);
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'free-market-reroll' }, description: cmd.description }); } catch (_) {}
-      s.instructionText.setText('Investor free re-roll complete (coin-free)');
+      flashConfirmation(s, 'Investor free re-roll complete (coin-free)');
       rerolled = true;
     } catch (e) {
       console.error('[MS] FreeMarketReroll failed', e);
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
     }
 
     s.uiPhase = 'market';
@@ -373,14 +357,13 @@ export function onMoveStaffClick(tcCtx: MainStreetTurnControllerContext, staffId
 
     const affordance = buildMoveStaffAffordance(s.state, staffId);
     if (!affordance.enabled) {
-      s.instructionText.setText(affordance.tooltip.split('\n').slice(1).join(' '));
+      flashError(s, affordance.tooltip.split('\n').slice(1).join(' '));
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.pendingStaffMoveId = affordance.staffId;
     s.uiPhase = 'moving-staff';
-    s.instructionText.setText('Click a matching business to move the staff member (1 action).');
     s.refreshAll();
   
 }
@@ -400,7 +383,7 @@ export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerConte
 
     const legality = canMoveStaffOnBusiness(s.state, staffId, slotIndex);
     if (!legality.legal) {
-      s.instructionText.setText(legality.reason ?? 'Cannot move staff there.');
+      flashError(s, legality.reason ?? 'Cannot move staff there.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
@@ -411,11 +394,11 @@ export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerConte
       s.undoManager.execute(cmd);
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'move-staff', staffId, slotIndex }, description: cmd.description }); } catch (_) {}
-      s.instructionText.setText(`Staff moved to slot ${slotIndex} (-1 action).`);
+      flashConfirmation(s, `Staff moved to slot ${slotIndex} (-1 action).`);
       moved = true;
     } catch (e) {
       console.error('[MS] MoveStaff failed', e);
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
     }
 
     s.pendingStaffMoveId = null;
@@ -433,7 +416,7 @@ export function cancelStaffMove(tcCtx: MainStreetTurnControllerContext): boolean
     if (s.uiPhase !== 'moving-staff') return false;
     s.pendingStaffMoveId = null;
     s.uiPhase = 'market';
-    s.instructionText.setText('Staff move cancelled.');
+    flashConfirmation(s, 'Staff move cancelled.');
     s.refreshAll();
     return true;
   
@@ -445,28 +428,27 @@ export function onPeekClick(tcCtx: MainStreetTurnControllerContext): void {
     if (s.uiPhase !== 'market') return;
 
     if (s.state.actionsRemaining <= 0) {
-      s.instructionText.setText('No actions remaining this week. End your turn to start next week.');
+      flashError(s, 'No actions remaining this week. End your turn to start next week.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
     if (s.state.peekUsedThisTurn) {
-      s.instructionText.setText('You have already peeked at the incident deck this turn.');
+      flashError(s, 'You have already peeked at the incident deck this turn.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
     if (!hasPeekCapableStaff(s.state)) {
-      s.instructionText.setText('No staff member with the peek ability is employed.');
+      flashError(s, 'No staff member with the peek ability is employed.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
     if (s.state.incidentDeck.length === 0) {
-      s.instructionText.setText('The incident deck is empty \u2014 nothing to peek at.');
+      flashError(s, 'The incident deck is empty \u2014 nothing to peek at.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Peeking at the incident deck...');
     try {
       const cmd = peekIncidentDeckCommand(s.state);
       s.undoManager.execute(cmd);
@@ -481,7 +463,7 @@ export function onPeekClick(tcCtx: MainStreetTurnControllerContext): void {
       } catch (_) { /* transcript disabled */ }
     } catch (e) {
       console.error('[MS] Peek failed', e);
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
       s.uiPhase = 'market';
       s.refreshAll();
       return;
@@ -502,7 +484,7 @@ export function onPeekClick(tcCtx: MainStreetTurnControllerContext): void {
       onComplete: () => {
         s.state.revealedPeekedCard = null;
         s.uiPhase = 'market';
-        s.instructionText.setText(
+        flashConfirmation(s, 
           `${turnLabel(s.state.config, s.state.turn)} -- Peeked: ${peeked.name} (returned face-down)`,
         );
         s.refreshAll();
@@ -521,7 +503,7 @@ export function onCommunityFavourClick(tcCtx: MainStreetTurnControllerContext, d
     // illegal-move feedback.
     const tutorialCheck = (s.msLifecycleManager as any)?.isTutorialActionAllowed?.('community-favour' as TutorialActionType);
     if (tutorialCheck && !tutorialCheck.allowed) {
-      s.instructionText.setText(tutorialCheck.reason ?? 'Complete the highlighted step first.');
+      flashError(s, tutorialCheck.reason ?? 'Complete the highlighted step first.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
@@ -533,12 +515,12 @@ export function onCommunityFavourClick(tcCtx: MainStreetTurnControllerContext, d
 
     // ── Guards (mirror the button disabled states) — surface, don't fail silently ──
     if (s.state.favourUsedThisTurn) {
-      s.instructionText.setText('You have already used Community Favour this turn.');
+      flashError(s, 'You have already used Community Favour this turn.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
     if (resource < cost) {
-      s.instructionText.setText(
+      flashError(s, 
         `Not enough ${resourceName} for Community Favour (need ${cost}, have ${resource}).`,
       );
       playIllegalFeedback(s.actionContainer, s);
@@ -546,7 +528,6 @@ export function onCommunityFavourClick(tcCtx: MainStreetTurnControllerContext, d
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Community Favour exchange...');
     try {
       executeAction(s.state, { type: 'community-favour', direction });
 
@@ -584,7 +565,7 @@ export function onCommunityFavourClick(tcCtx: MainStreetTurnControllerContext, d
     } catch (e) {
       // Engine rejected the exchange — surface standard illegal feedback.
       console.error('[MS] Community Favour failed', e);
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
       playIllegalFeedback(s.actionContainer, s);
       s.uiPhase = 'market';
       s.refreshAll();
@@ -613,7 +594,7 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
     // explicit step. Gate before the transfer so the player gets immediate
     // feedback instead of a mid-flight error.
     if (s.state.actionsRemaining <= 0) {
-      s.instructionText.setText('No actions remaining this week. End your turn to start next week.');
+      flashError(s, 'No actions remaining this week. End your turn to start next week.');
       const containersNoActions = s.msRenderer?.getMarketRowCards?.();
       const cardIndexNoActions = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       playIllegalFeedback(containersNoActions?.[cardIndexNoActions] ?? s.actionContainer ?? null, s);
@@ -623,7 +604,7 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
     // Tutorial gating: only allow apply-upgrade if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const containersU = s.msRenderer?.getMarketRowCards?.();
       const cardIndexU = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const targetU = containersU?.[cardIndexU] ?? s.actionContainer ?? null;
@@ -641,17 +622,15 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
       const containers = s.msRenderer?.getMarketRowCards?.();
       const cardIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       playIllegalFeedback(containers?.[cardIndex] ?? s.actionContainer ?? null, s);
-      s.instructionText.setText(`Hand full: ${handCheck.reason ?? 'Place or sell a card first.'}`);
+      flashError(s, `Hand full: ${handCheck.reason ?? 'Place or sell a card first.'}`);
       return;
     }
 
     const sourceIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
-    const cardName = card.name;
 
     s.selectMarketCardById(card.id);
     s.clearMarketSelection();
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Moving "${cardName}" to hand...`);
     s.hiddenTransferSourceCardIds.add(card.id);
     s.refreshAll();
 
@@ -669,11 +648,10 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
         s.pendingHandIndex = null;
         s.pendingHandJustMoved = false;
         s.uiPhase = 'market';
-        s.instructionText.setText(`"${cardName}" is in hand — click the card, then a business to upgrade.`);
       } catch (e) {
         console.error('[MS] MoveUpgradeToHand failed', e);
         playIllegalFeedback(s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
         s.uiPhase = 'market';
       }
 
@@ -727,14 +705,6 @@ export function cancelHandSelection(tcCtx: MainStreetTurnControllerContext): voi
       s.msRenderer.updateBusinessHandSelection(null);
     }
 
-    // Reset the HintBar to the standard market instruction (Cancel parity).
-    const marketHint =
-      `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`;
-    if (s.hintBar && typeof s.hintBar.setText === 'function') {
-      s.hintBar.setText(marketHint);
-    } else if (s.instructionText && typeof s.instructionText.setText === 'function') {
-      s.instructionText.setText(marketHint);
-    }
 
     s.refreshAll();
   
@@ -751,7 +721,7 @@ export function onHandUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, i
     // or the tutorial is inactive.
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const handSpriteGating = s.msRenderer?.handView?.getSpriteAt?.(index) as any;
       playIllegalFeedback(handSpriteGating ?? s.actionContainer, s);
       return;
@@ -771,7 +741,6 @@ export function onHandUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, i
       }
       s.pendingHandIndex = index;
       s.pendingHandJustMoved = isSameWeek;
-      s.instructionText.setText(`Click a business to apply "${hand[index]?.name ?? 'upgrade'}"`);
       s.refreshAll();
       if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {
         s.msRenderer.updateBusinessHandSelection(index);
@@ -786,7 +755,6 @@ export function onHandUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, i
     s.pendingHandIndex = index;
     s.pendingHandJustMoved = isSameWeek;
     s.uiPhase = 'placing-from-hand';
-    s.instructionText.setText(`Click a business to apply "${hand[index]?.name ?? 'upgrade'}"`);
     s.refreshAll();
 
     if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {
@@ -804,7 +772,7 @@ export function onStaffCardClick(tcCtx: MainStreetTurnControllerContext, card: S
     // the tutorial is inactive.
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('hire-staff' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const containersS = s.msRenderer?.getMarketRowCards?.();
       const cardIndexS = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const targetS = containersS?.[cardIndexS] ?? s.actionContainer ?? null;
@@ -823,14 +791,13 @@ export function onStaffCardClick(tcCtx: MainStreetTurnControllerContext, card: S
       const cardIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
       const target = containers?.[cardIndex] ?? s.actionContainer ?? null;
       playIllegalFeedback(target, s);
-      s.instructionText.setText(`Cannot hire: ${legality.reason ?? 'unknown'}`);
+      flashError(s, `Cannot hire: ${legality.reason ?? 'unknown'}`);
       return;
     }
 
     const sourceIndex = s.state.market.cards.findIndex((c: any) => c.id === card.id);
 
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Hiring "${card.name}"...`);
     s.hiddenTransferSourceCardIds.add(card.id);
     s.refreshAll();
 
@@ -843,7 +810,7 @@ export function onStaffCardClick(tcCtx: MainStreetTurnControllerContext, card: S
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
         try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'hire-staff', cardId: card.id }, description: cmd.description }); } catch (_) {}
         try { s.gameEvents?.emit('card:placed', { cardId: card.id }); } catch (_) {}
-        s.instructionText.setText(`Hired "${card.name}" (+${card.handSlotsAdded} hand slots)`);
+        flashConfirmation(s, `Hired "${card.name}" (+${card.handSlotsAdded} hand slots)`);
         // Lightweight notification for the hire (popup above the hand).
         try {
           void popTextOrIcon({ scene: s, x: s.layout.handCenterX, y: s.layout.handY, label: `Hired ${card.name}` });
@@ -852,7 +819,7 @@ export function onStaffCardClick(tcCtx: MainStreetTurnControllerContext, card: S
       } catch (e) {
         console.error('[MS] HireStaff failed', e);
         playIllegalFeedback(s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
       }
 
       s.hiddenTransferSourceCardIds.delete(card.id);
@@ -901,7 +868,7 @@ export function onHandBusinessCardClick(tcCtx: MainStreetTurnControllerContext, 
     // Tutorial gating: only allow if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('select-hand-card' as any);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const handSpriteH = s.msRenderer?.handView?.getSpriteAt?.(index) as any;
       playIllegalFeedback(handSpriteH ?? s.actionContainer, s);
       return;
@@ -920,8 +887,6 @@ export function onHandBusinessCardClick(tcCtx: MainStreetTurnControllerContext, 
       // the market this turn (CG-0MSXIQIPJ000NDTL); any other hand card costs
       // an action (pendingHandJustMoved derived from justMovedHandCardId).
       s.pendingHandJustMoved = s.justMovedHandCardId === hand[index]?.id;
-      const cardName = hand[index]?.name ?? 'card';
-      s.instructionText.setText(`Click an empty slot to place "${cardName}"`);
       s.refreshAll();
       // Update the selection highlight via the renderer
       if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {
@@ -942,8 +907,6 @@ export function onHandBusinessCardClick(tcCtx: MainStreetTurnControllerContext, 
     // an action.
     s.pendingHandJustMoved = s.justMovedHandCardId === hand[index]?.id;
     s.uiPhase = 'placing-from-hand';
-    const cardName = hand[index]?.name ?? 'card';
-    s.instructionText.setText(`Click an empty slot to place "${cardName}"`);
     s.refreshAll();
 
     // Update the selection highlight
@@ -996,7 +959,6 @@ export function onHandEventCardClick(
     s.pendingHandIndex = index;
     s.pendingHandJustMoved = false;
     s.uiPhase = 'event-selected';
-    s.instructionText.setText(`Selected "${card.name}" — Play or Discard.`);
     s.refreshAll();
     if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {
       s.msRenderer.updateBusinessHandSelection(index);
@@ -1023,7 +985,7 @@ export function onDiscardHandCard(
     // Tutorial gating: a discard must never bypass the required tutorial step.
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('discard-from-hand' as any);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const blockedSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex) as any;
       playIllegalFeedback(blockedSprite ?? s.actionContainer, s);
       return;
@@ -1046,14 +1008,14 @@ export function onDiscardHandCard(
           });
         } catch (_) { /* transcript disabled */ }
         const repCost = card.cost ?? 0;
-        s.instructionText.setText(
+        flashConfirmation(s, 
           repCost > 0
             ? `Discarded "${card.name}" (-${repCost} rep).`
             : `Discarded "${card.name}" (no reputation cost).`,
         );
       } catch (e) {
         playIllegalFeedback(s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
       }
       // Return to the market phase with no selection (AC1).
       s.pendingHandIndex = null;
@@ -1067,7 +1029,6 @@ export function onDiscardHandCard(
 
     if (sprite) {
       s.uiPhase = 'animating';
-      s.instructionText.setText(`Discarding "${card.name}"...`);
       discardCard({
         scene: s,
         target: sprite,

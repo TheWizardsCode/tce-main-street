@@ -178,7 +178,6 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     handCenterX: Math.round(columnCenterX),
     handCardW: BASE_HAND_CARD_W,
     handCardH: BASE_HAND_CARD_H,
-    instructionY: Math.round(handTopLeft.y - 20),
     actionY: Math.round(handTopLeft.y + 28),
     actionButtonH,
     actionButtonW,

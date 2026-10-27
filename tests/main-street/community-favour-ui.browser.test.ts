@@ -77,7 +77,6 @@ interface SceneHandle extends Phaser.Scene {
   refreshHud: () => void;
   msTurnController: { onCommunityFavourClick: (direction: 'coins-to-rep' | 'rep-to-coins') => void };
   settingsPanel?: { reducedMotion?: boolean };
-  instructionText: { setText: (t: string) => void };
 }
 
 /** Walk a container and collect every text label found (including nested). */

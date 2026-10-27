@@ -13,6 +13,7 @@ import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult, SynergyPair } from '../MainStreetAdjacency';
 import type { PendingEndOfTurnDeltas, TurnResult } from '../MainStreetEngine';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
+import { flashConfirmation } from './MainStreetFeedback';
 
 export function animateMarketDealIn(tcCtx: MainStreetTurnControllerContext, row: 'market'): void {
 
@@ -28,7 +29,7 @@ export function animateMarketDealIn(tcCtx: MainStreetTurnControllerContext, row:
   
 }
 
-export function animateMarketSwap(tcCtx: MainStreetTurnControllerContext, 
+export function animateMarketSwap(tcCtx: MainStreetTurnControllerContext,
     row: 'market',
     outgoingRow: Array<{ id: string; family: 'business' | 'community-space' | 'event' | 'upgrade' }>,
   ): void {
@@ -167,10 +168,6 @@ export function perSeatClosingSummary(seats: OwnerIncomeResult[]): string {
     .join(' | ');
 }
 
-/** Sets the scene instruction text, ignoring presentation-only failures. */
-function setInstruction(s: any, text: string): void {
-  try { s.instructionText?.setText?.(text); } catch { /* presentation-only */ }
-}
 
 /** Schedules `cb` after `delayMs` when the scene has a clock, else runs now. */
 function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
@@ -221,19 +218,19 @@ export function presentTurnClosing(
     const delegateIncident =
       animationsEnabled || options.delegateReducedMotionIncident === true;
 
-    if (options.statusText) setInstruction(s, options.statusText);
+    if (options.statusText) flashConfirmation(s, options.statusText);
 
     // Always show the summary text so reduced motion / replay / headless still
     // receive the feedback (the incident name is part of the summary). The
     // per-seat closing passes its own per-seat `incomeSummary`, replacing the
     // shared host total; an empty string suppresses the summary.
     const summary = options.incomeSummary ?? closingSummary(result);
-    if (summary) setInstruction(s, summary);
+    if (summary) flashConfirmation(s, summary);
 
     const incomeCapMs = options.incomeCollectionCapMs ?? INCOME_COLLECTION_CAP_MS;
 
     const complete = (): void => {
-      if (options.completionText) setInstruction(s, options.completionText);
+      if (options.completionText) flashConfirmation(s, options.completionText);
       if (typeof options.holdMs === 'number' && options.holdMs > 0) {
         scheduleOrRun(s, options.holdMs, onComplete);
       } else {

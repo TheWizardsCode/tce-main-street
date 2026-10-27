@@ -102,7 +102,6 @@ function makeHarness(overrides: Record<string, unknown> = {}) {
       weekStartRep: 10,
       weekStartScore: 20,
     },
-    instructionText: { setText: vi.fn() },
     incomeCollectionActive: false,
     endOfTurnDeltasApplied: false,
     previousCoins: null,

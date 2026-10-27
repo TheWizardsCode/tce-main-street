@@ -9,12 +9,12 @@
  * @module
  */
 
-import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
+import { FONT_FAMILY, clearTransientHud, markHudTransient } from '@ui';
 import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
-import { buildCardTooltipInfo, turnLabel, weekLabel } from '../MainStreetFormatting';
+import { buildCardTooltipInfo, weekLabel } from '../MainStreetFormatting';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
@@ -75,17 +75,7 @@ function createCardPacksButton(s: MainStreetRendererContext['scene']): void {
   }
 }
 
-export function createInstructions(renderer: MainStreetRendererContext): void {
 
-    const s = renderer.scene;
-    // Shared HintBar for hint/instruction display at bottom-center
-    s.hintBar = new HintBar(s);
-
-    // Keep legacy instructionText for backward compatibility (tests),
-    // referencing the HintBar's underlying text object.
-    s.instructionText = s.hintBar.textObject;
-  
-}
 
 export function refreshAll(renderer: MainStreetRendererContext): void {
 
@@ -590,9 +580,7 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
       const by = s.layout.actionY;
 
       const hand = s.state.hand ?? [];
-      const handCount = hand.length;
       const selected = s.pendingHandIndex !== null ? hand[s.pendingHandIndex] : undefined;
-      s.hintBar.setText(`Card in hand (${handCount}) — click an empty slot to place`);
 
       // Keep the action budget visible while placing from hand.
       renderActionCounter(s, rightX, by);
@@ -627,12 +615,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.clearMarketSelection();
         s.uiPhase = 'market';
         renderer.refreshAll();
-        // Reset the HintBar to the standard market instruction (AC3).
-        // s.instructionText is the same text object as s.hintBar.textObject,
-        // so route the reset through HintBar explicitly for consistency.
-        s.hintBar.setText(
-          `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`,
-        );
       });
       s.actionContainer.add(cancelBtn);
 
@@ -646,7 +628,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
 
       const hand = s.state.hand ?? [];
       const selected = s.pendingHandIndex !== null ? hand[s.pendingHandIndex] : undefined;
-      s.hintBar.setText('Event selected — Play it or Discard it');
 
       // Discard (rightmost — the End Turn slot).
       const repCost = selected?.cost ?? 0;
@@ -693,9 +674,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
       const rightX = s.layout.gameW - 24;
       const by = s.layout.actionY;
 
-      const cardName = s.pendingBusinessCard?.name ?? '???';
-      s.hintBar.setText(`Place "${cardName}" -- click an empty slot`);
-
       // Keep the action budget visible while placing a business.
       renderActionCounter(s, rightX, by);
 
@@ -707,27 +685,13 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.clearMarketSelection();
         s.uiPhase = 'market';
         renderer.refreshAll();
-        // Reset the HintBar to the standard market instruction (AC3).
-        // s.instructionText is the same text object as s.hintBar.textObject,
-        // so route the reset through HintBar explicitly for consistency.
-        s.hintBar.setText(
-          `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`,
-        );
       });
       s.actionContainer.add(cancelBtn);
     }
 
-    // Staff applicant phase (CG-0MSTOATDU006UGAX): the market action bar
-    // above stays available (Hire/Decline live on the applicant overlay
-    // itself) so the player can resolve the applicant or End Turn to skip.
-    if (s.uiPhase === 'applicant') {
-      const applicantCard = s.pendingApplicant?.card;
-      const name = applicantCard?.name ?? 'Staff Applicant';
-      const salary = applicantCard?.ongoingCost ?? 0;
-      s.hintBar.setText(
-        `${name} — Hire (free, salary ${salary}/turn) or Decline; End Turn to skip`,
-      );
-    }
+    // Staff applicant phase (CG-0MSTOATDU006UGAX): the applicant overlay
+    // presents Hire/Decline itself; the former persistent applicant guidance
+    // line is dropped (see the producer list on MS-0MVPWQK3U003DIR6).
   
 }
 
@@ -1039,7 +1003,7 @@ export function refreshApplicant(renderer: MainStreetRendererContext): boolean {
   
 }
 
-export function animateUpcomingEffectLine(renderer: MainStreetRendererContext, 
+export function animateUpcomingEffectLine(renderer: MainStreetRendererContext,
     effect: { sourceEventId: string; description: string },
     rowIndex: number,
   ): Phaser.GameObjects.Text[] {

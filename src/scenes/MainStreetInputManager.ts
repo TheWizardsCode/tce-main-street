@@ -1,6 +1,7 @@
 import { addLog } from '../MainStreetState';
 import { generateHint, type HintResult } from '../MainStreetHint';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 import { FONT_FAMILY } from '@ui';
 import { LOG_SCROLL_SPEED, LOG_TITLE_H } from './MainStreetConstants';
 import { streetViewportRect } from '../MainStreetMapView';
@@ -233,7 +234,7 @@ export class MainStreetInputManager {
 
     const hint: HintResult | null = generateHint(s.state);
     if (!hint) {
-      s.hintBar?.setText('Hint not available right now.');
+      flashError(s, 'Hint not available right now.');
       return;
     }
 
@@ -256,7 +257,7 @@ export class MainStreetInputManager {
       s.hintedSlotIndex = null;
     }
 
-    s.hintBar?.setText(`Hint: ${hint.rationale}`);
+    flashConfirmation(s, `Hint: ${hint.rationale}`);
     addLog(s.state, `Hint: ${hint.rationale}`, 'neutral');
     try { recordMainStreetEvent({ type: 'hint', turn: s.state.turn, recommendedAction: hint.action, rationale: hint.rationale }); } catch (_) {}
 

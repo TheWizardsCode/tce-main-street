@@ -1,6 +1,7 @@
 import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
 import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 import type { EventCard, StaffCard } from '../MainStreetCards';
 import { SFX_KEYS } from './MainStreetConstants';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
@@ -583,7 +584,7 @@ export class MainStreetOverlayContent {
       const sellLegality = canSellBusiness(s.state, slotIndex, false);
       if (!sellLegality.legal) {
         safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
-        s.instructionText?.setText(`Cannot sell: ${sellLegality.reason ?? 'unknown'}`);
+        flashError(s, `Cannot sell: ${sellLegality.reason ?? 'unknown'}`);
         dismissOverlay(s.overlayObjects);
         s.overlayObjects = [];
         s.refreshAll();
@@ -601,11 +602,11 @@ export class MainStreetOverlayContent {
           cmd.execute();
         }
         addLog(s.state, `Sold ${cardName} from slot ${slotIndex} for +${refund} coins`, 'gain');
-        s.instructionText?.setText(`Sold ${cardName} for +€${refund}`);
+        flashConfirmation(s, `Sold ${cardName} for +€${refund}`);
         sold = true;
       } catch (e) {
         console.error('[Sell] Failed:', e);
-        s.instructionText?.setText(`Error selling: ${(e as Error).message}`);
+        flashError(s, `Error selling: ${(e as Error).message}`);
       }
 
       // Dismiss the overlay
@@ -661,7 +662,7 @@ export class MainStreetOverlayContent {
           } else {
             cmd.execute();
           }
-          s.instructionText?.setText(`Closed ${cardName} (−1 action)`);
+          flashConfirmation(s, `Closed ${cardName} (−1 action)`);
           closed = true;
         }
       } catch (e) {
@@ -692,7 +693,7 @@ export class MainStreetOverlayContent {
         // Illegal close (no actions, sold, empty, wrong phase): auditable
         // feedback with no state mutation.
         safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
-        s.instructionText?.setText(`Cannot close: ${failureReason}`);
+        flashError(s, `Cannot close: ${failureReason}`);
       }
     });
     s.overlayObjects.push(closeBtn);
@@ -706,7 +707,7 @@ export class MainStreetOverlayContent {
     cancelBtn.on('pointerdown', () => {
       dismissOverlay(s.overlayObjects);
       s.overlayObjects = [];
-      s.instructionText?.setText('Cancelled.');
+      flashConfirmation(s, 'Cancelled.');
     });
     s.overlayObjects.push(cancelBtn);
 
@@ -761,11 +762,11 @@ export class MainStreetOverlayContent {
             `Laid off ${target.member.name} (−1 salary, −1 reputation)`,
             'loss',
           );
-          s.instructionText?.setText(`Laid off ${target.member.name} (−1 reputation)`);
+          flashConfirmation(s, `Laid off ${target.member.name} (−1 reputation)`);
           laidOff = true;
         } catch (e) {
           console.error('[LayOff] Failed:', e);
-          s.instructionText?.setText(`Error laying off: ${(e as Error).message}`);
+          flashError(s, `Error laying off: ${(e as Error).message}`);
         }
 
         dismissOverlay(s.overlayObjects);
@@ -1591,7 +1592,7 @@ export class MainStreetOverlayContent {
         safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
         void purchaseMainStreetCardPack(packId).then((outcome) => {
           if (!outcome.purchased) {
-            s.instructionText?.setText?.(
+            flashError(s,
               outcome.reason ?? 'That pack could not be unlocked.',
             );
             return;
@@ -1614,7 +1615,7 @@ export class MainStreetOverlayContent {
           // and explain the refusal without changing the pool.
           safePlaySound(s, COMMON_SFX_KEYS.ILLEGAL_MOVE);
           listing.setResult(toCardPackListingInput(load, enabledIds));
-          s.instructionText?.setText?.(
+          flashError(s,
             outcome.reason ?? 'That pack cannot be disabled right now.',
           );
           return;

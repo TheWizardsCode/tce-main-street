@@ -112,7 +112,6 @@ function raiseHumanDecision(state: MainStreetState): void {
  */
 function makeSceneHarness(state: MainStreetState) {
   const dialogCalls: any[] = [];
-  const instructions: string[] = [];
   const scene: any = {
     state,
     uiPhase: 'market',
@@ -138,7 +137,6 @@ function makeSceneHarness(state: MainStreetState) {
       animateIncidentReveal: () => {},
       animateIncomePhases: () => {},
     },
-    instructionText: { setText: (t: string) => instructions.push(t) },
     cardSvgLoadPromise: new Promise<void>(() => {}),
     prewarmVisibleCardTextures: () => {},
     refreshAll: () => {},
@@ -168,6 +166,7 @@ function makeSceneHarness(state: MainStreetState) {
     presentPiggybackDialog: () => presentPiggybackDialog(tcCtx),
     onPiggybackChoice: (join: boolean) => onPiggybackChoice(tcCtx, join),
   };
+  const instructions = (): string[] => (scene.feedbackHistory ?? []).map((e: any) => String(e.text));
   return { scene, tcCtx, dialogCalls, instructions };
 }
 

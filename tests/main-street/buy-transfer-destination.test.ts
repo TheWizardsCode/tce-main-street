@@ -161,7 +161,6 @@ function createMockScene(): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     selectMarketCardById: vi.fn(),
     clearMarketSelection: vi.fn(),
@@ -178,7 +177,6 @@ function createMockScene(): any {
     undoManager: null,
     overlayObjects: [],
     hudContainer: null,
-    hintBar: null,
     cardSvgLoadPromise: Promise.resolve(),
     prewarmVisibleCardTextures: vi.fn().mockResolvedValue(undefined),
     updateSvgDebugOverlay: vi.fn(),
@@ -278,9 +276,7 @@ describe('Buy transfer destinations (market → hand)', () => {
 
       expect(scene.animateTransferFromMarket).not.toHaveBeenCalled();
       // Hand-full message shown to the player.
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(
-        expect.stringContaining('Hand full'),
-      );
+      expect(scene.lastFeedback?.text).toContain('Hand full');
     });
   });
 

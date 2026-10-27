@@ -3,7 +3,6 @@ import type { DifficultyName } from '../MainStreetDifficulty';
 import type { BusinessCard } from '../MainStreetCards';
 import {
   CardGameScene,
-  HintBar,
   TooltipManager,
 } from '@ui';
 import type { SelectionController, SingleSelectionManager } from '@ui';
@@ -279,10 +278,6 @@ export class MainStreetScene extends CardGameScene {
   // Challenge Tracker panel
   public challengeContainer!: Phaser.GameObjects.Container;
 
-  // Instruction text (managed by HintBar; kept as public property for backward compat)
-  public instructionText!: Phaser.GameObjects.Text;
-  /** Shared HintBar instance for standardised hint/instruction display at bottom-centre. */
-  public hintBar!: HintBar;
 
   // Overlay objects
   public overlayObjects: Phaser.GameObjects.GameObject[] = [];
@@ -447,9 +442,6 @@ export class MainStreetScene extends CardGameScene {
   }
   public createContainers(...args: any[]): any {
     return (this.msRenderer as any).createContainers.apply(this.msRenderer, args);
-  }
-  public createInstructions(...args: any[]): any {
-    return (this.msRenderer as any).createInstructions.apply(this.msRenderer, args);
   }
   public initSvgDebugOverlay(...args: any[]): any {
     return (this.msInputManager as any).initSvgDebugOverlay.apply(this.msInputManager, args);
@@ -1124,7 +1116,6 @@ export class MainStreetScene extends CardGameScene {
     street: { x: number; y: number; w: number; h: number };
     hand: { x: number; y: number; w: number; h: number };
     action: { x: number; y: number; w: number; h: number };
-    instruction: { x: number; y: number; w: number; h: number };
   } {
     const l = this.layout;
     const market = {
@@ -1165,14 +1156,7 @@ export class MainStreetScene extends CardGameScene {
       h: l.actionButtonH,
     };
 
-    const instruction = {
-      x: this.instructionText.x - this.instructionText.displayWidth,
-      y: this.instructionText.y - this.instructionText.displayHeight / 2,
-      w: this.instructionText.displayWidth,
-      h: this.instructionText.displayHeight,
-    };
-
-    return { market, queue, street, hand, action, instruction };
+    return { market, queue, street, hand, action };
   }
 
   // ── Replay: load board state ─────────────────────────────

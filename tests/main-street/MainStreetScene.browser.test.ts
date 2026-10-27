@@ -220,7 +220,6 @@ describe('MainStreetScene browser tests', () => {
           street: { x: number; y: number; w: number; h: number };
           hand: { x: number; y: number; w: number; h: number };
           action: { x: number; y: number; w: number; h: number };
-          instruction: { x: number; y: number; w: number; h: number };
         };
       };
 
@@ -230,7 +229,6 @@ describe('MainStreetScene browser tests', () => {
       expect(overlaps(rects.queue, rects.street), `queue/street overlap at ${vp.width}x${vp.height}`).toBe(false);
       expect(overlaps(rects.street, rects.hand), `street/hand overlap at ${vp.width}x${vp.height}`).toBe(false);
       expect(overlaps(rects.hand, rects.action), `hand/action overlap at ${vp.width}x${vp.height}`).toBe(false);
-      expect(overlaps(rects.action, rects.instruction), `action/instruction overlap at ${vp.width}x${vp.height}`).toBe(false);
 
       destroyGame(game);
       game = null;

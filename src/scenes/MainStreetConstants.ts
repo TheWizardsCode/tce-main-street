@@ -313,7 +313,6 @@ export interface SceneLayout {
   handCenterX: number;
   handCardW: number;
   handCardH: number;
-  instructionY: number;
   actionY: number;
   actionButtonH: number;
   actionButtonW: number;

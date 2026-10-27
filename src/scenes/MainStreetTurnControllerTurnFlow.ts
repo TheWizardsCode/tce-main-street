@@ -8,6 +8,7 @@
  */
 
 import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 
 import { TranscriptStore, autoSaveTranscript } from '@core-engine/transcript';
 import type { EventCard } from '../MainStreetCards';
@@ -15,7 +16,6 @@ import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } 
 import { applyEndOfTurnDeltas, canAffordPiggybackJoinFully, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
-import { turnLabel } from '../MainStreetFormatting';
 import { addLog } from '../MainStreetState';
 import { finalizeMainStreetTranscript, recordMainStreetEvent } from '../MainStreetTranscript';
 import type { TutorialActionType } from '../TutorialFlow';
@@ -110,9 +110,7 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
         }
       });
 
-    s.instructionText.setText(
-      `${turnLabel(s.state.config, s.state.turn)} -- Buy cards from the market or End Turn`,
-    );
+
   
 }
 
@@ -129,13 +127,12 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     // Tutorial gating: only allow end-turn if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('end-turn' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     s.uiPhase = 'animating';
-    s.instructionText.setText('Processing end of turn...');
     s.refreshActionButtons();
 
     // ── Banking hint trigger (MS-0MT3JK16W006A66P) ────────────────
@@ -243,7 +240,7 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
       // with a permanent "Processing end of turn..." message.
       console.error('[MainStreet] endTurn failed:', e);
       s.uiPhase = 'market';
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
       s.refreshAll();
       return;
     }
@@ -777,7 +774,7 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: st
           ? s.state.incidentDeck[s.state.incidentDeck.length - 1]
           : null;
       void pushedCard;
-      s.instructionText.setText(
+      flashConfirmation(s, 
         typeof option === 'number'
           ? `${event.name}: chose option ${option + 1}.`
           : `${event.name}: consequence ${option === 'accept' ? 'accepted' : 'refused'}.`,
@@ -825,7 +822,7 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: st
       // returning to the market instead of hanging on a dead dialog.
       console.error('[EventChoice] resolve failed:', e);
       s.uiPhase = 'market';
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
       s.refreshAll();
     }
   
@@ -934,7 +931,7 @@ export function onPiggybackChoice(tcCtx: MainStreetTurnControllerContext, join: 
       const cmd = resolvePiggybackCommand(state, humanId, join);
       if (s.undoManager) s.undoManager.execute(cmd);
       else cmd.execute();
-      s.instructionText.setText(
+      flashConfirmation(s, 
         join ? 'Joined the event fully — 100% share earned!' : 'Kept the automatic 50% share.',
       );
     } catch (e) {
@@ -942,7 +939,7 @@ export function onPiggybackChoice(tcCtx: MainStreetTurnControllerContext, join: 
       // keeping the free-ride so the day never stalls on a dead prompt.
       console.error('[Piggyback] resolve failed:', e);
       try { resolvePendingPiggyback(state, humanId, false); } catch (_) { /* ignore */ }
-      s.instructionText.setText(`Error: ${(e as Error).message}`);
+      flashError(s, `Error: ${(e as Error).message}`);
       s.refreshAll();
     }
     // Continue the shared day: settle any remaining seats (AI via the F4
@@ -968,7 +965,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     // the tutorial is inactive (T23 "Triggering Events" uses this gate).
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('play-event' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
@@ -992,7 +989,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
     if (!legality.legal) {
       const blockedSprite = s.msRenderer?.handView?.getSpriteAt?.(index) as any;
       playIllegalFeedback(blockedSprite ?? s.actionContainer, s);
-      s.instructionText.setText(legality.reason ?? 'Cannot play this event.');
+      flashError(s, legality.reason ?? 'Cannot play this event.');
       return;
     }
 
@@ -1013,7 +1010,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
       // Record action event
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'play-event' }, description: cmd.description }); } catch (_) {}
       try { s.gameEvents?.emit('card:placed', { action: 'play-event', heldEventId: card.id }); } catch (_) {}
-      s.instructionText.setText('Played held Investment event!');
+      flashConfirmation(s, 'Played held Investment event!');
       addLog(s.state, 'Played held event (via UI)', 'neutral');
       console.debug('[MS] PlayEvent executed', { coinsAfter: s.state.resourceBank.coins });
       // Tutorial: mark play-event step complete if active
@@ -1027,7 +1024,7 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
       const msg = (e as Error).message;
       console.error('[MS] PlayEvent failed', e);
       playIllegalFeedback(handSpriteSprite, s);
-      s.instructionText.setText(`Error: ${msg}`);
+      flashError(s, `Error: ${msg}`);
     }
 
     s.refreshAll();

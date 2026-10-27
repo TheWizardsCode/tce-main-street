@@ -133,7 +133,6 @@ function createMockScene(overrides: Record<string, unknown> = {}): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     selectMarketCardById: vi.fn(),
     clearMarketSelection: vi.fn(),
@@ -241,7 +240,7 @@ describe('Main Street click-path illegal-afford feedback', () => {
       // Card stays in hand; coins unchanged; instruction text shows the error.
       expect(scene.state.hand).toHaveLength(1);
       expect(scene.state.resourceBank.coins).toBe(0);
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Not enough coins'));
+      expect(scene.lastFeedback?.text).toContain('Not enough coins');
     });
 
     it('does play feedback when the play failure is non-affordability (incident event)', () => {
@@ -319,7 +318,7 @@ describe('Main Street click-path illegal-afford feedback', () => {
       expect(scene.state.streetGrid[0]).toBeNull();
       expect(scene.state.resourceBank.coins).toBe(0);
       // Pre-flight check via canPlaceFromHand uses "Insufficient coins".
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Insufficient coins'));
+      expect(scene.lastFeedback?.text).toContain('Insufficient coins');
     });
 
     it('does play feedback when the slot is occupied (non-affordability)', async () => {
@@ -362,7 +361,7 @@ describe('Main Street click-path illegal-afford feedback', () => {
       expect(scene.state.hand.some((c: any) => c.id === event.id)).toBe(true);
       expect(scene.state.resourceBank.coins).toBe(0);
       expect(scene.state.actionsRemaining).toBe(0);
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Moved event to hand (1 action)'));
+      expect(scene.lastFeedback?.text).toContain('Moved event to hand (1 action)');
     });
   });
 
@@ -473,7 +472,7 @@ describe('Main Street click-path illegal-afford feedback', () => {
       expect(shakeConfig).toBeTruthy();
       // No state mutation: card still in market, hand unchanged.
       expect(scene.state.market.cards.find((c: any) => c.id === biz.id)).toBeTruthy();
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Hand full'));
+      expect(scene.lastFeedback?.text).toContain('Hand full');
     });
   });
 
@@ -507,7 +506,7 @@ describe('Main Street click-path illegal-afford feedback', () => {
       controller.onEventCardClick(event);
 
       expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
-      expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Complete the highlighted step'));
+      expect(scene.lastFeedback?.text).toContain('Complete the highlighted step');
     });
   });
 });

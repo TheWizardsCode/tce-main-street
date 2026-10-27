@@ -568,9 +568,6 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     const { upgrade } = setupUpgradeScene(scene, { actions: 1, businessLevel: 1 });
     scene.state.streetGrid[2] = { ...scene.state.streetGrid[0]!, id: 'eligible-lvl0', level: 0 };
     scene.refreshAll();
-    // Spy on the instruction text: an async SVG-prewarm refresh may reset it
-    // after the gesture, so assert the reason was WRITTEN, not its final value.
-    const setTextSpy = vi.spyOn(scene.instructionText, 'setText');
     let container = await waitForMarketStable(scene, upgrade.id);
     const originX = container.x;
     const originY = container.y;
@@ -592,8 +589,8 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     expect(scene.state.resourceBank.coins).toBe(2000);
     expect(scene.undoManager.canUndo()).toBe(false);
     // The rejected drop explains itself with the drop gate's legality reason.
-    expect(setTextSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Business at slot 0 is not a valid target for this upgrade.'),
+    expect(scene.lastFeedback?.text).toContain(
+      'Business at slot 0 is not a valid target for this upgrade.',
     );
   }, 60_000);
 
@@ -669,7 +666,7 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
 
     // No premium dialog and no premium wording on the parity path.
     expect(dialogSpy).not.toHaveBeenCalled();
-    expect(String(scene.instructionText?.text ?? '')).not.toMatch(/premium/i);
+    expect(String(scene.lastFeedback?.text ?? '')).not.toMatch(/premium/i);
     // Listed cost charged (300 deducted → 48 left) and BOTH actions consumed;
     // the banked action is spent per action.
     expect(scene.state.resourceBank.coins).toBe(48);
@@ -733,7 +730,7 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     // Discount-first premium (`ceil(cost × 1.5 × 2) / 2`), exactly one action.
     expect(scene.state.resourceBank.coins).toBe(2000 - premiumOf(upgrade.cost));
     expect(scene.state.actionsRemaining).toBe(0);
-    expect(String(scene.instructionText?.text ?? '')).toMatch(/premium/i);
+    expect(String(scene.lastFeedback?.text ?? '')).toMatch(/premium/i);
     expect(onCancel).toBeTypeOf('function');
   }, 60_000);
 
@@ -776,7 +773,6 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     // alongside the existing illegal-move SFX/shake.
     const { upgrade } = setupUpgradeScene(scene, { actions: 1, coins: 348 });
     upgrade.cost = 300;
-    const setTextSpy = vi.spyOn(scene.instructionText, 'setText');
     const container = await waitForMarketStable(scene, upgrade.id);
     const originX = container.x;
     const originY = container.y;
@@ -789,8 +785,8 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     expect(Math.abs(container.x - originX)).toBeLessThanOrEqual(6);
     expect(container.y).toBeCloseTo(originY, 0);
     expect(scene.state.market.cards.some((c: any) => c.id === upgrade.id)).toBe(true);
-    // …and the instruction text explains WHY with the legality wording.
-    expect(setTextSpy).toHaveBeenCalledWith('Need 450 at premium, have 348.');
+    // …and transient feedback explains WHY with the legality wording.
+    expect(scene.lastFeedback?.text).toBe('Need 450 at premium, have 348.');
   }, 60_000);
 
   it('animates the transfer from the drop location and plays the upgrade SFX', async () => {

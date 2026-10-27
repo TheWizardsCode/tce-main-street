@@ -346,7 +346,6 @@ function createMockScene(state: ReturnType<typeof setupMainStreetGame>): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     showBuyAndPlacePremiumDialog: vi.fn((_cardName: string, onProceed: () => void, onCancel: () => void) => {
       scene.premiumDialogOnProceed = onProceed;
@@ -431,9 +430,7 @@ describe('MainStreetTurnController: upgrade drag parity wiring', () => {
     expect(scene.state.actionsRemaining).toBe(0);
     expect(scene.state.bankedActions).toBe(0);
     expect(scene.uiPhase).toBe('market');
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      expect.stringMatching(/listed/i),
-    );
+    expect(scene.lastFeedback?.text).toMatch(/listed/i);
   });
 
   it('fires the premium dialog at 1 action and commits on Proceed', async () => {
@@ -505,9 +502,7 @@ describe('MainStreetTurnController: upgrade drag parity wiring', () => {
     // Illegal feedback preserved (shake + mute-respecting SFX) …
     expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
     expect(container.x).toBe(300);
-    // … and the underlying reason now reaches the instruction text.
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      'Need 450 at premium, have 348.',
-    );
+    // … and the underlying reason now reaches transient pop feedback.
+    expect(scene.lastFeedback?.text).toBe('Need 450 at premium, have 348.');
   });
 });
