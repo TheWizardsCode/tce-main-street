@@ -152,6 +152,20 @@ export interface CloseBusinessAction {
   slotIndex: number;
 }
 
+/**
+ * Take a bank loan by choosing one option from the configured loan menu
+ * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS6WB008WP79).
+ *
+ * Carries the chosen `LoanOption` index into `config.loanOptions`. Costs **no
+ * action point** and is refused with a clear user-facing reason when the seat
+ * already holds an active loan (one loan at a time, producer Q1 = A).
+ */
+export interface TakeLoanAction {
+  type: 'take-loan';
+  /** Index into `config.loanOptions` for the option being taken. */
+  optionIndex: number;
+}
+
 /** Union of all player actions. */
 
 export type PlayerAction =
@@ -170,6 +184,7 @@ export type PlayerAction =
   | PeekIncidentAction
   | CommunityFavourAction
   | CloseBusinessAction
+  | TakeLoanAction
   | EndTurnAction;
 
 // ── Turn Result ─────────────────────────────────────────────

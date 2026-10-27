@@ -43,6 +43,7 @@ export type {
   PlayEventFromHandAction,
   PlayUpgradeFromHandAction,
   PlayerAction,
+  TakeLoanAction,
   TurnResult,
 } from './MainStreetEngineTypes';
 
@@ -192,7 +193,24 @@ export {
   resolveStaffApplicant,
   sellFromHand,
   sellFromTableau,
+  takeLoan,
+  creditLoanPrincipal,
 } from './MainStreetEngineCommands';
+
+// ── Bank loan model (Bank Loans epic MS-0MVL6DZI0000F6CG) ──
+export {
+  DEFAULT_LOAN_INTEREST_RATE,
+  DEFAULT_LOAN_OPTIONS,
+  activeLoanFor,
+  buildActiveLoan,
+  canTakeLoan,
+  loanOwnerId,
+  loanPerTurnRepayment,
+  loanTotalRepayment,
+  optionsFor,
+} from './MainStreetLoans';
+
+export type { ActiveLoan, LoanOption, PendingLoanOffer } from './MainStreetStateTypes';
 
 // ── Re-exports kept for convenience (tests/consumers import these from the engine) ──
 export { reputationCoinMultiplier, applyReputationMultiplier } from './MainStreetDifficulty';

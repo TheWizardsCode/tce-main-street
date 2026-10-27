@@ -12,12 +12,19 @@ import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard, SynergyType } from './MainStreetCards';
 import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
+import {
+  buildActiveLoan,
+  canTakeLoan,
+  loanOwnerId,
+  optionsFor,
+} from './MainStreetLoans';
+import type { ActiveLoan } from './MainStreetStateTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
 import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
+import { addLog, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Places a card from the player's hand onto an empty tableau slot.
@@ -1340,5 +1347,107 @@ export function declineApplicantAction(state: MainStreetState): void {
 
 export function letGoStaffAction(state: MainStreetState, idx: number): void {
   letGoStaffMember(state, idx);
+}
+
+// ── Bank Loans (MS-0MVPWS6WB008WP79) ────────────────────────
+
+/**
+ * Takes a bank loan by choosing one option from the configured loan menu.
+ *
+ * Effects on success (all three asserted by `tests/main-street/MainStreetLoans.test.ts`):
+ * - the principal is credited to the borrowing seat's wallet immediately, via
+ *   the `resourceBank` / `EconomyLedger` path (single-player) or the seat's
+ *   `PlayerRecord` (competitive mode, mirroring the shared wallet when it is
+ *   bound to that seat) — never by an ad-hoc wallet mutation; see
+ *   {@link creditLoanPrincipal};
+ * - the `ActiveLoan` is recorded in `state.loans` (one per `ownerId`);
+ * - the decision is logged as a `gain` activity-log row.
+ *
+ * **No action point is spent**: this handler never calls `consumeAction`, so
+ * `actionsRemaining`/`bankedActions` are unchanged (seed requirement — a loan
+ * must not eat the seat's daily action).
+ *
+ * Refusal rules (see {@link canTakeLoan}) leave all resources untouched: the
+ * legality check runs to completion before the first mutation and throws a
+ * `Error` carrying the user-facing reason, matching the other command
+ * implementations' contract.
+ *
+ * @param state       Current game state (mutated in-place on success).
+ * @param optionIndex Index into `config.loanOptions`.
+ * @param ownerId     Borrowing seat (defaults to the active seat).
+ * @returns The recorded {@link ActiveLoan}.
+ * @throws Error with a user-facing reason when the loan is refused.
+ */
+export function takeLoan(
+  state: MainStreetState,
+  optionIndex: number,
+  ownerId?: number,
+): ActiveLoan {
+  const legality = canTakeLoan(state, optionIndex, ownerId);
+  if (!legality.legal) {
+    throw new Error(legality.reason);
+  }
+
+  const seatId = loanOwnerId(state, ownerId);
+  const option = optionsFor(state)[optionIndex];
+  const loan = buildActiveLoan(state, option, seatId);
+
+  state.loans = state.loans ?? [];
+  state.loans.push(loan);
+  creditLoanPrincipal(state, seatId, loan.principal);
+
+  addLog(
+    state,
+    seatId,
+    `Took a bank loan: +€${loan.principal} principal, €${loan.perTurnRepayment}/turn for ` +
+      `${loan.termTurns} turns (€${loan.totalRepayment} total) ` +
+      `(${describeEventEffects(loan.principal, 0)})`,
+    classifyEffect(loan.principal, 0),
+  );
+
+  return loan;
+}
+
+/**
+ * Credits a loan principal to the borrowing seat's wallet through the
+ * established economy path, and keeps the ledger in step.
+ *
+ * Wallet resolution mirrors the bind/restore model
+ * (`bindCompetitiveSeat` / `restoreCompetitiveSeat`, MainStreetAiStrategy):
+ *
+ * - **Single-player** (no `PlayerRecord` for the seat): the shared
+ *   `state.resourceBank` is the wallet — the principal is credited there and
+ *   `syncResourceBankToLedger` records it against the `EconomyLedger`.
+ * - **Competitive** (`state.players` present): the seat's `PlayerRecord` is
+ *   the authoritative wallet at rest, so the principal is credited there.
+ *   While a seat is bound its record and the shared wallet mirror one another
+ *   (`bindCompetitiveSeat` copies record → shared wallet), so the credit is
+ *   mirrored into `resourceBank` only when that mirror currently holds —
+ *   otherwise a later `bind` propagates the record's balance on its own and a
+ *   stale shared wallet belonging to another seat is never inflated.
+ *
+ * Consumes no RNG; keeps `state.resourceBank` and `state.ledger` consistent
+ * whenever either was written.
+ */
+export function creditLoanPrincipal(
+  state: MainStreetState,
+  seatId: number,
+  principal: number,
+): void {
+  const seat = state.players?.find((player) => player.playerId === seatId);
+  if (!seat) {
+    state.resourceBank.coins += principal;
+    syncResourceBankToLedger(state);
+    return;
+  }
+
+  // Bound-seat mirror: the shared wallet still equals the seat's balance
+  // before the credit ⇒ the seat is bound, so keep both views in step.
+  const mirrorBound = state.resourceBank.coins === seat.coins;
+  seat.coins += principal;
+  if (mirrorBound) {
+    state.resourceBank.coins += principal;
+  }
+  syncResourceBankToLedger(state);
 }
 

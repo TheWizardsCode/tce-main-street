@@ -617,6 +617,19 @@ export interface MainStreetState {
    */
   pendingPiggyback: PendingPiggyback | null;
   /**
+   * Active bank loans (Bank Loans epic MS-0MVL6DZI0000F6CG), one entry per
+   * borrowing seat at most. Empty for pre-loan saves and for games with
+   * `config.loansEnabled === false`. Serialized by `MainStreetStateSerialize`
+   * with an empty-list default on load.
+   */
+  loans: ActiveLoan[];
+  /**
+   * Loan offer awaiting a seat's Accept/Decline decision (bailout flow, raised
+   * by MS-0MVPWS9L9001PVXG). Null when no offer is open; while it is set the
+   * borrower cannot take a second loan through `takeLoan`.
+   */
+  pendingLoanOffer: PendingLoanOffer | null;
+  /**
    * Transient buffer of challenge IDs completed by the most recent
    * per-action evaluation (CG-0MU37CKRR008252I). Reset to `[]` at the start
    * of every `executeAction` call and populated by
@@ -635,6 +648,68 @@ export interface MainStreetState {
    * re-attaches a fresh system with the launcher-provided persistence.
    */
   achievementSystem?: AchievementSystem | null;
+}
+
+// ── Bank loans (Bank Loans epic MS-0MVL6DZI0000F6CG) ────────
+
+/**
+ * One option on the configured bank-loan menu (`config.loanOptions`).
+ *
+ * The menu is pure configuration data (producer decision Q2 = B, "a choice
+ * among options"): every seat in a run chooses from the same list and
+ * re-balancing is a config edit, not a code change.
+ */
+export interface LoanOption {
+  /** Coins credited to the borrower's wallet immediately. */
+  readonly principal: number;
+  /** Number of turns over which the loan is repaid. */
+  readonly termTurns: number;
+}
+
+/**
+ * A loan held by one seat (at most one per `ownerId` — producer decision
+ * Q1 = A). Created by `takeLoan` (or, later, by accepting a bailout offer)
+ * and retired by the per-turn repayment pass once `turnsRemaining` hits 0.
+ *
+ * All money fields are pre-computed integers from `MainStreetLoans` so the
+ * closing sequence never re-derives (or drifts from) the repayment maths.
+ */
+export interface ActiveLoan {
+  /**
+   * Owner index of the borrowing seat, using the shared owner-id convention
+   * (`state.activePlayerId ?? 0`), matching `PlayerRecord.playerId` and the
+   * `ownerTaggedGrid`/activity-log seat ids.
+   */
+  ownerId: number;
+  /** Principal credited when the loan was taken. */
+  principal: number;
+  /** Total to repay over the whole term (`round(principal × (1 + rate))`). */
+  totalRepayment: number;
+  /** Fixed deduction per turn (`round(totalRepayment / termTurns)`). */
+  perTurnRepayment: number;
+  /** Payments still due; starts at `termTurns` and decrements each closing. */
+  turnsRemaining: number;
+  /** Term of the loan in turns (constant, retained for reporting). */
+  termTurns: number;
+  /** Turn on which the loan was taken (activity/audit trail). */
+  takenOnTurn: number;
+}
+
+/**
+ * A loan offer awaiting the borrower's decision (bailout flow).
+ *
+ * Not raised by this slice — it is carried here so loan validation can
+ * refuse a second loan while an offer is unresolved, and so the bailout
+ * slice (MS-0MVPWS9L9001PVXG) has a typed `state.pendingLoanOffer` field to
+ * populate instead of an `(state as any)` precedent.
+ */
+export interface PendingLoanOffer {
+  /** Owner index of the seat that must decide. */
+  ownerId: number;
+  /** Why the offer was raised. Only the bankruptcy bailout exists so far. */
+  reason: 'bankruptcy';
+  /** The options the seat may choose from (the configured loan menu). */
+  options: LoanOption[];
 }
 
 /**
@@ -866,6 +941,16 @@ export interface MainStreetSerializedState {
    * null on older saves and when no decision is pending.
    */
   pendingPiggyback: PendingPiggyback | null;
+  /**
+   * Active bank loans (see `MainStreetState.loans`). Optional in the saved
+   * shape: absent on pre-loan (schema v2) saves, which load with no loans.
+   */
+  loans?: ActiveLoan[];
+  /**
+   * Pending loan offer (see `MainStreetState.pendingLoanOffer`). Optional in
+   * the saved shape: absent on pre-loan saves.
+   */
+  pendingLoanOffer?: PendingLoanOffer | null;
 }
 
 /** Record of a single milestone (tier unlock) achievement. */
@@ -939,5 +1024,12 @@ export interface MainStreetSetupOptions {
    * Overrides `config.endlessMode` from the difficulty preset when set.
    */
   endlessMode?: boolean;
+  /**
+   * Overrides the preset's `loansEnabled` (Bank Loans epic
+   * MS-0MVL6DZI0000F6CG). Headless/simulation entry points pass `false` so
+   * existing Monte Carlo / balance baselines stay byte-identical until a
+   * simulation opts in (parent AC8). Human presets default `true`.
+   */
+  loansEnabled?: boolean;
 }
 

@@ -682,11 +682,20 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     pendingApplicant: null,
     pendingEventChoice: null,
     pendingPiggyback: null,
+    loans: [],
+    pendingLoanOffer: null,
   };
   // Endless-mode opt-in (CG-0MTIILU5V006GCN4): overrides the preset's
   // win-threshold semantics. Default is false (existing behaviour).
   if (options.endlessMode !== undefined) {
     baseState.config = { ...baseState.config, endlessMode: options.endlessMode };
+  }
+
+  // Loans opt-out (parent AC8): headless/simulation entry points pass
+  // `loansEnabled: false` so existing Monte Carlo and balance baselines stay
+  // byte-identical until a simulation opts in. Human presets default true.
+  if (options.loansEnabled !== undefined) {
+    baseState.config = { ...baseState.config, loansEnabled: options.loansEnabled };
   }
 
   state = baseState;
@@ -882,6 +891,7 @@ export function createStateFromModeSelection(
       difficulty: selection.difficulty,
       unlockedCardIds: selection.unlockedCardIds,
       endlessMode: selection.endlessMode,
+      loansEnabled: selection.loansEnabled,
     });
   }
 
@@ -901,6 +911,7 @@ export function createStateFromModeSelection(
     difficulty: selection.difficulty,
     unlockedCardIds: selection.unlockedCardIds,
     endlessMode: selection.endlessMode,
+    loansEnabled: selection.loansEnabled,
     playerCount: opponents.length + 1,
     opponents,
   });

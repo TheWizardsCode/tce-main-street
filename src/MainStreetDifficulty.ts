@@ -31,6 +31,7 @@ import type {
   DifficultyConfig,
   DifficultyPresetRegistry,
 } from '@core-engine/DifficultyPresets';
+import type { LoanOption } from './MainStreetStateTypes';
 
 // ── Difficulty Names ────────────────────────────────────────
 
@@ -179,6 +180,30 @@ export interface GameConfig extends DifficultyConfig {
    * guardrails can tune the close consequence without a code change.
    */
   readonly closeReputationMultiplier: number;
+
+  // ── Bank Loans (MS-0MVL6DZI0000F6CG) ───────────────────
+  /**
+   * Whether the bank-loan mechanic is live for this run. True in the
+   * Easy/Medium/Hard presets; headless/simulation entry points override it
+   * to `false` (via `MainStreetSetupOptions.loansEnabled`) so existing
+   * Monte Carlo / balance baselines stay byte-identical until a simulation
+   * opts in.
+   */
+  readonly loansEnabled: boolean;
+  /**
+   * Flat interest rate over the whole term (0.10 = 10% of principal).
+   * `totalRepayment = round(principal × (1 + loanInterestRate))`, spread
+   * evenly (`perTurnRepayment = round(totalRepayment / termTurns)`) — the
+   * 600/6 default yields 110/turn and 660 total, per the seed's worked
+   * example. No compounding, no per-turn-on-outstanding-balance interest.
+   */
+  readonly loanInterestRate: number;
+  /**
+   * The configured loan menu — identical for every seat in a run (Q2 = B,
+   * "a choice among options"). Defaults: 300/3, 600/6, 1000/10. Re-balancing
+   * is a config edit, not a code change.
+   */
+  readonly loanOptions: readonly LoanOption[];
 }
 
 // ── Preset Definitions ──────────────────────────────────────
@@ -248,6 +273,14 @@ export const EASY_PRESET: Readonly<GameConfig> = {
   favourRepToCoinsCoinGain: 300,
   // Closing a card applies cardReputationPerTurn × 20 to reputation.
   closeReputationMultiplier: 20,
+  // Bank loans are live on Easy: default menu 300/3, 600/6, 1000/10 at 10%.
+  loansEnabled: true,
+  loanInterestRate: 0.1,
+  loanOptions: [
+    { principal: 300, termTurns: 3 },
+    { principal: 600, termTurns: 6 },
+    { principal: 1000, termTurns: 10 },
+  ],
 };
 
 /**
@@ -279,6 +312,14 @@ export const MEDIUM_PRESET: Readonly<GameConfig> = {
   favourRepToCoinsCoinGain: 300,
   // Closing a card applies cardReputationPerTurn × 20 to reputation.
   closeReputationMultiplier: 20,
+  // Bank loans are live on Medium: default menu 300/3, 600/6, 1000/10 at 10%.
+  loansEnabled: true,
+  loanInterestRate: 0.1,
+  loanOptions: [
+    { principal: 300, termTurns: 3 },
+    { principal: 600, termTurns: 6 },
+    { principal: 1000, termTurns: 10 },
+  ],
 };
 
 /**
@@ -310,6 +351,14 @@ export const HARD_PRESET: Readonly<GameConfig> = {
   favourRepToCoinsCoinGain: 300,
   // Closing a card applies cardReputationPerTurn × 20 to reputation.
   closeReputationMultiplier: 20,
+  // Bank loans are live on Hard: default menu 300/3, 600/6, 1000/10 at 10%.
+  loansEnabled: true,
+  loanInterestRate: 0.1,
+  loanOptions: [
+    { principal: 300, termTurns: 3 },
+    { principal: 600, termTurns: 6 },
+    { principal: 1000, termTurns: 10 },
+  ],
 };
 
 // ── Preset Registry ─────────────────────────────────────────

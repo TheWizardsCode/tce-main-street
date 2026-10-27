@@ -146,6 +146,18 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           })),
         }
       : null,
+    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG).
+    // Serialised from the start (additive optional fields) so a loan taken in
+    // this slice survives a save/load round-trip; the v3 schema bump and
+    // explicit migration stay with the persistence slice MS-0MVPWSE0E003QLKE.
+    loans: (state.loans ?? []).map((loan) => ({ ...loan })),
+    pendingLoanOffer: state.pendingLoanOffer
+      ? {
+          ownerId: state.pendingLoanOffer.ownerId,
+          reason: state.pendingLoanOffer.reason,
+          options: state.pendingLoanOffer.options.map((option) => ({ ...option })),
+        }
+      : null,
   };
 }
 
@@ -811,6 +823,20 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
               chosenJoin: decision.chosenJoin ?? null,
               resolved: decision.resolved ?? false,
             })),
+          };
+        })()
+      : null,
+    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG).
+    // Optional in the saved shape: pre-loan (schema v2) saves load with no
+    // loans and no offer, exactly as played before the mechanic existed.
+    loans: ((saved as unknown as { loans?: Array<{ ownerId: number; principal: number; totalRepayment: number; perTurnRepayment: number; turnsRemaining: number; termTurns: number; takenOnTurn: number }> }).loans ?? []).map((loan) => ({ ...loan })),
+    pendingLoanOffer: (saved as unknown as { pendingLoanOffer?: { ownerId: number; reason: 'bankruptcy'; options: Array<{ principal: number; termTurns: number }> } | null }).pendingLoanOffer
+      ? (() => {
+          const offer = (saved as unknown as { pendingLoanOffer: { ownerId: number; reason: 'bankruptcy'; options: Array<{ principal: number; termTurns: number }> } }).pendingLoanOffer!;
+          return {
+            ownerId: offer.ownerId,
+            reason: offer.reason,
+            options: (offer.options ?? []).map((option) => ({ ...option })),
           };
         })()
       : null,

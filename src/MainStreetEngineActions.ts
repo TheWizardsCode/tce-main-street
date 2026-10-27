@@ -7,7 +7,7 @@
  * @module
  */
 
-import { buyAndPlaceBusiness, hireStaffCard } from './MainStreetEngineCommands';
+import { buyAndPlaceBusiness, hireStaffCard, takeLoan } from './MainStreetEngineCommands';
 import { evaluateChallengesAfterAction } from './MainStreetChallenges';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { PlayerAction } from './MainStreetEngineTypes';
@@ -296,6 +296,15 @@ function dispatchPlayerAction(
     case 'community-favour': {
       const result = executeCommunityFavour(state, action.direction);
       return result;
+    }
+    case 'take-loan': {
+      // Bank loan (MS-0MVPWS6WB008WP79): deliberately does NOT spend an
+      // action — the handler never calls consumeAction, so
+      // actionsRemaining/bankedActions stay unchanged. Refusals (loans
+      // disabled, active loan already held, unknown option, pending offer)
+      // throw inside takeLoan with a user-facing reason and mutate nothing.
+      takeLoan(state, action.optionIndex);
+      return null;
     }
     default:
       throw new Error(`Unknown action type: ${(action as PlayerAction).type}`);

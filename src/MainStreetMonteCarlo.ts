@@ -586,7 +586,10 @@ function simulateSeed(
 }
 
 function runSeed(seed: string, maxTurns: number, strategy: MonteCarloStrategy): MonteCarloRunSummary {
-  return simulateSeed(setupMainStreetGame({ seed }), seed, maxTurns, strategy);
+  // Headless simulations opt out of bank loans (parent AC8, epic
+  // MS-0MVL6DZI0000F6CG): the flags default to `false` so existing Monte Carlo
+  // and balance baselines stay byte-identical until a simulation opts in.
+  return simulateSeed(setupMainStreetGame({ seed, loansEnabled: false }), seed, maxTurns, strategy);
 }
 
 /**
@@ -659,7 +662,13 @@ function runSeedWithDifficulty(
   strategy: MonteCarloStrategy,
   difficulty: DifficultyName,
 ): MonteCarloRunSummary {
-  return simulateSeed(setupMainStreetGame({ seed, difficulty }), seed, maxTurns, strategy);
+  // Loans off for every simulation run — see `runSeed` (parent AC8).
+  return simulateSeed(
+    setupMainStreetGame({ seed, difficulty, loansEnabled: false }),
+    seed,
+    maxTurns,
+    strategy,
+  );
 }
 
 /**

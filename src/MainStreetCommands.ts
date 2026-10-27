@@ -45,6 +45,7 @@ import {
   moveStaffOnBusiness,
   removeStaffFromBusiness,
   layoffStaffCard,
+  takeLoan,
 } from './MainStreetEngine';
 
 // ── Action Budget Enforcement ────────────────────────────────
@@ -145,6 +146,17 @@ interface MarketActionSnapshot {
    * re-adds it exactly once (CG-0MUEQ19VX0009VIW).
    */
   discards: any | null;
+  /**
+   * Active bank loans (Bank Loans epic MS-0MVL6DZI0000F6CG). Captured so
+   * undoing a `take-loan` removes the recorded loan and restoring resources
+   * also restores the one-active-loan invariant.
+   */
+  loans: any | null;
+  /**
+   * Pending loan offer (bailout flow). Captured so undo restores an
+   * unresolved offer exactly as it was (and redo re-arms it).
+   */
+  pendingLoanOffer: any | null;
 }
 
 /** Safe cloning helper that uses structuredClone when available, else falls back to JSON clone. */
@@ -231,6 +243,8 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // (safeClone's JSON fallback would coerce it to null).
     completedBySeatIds: (state.activeChallenges ?? []).map(ac => ac.completedBySeatId),
     discards: safeClone(state.discards ?? {}),
+    loans: safeClone(state.loans ?? []),
+    pendingLoanOffer: safeClone(state.pendingLoanOffer ?? null),
   };
 }
 
@@ -321,6 +335,14 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   // its pile (and redo re-adds it exactly once) — CG-0MUEQ19VX0009VIW.
   if (snap.discards !== null && snap.discards !== undefined) {
     state.discards = snap.discards;
+  }
+  // Restore the bank-loan record + pending offer so undo returns to the exact
+  // one-active-loan state (MS-0MVPWS6WB008WP79).
+  if ('loans' in snap) {
+    state.loans = snap.loans ?? [];
+  }
+  if ('pendingLoanOffer' in snap) {
+    state.pendingLoanOffer = snap.pendingLoanOffer ?? null;
   }
 }
 
@@ -744,6 +766,28 @@ export function hireApplicantCommand(state: MainStreetState) {
     snapshotAction(
       (s) => { hireApplicantAction(s); },
       'HireApplicant',
+    ),
+  );
+}
+
+/**
+ * Command: Take a bank loan by choosing an option from the configured loan
+ * menu (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS6WB008WP79).
+ *
+ * Deliberately does **not** consume an action: the loan is AP-neutral and the
+ * snapshot captures the active-loan record (`loans`), the pending offer and
+ * the credited resources, so undo removes the loan and restores the exact
+ * one-active-loan state and redo re-applies it.
+ *
+ * @param state       Current game state.
+ * @param optionIndex Index into `config.loanOptions`.
+ */
+export function takeLoanCommand(state: MainStreetState, optionIndex: number) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => takeLoan(s, optionIndex),
+      `TakeLoan option ${optionIndex}`,
     ),
   );
 }
