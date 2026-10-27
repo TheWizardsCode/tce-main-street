@@ -60,12 +60,63 @@ unexpected zone collisions) exactly as the default reporter would, so genuine
 diagnostics stay visible (MS-0MV26MOWT004ZCQC). `sceneWins` semantics and the
 tutorial rects are unchanged.
 
+## Play panel treatment (opaque panels, MS-0MVPWQIPZ002PHPD)
+
+The market box, the persistent player-hand panel and the HUD strip all share
+the Activity Log's opaque treatment, so the play surface reads as
+self-contained sections instead of letting the street/road grid show through:
+
+| Element | Value |
+|---|---|
+| Fill | `PANEL_FILL` `0x1a1408` at `PANEL_FILL_ALPHA` `0.85` |
+| Border | 1 px `BOX_STROKE` `0x665544` at `PANEL_STROKE_ALPHA` `0.5` |
+| Corner radius | `BOX_RADIUS` (6 px) |
+
+The literals live in `src/scenes/MainStreetConstants.ts` as the single
+authority (`PANEL_FILL`, `PANEL_FILL_ALPHA`, `PANEL_STROKE_ALPHA`), promoted
+out of the Activity Log so the three panels cannot drift apart. The Activity
+Log is the reference; the incident queue and the challenge tracker reuse the
+same fill and border with their own 4 px radius, and their title bars keep the
+`0x332816` @ 0.9 band.
+
+- **Market** — the section background spans `marketLeft`..`marketRight` (the
+  single layout authority, never recomputed inline) and replaced the previous
+  `BOX_FILL` @ 0.3 wash that let roads and grid lines read through the row.
+- **Hand** — `drawHandPanel()` draws a persistent opaque panel behind the hand
+  cards and ghost capacity outlines (see
+  [Player hand layout](#player-hand-layout)).
+- **HUD** — the top resource strip uses the same fill/alpha/border so it
+  matches the market box exactly.
+- **Presentation-only in every case** — no panel calls `setInteractive`, no
+  panel mutates state, and the panels are static so reduced motion and replay
+  are unaffected.
+- **Tests** — `tests/main-street/panel-opacity.browser.test.ts`,
+  `tests/main-street/hand-panel.browser.test.ts` and
+  `tests/main-street/hud-strip-layout.browser.test.ts`.
+
 ## Player hand layout
 
 Main Street renders the player hand with the core engine's single `HandView`
 (`MainStreetRendererStreet.ts`), anchored on `handCenterX` and declaring the
 hand's capacity up front with `maxSlots: state.maxHandSize`.
 
+- **Bottom-anchored hand (MS-0MVPWQMTL004J3GB).** The hand band is anchored at
+  the bottom of the viewport in `src/layouts/main-street.layout.json` (SLL
+  `hand` zone `topLeft` `y` ≈ 0.872 — 628 px at 1280×720) while `handCenterX`
+  stays centred on the street block. `handY` is read from that anchor, so the
+  hand sits below the street plot and its bottom road band. The End Turn /
+  Peek action row keeps its **own** `actionRow` anchor (≈ 0.9) precisely so
+  moving the hand does not drag the action button — and with it the tutorial
+  `endTurnButton` highlight and the button hit area — along.
+- **Persistent opaque panel (MS-0MVPWQIPZ002PHPD).** `drawHandPanel()` renders
+  exactly one graphics object named `ms-hand-panel` behind the hand: fill
+  `PANEL_FILL` @ `PANEL_FILL_ALPHA`, 1 px `BOX_STROKE` border, `BOX_RADIUS`
+  corners. It is sized from the capacity row (`maxSlots × (handCardW +
+  HAND_SLOT_PITCH_PAD)` wide, `handCardH + 2 × HAND_PANEL_PAD` tall) so a staff
+  hire/lay-off grows or shrinks it without clipping cards or ghost outlines,
+  sits at `HAND_PANEL_DEPTH` (-100 — below every hand-layer object, including
+  the negative-depth ghosts) and is never interactive, so hand-card clicks,
+  hand→street drags and market→hand drops behave exactly as before.
 - **Capacity-stable slots (CG-0MUAYBB4E007LWEQ).** Because `maxSlots` is set,
   the card row is placed into the *same fixed capacity template* the empty hand
   renders rather than being re-centred on the current card count. Adding or
@@ -89,6 +140,34 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   `HandView` semantics and browser coverage in
   `tests/main-street/hand-outlines.browser.test.ts` (including the
   slot/card-position stability assertion).
+
+## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6)
+
+The persistent instruction line under the board is gone. Messages that used to
+land there are routed through `src/scenes/MainStreetFeedback.ts`:
+
+- `flashFeedback(scene, text, { kind })` is the single entry point;
+  `flashError()` and `flashConfirmation()` are the convenience wrappers.
+- **Message taxonomy** (producer decision Q4a): **error** refusals / illegal
+  moves ("Not enough coins…", "Cannot hire…", "Hand full…") and
+  **confirmation** outcomes ("Applied … to slot N", "Sold …") are surfaced;
+  **guidance** phase-teaching lines ("Click an empty slot to place …", the
+  standard market instruction) and **progress** lines ("Placing …",
+  "Processing end of turn…") are dropped — they only told the player what to
+  do, or self-resolved visually.
+- **Anchor:** `feedbackAnchor(layout)` centres the text over the main content
+  area (`logX / 2`) and lifts it 20 px above the hand band (`handY − 20`), so
+  it follows the bottom-anchored hand instead of hard-coding a pixel position.
+- **Presentation:** `popTextOrIcon` (rise 20 px, scale 1.1) for 1100 ms by
+  default. Reduced motion shows the same text as a static label for the same
+  duration — never silently dropped.
+- **Observability:** `scene.lastFeedback` (`{ text, kind }`) and
+  `scene.feedbackHistory` record everything surfaced, so tests assert the
+  channel without scraping rendered objects
+  (`tests/main-street/feedback-pop-text.test.ts`,
+  `tests/main-street/illegal-afford-feedback.test.ts`).
+- **Activity Log is untouched** — this module owns only the on-screen channel;
+  every message that was logged stays logged.
 
 ## Event Feedback Animations
 
@@ -119,10 +198,12 @@ playing a phantom card transfer.
   `uiPhase = 'animating'` → start `animateTransferFromMarket` → execute the
   undoable command. Affordability, target eligibility, occupancy and tutorial
   gating are all evaluated before any of these mutations.
-- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus an
-  instruction-text reason **precedes any mutation** — no coins, action, hand or
-  grid change, and the current selection/`uiPhase` is retained so the player
-  can immediately retarget.
+- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus a
+  pop-text error reason (`flashError()` — see
+  [Transient pop-text feedback channel](#transient-pop-text-feedback-channel-ms-0mvpwqk3u003dir6))
+  **precedes any mutation** — no coins, action, hand or grid change, and the
+  current selection/`uiPhase` is retained so the player can immediately
+  retarget.
 - Click paths use the shared predicates `canPlaceFromHand`
   (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
   (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
@@ -898,8 +979,8 @@ condensed text-only summary.
      and any modal overlay (>1000) — so it never intercepts pointer
      events, never shifts layout, and leaves the market fully interactive
      (tutorial E2E safe; AC2).
-- Accessibility (reduced motion): skipped entirely — the current behaviour
-  (instruction text only) is preserved (spec AC3).
+- Accessibility (reduced motion): skipped entirely — the HUD week label is
+  the cue instead (no banner motion).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — returns
   immediately in replay/headless mode (`scene.replayMode`), never mutates
   state or transcript.
@@ -1092,8 +1173,9 @@ condensed text-only summary.
   command's `description` (already captured for the transcript) as the
   action label.
 - Behavior (reduced-motion OFF): a brief "Undid: <action>" / "Redid:
-  <action>" pop appears just above the hint bar (bottom-centre,
-  `popTextOrIcon` riseY −16) with a UI click SFX (`SFX_KEYS.CLICK`).
+  <action>" pop appears bottom-centre 60 px above the viewport bottom — over
+  the bottom-anchored hand band (`popTextOrIcon`, riseY −16, 1200 ms) — with
+  a UI click SFX (`SFX_KEYS.CLICK`).
 - Accessibility (reduced motion): the pop helper's reduced-motion fallback
   is used (no extra motion); the click SFX still plays (sound is not
   motion).

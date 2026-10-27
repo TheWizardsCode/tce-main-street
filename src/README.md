@@ -26,7 +26,7 @@ Upgrade cards follow the business-card action economy — they are never a free 
 - When the action budget is spent the upgrade is dimmed and buying/playing it is rejected (unless a same-week composite is still pending).
 - **Escape** cancels an in-progress upgrade (or business) targeting phase — the card stays in hand and the same-week composite stays free. Escape only opens Settings when nothing is being targeted.
 
-Event cards moved the same way (each of move-to-hand / play-from-hand costs 1 action, CG-0MTFWBNL30043ZBM); refresh, sell, hint, community favour and end-turn remain non-action operations. Market refresh is action-free but its coin cost **escalates within a turn** — 500, 750, 1000, then +250 each re-roll, reset at `WeekStart` (MS-0MTR6ZRF5007PWNZ); staff/specialization discounts apply to the escalated base, clamped at 0. While an **Investor** is employed, one re-roll per turn is **free** (`freeMarketRerollPerTurn`): coin-free and action-free, but it still advances the escalation counter, and the free draw is biased 75% toward the employing business's synergy types (`marketRelevanceBias`, MS-0MTISBYLS009936W). Relocating an employed staff member to another business costs 1 action point; initial placement at hire time stays free.
+Event cards moved the same way (each of move-to-hand / play-from-hand costs 1 action, CG-0MTFWBNL30043ZBM); refresh, sell, community favour and end-turn remain non-action operations. Market refresh is action-free but its coin cost **escalates within a turn** — 500, 750, 1000, then +250 each re-roll, reset at `WeekStart` (MS-0MTR6ZRF5007PWNZ); staff/specialization discounts apply to the escalated base, clamped at 0. While an **Investor** is employed, one re-roll per turn is **free** (`freeMarketRerollPerTurn`): coin-free and action-free, but it still advances the escalation counter, and the free draw is biased 75% toward the employing business's synergy types (`marketRelevanceBias`, MS-0MTISBYLS009936W). Relocating an employed staff member to another business costs 1 action point; initial placement at hire time stays free.
 
 **Discarding from hand** is **action-free but not free of reputation** (CG-0MTQ7KUVF009ELQK): select a hand card and click **[Discard]** (in the End Turn slot) to send it to its family discard pile. The discard deducts the card's listed coin `cost` from reputation, clamped at 0 (reputation never goes negative), applies to every family, and is not gated on affordability — a player may discard down to 0 reputation. 0-cost cards cost nothing. There is no confirmation dialog, and the discard is undoable.
 
@@ -237,6 +237,38 @@ that caused a visible sideways snap when the hand re-rendered.
 
 Unit tests: `tests/main-street/buy-transfer-destination.test.ts` (destination equality for both buy
 paths) and `tests/ui/handView.test.ts` (`getInsertionPosition` matches the rendered/computed layout).
+
+## Removed UI symbols and the hand panel (MS-0MVPWQIPZ002PHPD, MS-0MVPWQLIH008R5M3, MS-0MVPWQK3U003DIR6)
+
+The hand band is **bottom-anchored**: `handY` comes from the SLL `hand` zone's
+`topLeft` anchor in `src/layouts/main-street.layout.json` (≈ 0.872 → 628 px at
+1280×720), while the End Turn / Peek action row keeps its own `actionRow`
+anchor so it is not dragged along. The hand renders on a persistent opaque
+panel (`drawHandPanel()` in `src/scenes/MainStreetRendererStreet.ts`, named
+`ms-hand-panel`): fill `PANEL_FILL` @ `PANEL_FILL_ALPHA`, 1 px `BOX_STROKE`
+border, `BOX_RADIUS` corners, sized from the capacity row
+(`maxSlots × (handCardW + HAND_SLOT_PITCH_PAD)`) and drawn at
+`HAND_PANEL_DEPTH` (-100, behind the cards and ghost outlines). The market box
+and the HUD strip share the same treatment through
+`PANEL_FILL`/`PANEL_FILL_ALPHA`/`PANEL_STROKE_ALPHA` in
+`src/scenes/MainStreetConstants.ts`.
+
+These symbols no longer exist — do not reference them in new code or docs:
+
+| Removed symbol | Replaced by |
+|---|---|
+| `MainStreetHint.ts` (hint subsystem, removed) | nothing — the hint feature is design intent only (`docs/dev/ai-strategy.md`) |
+| `HintBar` / hint button (removed) | nothing — no action-bar hint slot is reserved |
+| `instructionY` / `instructionText` (instruction line, removed) | `flashFeedback()` / `flashError()` / `flashConfirmation()` in `src/scenes/MainStreetFeedback.ts` (transient pop text above the hand band) |
+| `hintButtonW` (removed) | — the action rect covers only the right-aligned End Turn button |
+
+Tests: `tests/main-street/hand-panel.browser.test.ts`,
+`tests/main-street/panel-opacity.browser.test.ts`,
+`tests/main-street/hud-strip-layout.browser.test.ts`,
+`tests/main-street/hand-bottom-anchor.browser.test.ts`,
+`tests/main-street/feedback-pop-text.test.ts`,
+`tests/main-street/hint-removal.browser.test.ts` and
+`tests/main-street/hint-ui-doc-drift.test.ts` (docs↔code drift guard).
 
 ## Card Data CSV
 

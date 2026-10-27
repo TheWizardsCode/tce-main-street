@@ -859,7 +859,7 @@ export function refreshApplicant(renderer: MainStreetRendererContext): boolean {
 
     const container: Phaser.GameObjects.Container = s.add.container(0, 0);
     container.setName('applicantOverlay');
-    // Above the action bar / hint bar (depth 100 within hudContainer) but
+    // Above the action bar (depth 100 within hudContainer) but
     // below modal overlays (199-201), so the applicant reads as a prominent
     // in-play decision without covering dialogs.
     container.setDepth(120);

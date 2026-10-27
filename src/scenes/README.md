@@ -14,6 +14,39 @@ This folder uses reusable UI helpers from `src/ui`:
   (week-start refill and Discover/Research row swaps: incoming cards deal in
   with a staggered deal SFX; outgoing row cards fade/shrink out).
   Triggered by `MainStreetTurnController` after the final market render.
+- `flashFeedback` / `flashError` / `flashConfirmation`
+  (`MainStreetFeedback.ts`) for the transient pop-text feedback channel that
+  replaced the instruction line.
+
+## Opaque play panels and the player-hand panel (MS-0MVPWQIPZ002PHPD)
+
+`MainStreetConstants.ts` is the single authority for the opaque panel
+treatment shared by the market box, the player hand and the HUD strip:
+
+- Fill `PANEL_FILL` `0x1a1408` at `PANEL_FILL_ALPHA` `0.85`; 1 px
+  `BOX_STROKE` `0x665544` border at `PANEL_STROKE_ALPHA` `0.5`; `BOX_RADIUS`
+  corners. The Activity Log is the reference treatment.
+- `MainStreetRendererStreet.drawHandPanel()` — a persistent, non-interactive
+  panel (`ms-hand-panel`, depth `HAND_PANEL_DEPTH` −100) behind the hand band,
+  sized from the capacity row (`maxSlots × (handCardW + HAND_SLOT_PITCH_PAD)`,
+  padded by `HAND_PANEL_PAD`), centred on `handCenterX`. The hand band is
+  bottom-anchored to the SLL `hand` zone anchor; the action row keeps its own
+  `actionRow` anchor (MS-0MVPWQMTL004J3GB).
+- `MainStreetRendererHud.refreshHud()` — the HUD strip is an opaque rectangle
+  aligned to `hudLeft`..`hudRight` with the same treatment.
+- `MainStreetRendererMarket` — the market section background spans
+  `marketLeft`..`marketRight` with the same treatment (the old `BOX_FILL` @ 0.3
+  wash was replaced).
+
+## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6)
+
+`MainStreetFeedback.ts` replaces the persistent instruction line: former
+instruction-line messages are surfaced as short-lived pop text anchored
+`FEEDBACK_LIFT_PX` (20 px) above the hand band (`logX / 2`, `handY − 20`),
+never a hard-coded pixel position. `error` and `confirmation` kinds pop
+(`popTextOrIcon`, 1100 ms default; static label under reduced motion);
+`guidance` and `progress` kinds are dropped. Every surfaced message records
+`scene.lastFeedback` and `scene.feedbackHistory` for tests/QA.
 
 ## End-of-turn income collection
 
@@ -216,7 +249,8 @@ skipped while the tutorial is active and on checkpoint resume. It never
 intercepts pointer events, never shifts layout, and leaves the market fully
 interactive. See `docs/game/ux-visual-audio.md` for the design notes.
 
-- Reduced motion: skipped entirely (instruction text remains the cue).
+- Reduced motion: skipped entirely (no banner motion; the HUD week label
+  remains the cue).
 
 ## Held-event play burst
 
@@ -262,8 +296,9 @@ fire-and-forget. See `docs/game/ux-visual-audio.md` for design notes.
 
 `MainStreetAnimator.animateUndoRedo({ action, description })` plays when
 `MainStreetTurnController.performUndo()` / `performRedo()` reverse or
-reapply a command: a brief "Undid: <action>" / "Redid: <action>" pop above
-the hint bar (`popTextOrIcon`, riseY −16) plus the UI click SFX
+reapply a command: a brief "Undid: <action>" / "Redid: <action>" pop
+bottom-centre, 60 px above the viewport bottom — over the bottom-anchored
+hand band (`popTextOrIcon`, riseY −16, 1200 ms) — plus the UI click SFX
 (`sfx-ui-click`). The action label reuses the command's `description`
 (already captured for the transcript). Reduced motion uses the pop
 fallback only (SFX retained); replay/headless skips everything

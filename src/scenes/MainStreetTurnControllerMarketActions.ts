@@ -684,8 +684,9 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
  *
  * Behaviourally identical to Cancel: the card remains in the hand, the
  * selection border and any market-row selection are cleared, the same-week
- * move trackers are reset, the hint bar returns to the standard market
- * instruction, and no action/coin/log/undo side effects occur.
+ * move trackers are reset, and no action/coin/log/undo side effects occur —
+ * there is no instruction/hint line to restore (the transient feedback
+ * channel is simply not invoked).
  */
 export function cancelHandSelection(tcCtx: MainStreetTurnControllerContext): void {
 

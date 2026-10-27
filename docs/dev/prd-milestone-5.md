@@ -150,6 +150,8 @@ This script is the canonical onboarding sequence. Steps are intentionally short 
 - T7: "You can hold one event card and play it when timing is best."
 - T8: "Upgrades improve an existing business. Strong upgrades compound over remaining turns."
 - T9: "Need a refresher? Open Help anytime. Hint suggests one strong move per turn."
+  > **Superseded (MS-0MVPWQLIH008R5M3):** the hint control referenced by T9 was
+  > removed — no hint control ships; help remains.
 - T10: "Great job! You’re ready for a full run. Tutorial can be replayed from menu/settings."
 
 ### Gating Rules

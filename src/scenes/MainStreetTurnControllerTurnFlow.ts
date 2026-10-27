@@ -1052,8 +1052,8 @@ export function performUndo(tcCtx: MainStreetTurnControllerContext): void {
         // "just moved" card is stale (CG-0MSXIQIPJ000NDTL).
         s.justMovedHandCardId = null;
         s.refreshAll();
-        // Undo feedback (AGENTS.md rule 8): "Undid: <action>" pop above the
-        // hint bar + UI click SFX. Reduced motion / replay handled inside the
+        // Undo feedback (AGENTS.md rule 8): "Undid: <action>" pop bottom-centre
+        // over the hand band + UI click SFX. Reduced motion / replay handled inside the
         // animator; non-blocking, presentation-only.
         if (cmd) {
           try { s.msAnimator?.animateUndoRedo({ action: 'undo', description: cmd.description }); } catch (_) { /* presentation-only — ignore */ }
@@ -1096,8 +1096,8 @@ export function performRedo(tcCtx: MainStreetTurnControllerContext): void {
       addLog(s.state, 'Redo', 'neutral');
       try { if (cmd) recordMainStreetEvent({ type: 'redo', turn: s.state.turn, reappliedAction: { description: cmd.description } }); } catch (_) {}
       s.refreshAll();
-      // Redo feedback (AGENTS.md rule 8): "Redid: <action>" pop above the
-      // hint bar + UI click SFX. Reduced motion / replay handled inside the
+      // Redo feedback (AGENTS.md rule 8): "Redid: <action>" pop bottom-centre
+      // over the hand band + UI click SFX. Reduced motion / replay handled inside the
       // animator; non-blocking, presentation-only.
       if (cmd) {
         try { s.msAnimator?.animateUndoRedo({ action: 'redo', description: cmd.description }); } catch (_) { /* presentation-only — ignore */ }

@@ -58,6 +58,10 @@ Main Street files likely containing extraction candidates:
 - `src/MainStreetTranscript.ts`
 - `src/MainStreetAdjacency.ts`
 
+> **Note (MS-0MVPWQLIH008R5M3):** `src/MainStreetHint.ts` no longer exists —
+> the hint subsystem was removed, so the P2 hint-harness extraction candidate
+> above is withdrawn.
+
 ---
 
 ## 4. Component inventory and extraction priority
@@ -229,9 +233,11 @@ Expected edit points:
 - `src/MainStreetEngine.ts`
 - `src/MainStreetMarket.ts`
 - `src/MainStreetCommands.ts`
-- `src/MainStreetHint.ts`
 - `src/MainStreetSaveLoad.ts`
 - `src/MainStreetTranscript.ts`
+
+> **Note (MS-0MVPWQLIH008R5M3):** this list no longer includes
+> `src/MainStreetHint.ts` — the hint subsystem was removed.
 
 Approach:
 

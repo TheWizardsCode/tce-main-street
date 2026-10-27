@@ -1127,7 +1127,7 @@ export class MainStreetScene extends CardGameScene {
     // Note: undo/redo buttons were removed from the action bar in the MS
     // migration (CG-0MQHARH7J004XP4V). They are now placed via the shared
     // initUndoRedoButtons() mechanism in the header area, not the action bar.
-    // The Hint button was removed by MS-0MVPWQLIH008R5M3: the action rect
+    // The hint control was removed by MS-0MVPWQLIH008R5M3: the action rect
     // covers only the right-aligned End Turn button (no reserved hint slot).
     const actionW = l.actionButtonW;
     const action = {
