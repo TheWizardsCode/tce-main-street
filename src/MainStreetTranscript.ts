@@ -6,7 +6,6 @@ export type PlayerActionDescriptor = { type: string; [k: string]: any };
 export type MainStreetTranscriptEvent = (
   | { type: 'action'; turn: number; action: PlayerActionDescriptor; description?: string }
   | { type: 'ai-action'; turn: number; strategy: string; action: PlayerActionDescriptor }
-  | { type: 'hint'; turn: number; recommendedAction: PlayerActionDescriptor; rationale: string }
   | { type: 'undo'; turn: number; reversedAction: { description?: string; [k: string]: any } }
   | { type: 'redo'; turn: number; reappliedAction: { description?: string; [k: string]: any } }
   | { type: 'turn-end'; turn: number }

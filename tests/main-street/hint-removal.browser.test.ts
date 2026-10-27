@@ -1,16 +1,25 @@
 /**
- * Main Street: no persistent instruction/hint line (browser)
+ * Main Street: Hint button and hint subsystem removed (browser)
  *
- * Rewritten for MS-0MVPWQK3U003DIR6 (parent AC4). The persistent bottom-band
- * instruction/hint line (shared `HintBar` + `instructionText`) is gone. These
- * browser tests boot the real MainStreetScene and assert:
+ * Replacement for the deleted `tests/main-street/hint-bar-placement.browser.test.ts`
+ * and `tests/main-street/hint.test.ts` (MS-0MVPWQLIH008R5M3, parent AC5).
+ * Boots the real MainStreetScene and asserts:
  *
- *   AC1: no `hintBar`/`instructionText` exists on the scene at all.
- *   AC2: entering placing-from-hand renders no persistent inline text in the
- *        action container and surfaces no guidance pop text.
- *   AC3: Cancel returns to market without resurrecting a persistent line.
+ *   AC1: no Hint button is rendered in the HUD in any phase.
+ *   AC2: the action row reserves no hint slot — End Turn stays right-aligned
+ *        and the remaining buttons sit immediately beside it (no 104px gap).
+ *   AC3: no market card or street slot is highlighted as a hint after
+ *        selection actions (no `0x44ffff` hint stroke anywhere).
+ *   AC4: no hint subsystem state exists on the scene or layout
+ *        (`hintUsedThisTurn` / `hintedCardId` / `hintedSlotIndex` /
+ *        `onHintClick` / `hintButtonW`).
+ *   AC5: the shared HintBar was removed by MS-0MVPWQK3U003DIR6 and stays
+ *        gone — no persistent instruction line at any phase.
  *
- * @module tests/main-street/hint-bar-placement.browser
+ * The tutorial banking-hint system is unrelated and out of scope; its tests
+ * keep passing unchanged.
+ *
+ * @module tests/main-street/hint-removal.browser
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -21,6 +30,9 @@ import { canPurchaseBusiness, getEmptySlots } from '../../src/MainStreetMarket';
 
 const GAME_W = 1280;
 const GAME_H = 720;
+
+/** The hint highlight stroke colour once used by the removed hint subsystem. */
+const HINT_STROKE = 0x44ffff;
 
 /**
  * Clear persistent storage (localStorage + IndexedDB) so a checkpoint saved
@@ -131,47 +143,51 @@ async function waitForSettled(scene: Scene): Promise<void> {
   throw new Error('Timed out waiting for market rendering to settle');
 }
 
-/** Last surfaced transient feedback text ('' when none). */
-function feedbackText(scene: Scene): string {
-  return String(scene.lastFeedback?.text ?? '');
+/** Labels of all action buttons currently in the action container. */
+function actionButtonLabels(scene: Scene): string[] {
+  const labels: string[] = [];
+  for (const entry of scene.actionContainer?.list ?? []) {
+    const children: any[] = Array.isArray(entry?.list) ? entry.list : [];
+    const text = children.find((c: any) => c?.type === 'Text' && typeof c.text === 'string');
+    if (text !== undefined) labels.push(String(text.text));
+  }
+  return labels;
 }
 
-/** All rendered text labels in the scene root (including transient pop text). */
-function renderedTexts(scene: Scene): string[] {
-  return ((scene.children?.list ?? []) as any[])
-    .filter((o) => o?.type === 'Text' && typeof o.text === 'string')
-    .map((o) => String(o.text));
+/** Bounding boxes of the interactive action buttons (background rects). */
+function actionButtonRects(scene: Scene): Array<{ label: string; x: number; w: number }> {
+  const rects: Array<{ label: string; x: number; w: number }> = [];
+  for (const entry of scene.actionContainer?.list ?? []) {
+    const children: any[] = Array.isArray(entry?.list) ? entry.list : [];
+    const text = children.find((c: any) => c?.type === 'Text' && typeof c.text === 'string');
+    const bg = children.find((c: any) => c?.type === 'Rectangle' && typeof c.setInteractive === 'function');
+    if (text !== undefined && bg !== undefined) {
+      // The background is centred in the button container: absolute left = container.x - w/2.
+      rects.push({
+        label: String(text.text),
+        x: entry.x - bg.width / 2,
+        w: bg.width,
+      });
+    }
+  }
+  return rects;
 }
 
-/** True if any text object remains rendered inline in the action container. */
-function hasInlineActionText(scene: Scene): boolean {
-  const list = scene.actionContainer?.list ?? [];
-  return list.some((entry: any) => {
-    if (entry?.text === undefined || entry?.type !== 'Text') return false;
-    // The actions-remaining counter is a legitimate standalone readout in the
-    // action cluster (CG-0MUFAITX70081W41) — not an inline placement hint.
-    if (/\d+\s+actions?\s+left/i.test(String(entry.text))) return false;
-    // Any other standalone text directly in the action container is an
-    // inline hint, which the HintBar AC forbids (nested button text is fine).
-    return true;
-  });
+function hasHintButton(scene: Scene): boolean {
+  return actionButtonLabels(scene).some((label) => label === 'Hint' || label === 'Hint \u2713');
 }
 
-/** Find the interactive Cancel button inside the action container and click it. */
-async function clickCancelButton(scene: Scene): Promise<void> {
-  const list: any[] = scene.actionContainer?.list ?? [];
-  const cancel = list.find((entry: any) => {
-    if (!entry?.list) return false;
-    return entry.list.some((child: any) => child?.text === 'Cancel');
-  });
-  expect(cancel, 'Cancel button should exist in the action container').toBeTruthy();
-  const bg = cancel.list.find((child: any) => typeof child?.setInteractive === 'function');
-  expect(bg, 'Cancel button background').toBeTruthy();
-  bg.emit('pointerdown');
-  await wait(60);
+/** Any shape in a container tree stroked with the hint highlight colour. */
+function findHintHueStrokes(node: { list?: any[] }, depth = 0): number {
+  let found = 0;
+  for (const obj of node.list ?? []) {
+    if (obj?.strokeColor === HINT_STROKE) found += 1;
+    if (Array.isArray(obj?.list)) found += findHintHueStrokes(obj, depth + 1);
+  }
+  return found;
 }
 
-describe('Main Street has no persistent instruction line (browser)', () => {
+describe('Main Street has no Hint button or hint subsystem (browser)', () => {
   let game: Phaser.Game | null = null;
 
   afterEach(() => {
@@ -187,87 +203,96 @@ describe('Main Street has no persistent instruction line (browser)', () => {
     localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY);
   });
 
-  it('creates no hint bar and shows no persistent placement line', async () => {
+  it('renders no Hint button and reserves no hint slot in the action row', async () => {
     game = await bootGame();
     const scene = getScene(game);
     await waitForMarketReady(scene);
     await waitForSettled(scene);
 
-    // AC1: neither the shared HintBar nor the legacy instruction text exists.
+    // AC1: no Hint button in the market action row.
+    expect(hasHintButton(scene)).toBe(false);
+
+    // AC4: no hint subsystem state on scene or layout.
+    expect(scene.hintUsedThisTurn).toBeUndefined();
+    expect(scene.hintedCardId).toBeUndefined();
+    expect(scene.hintedSlotIndex).toBeUndefined();
+    expect(scene.onHintClick).toBeUndefined();
+    expect(scene.createHintButton).toBeUndefined();
+    expect(scene.layout?.hintButtonW).toBeUndefined();
+
+    // AC2: End Turn stays right-aligned at gameW - 24.
+    const rects = actionButtonRects(scene);
+    const endTurn = rects.find((r) => r.label === 'End Turn');
+    expect(endTurn).toBeTruthy();
+    expect(endTurn!.x + endTurn!.w).toBe(scene.layout.gameW - 24);
+    // The full action rect no longer reserves the hint slot (its width is
+    // just the End Turn button now, not +12+hintButtonW).
+    expect(scene.getSectionRectsForTest().action.w).toBe(scene.layout.actionButtonW);
+
+    // AC2: no reserved hint slot — the label immediately left of End Turn
+    // sits exactly 12px away (a lingering hint slot would gap by 116px).
+    const sorted = [...rects].sort((a, b) => b.x - a.x);
+    expect(sorted[0].label).toBe('End Turn');
+    const nextLeft = sorted[1];
+    expect(nextLeft).toBeDefined();
+    expect(endTurn!.x - (nextLeft.x + nextLeft.w)).toBe(12);
+
+    // AC5: no persistent instruction/hint line is rendered.
     expect(scene.hintBar).toBeUndefined();
     expect(scene.instructionText).toBeUndefined();
+  });
+
+  it('renders no Hint button while placing from hand', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    await waitForMarketReady(scene);
+    await waitForSettled(scene);
 
     scene.state.resourceBank.coins = 2000;
-    const targetSlot = getEmptySlots(scene.state)[0];
-    expect(targetSlot).toBeGreaterThanOrEqual(0);
     const business = scene.state.market.cards.find((c: any) =>
-      c && canPurchaseBusiness(scene.state, c.id, targetSlot).legal,
+      c && canPurchaseBusiness(scene.state, c.id, getEmptySlots(scene.state)[0]).legal,
     );
     expect(business).toBeTruthy();
-
     scene.onBusinessCardClick(business);
     await waitForCondition(
       () => scene.state.hand?.some((c: any) => c.id === business.id),
       'business moved to hand',
     );
-
-    // Enter placing-from-hand by clicking the hand card.
     scene.onHandBusinessCardClick(0);
     await waitForCondition(
       () => scene.uiPhase === 'placing-from-hand',
       'placing-from-hand phase',
     );
 
-    // AC2: the phase guidance line is dropped — no persistent text in the
-    // action container and no guidance pop text is surfaced (the earlier
-    // move-to-hand confirmation legitimately remains in the feedback record).
-    expect(hasInlineActionText(scene)).toBe(false);
-    expect(feedbackText(scene)).not.toContain('click an empty slot');
-
-    // AC3: Cancel returns to market with no persistent line.
-    await clickCancelButton(scene);
-    await waitForCondition(
-      () => scene.uiPhase === 'market',
-      'back to market after cancel',
-    );
+    expect(hasHintButton(scene)).toBe(false);
+    expect(scene.hintUsedThisTurn).toBeUndefined();
     expect(scene.hintBar).toBeUndefined();
     expect(scene.instructionText).toBeUndefined();
-    expect(feedbackText(scene)).not.toContain('buy cards from the market');
   });
 
-  it('surfaces a refusal as transient pop text with no persistent line', async () => {
+  it('does not highlight any market card or street slot as a hint', async () => {
     game = await bootGame();
     const scene = getScene(game);
     await waitForMarketReady(scene);
     await waitForSettled(scene);
 
-    scene.state.resourceBank.coins = 2000;
-    scene.state.actionsRemaining = 0;
+    // Market: no card carries the hint stroke hue after a selection action.
+    scene.onBusinessCardClick(scene.state.market.cards[0]);
+    await wait(120);
+    expect(findHintHueStrokes(scene.marketContainer)).toBe(0);
 
-    const slot = getEmptySlots(scene.state)[0];
-    const business = scene.state.market.cards.find((c: any) =>
-      c && canPurchaseBusiness(scene.state, c.id, slot).legal,
-    );
-    expect(business).toBeTruthy();
-    scene.onBusinessCardClick(business);
-
-    // The refusal is surfaced through the transient channel and rendered…
-    expect(String(scene.lastFeedback?.text ?? '')).toContain('No actions remaining');
-    expect(scene.lastFeedback?.kind).toBe('error');
-    expect(renderedTexts(scene).some((t) => t.includes('No actions remaining'))).toBe(true);
-    // …with no persistent instruction/hint line.
-    expect(scene.instructionText).toBeUndefined();
-    expect(scene.hintBar).toBeUndefined();
+    // Street: no empty slot (or placed card) is stroked with the hint hue.
+    expect(findHintHueStrokes(scene.streetContainer)).toBe(0);
   });
 
-  it('keeps the action row position independent of the removed line', async () => {
+  it('keeps the action row position independent of the removed line and button', async () => {
     game = await bootGame();
     const scene = getScene(game);
     await waitForMarketReady(scene);
 
     const rects = scene.getSectionRectsForTest();
-    expect(rects).not.toHaveProperty('instruction');
     expect(rects.action.y).toBe(scene.layout.actionY + 4);
     expect(rects.action.h).toBe(scene.layout.actionButtonH);
+    expect(rects.action).not.toHaveProperty('instruction');
   });
 });

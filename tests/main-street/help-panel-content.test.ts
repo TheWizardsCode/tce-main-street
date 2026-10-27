@@ -156,9 +156,11 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(body).toContain(String(CFG.winThreshold));
   });
 
-  it('"Tools" mentions hint, undo, and research', () => {
+  it('"Tools" mentions undo and research (Hint entry removed)', () => {
     const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Tools')!));
-    expect(body).toContain('hint');
+    // The Hint subsystem was removed (MS-0MVPWQLIH008R5M3): the Tools panel
+    // must not advertise a Hint button.
+    expect(body).not.toContain('hint');
     expect(body).toContain('undo');
     expect(body).toContain('research');
   });

@@ -28,11 +28,11 @@
     },
     "deselect-toggle-browser": {
       "commands": [
-        "npx vitest run --project browser tests/main-street/card-deselect.browser.test.ts tests/main-street/hint-bar-placement.browser.test.ts tests/main-street/composite-click.browser.test.ts tests/main-street/upgrade-hand-flow.browser.test.ts tests/main-street/event-card-select-then-act.browser.test.ts tests/main-street/discard-from-hand.browser.test.ts tests/main-street/hand-outlines.browser.test.ts"
+        "npx vitest run --project browser tests/main-street/card-deselect.browser.test.ts tests/main-street/hint-removal.browser.test.ts tests/main-street/composite-click.browser.test.ts tests/main-street/upgrade-hand-flow.browser.test.ts tests/main-street/event-card-select-then-act.browser.test.ts tests/main-street/discard-from-hand.browser.test.ts tests/main-street/hand-outlines.browser.test.ts"
       ],
       "paths": [
         "tests/main-street/card-deselect.browser.test.ts",
-        "tests/main-street/hint-bar-placement.browser.test.ts",
+        "tests/main-street/hint-removal.browser.test.ts",
         "tests/main-street/composite-click.browser.test.ts",
         "tests/main-street/upgrade-hand-flow.browser.test.ts",
         "tests/main-street/event-card-select-then-act.browser.test.ts",

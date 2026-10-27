@@ -67,10 +67,6 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
       }
     }
 
-    // Reset hint state for the new turn
-    s.hintUsedThisTurn = false;
-    s.hintedCardId = null;
-    s.hintedSlotIndex = null;
     // Reset the scene-carried banking-hint arm: each new day opens a fresh
     // presentation window; a hint left armed by a game-over closing must not
     // leak into the next playthrough (MS-0MV79JQ4H003E6BH).

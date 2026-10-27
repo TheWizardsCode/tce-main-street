@@ -276,12 +276,9 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
     // Determine if this is a non-purchasable Incident event
     const isIncidentEvent = card.family === 'event' && (card as EventCard).trigger === 'Incident';
 
-    // Determine if this card is the hint recommendation
-    const isHinted = s.hintedCardId !== null && card.id === s.hintedCardId;
-
     const renderW = Math.max(1, Math.round(marketCardW - 4));
     const renderH = Math.max(1, Math.round(marketCardH - 4));
-    const baseStrokeColor = isHinted ? 0x44ffff : (isIncidentEvent ? 0x556688 : 0x888877);
+    const baseStrokeColor = isIncidentEvent ? 0x556688 : 0x888877;
 
     // Render card via shared adapter. Market business cards are always base
     // copies (never upgraded), so displayName is undefined for them; passing

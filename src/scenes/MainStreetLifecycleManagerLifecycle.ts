@@ -240,11 +240,6 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.cleanupTransferAnimations();
     s.hiddenTransferSourceCardIds.clear();
 
-    // Reset hint state
-    s.hintUsedThisTurn = false;
-    s.hintedCardId = null;
-    s.hintedSlotIndex = null;
-
     s.marketSelectionByCardId.clear();
     s.selectedMarketCardId = null;
     s.marketSelectionManager?.destroy();

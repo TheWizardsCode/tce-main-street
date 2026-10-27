@@ -316,7 +316,6 @@ export interface SceneLayout {
   actionY: number;
   actionButtonH: number;
   actionButtonW: number;
-  hintButtonW: number;
   smallButtonW: number;
   /** Left-edge X of the coins-to-rep Community Favour button (SLL-driven). */
   favourCoinsToRepX: number;

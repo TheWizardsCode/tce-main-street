@@ -119,9 +119,6 @@ function makeSceneHarness(state: MainStreetState) {
     celebratedChallengeIds: new Set<string>(),
     pendingApplicant: null,
     justMovedHandCardId: null,
-    hintUsedThisTurn: false,
-    hintedCardId: null,
-    hintedSlotIndex: null,
     // NOT replay: the interactive piggyback dialog must be presented. The
     // closing tail advances synchronously via reduced motion instead.
     replayMode: false,

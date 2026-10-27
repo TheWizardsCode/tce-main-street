@@ -113,7 +113,6 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
   const hudWidth = hudRight - hudLeft;
 
   const actionButtonH = 34;
-  const hintButtonW = 104;
   const smallButtonW = 68;
   const favourButtonW = 110;
   const actionButtonW = 140; // from per-game constants (matches legacy endTurnButton.width)
@@ -181,7 +180,6 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     actionY: Math.round(handTopLeft.y + 28),
     actionButtonH,
     actionButtonW,
-    hintButtonW,
     smallButtonW,
     favourButtonW,
     favourCoinsToRepX: Math.round(favourCoinsToRepCenter.x - favourButtonW / 2),

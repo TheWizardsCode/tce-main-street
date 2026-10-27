@@ -830,7 +830,6 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
 
     const s = renderer.scene;
     const { slotW, slotH } = s.layout;
-    const isHinted = s.hintedSlotIndex === _index;
 
     const renderW = Math.max(1, Math.round(slotW - 4));
     const renderH = Math.max(1, Math.round(slotH - 4));
@@ -878,13 +877,6 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
     }
 
     s.streetContainer.add(cardContainer);
-
-    if (isHinted) {
-      const hintRect = s.add.rectangle(x + slotW / 2, y + slotH / 2, slotW, slotH);
-      hintRect.setStrokeStyle(3, 0x44ffff);
-      hintRect.setFillStyle(0x000000, 0);
-      s.streetContainer.add(hintRect);
-    }
 
     // ── Sold card dimmed overlay ────────────────────────────────
     const soldSlots: boolean[] = s.state.soldSlots ?? [];
@@ -1241,10 +1233,9 @@ export function drawEmptySlot(renderer: MainStreetRendererContext, x: number, y:
     const isSelectable =
       !isUpgradeTargeting &&
       (s.uiPhase === 'placing-business' || s.uiPhase === 'placing-from-hand');
-    const isHinted = s.hintedSlotIndex === index && !isSelectable;
-    const fillAlpha = isSelectable ? 0.4 : isHinted ? 0.35 : 0.2;
-    const strokeColor = isSelectable ? 0xffdd44 : isHinted ? 0x44ffff : 0x555544;
-    const strokeWidth = (isSelectable || isHinted) ? 2 : 1;
+    const fillAlpha = isSelectable ? 0.4 : 0.2;
+    const strokeColor = isSelectable ? 0xffdd44 : 0x555544;
+    const strokeWidth = isSelectable ? 2 : 1;
 
     const bg = s.add.rectangle(
       x + slotW / 2, y + slotH / 2,
@@ -1256,7 +1247,7 @@ export function drawEmptySlot(renderer: MainStreetRendererContext, x: number, y:
 
     // Slot number (1-indexed for readability: 1-10)
     const idxText = s.add.text(x + slotW / 2, y + slotH / 2, `${index + 1}`, {
-      fontSize: '18px', color: (isSelectable || isHinted) ? '#ffdd44' : '#666655',
+      fontSize: '18px', color: isSelectable ? '#ffdd44' : '#666655',
       fontFamily: FONT_FAMILY,
     }).setOrigin(0.5);
     s.streetContainer.add(idxText);

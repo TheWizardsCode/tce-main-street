@@ -754,7 +754,7 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   }
 
   // Action economy (CG-0MSTOF1N5005PK2R): when the daily action budget is
-  // spent, only end-turn is legal. Free operations (refresh/sell/hint/
+  // spent, only end-turn is legal. Free operations (refresh/sell/
   // discard/end-turn) stay available to the player, but the AI simply ends
   // the day rather than cycling through non-actions. The free Community
   // Favour fallback (added above) stays legal too — with end-turn always
@@ -2013,9 +2013,12 @@ export function scoreCloseBusinessAction(
  * Enumerate all legal actions for the given state and compute a heuristic
  * score for each one.
  *
- * This is the primary building block for the Greedy strategy and the hint
- * system.  Callers can sort by score descending or pass the results directly
- * to `pickBest` to select the highest-scoring action with tie-breaking.
+ * This is the primary building block for the Greedy strategy.  Callers can
+ * sort by score descending or pass the results directly to `pickBest` to
+ * select the highest-scoring action with tie-breaking.
+ *
+ * Note: the deprecated hint subsystem was removed (MS-0MVPWQLIH008R5M3) —
+ * this enumerator no longer has the hint generator as a consumer.
  *
  * @param state Current game state.
  * @returns Array of `{ action, score }` pairs for every legal action.

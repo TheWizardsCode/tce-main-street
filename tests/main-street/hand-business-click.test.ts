@@ -94,7 +94,6 @@ function createMockScene(): any {
     actionY: 620,
     actionButtonH: 28,
     actionButtonW: 100,
-    hintButtonW: 60,
     smallButtonW: 96,
     challengeX: 0,
     challengeY: 0,

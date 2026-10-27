@@ -1,7 +1,3 @@
-import { addLog } from '../MainStreetState';
-import { generateHint, type HintResult } from '../MainStreetHint';
-import { recordMainStreetEvent } from '../MainStreetTranscript';
-import { flashError, flashConfirmation } from './MainStreetFeedback';
 import { FONT_FAMILY } from '@ui';
 import { LOG_SCROLL_SPEED, LOG_TITLE_H } from './MainStreetConstants';
 import { streetViewportRect } from '../MainStreetMapView';
@@ -225,46 +221,6 @@ export class MainStreetInputManager {
       `svg sources:${s.cardSvgSources.size} generated textures:${cardTextureKeys.length}`,
       sampleLine,
     ]);
-  }
-
-  public onHintClick(): void {
-    const s = this.scene;
-    if (s.hintUsedThisTurn) return;
-    if (s.uiPhase !== 'market') return;
-
-    const hint: HintResult | null = generateHint(s.state);
-    if (!hint) {
-      flashError(s, 'Hint not available right now.');
-      return;
-    }
-
-    s.hintUsedThisTurn = true;
-
-    if (hint.action.type === 'buy-business') {
-      s.hintedCardId = hint.action.cardId;
-      s.hintedSlotIndex = hint.action.slotIndex;
-    } else if (hint.action.type === 'buy-upgrade') {
-      s.hintedCardId = hint.action.cardId;
-      s.hintedSlotIndex = hint.action.targetSlot ?? null;
-    } else if (hint.action.type === 'buy-event') {
-      s.hintedCardId = hint.action.cardId;
-      s.hintedSlotIndex = null;
-    } else if (hint.action.type === 'play-event') {
-      s.hintedCardId = (s.state.hand ?? []).find((c: any) => c.family === 'event')?.id ?? null;
-      s.hintedSlotIndex = null;
-    } else {
-      s.hintedCardId = null;
-      s.hintedSlotIndex = null;
-    }
-
-    flashConfirmation(s, `Hint: ${hint.rationale}`);
-    addLog(s.state, `Hint: ${hint.rationale}`, 'neutral');
-    try { recordMainStreetEvent({ type: 'hint', turn: s.state.turn, recommendedAction: hint.action, rationale: hint.rationale }); } catch (_) {}
-
-    s.refreshActionButtons();
-    s.refreshStreetGrid();
-    s.refreshMarket();
-    s.refreshPlayerHand();
   }
 
   public clearMarketSelection(): void {

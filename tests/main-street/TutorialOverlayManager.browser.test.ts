@@ -537,7 +537,6 @@ describe('TutorialOverlayManager highlight zones', () => {
         'endTurnButton',
         'incidentQueue',
         'investmentsRow',
-        'helpButton',
         'challengePanel',
         'completionModal',
         'hand',

@@ -81,7 +81,6 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  *   - incidentQueue  (960, 408, 300, 125) — queueTop, boot-time panel (one
  *     face-down deck stack + count, CG-0MSXOWLHU0099QF6; 0 active effects:
  *     22+8+87+8)
- *   - helpButton     (1000, 652, 104, 34) — to the left of End Turn
  *   - actionCounter  (1028, 616, 240, 28)  — actions-remaining + banked count
  *                                            text (right-aligned above action
  *                                            row, CG-0MT3JK16W006A66P)

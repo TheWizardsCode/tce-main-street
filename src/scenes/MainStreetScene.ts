@@ -360,14 +360,6 @@ export class MainStreetScene extends CardGameScene {
   public activeTransferVisuals = new Set<Phaser.GameObjects.GameObject>();
   public hiddenTransferSourceCardIds = new Set<string>();
 
-  // Hint system
-  /** True after the player has used their one hint for this turn. */
-  public hintUsedThisTurn = false;
-  /** Card ID of the card highlighted by the current hint (null = none). */
-  public hintedCardId: string | null = null;
-  /** Grid slot index highlighted by the current hint (null = none). */
-  public hintedSlotIndex: number | null = null;
-
   // Persistent market-card selection UX
   public marketSelectionManager!: SingleSelectionManager;
   public marketSelectionByCardId = new Map<string, SelectionController>();
@@ -989,19 +981,6 @@ export class MainStreetScene extends CardGameScene {
     return (this.msTurnController as any).onCommunityFavourClick.apply(this.msTurnController, args);
   }
 
-  /**
-   * Creates a "Hint" button that is disabled after first use per turn.
-   * When clicked, queries the Greedy strategy and highlights the recommended
-   * card/slot with a one-line rationale in the instruction text area.
-   */
-  public createHintButton(...args: any[]): any {
-    return (this.msRenderer as any).createHintButton.apply(this.msRenderer, args);
-  }
-
-  /** Handles the Hint button click: generates and displays the hint. */
-  public onHintClick(...args: any[]): any {
-    return (this.msInputManager as any).onHintClick.apply(this.msInputManager, args);
-  }
   public performUndo(...args: any[]): any {
     return (this.msTurnController as any).performUndo.apply(this.msTurnController, args);
   }
@@ -1148,7 +1127,9 @@ export class MainStreetScene extends CardGameScene {
     // Note: undo/redo buttons were removed from the action bar in the MS
     // migration (CG-0MQHARH7J004XP4V). They are now placed via the shared
     // initUndoRedoButtons() mechanism in the header area, not the action bar.
-    const actionW = l.actionButtonW + 12 + l.hintButtonW;
+    // The Hint button was removed by MS-0MVPWQLIH008R5M3: the action rect
+    // covers only the right-aligned End Turn button (no reserved hint slot).
+    const actionW = l.actionButtonW;
     const action = {
       x: rightX - actionW,
       y: actionRowY,

@@ -10,7 +10,7 @@
  */
 
 import { FONT_FAMILY, clearTransientHud, markHudTransient } from '@ui';
-import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
+import { attachHudTooltipZone, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
@@ -518,29 +518,23 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
 
       // End Turn button (right-aligned)
       const btnW = s.layout.actionButtonW;
-      const hintBtnW = s.layout.hintButtonW;
 
       const endBtn = createActionButton(s, rightX - btnW, by + 4, btnW, 'End Turn', () => {
         s.endTurn();
       });
       s.actionContainer.add(endBtn);
 
-      // Hint button (to the left of End Turn)
-      const hintBtn = createMainStreetHintButton(
-        s, rightX - btnW - 12 - hintBtnW, by + 4, hintBtnW, s.layout.actionButtonH,
-        s.hintUsedThisTurn, () => s.onHintClick(),
-      );
-      s.actionContainer.add(hintBtn);
-
-      // Peek button (staff peek skill, CG-0MSXOW6GN008ZSMN) — to the left of
-      // the Hint button. Only offered while a peek-capable staff member is
-      // employed; disabled once the once-per-turn gate is spent, when no
-      // daily actions remain, or when the incident deck is empty.
+      // Peek button (staff peek skill, CG-0MSXOW6GN008ZSMN) — immediately to
+      // the left of End Turn. Only offered while a peek-capable staff member
+      // is employed; disabled once the once-per-turn gate is spent, when no
+      // daily actions remain, or when the incident deck is empty. The Hint
+      // button slot (MS-0MVPWQLIH008R5M3) is gone, so the row no longer
+      // reserves 104px between End Turn and Peek.
       const hasPeekStaff = hasPeekCapableStaff(s.state);
       if (hasPeekStaff) {
         const peekDisabled = s.state.peekUsedThisTurn || s.state.actionsRemaining <= 0 || s.state.incidentDeck.length === 0;
         const peekBtn = createActionButton(
-          s, rightX - btnW - 12 - hintBtnW - 12 - btnW, by + 4, btnW,
+          s, rightX - btnW - 12 - btnW, by + 4, btnW,
           peekDisabled ? 'Peek \u2713' : 'Peek',
           () => s.onPeekClick(),
           {
@@ -556,10 +550,11 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.actionContainer.add(peekBtn);
       }
 
-      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the Hint/Peek
-      // cluster. Opens the journal overlay listing past storyline choices and
-      // outcomes. Always available (it shows an empty state before any choice).
-      let leftmostX = rightX - btnW - 12 - hintBtnW;
+      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the
+      // End Turn/Peek cluster. Opens the journal overlay listing past
+      // storyline choices and outcomes. Always available (it shows an empty
+      // state before any choice).
+      let leftmostX = rightX - btnW;
       if (hasPeekStaff) leftmostX -= 12 + btnW;
       const journalBtn = createActionButton(
         s, leftmostX - 12 - btnW, by + 4, btnW, 'Journal',

@@ -29,7 +29,7 @@ import type { MainStreetState } from '../../src/MainStreetState';
  * restore a partially-sold market row with no business cards, which makes
  * the affordable-card finder below come up empty (the ≥1-business rule only
  * applies at refill time). Same helper as the other MainStreet browser
- * tests (composite / click-place / drag / hint-bar-placement / migration).
+ * tests (composite / click-place / drag / hint-removal / migration).
  */
 async function clearPersistentStorage(): Promise<void> {
   try { localStorage.clear(); } catch { /* ignore */ }

@@ -171,16 +171,6 @@ function computeTargetRect(
         h: layout.actionButtonH,
       };
     }
-    case 'helpButton': {
-      // Hint button: to the left of End Turn with a 12px gap
-      const rightX = gameW - 24;
-      return {
-        x: rightX - layout.actionButtonW - 12 - layout.hintButtonW,
-        y: layout.actionY + 4,
-        w: layout.hintButtonW,
-        h: layout.actionButtonH,
-      };
-    }
     case 'incidentQueue': {
       // Incident queue panel — mirror refreshIncidentQueue() panel math with
       // the LIVE state (boot: single face-down deck stack + count, 0 effects
@@ -467,7 +457,6 @@ describe('Tutorial overlay highlight alignment (renderer geometry)', () => {
         'incidentQueue',
         'investmentsRow',
         'challengePanel',
-        'helpButton',
         'completionModal',
         'hand',
         'actionButtons',
