@@ -5,6 +5,17 @@
     "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts"
   ],
   "groups": {
+    "hand-bottom-anchor-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hand-bottom-anchor.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hand-bottom-anchor.browser.test.ts",
+        "src/layouts/main-street.layout.json",
+        "src/layouts/main-street-tutorial.layout.json",
+        "src/scenes/MainStreetLayoutAdapter.ts"
+      ]
+    },
     "tutorial-browser": {
       "commands": [
         "npx vitest run --project browser tests/main-street/TutorialOverlayHighlights.browser.test.ts tests/main-street/TutorialOverlayManager.browser.test.ts tests/e2e/main-street-tutorial-e2e-part4.browser.test.ts tests/e2e/main-street-tutorial-e2e-part5.browser.test.ts tests/e2e/main-street-tutorial-e2e-part6.browser.test.ts"

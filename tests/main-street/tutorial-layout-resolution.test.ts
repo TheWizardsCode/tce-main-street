@@ -515,6 +515,36 @@ describe('Tutorial layout resolution', () => {
     });
   });
 
+  describe('hand zone sync with the base layout (AC8)', () => {
+    it('keeps the tutorial hand zone rect and anchor equal to the base zone', () => {
+      const resolved = composeResolvedLayouts(
+        parseBaseLayout(),
+        parseTutorialLayout(),
+        VIEWPORT,
+        1,
+      );
+
+      // The hand bottom-anchor (MS-0MVPWQMTL004J3GB) moved both documents in
+      // lockstep: the tutorial highlight rect must equal the rendered hand
+      // rect, which resolves from the base `hand` zone (layout.handY/handX).
+      const expected = computeExpectedZoneBounds('hand');
+      expect(expected).not.toBeNull();
+      boundsAlmostEqual(resolved.zones.hand.rect, expected!);
+
+      // The rendered hand rect = { handCenterX − 144, handY, 288, 80 } at
+      // 1280×720 — pinned so an unintended move breaks the sync loudly.
+      expect(resolved.zones.hand.rect.x).toBeCloseTo(323, 0);
+      expect(resolved.zones.hand.rect.y).toBeCloseTo(628, 0);
+    });
+
+    it('keeps the tutorial hand anchor equal to the base hand anchor', () => {
+      const base = parseBaseLayout();
+      const tutorial = parseTutorialLayout();
+      expect(tutorial.zones.hand.rect.y).toBe(base.zones.hand.rect.y);
+      expect(tutorial.zones.hand.anchors?.topLeft.y).toBe(base.zones.hand.anchors?.topLeft.y);
+    });
+  });
+
   describe('sceneWins policy', () => {
     it('tutorial zones overlay base zones when names collide', () => {
       const issues: ComposeResolvedLayoutsIssue[] = [];
