@@ -494,6 +494,12 @@ The mechanic has been extracted into the generic, game-agnostic core module
 system, so there is one implementation of compilation, resolution and the
 journal helpers.
 
+> **Doc-guard note:** `tests/main-street/storylines-doc-drift.test.ts` asserts
+the *semantic anchors* of this engine reference (the `createStorylineSystem` /
+`@story-line` / `GymStorylineScene` seam API, the documented section topics and
+the links resolving) — never its Markdown heading text, which is engine prose
+and not a cross-repo contract (MS-0MVMNO29Z009SF6O).
+
 **The adapters** ([`src/MainStreetStorylineAdapter.ts`](../../src/MainStreetStorylineAdapter.ts)):
 
 - `mainStreetStorylineEngineAdapter` maps the core engine seam onto

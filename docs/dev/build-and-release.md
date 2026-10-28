@@ -187,3 +187,9 @@ preflight (pin / ahead / behind / missing-pin / uninitialised / bypass,
 offline fixtures) and
 `tests/main-street/vite-config-engine-check-guard.test.ts` guards the Vitest
 wiring.
+
+`tests/main-street/storylines-doc-drift.test.ts` guards the engine story-line
+reference by its semantic anchors (seam API symbols, section topics, link
+resolution), **not** its Markdown headings: headings are engine prose, not a
+cross-repo contract, and dev builds follow the engine dev tip, so a heading
+rename must never redden this suite (MS-0MVMNO29Z009SF6O).

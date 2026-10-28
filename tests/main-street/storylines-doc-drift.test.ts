@@ -1,6 +1,19 @@
 /**
  * Storyline documentation drift guard (MS-0MUMP968H005MXZY)
  *
+ * **Engine reference headings are not a cross-repo contract**
+ * (MS-0MVMNO29Z009SF6O). Dev builds compose the engine *dev tip*
+ * (`engine:sync` follows `core` dev), so the Markdown headings of
+ * `core/docs/core-engine/story-line.md` are engine prose that can be renamed
+ * at any time — the seam section has already moved once
+ * (`## Engine adapter` → `## Authoring seams (content, manifest, validator,
+ * author)`). Pinning heading text therefore reddens this game's suite for a
+ * change the game does not depend on. The AC5b guard instead asserts the
+ * *semantic* anchors the game genuinely consumes — the seam API symbols
+ * (`createStorylineSystem`, the `@story-line` package), the `GymStorylineScene`
+ * consumer, the documented section topics, and the links resolving — and is
+ * proven rename-tolerant by a fixture test. Do not re-pin headings here.
+ *
  * Guards the canonical storyline doc against drift:
  *
  * AC1 — The canonical doc exists and covers every required section.
@@ -237,22 +250,93 @@ describe('AC5 — core-engine extraction path documented', () => {
   });
 });
 
-const CORE_DOC_PATH = path.join(PROJECT_ROOT, 'core/docs/core-engine/story-line.md');
+const CORE_DOC_REF = 'core/docs/core-engine/story-line.md';
+const CORE_DOC_PATH = path.join(PROJECT_ROOT, CORE_DOC_REF);
 
-describe('AC5b — core story-line reference and Main Street adapters', () => {
-  it('the core dev reference exists and documents the API, adapters and Gym demo', () => {
-    expect(fs.existsSync(CORE_DOC_PATH), 'missing core story-line reference').toBe(true);
-    const coreDoc = read(CORE_DOC_PATH);
-    // The engine renamed its adapter seam section to "Authoring seams
-    // (content, manifest, validator, author)" (core dev, pinned in
-    // configs/engine-pin.json), so this cross-repo contract tracks the pinned
-    // reference exactly rather than the previous "## Engine adapter" wording.
-    for (const heading of ['## API', '## Authoring seams', '## UI adapter', '## Gym demo']) {
-      expect(coreDoc, `missing core heading ${heading}`).toContain(heading);
+/**
+ * Seam-API symbols the game genuinely depends on in the engine reference.
+ *
+ * These are the contract, not Markdown headings: dev builds compose the engine
+ * dev tip, so the engine may rename any heading at any time
+ * (MS-0MVMNO29Z009SF6O). Removing any of these anchors is real breakage.
+ */
+const REQUIRED_CORE_SYMBOLS = ['createStorylineSystem', '@story-line', 'GymStorylineScene'];
+
+/**
+ * Section topics the reference must keep documenting. Each is matched as a
+ * keyword anywhere in the document (prose as well as headings), so a heading
+ * rename is a no-op while dropping a topic entirely still fails the guard.
+ */
+const REQUIRED_CORE_TOPICS = ['API', 'validation', 'authoring', 'adapter', 'Gym'];
+
+/**
+ * Checks the engine's story-line reference against the game-side contract.
+ *
+ * Heading text is deliberately **not** checked: headings are engine prose, not
+ * a cross-repo contract (MS-0MVMNO29Z009SF6O).
+ *
+ * @param coreDoc - Markdown content of the engine reference (live file or fixture).
+ * @param file - Path used in failure messages, so a fixture failure is attributable.
+ * @returns One message per missing anchor; `[]` means the contract holds.
+ */
+function checkCoreReferenceContract(coreDoc: string, file: string = CORE_DOC_REF): string[] {
+  const missing: string[] = [];
+  for (const symbol of REQUIRED_CORE_SYMBOLS) {
+    if (!coreDoc.includes(symbol)) {
+      missing.push(`${file}: missing seam-API anchor \`${symbol}\``);
     }
-    expect(coreDoc).toContain('createStorylineSystem');
-    expect(coreDoc).toContain('@story-line');
-    expect(coreDoc).toContain('GymStorylineScene');
+  }
+  const lower = coreDoc.toLowerCase();
+  for (const topic of REQUIRED_CORE_TOPICS) {
+    if (!lower.includes(topic.toLowerCase())) {
+      missing.push(`${file}: missing section topic "${topic}"`);
+    }
+  }
+  return missing;
+}
+
+/**
+ * Simulates an engine-side heading rename by rewriting every Markdown heading.
+ *
+ * The rename fixture is derived from the live reference rather than committed
+ * as a copy, so it can never go stale as the engine's prose evolves.
+ */
+function renameAllHeadings(doc: string): string {
+  let n = 0;
+  return doc.replace(/^#{1,6}\s+.*$/gm, () => `## Renamed section ${(n += 1)}`);
+}
+
+describe('AC5b — core story-line reference contract (semantic anchors, not headings)', () => {
+  it('the core dev reference exists and satisfies the seam-API contract', () => {
+    expect(fs.existsSync(CORE_DOC_PATH), `missing ${CORE_DOC_REF}`).toBe(true);
+    const missing = checkCoreReferenceContract(read(CORE_DOC_PATH));
+    expect(missing, 'core story-line reference no longer documents the seam API').toEqual([]);
+  });
+
+  it('tolerates an engine-side rename of every section heading (fixture)', () => {
+    const renamedFixture = renameAllHeadings(read(CORE_DOC_PATH));
+    // Prove the fixture really exercises the renames this guard used to pin.
+    expect(renamedFixture).not.toContain('## Authoring seams');
+    expect(renamedFixture).not.toContain('## Engine adapter');
+    expect(renamedFixture).toContain('## Renamed section 1');
+    expect(
+      checkCoreReferenceContract(renamedFixture, 'fixture: renamed headings'),
+      'a heading rename must not break the contract check',
+    ).toEqual([]);
+  });
+
+  it('still fails when a seam-API anchor disappears (negative fixture)', () => {
+    const brokenFixture = read(CORE_DOC_PATH).replace(/createStorylineSystem/g, 'renamedFactory');
+    expect(checkCoreReferenceContract(brokenFixture, 'fixture: missing symbol')).toEqual([
+      'fixture: missing symbol: missing seam-API anchor `createStorylineSystem`',
+    ]);
+  });
+
+  it('still fails when a documented section topic disappears (negative fixture)', () => {
+    const brokenFixture = read(CORE_DOC_PATH).replace(/[Vv]alidation/g, 'scrutiny');
+    expect(checkCoreReferenceContract(brokenFixture, 'fixture: missing topic')).toContain(
+      'fixture: missing topic: missing section topic "validation"',
+    );
   });
 
   it('the core reference is linked from the core developer docs and the Gym index', () => {
@@ -264,20 +348,17 @@ describe('AC5b — core story-line reference and Main Street adapters', () => {
     );
   });
 
-  it('the Main Street doc describes the three modules as adapters over core', () => {
+  it('the Main Street doc links to the core reference and describes the modules as adapters', () => {
     const doc = DOC();
+    expect(doc).toContain(`[\`@story-line\`](../../${CORE_DOC_REF})`);
     expect(doc).toContain('mainStreetStorylineEngineAdapter');
     expect(doc).toContain('mainStreetStorylineUiAdapter');
     expect(doc).toContain('thin adapters');
-    expect(doc).toContain('core/docs/core-engine/story-line.md');
   });
 
   it('the core reference link resolves', () => {
-    const target = path.resolve(
-      path.dirname(DOC_PATH),
-      '../../core/docs/core-engine/story-line.md',
-    );
-    expect(fs.existsSync(target)).toBe(true);
+    const target = path.resolve(path.dirname(DOC_PATH), `../../${CORE_DOC_REF}`);
+    expect(fs.existsSync(target), `broken link to ${CORE_DOC_REF}`).toBe(true);
   });
 });
 
