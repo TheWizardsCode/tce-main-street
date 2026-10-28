@@ -240,8 +240,13 @@ export async function checkForCsvMismatchAndRegenerate(lmCtx: MainStreetLifecycl
           source = 'no-checksum-file';
         }
       } catch {
-        // Fetch failed — assume SVGs are up-to-date (fallback to static SVGs)
-        console.warn('[MainStreetLifecycleManager] Could not fetch csv-checksum.json');
+        // Fetch failed — assume SVGs are up-to-date (fallback to static SVGs).
+        // Expected whenever the build output has not been generated yet (a
+        // fresh dev session before scaffold/asset generation) or the dev
+        // server dropped mid-session; report at debug so a genuine error is
+        // never hidden, but an expected absence does not warn on every boot
+        // (MS-0MVREB31W004F48D).
+        console.debug('[MainStreetLifecycleManager] Could not fetch csv-checksum.json (expected during asset backfill)');
       }
     }
 

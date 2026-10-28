@@ -2,7 +2,8 @@
   "timeoutPerCommand": 1800,
   "suiteCommands": [
     "npm --silent test",
-    "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts"
+    "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts",
+    "npx vitest run --project browser tests/e2e/main-street-no-console-errors.browser.test.ts"
   ],
   "groups": {
     "hand-bottom-anchor-browser": {

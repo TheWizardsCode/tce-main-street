@@ -32,8 +32,10 @@ describe('vite.config.ts watch-ignore ENOSPC guard (AC1)', () => {
     // The real config must carry the same guard the core template emits
     // (CG-0MV5SEHHG000ZKUA) — importing the shared list and spreading it into
     // the watcher's ignored array.
-    expect(src).toContain(
-      "import { DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin'",
+    // Named import, order-tolerant: since MS-0MVREB31W004F48D the
+    // transcript-persist plugin is imported from the same module.
+    expect(src).toMatch(
+      /import \{[^}]*DEV_WATCH_IGNORE_PATTERNS[^}]*\} from '\.\/core\/scripts\/vite-transcript-plugin'/,
     );
     expect(src).toContain('ignored: [...DEV_WATCH_IGNORE_PATTERNS]');
   });

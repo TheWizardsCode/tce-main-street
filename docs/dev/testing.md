@@ -479,6 +479,133 @@ Consequences for day-to-day work:
   `resolve` block (after `alias: resolveCoreAliases(coreRoot)`), so a
   re-scaffold cannot regress it unnoticed.
 
+## Dev-session transcript persistence (`POST /api/transcripts`)
+
+Every game-over stores a transcript in the browser (`TranscriptStore`) and
+mirrors it to disk through a dev-server middleware:
+
+```
+POST /api/transcripts  ->  data/transcripts/<gameType>/<gameType>-<ISO>.json
+```
+
+`vite.config.ts` registers the middleware from the engine's
+`transcriptPersistPlugin()` for `command: 'serve'` runs only, and never when
+`process.env.VITEST` is set (the plugin writes to disk, so a test run must not
+have that side effect). The scaffold template emits the identical registration
+(`core/scripts/game-repo-scaffold.ts` → `renderViteConfig`, core item
+CG-0MVSIB5LH0069LB3), so `npm run scaffold` regenerates the wiring instead of
+dropping it — the same drift pattern as `resolve.dedupe` above.
+
+Two arms guard it:
+
+- `tests/tooling/vite-transcript-plugin-registration.test.ts` loads the real
+  `vite.config.ts` factory and asserts the plugin is present for `serve`,
+  absent under `VITEST`, and absent for a production build — plus an
+  in-process dev-server smoke that POSTs a transcript and asserts HTTP 200 and
+  the JSON file under a temp `destRoot` (the repo's own `data/` is never
+  touched).
+- `tests/e2e/main-street-no-console-errors.browser.test.ts` saves a transcript
+  in the browser and asserts the console stays free of
+  `[TranscriptStore] … 404` warnings.
+
+The disk mirror is deliberately quiet: the request is issued only where the
+endpoint can exist (`import.meta.env.DEV`), and a failure is reported **at most
+once per store instance** — an absent endpoint (404/405) or an unreachable
+server at `console.debug`, any other non-2xx at `console.warn`.
+
+**A `404` on `POST /api/transcripts` in a dev session** therefore means the
+running `vite.config.ts` predates this wiring (an out-of-date generated
+config): re-run the scaffold or copy the
+`...(command === 'serve' && !process.env.VITEST ? [transcriptPersistPlugin()] : [])`
+entry into `plugins`. Full contract: `core/docs/DEVELOPER.md` § Transcript
+Persistence.
+
+## Troubleshooting: dev server died mid-session (`[vite] server connection lost`, WS retries, `ERR_CONNECTION_REFUSED`)
+
+A dev session that ends with a flood of browser console noise — `[vite] server
+connection lost`, repeated `WebSocket connection to ws://<host>:3000/ failed`
+HMR retries and `net::ERR_CONNECTION_REFUSED` for every card SVG /
+`csv-checksum.json` request — means the **Vite dev server process is gone**, not
+that the assets are missing. Proven on this host (see below): the same assets
+return HTTP 200 from a live server, and the failure signature disappears when
+the server is restarted (MS-0MVREB31W004F48D).
+
+### Signature
+
+1. `[vite] server connection lost` / `[vite] http proxy error` in the page.
+2. HMR WebSocket reconnects fail: `WebSocket connection to 'ws://<host>:3000/' failed`.
+3. Every subsequent asset request fails with `net::ERR_CONNECTION_REFUSED` —
+   roughly one line per card SVG, plus `csv-checksum.json` (and, in a
+   Main Street session, the `[MainStreetLifecycleManager] Could not fetch
+   csv-checksum.json` note — now a quiet `console.debug`, see AC3).
+4. No server-side crash trace is visible in the terminal that ran
+   `npm run dev` beyond the process having exited.
+
+### Fast triage (30 seconds)
+
+```bash
+ss -ltn | grep :3000
+```
+
+- **A listener is present** → the server is alive; the disconnect is transient
+  (HMR full-reload). Refresh and continue.
+- **No listener** → the server is gone, not the assets. Restart `npm run dev`;
+  the same URLs, including every card SVG, return 200 again from the live
+  server. (A live-server probe is the definitive check: start `npm run dev`
+  and `curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/<svg-url>`.)
+
+Do **not** file a bug for the cascade: it is the symptom of a process death,
+not a code defect. The two bounded classes that *are* app-owned — the
+`/api/transcripts` 404 and repeated expected-condition warnings — are fixed
+and guarded (AC1–AC3): a red line in a dev-session console now means
+something is actually wrong.
+
+### Likely causes on this host and remediation
+
+The cause is machine pressure, not app code:
+
+- **Memory pressure / swap exhaustion.** At report time this host had 7.3 GB of
+  8 GB swap in use; a long-lived `vite --host` server (which also holds the
+  SVG/card asset caches in memory) is a prime victim of the OOM killer when
+  RAM+swap runs out. Check `free -m` / `swapon --show`; a server killed this
+  way leaves no trace in the app log, only the browser-side cascade.
+- **Concurrent dev servers and browser suites.** Sibling repos (e.g. core
+  worktrees, other `tce-*` game repos) running their own `vite --host` and
+  Playwright browser suites multiply baseline memory and CPU.
+- **Many `.worklog` worktrees.** Each worktree duplicates watchers and, when
+  active, its own processes; 10+ worktrees materially raise the working set.
+- **inotify exhaustion is a sibling cause** — see the ENOSPC section below for
+  that signature.
+
+Host-level remediation (swap headroom, killing orphaned dev servers, worktree
+hygiene) is tracked in the follow-up work item MS-0MVS0FNLH003VBMW — this
+section only documents the diagnosis so the cascade is not re-filed as a bug.
+
+### Console errors that are not app defects (browser extensions)
+
+A dev-session console can also show messages the app can neither cause nor
+suppress, because they come from a loaded browser extension. The known class is:
+
+```
+Uncaught (in promise) Error: A listener indicated an asynchronous response by
+returning true, but the message channel closed before a response was received
+```
+
+Signature: the stack includes an extension hook such as `installHook.js`, and
+there is no corresponding `chrome.runtime` / `window.postMessage` usage in the
+app.
+
+Verification (MS-0MVREB31W004F48D, AC4a): the guard
+`tests/e2e/main-street-no-console-errors.browser.test.ts` runs the game in the
+Vitest `browser` project — Playwright's headless Chromium, which loads **no
+extensions** — and asserts a clean console on boot *and* on a transcript save.
+That run produces no such error, so the message is extension-origin and is
+**out of scope** for app code: do not add it to the guard's benign-pattern list
+(that would weaken a real guard), and do not file it as an app bug. Verify with
+an extension-free run (`npx vitest run --project browser
+tests/e2e/main-street-no-console-errors.browser.test.ts`, via `/skill:test`)
+before concluding the same about any new variant.
+
 ## Troubleshooting: ENOSPC (`System limit for number of file watchers reached`)
 
 A full-suite run that fails with `ENOSPC: System limit for number of file

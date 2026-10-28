@@ -10,6 +10,11 @@
  * console.error / console.warn calls during startup, and asserts that no
  * unexpected errors occurred.
  *
+ * It also covers the transcript disk-mirror path (MS-0MVREB31W004F48D): a
+ * game-over save fires `POST /api/transcripts`, and a run where the dev-server
+ * middleware is deliberately absent (every Vitest run) must stay quiet — no
+ * `[TranscriptStore] … HTTP 404` warning in the console.
+ *
  * This file was extracted from the core `tableau-card-engine` repo, where it
  * also covered the Golf and Beleaguered Castle example games. Those games do
  * not ship in the Main Street repo (see MS-0MUTU19SF007791K: the stale
@@ -155,5 +160,31 @@ describe('Main Street startup — no console errors', () => {
     });
 
     assertNoUnexpectedErrors('MainStreet');
+
+    // ── Transcript disk-mirror path (MS-0MVREB31W004F48D) ────────────────
+    // Saving a transcript fires the fire-and-forget `POST /api/transcripts`.
+    // Under Vitest the dev-server middleware is deliberately NOT registered
+    // (the plugin writes to disk), so the endpoint cannot exist here. The
+    // contract is that this expected absence never surfaces as a
+    // console.warn/error — it is logged at most once, at debug — so a red
+    // line in a dev-session console always means something is actually broken.
+    const { TranscriptStore } = await import('@core-engine/transcript');
+    const store = new TranscriptStore();
+    const entry = await store.save('main-street', {
+      version: 1,
+      turns: [{ turn: 1, note: 'console-guard' }],
+    });
+    expect(entry).not.toBeNull();
+
+    // Let the fire-and-forget POST settle before inspecting the console.
+    await new Promise((r) => setTimeout(r, 500));
+
+    const transcriptNoise = [...capturedWarns, ...capturedErrors].filter((m) =>
+      /TranscriptStore|api\/transcripts/i.test(m),
+    );
+    expect(
+      transcriptNoise,
+      'a transcript save must not log a 404/warn for the absent dev-server endpoint',
+    ).toEqual([]);
   });
 });

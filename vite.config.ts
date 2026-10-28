@@ -27,7 +27,7 @@ import {
   gameDiscoveryPlugin,
   resolveCoreAliases,
 } from './core/scripts/vite-game-discovery-plugin';
-import { DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin';
+import { transcriptPersistPlugin, DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin';
 import { writeCardTestResults } from './tests/main-street/cards/CardTestResultWriter';
 import { createProjectCoverageReporter } from './tests/tooling/vitest-project-coverage-reporter';
 import { computeCsvChecksum } from './src/CsvChecksum';
@@ -142,7 +142,7 @@ function cardResultsWriterPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ command, mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -156,6 +156,14 @@ export default defineConfig(({ mode }) => ({
     // 'virtual:game-registry' (Gym from the core + this one game).
     gameDiscoveryPlugin({ projectRoot: __dirname, coreRoot, env: presetEnv }),
     cardResultsWriterPlugin(),
+    // Persist game-over transcripts to data/transcripts/<game>/ during a
+    // normal dev session: this is the middleware behind POST /api/transcripts,
+    // so without it every game-over 404s in the browser console
+    // (MS-0MVREB31W004F48D). Dev-serve only, and never under Vitest (the
+    // plugin writes to disk). Mirrors core/vite.config.ts; also emitted by the
+    // scaffold template (`core/scripts/game-repo-scaffold.ts` →
+    // `renderViteConfig`), so a re-scaffold carries it forward.
+    ...(command === 'serve' && !process.env.VITEST ? [transcriptPersistPlugin()] : []),
   ],
   resolve: {
     alias: resolveCoreAliases(coreRoot),

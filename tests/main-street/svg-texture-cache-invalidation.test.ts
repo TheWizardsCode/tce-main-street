@@ -329,6 +329,35 @@ describe('MainStreetSvgTextureManager single-regeneration contract', () => {
     }
   });
 
+  it('reports a failed csv-checksum fetch at debug, never as a warning (AC3)', async () => {
+    setDevicePixelRatio(1);
+    const scene = makeSourceScene();
+
+    // The checksum file lives in the SVG output dir; before any asset
+    // generation (or after a dev-server drop) the fetch fails. That is an
+    // *expected* absence: it must downgrade to a quiet debug note, never
+    // warn on every boot (MS-0MVREB31W004F48D).
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))) as any;
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    try {
+      await checkForCsvMismatchAndRegenerate({ scene } as any);
+
+      expect(debugSpy).toHaveBeenCalledTimes(1);
+      expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('csv-checksum.json'));
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
+  });
+
   it('mismatch path does not re-run a full generation pass when sources are already fresh (AC5)', async () => {
     setDevicePixelRatio(1);
     const scene = makeSourceScene();
