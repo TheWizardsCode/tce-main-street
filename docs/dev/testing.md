@@ -394,6 +394,26 @@ branches are covered by `tests/main-street/engine-checkout-precheck.test.ts`
 (offline fixtures). See the composition matrix in
 [docs/dev/build-and-release.md](build-and-release.md#composition-matrix-which-engine-does-each-invocation-compose).
 
+### Two failures this preflight catches
+
+1. **A clone that cannot resolve the pinned commit.** When `./core` is a stale
+   clone whose object database does not contain the pin sha, every project
+   aborts before a single test runs and the `project-coverage-guard` reports
+   `project "<name>" executed 0 of N expected file(s)` for each project. The
+   preflight names the composed SHA, the pin SHA and the `npm run engine:sync`
+   remediation (MS-0MVO26G5H0054SNV); fetching the missing commit into `./core`
+   clears it. Worktrees get a fresh submodule checkout, so they are the usual
+   place this surfaces.
+2. **A node-environment import-chain regression.** `npm test` runs the `unit`
+   and `unit-cli` projects in the node environment, so anything they import must
+   not value-import Phaser — Phaser's device detection touches `window` at
+   module scope. `tests/tooling/ui-node-import-guard.test.ts` (parent item
+   `MS-0MVQO6N34007DHP8`) value-imports `@ui/shakeIllegalMove` with real Phaser
+   resolution and **no mocks**, so a regression fails the suite at collection
+   with `ReferenceError: window is not defined` instead of surfacing as a score
+   of unrelated scene-suite failures. Do not "fix" a red guard with a mock:
+   fix the engine import graph and re-pin.
+
 ## Import shared helpers through the core aliases
 
 The engine and its shared test helpers live in the `core` git submodule

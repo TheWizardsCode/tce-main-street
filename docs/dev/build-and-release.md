@@ -23,6 +23,11 @@ asserts the behaviours this document describes:
 `core/tests/scripts/engine-sync.test.ts` (engine-side policy suite) and
 `tests/main-street/engine-submodule-sync.test.ts` (local contract).
 
+**Current pin:** `f5c0a1b14be71524a080d9c12aba4c10cf89600c` (core `dev`,
+re-pinned by `MS-0MVRAH4BZ0073U1T`, commit `eee6fef3`). It supersedes the
+short-lived `0409c1eb` hold described under
+[Retired: the `0409c1eb` engine hold](#retired-the-0409c1eb-engine-hold).
+
 ## Two build policies
 
 | Script | Engine behaviour | Purpose |
@@ -64,16 +69,37 @@ default branch is `main` and would otherwise lag dev).
    can never diverge. This is the same "pin and gitlink travel together"
    invariant the release path relies on; a second no-op sync leaves the pin
    byte-identical (nothing writes unless the SHA moved).
-4. **Offline fallback:** if the remote is unreachable, the build warns and
-   continues with the current `./core` checkout instead of failing (dev work
-   stays possible without network). Nothing moved, so the pin is left
-   untouched.
+4. **Offline fallback (degraded mode only):** if the remote is unreachable,
+   the build warns and continues with the current `./core` checkout instead of
+   failing (dev work stays possible without network). Nothing moved, so the pin
+   is left untouched. This is an **exceptional** accommodation for genuinely
+   offline dev work — it is **never** a way to hold the pin back. A pin
+   deliberately kept behind the engine tip is a genuine failure under the pin
+   policy above, not a supported state (see the retired hold below).
 
 After a sync the superproject records the new engine commit **and the matching
 pin** as pending changes — commit them together (never one without the other).
 A repo without a `configs/engine-pin.json` is never given one by `engine:sync`;
 a repo is pinned once the pin file exists, and `engine:sync` maintains it from
 then on.
+
+## Retired: the `0409c1eb` engine hold
+
+For a short period the pin was deliberately held at `0409c1eb` while the engine
+`dev` tip advanced, because the newer tip (`34e0ab6d`, then `19f30ac7`) made the
+`@ui/shakeIllegalMove` import chain value-import Phaser and killed 23 unit
+suites under node (`ReferenceError: window is not defined`). During that window
+builds were forced into the offline fallback so the pin could not drift
+(MS-0MVPWS6WB008WP79).
+
+**The hold is over.** The engine-side fix (`CG-0MVQQ2M8E003FQMZ`, core
+`193f947f`) keeps the `@ui` chain Phaser-free for node consumers, and this repo
+re-pinned to core `dev` in `MS-0MVRAH4BZ0073U1T` (commit `eee6fef3`, pin
+`f5c0a1b14be71524a080d9c12aba4c10cf89600c`). Do **not** keep `./core` behind the
+tip or force the offline fallback in order to hold the pin; the
+node-environment regression guard
+(`tests/tooling/ui-node-import-guard.test.ts`) fails loudly if that import
+chain ever regresses. Tracking item: `MS-0MVQO6N34007DHP8`.
 
 ## Release verify (`engine:verify`) — pin from `configs/engine-pin.json`
 

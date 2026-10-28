@@ -15,8 +15,9 @@
  * The engine-side fix is tracked upstream as CG-0MVQQ2M8E003FQMZ ("@ui barrel
  * statically imports Phaser") and is consumed here via re-pin
  * (MS-0MVRAH4BZ0073U1T, child of MS-0MVQO6N34007DHP8). This guard is what
- * proves the re-pin fixed the chain: green at the held pin `0409c1eb`, red at
- * the unfixed tip.
+ * proves the re-pin fixed the chain: green at the pre-fix `0409c1eb` pin, red
+ * at the unfixed tip. (The `0409c1eb` hold is **retired** — the pin now tracks
+ * the engine `dev` tip; see `docs/dev/build-and-release.md`.)
  *
  * DO NOT "fix" a red guard by adding a Vitest module mock for Phaser (or for
  * the `@ui` subpath) — that would hide the regression instead of catching it
