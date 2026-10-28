@@ -180,6 +180,175 @@ function scheduleOrRun(s: any, delayMs: number, cb: () => void): void {
   cb();
 }
 
+/** Wall-clock reader. Defaults to `Date.now`; injectable for deterministic tests. */
+export type WallClock = () => number;
+
+/** One-shot wall timer. Defaults to `setTimeout`; injectable for tests. */
+export type WallTimerSchedule = (cb: () => void, delayMs: number) => unknown;
+
+/** Cancels a handle returned by {@link WallTimerSchedule}. Defaults to `clearTimeout`. */
+export type WallTimerClear = (handle: unknown) => void;
+
+/** Options for {@link deferUntilIncomeCollected}. */
+export interface BoundedDeferralOptions {
+  /** Wall-clock source. Defaults to `Date.now`. */
+  now?: WallClock;
+  /** Wall timer used to enforce the cap. Defaults to `setTimeout`. */
+  schedule?: WallTimerSchedule;
+  /** Canceller paired with {@link BoundedDeferralOptions.schedule}. Defaults to `clearTimeout`. */
+  clear?: WallTimerClear;
+  /** Cap in wall-clock ms. Defaults to {@link INCOME_COLLECTION_CAP_MS}. */
+  capMs?: number;
+  /** Scene-clock re-poll interval in ms. Defaults to 250. */
+  pollMs?: number;
+}
+
+/** The default wall-clock reader: `Date.now`. */
+function defaultWallClock(): number {
+  return Date.now();
+}
+
+/**
+ * The default wall timer: `setTimeout`, `unref`'d where the host supports it.
+ *
+ * `unref` keeps a pending safety watchdog from holding a Node process open —
+ * the watchdog is a last-resort bound, not work the process should stay alive
+ * for. Browsers have no `unref`, so the optional call is a no-op there.
+ */
+function defaultWallSchedule(cb: () => void, delayMs: number): unknown {
+  const handle: any = setTimeout(cb, delayMs);
+  if (typeof handle?.unref === 'function') handle.unref();
+  return handle;
+}
+
+/** The default wall-timer canceller: `clearTimeout`. */
+function defaultWallClear(handle: unknown): void {
+  clearTimeout(handle as any);
+}
+
+/**
+ * Bounded, **wall-clock enforced** deferral on `incomeCollectionActive`
+ * (MS-0MVMKEU2000639TG, decision C).
+ *
+ * The end-of-turn deferral waits for the phased income choreography to finish
+ * collecting before the day advances, bounded by
+ * {@link INCOME_COLLECTION_CAP_MS} so end-of-turn can never hang the game
+ * (CG-0MTR72P14000VO6Q, AC5/AC7). Two clocks matter here, and they are not
+ * interchangeable:
+ *
+ *  - the **scene clock** (`scene.time`) paces the re-poll. Phaser's `TimeStep`
+ *    clamps each frame's delta to `1000 / fps.min` (200 ms by default) and
+ *    `Clock.elapsed` advances by that clamped delta, so under rAF starvation a
+ *    250 ms `delayedCall` re-poll fires at a fraction of wall-clock speed;
+ *  - the **wall clock** (`Date.now`) bounds the wait. It keeps running when no
+ *    frame is painted, which is exactly the case a stall bound must cover.
+ *
+ * Using the scene clock for *both* was the defect: the cap deadline was
+ * wall-clock based but only *observed* at clamped poll boundaries, so the
+ * forced advance was detected late by the same starvation it exists to bound.
+ * This helper keeps the shipped pacing (scene-clock re-polls, so the
+ * choreography is still allowed to finish) and adds a wall-clock watchdog that
+ * forces completion once the cap has elapsed — even if the page paints
+ * nothing at all (backgrounded or hidden document, fully starved rAF).
+ *
+ * Semantics (identical at every deferral site):
+ *
+ *  1. `isPending()` is re-checked on the scene clock every `pollMs`;
+ *  2. when it reads `false`, the deferral completes immediately and the wall
+ *     watchdog is cancelled — the normal fast path is unchanged;
+ *  3. when the wall clock reaches `capMs`, the deferral is forced: the flag is
+ *     cleared, the watchdog is cancelled, and `onComplete` runs;
+ *  4. a scene with no clock (headless) cannot poll, so `onComplete` runs at
+ *     once — parity with {@link scheduleOrRun};
+ *  5. a stale watchdog never fires into a destroyed scene (`isActive()` false)
+ *     and never throws out of the timer callback;
+ *  6. `onComplete` runs **exactly once**, whichever path wins.
+ *
+ * Accepted, documented semantic change (producer Q2 = 1): because the bound is
+ * wall clock, a hidden or backgrounded document now forces the advance after
+ * the cap instead of stalling until the tab paints again. That is the intended
+ * meaning of a stall bound — nothing is visible while hidden, and the previous
+ * behaviour was an unbounded stall rather than a bound.
+ *
+ * @param s          Scene exposing `incomeCollectionActive` (`isActive()` read
+ *                   when present).
+ * @param onComplete Continuation invoked exactly once (guarded against throws).
+ * @param options    Injectable clocks/timers and cap overrides.
+ */
+export function deferUntilIncomeCollected(
+  s: any,
+  onComplete: () => void,
+  options: BoundedDeferralOptions = {},
+): void {
+  const now = options.now ?? defaultWallClock;
+  const schedule = options.schedule ?? defaultWallSchedule;
+  const clear = options.clear ?? defaultWallClear;
+  const capMs = options.capMs ?? INCOME_COLLECTION_CAP_MS;
+  const pollMs = options.pollMs ?? 250;
+
+  let done = false;
+  let watchdog: unknown;
+
+  const finish = (): void => {
+    if (done) return;
+    done = true;
+    if (watchdog !== undefined) {
+      try { clear(watchdog); } catch { /* cancelling is best-effort */ }
+      watchdog = undefined;
+    }
+    s.incomeCollectionActive = false;
+    try {
+      onComplete();
+    } catch {
+      // presentation-only — never let the continuation stall the turn.
+    }
+  };
+
+  // The scene is shutting down: drop the deferral without calling back.
+  const sceneGone = (): boolean =>
+    typeof s?.isActive === 'function' && s.isActive() === false;
+
+  // No scene clock: a headless scene cannot poll, so it proceeds immediately
+  // (the animator clears the flag itself when it cannot schedule).
+  if (typeof s?.time?.delayedCall !== 'function') {
+    finish();
+    return;
+  }
+
+  const deadline = now() + capMs;
+
+  const poll = (): void => {
+    if (done) return;
+    if (sceneGone()) { done = true; return; }
+    if (s.incomeCollectionActive !== true) { finish(); return; }
+    if (now() >= deadline) { finish(); return; }
+    scheduleOrRun(s, pollMs, poll);
+  };
+
+  // Wall-clock watchdog: the only path that fires while no frame is painted.
+  // It re-reads the wall clock when it fires (a timer can fire early) and
+  // re-arms for the remainder, so it can never force before the cap.
+  const armWatchdog = (delayMs: number): void => {
+    try {
+      watchdog = schedule(() => {
+        watchdog = undefined;
+        if (done) return;
+        if (sceneGone()) { done = true; return; }
+        const remaining = deadline - now();
+        if (remaining > 0) { armWatchdog(remaining); return; }
+        finish();
+      }, delayMs);
+    } catch {
+      // A host without timers falls back to the scene-clock poll alone.
+      watchdog = undefined;
+    }
+  };
+
+  armWatchdog(capMs);
+
+  poll();
+}
+
 /**
  * Shared end-of-turn closing presentation primitive (MS-0MUYFX7Q2004JQ5R).
  *
