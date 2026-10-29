@@ -51,6 +51,12 @@ export function dissolveReputationCoins(
  * Reconcile the ambient street crowd to the authoritative HUD reputation
  * value (MS-0MUYGFWKG008GUA5). Presentation-only and defensive: a throwing
  * crowd layer can never stall the HUD update or the turn.
+ *
+ * This is the **only** path that raises the layer's population, so skipping or
+ * early-returning it leaves an attached but empty crowd, silently — see the
+ * lifecycle and attach contract in
+ * `docs/game/ux-visual-audio.md` § "Ambient street pedestrians (reputation
+ * crowd)" (MS-0MVRMI1EQ002I24K).
  */
 function syncPedestrianPopulation(scene: MainStreetAnimatorContext['scene'], reputation: number): void {
   try {

@@ -472,9 +472,6 @@ void popTextOrIcon({
   replay/headless mode (`scene.replayMode`), `shouldRenderPedestrians()`
   returns false and the layer renders nothing (no figures, no dissolve, no
   flights); the existing text/HUD feedback is unchanged.
-- Lifecycle: the layer is created with the scene, re-attached after every
-  street rebuild (`refreshStreetGrid`), driven from the scene `update` loop,
-  re-clamped on resize and destroyed on scene shutdown.
 - Performance (MS-0MUYGFXMK009L1UU): the count is uncapped by producer
   decision; a single shared texture and constant per-figure work (position +
   bob) keep the frame cost low. Measured per-frame **model** cost (pure step
@@ -484,6 +481,65 @@ void popTextOrIcon({
   per-figure model update, not GPU sprite rendering; at representative
   reputations (tens of figures) the layer is immaterial, so the uncapped
   population remains an accepted risk rather than a blocker.
+
+#### Lifecycle and attach contract (MS-0MVRMI1EQ002I24K)
+
+Every link below is load-bearing: break one and the layer renders nothing,
+**silently**, because every method is defensive (a thrown layer failure is
+swallowed so it can never stall a turn). Preserve this contract when changing
+the street renderer, the scene boot path or the HUD refresh.
+
+- **Owning module:** `src/scenes/MainStreetPedestrians.ts` — the
+  `MainStreetPedestrians` layer class plus its pure helpers (`pedestrianCount`,
+  `shouldRenderPedestrians`, road network and shop occupancy).
+- **Construction sites:** `MainStreetLifecycleManagerLifecycle.create()`
+  assigns `s.msPedestrians = new MainStreetPedestrians(s)` twice — once in the
+  pre-reset helper block and once in the post-scaffolding block. The
+  post-scaffolding instance is the live layer (it is the one the HUD refresh,
+  rebuild attach hook and scene update loop see); the earlier assignment keeps
+  reset/early lifecycle callbacks safe before the scaffolding exists. Keep
+  both assignments and do not add a third construction path.
+- **Teardown, resize and frame drive:** the layer is destroyed on scene
+  `SHUTDOWN` (`MainStreetLifecycleManagerLifecycle`), re-clamped on resize
+  (`resize()`), driven each frame from `MainStreetScene.update()`
+  (`msPedestrians.update(delta)`), and opened/closed by the turn hooks
+  `MainStreetTurnControllerTurnFlow`: `startNewTurn()` on a new day,
+  `beginEndOfTurn()` at end of turn, plus `dissolveIntoCoins()` in the
+  `reputation` income phase.
+- **Attach hook (street rebuild):** `MainStreetRendererStreet.refreshStreetGrid()`
+  calls `streetContainer.removeAll(true)`, which destroys the layer's
+  container along with the rest of the street. Its **last** step is therefore
+  `s.msPedestrians?.attachToStreet?.()`. It must stay last: an early return,
+  reorder or thrown step between the `removeAll(true)` and the attach leaves
+  the layer detached (no crowd), and attaching before the roads/slots would
+  render it underneath them. `attachToStreet()` is idempotent and re-parents
+  the **existing** figures (positions, lanes, modes preserved), spawning only
+  when `targetCount > 0` and no figures exist yet.
+- **Population is reconciled only from the HUD path:**
+  `MainStreetAnimatorIncome.animateHudValueChanges()` — reached from
+  `MainStreetRendererHud.refreshHud()` — calls
+  `syncPedestrianPopulation(scene, reputation)`, which calls
+  `msPedestrians.setPopulation(pedestrianCount(reputation))`. `setPopulation()`
+  is the **only** path that raises the layer's target count; nothing else sets
+  it. If that path is skipped, early-returned, or fed a falsy reputation, the
+  layer stays attached with a zero target and renders no figures — silently.
+- **Modes that render nothing:** `shouldRenderPedestrians()` (used by
+  `isEnabled()`) returns false when Reduced Motion is enabled or the scene is
+  in replay/headless mode (`scene.replayMode`). In those modes the layer
+  renders nothing at all — no figures, no dissolve and no reputation coin
+  flights — and the text/HUD feedback is unchanged. Normal play (default
+  settings, Reduced Motion off, not replay) must render the crowd.
+
+#### Root cause note for the reported regression (MS-0MVRDVVH4001048Q)
+
+The crowd was reported missing in `MS-0MVRDVVH4001048Q`, but the scene-level
+guard is green on both the released `v0.1.22` build and on `dev`, so this
+repository has no integration defect to restore: the only demonstrated way to
+lose the crowd is to stop the HUD-path reconciliation above (zero target ⇒ an
+attached layer renders nothing, with no error).
+`tests/main-street/pedestrians-scene-visibility.browser.test.ts`
+(`MS-0MVRMHTW6006KQKI`) pins that contract against a real scene boot and a
+street rebuild.
 
 ### End-of-turn income presentation (phased coin-grid animation, CG-0MT23O6W8003AXWJ)
 

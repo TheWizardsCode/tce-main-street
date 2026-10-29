@@ -126,6 +126,22 @@ for the design notes.
 - No gameplay RNG: road-walk randomness uses a module-local seeded PRNG.
 - Reduced motion: no pedestrians or flights; replay/headless renders nothing.
 
+**Layer ownership and attach contract (MS-0MVRMI1EQ002I24K).** The owning
+module is `src/scenes/MainStreetPedestrians.ts` (`MainStreetPedestrians`). The
+layer is constructed in `MainStreetLifecycleManagerLifecycle.create()` (the
+pre-reset and post-scaffolding assignments — the latter is the live layer),
+destroyed on scene shutdown, re-clamped on resize, driven from
+`MainStreetScene.update()`, and re-attached **last** by its attach hook
+`MainStreetRendererStreet.refreshStreetGrid` →
+`s.msPedestrians.attachToStreet()` after `streetContainer.removeAll(true)`
+(which destroys the layer's container). The population is reconciled only
+from the HUD path — `MainStreetAnimatorIncome.animateHudValueChanges` →
+`syncPedestrianPopulation` → `setPopulation(pedestrianCount(reputation))` — so
+skipping or early-returning that path leaves an attached but empty layer,
+silently. Reduced Motion and replay/headless render nothing. Full contract and
+the root-cause note: `docs/game/ux-visual-audio.md` § *Ambient street
+pedestrians (reputation crowd)*.
+
 ## Incident reveal presentation
 
 `MainStreetAnimator.animateIncidentReveal({ cardId, incidentName, coinChange,

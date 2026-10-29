@@ -473,6 +473,12 @@ export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     // re-attach it last — on top of the roads/slots — to keep it alive across
     // refreshes. The figures are non-interactive, so they never intercept
     // slot/pan input. Presentation-only; failures are swallowed.
+    //
+    // This is the documented lifecycle/attach contract, and it MUST stay the
+    // last step of this function (docs/game/ux-visual-audio.md § "Ambient
+    // street pedestrians (reputation crowd)", MS-0MVRMI1EQ002I24K): an early
+    // return, a reorder or a throwing step between `removeAll(true)` and this
+    // call silently drops the crowd (no error is surfaced).
     try { s.msPedestrians?.attachToStreet?.(); } catch (_) { /* presentation-only */ }
   
 }

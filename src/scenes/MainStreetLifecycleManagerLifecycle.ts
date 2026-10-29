@@ -214,6 +214,11 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    // Ambient pedestrian layer (MS-0MUYGFW7T00579Z1). Constructed here (pre-reset
+    // helpers) and again after the UI scaffolding below; the later assignment is
+    // the live layer. Lifecycle/attach contract:
+    // docs/game/ux-visual-audio.md § "Ambient street pedestrians (reputation
+    // crowd)" (MS-0MVRMI1EQ002I24K).
     s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
@@ -292,6 +297,11 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    // Live ambient pedestrian layer (MS-0MUYGFW7T00579Z1): keep this second
+    // assignment — `refreshHud()` reconciles the population through this
+    // instance and `refreshStreetGrid()` re-attaches it last. Contract:
+    // docs/game/ux-visual-audio.md § "Ambient street pedestrians (reputation
+    // crowd)" (MS-0MVRMI1EQ002I24K).
     s.msPedestrians = new MainStreetPedestrians(s);
     s.layout = s.computeLayout();
     s.svgDebugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('msSvgDebug') === '1';
