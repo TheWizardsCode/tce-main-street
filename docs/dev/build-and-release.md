@@ -151,6 +151,27 @@ descendant of it.
 | `npm run build:release` / `engine:verify` | **detached at the pin** after `engine:verify` | `engine:verify` pin match + dirty guard |
 | freshly created worktree | whatever gitlink its branch recorded, **until** `engine:sync` runs | the preflight fails such a test run loudly, naming the composed SHA, the pin SHA and the exact remediation |
 
+### What the finish gate commits
+
+`implement.py finish` builds, tests and commits inside a worktree, and its
+build step runs `npm run engine:sync` first — so the build may advance `./core`
+and re-pin `configs/engine-pin.json`, exactly as the dev workflow intends. That
+churn is **build-originated**, not work the item did. Unless the item itself
+changed the engine composition, the finish commit excludes the `core` gitlink
+and the `configs/engine-pin.json` churn: the gate validates and commits **the
+composition in `HEAD`**, and records the composed engine SHA plus whether the
+suite ran or was cache-served, so a green verdict always describes the engine
+the commit actually carries (producer decision Q2=A on `MS-0MVSB1OVW00178W6`;
+framework fix `SA-0MVL2NH1G0094FA2`). An engine bump is therefore a deliberate,
+reviewable commit, never a side effect of a documentation change.
+
+This does not weaken the pin policy `CG-0MVO268500071BPI`: `npm run build` keeps
+sync-and-re-pin, `npm run build:release` keeps `engine:verify`, and any commit
+that *does* bump the engine still carries the pin and the gitlink together.
+What the finish gate stopped doing is bundling an unrelated bump into someone
+else's item. The full gate semantics — cache key, per-command timeout, queue
+wait — are documented in [Testing](testing.md#the-finish-gate-composition-cache-timeout-and-queue).
+
 ### Preflight behaviour and the bypass
 
 The preflight decides from the **local commit graph only** (`git merge-base

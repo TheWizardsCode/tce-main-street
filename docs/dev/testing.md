@@ -453,6 +453,79 @@ branches are covered by `tests/main-street/engine-checkout-precheck.test.ts`
    of unrelated scene-suite failures. Do not "fix" a red guard with a mock:
    fix the engine import graph and re-pin.
 
+## The finish gate: composition, cache, timeout and queue
+
+`implement.py finish` (the implement skill) runs **build → test → commit** in
+a worktree before pushing a work item to `dev`. Three of its behaviours
+interact in a way that produced a 47-minute false gate failure
+(`MS-0MVSB1OVW00178W6`); this section records how they fit together so a
+failed gate is read correctly.
+
+### Composition: the build re-pins the engine, and that churn is not the item's
+
+1. **Build** runs `npm run build`, whose first step is `npm run engine:sync`.
+   When the engine `dev` tip has advanced past the commit the worktree pinned,
+   `engine:sync` checks out the new engine into `./core`, rewrites
+   `configs/engine-pin.json` and **stages** the pin together with the `core`
+   gitlink (`core/scripts/engine-sync.mjs`). That is the intended dev-build
+   behaviour — the pin tracks the engine `dev` tip (policy
+   `CG-0MVO268500071BPI`) — but it is **build-originated churn** relative to
+   the item's own changes.
+2. **Test** then evaluates a tree that is dirty because of the build, not
+   because of the item. The test-cache key is **`HEAD` plus the content of
+   every dirty path**, so build-originated churn stops the run from matching
+   any pre-warmed green entry: the gate runs the full suite from scratch even
+   for a documentation- or evidence-only item.
+3. **Commit** must not sweep that churn into the item's commit unless the item
+   itself changed the engine composition (producer decision Q2=A on
+   `MS-0MVSB1OVW00178W6`; framework fix `SA-0MVL2NH1G0094FA2`). The gate
+   validates and commits the composition in `HEAD` and records the composed
+   engine SHA plus whether the suite ran or was cache-served, so a green
+   verdict is traceable to the engine it actually exercised.
+
+### The timeout is per command, and shared with `git push`
+
+`timeoutPerCommand` from `.pi/test-config.json` bounds **each** entry of
+`suiteCommands` individually — not their aggregate — and the same value also
+bounds the `git push` step of finish
+(`implement.py:_resolve_test_timeout`). Measured on this host: the full
+suite took **2846.6 s** under load while the config declared 1800 s, and a
+2215 s gate run was killed and reported as `reason: unknown` with
+`failures: []`. The floor is now **3600 s** (2846.6 s + 26 % headroom,
+rounded up to a whole minute) and is enforced by
+`tests/tooling/test-config-timeout-guard.test.ts` — lowering the config below
+the floor fails the suite, so the config, the guard and this paragraph cannot
+drift apart.
+
+### Queue wait is separate from test time
+
+Tests run under a host-wide semaphore (`TEST_MAX_CONCURRENCY=2`, shared by
+all agent projects). Waiting for a slot is its own duration, distinct from
+suite elapsed time; on this host slot waits measured 1040–2400 s and surfaced
+as `notice_code: slot_busy` / `reason: slot_contention`, not as suite time.
+Reporting the wait separately from suite time, and classifying timeouts and
+kills without `reason: unknown`, is `SA-0MVTET8KQ0031R6Z` (slot fairness is
+`SA-0MVSJX5HS002JDHI`). When a gate fails, read the verdict before retrying: a
+code failure, a timeout/kill and a slot wait are three different problems with
+three different fixes.
+
+### Changed scope is currently the full suite in this repo
+
+`implement.py finish` first tries a named group from `.pi/test-config.json`,
+then a file-level selector, and falls back to the **full suite** with a logged
+warning when no subset can be selected — with `suiteCommands` declared, that
+fallback is what normally fires today. Restoring a targeted selection for this
+stack (vitest/TypeScript-aware mapping; `groups` honoured even when
+`suiteCommands` is present, which continues to define only the full suite) is
+`SA-0MVL7YOMJ006UMDO`; when it lands, the finish log reports
+`scope: changed` with the selected commands instead of the full fallback.
+
+The engine-composition preflight above is the complementary guard: this
+section is about what the gate *does*, the preflight is about which engine a
+run *composed* (`npm run engine:check`,
+`tests/tooling/engine-checkout-precheck.ts`; the release pin contract lives in
+`tests/main-street/engine-submodule-sync.test.ts`).
+
 ## Import shared helpers through the core aliases
 
 The engine and its shared test helpers live in the `core` git submodule
