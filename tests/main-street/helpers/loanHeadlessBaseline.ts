@@ -26,10 +26,10 @@
  * environment-dependent input is used, so the aggregates below are stable
  * across runs and machines.
  *
- * Loans-disabled precondition: `loansEnabled` does not exist yet, so every
- * run here is loans-off by construction. When the flag lands (parent AC8
- * config default `false` for headless/simulation configs) the comparison test
- * asserts it is false for these configs instead of changing this baseline.
+ * Loans-disabled precondition: the golden record was captured before the loan
+ * feature, so every run explicitly opts out with `loansEnabled: false`
+ * (parent AC8: simulations without loans enabled stay byte-identical to the
+ * pre-loan results).
  *
  * @module tests/main-street/helpers/loanHeadlessBaseline
  */
@@ -116,7 +116,9 @@ export function runEndTurnHeadlessBaseline(
   maxTurns: number = LOAN_HEADLESS_BASELINE_MAX_TURNS,
 ): HeadlessBaselineAggregates {
   const samples: HeadlessBaselineSample[] = seeds.map(seed => {
-    const state = setupMainStreetGame({ seed });
+    // Explicit loans-off opt-out: the golden record predates the bank-loan
+    // feature, which now defaults to `true` on human presets (parent AC8).
+    const state = setupMainStreetGame({ seed, loansEnabled: false });
     let turns = 0;
     while (state.gameResult === 'playing' && turns < maxTurns) {
       executeWeekStart(state);

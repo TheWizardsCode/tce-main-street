@@ -200,6 +200,129 @@ export function optionsFor(state: Pick<MainStreetState, 'config'>): readonly Loa
 }
 
 /**
+ * Picks the option the AI/headless bailout policy accepts: the **largest**
+ * principal, with the longest term as the deterministic tie-break (parent
+ * Q5 = A). Equal principal AND term fall back to the earliest menu entry, so
+ * the choice is fully deterministic and consumes no RNG.
+ *
+ * @param options The presented menu (`PendingLoanOffer.options`).
+ * @throws Error when the menu is empty (a malformed offer).
+ */
+export function largestBailoutOption(options: readonly LoanOption[]): LoanOption {
+  if (options.length === 0) {
+    throw new Error('Cannot choose a bailout option from an empty loan menu.');
+  }
+  let best = options[0];
+  for (const option of options) {
+    if (
+      option.principal > best.principal ||
+      (option.principal === best.principal && option.termTurns > best.termTurns)
+    ) {
+      best = option;
+    }
+  }
+  return best;
+}
+
+/**
+ * Raises a bankruptcy bailout offer for the acting seat when it would fail on
+ * `coins < 0` and holds no active loan (Bank Loans epic MS-0MVL6DZI0000F6CG,
+ * slice MS-0MVPWS9L9001PVXG).
+ *
+ * This is the single gate the closing sequence consults **before** declaring
+ * bankruptcy. It mutates only the transitional decision fields:
+ *
+ * - `state.pendingLoanOffer` is set to the presented menu (a snapshot of
+ *   `config.loanOptions`) with `reason: 'bankruptcy'`;
+ * - `state._bailoutOffered` records `{ ownerId, turn }` so a second
+ *   evaluation in the same turn (after a decline) cannot re-offer;
+ * - one `neutral` activity-log row announces the decision.
+ *
+ * The engine closes nothing here — the caller pauses the closing and returns
+ * `TurnResult.pendingLoanOffer === true`; `acceptLoanOffer` / `declineLoanOffer`
+ * resolve the decision and the closing tail re-runs once.
+ *
+ * Rules (parent AC4/AC5/AC7 and the producer decisions Q3=A, Q6=A):
+ * - only while the game is still playing;
+ * - loans must be enabled (`config.loansEnabled`);
+ * - the seat must not already hold an active loan (one loan at a time — a
+ *   seat already repaying simply goes bankrupt);
+ * - at most one offer per seat per turn;
+ * - no offer while another offer is already unresolved;
+ * - the competitive opening-day solvency grace wins: a competitive seat cannot
+ *   be bankrupted on turn 1, so no bailout is offered to it (single-player
+ *   bankruptcy is unchanged on turn 1, per the grace's own contract).
+ *
+ * @param state Current game state (mutated only when an offer is raised).
+ * @param opts  Optional `projectedCoins`: the deferred-mutation path evaluates
+ *              the balance the closing **will** produce before it is applied.
+ * @returns `true` when an offer was raised and the closing must pause.
+ */
+export function maybeOfferBailout(
+  state: MainStreetState,
+  opts?: { projectedCoins?: number },
+): boolean {
+  if (state.gameResult !== 'playing') return false;
+  if (!state.config.loansEnabled) return false;
+  // An unresolved offer is already the pause; never stack or re-raise one.
+  if (state.pendingLoanOffer) return false;
+
+  const ownerId = loanOwnerId(state);
+  // Opening-day solvency grace (MS-0MVJNFESC005QJ41) is competitive-only: a
+  // competitive seat cannot be bankrupted on turn 1, so the grace resolves it
+  // and no loan is needed. Single-player keeps its turn-1 bankruptcy rule.
+  if ((state.players?.length ?? 0) > 0 && state.turn <= 1) return false;
+
+  const seat = state.players?.find((player) => player.playerId === ownerId);
+  if (seat?.eliminated) return false;
+  if (activeLoanFor(state, ownerId)) return false;
+
+  // Per-turn guard: at most one bailout offer per seat per turn (a decline
+  // must converge to game over, never loop).
+  const offered = state._bailoutOffered;
+  if (offered && offered.ownerId === ownerId && offered.turn === state.turn) return false;
+
+  const coins = opts?.projectedCoins ?? state.resourceBank.coins;
+  if (!(coins < 0)) return false;
+
+  const options = optionsFor(state).map((option) => ({ ...option }));
+  if (options.length === 0) return false;
+
+  state.pendingLoanOffer = { ownerId, reason: 'bankruptcy', options };
+  state._bailoutOffered = { ownerId, turn: state.turn };
+  addLog(
+    state,
+    ownerId,
+    `Bankruptcy bailout: coins are ${coins}; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
+    'neutral',
+  );
+  return true;
+}
+
+/**
+ * Declines the pending bankruptcy bailout offer.
+ *
+ * Clears `state.pendingLoanOffer` (so the loss can be declared) but leaves the
+ * per-turn guard in place, so the very next evaluation cannot raise the same
+ * offer again — a decline converges to game over in a single pass.
+ *
+ * @param state Current game state (mutated).
+ * @returns `true` when an offer was declined, `false` when none was pending.
+ */
+export function declineLoanOffer(state: MainStreetState): boolean {
+  const pending = state.pendingLoanOffer;
+  if (!pending) return false;
+  state.pendingLoanOffer = null;
+  addLog(
+    state,
+    pending.ownerId,
+    'Declined the bankruptcy bailout — the bankruptcy stands.',
+    'loss',
+  );
+  return true;
+}
+
+/**
  * Applies one scheduled repayment to a loan, returning the loan's next state
  * or `null` when this payment retires it.
  *

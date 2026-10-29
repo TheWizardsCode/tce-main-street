@@ -298,6 +298,15 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    */
   piggybackPending?: boolean;
   /**
+   * True when the closing paused because a bankruptcy bailout loan offer was
+   * raised (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG).
+   * When set, `state.pendingLoanOffer` holds the offer and the caller resolves
+   * it via `acceptLoanOffer` / `declineLoanOffer` before the closing tail
+   * (`finishDeferredTurnClosing`) re-runs. Mirrors `choicePending` /
+   * `piggybackPending`; absent/false when no offer is open.
+   */
+  pendingLoanOffer?: boolean;
+  /**
    * True when this result came from the deferred-mutation path
    * (processEndOfTurn with `deferResourceApplication`, CG-0MTR72P14000VO6Q):
    * the resource deltas are un-applied and the closing tail (EndCheck → next
@@ -350,6 +359,14 @@ export interface EndOfTurnOptions {
    * closes deterministically within this call.
    */
   deferResourceApplication?: boolean;
+  /**
+   * Skip this turn's loan-repayment pass (Bank Loans epic
+   * MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG). Used only when a
+   * pre-income bailout pause resumes: the repayment phase already ran before
+   * the offer was resolved, so the freshly accepted bailout loan must not be
+   * charged its first instalment in the same closing.
+   */
+  skipLoanRepayments?: boolean;
 }
 
 /**

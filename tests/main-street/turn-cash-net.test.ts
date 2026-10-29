@@ -322,6 +322,10 @@ describe('Turn net row and activity log ordering', () => {
   describe('processEndOfTurn — premature bankruptcy exit', () => {
     it('emits net row and game-over banner; totals line is final entry', () => {
       const state = createTestState('premature-bankruptcy');
+      // This scenario exercises the legacy premature-bankruptcy exit path.
+      // The loan bailout (MS-0MVPWS9L9001PVXG) now intentionally intercepts a
+      // no-loan shortfall, so disable loans to keep the path under test.
+      state.config = { ...state.config, loansEnabled: false };
       executeWeekStart(state);
 
       // Place a business that generates low income but has high ongoing cost
@@ -376,6 +380,8 @@ describe('Turn net row and activity log ordering', () => {
 
     it('net row delta reflects full turn effects even on premature exit', () => {
       const state = createTestState('premature-bankruptcy-delta');
+      // See the sibling test: disable loans so the legacy bankruptcy exit runs.
+      state.config = { ...state.config, loansEnabled: false };
       executeWeekStart(state);
 
       // Low income, high ongoing cost — net is negative

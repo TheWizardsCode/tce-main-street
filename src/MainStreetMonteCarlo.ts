@@ -1,6 +1,6 @@
 import { createSeededRng } from '@core-engine';
 import { setupMainStreetGame, createCompetitiveState, seedToNumber, type MainStreetState } from './MainStreetState';
-import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, projectPiggybackEventReward, piggybackJoinFullyCost, type PlayerAction } from './MainStreetEngine';
+import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, projectPiggybackEventReward, piggybackJoinFullyCost, resolvePendingLoanOffer, type PlayerAction } from './MainStreetEngine';
 import { canPurchaseEvent, getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from './MainStreetMarket';
 import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlayer, resolveAiEventChoice, bindCompetitiveSeat, restoreCompetitiveSeat, CompetitiveGreedyStrategy, decidePiggybackForAllSeats, type MainStreetAiStrategy } from './MainStreetAiStrategy';
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
@@ -528,10 +528,21 @@ function simulateSeed(
       }
 
       const turnResult = processEndOfTurn(state);
+      // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): a pending offer is resolved
+      // deterministically with the largest-option AI policy so the sim never
+      // stalls. Simulations default to `loansEnabled: false`, so this is a
+      // safety net for runs that opt into loans.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state, turnResult);
+      }
       // Dual-choice incident (CG-0MTSHG8RP008E128): resolve any pending choice
       // per the AI difficulty strategy so the sim never stalls.
       if (turnResult.choicePending) {
         resolveAiEventChoice(state);
+      }
+      // The resolved choice's closing tail can surface a bailout offer too.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state);
       }
       turns++;
 

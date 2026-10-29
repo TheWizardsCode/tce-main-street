@@ -155,6 +155,7 @@ export {
   resolveEventOption,
   resolveIncident,
   resolvePendingEventChoice,
+  resolvePendingLoanOffer,
 } from './MainStreetEngineTurnClosing';
 
 // ── Commands ─────────────────────────────────────────────
@@ -187,6 +188,7 @@ export {
   letGoStaffAction,
   letGoStaffMember,
   moveStaffOnBusiness,
+  acceptLoanOffer,
   placeFromHand,
   placeStaffOnBusiness,
   removeStaffFromBusiness,
@@ -207,6 +209,9 @@ export {
   buildActiveLoan,
   canTakeLoan,
   debitLoanRepayment,
+  declineLoanOffer,
+  largestBailoutOption,
+  maybeOfferBailout,
   loanOwnerId,
   loanPerTurnRepayment,
   loanTotalRepayment,

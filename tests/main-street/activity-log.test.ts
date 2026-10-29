@@ -874,6 +874,9 @@ describe('Activity Log', () => {
 
     it('emits the net row before the game-over entry when the game ends prematurely', () => {
       const state = createTestState('net-row-game-over');
+      // Loans off: pin the legacy bankruptcy exit; with loans enabled the
+      // bankruptcy bailout (MS-0MVPWS9L9001PVXG) offers a loan instead.
+      state.config = { ...state.config, loansEnabled: false };
       executeWeekStart(state);
       state.resourceBank.coins = -1; // force bankruptcy path
       processEndOfTurn(state);

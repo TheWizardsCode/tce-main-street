@@ -13,12 +13,14 @@ import type { BusinessCard, CommunitySpaceCard, StaffCard, SynergyType } from '.
 import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
 import {
+  activeLoanFor,
   buildActiveLoan,
   canTakeLoan,
+  largestBailoutOption,
   loanOwnerId,
   optionsFor,
 } from './MainStreetLoans';
-import type { ActiveLoan } from './MainStreetStateTypes';
+import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
@@ -1388,6 +1390,23 @@ export function takeLoan(
     throw new Error(legality.reason);
   }
 
+  return recordLoan(state, optionIndex, ownerId);
+}
+
+/**
+ * Records a loan and credits its principal — the shared successful half of
+ * {@link takeLoan} and {@link acceptLoanOffer}.
+ *
+ * Deliberately performs **no legality checks**: the caller has already
+ * validated the attempt (the normal `takeLoan` rules, or the bailout offer's
+ * own eligibility). This keeps the acceptance path usable while the closing
+ * sequence is paused outside `MarketPhase`.
+ */
+function recordLoan(
+  state: MainStreetState,
+  optionIndex: number,
+  ownerId?: number,
+): ActiveLoan {
   const seatId = loanOwnerId(state, ownerId);
   const option = optionsFor(state)[optionIndex];
   const loan = buildActiveLoan(state, option, seatId);
@@ -1406,6 +1425,75 @@ export function takeLoan(
   );
 
   return loan;
+}
+
+/**
+ * Resolves a pending bankruptcy bailout offer by accepting one of the
+ * presented options (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
+ * MS-0MVPWS9L9001PVXG).
+ *
+ * The closing sequence pauses outside `MarketPhase`, so this path deliberately
+ * bypasses {@link canTakeLoan}'s phase and pending-offer gates — the offer
+ * itself is the authorisation. The remaining one-active-loan rule, the loan
+ * menu and the enabled flag are still enforced before anything is mutated.
+ *
+ * @param state  Current game state (mutated). Must hold a pending offer.
+ * @param option The chosen option: a {@link LoanOption} from the presented
+ *               menu, an index into it, or omitted to use the AI/headless
+ *               policy (the largest option — {@link largestBailoutOption}).
+ * @returns The recorded {@link ActiveLoan}.
+ * @throws Error when no offer is pending, the loan rules refuse the seat, or
+ *         the chosen option is not part of the presented menu.
+ */
+export function acceptLoanOffer(
+  state: MainStreetState,
+  option?: LoanOption | number,
+): ActiveLoan {
+  const pending = state.pendingLoanOffer;
+  if (!pending) {
+    throw new Error('No pending loan offer to accept.');
+  }
+  if (!state.config.loansEnabled) {
+    throw new Error('Bank loans are disabled in this game.');
+  }
+  if (activeLoanFor(state, pending.ownerId)) {
+    throw new Error('One loan at a time: this seat already holds an active loan.');
+  }
+
+  const chosen = resolveOfferedOption(pending.options, option);
+  if (!chosen) {
+    throw new Error('The chosen option is not part of the presented loan menu.');
+  }
+  const menuIndex = optionsFor(state).findIndex(
+    (candidate) =>
+      candidate.principal === chosen.principal && candidate.termTurns === chosen.termTurns,
+  );
+  if (menuIndex < 0) {
+    throw new Error('The chosen option is not part of the configured loan menu.');
+  }
+
+  // Clear the decision before recording the loan: the offer must not survive
+  // as a second decision, and `recordLoan` bypasses the pending-offer gate.
+  state.pendingLoanOffer = null;
+  return recordLoan(state, menuIndex, pending.ownerId);
+}
+
+/**
+ * Resolves the caller's bailout choice against the presented menu.
+ *
+ * Accepts an option object (matched by principal + term), an index into the
+ * presented list, or `undefined` for the deterministic AI/headless policy.
+ */
+function resolveOfferedOption(
+  offered: readonly LoanOption[],
+  choice?: LoanOption | number,
+): LoanOption | undefined {
+  if (choice === undefined) return largestBailoutOption(offered);
+  if (typeof choice === 'number') return offered[choice];
+  return offered.find(
+    (option) =>
+      option.principal === choice.principal && option.termTurns === choice.termTurns,
+  );
 }
 
 /**

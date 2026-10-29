@@ -28,6 +28,7 @@ import {
   processEndOfTurn,
   executeAction,
   resolvePendingEventChoice,
+  resolvePendingLoanOffer,
   type PlayerAction,
   type BuyBusinessAction,
   type BuyUpgradeAction,
@@ -1652,12 +1653,23 @@ export class MainStreetAiPlayer extends AiPlayerBase<MainStreetAiStrategy> {
         action = this.chooseAction(state);
       }
 
-      processEndOfTurn(state);
+      const closing = processEndOfTurn(state);
+      // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): an AI seat auto-accepts the
+      // largest loan option (parent Q5 = A) and the closing resumes — never
+      // stalling on a pending offer. AI seats take no proactive loans.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state, closing);
+      }
       // Dual-choice incident (CG-0MTSHG8RP008E128): processEndOfTurn pauses
       // with choicePending when the drawn incident requires a decision.
       // Resolve it per the difficulty strategy so the sim never stalls.
       if (state.pendingEventChoice && !state.pendingEventChoice.resolved) {
         resolveAiEventChoice(state);
+      }
+      // A resolved choice can leave the seat negative, surfacing a bailout
+      // offer from the resumed closing tail; resolve it too.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state);
       }
     }
   }

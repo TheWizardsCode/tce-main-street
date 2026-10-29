@@ -2,11 +2,11 @@
  * Main Street: Bank Loans — per-turn repayment in the closing sequence
  * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS885006O5QR).
  *
- * This is the planned home of the loan repayment/bailout integration tests.
- * This slice lands the repayment half; the bailout offer/accept/decline cases
- * are added by MS-0MVPWS9L9001PVXG.
+ * This is the home of the loan repayment and bailout integration tests.
+ * The repayment half landed with MS-0MVPWS885006O5QR; the bailout
+ * offer/accept/decline/AI/headless cases landed with MS-0MVPWS9L9001PVXG.
  *
- * AC coverage (this slice):
+ * AC coverage (repayment slice):
  *   AC1 — at the end of every turn in which a seat holds an active loan,
  *         exactly `perTurnRepayment` coins leave that seat's wallet and the
  *         deduction is recorded in the turn's net summary as a one-off
@@ -15,7 +15,19 @@
  *         deductions occur (no seventh payment).
  *   AC3 — repayment is deducted unconditionally: a payment that exceeds the
  *         seat's balance leaves `coins < 0` and triggers the ordinary
- *         bankruptcy path (no bailout offer is added by this slice).
+ *         bankruptcy path (an existing loan means no bailout offer).
+ *
+ * AC coverage (bailout slice):
+ *   AC1 — a single-player seat at `coins < 0` with no active loan is offered
+ *         a loan instead of losing; accepting credits the principal and play
+ *         continues, declining preserves bankruptcy.
+ *   AC2 — at most one offer per seat per turn (no loop), and a seat that
+ *         already holds an active loan goes bankrupt without an offer.
+ *   AC3 — the AI/headless policy auto-accepts the largest option and the seat
+ *         survives; no proactive loans exist.
+ *   AC4 — headless turn execution never stalls on a pending offer and resolves
+ *         deterministically.
+ *   AC5 — the opening-day solvency grace is respected.
  *
  * Fixtures: a "quiet" game in which nothing except the loan moves coins (no
  * street cards, staff, challenges, active effects or incident cards), so every
@@ -33,15 +45,23 @@ import {
 } from '../../src/MainStreetState';
 import { bindCompetitiveSeat, restoreCompetitiveSeat } from '../../src/MainStreetAiStrategy';
 import {
+  acceptLoanOffer,
   applyEndOfTurnDeltas,
+  declineLoanOffer,
+  endTurnHeadless,
   executeCompetitiveTurn,
   executeWeekStart,
   finishDeferredTurnClosing,
+  maybeOfferBailout,
   processEndOfTurn,
   takeLoan,
   type TurnResult,
 } from '../../src/MainStreetEngine';
-import { applyLoanRepayments } from '../../src/MainStreetLoans';
+import {
+  DEFAULT_LOAN_OPTIONS,
+  applyLoanRepayments,
+  largestBailoutOption,
+} from '../../src/MainStreetLoans';
 import { syncResourceBankToLedger } from '../../src/MainStreetStateLog';
 
 // ── Fixtures ─────────────────────────────────────────────────
@@ -300,7 +320,8 @@ describe('per-turn repayment in the closing sequence (single-player)', () => {
 
     expect(state.resourceBank.coins).toBe(50 - PER_TURN);
     expect(state.resourceBank.coins).toBeLessThan(0);
-    // The normal bankruptcy path decides the outcome; this slice adds no offer.
+    // The seat already holds the loan it is repaying, so no bailout offer is
+    // available (parent Q6 = A) and the ordinary bankruptcy path decides.
     expect(result.gameResult).toBe('loss');
     expect(state.endReason).toBe('bankruptcy');
     expect(state.pendingLoanOffer).toBeNull();
@@ -396,10 +417,204 @@ describe('per-turn repayment in the competitive shared closing', () => {
     executeCompetitiveTurn(state, [[], []]);
 
     expect(state.players![0].coins).toBeLessThan(0);
-    // The unconditional debit feeds the ordinary bankruptcy path (this slice
-    // adds no bailout offer).
+    // The seat already holds the loan it is repaying, so no bailout offer is
+    // available (parent Q6 = A) and the ordinary bankruptcy path decides.
     expect(state.gameResult).toBe('loss');
     expect(state.endReason).toBe('bankruptcy');
     expect(state.pendingLoanOffer).toBeNull();
+  });
+});
+
+// ── Bankruptcy bailout: offer / accept / decline ────────────
+// (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG)
+
+describe('bankruptcy bailout offer (single-player)', () => {
+  it('offers a loan instead of declaring bankruptcy when the seat is at coins < 0', () => {
+    const state = quietMarketState('bailout-offer');
+    state.resourceBank.coins = -50;
+    syncResourceBankToLedger(state);
+    rebaseDaySnapshot(state);
+    const turnBefore = state.turn;
+
+    const result = processEndOfTurn(state);
+
+    // The closing paused BEFORE `checkImmediateLoss`: the run is still alive.
+    expect(result.pendingLoanOffer).toBe(true);
+    expect(result.requiresDeferredClosing).toBe(true);
+    expect(result.gameResult).toBe('playing');
+    expect(state.gameResult).toBe('playing');
+    expect(state.endReason ?? '').not.toBe('bankruptcy');
+    expect(state.pendingLoanOffer).toMatchObject({ ownerId: 0, reason: 'bankruptcy' });
+    expect(state.pendingLoanOffer!.options).toEqual([...DEFAULT_LOAN_OPTIONS]);
+    // The paused turn has not advanced yet — resolving the offer completes it.
+    expect(state.turn).toBe(turnBefore);
+  });
+
+  it('does not offer when loans are disabled and bankruptcy stands', () => {
+    const state = quietMarketState('bailout-disabled');
+    state.config = { ...state.config, loansEnabled: false };
+    state.resourceBank.coins = -50;
+    syncResourceBankToLedger(state);
+
+    const result = processEndOfTurn(state);
+
+    expect(result.pendingLoanOffer).toBeFalsy();
+    expect(result.gameResult).toBe('loss');
+    expect(state.endReason).toBe('bankruptcy');
+    expect(state.pendingLoanOffer).toBeNull();
+  });
+
+  it('does not offer when the seat already holds an active loan', () => {
+    const state = quietMarketState('bailout-active-loan');
+    takeLoan(state, 1);
+    state.resourceBank.coins = -50;
+    syncResourceBankToLedger(state);
+
+    const result = processEndOfTurn(state);
+
+    // Parent Q6 = A: a seat already repaying a loan goes bankrupt.
+    expect(result.pendingLoanOffer).toBeFalsy();
+    expect(result.gameResult).toBe('loss');
+    expect(state.endReason).toBe('bankruptcy');
+    expect(state.pendingLoanOffer).toBeNull();
+  });
+});
+
+describe('accepting a bailout offer', () => {
+  it('credits the principal and play continues (headless largest-option policy)', () => {
+    const state = quietMarketState('bailout-accept');
+    state.resourceBank.coins = -250;
+    syncResourceBankToLedger(state);
+    const turnBefore = state.turn;
+
+    const result = endTurnHeadless(state);
+
+    expect(result.pendingLoanOffer).toBeFalsy();
+    expect(result.choicePending).toBe(false);
+    expect(result.gameResult).toBe('playing');
+    expect(state.gameResult).toBe('playing');
+    expect(state.endReason ?? '').not.toBe('bankruptcy');
+    expect(state.pendingLoanOffer).toBeNull();
+
+    // Parent Q5 = A: the largest option (1000 / 10) is auto-accepted.
+    expect(state.loans).toHaveLength(1);
+    expect(state.loans[0]).toMatchObject({ ownerId: 0, principal: 1000, termTurns: 10 });
+    // The principal is credited and the turn completes (quiet economy = 0 income).
+    expect(state.resourceBank.coins).toBe(-250 + 1000);
+    expect(state.turn).toBe(turnBefore + 1);
+  });
+
+  it('accepts a specific offered option while the closing is paused', () => {
+    const state = quietMarketState('bailout-accept-specific');
+    state.resourceBank.coins = -100;
+    syncResourceBankToLedger(state);
+    const paused = processEndOfTurn(state);
+    expect(paused.pendingLoanOffer).toBe(true);
+
+    const loan = acceptLoanOffer(state, 1); // 600 / 6
+
+    expect(loan).toMatchObject({ ownerId: 0, principal: 600, termTurns: 6 });
+    expect(state.pendingLoanOffer).toBeNull();
+    expect(state.resourceBank.coins).toBe(-100 + 600);
+
+    const closed = finishDeferredTurnClosing(state, paused);
+    expect(closed.gameResult).toBe('playing');
+    expect(closed.pendingLoanOffer).toBeFalsy();
+    expect(state.pendingLoanOffer).toBeNull();
+  });
+
+  it('refuses to accept without a pending offer', () => {
+    const state = quietMarketState('bailout-accept-none');
+    expect(() => acceptLoanOffer(state, 0)).toThrow(/no pending loan offer/i);
+  });
+});
+
+describe('declining a bailout offer', () => {
+  it('clears the offer and converges to bankruptcy in one pass', () => {
+    const state = quietMarketState('bailout-decline');
+    state.resourceBank.coins = -50;
+    syncResourceBankToLedger(state);
+    const paused = processEndOfTurn(state);
+    expect(paused.pendingLoanOffer).toBe(true);
+
+    expect(declineLoanOffer(state)).toBe(true);
+    expect(state.pendingLoanOffer).toBeNull();
+
+    // The phase never advanced (pre-income pause), so re-running the closing
+    // is the resume path; the guard prevents a second offer.
+    const closed = processEndOfTurn(state);
+
+    expect(closed.pendingLoanOffer).toBeFalsy();
+    expect(closed.gameResult).toBe('loss');
+    expect(state.endReason).toBe('bankruptcy');
+  });
+
+  it('does not re-offer in the same turn after a decline (per-turn guard)', () => {
+    const state = quietMarketState('bailout-no-loop');
+    state.resourceBank.coins = -50;
+    syncResourceBankToLedger(state);
+
+    expect(maybeOfferBailout(state)).toBe(true);
+    expect(maybeOfferBailout(state)).toBe(false); // an offer is already open
+    expect(declineLoanOffer(state)).toBe(true);
+    expect(maybeOfferBailout(state)).toBe(false); // per-turn guard
+    expect(declineLoanOffer(state)).toBe(false); // nothing left to decline
+  });
+});
+
+describe('AI bailout policy', () => {
+  it('chooses the largest principal, then the longest term as tie-break', () => {
+    expect(largestBailoutOption(DEFAULT_LOAN_OPTIONS)).toEqual({
+      principal: 1000,
+      termTurns: 10,
+    });
+    expect(
+      largestBailoutOption([
+        { principal: 600, termTurns: 3 },
+        { principal: 600, termTurns: 6 },
+        { principal: 300, termTurns: 10 },
+      ]),
+    ).toEqual({ principal: 600, termTurns: 6 });
+  });
+
+  it('resolves a pending offer deterministically on the headless path', () => {
+    const first = quietMarketState('bailout-determinism');
+    first.resourceBank.coins = -50;
+    syncResourceBankToLedger(first);
+    const second = quietMarketState('bailout-determinism');
+    second.resourceBank.coins = -50;
+    syncResourceBankToLedger(second);
+
+    const a = endTurnHeadless(first);
+    const b = endTurnHeadless(second);
+
+    // No stalled decision survives, and both runs took the same option.
+    expect(a.pendingLoanOffer ?? false).toBe(false);
+    expect(b.pendingLoanOffer ?? false).toBe(false);
+    expect(first.pendingLoanOffer).toBeNull();
+    expect(second.pendingLoanOffer).toBeNull();
+    expect(first.loans[0]).toMatchObject({
+      principal: second.loans[0].principal,
+      termTurns: second.loans[0].termTurns,
+    });
+    expect(a.gameResult).toBe(b.gameResult);
+  });
+});
+
+describe('opening-day solvency grace', () => {
+  it('does not raise a competitive turn-1 bailout (grace resolves the debt)', () => {
+    const state = createCompetitiveState({ seed: 'bailout-grace', playerCount: 2 });
+    executeWeekStart(state);
+    state.activePlayerId = 0;
+    state.resourceBank.coins = -50;
+    expect(state.turn).toBe(1);
+
+    expect(maybeOfferBailout(state)).toBe(false);
+    expect(state.pendingLoanOffer).toBeNull();
+
+    // From turn 2 the grace is gone, so a negative seat gets the offer.
+    state.turn = 2;
+    expect(maybeOfferBailout(state)).toBe(true);
+    expect(state.pendingLoanOffer).toMatchObject({ ownerId: 0, reason: 'bankruptcy' });
   });
 });

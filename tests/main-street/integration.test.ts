@@ -218,7 +218,9 @@ describe('Integration: Full Game', () => {
   });
 
   it('ends in bankruptcy when coins go below 0', () => {
-    const state = setupMainStreetGame({ seed: 'integration-bankrupt' });
+    // Loans off: this test pins the legacy bankruptcy exit. With loans enabled
+    // the bankruptcy bailout (MS-0MVPWS9L9001PVXG) offers a loan instead.
+    const state = setupMainStreetGame({ seed: 'integration-bankrupt', loansEnabled: false });
     // Set coins just barely enough to buy something, then drain
     state.resourceBank.coins = 1;
     state.resourceBank.reputation = 5; // Avoid rep collapse
