@@ -13,7 +13,7 @@ import { flashError, flashConfirmation } from './MainStreetFeedback';
 import { TranscriptStore, autoSaveTranscript } from '@core-engine/transcript';
 import type { EventCard } from '../MainStreetCards';
 import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } from '../MainStreetCommands';
-import { applyEndOfTurnDeltas, canAffordPiggybackJoinFully, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
+import { acceptLoanOffer, applyEndOfTurnDeltas, canAffordPiggybackJoinFully, declineLoanOffer, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
@@ -26,6 +26,8 @@ import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
 import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
+import { buildLoanOfferModel } from './MainStreetLoanOverlayModel';
+import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
 import {
   continueCompetitiveDayAfterPiggyback,
@@ -344,6 +346,16 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
       return;
     }
 
+    // Bankruptcy bailout (MS-0MVPWSBLG006YMBA): a pending loan offer pauses
+    // the closing before any loss is declared. Present the offer dialog —
+    // never the game-over summary — and resume the deferred closing exactly
+    // once on resolution (accept/decline). The offer may already be open in
+    // state when a resumed result reaches here (event-choice/piggyback tails),
+    // so the state field is authoritative as well as the result flag.
+    if (result.pendingLoanOffer === true || hasOpenBailoutOffer(s.state)) {
+      if (presentLoanOfferDialog(tcCtx, result)) return;
+    }
+
     // Deferred-mutation mode (CG-0MTR72P14000VO6Q): when the result requires
     // the deferred closing, `gameResult` / `finalScore` are pre-turn values —
     // the game-over evaluation happens in finalizeTurn AFTER the animations
@@ -463,34 +475,7 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
           console.error('[MainStreet] deferred closing failed:', e);
           finalResult = result;
         }
-        // Close the deferred HUD window so refreshHud renders the final
-        // post-delta values.
-        s.previousCoins = null;
-        s.previousReputation = null;
-        s.displayedCoins = null;
-        s.displayedReputation = null;
-        s.incidentRevealActive = false;
-        // Defer log rendering until after startTurnPhase has displayed
-        // upcoming cards (MS-0MURBOD2E009SOM2).
-        s.logDeferredUntilPhaseComplete = true;
-        // Render the final post-delta state under the upcoming overlay
-        // (startTurnPhase refreshes internally for the continuing path).
-        try { s.refreshAll(); } catch { /* presentation-only */ }
-        if (finalResult.gameResult !== 'playing') {
-          // No upcoming phase — flush the accumulated log alongside the
-          // game-over overlay instead of leaving it suppressed.
-          flushDeferredLog();
-          tcCtx.handleGameOver(finalResult);
-          return;
-        }
-        // Persist the checkpoint now that the turn has fully closed (the
-        // deferred end-of-turn path skips the earlier endTurn save so the
-        // checkpoint always reflects a complete, applied turn).
-        try { tcCtx.onSaveCheckpoint?.(); } catch (e) { /* ignore */ }
-        tcCtx.startTurnPhase();
-        // Log entries accumulated during closing now render after the
-        // phase UI has been displayed (MS-0MURBOD2E009SOM2).
-        flushDeferredLog();
+        completeDeferredClosingTail(tcCtx, finalResult);
       } else {
         tcCtx.startTurnPhase();
         // Clear deferral flag so accumulated log entries render after
@@ -652,9 +637,223 @@ export function presentTurnSummaryGate(
   }
 }
 
+/**
+ * Completes a deferred closing whose `finishDeferredTurnClosing` has just run
+ * (MS-0MVPWSBLG006YMBA extraction of the previous inline tail in
+ * `finalizeTurn`).
+ *
+ * Closes the deferred HUD window so `refreshHud` renders the final post-delta
+ * values, then routes to exactly one outcome:
+ *
+ *  - a newly raised bankruptcy bailout offer → present the loan dialog and
+ *    wait for the seat's decision (never start the next week while an offer
+ *    is open);
+ *  - a game over → flush the log and present the game-over summary;
+ *  - a continuing game → persist the checkpoint, start the next phase and
+ *    flush the accumulated log.
+ *
+ * Extracted so the loan-offer resume path reuses the exact same completion
+ * (one implementation, no drift between the first pass and the resumed tail).
+ */
+function completeDeferredClosingTail(
+  tcCtx: MainStreetTurnControllerContext,
+  finalResult: TurnResult,
+): void {
+  const s = tcCtx.scene;
+  // Close the deferred HUD window so refreshHud renders the final post-delta
+  // values.
+  s.previousCoins = null;
+  s.previousReputation = null;
+  s.displayedCoins = null;
+  s.displayedReputation = null;
+  s.incidentRevealActive = false;
+  // Defer log rendering until after startTurnPhase has displayed upcoming
+  // cards (MS-0MURBOD2E009SOM2).
+  s.logDeferredUntilPhaseComplete = true;
+  // Render the final post-delta state under the upcoming overlay
+  // (startTurnPhase refreshes internally for the continuing path).
+  try { s.refreshAll(); } catch { /* presentation-only */ }
+
+  // Flush accumulated log entries now rather than leaving them suppressed.
+  const flushDeferredLog = (): void => {
+    s.logDeferredUntilPhaseComplete = false;
+    try { s.refreshLog(); } catch { /* presentation-only */ }
+  };
+
+  // Bankruptcy bailout: the turn is paused, not lost — present the loan offer
+  // and wait for the seat's decision (the resume path re-enters this tail).
+  if (finalResult.pendingLoanOffer === true) {
+    flushDeferredLog();
+    if (presentLoanOfferDialog(tcCtx, finalResult)) return;
+    // Replay/headless: no UI surface — never start the next week on an
+    // unresolved offer. Headless drivers resolve offers themselves.
+    return;
+  }
+  if (finalResult.gameResult !== 'playing') {
+    // No upcoming phase — flush the accumulated log alongside the game-over
+    // overlay instead of leaving it suppressed.
+    flushDeferredLog();
+    tcCtx.handleGameOver(finalResult);
+    return;
+  }
+  // Persist the checkpoint now that the turn has fully closed (the deferred
+  // end-of-turn path skips the earlier endTurn save so the checkpoint always
+  // reflects a complete, applied turn).
+  try { tcCtx.onSaveCheckpoint?.(); } catch { /* ignore */ }
+  tcCtx.startTurnPhase();
+  // Log entries accumulated during closing now render after the phase UI has
+  // been displayed (MS-0MURBOD2E009SOM2).
+  flushDeferredLog();
+}
+
+/**
+ * Presents the bankruptcy bailout loan offer dialog (MS-0MVPWSBLG006YMBA,
+ * parent MS-0MVL6DZI0000F6CG).
+ *
+ * Presented **once per offer**: the offer object itself is the guard, so a
+ * re-entrant call from a resumed closing (or a duplicate `handleGameOver`)
+ * cannot stack a second dialog, while a later turn's fresh offer object is
+ * presented normally.
+ *
+ * Waits out a running income choreography (bounded by
+ * `INCOME_COLLECTION_CAP_MS`, mirroring `presentEventChoiceDialog`) so the
+ * dialog never opens over live animation, and never strands the pause: a scene
+ * without an overlay surface resolves the offer through the deterministic
+ * headless policy (the model's `recommendedIndex`).
+ *
+ * @param tcCtx  The turn-controller context.
+ * @param result The paused `TurnResult` that carries `pendingLoanOffer`.
+ * @returns `true` when an offer was (or already is) presented, `false` when
+ *          there is no offer to show (the caller must continue normally).
+ */
+export function presentLoanOfferDialog(
+  tcCtx: MainStreetTurnControllerContext,
+  result: TurnResult,
+): boolean {
+  const s = tcCtx.scene;
+  if (s.replayMode === true) return false; // headless/replay: never present UI
+
+  const offer = s.state.pendingLoanOffer;
+  if (!offer) return false;
+
+  // One dialog per offer: a resumed closing / duplicate game-over call must
+  // not stack a second overlay (AC: the overlay is presented once per offer).
+  const scene = s as { loanOfferPresentedFor?: unknown };
+  if (scene.loanOfferPresentedFor === offer) return true;
+
+  const model = buildLoanOfferModel(s.state);
+  if (!model) return false;
+  scene.loanOfferPresentedFor = offer;
+
+  const resolve = (choice: number | null): void => {
+    onLoanOfferChoice(tcCtx, result, choice);
+  };
+
+  const show = (): void => {
+    if (typeof s.showLoanOfferDialog === 'function') {
+      s.showLoanOfferDialog(
+        model,
+        (optionIndex: number) => resolve(optionIndex),
+        () => resolve(null),
+      );
+    } else {
+      // Defensive fallback (headless/tests): accept the deterministic default
+      // so a paused turn can never hang the game loop.
+      resolve(model.recommendedIndex);
+    }
+  };
+
+  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
+    // Bounded deferral: present once the income choreography completes; a
+    // safety cap forces the dialog even if the flag is never cleared.
+    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
+    const waitForIncome = (): void => {
+      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
+        s.time.delayedCall(250, waitForIncome);
+      } else {
+        s.incomeCollectionActive = false;
+        show();
+      }
+    };
+    waitForIncome();
+  } else {
+    show();
+  }
+  return true;
+}
+
+/**
+ * Resolves the open bankruptcy bailout offer and resumes the paused closing
+ * **exactly once** (MS-0MVPWSBLG006YMBA AC2/AC3).
+ *
+ * - `choice === null` declines (the bankruptcy stands and the run ends);
+ *   a number accepts that row of the presented menu.
+ * - The resolving engine command clears `state.pendingLoanOffer`, so a second
+ *   button press / callback invocation is a no-op — the closing can never be
+ *   replayed and the per-turn guard prevents a duplicate offer.
+ * - Any pending end-of-turn deltas are applied under the scene's
+ *   `endOfTurnDeltasApplied` exactly-once guard, then
+ *   `finishDeferredTurnClosing` runs once and the shared tail
+ *   ({@link completeDeferredClosingTail}) completes the turn.
+ *
+ * A closing that had not started its economy yet (a pre-income pause with no
+ * pending deltas) is resumed through the same tail: after the loan is recorded
+ * the authoritative balance is non-negative, so the tail's loss check passes
+ * and the next week starts.
+ */
+export function onLoanOfferChoice(
+  tcCtx: MainStreetTurnControllerContext,
+  paused: TurnResult,
+  choice: number | null,
+): void {
+  const s = tcCtx.scene;
+  // Already resolved (double click / re-entrant callback): never replay the
+  // closing tail.
+  if (!s.state.pendingLoanOffer) return;
+
+  try {
+    if (choice === null) declineLoanOffer(s.state);
+    else acceptLoanOffer(s.state, choice);
+  } catch (e) {
+    // Refused acceptance (should not happen for a presented menu): keep the
+    // offer open and re-present the dialog so the paused turn can never
+    // strand without a choice.
+    console.error('[LoanOffer] resolution failed:', e);
+    flashError(s, `Error: ${(e as Error).message}`);
+    (s as { loanOfferPresentedFor?: unknown }).loanOfferPresentedFor = null;
+    presentLoanOfferDialog(tcCtx, paused);
+    return;
+  }
+
+  // The paused turn's economy is applied once before the closing tail runs.
+  if (!s.endOfTurnDeltasApplied) {
+    try {
+      applyEndOfTurnDeltas(s.state, paused);
+      s.endOfTurnDeltasApplied = true;
+    } catch { /* presentation-only — the tail re-guards */ }
+  }
+
+  let resumed: TurnResult;
+  try {
+    resumed = finishDeferredTurnClosing(s.state, paused);
+  } catch (e) {
+    // Defensive: never hang the turn on a closing failure.
+    console.error('[MainStreet] loan-offer resume closing failed:', e);
+    resumed = { ...paused, pendingLoanOffer: false, gameResult: s.state.gameResult };
+  }
+  completeDeferredClosingTail(tcCtx, resumed);
+}
+
 export function handleGameOver(tcCtx: MainStreetTurnControllerContext, result: TurnResult): void {
 
     const s = tcCtx.scene;
+    // Bankruptcy bailout (MS-0MVPWSBLG006YMBA): while a loan offer is open the
+    // run has not been declared lost — present the offer instead of the
+    // game-over summary. Declining clears the offer, so the normal bankruptcy
+    // summary is presented on the resumed tail.
+    if (hasOpenBailoutOffer(s.state) && presentLoanOfferDialog(tcCtx, result)) {
+      return;
+    }
     // Snapshot tiers before the campaign update mutates them
     const tiersBefore = s.campaign
       ? [...s.campaign.unlockedTiers]

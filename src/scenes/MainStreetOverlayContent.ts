@@ -32,6 +32,8 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import type { TurnSummary } from './MainStreetTurnSummary';
+import { showLoanOfferDialog as renderLoanOfferDialog } from './MainStreetLoanOverlay';
+import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
@@ -1110,6 +1112,31 @@ export class MainStreetOverlayContent {
     ).setOrigin(0.5, 0).setDepth(201);
     if (s.hudContainer) s.hudContainer.add(footerText);
     s.overlayObjects.push(footerText);
+  }
+
+  /**
+   * Shows the bankruptcy bailout loan offer dialog (MS-0MVPWSBLG006YMBA).
+   *
+   * One button per presented loan option (each labelled with its principal,
+   * per-turn and total repayment and term) plus a Decline action. Rendering
+   * lives in {@link module:scenes/MainStreetLoanOverlay}, which follows the
+   * event-choice overlay conventions: `createOverlayBackground` /
+   * `createOverlayButton` from `@ui`, every element parented into
+   * `s.hudContainer`, depths 199/200/201, every object pushed into
+   * `s.overlayObjects`, `safePlaySound` for SFX and instant appearance
+   * (reduced-motion safe).
+   *
+   * @param model      The presentation model (built Phaser-free by
+   *                   `buildLoanOfferModel`).
+   * @param onAccept   Called with the chosen row's index.
+   * @param onDecline  Called when the player declines (the run ends).
+   */
+  public showLoanOfferDialog(
+    model: LoanOfferModel,
+    onAccept: (optionIndex: number) => void,
+    onDecline: () => void,
+  ): void {
+    renderLoanOfferDialog(this.scene, model, { onAccept, onDecline });
   }
 
   /**

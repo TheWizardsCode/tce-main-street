@@ -80,15 +80,22 @@
         "tests/main-street/upgrade-action-economy.test.ts"
       ]
     },
-    "turn-summary-dialog-browser": {
+    "main-street-overlay-dialogs": {
       "commands": [
-        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts"
+        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts"
       ],
       "paths": [
         "src/scenes/MainStreetOverlayContent.ts",
         "src/scenes/MainStreetScene.ts",
         "src/scenes/MainStreetTurnSummary.ts",
-        "tests/main-street/turn-summary-dialog.browser.test.ts"
+        "src/scenes/MainStreetLoanOverlay.ts",
+        "src/scenes/MainStreetLoanOverlayModel.ts",
+        "src/scenes/MainStreetGameOverSummary.ts",
+        "src/scenes/MainStreetTurnControllerTurnFlow.ts",
+        "tests/main-street/turn-summary-dialog.browser.test.ts",
+        "tests/main-street/MainStreetLoanOverlay.test.ts",
+        "tests/main-street/MainStreetLoanOverlay.browser.test.ts"
       ]
     },
     "hand-panel-browser": {

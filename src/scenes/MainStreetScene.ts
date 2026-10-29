@@ -1386,6 +1386,32 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the bankruptcy bailout loan offer dialog (MS-0MVPWSBLG006YMBA):
+   * one button per presented loan option (each labelled with its principal,
+   * per-turn and total repayment and term) plus a Decline action. Delegates to
+   * the overlay manager; with no overlay surface (headless/tests) it accepts
+   * the model's deterministic default (the AI/headless policy) so a paused
+   * turn can never strand.
+   *
+   * @param model      The presentation model (Phaser-free).
+   * @param onAccept   Called with the chosen row's index.
+   * @param onDecline  Called when the player declines (the run ends).
+   */
+  public showLoanOfferDialog(
+    model: import('./MainStreetLoanOverlayModel').LoanOfferModel,
+    onAccept: (optionIndex: number) => void,
+    onDecline: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showLoanOfferDialog === 'function') {
+      (this.msOverlayManager as any).showLoanOfferDialog(model, onAccept, onDecline);
+      return;
+    }
+    // No overlay manager (headless/tests): accept the deterministic default
+    // rather than strand the paused closing.
+    onAccept(model.recommendedIndex);
+  }
+
+  /**
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
    * per-phase income, per-category ongoing expenses, incident and one-off
    * deltas, the net change and the closing balances, with a primary

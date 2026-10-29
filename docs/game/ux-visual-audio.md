@@ -1094,6 +1094,48 @@ condensed text-only summary.
   ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
   (overlay rendering in a real Phaser scene).
 
+### Bailout loan offer dialog
+
+- Renderer: `MainStreetLoanOverlay.showLoanOfferDialog()`, exposed as
+  `MainStreetOverlayContent.showLoanOfferDialog()` and delegated by
+  `MainStreetScene.showLoanOfferDialog()` (MS-0MVPWSBLG006YMBA, parent
+  MS-0MVL6DZI0000F6CG).
+- Model: `src/scenes/MainStreetLoanOverlayModel.ts` (pure, no Phaser import) —
+  `buildLoanOfferModel(state)` turns the outstanding
+  `state.pendingLoanOffer` into a title, intro, one **row per presented loan
+  option** (principal, term, per-turn repayment, total repayment and a
+  self-contained button label) and a Decline action. Repayment figures reuse
+  `MainStreetLoans.loanTotalRepayment` / `loanPerTurnRepayment`, so the dialog
+  can never disagree with the loan the engine records on acceptance; a row's
+  `principal`/`termTurns` are exactly the accepted `LoanOption`.
+- When it appears: `finishTurnPresentation()` presents the dialog whenever the
+  closing pauses on a pending offer (`result.pendingLoanOffer`) — or when
+  `state.pendingLoanOffer` is already open — **instead of** the game-over
+  summary. The deferred closing tail (`completeDeferredClosingTail`) also
+  routes a freshly raised offer to the dialog rather than starting the next
+  week, and `handleGameOver()` refuses to present the summary while an offer
+  is open (`hasOpenBailoutOffer()` in `MainStreetGameOverSummary.ts`). The
+  bankruptcy summary is therefore only shown after a decline.
+- Resume: `onLoanOfferChoice()` resolves the offer through the engine's
+  `acceptLoanOffer(optionIndex)` / `declineLoanOffer(state)` commands (both
+  clear `state.pendingLoanOffer`, so the handler is idempotent), applies any
+  outstanding deferred deltas under the `endOfTurnDeltasApplied` exactly-once
+  guard, runs `finishDeferredTurnClosing()` **once** and completes the turn
+  through the shared tail. No re-run of `processEndOfTurn` means the income,
+  incident draw and loan repayment are never replayed, and the per-turn
+  bailout guard prevents a duplicate offer.
+- Overlay pattern: instant (no fade-in, reduced-motion safe),
+  `createOverlayBackground` / `createOverlayButton` from `@ui`, every element
+  parented into `s.hudContainer`, depths 199/200/201, every object tracked in
+  `s.overlayObjects` for dismissal, and `safePlaySound` for the button SFX.
+  Presented **once per offer** (the offer object is the guard), and a
+  headless scene without an overlay surface falls back to the model's
+  deterministic `recommendedIndex` (the AI/headless largest-option policy).
+- Tests: `tests/main-street/MainStreetLoanOverlay.test.ts` (model rows,
+  presentation-once, accept/decline resume, post-closing pause) and
+  `tests/main-street/MainStreetLoanOverlay.browser.test.ts` (rendering, button
+  count, dismissal).
+
 ### Game-over panel (two-column summary)
 
 - Renderer: `MainStreetOverlayContent.showGameOverOverlay()`.
