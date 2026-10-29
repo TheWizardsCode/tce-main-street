@@ -1,6 +1,6 @@
 import { createSeededRng } from '@core-engine';
 import { setupMainStreetGame, createCompetitiveState, seedToNumber, type MainStreetState } from './MainStreetState';
-import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, projectPiggybackEventReward, piggybackJoinFullyCost, resolvePendingLoanOffer, type PlayerAction } from './MainStreetEngine';
+import { executeAction, executeWeekStart, executeCompetitiveWeekStart, endCompetitiveMarketTurn, resolveCompetitiveClosingPhases, resolveCompetitivePendingChoice, resolveCompetitivePendingPiggyback, processEndOfTurn, projectPiggybackEventReward, piggybackJoinFullyCost, resolvePendingLoanOffer, resolveCompetitiveLoanOffer, type PlayerAction } from './MainStreetEngine';
 import { canPurchaseEvent, getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from './MainStreetMarket';
 import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlayer, resolveAiEventChoice, bindCompetitiveSeat, restoreCompetitiveSeat, CompetitiveGreedyStrategy, decidePiggybackForAllSeats, type MainStreetAiStrategy } from './MainStreetAiStrategy';
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
@@ -1165,7 +1165,11 @@ export function runCompetitiveSeed(
   strategies?: readonly MainStreetAiStrategy[],
   playerCount: number = 2,
 ): CompetitiveRunSummary {
-  const state = createCompetitiveState({ seed, playerCount });
+  // Headless/simulation configs keep loans OFF (parent AC8
+  // MS-0MVL6DZI0000F6CG): existing competitive balance baselines stay
+  // byte-identical, and an elimination is never converted into a bailout by
+  // the harness default. A simulation opts in explicitly if it wants loans.
+  const state = createCompetitiveState({ seed, playerCount, loansEnabled: false });
   const resolvedStrategies: readonly MainStreetAiStrategy[] =
     strategies && strategies.length === playerCount
       ? strategies
@@ -1186,11 +1190,11 @@ export function runCompetitiveSeed(
 
   while (state.gameResult === 'playing' && turns < maxTurns) {
     playCompetitiveMarketPhases(state, resolvedStrategies, rngs, cardsOwnedByPlayer, placementStatsByPlayer);
-    const closing = resolveCompetitiveClosingPhases(state);
+    let closing = resolveCompetitiveClosingPhases(state);
     if (closing.choicePending) {
       // Dual-choice incident: apply the AI policy and finish the shared-day
       // closing (per-owner routing retained).
-      resolveCompetitivePendingChoice(state);
+      closing = resolveCompetitivePendingChoice(state) ?? closing;
     }
     if (closing.piggybackPending) {
       // F3/F4 piggyback (epic MS-0MUYC47EL005Z69H): an eligible organiser
@@ -1223,6 +1227,13 @@ export function runCompetitiveSeed(
         }
         return join;
       });
+    }
+    // Competitive seat bailout (MS-0MVPWSAMH005LV9R): a pending offer is
+    // resolved deterministically with the largest-option AI policy so the sim
+    // never stalls. Sim configs default loans off, so this is the opt-in
+    // safety net; each pass resolves one seat's offer (bounded by seat count).
+    for (let pass = 0; pass < playerCount + 1 && state.pendingLoanOffer; pass++) {
+      closing = resolveCompetitiveLoanOffer(state, closing);
     }
     turns++;
   }

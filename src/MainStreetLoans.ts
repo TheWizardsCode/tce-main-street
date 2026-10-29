@@ -225,18 +225,41 @@ export function largestBailoutOption(options: readonly LoanOption[]): LoanOption
 }
 
 /**
- * Raises a bankruptcy bailout offer for the acting seat when it would fail on
- * `coins < 0` and holds no active loan (Bank Loans epic MS-0MVL6DZI0000F6CG,
- * slice MS-0MVPWS9L9001PVXG).
+ * True when a bailout offer was already raised for this seat in this turn.
+ *
+ * The guard is per seat (not global) so a competitive closing can offer each
+ * failing seat its own bailout exactly once per turn: a decline must converge
+ * to game over, never loop, while another seat may still be offered one.
+ */
+function bailoutAlreadyOfferedThisTurn(state: MainStreetState, ownerId: number): boolean {
+  return (state._bailoutOffered ?? []).some(
+    (offer) => offer.ownerId === ownerId && offer.turn === state.turn,
+  );
+}
+
+/** Records a raised offer in the per-seat, per-turn guard (drops older turns). */
+function recordBailoutOffered(state: MainStreetState, ownerId: number): void {
+  const current = (state._bailoutOffered ?? []).filter((offer) => offer.turn === state.turn);
+  state._bailoutOffered = [...current, { ownerId, turn: state.turn }];
+}
+
+/**
+ * Raises a bankruptcy bailout offer for one specific seat when it would fail
+ * on `coins < 0` and holds no active loan (Bank Loans epic MS-0MVL6DZI0000F6CG,
+ * slice MS-0MVPWS9L9001PVXG; per-seat competitive parity added by
+ * MS-0MVPWSAMH005LV9R).
  *
  * This is the single gate the closing sequence consults **before** declaring
- * bankruptcy. It mutates only the transitional decision fields:
+ * bankruptcy, for a single-player seat or an individual competitive seat. It
+ * mutates only the transitional decision fields:
  *
  * - `state.pendingLoanOffer` is set to the presented menu (a snapshot of
- *   `config.loanOptions`) with `reason: 'bankruptcy'`;
+ *   `config.loanOptions`) with `reason: 'bankruptcy'` and the failing seat's
+ *   `ownerId`;
  * - `state._bailoutOffered` records `{ ownerId, turn }` so a second
- *   evaluation in the same turn (after a decline) cannot re-offer;
- * - one `neutral` activity-log row announces the decision.
+ *   evaluation in the same turn (after a decline) cannot re-offer that seat;
+ * - one `neutral` activity-log row announces the decision, attributed to the
+ *   failing seat.
  *
  * The engine closes nothing here — the caller pauses the closing and returns
  * `TurnResult.pendingLoanOffer === true`; `acceptLoanOffer` / `declineLoanOffer`
@@ -248,10 +271,73 @@ export function largestBailoutOption(options: readonly LoanOption[]): LoanOption
  * - the seat must not already hold an active loan (one loan at a time — a
  *   seat already repaying simply goes bankrupt);
  * - at most one offer per seat per turn;
- * - no offer while another offer is already unresolved;
+ * - no offer while another offer is already unresolved (the single pending
+ *   offer is the pause; the other seat is offered after it resolves);
  * - the competitive opening-day solvency grace wins: a competitive seat cannot
  *   be bankrupted on turn 1, so no bailout is offered to it (single-player
  *   bankruptcy is unchanged on turn 1, per the grace's own contract).
+ *
+ * @param state   Current game state (mutated only when an offer is raised).
+ * @param ownerId Seat to evaluate (is ignored when omitted for single-player).
+ * @param opts    Optional `projectedCoins`: the deferred-mutation path
+ *                evaluates the balance the closing **will** produce before it
+ *                is applied.
+ * @returns `true` when an offer was raised and the closing must pause.
+ */
+export function maybeOfferBailoutForSeat(
+  state: MainStreetState,
+  ownerId?: number,
+  opts?: { projectedCoins?: number },
+): boolean {
+  if (state.gameResult !== 'playing') return false;
+  if (!state.config.loansEnabled) return false;
+  // An unresolved offer is already the pause; never stack or re-raise one.
+  if (state.pendingLoanOffer) return false;
+
+  const seatId = loanOwnerId(state, ownerId);
+  // Opening-day solvency grace (MS-0MVJNFESC005QJ41) is competitive-only: a
+  // competitive seat cannot be bankrupted on turn 1, so the grace resolves it
+  // and no loan is needed. Single-player keeps its turn-1 bankruptcy rule.
+  if ((state.players?.length ?? 0) > 0 && state.turn <= 1) return false;
+
+  const seat = state.players?.find((player) => player.playerId === seatId);
+  if (seat?.eliminated) return false;
+  if (activeLoanFor(state, seatId)) return false;
+
+  // Per-seat per-turn guard: a decline must converge to game over, never loop.
+  if (bailoutAlreadyOfferedThisTurn(state, seatId)) return false;
+
+  // Competitive wallets live on the `PlayerRecord` (authoritative at closing
+  // time, when the shared `resourceBank` may mirror a different seat);
+  // single-player and the legacy N=1 path read the shared wallet.
+  const competitiveSeat = (state.players?.length ?? 0) > 1 ? seat : undefined;
+  const coins = opts?.projectedCoins ?? competitiveSeat?.coins ?? state.resourceBank.coins;
+  if (!(coins < 0)) return false;
+
+  const options = optionsFor(state).map((option) => ({ ...option }));
+  if (options.length === 0) return false;
+
+  state.pendingLoanOffer = { ownerId: seatId, reason: 'bankruptcy', options };
+  recordBailoutOffered(state, seatId);
+  addLog(
+    state,
+    seatId,
+    `Bankruptcy bailout: coins are ${coins}; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
+    'neutral',
+  );
+  return true;
+}
+
+/**
+ * Raises a bankruptcy bailout offer for a failing seat when it would fail on
+ * `coins < 0` and holds no active loan (Bank Loans epic MS-0MVL6DZI0000F6CG,
+ * slice MS-0MVPWS9L9001PVXG).
+ *
+ * Single-player (and the legacy N=1 path) evaluates the acting seat against
+ * the shared wallet. Competitive mode evaluates **every** seat in seat order
+ * (MS-0MVPWSAMH005LV9R) so a seat that is not the last actor can still be
+ * bailed out; at most one offer is raised at a time (the single pending offer
+ * is the closing pause) and each seat is offered at most once per turn.
  *
  * @param state Current game state (mutated only when an offer is raised).
  * @param opts  Optional `projectedCoins`: the deferred-mutation path evaluates
@@ -262,41 +348,16 @@ export function maybeOfferBailout(
   state: MainStreetState,
   opts?: { projectedCoins?: number },
 ): boolean {
-  if (state.gameResult !== 'playing') return false;
-  if (!state.config.loansEnabled) return false;
-  // An unresolved offer is already the pause; never stack or re-raise one.
-  if (state.pendingLoanOffer) return false;
-
-  const ownerId = loanOwnerId(state);
-  // Opening-day solvency grace (MS-0MVJNFESC005QJ41) is competitive-only: a
-  // competitive seat cannot be bankrupted on turn 1, so the grace resolves it
-  // and no loan is needed. Single-player keeps its turn-1 bankruptcy rule.
-  if ((state.players?.length ?? 0) > 0 && state.turn <= 1) return false;
-
-  const seat = state.players?.find((player) => player.playerId === ownerId);
-  if (seat?.eliminated) return false;
-  if (activeLoanFor(state, ownerId)) return false;
-
-  // Per-turn guard: at most one bailout offer per seat per turn (a decline
-  // must converge to game over, never loop).
-  const offered = state._bailoutOffered;
-  if (offered && offered.ownerId === ownerId && offered.turn === state.turn) return false;
-
-  const coins = opts?.projectedCoins ?? state.resourceBank.coins;
-  if (!(coins < 0)) return false;
-
-  const options = optionsFor(state).map((option) => ({ ...option }));
-  if (options.length === 0) return false;
-
-  state.pendingLoanOffer = { ownerId, reason: 'bankruptcy', options };
-  state._bailoutOffered = { ownerId, turn: state.turn };
-  addLog(
-    state,
-    ownerId,
-    `Bankruptcy bailout: coins are ${coins}; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
-    'neutral',
-  );
-  return true;
+  const players = state.players ?? [];
+  if (players.length <= 1) {
+    return maybeOfferBailoutForSeat(state, loanOwnerId(state), opts);
+  }
+  for (const seat of players) {
+    if (seat.eliminated) continue;
+    const seatOpts = seat.playerId === loanOwnerId(state) ? opts : undefined;
+    if (maybeOfferBailoutForSeat(state, seat.playerId, seatOpts)) return true;
+  }
+  return false;
 }
 
 /**
@@ -417,23 +478,36 @@ export function debitLoanRepayment(
  * folds the returned delta into `TurnResult.pendingCoinDelta` and applies it
  * with the rest of the turn's deltas.
  *
+ * `excludeOwnerIds` supports the competitive bailout resume
+ * (MS-0MVPWSAMH005LV9R): a paused closing re-runs its repayment pass after the
+ * seat accepted a loan, and that brand-new loan's first instalment belongs to
+ * the **next** turn (mirroring the single-player pre-income resume). Excluded
+ * loans are skipped entirely — no debit, no term decrement, no log row — while
+ * every other seat's loan is billed normally.
+ *
  * @param state Current game state (mutated in-place unless deferred).
- * @param opts  Optional deferred-mutation flag (`apply: false`).
+ * @param opts  Optional deferred-mutation flag (`apply: false`) and the loan
+ *              owners to skip for this pass (`excludeOwnerIds`).
  * @returns The signed coin total debited by this pass (zero or negative).
  */
 export function applyLoanRepayments(
   state: MainStreetState,
-  opts?: { apply?: boolean },
+  opts?: { apply?: boolean; excludeOwnerIds?: readonly number[] },
 ): number {
   // Hard no-op: loans disabled must not move coins, log, or bookkeep.
   if (!state.config.loansEnabled) return 0;
   const loans = state.loans ?? [];
   if (loans.length === 0) return 0;
 
+  const excluded = new Set(opts?.excludeOwnerIds ?? []);
   let totalRepaid = 0;
   const surviving: ActiveLoan[] = [];
 
   for (const loan of loans) {
+    if (excluded.has(loan.ownerId)) {
+      surviving.push(loan);
+      continue;
+    }
     const amount = loan.perTurnRepayment;
     if (opts?.apply !== false) {
       debitLoanRepayment(state, loan.ownerId, amount);

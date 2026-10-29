@@ -24,7 +24,7 @@ import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex }
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
-import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout } from './MainStreetLoans';
+import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
@@ -1297,6 +1297,30 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
 }
 
 /**
+ * Resolves one seat's bankruptcy bailout with the AI/headless policy
+ * (largest option — parent Q3 = A / Q5 = A) without ever leaving an offer
+ * pending for the UI.
+ *
+ * Raises the offer through {@link maybeOfferBailoutForSeat} and immediately
+ * accepts it, so the seat is credited before the failure list is applied and
+ * is therefore not eliminated. Best-effort: a refusal (e.g. no configured
+ * menu) leaves today's behaviour untouched and returns `false`.
+ */
+function autoAcceptBailoutForSeat(state: MainStreetState, seatId: number): boolean {
+  if (!maybeOfferBailoutForSeat(state, seatId)) return false;
+  const pending = state.pendingLoanOffer;
+  if (!pending) return false;
+  try {
+    acceptLoanOffer(state, largestBailoutOption(pending.options));
+    return true;
+  } catch {
+    // Never strand a half-raised offer: fall back to today's elimination.
+    state.pendingLoanOffer = null;
+    return false;
+  }
+}
+
+/**
  * Applies the competitive per-seat failure evaluation to the game result.
  *
  * A failing **human** seat keeps the existing single-player loss semantics
@@ -1305,10 +1329,32 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
  * and does **not** end the game; when the last AI is eliminated the human is
  * declared the winner by last-standing.
  *
+ * **Bailout intercept (MS-0MVPWSAMH005LV9R).** Before any failure is
+ * declared, every failing seat is evaluated against the bankruptcy bailout
+ * (parent AC4/AC5): a seat at `coins < 0` that holds no active loan is offered
+ * a loan instead of being eliminated/losing.
+ *
+ * - **AI seats** resolve inline via the AI policy (the largest option), so an
+ *   unlucky week never knocks an AI out and a last-standing win is delayed
+ *   accordingly.
+ * - **A human seat** keeps its offer **pending** for the UI; the pending
+ *   offer *is* the closing pause (the caller surfaces
+ *   `TurnResult.pendingLoanOffer === true` and resumes via
+ *   `resolveCompetitiveLoanOffer`). Nothing is declared while it is open.
+ *
+ * Ineligible seats keep today's behaviour exactly: an already-active loan
+ * (producer Q6 = A), reputation collapse, or `loansEnabled: false` eliminate /
+ * end as before. AI offers are resolved first so a pending human offer never
+ * blocks another seat's automatic bailout.
+ *
  * @param state Current game state (mutated on a human failure / AI elimination).
- * @returns `true` when the game ended / a win was declared, `false` otherwise.
+ * @returns `true` when the game ended / a win was declared, `false` otherwise
+ *          (including while a human bailout offer pauses the closing).
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  // An unresolved offer is already the pause: never re-declare failures while
+  // the seat still has a decision to make (the resume re-evaluates).
+  if (state.pendingLoanOffer) return false;
   // Opening-day grace (MS-0MVJNFESC005QJ41): no seat is bankrupt on turn 1.
   applyFirstSharedDaySolvencyGrace(state);
   const failures = checkCompetitiveSeatFailure(state);
@@ -1318,8 +1364,33 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
     return checkLastStanding(state);
   }
 
+  // Pass 1 — AI bailouts inline (largest option), so a pending human offer
+  // below can never prevent another seat's automatic bailout.
+  const remaining: CompetitiveSeatFailure[] = [];
+  for (const failure of failures) {
+    const seat = state.players![failure.playerId];
+    if (failure.reason === 'bankruptcy' && seat.controller === 'ai' && autoAcceptBailoutForSeat(state, failure.playerId)) {
+      continue;
+    }
+    remaining.push(failure);
+  }
+
+  // Pass 2 — a human bankruptcy failure raises a pending offer (the pause);
+  // nothing is declared while any offer is open.
+  for (const failure of remaining) {
+    const seat = state.players![failure.playerId];
+    if (failure.reason !== 'bankruptcy' || seat.controller === 'ai') continue;
+    if (maybeOfferBailoutForSeat(state, failure.playerId)) return false;
+  }
+  if (state.pendingLoanOffer) return false;
+  if (remaining.length === 0) {
+    // Every failure was bailed out — a prior elimination may still have left
+    // the human as the last seat standing (idempotent).
+    return checkLastStanding(state);
+  }
+
   // A human seat failure keeps the existing single-player loss semantics.
-  const humanFailure = failures.find(
+  const humanFailure = remaining.find(
     failure => state.players![failure.playerId].controller !== 'ai',
   );
   if (humanFailure) {
@@ -1332,7 +1403,7 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
   }
 
   // AI seat failure(s): eliminate the seat(s) and let the survivors play on.
-  for (const failure of failures) {
+  for (const failure of remaining) {
     eliminateCompetitiveSeat(state, failure.playerId);
   }
   // Declare last-standing if no AI seats survive (idempotent).
@@ -1386,6 +1457,10 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * `gameResult` to `'playing'` and scoring continues; the marker is kept so
  * later EndChecks do not re-open the offer.
  *
+ * A human bankruptcy bailout offer pauses this EndCheck
+ * (MS-0MVPWSAMH005LV9R): `false` is returned without declaring a threshold
+ * or turn-limit winner while the seat still has a decision to make.
+ *
  * In single-player (no players[]), delegates to the legacy checkEndConditions.
  */
 export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
@@ -1394,6 +1469,9 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   }
 
   if (resolveCompetitiveSeatFailures(state)) return true;
+  // A human bailout offer pauses the closing (MS-0MVPWSAMH005LV9R): no
+  // threshold/turn-limit winner may be declared while the seat decides.
+  if (state.pendingLoanOffer) return false;
 
   updateCompetitiveScores(state);
 

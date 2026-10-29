@@ -606,6 +606,9 @@ describe('opening-day solvency grace', () => {
     const state = createCompetitiveState({ seed: 'bailout-grace', playerCount: 2 });
     executeWeekStart(state);
     state.activePlayerId = 0;
+    // The seat's own wallet is authoritative at failure-evaluation time; the
+    // shared bank is only its working mirror (MS-0MVPWSAMH005LV9R).
+    state.players![0].coins = -50;
     state.resourceBank.coins = -50;
     expect(state.turn).toBe(1);
 

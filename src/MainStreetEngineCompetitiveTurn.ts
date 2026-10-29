@@ -7,7 +7,7 @@
  */
 
 import { executeAction } from './MainStreetEngineActions';
-import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompetitiveOngoingCosts, applyStaffOngoingCosts } from './MainStreetEngineCommands';
+import { acceptLoanOffer, applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyCompetitiveOngoingCosts, applyStaffOngoingCosts } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPiggybacks } from './MainStreetEngineEvents';
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
@@ -18,7 +18,7 @@ import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
-import { applyLoanRepayments } from './MainStreetLoans';
+import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -225,6 +225,33 @@ function mergeMidTurnChallenges(
 }
 
 /**
+ * Paused `TurnResult` for a competitive human bailout offer
+ * (MS-0MVPWSAMH005LV9R).
+ *
+ * No failure has been declared yet: the caller presents the offer and resumes
+ * through {@link resolveCompetitiveLoanOffer}. `playerIncome` is carried so a
+ * resumed closing still presents the per-seat income captured before the
+ * pause.
+ */
+function pausedCompetitiveLoanOfferResult(
+  state: MainStreetState,
+  base?: Partial<TurnResult>,
+): TurnResult {
+  return {
+    income: base?.income ?? null,
+    incident: base?.incident ?? null,
+    incidentCoinChange: base?.incidentCoinChange ?? 0,
+    incidentRepChange: base?.incidentRepChange ?? 0,
+    gameResult: state.gameResult,
+    finalScore: state.finalScore,
+    newlyCompletedChallenges: [],
+    choicePending: false,
+    pendingLoanOffer: true,
+    playerIncome: base?.playerIncome,
+  };
+}
+
+/**
  * Competitive closing tail (IncidentPhase → EndCheck) shared by the normal
  * shared-day closing and the deferred dual-choice resume
  * (CG-0MTIILDBB001F01S). Runs the immediate-loss check, EndCheck (decay,
@@ -232,6 +259,13 @@ function mergeMidTurnChallenges(
  * score refresh. Extracted verbatim from `resolveCompetitiveClosingPhases` so
  * `resolveCompetitivePendingChoice` can complete a paused closing without
  * re-running the income phase.
+ *
+ * @param opts.skipLoanRepayments       The repayment pass already ran before a
+ *                                      bailout pause; never charge it twice.
+ * @param opts.skipLoanRepaymentForOwners Loans accepted during the closing's
+ *                                      pre-income bailout check pay their
+ *                                      first instalment next turn (mirrors
+ *                                      the single-player pre-income resume).
  */
 function finishCompetitiveClosingTail(
   state: MainStreetState,
@@ -241,6 +275,7 @@ function finishCompetitiveClosingTail(
   incidentRepChange: number,
   turnEnded: number,
   playerIncome?: OwnerIncomeResult[],
+  opts?: { skipLoanRepayments?: boolean; skipLoanRepaymentForOwners?: readonly number[] },
 ): TurnResult {
   // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
   // MS-0MVPWS885006O5QR): each borrowing seat pays its fixed per-turn amount
@@ -248,9 +283,27 @@ function finishCompetitiveClosingTail(
   // failures are evaluated, so a shortfall feeds the ordinary bankruptcy path
   // and other seats' wallets are untouched. `loansEnabled: false` is a hard
   // no-op (parent AC8).
-  applyLoanRepayments(state);
+  if (opts?.skipLoanRepayments !== true) {
+    const excluded = opts?.skipLoanRepaymentForOwners;
+    applyLoanRepayments(
+      state,
+      excluded && excluded.length > 0 ? { excludeOwnerIds: excluded } : undefined,
+    );
+  }
 
-  if (resolveCompetitiveSeatFailures(state)) {
+  // Seat failures (and the per-seat bailout intercept, MS-0MVPWSAMH005LV9R):
+  // AI offers resolve inline; a human offer pauses the closing here.
+  const ended = resolveCompetitiveSeatFailures(state);
+  if (state.pendingLoanOffer) {
+    return pausedCompetitiveLoanOfferResult(state, {
+      income,
+      incident,
+      incidentCoinChange,
+      incidentRepChange,
+      playerIncome,
+    });
+  }
+  if (ended) {
     appendTurnNetRow(state, turnEnded);
     return {
       income,
@@ -281,6 +334,17 @@ function finishCompetitiveClosingTail(
     state.activePlayerId ?? null,
   );
   checkCompetitiveEndConditions(state);
+  // Defensive bailout pause (MS-0MVPWSAMH005LV9R): never advance the day while
+  // a seat still has a bailout decision to make.
+  if (state.pendingLoanOffer) {
+    return pausedCompetitiveLoanOfferResult(state, {
+      income,
+      incident,
+      incidentCoinChange,
+      incidentRepChange,
+      playerIncome,
+    });
+  }
   if (state.gameResult === 'playing') {
     state.turn += 1;
     advanceWeek(state);
@@ -319,7 +383,10 @@ function finishCompetitiveClosingTail(
   };
 }
 
-export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnResult {
+export function resolveCompetitiveClosingPhases(
+  state: MainStreetState,
+  opts?: { skipLoanRepaymentForOwners?: readonly number[] },
+): TurnResult {
   // F3 piggyback pause (epic MS-0MUYC47EL005Z69H): an unresolved pending
   // piggyback decision set raised mid-MarketPhase blocks the shared closing
   // so every other active seat's share is settled first. Resolve via
@@ -359,7 +426,23 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
     throw new Error('resolveCompetitiveClosingPhases requires competitive state (players)');
   }
   const turnEnded = state.turn;
-  if (resolveCompetitiveSeatFailures(state)) {
+  // Loans taken by the pre-income bailout intercept below must not pay their
+  // first instalment in this same closing (mirrors the single-player resume).
+  const loansBeforeFailureCheck = new Set((state.loans ?? []).map((loan) => loan.ownerId));
+  const ended = resolveCompetitiveSeatFailures(state);
+  const skipLoanRepaymentForOwners = [
+    ...(state.loans ?? [])
+      .map((loan) => loan.ownerId)
+      .filter((ownerId) => !loansBeforeFailureCheck.has(ownerId)),
+    ...(opts?.skipLoanRepaymentForOwners ?? []),
+  ];
+  // Pre-income bailout pause (MS-0MVPWSAMH005LV9R): a failing human seat is
+  // offered a loan before the day's economy runs; nothing is declared while
+  // the offer is open, and the resume re-runs this whole closing.
+  if (state.pendingLoanOffer) {
+    return pausedCompetitiveLoanOfferResult(state);
+  }
+  if (ended) {
     appendTurnNetRow(state, turnEnded);
     return {
       income: null,
@@ -421,7 +504,16 @@ export function resolveCompetitiveClosingPhases(state: MainStreetState): TurnRes
       playerIncome,
     };
   }
-  return finishCompetitiveClosingTail(state, income, incident, incidentCoinChange, incidentRepChange, turnEnded, playerIncome);
+  return finishCompetitiveClosingTail(
+    state,
+    income,
+    incident,
+    incidentCoinChange,
+    incidentRepChange,
+    turnEnded,
+    playerIncome,
+    { skipLoanRepaymentForOwners },
+  );
 }
 
 /**
@@ -503,3 +595,68 @@ export function resolveCompetitivePendingChoice(state: MainStreetState): TurnRes
   return finishCompetitiveClosingTail(state, null, null, 0, 0, turnEnded);
 }
 
+/**
+ * Resolves a pending competitive human bailout offer and completes the paused
+ * shared-day closing (MS-0MVPWSAMH005LV9R).
+ *
+ * `resolveCompetitiveSeatFailures` raises the offer for the failing seat (the
+ * offer's `ownerId`, never the acting seat) and returns a paused result with
+ * `pendingLoanOffer === true`. This helper applies the seat's decision and
+ * re-runs only the work the pause skipped:
+ *
+ * - `choice === null` declines: the per-turn guard prevents a second offer,
+ *   so the re-evaluated closing declares today's bankruptcy for the seat.
+ * - a number (index into the presented menu) accepts that option; credit goes
+ *   to the failing seat's own wallet (`creditLoanPrincipal`).
+ * - `choice` omitted applies the deterministic AI/headless policy (the
+ *   largest option, parent Q3 = A / Q5 = A).
+ *
+ * A **pre-income** pause (the defensive `coins < 0` check, phase still
+ * `InvestmentResolution`) re-runs the whole closing and skips the just-taken
+ * loan's first instalment — it belongs to the next turn, mirroring the
+ * single-player resume. Every other pause happened after the day's economy,
+ * so only the failure/end-check tail re-runs and the repayment pass is skipped
+ * (it already ran).
+ *
+ * @param state  Current game state (mutated). Must hold a pending offer.
+ * @param paused The paused `TurnResult` returned by the competitive closing
+ *               (carries income/incident/playerIncome through the resume).
+ * @param choice Menu index to accept, `null` to decline, or omitted for the
+ *               deterministic AI/headless policy.
+ * @returns The completed (or further-paused) closing result.
+ * @throws Error when no offer is pending.
+ */
+export function resolveCompetitiveLoanOffer(
+  state: MainStreetState,
+  paused?: TurnResult,
+  choice?: number | null,
+): TurnResult {
+  const pending = state.pendingLoanOffer;
+  if (!pending) {
+    throw new Error('No pending loan offer to resolve.');
+  }
+  const seatId = pending.ownerId;
+  if (choice === null) {
+    declineLoanOffer(state);
+  } else {
+    acceptLoanOffer(state, choice);
+  }
+
+  if (state.phase === 'InvestmentResolution') {
+    // Pre-income pause: no repayment has run yet. Bill every other seat's loan
+    // normally but leave the bailout loan's first instalment to next turn.
+    return resolveCompetitiveClosingPhases(state, { skipLoanRepaymentForOwners: [seatId] });
+  }
+
+  // Post-income pause: income/incident/repayments are already applied.
+  return finishCompetitiveClosingTail(
+    state,
+    paused?.income ?? null,
+    paused?.incident ?? null,
+    paused?.incidentCoinChange ?? 0,
+    paused?.incidentRepChange ?? 0,
+    state.turn,
+    paused?.playerIncome,
+    { skipLoanRepayments: true },
+  );
+}

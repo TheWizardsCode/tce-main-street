@@ -630,14 +630,16 @@ export interface MainStreetState {
    */
   pendingLoanOffer: PendingLoanOffer | null;
   /**
-   * Per-turn bailout guard (MS-0MVPWS9L9001PVXG): records the seat and turn on
-   * which a bankruptcy loan offer was last raised, so a declined offer cannot
-   * be re-raised by a later evaluation in the same turn (no offer loop).
+   * Per-seat, per-turn bailout guard (MS-0MVPWS9L9001PVXG, extended to every
+   * competitive seat by MS-0MVPWSAMH005LV9R): records each seat and turn on
+   * which a bankruptcy loan offer was raised, so a declined offer cannot be
+   * re-raised by a later evaluation in the same turn (no offer loop) while
+   * other seats can still be offered theirs in the same turn.
    * Transient — never serialized; a save/load round-trip resets it, which is
    * safe because an unresolved offer itself is serialized in
    * `pendingLoanOffer`.
    */
-  _bailoutOffered?: { ownerId: number; turn: number } | null;
+  _bailoutOffered?: Array<{ ownerId: number; turn: number }> | null;
   /**
    * Transient buffer of challenge IDs completed by the most recent
    * per-action evaluation (CG-0MU37CKRR008252I). Reset to `[]` at the start

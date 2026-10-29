@@ -30,6 +30,16 @@ export interface MainStreetTurnControllerContext {
    */
   presentPiggybackDialog(): void;
   /**
+   * Presents the open bankruptcy bailout loan offer and waits for the seat's
+   * decision (MS-0MVPWSBLG006YMBA single-player, shared by the competitive
+   * seat pause in MS-0MVPWSAMH005LV9R).
+   *
+   * @param result The paused `TurnResult` that carries `pendingLoanOffer`.
+   * @returns `true` when an offer was (or already is) presented, `false` when
+   *          there is no offer to show (headless/replay).
+   */
+  presentLoanOfferDialog(result: TurnResult): boolean;
+  /**
    * Resolves the human seat's pending piggyback decision via an undoable
    * command and continues the shared day (F5 of MS-0MUYC47EL005Z69H).
    * @param join True to join fully, false to keep the 50% free-ride.

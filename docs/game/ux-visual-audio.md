@@ -1180,6 +1180,18 @@ condensed text-only summary.
   through the shared tail. No re-run of `processEndOfTurn` means the income,
   incident draw and loan repayment are never replayed, and the per-turn
   bailout guard prevents a duplicate offer.
+- Competitive seats (MS-0MVPWSAMH005LV9R): the shared closing evaluates **every**
+  seat before declaring failures. An AI seat at `coins < 0` with no active loan
+  auto-accepts the largest option inline (no dialog) and is not eliminated, so a
+  last-standing win is delayed accordingly; an AI seat already repaying a loan is
+  eliminated exactly as before. A human seat's offer pauses the shared closing
+  (`presentCompetitiveDayTail` presents the same dialog) and
+  `resolveCompetitiveLoanOffer` resumes the **competitive** closing tail — never
+  the single-player one, which reads the shared host wallet. The offer carries
+  the failing seat's `ownerId`, and the principal lands on that seat's own
+  `PlayerRecord` wallet (the shared mirror is left alone when it belongs to
+  another seat). Offers are raised at most once per seat per turn, so a decline
+  converges to the day's bankruptcy outcome in one pass.
 - Overlay pattern: instant (no fade-in, reduced-motion safe),
   `createOverlayBackground` / `createOverlayButton` from `@ui`, every element
   parented into `s.hudContainer`, depths 199/200/201, every object tracked in

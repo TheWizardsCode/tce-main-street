@@ -13,7 +13,7 @@ import { flashError, flashConfirmation } from './MainStreetFeedback';
 import { TranscriptStore, autoSaveTranscript } from '@core-engine/transcript';
 import type { EventCard } from '../MainStreetCards';
 import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } from '../MainStreetCommands';
-import { acceptLoanOffer, applyEndOfTurnDeltas, canAffordPiggybackJoinFully, declineLoanOffer, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolvePendingPiggyback } from '../MainStreetEngine';
+import { acceptLoanOffer, applyEndOfTurnDeltas, canAffordPiggybackJoinFully, declineLoanOffer, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolveCompetitiveLoanOffer, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
@@ -34,6 +34,7 @@ import {
   endCompetitiveTurnDay,
   humanSeatPiggybackPending,
   isCompetitiveState,
+  presentCompetitiveDayTail,
   startCompetitiveDay,
 } from './MainStreetTurnControllerCompetitive';
 
@@ -812,6 +813,14 @@ export function onLoanOfferChoice(
   if (!s.state.pendingLoanOffer) return;
 
   try {
+    if (isCompetitiveState(s.state)) {
+      // Competitive seat bailout (MS-0MVPWSAMH005LV9R): resume through the
+      // shared competitive closing tail, not the single-player one, which
+      // reads the shared host wallet rather than the failing seat's.
+      const resumed = resolveCompetitiveLoanOffer(s.state, paused, choice);
+      presentCompetitiveDayTail(tcCtx, resumed);
+      return;
+    }
     if (choice === null) declineLoanOffer(s.state);
     else acceptLoanOffer(s.state, choice);
   } catch (e) {

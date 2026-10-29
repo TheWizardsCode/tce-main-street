@@ -48,6 +48,7 @@ import {
   getActivePlayerId,
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
+  resolveCompetitiveLoanOffer,
   resolveCompetitivePendingChoice,
   resolveCompetitivePendingPiggyback,
 } from '../MainStreetEngineCompetitiveTurn';
@@ -73,6 +74,7 @@ import {
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult } from '../MainStreetAdjacency';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
@@ -618,6 +620,21 @@ export function presentCompetitiveDayTail(
   closing: TurnResult,
 ): void {
   const state: MainStreetState = tcCtx.scene.state;
+  // Competitive seat bailout pause (MS-0MVPWSAMH005LV9R): while a seat's offer
+  // is open the shared day has NOT closed — present the dialog and wait. The
+  // resumed closing re-enters this tail (accept continues the day, decline
+  // produces today's bankruptcy outcome).
+  if (closing.pendingLoanOffer === true || hasOpenBailoutOffer(state)) {
+    if (typeof tcCtx.presentLoanOfferDialog === 'function' && tcCtx.presentLoanOfferDialog(closing)) {
+      return;
+    }
+    // No interactive surface (headless/replay): resolve deterministically with
+    // the AI policy so the day never stalls.
+    if (state.pendingLoanOffer) {
+      presentCompetitiveDayTail(tcCtx, resolveCompetitiveLoanOffer(state, closing));
+      return;
+    }
+  }
   if (state.gameResult !== 'playing') {
     tcCtx.handleGameOver(closing);
     return;
