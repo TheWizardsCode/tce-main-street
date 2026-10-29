@@ -101,6 +101,20 @@
         "tests/main-street/panel-opacity.browser.test.ts",
         "tests/main-street/helpers/panelTreatment.ts"
       ]
+    },
+    "pedestrians-scene-visibility-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/pedestrians-scene-visibility.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/pedestrians-scene-visibility.browser.test.ts",
+        "src/scenes/MainStreetPedestrians.ts",
+        "src/scenes/MainStreetRendererStreet.ts",
+        "src/scenes/MainStreetAnimatorIncome.ts",
+        "src/scenes/MainStreetLifecycleManagerLifecycle.ts",
+        "src/scenes/MainStreetConstants.ts",
+        "src/MainStreetMapView.ts"
+      ]
     }
   }
 }
