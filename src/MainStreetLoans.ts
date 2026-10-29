@@ -32,6 +32,7 @@
 
 import type { MainStreetState } from './MainStreetState';
 import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
+import { addLog, describeEventEffects, syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
  * Default flat interest rate over the loan term (10% of principal). Used by
@@ -217,4 +218,121 @@ export function applyLoanPayment(loan: ActiveLoan): ActiveLoan | null {
   const turnsRemaining = loan.turnsRemaining - 1;
   if (turnsRemaining <= 0) return null;
   return { ...loan, turnsRemaining };
+}
+
+/**
+ * Debits one loan repayment from a borrowing seat's wallet through the
+ * established economy path (never a bare wallet mutation).
+ *
+ * Wallet resolution mirrors {@link buildActiveLoan}'s sibling credit path in
+ * `MainStreetEngineCommands.creditLoanPrincipal`:
+ *
+ * - **Single-player** (no `PlayerRecord` for the seat): the shared
+ *   `state.resourceBank` is the wallet, so the amount is debited there and
+ *   `syncResourceBankToLedger` records it against the `EconomyLedger`.
+ * - **Competitive** (`state.players` present): the seat's `PlayerRecord` is
+ *   the authoritative wallet at rest, so the amount is debited there. While
+ *   the seat is bound, its record and the shared wallet mirror one another
+ *   (`bindCompetitiveSeat` copies record → shared wallet), so the debit is
+ *   mirrored into `resourceBank` only when that mirror currently holds —
+ *   otherwise another seat's shared wallet is never touched.
+ *
+ * The debit is **never clamped** to the available balance (producer Q6 = A):
+ * a shortfall leaves `coins < 0` so the ordinary bankruptcy path decides what
+ * happens next. Consumes no RNG.
+ *
+ * @param state  Current game state (mutated in-place).
+ * @param seatId Owner id of the borrowing seat.
+ * @param amount Coins to debit (the loan's fixed `perTurnRepayment`).
+ */
+export function debitLoanRepayment(
+  state: MainStreetState,
+  seatId: number,
+  amount: number,
+): void {
+  if (amount === 0) return;
+
+  if ((state.players?.length ?? 0) > 0) {
+    const seat = state.players!.find((player) => player.playerId === seatId);
+    // No record to bill: leave every wallet untouched rather than debiting a
+    // shared mirror that belongs to another seat.
+    if (!seat) return;
+    const mirrorBound = state.resourceBank.coins === seat.coins;
+    seat.coins -= amount;
+    if (mirrorBound) {
+      state.resourceBank.coins -= amount;
+    }
+    syncResourceBankToLedger(state);
+    return;
+  }
+
+  state.resourceBank.coins -= amount;
+  syncResourceBankToLedger(state);
+}
+
+/**
+ * Applies one turn's scheduled repayment to every active loan
+ * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS885006O5QR).
+ *
+ * For each loan on `state.loans`:
+ *
+ * 1. the fixed `perTurnRepayment` is debited from the borrowing seat's wallet
+ *    through {@link debitLoanRepayment} — unconditionally, never clamped
+ *    (producer Q6 = A);
+ * 2. `turnsRemaining` is decremented via {@link applyLoanPayment} and the loan
+ *    is removed from `state.loans` when the term is paid off;
+ * 3. one `loss` activity-log row records the expense (and the remaining term),
+ *    so the deduction is visible as a one-off in the turn's net summary.
+ *
+ * `loansEnabled: false` is a **hard no-op** (parent AC8): no wallet change, no
+ * log row and no ledger entry, keeping loans-off headless baselines
+ * byte-identical. A state with no active loans is likewise untouched.
+ *
+ * Deferred-mutation support (CG-0MTR72P14000VO6Q) mirrors the ongoing-cost
+ * helpers: `{ apply: false }` performs the loan bookkeeping (term decrement,
+ * retirement, expense row) but leaves the wallet debit to the caller, which
+ * folds the returned delta into `TurnResult.pendingCoinDelta` and applies it
+ * with the rest of the turn's deltas.
+ *
+ * @param state Current game state (mutated in-place unless deferred).
+ * @param opts  Optional deferred-mutation flag (`apply: false`).
+ * @returns The signed coin total debited by this pass (zero or negative).
+ */
+export function applyLoanRepayments(
+  state: MainStreetState,
+  opts?: { apply?: boolean },
+): number {
+  // Hard no-op: loans disabled must not move coins, log, or bookkeep.
+  if (!state.config.loansEnabled) return 0;
+  const loans = state.loans ?? [];
+  if (loans.length === 0) return 0;
+
+  let totalRepaid = 0;
+  const surviving: ActiveLoan[] = [];
+
+  for (const loan of loans) {
+    const amount = loan.perTurnRepayment;
+    if (opts?.apply !== false) {
+      debitLoanRepayment(state, loan.ownerId, amount);
+    }
+    totalRepaid += amount;
+
+    const next = applyLoanPayment(loan);
+    if (next) surviving.push(next);
+
+    addLog(
+      state,
+      loan.ownerId,
+      next
+        ? `Loan repayment: -${amount} coins (${next.turnsRemaining} turn${
+          next.turnsRemaining === 1 ? '' : 's'
+        } left) (${describeEventEffects(-amount, 0)})`
+        : `Loan repayment: -${amount} coins — loan repaid in full ` +
+          `(${loan.totalRepayment} total) (${describeEventEffects(-amount, 0)})`,
+      'loss',
+    );
+  }
+
+  state.loans = surviving;
+  return -totalRepaid;
 }

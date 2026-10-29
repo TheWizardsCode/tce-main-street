@@ -24,6 +24,7 @@ import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex }
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
+import { applyLoanRepayments } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
@@ -659,9 +660,20 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     } catch { /* presentation-only — never break the closing */ }
   }
 
+  // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
+  // MS-0MVPWS885006O5QR). Every active loan pays its fixed per-turn amount
+  // after the incident and before the end-condition checks, so the deduction
+  // lands in this turn's net summary as a one-off expense. Repayment is
+  // unconditional (never clamped): a shortfall leaves coins < 0 for the
+  // bankruptcy path in the closing tail below. `loansEnabled: false` is a hard
+  // no-op, keeping loans-off headless baselines byte-identical (parent AC8).
+  // Deferred mode books the term/log row and reports the debit through
+  // `pendingCoinDelta`; the scene applies it with the turn's other deltas.
+  const loanRepayment = applyLoanRepayments(state, applyOpts);
+
   if (deferred) {
     pendingCoinDelta =
-      (income?.coinDelta ?? 0) + staffDelta + communityDelta + businessDelta + incidentCoinChange;
+      (income?.coinDelta ?? 0) + staffDelta + communityDelta + businessDelta + incidentCoinChange + loanRepayment;
     pendingRepDelta = (income?.repDelta ?? 0) + incidentRepChange;
   }
 

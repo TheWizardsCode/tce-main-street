@@ -18,6 +18,7 @@ import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
+import { applyLoanRepayments } from './MainStreetLoans';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -241,6 +242,14 @@ function finishCompetitiveClosingTail(
   turnEnded: number,
   playerIncome?: OwnerIncomeResult[],
 ): TurnResult {
+  // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
+  // MS-0MVPWS885006O5QR): each borrowing seat pays its fixed per-turn amount
+  // from its own `PlayerRecord` wallet after the incident and before seat
+  // failures are evaluated, so a shortfall feeds the ordinary bankruptcy path
+  // and other seats' wallets are untouched. `loansEnabled: false` is a hard
+  // no-op (parent AC8).
+  applyLoanRepayments(state);
+
   if (resolveCompetitiveSeatFailures(state)) {
     appendTurnNetRow(state, turnEnded);
     return {
