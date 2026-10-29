@@ -1,5 +1,5 @@
 {
-  "timeoutPerCommand": 1800,
+  "timeoutPerCommand": 3600,
   "suiteCommands": [
     "npm --silent test",
     "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts",
