@@ -70,6 +70,11 @@ export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext)
           fontStyle: row.isActive ? 'bold' : 'normal',
           color: colour,
           fontFamily: FONT_FAMILY,
+          // The per-seat loan obligation (MS-0MVPWSCRD004A6Z4) lengthens a row,
+          // so wrap inside the seat's own cell instead of spilling into the
+          // neighbouring seat's readout.
+          align: 'center',
+          wordWrap: { width: Math.max(60, Math.floor(colWidth) - 12) },
         })
         .setOrigin(0.5, 1),
     );

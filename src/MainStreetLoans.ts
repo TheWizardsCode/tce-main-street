@@ -99,6 +99,54 @@ export function activeLoanFor(
 }
 
 /**
+ * Builds the player-facing obligation label for an active loan
+ * (MS-0MVPWSCRD004A6Z4): the remaining term and the fixed per-turn amount,
+ * e.g. `Loan: 110 coins/turn, 6 turns left`.
+ *
+ * UK English copy, integer money (the loan arithmetic already rounds), and a
+ * singular/plural-safe turn count. Pure and Phaser-free so the single-player
+ * HUD strip and the tests share one source of truth for the wording.
+ */
+export function formatLoanObligation(
+  loan: Pick<ActiveLoan, 'perTurnRepayment' | 'turnsRemaining'>,
+): string {
+  const turns = Math.max(0, Math.round(loan.turnsRemaining));
+  const perTurn = Math.round(loan.perTurnRepayment);
+  return `Loan: ${perTurn} coins/turn, ${turns} turn${turns === 1 ? '' : 's'} left`;
+}
+
+/**
+ * Compact variant of {@link formatLoanObligation} for the per-seat competitive
+ * scoreboard rows (`Loan: 110/turn, 6 left`), where every seat shares one HUD
+ * line and horizontal space is tight.
+ */
+export function formatLoanObligationCompact(
+  loan: Pick<ActiveLoan, 'perTurnRepayment' | 'turnsRemaining'>,
+): string {
+  const turns = Math.max(0, Math.round(loan.turnsRemaining));
+  const perTurn = Math.round(loan.perTurnRepayment);
+  return `Loan: ${perTurn}/turn, ${turns} left`;
+}
+
+/**
+ * The HUD obligation readout for a seat, or `null` when there is nothing to
+ * show — the readout is hidden entirely when loans are disabled or the seat
+ * holds no active loan (MS-0MVPWSCRD004A6Z4 AC4).
+ *
+ * @param state   Current game state.
+ * @param ownerId Seat to read (defaults to the active/bound seat).
+ */
+export function hudLoanReadout(
+  state: MainStreetState,
+  ownerId?: number,
+): string | null {
+  if (!state.config.loansEnabled) return null;
+  const loan = activeLoanFor(state, ownerId);
+  if (!loan) return null;
+  return formatLoanObligation(loan);
+}
+
+/**
  * Builds the `ActiveLoan` record a successful loan-taking creates, applying
  * the repayment arithmetic without touching state.
  *

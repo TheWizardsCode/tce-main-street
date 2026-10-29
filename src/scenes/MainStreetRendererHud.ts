@@ -15,6 +15,7 @@ import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
 import { buildCardTooltipInfo, weekLabel } from '../MainStreetFormatting';
+import { hudLoanReadout } from '../MainStreetLoans';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
@@ -294,6 +295,30 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       }
     ).setOrigin(1, 0));
     s.hudContainer.add(weekText);
+
+    // Active-loan obligation (MS-0MVPWSCRD004A6Z4): the remaining turns and
+    // per-turn repayment sit beside the coin/reputation readouts, right-aligned
+    // immediately left of the Score label. Anchoring to the Score's rendered
+    // left edge (rather than a fixed x) keeps the readout clear of that label
+    // for every score width. The readout is hidden entirely when loans are
+    // disabled or the seat holds no loan (`hudLoanReadout` returns null), so
+    // loans-off runs are pixel-identical.
+    const loanReadout = hudLoanReadout(s.state);
+    if (loanReadout) {
+      const loanText = markHudTransient(s.add.text(
+        scoreText.x - scoreText.width - 16,
+        hudY,
+        loanReadout,
+        {
+          fontSize: '13px',
+          fontStyle: 'bold',
+          color: '#ff6699',
+          fontFamily: FONT_FAMILY,
+        },
+      ).setOrigin(1, 0.5));
+      loanText.setName('loan-hud-readout');
+      s.hudContainer.add(loanText);
+    }
 
     // Community Favour buttons — inside the widened strip, between Coins and
     // Reputation (CG-0MUFAITED0088AGN).

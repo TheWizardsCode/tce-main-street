@@ -10,6 +10,7 @@
 
 import type { MainStreetState } from '../MainStreetState';
 import { resolveSeatColour } from '../MainStreetAdjacencyOwner';
+import { activeLoanFor, formatLoanObligationCompact } from '../MainStreetLoans';
 
 /**
  * Failure / elimination badge attached to a game-over scoreboard row.
@@ -58,6 +59,14 @@ export interface CompetitiveScoreboardRow {
    * keep-50% prompt. Surfaced as a `· decision` marker on the scoreboard row.
    */
   piggybackPending?: boolean;
+  /**
+   * Outstanding loan obligation for this seat (MS-0MVPWSCRD004A6Z4): the
+   * remaining turns and per-turn repayment, e.g. `Loan: 110/turn, 6 left`.
+   *
+   * `undefined` when the seat holds no active loan or loans are disabled, so
+   * the marker is hidden entirely rather than showing a zero obligation.
+   */
+  loanObligation?: string;
 }
 
 /**
@@ -80,6 +89,10 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
 
   return players.map((player) => {
     const isHuman = (player.controller ?? (player.playerId === 0 ? 'human' : 'ai')) === 'human';
+    // Active-loan obligation (MS-0MVPWSCRD004A6Z4): every seat holding a loan
+    // shows what it still owes beside its coins/reputation readout. Hidden
+    // entirely when loans are disabled (`loansEnabled: false`).
+    const loan = state.config.loansEnabled ? activeLoanFor(state, player.playerId) : undefined;
     return {
       playerId: player.playerId,
       label: isHuman ? 'You' : `AI ${player.playerId}`,
@@ -89,16 +102,18 @@ export function buildCompetitiveScoreboard(state: MainStreetState): CompetitiveS
       isHuman,
       isActive: player.playerId === activeId,
       piggybackPending: pendingPiggybackSeats.has(player.playerId),
+      loanObligation: loan ? formatLoanObligationCompact(loan) : undefined,
       // AC4/AC5: one shared colour source for every seat-identity surface.
       colour: resolveSeatColour(state, player.playerId),
     };
   });
 }
 
-/** One-line scoreboard cell, e.g. `▶ You: 600c 300r 0pt`. */
+/** One-line scoreboard cell, e.g. `▶ You: 600c 300r 0pt` (plus any loan/decision markers). */
 export function formatCompetitiveScoreboardRow(row: CompetitiveScoreboardRow): string {
   const marker = row.piggybackPending ? ' · decision' : '';
-  return `${row.isActive ? '▶ ' : ''}${row.label}: ${row.coins}c ${row.reputation}r ${row.score}pt${marker}`;
+  const loan = row.loanObligation ? ` · ${row.loanObligation}` : '';
+  return `${row.isActive ? '▶ ' : ''}${row.label}: ${row.coins}c ${row.reputation}r ${row.score}pt${marker}${loan}`;
 }
 
 /**

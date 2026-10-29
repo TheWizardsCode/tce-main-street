@@ -123,6 +123,21 @@
         "src/scenes/MainStreetConstants.ts",
         "src/MainStreetMapView.ts"
       ]
+    },
+    "loan-hud-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/MainStreetLoanHud.browser.test.ts tests/main-street/MainStreet-hud-week.browser.test.ts tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/MainStreetLoanHud.browser.test.ts",
+        "tests/main-street/loan-hud.test.ts",
+        "src/MainStreetLoans.ts",
+        "src/scenes/MainStreetRendererHud.ts",
+        "src/scenes/MainStreetRendererCompetitiveHud.ts",
+        "src/scenes/MainStreetCompetitiveScoreboard.ts",
+        "tests/main-street/MainStreet-hud-week.browser.test.ts",
+        "tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ]
     }
   }
 }
