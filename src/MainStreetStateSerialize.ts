@@ -42,6 +42,7 @@ import type {
   OwnerTaggedSlot,
 } from './MainStreetStateTypes';
 import type { StorylineOption } from './MainStreetCardsTypes';
+import { restoreActiveLoans, restorePendingLoanOffer } from './MainStreetLoans';
 import { ALLOWED_START_WEEKS, BASE_HAND_CAPACITY, deriveSeatColours } from './MainStreetStateSetup';
 
 /**
@@ -146,19 +147,70 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           })),
         }
       : null,
-    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG).
-    // Serialised from the start (additive optional fields) so a loan taken in
-    // this slice survives a save/load round-trip; the v3 schema bump and
-    // explicit migration stay with the persistence slice MS-0MVPWSE0E003QLKE.
-    loans: (state.loans ?? []).map((loan) => ({ ...loan })),
-    pendingLoanOffer: state.pendingLoanOffer
+    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG,
+    // persistence slice MS-0MVPWSE0E003QLKE). Omitted while empty so a
+    // loan-free save's payload stays byte-identical to schema v2 and the diff
+    // on a mid-loan save stays small; both fields are restored defensively on
+    // load (see `restoreActiveLoans` / `restorePendingLoanOffer`).
+    ...(state.loans && state.loans.length > 0
+      ? { loans: state.loans.map((loan) => ({ ...loan })) }
+      : {}),
+    ...(state.pendingLoanOffer
       ? {
-          ownerId: state.pendingLoanOffer.ownerId,
-          reason: state.pendingLoanOffer.reason,
-          options: state.pendingLoanOffer.options.map((option) => ({ ...option })),
+          pendingLoanOffer: {
+            ownerId: state.pendingLoanOffer.ownerId,
+            reason: state.pendingLoanOffer.reason,
+            options: state.pendingLoanOffer.options.map((option) => ({ ...option })),
+          },
         }
-      : null,
+      : {}),
   };
+}
+
+/**
+ * Backfills the save fields added by schema v3 — active bank loans and the
+ * pending bailout offer (persistence slice MS-0MVPWSE0E003QLKE).
+ *
+ * Both keys are optional in the serialized shape, so a pre-loan (v2) save that
+ * carries neither must resume exactly as it was played: no loans, no offer, and
+ * loans still takeable afterwards. Missing or malformed values default to the
+ * empty state; the per-entry validation happens in `restoreActiveLoans` /
+ * `restorePendingLoanOffer` on the way into the runtime state.
+ *
+ * Idempotent, so it is safe to run on an already-v3 payload and covers callers
+ * that invoke `deserializeMainStreetState()` directly (tests, harnesses).
+ */
+function applyLoanFieldDefaults(saved: Record<string, unknown>): void {
+  if (!Array.isArray(saved.loans)) {
+    saved.loans = [];
+  }
+  if (!('pendingLoanOffer' in saved)) {
+    saved.pendingLoanOffer = null;
+  }
+}
+
+/**
+ * Forward-migrates a serialized Main Street state written by an older schema
+ * version (`SaveSerializer.migrate`, consumed by `deserializeWithVersion`).
+ *
+ * - **v1 → v2** (CG-0MTMYIHKO001QCWL): the day → week terminology rename is
+ *   applied by {@link migrateSerializedState} during deserialization, so the
+ *   hook itself is an identity passthrough for those fields.
+ * - **v2 → v3** (MS-0MVPWSE0E003QLKE): add the empty `loans`/`pendingLoanOffer`
+ *   defaults so a pre-loan save loads with no loans and unchanged behaviour.
+ *
+ * @param data        Deserialized-by-JSON payload from an older schema.
+ * @param fromVersion The schema version the payload was written with.
+ * @returns The payload shaped for the current schema.
+ */
+export function migrateMainStreetSerializedState<T extends object>(
+  data: T,
+  fromVersion: number,
+): T {
+  if (fromVersion < 3) {
+    applyLoanFieldDefaults(data as unknown as Record<string, unknown>);
+  }
+  return data;
 }
 
 /**
@@ -432,6 +484,12 @@ function migrateSerializedState(saved: Record<string, unknown>): void {
     }
     (saved as Record<string, unknown>).incidentDeck = [...queue, ...remainingIncidents];
   }
+
+  // ── Active loans + pending loan offer: schema v3 backfill ────────────
+  // (MS-0MVPWSE0E003QLKE). Pre-loan saves carry neither field; default them to
+  // the empty state so a v2 save loads with no loans, no offer, and the loan
+  // menu still available. Idempotent, so a v3 payload passes through unchanged.
+  applyLoanFieldDefaults(saved);
 
   // ── currentIncome / currentReputationPerTurn: add missing fields for legacy saves ─
   // These fields were introduced by CG-0MRV84ZT60069PW6 (per-card incremental tracking).
@@ -826,20 +884,15 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
           };
         })()
       : null,
-    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG).
-    // Optional in the saved shape: pre-loan (schema v2) saves load with no
-    // loans and no offer, exactly as played before the mechanic existed.
-    loans: ((saved as unknown as { loans?: Array<{ ownerId: number; principal: number; totalRepayment: number; perTurnRepayment: number; turnsRemaining: number; termTurns: number; takenOnTurn: number }> }).loans ?? []).map((loan) => ({ ...loan })),
-    pendingLoanOffer: (saved as unknown as { pendingLoanOffer?: { ownerId: number; reason: 'bankruptcy'; options: Array<{ principal: number; termTurns: number }> } | null }).pendingLoanOffer
-      ? (() => {
-          const offer = (saved as unknown as { pendingLoanOffer: { ownerId: number; reason: 'bankruptcy'; options: Array<{ principal: number; termTurns: number }> } }).pendingLoanOffer!;
-          return {
-            ownerId: offer.ownerId,
-            reason: offer.reason,
-            options: (offer.options ?? []).map((option) => ({ ...option })),
-          };
-        })()
-      : null,
+    // Active bank loans + pending offer (Bank Loans epic MS-0MVL6DZI0000F6CG,
+    // persistence slice MS-0MVPWSE0E003QLKE). Restored defensively: a save is
+    // untrusted data, so malformed entries are dropped instead of crashing the
+    // load, `turnsRemaining` is clamped to `termTurns`, and a v2 save (no loan
+    // fields at all) resumes with no loans and no offer.
+    loans: restoreActiveLoans((saved as unknown as { loans?: unknown }).loans),
+    pendingLoanOffer: restorePendingLoanOffer(
+      (saved as unknown as { pendingLoanOffer?: unknown }).pendingLoanOffer,
+    ),
   };
 
   // ── Competitive seat-config backfill (MS-0MUTU8ICD002I1MK AC5) ──

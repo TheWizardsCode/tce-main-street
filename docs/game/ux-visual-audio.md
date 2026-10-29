@@ -1187,6 +1187,16 @@ condensed text-only summary.
   Presented **once per offer** (the offer object is the guard), and a
   headless scene without an overlay surface falls back to the model's
   deterministic `recommendedIndex` (the AI/headless largest-option policy).
+- Persistence (MS-0MVPWSE0E003QLKE): `loans` and `pendingLoanOffer` are part of
+  the run checkpoint at `MAIN_STREET_SAVE_SCHEMA_VERSION = 3` — a mid-loan save
+  resumes with the same remaining turns and per-turn amount (never a
+  re-derived schedule), and a save taken while the dialog is open still
+  presents the same menu. Both fields are omitted while empty, so a loan-free
+  payload is unchanged from v2; a v2 save loads through the serializer's
+  v2 → v3 migration with no loans and no offer. Loads are defensive
+  (`restoreActiveLoans` / `restorePendingLoanOffer`): malformed entries are
+  dropped, `turnsRemaining` is clamped to `termTurns`, and an unusable offer is
+  discarded rather than stalling the closing.
 - Tests: `tests/main-street/MainStreetLoanOverlay.test.ts` (model rows,
   presentation-once, accept/decline resume, post-closing pause) and
   `tests/main-street/MainStreetLoanOverlay.browser.test.ts` (rendering, button

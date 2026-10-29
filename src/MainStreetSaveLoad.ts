@@ -7,6 +7,7 @@ import {
   type MainStreetCampaignProgress,
   type MainStreetSerializedState,
   type MainStreetState,
+  migrateMainStreetSerializedState,
   serializeMainStreetState,
   deserializeMainStreetState,
 } from './MainStreetState';
@@ -16,7 +17,18 @@ import {
   deriveUnlockedCardIds,
 } from './MainStreetTiers';
 
-export const MAIN_STREET_SAVE_SCHEMA_VERSION = 2;
+/**
+ * Current run-checkpoint schema version.
+ *
+ * Bumped to **3** by the loan-persistence slice (MS-0MVPWSE0E003QLKE) when the
+ * payload gained `loans` / `pendingLoanOffer`. Older saves are accepted through
+ * `mainStreetStateSerializer.migrate` (and the idempotent backfill inside
+ * `deserializeMainStreetState`), so a pre-loan v2 save still loads unchanged.
+ *
+ * Campaign progress has its own, independently versioned schema below — do not
+ * tie the two together.
+ */
+export const MAIN_STREET_SAVE_SCHEMA_VERSION = 3;
 export const MAIN_STREET_CAMPAIGN_SCHEMA_VERSION = 3;
 export const MAIN_STREET_GAME_TYPE = 'main-street';
 export const MAIN_STREET_RUN_SLOT = 'turn-start';
@@ -32,10 +44,12 @@ export const mainStreetStateSerializer: SaveSerializer<
   // v1 → v2 (CG-0MTMYIHKO001QCWL): the day→week terminology rename maps the
   // legacy 'DayStart' phase and dayStartCoins/dayStartRep/dayStartScore fields
   // to their week equivalents inside migrateSerializedState(), which runs as
-  // part of deserializeMainStreetState(). The version-migration hook is
-  // therefore an identity passthrough; it exists so a v1 checkpoint is
-  // accepted rather than rejected by the strict version check.
-  migrate: (data) => data,
+  // part of deserializeMainStreetState().
+  // v2 → v3 (MS-0MVPWSE0E003QLKE): active bank loans and the pending bailout
+  // offer. A v2 payload carries neither field; the migration adds the empty
+  // defaults so a pre-loan save resumes with no loans and no offer (parent
+  // AC9). The per-entry validation happens on the way into the runtime state.
+  migrate: migrateMainStreetSerializedState,
 };
 
 export const mainStreetCampaignSerializer: SaveSerializer<

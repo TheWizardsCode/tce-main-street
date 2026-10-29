@@ -89,4 +89,5 @@ export type { MarketRelevanceBias } from './MainStreetStateSetup';
 export {
   serializeMainStreetState,
   deserializeMainStreetState,
+  migrateMainStreetSerializedState,
 } from './MainStreetStateSerialize';

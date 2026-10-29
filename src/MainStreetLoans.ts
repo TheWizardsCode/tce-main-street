@@ -31,7 +31,7 @@
  */
 
 import type { MainStreetState } from './MainStreetState';
-import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
+import type { ActiveLoan, LoanOption, PendingLoanOffer } from './MainStreetStateTypes';
 import { addLog, describeEventEffects, syncResourceBankToLedger } from './MainStreetStateLog';
 
 /**
@@ -458,4 +458,135 @@ export function applyLoanRepayments(
 
   state.loans = surviving;
   return -totalRepaid;
+}
+
+// ── Persistence: defensive restore (MS-0MVPWSE0E003QLKE) ────
+
+/**
+ * Narrows an untrusted serialized value to a finite number.
+ *
+ * A checkpoint on disk is data, not code: a hand-edited, truncated or
+ * corrupted save can carry `null`, strings or `NaN` where the runtime model
+ * expects integers. Every restore check below goes through this guard so an
+ * invalid entry is dropped instead of poisoning the repayment arithmetic with
+ * `NaN` for the rest of the run.
+ */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Restores the active loans from a saved checkpoint, dropping anything that is
+ * not a well-formed {@link ActiveLoan} (save schema v3, persistence slice
+ * MS-0MVPWSE0E003QLKE).
+ *
+ * The schedule is resumed, not recomputed: `principal`, `totalRepayment`,
+ * `perTurnRepayment`, `turnsRemaining`, `termTurns` and `ownerId` round-trip
+ * verbatim so a mid-loan save keeps billing exactly the amount the seat agreed
+ * to and for exactly the turns it has left.
+ *
+ * Defensive rules (any violation drops the entry rather than throwing):
+ *
+ * - every field must be a finite number, with `ownerId`/`termTurns` integral
+ *   and `termTurns >= 1` (a zero-turn loan could never be repaid);
+ * - `principal` must be positive and the money fields non-negative;
+ * - `turnsRemaining` is clamped to `termTurns`, so a corrupt save can never
+ *   extend a loan beyond the term it was issued for;
+ * - a loan with no payments left (`turnsRemaining <= 0`) is retired on load,
+ *   matching what the next repayment pass would do anyway;
+ * - at most one loan per `ownerId` survives (the one-active-loan rule,
+ *   producer Q1 = A) — the first well-formed entry wins.
+ *
+ * @param raw The untrusted `loans` value from the serialized state.
+ * @returns The loans safe to resume; an empty array when the save predates
+ *          the loan mechanic (schema v2) or carries nothing usable.
+ */
+export function restoreActiveLoans(raw: unknown): ActiveLoan[] {
+  if (!Array.isArray(raw)) return [];
+
+  const restored: ActiveLoan[] = [];
+  const seenOwners = new Set<number>();
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const {
+      ownerId,
+      principal,
+      totalRepayment,
+      perTurnRepayment,
+      turnsRemaining,
+      termTurns,
+      takenOnTurn,
+    } = entry as Record<string, unknown>;
+
+    if (!isFiniteNumber(ownerId) || !Number.isInteger(ownerId) || ownerId < 0) continue;
+    if (!isFiniteNumber(principal) || principal <= 0) continue;
+    if (!isFiniteNumber(totalRepayment) || totalRepayment < 0) continue;
+    if (!isFiniteNumber(perTurnRepayment) || perTurnRepayment < 0) continue;
+    if (!isFiniteNumber(turnsRemaining)) continue;
+    if (!isFiniteNumber(termTurns) || !Number.isInteger(termTurns) || termTurns < 1) continue;
+    if (!isFiniteNumber(takenOnTurn) || takenOnTurn < 0) continue;
+    if (seenOwners.has(ownerId)) continue;
+
+    // Clamp to the loan's own term; `Math.floor` keeps a fractional (corrupt)
+    // counter from buying an extra payment.
+    const clampedTurnsRemaining = Math.min(Math.floor(turnsRemaining), termTurns);
+    if (clampedTurnsRemaining <= 0) continue;
+
+    seenOwners.add(ownerId);
+    restored.push({
+      ownerId,
+      principal,
+      totalRepayment,
+      perTurnRepayment,
+      turnsRemaining: clampedTurnsRemaining,
+      termTurns,
+      takenOnTurn,
+    });
+  }
+
+  return restored;
+}
+
+/**
+ * Restores the pending loan offer from a saved checkpoint, or `null` when the
+ * save has none (or carries something unusable).
+ *
+ * A save taken while the bailout decision is open must resume with the offer
+ * still pending: the seat, the reason and the presented options round-trip
+ * verbatim so the player is shown exactly the menu they were given.
+ *
+ * Defensive rules (any violation drops the offer rather than throwing):
+ *
+ * - the entry must be an object with a non-negative integral `ownerId`;
+ * - `reason` must be the only reason currently produced (`'bankruptcy'`) — an
+ *   unknown reason has no resolver, so keeping it would stall the closing;
+ * - `options` must be an array with at least one usable option (positive
+ *   `principal`, integral `termTurns >= 1`); unusable options are dropped, and
+ *   an offer with no option left is dropped entirely — `largestBailoutOption`
+ *   throws on an empty menu, and a human could never resolve one.
+ *
+ * @param raw The untrusted `pendingLoanOffer` value from the serialized state.
+ * @returns The offer to resume, or `null` when there is nothing to resume.
+ */
+export function restorePendingLoanOffer(raw: unknown): PendingLoanOffer | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const offer = raw as Record<string, unknown>;
+
+  const { ownerId, reason, options: rawOptions } = offer;
+  if (!isFiniteNumber(ownerId) || !Number.isInteger(ownerId) || ownerId < 0) return null;
+  if (reason !== 'bankruptcy') return null;
+  if (!Array.isArray(rawOptions)) return null;
+
+  const options: LoanOption[] = [];
+  for (const entry of rawOptions) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { principal, termTurns } = entry as Record<string, unknown>;
+    if (!isFiniteNumber(principal) || principal <= 0) continue;
+    if (!isFiniteNumber(termTurns) || !Number.isInteger(termTurns) || termTurns < 1) continue;
+    options.push({ principal, termTurns });
+  }
+  if (options.length === 0) return null;
+
+  return { ownerId, reason: 'bankruptcy', options };
 }

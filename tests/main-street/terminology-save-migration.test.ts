@@ -44,7 +44,10 @@ function createLegacySave(seed: string): Record<string, unknown> {
 
 describe('day→week terminology save migration', () => {
   it('bumps the run and campaign schema versions', () => {
-    expect(MAIN_STREET_SAVE_SCHEMA_VERSION).toBe(2);
+    // v2 came from the rename itself; v3 added active bank loans + the pending
+    // bailout offer (MS-0MVPWSE0E003QLKE). Campaign progress is versioned
+    // separately and was not touched by the loan slice.
+    expect(MAIN_STREET_SAVE_SCHEMA_VERSION).toBe(3);
     expect(MAIN_STREET_CAMPAIGN_SCHEMA_VERSION).toBe(3);
   });
 
