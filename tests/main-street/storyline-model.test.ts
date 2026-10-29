@@ -35,6 +35,7 @@ import {
   processEndOfTurn,
   resolveEventChoice,
   resolveEventOption,
+  resolvePendingEventChoice,
 } from '../../src/MainStreetEngine';
 import { resolveEventChoiceCommand } from '../../src/MainStreetCommands';
 import { UndoRedoManager } from '@core-engine/UndoRedoManager';
@@ -523,6 +524,234 @@ describe('AC3 — resolveStorylineOption applies effect policy correctly', () =>
     const res = resolveStorylineOption(state, event, { label: 'No', successorId: null, effectPolicy: 'skip' });
     expect(res.coinChange).toBe(0);
     expect(state.resourceBank.coins).toBe(before);
+  });
+});
+
+// ── Cost / extraEffect settlement (MS-0MVNU5M7Z0095CEM) ─────
+//
+// The Main Street engine adapter must implement the core
+// `applyResourceDelta` seam, otherwise core logs
+// "Story-line cost/extra-effect not applied" and a declarative option
+// `cost` / `extraEffect` never touches `resourceBank`. These tests pin the
+// settlement order documented in core `resolve.ts` (card effect → cost →
+// extra effect), the reported `coinChange`/`repChange`, the ledger sync, the
+// headless path, and undo / save-load behaviour.
+
+describe('MS-0MVNU5M7Z0095CEM — cost / extraEffect settlement', () => {
+  const MISSING_SEAM_WARNING = 'Story-line cost/extra-effect not applied';
+
+  /**
+   * A neutral event (no intrinsic delta) so a cost-only assertion is
+   * unambiguous. `overrides` lets a test add a card effect.
+   */
+  function costEvent(overrides: Partial<EventCard> = {}): EventCard {
+    return {
+      family: 'event',
+      id: 'evt-cost-neutral',
+      name: 'Cost Neutral',
+      trigger: 'Incident',
+      cost: 0,
+      effect: 'No effect',
+      target: 'All',
+      coinDelta: 0,
+      reputationDelta: 0,
+      storylineId: 'arc-cost',
+      ...overrides,
+    } as EventCard;
+  }
+
+  /** A fresh state with a known, affordable resource bank. */
+  function fundedState(seed: string): MainStreetState {
+    const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+    state.resourceBank.coins = 1000;
+    state.resourceBank.reputation = 20;
+    return state;
+  }
+
+  /**
+   * Loads a cost-bearing choice card and draws it as a pending choice through
+   * the end-of-turn engine (the integration/headless setup shared by the
+   * AC4/AC5 tests).
+   */
+  function setupPendingCostChoice(seed: string): MainStreetState {
+    const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    loadTemplatesFromCsv(
+      buildCsv([
+        { id: 'evt-cost', name: 'Cost Choice', effect: 'Lose 50 coins', coinDelta: -50, hasChoices: true, storylineId: 'arc-cost' },
+        { id: 'evt-cost-next', name: 'Cost Next', effect: 'Lose 10 coins', coinDelta: -10, storylineId: 'arc-cost' },
+      ]),
+    );
+    registerStorylineOptions('evt-cost', [
+      {
+        label: 'Pay',
+        successorId: 'evt-cost-next',
+        effectPolicy: 'apply',
+        cost: { coins: 120, reputation: 4 },
+        extraEffect: { coins: 30, reputation: 2 },
+      },
+    ]);
+    const event = getEventTemplates().find((c) => c.id === 'evt-cost') as EventCard;
+    state.incidentDeck.length = 0;
+    state.incidentDeck.push({ ...event, id: 'evt-cost-0' });
+    state.resourceBank.coins = 2000;
+    state.resourceBank.reputation = 20;
+    processEndOfTurn(state);
+    return state;
+  }
+
+  it('AC2 — an "apply" option deducts exactly cost.coins and cost.reputation', () => {
+    const state = fundedState('cost-apply');
+
+    const res = resolveStorylineOption(state, costEvent(), {
+      label: 'Pay',
+      successorId: null,
+      effectPolicy: 'apply',
+      cost: { coins: 120, reputation: 4 },
+    });
+
+    expect(state.resourceBank.coins).toBe(880);
+    expect(state.resourceBank.reputation).toBe(16);
+    expect(res.coinChange).toBe(-120);
+    expect(res.repChange).toBe(-4);
+    // AC1: the shared ledger follows the resourceBank on the same seam.
+    expect(state.ledger.get('coins')).toBe(880);
+    expect(state.ledger.get('reputation')).toBe(16);
+  });
+
+  it('AC2 — a "skip" option still pays its cost (cost is independent of effectPolicy)', () => {
+    const state = fundedState('cost-skip');
+
+    const res = resolveStorylineOption(state, costEvent(), {
+      label: 'Pay',
+      successorId: null,
+      effectPolicy: 'skip',
+      cost: { coins: 120, reputation: 4 },
+    });
+
+    expect(state.resourceBank.coins).toBe(880);
+    expect(state.resourceBank.reputation).toBe(16);
+    expect(res.coinChange).toBe(-120);
+    expect(res.repChange).toBe(-4);
+    expect(state.ledger.get('coins')).toBe(880);
+  });
+
+  it('AC3 — "apply" reports card effect + cost + extraEffect in coinChange/repChange', () => {
+    const state = fundedState('cost-extra-apply');
+
+    const res = resolveStorylineOption(state, costEvent({ coinDelta: -50 }), {
+      label: 'Pay',
+      successorId: null,
+      effectPolicy: 'apply',
+      cost: { coins: 120, reputation: 4 },
+      extraEffect: { coins: 30, reputation: 2 },
+    });
+
+    // -50 (card effect) - 120 (cost) + 30 (extra) = -140.
+    expect(res.coinChange).toBe(-140);
+    // -4 (cost) + 2 (extra) = -2 (the card effect has no reputation delta).
+    expect(res.repChange).toBe(-2);
+    expect(state.resourceBank.coins).toBe(860);
+    expect(state.resourceBank.reputation).toBe(18);
+  });
+
+  it('AC3 — "skip" reports cost + extraEffect only (card effect refused)', () => {
+    const state = fundedState('cost-extra-skip');
+
+    const res = resolveStorylineOption(state, costEvent({ coinDelta: -50 }), {
+      label: 'Pay',
+      successorId: null,
+      effectPolicy: 'skip',
+      cost: { coins: 120, reputation: 4 },
+      extraEffect: { coins: 30, reputation: 2 },
+    });
+
+    // -120 (cost) + 30 (extra) = -90; the -50 card effect is skipped.
+    expect(res.coinChange).toBe(-90);
+    expect(res.repChange).toBe(-2);
+    expect(state.resourceBank.coins).toBe(910);
+    expect(state.resourceBank.reputation).toBe(18);
+  });
+
+  it('AC3 — an extraEffect without a cost still lands for both effect policies', () => {
+    const apply = fundedState('extra-only-apply');
+    const applyRes = resolveStorylineOption(apply, costEvent(), {
+      label: 'Bonus',
+      successorId: null,
+      effectPolicy: 'apply',
+      extraEffect: { coins: 25, reputation: 3 },
+    });
+    expect(applyRes.coinChange).toBe(25);
+    expect(applyRes.repChange).toBe(3);
+    expect(apply.resourceBank.coins).toBe(1025);
+
+    const skip = fundedState('extra-only-skip');
+    const skipRes = resolveStorylineOption(skip, costEvent(), {
+      label: 'Bonus',
+      successorId: null,
+      effectPolicy: 'skip',
+      extraEffect: { coins: 25, reputation: 3 },
+    });
+    expect(skipRes.coinChange).toBe(25);
+    expect(skipRes.repChange).toBe(3);
+    expect(skip.resourceBank.coins).toBe(1025);
+  });
+
+  it('AC4 — a headless resolution charges the cost and logs no missing-seam warning', () => {
+    const state = setupPendingCostChoice('cost-headless');
+    expect(state.pendingEventChoice).not.toBeNull();
+    const coinsBefore = state.resourceBank.coins;
+    const repBefore = state.resourceBank.reputation;
+
+    const result = resolvePendingEventChoice(state);
+
+    expect(result).not.toBeNull();
+    // -50 card effect, -120 cost, +30 extra.
+    expect(state.resourceBank.coins).toBe(coinsBefore - 140);
+    expect(state.resourceBank.reputation).toBe(repBefore - 2);
+    const log = state.activityLog.map((entry) => entry.text).join('\n');
+    expect(log).not.toContain(MISSING_SEAM_WARNING);
+    expect(log).toContain('Cost paid: -120 coins, -4 reputation.');
+    expect(log).toContain('Extra effect: +30 coins, +2 reputation.');
+    expect(state.pendingEventChoice).toBeNull();
+  });
+
+  it('AC5 — undo restores the pre-payment resources; redo re-charges', () => {
+    const state = setupPendingCostChoice('cost-undo');
+    const coinsBefore = state.resourceBank.coins;
+    const repBefore = state.resourceBank.reputation;
+    const undo = new UndoRedoManager();
+
+    undo.execute(resolveEventChoiceCommand(state, 0));
+    expect(state.resourceBank.coins).toBe(coinsBefore - 140);
+    expect(state.resourceBank.reputation).toBe(repBefore - 2);
+
+    undo.undo();
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.resourceBank.reputation).toBe(repBefore);
+    expect(state.pendingEventChoice!.resolved).toBe(false);
+
+    // The restored pending choice keeps its declarative settlement data, so
+    // redo charges the cost again instead of resolving a free option.
+    undo.redo();
+    expect(state.resourceBank.coins).toBe(coinsBefore - 140);
+    expect(state.resourceBank.reputation).toBe(repBefore - 2);
+  });
+
+  it('AC5 — a save/load round-trip preserves the post-payment balance', () => {
+    const state = setupPendingCostChoice('cost-save-load');
+    const coinsBefore = state.resourceBank.coins;
+
+    resolveEventOption(state, 0);
+    const paidCoins = state.resourceBank.coins;
+    const paidRep = state.resourceBank.reputation;
+    expect(paidCoins).toBe(coinsBefore - 140);
+
+    const loaded = deserializeMainStreetState(serializeMainStreetState(state));
+    expect(loaded.resourceBank.coins).toBe(paidCoins);
+    expect(loaded.resourceBank.reputation).toBe(paidRep);
+    expect(loaded.ledger.get('coins')).toBe(paidCoins);
+    expect(loaded.ledger.get('reputation')).toBe(paidRep);
   });
 });
 

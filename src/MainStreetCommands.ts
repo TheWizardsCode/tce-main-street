@@ -195,6 +195,13 @@ function clonePendingChoice(pending: any): any {
           successorId: o.successorId ?? null,
           successorIds: o.successorIds ? [...o.successorIds] : undefined,
           effectPolicy: o.effectPolicy,
+          // Declarative settlement data (MS-0MVNU5M7Z0095CEM): preserved by
+          // reference-copy so undo → redo re-charges the option's cost and
+          // re-applies its extra effect. Without these, the restored pending
+          // choice would resolve as if it were free.
+          cost: o.cost ? { ...o.cost } : undefined,
+          extraEffect: o.extraEffect ? { ...o.extraEffect } : undefined,
+          conditionalSuccessors: o.conditionalSuccessors,
           condition: o.condition,
           successorResolver: o.successorResolver,
         }))

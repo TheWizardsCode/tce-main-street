@@ -504,7 +504,9 @@ and not a cross-repo contract (MS-0MVMNO29Z009SF6O).
 
 - `mainStreetStorylineEngineAdapter` maps the core engine seam onto
   `MainStreetState`: seeded `rng()`, `resolveEvent` effect application, the
-  activity log, and the incident-deck chain-card sink.
+  activity log, the incident-deck chain-card sink, and the
+  `applyResourceDelta` settlement seam (declarative option `cost` / `extraEffect`
+  mutate `resourceBank` and re-sync the shared `EconomyLedger`).
 - `mainStreetStorylineUiAdapter` supplies Main Street's presentation (names,
   dialog labels, story-update lines, journal formatting). It is the core
   default implementation, which was extracted from Main Street, so the shipped
