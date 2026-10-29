@@ -111,10 +111,11 @@
     },
     "pedestrians-scene-visibility-browser": {
       "commands": [
-        "npx vitest run --project browser tests/main-street/pedestrians-scene-visibility.browser.test.ts"
+        "npx vitest run --project browser tests/main-street/pedestrians-scene-visibility.browser.test.ts tests/main-street/pedestrians-scene-behaviour.browser.test.ts"
       ],
       "paths": [
         "tests/main-street/pedestrians-scene-visibility.browser.test.ts",
+        "tests/main-street/pedestrians-scene-behaviour.browser.test.ts",
         "src/scenes/MainStreetPedestrians.ts",
         "src/scenes/MainStreetRendererStreet.ts",
         "src/scenes/MainStreetAnimatorIncome.ts",
