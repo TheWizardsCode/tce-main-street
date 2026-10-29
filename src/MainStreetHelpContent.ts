@@ -141,7 +141,25 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
         'move + play/place pair costs 1 action total.\n' +
         'Card costs are paid when a card is placed or played, not when taken\n' +
         'to hand.\n' +
-        'End Turn: resolves income, incidents, and advances to the next week.',
+        'End Turn: resolves income, incidents, loan repayments, and advances to the next week.',
+    },
+    {
+      // Bank Loans (MS-0MVPWSFDN000QJXB, parent MS-0MVL6DZI0000F6CG): the menu,
+      // the flat-repayment rule and the bankruptcy bailout as shipped. Static
+      // copy is sufficient because every player-facing preset enables loans
+      // (`loansEnabled`); only headless/simulation configs turn them off, and
+      // those never render the help panel. The default menu figures are pinned
+      // against `config.loanOptions` by `help-panel-content.test.ts`.
+      heading: 'Bank Loans',
+      body:
+        'Loans credit the principal immediately and cost no action point.\n' +
+        'Menu: choose 300 coins over 3 weeks, 600 over 6 weeks or 1000 over 10 weeks;\n' +
+        'each option repays 110 coins per week (principal plus a flat 10% interest).\n' +
+        'One loan at a time: repay the current loan before taking another.\n' +
+        'Repayment is deducted every turn until the term expires; the HUD shows the\n' +
+        'turns left and the per-turn amount.\n' +
+        'Ending a turn below zero coins with no active loan offers a bailout loan\n' +
+        'instead of losing. Decline and bankruptcy stands; AI rivals take the largest.',
     },
     {
       heading: 'Win / Loss Conditions',
@@ -149,7 +167,8 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
         `Reach ${cfg.winThreshold} points to win (coins + reputation + challenges).\n` +
         `Complete all ${cfg.challengesPerRun} challenges for an instant win.\n` +
         'No turn limit: keep playing until you win or lose.\n' +
-        'Bankruptcy (coins < 0) or reputation collapse (rep <= 0) loses the game.',
+        'Bankruptcy (coins < 0) or reputation collapse (rep <= 0) loses the game.\n' +
+        'A bailout loan (see Bank Loans) is offered first; decline it and the run ends.',
     },
     {
       heading: 'Tools',

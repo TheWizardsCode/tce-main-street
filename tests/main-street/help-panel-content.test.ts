@@ -16,6 +16,12 @@ import {
   SYNERGY_HELP_ICONS,
   type HelpSectionContent,
 } from '../../src/MainStreetHelpContent';
+import {
+  DEFAULT_LOAN_INTEREST_RATE,
+  DEFAULT_LOAN_OPTIONS,
+  loanPerTurnRepayment,
+  loanTotalRepayment,
+} from '../../src/MainStreetLoans';
 import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
 
 const CFG = { winThreshold: 120, challengesPerRun: 3 };
@@ -154,6 +160,70 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(body).toContain('bankruptcy');
     expect(body).toContain('reputation');
     expect(body).toContain(String(CFG.winThreshold));
+  });
+
+  // ── Bank Loans (MS-0MVPWSFDN000QJXB) ─────────────────────
+
+  it('has a "Bank Loans" section placed within the end-of-turn economy copy', () => {
+    const headings = helpContent.map((s) => s.heading);
+    expect(headings).toContain('Bank Loans');
+    // The loan section sits between the turn-flow economy copy and the
+    // loss conditions, keeping the PRD-required relative order intact.
+    expect(headings.indexOf('Turn Flow')).toBeLessThan(headings.indexOf('Bank Loans'));
+    expect(headings.indexOf('Bank Loans')).toBeLessThan(
+      headings.indexOf('Win / Loss Conditions'),
+    );
+  });
+
+  it('"Bank Loans" documents the menu, maths, one-loan rule and no-action-cost rule', () => {
+    const body = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Bank Loans')!),
+    );
+    // The menu options from the loan config (300/3, 600/6, 1000/10).
+    expect(body).toContain('300');
+    expect(body).toContain('600');
+    expect(body).toContain('1000');
+    // Flat 10% interest, spread evenly: each default option repays 110/week.
+    expect(body).toContain('110 coins per week');
+    expect(body).toContain('10%');
+    // One active loan per player and no action-point cost.
+    expect(body).toContain('one loan at a time');
+    expect(body).toContain('no action point');
+  });
+
+  it('states the same loan menu config.loanOptions derives', () => {
+    const body = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Bank Loans')!),
+    );
+    for (const option of DEFAULT_LOAN_OPTIONS) {
+      expect(body).toContain(String(option.principal));
+      expect(body).toContain(`${option.termTurns} weeks`);
+      const perTurn = loanPerTurnRepayment(
+        loanTotalRepayment(option.principal, DEFAULT_LOAN_INTEREST_RATE),
+        option.termTurns,
+      );
+      expect(body).toContain(`${perTurn} coins per week`);
+    }
+  });
+
+  it('documents the bailout rule and the AI policy in the loan and loss copy', () => {
+    const loans = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Bank Loans')!),
+    );
+    expect(loans).toContain('bailout');
+    expect(loans).toContain('largest');
+    expect(loans).toContain('decline');
+    // The loss-condition copy points at the bailout so a player who hits
+    // bankruptcy sees the same rule from the end-of-turn direction.
+    const winLoss = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Win / Loss Conditions')!),
+    );
+    expect(winLoss).toContain('bailout');
+  });
+
+  it('"Turn Flow" mentions loan repayment in the end-of-turn sequence', () => {
+    const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Turn Flow')!));
+    expect(body).toContain('loan repayment');
   });
 
   it('"Tools" mentions undo and research (Hint entry removed)', () => {

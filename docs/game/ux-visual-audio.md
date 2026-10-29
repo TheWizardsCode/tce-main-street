@@ -1120,7 +1120,11 @@ condensed text-only summary.
   always-disabled **[ Bank Loan ]** carrying the hint *“Bank loans are not
   available yet — coming in a future update.”* — the seam reserved for
   MS-0MVL6DZI0000F6CG (Bank Loans), which replaces only the
-  `onBankLoanAction` wiring; this item never enables it.
+  `onBankLoanAction` wiring; this item never enables it. The loan engine,
+  bailout flow and HUD readout have since shipped (MS-0MVL6DZI0000F6CG
+  children), so the button's enabling hint is now the only outstanding piece:
+  wiring is tracked by MS-0MVPWSQMG004198C, and until it lands the button
+  stays disabled with that copy.
   `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
   overlay manager (headless), continues the closing instead of stranding the
   turn.
@@ -1213,6 +1217,30 @@ condensed text-only summary.
   presentation-once, accept/decline resume, post-closing pause) and
   `tests/main-street/MainStreetLoanOverlay.browser.test.ts` (rendering, button
   count, dismissal).
+
+### Loan obligation HUD readout
+
+- Renderer: `refreshHud()` in `src/scenes/MainStreetRendererHud.ts`
+  (MS-0MVPWSCRD004A6Z4, parent MS-0MVL6DZI0000F6CG).
+- Copy: `MainStreetLoans.hudLoanReadout(state)` returns
+  `Loan: 110 coins/turn, 6 turns left` for the seat bound to the shared wallet,
+  or `null` when loans are disabled or the seat holds no active loan — so a
+  loan-free (and every `loansEnabled: false` headless) HUD is
+  pixel-identical to before the feature.
+- Placement: a 13 px bold `#ff6699` label named `loan-hud-readout`, right-aligned
+  immediately left of the `Score: N` label at the HUD strip baseline. Anchoring
+  to the Score label's measured left edge (not a fixed x) keeps the readout
+  clear of the score for every digit width; it is added to `hudContainer` so it
+  follows the standard HUD lifecycle.
+- Competitive play: each scoreboard row carries the compact variant
+  (`Loan: 110/turn, 6 left`) via
+  `formatCompetitiveScoreboardRow()` → `Loan: 110/turn, 6 left`, appended after
+  the score so every seat's remaining debt is visible from one HUD line. The
+  readout updates every refresh, so a repaid loan disappears immediately and
+  each instalment ticks the remaining turns down.
+- Acceptance: accepting a loan also logs the decision (amount, term, per-turn
+  repayment) to the activity log, and every instalment logs its own `loss` row
+  (see the rules documentation, §5.1).
 
 ### Game-over panel (two-column summary)
 

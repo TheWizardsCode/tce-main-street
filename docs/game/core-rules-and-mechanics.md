@@ -212,7 +212,7 @@ stateDiagram-v2
     ActionPhase --> InvestmentResolution: Auto‑resolve held Investment if not played
     InvestmentResolution --> IncomePhase: Collect Base Income + Synergy Bonuses
     IncomePhase --> IncidentPhase: Reveal and resolve top of incident deck
-    IncidentPhase --> EndCheck: Evaluate win/loss conditions
+    IncidentPhase --> EndCheck: Loan repayment, bailout offer, then win/loss
     EndCheck --> WeekStart: Loop to next turn
 ```
 
@@ -232,7 +232,7 @@ stateDiagram-v2
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
 6. **IncidentPhase** – Reveal and resolve the top card of the face‑down incident deck. The player knows only how many incidents remain (card back + count); the revealed card's effect posts to the activity log. When the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (CG-0MSTOATDP000JNHH).
-7. **EndCheck** – Evaluate win/loss conditions.
+7. **EndCheck** – Apply the scheduled repayment to every active loan (§5.1), offer a bailout loan to a seat at `coins < 0` with no active loan (the closing pauses on the offer), then evaluate win/loss conditions.
 8. Loop back to **WeekStart** for the next turn.
 
 The turn ends when either:
@@ -240,6 +240,86 @@ The turn ends when either:
 - A **Loss Condition** (Section 8) triggers.
 
 Default presets impose **no turn limit** (CG-0MSLXJCHH001DLIO): a player who keeps coins >= 0 and reputation > 0 can pass turns indefinitely without winning — passive play simply never reaches the score threshold. Configs that explicitly set `maxTurns` additionally end the turn when `turn >= maxTurns` (via the turn-limit victory/exhaustion paths below).
+
+### 5.1 Bank loans (credit, repayment and bailout)
+
+A loan converts future income into present coins: the principal is credited to the
+borrower's wallet immediately and repaid as a fixed per-turn amount until the term
+expires (Bank Loans epic MS-0MVL6DZI0000F6CG). Loans exist so that one bad week does
+not end a run — the bankruptcy bailout below offers one *before* the loss is declared.
+
+**Loan menu.** The menu is configuration data (`config.loanOptions`,
+`config.loansEnabled`, `config.loanInterestRate`). The `Easy` / `Medium` / `Hard` presets
+enable loans at a flat **10 %** interest rate; headless / simulation configs default
+`loansEnabled` to `false`, so existing Monte Carlo and balance baselines are unchanged
+until a simulation opts in. The default menu:
+
+| Option | Principal | Term | Per-turn repayment | Total repayment |
+|--------|-----------|------|--------------------|-----------------|
+| Small | 300 coins | 3 weeks | 110 coins | 330 coins |
+| Medium | 600 coins | 6 weeks | 110 coins | 660 coins |
+| Large | 1000 coins | 10 weeks | 110 coins | 1100 coins |
+
+**Repayment maths.** Flat interest over the whole term — no compounding and no interest
+charged on the outstanding balance:
+
+```
+totalRepayment   = round(principal × (1 + loanInterestRate))
+perTurnRepayment = round(totalRepayment / termTurns)
+```
+
+So the seed's worked example, **600 over 6 turns**, gives `round(600 × 1.10) = 660` total
+→ `round(660 / 6) = 110` per week. All three default options happen to land on
+110 coins/week, making the menu a pure duration-versus-size trade-off (config data, so
+re-balancing is an edit rather than a code change).
+
+**Rules.**
+
+- **No action cost.** Taking a loan is not an action-type operation: it never decrements
+  the weekly action budget or the banked reserve (§6.0). The `takeLoan` command is
+  legal in the **MarketPhase** only.
+- **One active loan per player.** A seat that already holds an active loan cannot take
+  or accept another; the attempt is rejected with a clear, user-facing reason and no
+  resource change. Debt never stacks.
+- **Unconditional per-turn repayment.** At the end of every turn in which a seat holds
+  an active loan, the closing sequence (after income, ongoing costs and the incident,
+  ahead of the end-condition checks) debits exactly `perTurnRepayment` through the
+  existing `EconomyLedger` / `resourceBank` sync path and writes one `loss`
+  activity-log row. The deduction is **never clamped**: a payment larger than the
+  wallet leaves `coins < 0`, and the ordinary bankruptcy path of §8 decides the outcome
+  (a seat already repaying simply goes bankrupt). The deduction is recorded as a one-off
+  expense in the turn's net summary row, the loan is retired after `termTurns`
+  payments, and no further deductions occur.
+- **Visible obligation.** Accepting a loan logs the amount, term and per-turn
+  repayment, and while the loan is active the HUD shows what is still owed —
+  `Loan: 110 coins/turn, 6 turns left` (compact `Loan: 110/turn, 6 left` on the
+  competitive scoreboard) — so the debt burden is never hidden.
+- **First instalment timing.** A bailout loan accepted during a closing pays its first
+  instalment on the **next** turn, so accepting a bailout can never immediately
+  re-bankrupt the seat it just rescued.
+
+**Bankruptcy bailout.** In the closing sequence, *before* the bankruptcy / seat-failure
+declaration, a seat that would fail on `coins < 0` **and holds no active loan** is
+offered a loan instead of losing:
+
+- the closing pauses on a pending offer (`state.pendingLoanOffer`), mirroring the
+  `pendingEventChoice` / `pendingPiggyback` deferred-closing pattern;
+- accepting any menu option credits the principal and the paused closing completes —
+  the seat keeps playing;
+- declining, or already holding an active loan, preserves today's bankruptcy behaviour;
+- **at most one offer per seat per turn**, so a decline converges to game over in a
+  single pass and no offer loop is possible;
+- the competitive opening-day solvency grace wins: a competitive seat cannot be
+  bankrupted on turn 1, so it is never offered a bailout there (§8);
+- `loansEnabled: false` is a hard no-op — no offer, no repayment, no log row — keeping
+  loans-off headless closings byte-identical.
+
+**AI policy (producer decisions Q3 = A, Q5 = A).** AI seats are **bailout-only**: an AI
+seat at `coins < 0` with no active loan auto-accepts the **largest** option (longest term
+as the deterministic tie-break) and is not eliminated; an AI seat that already holds a
+loan is eliminated exactly as before. AI seats never take proactive (non-bailout) loans.
+Headless turn execution (`endTurnHeadless`, Monte Carlo, balance runs) resolves a pending
+offer deterministically with the same policy, so simulations never stall.
 
 ---
 
@@ -599,7 +679,9 @@ Loss conditions are evaluated at the end of the **Night Income** phase before ch
 > negative coins, `applyFirstSharedDaySolvencyGrace` writes the debt off to
 > `0` and logs `First-day grace: <n> coin debt written off`. The seat keeps
 > everything it bought and simply starts the next day with an empty purse;
-> bankruptcy elimination applies from **turn 2** onwards unchanged. This
+> bankruptcy elimination applies from **turn 2** onwards unchanged. Because the
+> grace resolves the debt, no bankruptcy bailout loan is offered on turn 1
+> either (§5.1). This
 > mirrors the existing turn-1 grace for reputation collapse and prevents a
 > match being decided on its opening day (the reported "the AI went bankrupt
 > in the first turn" after `[ Play Again ]`). The AI driver additionally
@@ -608,6 +690,12 @@ Loss conditions are evaluated at the end of the **Night Income** phase before ch
 > preset's starting coins) so an AI seat stops buying before it is one
 > incident away from bankruptcy; the reserve only limits the seat's spendable
 > view and is never charged.
+
+> **Bankruptcy bailout before the loss (MS-0MVL6DZI0000F6CG).** A seat with
+> `coins < 0` and **no active loan** is offered a bank loan instead of losing:
+> the closing pauses on the offer, and declining it (or already holding a loan)
+> leaves today's bankruptcy outcome unchanged. See §5.1 for the menu, the
+> repayment schedule and the AI policy.
 
 ---
 
@@ -630,7 +718,7 @@ Every resource-mutating action appends an entry to the activity log showing its 
 
 - Enriched entries append a compact delta description built by `describeEventEffects` — e.g. `(+200 coins, +100 rep)`, `(-100 coins)`, `(+100 rep)`, or `(no effect)` — computed from the resources actually changed (after discounts, clamps, multipliers, and event resolution).
 - Entry colour classification (`gain` / `loss` / `neutral`) is derived by `classifyEffect` from the same effective net (coins + rep), so a mixed exchange colours consistently with its net effect.
-- Examples: purchases, upgrades, sells, staff hire/layoff, ongoing-cost deductions (including the clamped `Insufficient coins for ...` shortfall), market refreshes, Community Favour exchanges, events played from hand (cost *plus* resolved effects), investments, and incident resolutions.
+- Examples: purchases, upgrades, sells, staff hire/layoff, ongoing-cost deductions (including the clamped `Insufficient coins for ...` shortfall), market refreshes, Community Favour exchanges, events played from hand (cost *plus* resolved effects), investments, incident resolutions, and loan repayments (`Loan repayment: -110 coins (5 turns left)`, §5.1) — the repayment is unconditional (never clamped), so its row can leave the seat at negative coins.
 
 Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: <effective deltas>` — comparing the resource bank against a **week-start snapshot** taken at the beginning of `executeWeekStart`. The snapshot is persisted with saves (legacy saves fall back to the current resources), and the net row is emitted even when the game ends prematurely — in that case it is written **before** the `Game Over` / `Bankruptcy` banner so the summary precedes the loss entry. When both are present, the net row always precedes the game-over entry; on a normal turn it is the final log entry.
 
