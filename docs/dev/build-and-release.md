@@ -23,9 +23,16 @@ asserts the behaviours this document describes:
 `core/tests/scripts/engine-sync.test.ts` (engine-side policy suite) and
 `tests/main-street/engine-submodule-sync.test.ts` (local contract).
 
-**Current pin:** `f5c0a1b14be71524a080d9c12aba4c10cf89600c` (core `dev`,
-re-pinned by `MS-0MVRAH4BZ0073U1T`, commit `eee6fef3`). It supersedes the
-short-lived `0409c1eb` hold described under
+**Current pin:** read `configs/engine-pin.json` — it is the single source of
+truth for the engine commit this build composes, and `npm run engine:check`
+prints the pin and the composed `./core` commit side by side. No sha is
+hard-coded here on purpose: `engine:sync` re-pins on **every** `npm run build`,
+so a literal sha in prose goes stale the moment the engine `dev` tip advances.
+
+That drift class is what `MS-0MVQO6N34007DHP8` closed —
+`tests/main-street/engine-pin-docs.test.ts` fails if a currency claim
+re-acquires a literal sha. The pin tracks core `dev`; the short-lived hold it
+superseded (with its historical shas) is described under
 [Retired: the `0409c1eb` engine hold](#retired-the-0409c1eb-engine-hold).
 
 ## Two build policies
@@ -95,7 +102,8 @@ builds were forced into the offline fallback so the pin could not drift
 **The hold is over.** The engine-side fix (`CG-0MVQQ2M8E003FQMZ`, core
 `193f947f`) keeps the `@ui` chain Phaser-free for node consumers, and this repo
 re-pinned to core `dev` in `MS-0MVRAH4BZ0073U1T` (commit `eee6fef3`, pin
-`f5c0a1b14be71524a080d9c12aba4c10cf89600c`). Do **not** keep `./core` behind the
+`f5c0a1b1…` — the sha is cited as history only; the pin has advanced by design
+since, see `configs/engine-pin.json`). Do **not** keep `./core` behind the
 tip or force the offline fallback in order to hold the pin; the
 node-environment regression guard
 (`tests/tooling/ui-node-import-guard.test.ts`) fails loudly if that import
