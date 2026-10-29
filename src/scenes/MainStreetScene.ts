@@ -21,6 +21,7 @@ import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
 import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { MainStreetLifecycleManager } from './MainStreetLifecycleManager';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
+import type { ContainerClip } from '../ContainerClip';
 import {
   type SceneLayout,
   STREET_ROWS,
@@ -224,6 +225,13 @@ export class MainStreetScene extends CardGameScene {
   public streetPlayableLattice: StreetLatticeDims = { cols: 1, rows: 1 };
   /** Mask graphics clipping the street map to its viewport band. */
   public streetMapMaskGraphics: Phaser.GameObjects.Graphics | null = null;
+  /**
+   * Renderer-aware clip for the street map viewport band.
+   *
+   * Phaser 4 only honours a `GeometryMask` on the Canvas renderer; under
+   * WebGL the clip is a Mask filter (see `ContainerClip`).
+   */
+  public streetMapClip: ContainerClip | null = null;
   /** Zoom control objects (owned by `hudContainer`, rebuilt on refresh). */
   public streetZoomControls: Phaser.GameObjects.GameObject[] = [];
   /** Active drag-to-pan gesture on the street backdrop (null when idle). */
@@ -255,6 +263,13 @@ export class MainStreetScene extends CardGameScene {
   public logContentContainer!: Phaser.GameObjects.Container;
   public logMaskGraphics: Phaser.GameObjects.Graphics | null = null;
   public logContentMask: Phaser.Display.Masks.GeometryMask | null = null;
+  /**
+   * Renderer-aware clip for the Activity Log scroll area.
+   *
+   * Canvas applies `logContentMask` (a `GeometryMask`); WebGL applies a Mask
+   * filter instead, because `setMask` is a no-op there (see `ContainerClip`).
+   */
+  public logContentClip: ContainerClip | null = null;
   public logScrollOffset = 0;
   public logMaxScroll = 0;
   public logTotalContentH = 0;

@@ -674,6 +674,18 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
 
     s.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       markSceneInvalid(s);
+      // Release the renderer-aware clips. Under WebGL their mask Graphics is
+      // deliberately off the display list (the Mask filter renders it), so
+      // the scene teardown would not otherwise dispose of it.
+      try {
+        s.streetMapClip?.destroy();
+        s.logContentClip?.destroy();
+      } catch (_) { /* presentation-only */ }
+      s.streetMapClip = null;
+      s.streetMapMaskGraphics = null;
+      s.logContentClip = null;
+      s.logMaskGraphics = null;
+      s.logContentMask = null;
       s.cleanupTransferAnimations();
       // Tear down the drag-drop manager (removes its scene input listeners).
       try { s.dragDropManager?.destroy(); s.dragDropManager = undefined; } catch (_) { /* ignore */ }

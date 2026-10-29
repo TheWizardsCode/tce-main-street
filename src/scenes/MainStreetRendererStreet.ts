@@ -25,6 +25,7 @@ import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
 import { createGameZone } from '@ui/Renderer';
+import { createContainerClip } from '../ContainerClip';
 import Phaser from 'phaser';
 
 // Re-export for test imports
@@ -315,20 +316,27 @@ export function createContainers(renderer: MainStreetRendererContext): void {
     s.logContentContainer = s.add.container(0, LOG_TITLE_H + 2);
     s.logContainer.add(s.logContentContainer);
 
-    // Geometry mask for clipping scrollable content
-    // IMPORTANT: Do NOT call setVisible(false) on the mask graphics!
-    // In Phaser 4 RC7, GeometryMask.preRenderCanvas calls
-    // graphics.renderCanvas() directly to draw the clip path to the
-    // canvas context. If the graphics is invisible, the Canvas Renderer's
+    // Renderer-aware clip for the scrollable content.
+    //
+    // Canvas keeps the long-standing `GeometryMask` path: `GeometryMask`
+    // clips to the *path* of its Graphics and ignores fill alpha, so a
+    // transparent fill keeps the shape invisible while still contributing
+    // the clip path.
+    //
+    // IMPORTANT (Canvas): Do NOT call setVisible(false) on the mask
+    // graphics! In Phaser 4 RC7, GeometryMask.preRenderCanvas calls
+    // graphics.renderCanvas() directly to draw the clip path to the canvas
+    // context. If the graphics is invisible, the Canvas Renderer's
     // SetTransform function may still process it (it checks alpha, not
     // visibility), but some internal paths skip invisible objects entirely.
-    // To be safe, we keep the graphics visible and use alpha=0 instead,
-    // so the mask shape is drawn to the context for clipping but has no
-    // visible appearance on screen.
-    s.logMaskGraphics = s.add.graphics();
-    s.logMaskGraphics.fillStyle(0xffffff, 0);  // transparent fill
-    s.logContentMask = new Phaser.Display.Masks.GeometryMask(s, s.logMaskGraphics);
-    s.logContentContainer.setMask(s.logContentMask);
+    // To be safe, we keep the graphics visible and use alpha=0 instead.
+    //
+    // WebGL cannot use `setMask` at all in Phaser 4 (it logs
+    // "not supported in WebGL" and returns), so `createContainerClip`
+    // installs an opaque, off-display-list Mask filter instead.
+    s.logContentClip = createContainerClip(s, s.logContentContainer);
+    s.logMaskGraphics = s.logContentClip.graphics;
+    s.logContentMask = s.logContentClip.geometryMask;
     s.updateLogMask();
 
     // Mouse-wheel scroll for the log panel
@@ -612,12 +620,14 @@ export function installStreetMapMask(renderer: MainStreetRendererContext): void 
     const s = renderer.scene;
     if (s.streetMapMaskGraphics || !s.streetContainer) return;
     try {
-      s.streetMapMaskGraphics = s.add.graphics();
-      const mask = new Phaser.Display.Masks.GeometryMask(s, s.streetMapMaskGraphics);
-      s.streetContainer.setMask(mask);
+      // Renderer-aware clip: `GeometryMask` on Canvas, a Mask filter on
+      // WebGL (Phaser 4 dropped `setMask` for WebGL).
+      s.streetMapClip = createContainerClip(s, s.streetContainer);
+      s.streetMapMaskGraphics = s.streetMapClip.graphics;
       renderer.updateStreetMapMask();
     } catch (_) {
       s.streetMapMaskGraphics = null;
+      s.streetMapClip = null;
     }
   
 }
@@ -628,9 +638,7 @@ export function updateStreetMapMask(renderer: MainStreetRendererContext): void {
     if (!s.streetMapMaskGraphics || !s.layout) return;
     const viewport = streetViewportRect(s.layout);
     try {
-      s.streetMapMaskGraphics.clear();
-      s.streetMapMaskGraphics.fillStyle(0xffffff, 0);
-      s.streetMapMaskGraphics.fillRect(viewport.x, viewport.y, viewport.w, viewport.h);
+      s.streetMapClip?.setRect({ x: viewport.x, y: viewport.y, w: viewport.w, h: viewport.h });
     } catch (_) {
       // ignore in constrained test environments
     }

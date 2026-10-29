@@ -239,14 +239,14 @@ export class MainStreetInputManager {
   public updateLogMask(): void {
     const s = this.scene;
     if (!s.logMaskGraphics) return;
-    s.logMaskGraphics.clear();
-    s.logMaskGraphics.fillStyle(0xffffff, 0);
-    s.logMaskGraphics.fillRect(
-      s.layout.logX,
-      s.layout.logY + LOG_TITLE_H,
-      s.layout.logW,
-      s.layout.logH - LOG_TITLE_H - 2,
-    );
+    // Renderer-aware: redraws the Canvas `GeometryMask` shape or the WebGL
+    // Mask filter source (Phaser 4 dropped `setMask` for WebGL).
+    s.logContentClip?.setRect({
+      x: s.layout.logX,
+      y: s.layout.logY + LOG_TITLE_H,
+      w: s.layout.logW,
+      h: s.layout.logH - LOG_TITLE_H - 2,
+    });
   }
 
   public handleLogWheel(

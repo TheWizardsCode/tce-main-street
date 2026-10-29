@@ -53,6 +53,7 @@ import {
 } from '@ui/screen-layout-schema';
 import { TooltipManager } from '@ui/Tooltip';
 import { createOverlayDialog, type OverlayDialogHandle } from '@ui/Overlay';
+import { createContainerClip, type ContainerClip } from '../ContainerClip';
 import { getTooltips } from '@ui/SettingsStore';
 import {
   buildCardIndex,
@@ -148,7 +149,13 @@ export class GymCardIndexScene extends GymSceneBase {
   private modeSynergyText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
   private listContainer!: Phaser.GameObjects.Container;
-  private listMask!: Phaser.GameObjects.Graphics;
+  /**
+   * Renderer-aware clip for the scrollable list.
+   *
+   * Phaser 4 only honours `setMask` on the Canvas renderer; under WebGL the
+   * clip is a Mask filter (`../ContainerClip`).
+   */
+  private listClip!: ContainerClip;
   private tooltipManager!: TooltipManager;
 
   /** Bounds of the scrollable list region (used for wheel hit-testing). */
@@ -316,11 +323,11 @@ export class GymCardIndexScene extends GymSceneBase {
 
     this.listContainer = this.add.container(x, y);
 
-    // Invisible geometry mask for the scroll region.
-    this.listMask = this.add.graphics();
-    this.listMask.fillStyle(0xffffff);
-    this.listMask.fillRect(x, y, width, height);
-    this.listMask.setVisible(false);
+    // Renderer-aware clip for the scroll region (Canvas: GeometryMask;
+    // WebGL: Mask filter — `setMask` is a no-op in Phaser 4 WebGL). The clip
+    // is cleared here and (re)applied by `applyScroll` only while the list
+    // actually overflows.
+    this.listClip = createContainerClip(this, this.listContainer);
 
     // Wheel scrolling, bounds-checked to the list region.
     this.input.on('wheel', this.handleWheel);
@@ -370,9 +377,17 @@ export class GymCardIndexScene extends GymSceneBase {
     this.listContainer.y = this.listBounds.y - this.scrollY;
 
     if (this.maxScroll() > 0) {
-      this.listContainer.setMask(this.listMask.createGeometryMask());
+      // Clip to the list region while the content overflows it.
+      this.listClip.setRect({
+        x: this.listBounds.x,
+        y: this.listBounds.y,
+        w: this.listBounds.width,
+        h: this.listBounds.height,
+      });
     } else {
-      this.listContainer.clearMask();
+      // Content fits: no clipping needed. `clear()` (not a zero-area rect) —
+      // a zero-area WebGL mask would hide the whole list.
+      this.listClip.clear();
       this.listContainer.y = this.listBounds.y;
     }
   }
@@ -680,7 +695,6 @@ export class GymCardIndexScene extends GymSceneBase {
     this.tooltipManager?.destroy();
     this.input.keyboard?.off('keydown', this.handleKeyDown);
     this.input.off('wheel', this.handleWheel);
-    this.listContainer?.clearMask();
-    this.listMask?.destroy();
+    this.listClip?.destroy();
   }
 }

@@ -25,6 +25,45 @@ The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
 
+### Renderer choice in browser tests
+
+Most browser tests pin `type: Phaser.CANVAS` on purpose: the Canvas renderer
+is roughly 10× faster under SwiftShader, and `TestGamePool` relies on that for
+CI throughput. Keep that default unless the test is *about* the WebGL
+renderer.
+
+`createCardGame` (and therefore `createMainStreetGame`) defaults to
+`Phaser.AUTO`, which picks WebGL on any GPU-capable browser — headless
+Chromium included. A browser test that omits `type` therefore exercises the
+WebGL path.
+
+Renderer-specific behaviour must be asserted on an explicit renderer, because
+Phaser 4 diverges between them. The important known divergence is masks:
+`GameObject.setMask` is **Canvas-only** in Phaser 4 — under WebGL it logs
+`"Phaser.GameObjects.Components.Mask.setMask: This method is not supported in
+WebGL. Create a Mask filter instead."` and returns, so the object renders
+unclipped. `src/ContainerClip.ts` hides that difference behind
+`createContainerClip()`; see the "Viewport clipping" bullet in
+`src/README.md`.
+
+`tests/main-street/webgl-renderer-clipping.browser.test.ts` is the reference
+WebGL browser test. It:
+
+- boots with an explicit `type: Phaser.WEBGL` and asserts the renderer really
+  is WebGL (a silent Canvas fallback would otherwise pass);
+- asserts clipping **behaviourally** with `renderer.snapshotPixel()` probes —
+  content inside the clip rect is painted, content outside is not, `clear()`
+  un-clips and `setRect()` re-clips — rather than only inspecting the scene
+  graph;
+- boots the real `MainStreetScene` and `GymCardIndexScene` on WebGL and
+  asserts no Canvas-only `setMask` warning originates from this repo's code.
+  Core-owned call sites (the `core` submodule) are excluded because they are
+  not editable from this repo; they are tracked in `MS-0MVTE0UP00013TNW`.
+
+Pixel probes are cheap for single pixels (`snapshotPixel`) but expensive for
+areas — prefer scene-graph assertions plus a handful of pixel probes over
+full-frame snapshots.
+
 The `unit-cli` project is serialized by design (`fileParallelism: false` with
 its own `sequence.groupOrder`): its tests cold-start a CLI through `vite-node`,
 which takes 12-15 s on an idle host and regularly exceeds the 15 s `unit` budget

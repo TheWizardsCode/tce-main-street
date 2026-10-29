@@ -811,11 +811,17 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     s.logContentContainer.setY(LOG_TITLE_H + 2 - s.logScrollOffset);
 
     // ── Per-entry visibility safety net ────────────────
-    // Phaser 4 RC7's GeometryMask clip is unreliable. As a safety net,
-    // explicitly hide any child whose local Y falls outside the visible
+    // Explicitly hide any child whose local Y falls outside the visible
     // window [scrollOffset, scrollOffset + visibleH).
-    // This ensures no content renders above the title bar or below the
-    // panel bottom, regardless of whether the mask clips.
+    //
+    // The clip itself is renderer-aware (`ContainerClip`): a GeometryMask on
+    // Canvas, a Mask filter on WebGL (Phaser 4 made `setMask` a no-op under
+    // WebGL, so relying on the mask alone used to leak content in WebGL
+    // boots). This visibility pass still earns its keep on both renderers:
+    // it keeps off-window entries out of the display list's render work and
+    // bounds the damage if a clip is ever unavailable (e.g. no WebGL
+    // context). It cannot clip a *partially* visible entry, which is why the
+    // renderer-aware clip above remains the primary mechanism.
     const visibleStart = s.logScrollOffset;
     const visibleEnd = s.logScrollOffset + visibleH;
     for (const child of s.logContentContainer.list) {
