@@ -38,15 +38,20 @@ treatment shared by the market box, the player hand and the HUD strip:
   `marketLeft`..`marketRight` with the same treatment (the old `BOX_FILL` @ 0.3
   wash was replaced).
 
-## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6)
+## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 
 `MainStreetFeedback.ts` replaces the persistent instruction line: former
-instruction-line messages are surfaced as short-lived pop text anchored
-`FEEDBACK_LIFT_PX` (20 px) above the hand band (`logX / 2`, `handY − 20`),
-never a hard-coded pixel position. `error` and `confirmation` kinds pop
-(`popTextOrIcon`, 1100 ms default; static label under reduced motion);
-`guidance` and `progress` kinds are dropped. Every surfaced message records
-`scene.lastFeedback` and `scene.feedbackHistory` for tests/QA.
+instruction-line messages are surfaced as a readable toast centred over the
+main content area (`logX / 2`) and lifted clear of the hand-card band
+(`handY − handCardH / 2 − 20 px`), never a hard-coded pixel position. The
+toast fades/scales in (160 ms), holds fully opaque for `words × 500 ms` (from
+`feedbackHoldMs`), then fades out (300 ms) and is destroyed, at
+`FEEDBACK_TOAST_DEPTH` (3000 — above every layer). A new message replaces the
+previous toast; long messages word-wrap within the viewport. `error` and
+`confirmation` kinds toast; `guidance` and `progress` kinds are dropped.
+Reduced motion shows the same static toast for the same hold with no tweens.
+Every surfaced message records `scene.lastFeedback` and
+`scene.feedbackHistory` for tests/QA.
 
 ## End-of-turn income collection
 

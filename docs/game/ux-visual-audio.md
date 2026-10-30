@@ -141,7 +141,7 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   `tests/main-street/hand-outlines.browser.test.ts` (including the
   slot/card-position stability assertion).
 
-## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6)
+## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 
 The persistent instruction line under the board is gone. Messages that used to
 land there are routed through `src/scenes/MainStreetFeedback.ts`:
@@ -156,11 +156,38 @@ land there are routed through `src/scenes/MainStreetFeedback.ts`:
   "Processing end of turn…") are dropped — they only told the player what to
   do, or self-resolved visually.
 - **Anchor:** `feedbackAnchor(layout)` centres the text over the main content
-  area (`logX / 2`) and lifts it 20 px above the hand band (`handY − 20`), so
-  it follows the bottom-anchored hand instead of hard-coding a pixel position.
-- **Presentation:** `popTextOrIcon` (rise 20 px, scale 1.1) for 1100 ms by
-  default. Reduced motion shows the same text as a static label for the same
-  duration — never silently dropped.
+  area (`logX / 2`) and lifts it clear of the hand-card band
+  (`handY − handCardH / 2 − FEEDBACK_TOAST_MARGIN_PX`, margin 20 px), so it
+  follows the bottom-anchored hand and its card size instead of hard-coding a
+  pixel position. When the layout has no hand-card height it falls back to the
+  historical plain lift above `handY`; with no finite metrics at all it falls
+  back to the viewport centre/margin.
+- **Readable hold:** `feedbackHoldMs(text)` is `max(1, words) × 500 ms`
+  (`FEEDBACK_WORD_HOLD_MS`), where words are whitespace-delimited. Empty or
+  whitespace-only text returns 0 and shows nothing. A 5-word refusal
+  ("Not enough coins for Bakery") therefore holds for 2.5 s instead of the old
+  1.1 s total lifetime.
+- **Presentation sequence:** fade/scale in over
+  `FEEDBACK_TOAST_FADE_IN_MS` (160 ms, alpha 0 → 1, scale 0.9 → 1) → the
+  word-based fully-opaque hold (no fade or motion) → fade out over
+  `FEEDBACK_TOAST_FADE_OUT_MS` (300 ms) → destroy. Total lifetime is
+  `fadeIn + hold + fadeOut`. An explicit `holdMs` option overrides the
+  word-based hold (tests/back-compat; `duration` is a deprecated alias).
+- **Above everything:** the toast renders at `FEEDBACK_TOAST_DEPTH = 3000`,
+  above hand cards (0…n), the hand panel (−100), the action row (100),
+  overlays (200–201), stats (900–950), the HUD (1000) and the stats button
+  (1100) — it is never covered by the hand or a HUD/overlay layer.
+- **One toast, wrapped:** only one feedback toast is live per scene. A new
+  message cancels the previous hold/fade timers and tweens and destroys the
+  previous text before showing the new one, so repeated refusals never stack.
+  Long messages word-wrap at `min(FEEDBACK_TOAST_MAX_WIDTH, gameW − 40)` and
+  carry a dark stroke so they stay legible over any background. Scene
+  shutdown/destroy cleanup cancels pending timers and text.
+- **Reduced motion:** the same text is shown statically at alpha 1 at the same
+  depth and anchor, held for the same `feedbackHoldMs(text)`, then destroyed —
+  no tweens, never dropped.
+- **Presentation-only:** the toast is never interactive and never intercepts
+  pointer input.
 - **Observability:** `scene.lastFeedback` (`{ text, kind }`) and
   `scene.feedbackHistory` record everything surfaced, so tests assert the
   channel without scraping rendered objects

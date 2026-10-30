@@ -351,6 +351,32 @@ export interface SceneLayout {
   logH: number;
 }
 
+// ── Transient feedback toast (MS-0MVRDBD3P0026CXH) ──────────
+//
+// Readability contract for the feedback channel in `MainStreetFeedback.ts`:
+// the toast fades/scales in, holds fully opaque for `words × 500 ms`, then
+// fades out. It renders above every Main Street layer (hand cards 0…n, hand
+// panel −100, action row 100, overlays 200–201, stats 900–950, HUD 1000,
+// stats button 1100) and its anchor is lifted clear of the hand-card band.
+
+/** Depth of the transient feedback toast — above every Main Street layer. */
+export const FEEDBACK_TOAST_DEPTH = 3000;
+
+/** Fade/scale-in duration (ms) of the feedback toast. */
+export const FEEDBACK_TOAST_FADE_IN_MS = 160;
+
+/** Fade-out duration (ms) of the feedback toast. */
+export const FEEDBACK_TOAST_FADE_OUT_MS = 300;
+
+/** Fully-opaque hold per whitespace-delimited word (ms). */
+export const FEEDBACK_WORD_HOLD_MS = 500;
+
+/** Gap (px) between the top of the hand-card band and the toast anchor. */
+export const FEEDBACK_TOAST_MARGIN_PX = 20;
+
+/** Maximum wrap width (px) of the feedback toast on wide viewports. */
+export const FEEDBACK_TOAST_MAX_WIDTH = 720;
+
 /**
  * Legacy HUD coin-flight destination fallback (MS-0MUYT57J80021CWW): the
  * approximate coordinate used ONLY before the first HUD render publishes the
