@@ -203,7 +203,47 @@ a re-scaffold cannot silently drop the gate.
   fails with the lag diagnosis naming the tip and the re-pin step. The
   submodule pointer and the pin travel together.
 
+## The launcher (`main.ts`) is generator-owned
+
+`./main.ts` is not hand-authored: it is exactly what the engine-owned generator
+emits (`core/scripts/game-repo-scaffold.ts` → `renderMainTs()`), and
+`npm run scaffold` rewrites it verbatim (MS-0MVU03TR0006KZDH). Two failure
+modes are silent, and both have already reverted the renderer once:
+
+- **Hand edits are erased.** The CANVAS→AUTO rationale and the ContainerClip
+  renderer notes used to be comments inside `./main.ts`. The next
+  `npm run scaffold` deleted them, and the renderer line reverted with them.
+- **Generator drift reverts every launcher.** A generator that emits
+  `type: Phaser.CANVAS` turns every re-scaffolded game repo back into Canvas,
+  where Phaser 4's Filter/mask pipeline is unavailable (CG-0MVTQ3WPV003ZECA).
+
+Rules that follow from this:
+
+- **Launcher commentary lives in the core generator or in `docs/`** — never as
+  a hand edit to `./main.ts`. The generator carries the AUTO rationale; the
+  renderer-behaviour notes live in
+  [`docs/dev/testing.md`](testing.md#renderer-choice-in-browser-tests).
+- **Change the launcher by changing the generator** (or the engine pin), then
+  run `npm run scaffold`. Never hand-patch the generated file.
+- `tests/main-street/main-ts-scaffold-drift.test.ts` enforces the rule: the
+  committed `./main.ts` must be byte-for-byte `renderMainTs()` output, so any
+  hand edit fails the unit suite instead of being silently erased later.
+- **A scaffold run touches more than `./main.ts`.** `npm run scaffold` also
+  rewrites `package.json`, `vite.config.ts`, `tsconfig.json` and `index.html`,
+  and re-points the legacy per-game tree (`example-games/…`) paths to `src/`.
+  This repo carries deliberate LOCAL SURGICAL ADDITIONS in those files, so run
+  it on a clean tree, diff the result, and **revert everything except the file
+  you meant to regenerate** — recording the classification in the work item
+  that requested the re-scaffold. Making the script itself non-destructive is
+  tracked in `MS-0MVVGUYYG004XXOB`.
+
 ## Tests
+
+`tests/main-street/main-ts-scaffold-drift.test.ts` guards the launcher rule
+above (committed `./main.ts` === `renderMainTs()` output, and the renderer line
+is `Phaser.AUTO`); `tests/main-street/renderer-capability.test.ts` guards the
+generator side (the engine really does emit AUTO and ships the renderer-aware
+clip helper).
 
 `tests/main-street/engine-submodule-sync.test.ts` covers the dirty-state
 guard, the sync-writes-the-pin / no-op / offline-fallback behaviour and the
