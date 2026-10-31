@@ -18,7 +18,7 @@
  *
  * @see tests/main-street/engine-submodule-sync.test.ts — the fixture pattern.
  */
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterAll, afterEach, beforeAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -35,12 +35,25 @@ import {
   runEngineCheckoutPreflight,
 } from '../../tests/tooling/engine-checkout-precheck';
 import type { EngineCheckoutDeps } from '../../tests/tooling/engine-checkout-precheck';
+import { hermeticGitEnv, hideGitRepoOverrides } from '../tooling/git-fixture-env';
 
 /** The real engine-sync API, injected so the fixture exercises the shared
  * git/pin primitives the preflight reuses in production. */
 const REAL_DEPS: EngineCheckoutDeps = { readPin, resolveShaFull, runGit, submoduleIsDirty };
 
 const tempRoots: string[] = [];
+
+// The real engine-sync primitives (`runGit`, `submoduleIsDirty`, …) spawn git
+// themselves, so hide the finish gate's repository overrides from this process
+// too — otherwise its `GIT_INDEX_FILE` leaks into the fixtures
+// (MS-0MVVOQPVY006G2ZE).
+let restoreGitEnv: () => void = () => {};
+beforeAll(() => {
+  restoreGitEnv = hideGitRepoOverrides();
+});
+afterAll(() => {
+  restoreGitEnv();
+});
 
 function tempRoot(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -58,7 +71,8 @@ function git(cwd: string, args: string[]): { ok: boolean; stdout: string; stderr
   const res = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0' },
+    // Hermetic: never inherit the finish gate's GIT_INDEX_FILE (MS-0MVVOQPVY006G2ZE).
+    env: hermeticGitEnv({ GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0' }),
     windowsHide: true,
   });
   return {

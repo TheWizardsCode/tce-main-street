@@ -12,7 +12,7 @@
  * @see core/scripts/engine-sync.d.mts — the typed API contract.
  * @see core/tests/scripts/engine-sync.test.ts — the engine-side canonical suite.
  */
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterAll, afterEach, beforeAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,12 +27,25 @@ import {
   syncEngine,
   verifyEngine,
 } from '@core-scripts/engine-sync.mjs';
+import { hermeticGitEnv, hideGitRepoOverrides } from '../tooling/git-fixture-env';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
 const PIN_REL = path.join('configs', 'engine-pin.json');
 
 const tempRoots: string[] = [];
+
+// The production helpers (`submoduleIsDirty`, `syncEngine`, `verifyEngine`) spawn
+// git themselves, so the overrides must also be hidden from this process while
+// the fixtures run — otherwise an inherited finish-gate `GIT_INDEX_FILE` makes
+// every fixture submodule look locally modified (MS-0MVVOQPVY006G2ZE).
+let restoreGitEnv: () => void = () => {};
+beforeAll(() => {
+  restoreGitEnv = hideGitRepoOverrides();
+});
+afterAll(() => {
+  restoreGitEnv();
+});
 
 function tempRoot(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -50,7 +63,8 @@ function git(cwd: string, args: string[]): { ok: boolean; stdout: string; stderr
   const res = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0' },
+    // Hermetic: never inherit the finish gate's GIT_INDEX_FILE (MS-0MVVOQPVY006G2ZE).
+    env: hermeticGitEnv({ GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0' }),
     windowsHide: true,
   });
   return {
