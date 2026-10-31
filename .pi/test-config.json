@@ -138,6 +138,18 @@
         "tests/main-street/MainStreet-hud-week.browser.test.ts",
         "tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
       ]
+    },
+    "webgl-clipping-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/webgl-renderer-clipping.browser.test.ts",
+        "src/ContainerClip.ts",
+        "src/createMainStreetGame.ts",
+        "src/gym/GymCardIndexScene.ts",
+        "src/scenes/MainStreetScene.ts"
+      ]
     }
   }
 }

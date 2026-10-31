@@ -25,7 +25,19 @@
  *     viewport and to the Activity Log scroll area, with the expected rects,
  *     and logs **no** `setMask … not supported in WebGL` warning;
  *  4. the real `GymCardIndexScene` applies/clears the list clip under WebGL;
- *  5. the Canvas renderer still uses `GeometryMask` (no behaviour change).
+ *  5. the Canvas renderer still uses `GeometryMask` (no behaviour change);
+ *  6. every clipping surface — Help panel, Settings panel, overlay dialogs and
+ *     the gym card index — paints **inside** its own scroll rect and **not**
+ *     outside it, proven with `renderer.snapshotPixel()` probes.
+ *
+ * ## Zero-tolerance warning capture
+ *
+ * A real WebGL boot must raise **zero** `setMask … not supported in WebGL`
+ * warnings from **any** source. Core-owned call sites (`core/src/ui/*`, the gym
+ * example scenes) now clip through the same renderer-aware `ContainerClip`, so
+ * there is no `/core/` exclusion left for a Canvas-only mask to hide behind: a
+ * single leftover `setMask` anywhere fails this file
+ * (MS-0MVU03UEC000BX1O).
  *
  * @module
  */
@@ -39,7 +51,11 @@ import { streetViewportRect } from '../../src/MainStreetMapView';
 import { LOG_TITLE_H, type SceneLayout } from '../../src/scenes/MainStreetConstants';
 import { GYM_CARD_INDEX_KEY, GymCardIndexScene } from '../../src/gym/GymCardIndexScene';
 import { GAME_H, GAME_W } from '@ui/constants';
+import { createOverlayDialog } from '@ui/Overlay';
+import type { OverlayDialogHandle } from '@ui/Overlay';
 import { createContainerClip, type ContainerClip } from '../../src/ContainerClip';
+import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
+import { dismissBootModals } from './helpers/bootModals';
 
 const CANVAS_ONLY_WARNING = /not supported in WebGL/i;
 
@@ -54,6 +70,9 @@ interface Pixel {
 }
 
 function startWarningCapture(): void {
+  // Idempotent: a second call in the same test must not lose the *real*
+  // original `console.warn` (and with it the ability to restore it).
+  if (originalWarn) return;
   warnSpy = [];
   originalWarn = console.warn;
   console.warn = (...args: unknown[]) => {
@@ -63,21 +82,15 @@ function startWarningCapture(): void {
 }
 
 /**
- * Canvas-only `setMask` warnings raised by **this repo's** code.
+ * Every Canvas-only `setMask` warning raised during the current test.
  *
- * Core-owned call sites (`core/src/ui/SettingsPanel.ts`, `HelpPanel.ts`,
- * `Overlay.ts`, `core/example-games/gym/...`) cannot be edited from this repo
- * — the `core` submodule is a separate checkout — so they are tracked in the
- * core work item `MS-0MVTE0UP00013TNW` and their warnings are excluded here.
+ * No source filter — a real WebGL boot must raise **none** of these, whether the
+ * call originated in this repo, in `./core` or in a bundled library. Core's
+ * clipping surfaces migrated to the renderer-aware `createContainerClip`, so an
+ * exclusion list here could only hide a regression (MS-0MVU03UEC000BX1O).
  */
-function inRepoCanvasOnlyWarnings(): string[] {
-  return warnSpy.filter(
-    (w) =>
-      CANVAS_ONLY_WARNING.test(w) &&
-      /\/src\//.test(w) &&
-      !/\/core\//.test(w) &&
-      !/\/node_modules\//.test(w),
-  );
+function canvasOnlyWarnings(): string[] {
+  return warnSpy.filter((w) => CANVAS_ONLY_WARNING.test(w));
 }
 
 function stopWarningCapture(): void {
@@ -94,8 +107,34 @@ function destroyGame(): void {
   game = null;
   const container = document.getElementById('game-container');
   if (container) container.remove();
+  try {
+    localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY);
+  } catch {
+    /* storage may be unavailable */
+  }
 }
 
+/**
+ * Answer the tutorial offer up-front so the boot flow never presents a
+ * full-screen modal backdrop over the scene. Its dim layer would otherwise
+ * darken every pixel this file probes, making the panel-background and canary
+ * colour assertions meaningless.
+ */
+function seedTutorialSkipped(): void {
+  try {
+    localStorage.clear();
+    localStorage.setItem(
+      TUTORIAL_STATE_STORAGE_KEY,
+      JSON.stringify({ schemaVersion: 1, status: 'skipped', completedAt: null, lastStepId: null }),
+    );
+  } catch {
+    /* storage may be unavailable */
+  }
+}
+
+// Panic-safe teardown: `console.warn` is restored and the game destroyed even
+// when an assertion throws mid-boot (afterEach always runs), so a failed probe
+// can never leak a patched console into later tests in this file.
 afterEach(() => {
   stopWarningCapture();
   destroyGame();
@@ -120,8 +159,111 @@ function snapshotPixel(g: Phaser.Game, x: number, y: number): Promise<Pixel> {
   return new Promise((resolve) => {
     (g.renderer as unknown as {
       snapshotPixel: (x: number, y: number, cb: (c: { red: number; green: number; blue: number }) => void) => void;
-    }).snapshotPixel(x, y, (c) => resolve({ r: c.red, g: c.green, b: c.blue }));
+    }).snapshotPixel(Math.floor(x), Math.floor(y), (c) => resolve({ r: c.red, g: c.green, b: c.blue }));
   });
+}
+
+/** Per-channel colour distance, summed (0 = identical, 765 = black ↔ white). */
+function pixelDistance(a: Pixel, b: Pixel): number {
+  return Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+}
+
+function formatPixel(p: Pixel): string {
+  return `rgb(${p.r},${p.g},${p.b})`;
+}
+
+/** True when `point` lies inside `rect` (far edges excluded). */
+function pointInRect(
+  point: { x: number; y: number },
+  rect: { x: number; y: number; w: number; h: number },
+): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x < rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y < rect.y + rect.h
+  );
+}
+
+/** Resolve once `predicate` holds, or throw after `maxFrames` rendered frames. */
+async function waitUntil(
+  g: Phaser.Game,
+  label: string,
+  predicate: () => boolean,
+  maxFrames = 180,
+): Promise<void> {
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    if (predicate()) return;
+    await waitFrames(g, 1);
+  }
+  throw new Error(`Timed out waiting for ${label} after ${maxFrames} rendered frames`);
+}
+
+/**
+ * Panel background shared by the Help panel, the Settings panel and the default
+ * overlay-dialog box: `PANEL_BG_COLOR` in `core/src/ui/HelpPanel.ts` and
+ * `core/src/ui/SettingsPanel.ts`, and the default `boxColor` in
+ * `core/src/ui/Overlay.ts` (0x1a1a2e, drawn at 95% alpha over the scene).
+ */
+const PANEL_BG: Pixel = { r: 0x1a, g: 0x1a, b: 0x2e };
+
+/**
+ * Canary content colour for surfaces whose own paint is indistinguishable from
+ * the scene behind them (the card list is text on the scene background, so a
+ * mis-applied clip would not change any single pixel). Absent from every
+ * palette in the repo, so a match can only be the probe content itself.
+ */
+const CANARY: Pixel = { r: 0xff, g: 0x00, b: 0xff };
+
+/** One surface's scroll rect plus where to sample its paint inside/outside. */
+interface SurfaceProbe {
+  /** Surface name, used in assertion messages. */
+  surface: string;
+  /** The surface's own scroll rect, from its public bounds/layout constants. */
+  rect: { x: number; y: number; w: number; h: number };
+  /** Colour the surface paints at `inside` when it is drawn and clipped. */
+  paint: Pixel;
+  /** Probe point that must lie inside `rect` and show `paint`. */
+  inside: { x: number; y: number };
+  /** Probe point that must lie outside `rect` and must not show `paint`. */
+  outside: { x: number; y: number };
+  /** Maximum colour distance tolerated between `inside` and `paint`. */
+  insideTolerance: number;
+  /** Minimum colour distance required between `outside` and `paint`. */
+  outsideFloor: number;
+}
+
+/**
+ * Assert one surface paints inside its own scroll rect and nowhere outside it.
+ *
+ * Both probe points are checked against the rect before the pixels are read, so
+ * the surface's own rect — not a hand-written literal — decides where the paint
+ * is allowed: a probe that drifts off its surface fails loudly instead of
+ * silently matching a different panel.
+ */
+async function expectPaintedInsideRect(g: Phaser.Game, probe: SurfaceProbe): Promise<void> {
+  expect(
+    pointInRect(probe.inside, probe.rect),
+    `${probe.surface}: inside probe (${probe.inside.x}, ${probe.inside.y}) must lie inside the surface rect ${JSON.stringify(probe.rect)}`,
+  ).toBe(true);
+  expect(
+    pointInRect(probe.outside, probe.rect),
+    `${probe.surface}: outside probe (${probe.outside.x}, ${probe.outside.y}) must lie outside the surface rect ${JSON.stringify(probe.rect)}`,
+  ).toBe(false);
+
+  const inside = await snapshotPixel(g, probe.inside.x, probe.inside.y);
+  const outside = await snapshotPixel(g, probe.outside.x, probe.outside.y);
+  const insideDelta = pixelDistance(inside, probe.paint);
+  const outsideDelta = pixelDistance(outside, probe.paint);
+
+  expect(
+    insideDelta,
+    `${probe.surface}: inside pixel ${formatPixel(inside)} should be the surface paint ${formatPixel(probe.paint)} (distance ${insideDelta} > insideTolerance ${probe.insideTolerance})`,
+  ).toBeLessThan(probe.insideTolerance);
+  expect(
+    outsideDelta,
+    `${probe.surface}: outside pixel ${formatPixel(outside)} must not be the surface paint ${formatPixel(probe.paint)} (distance ${outsideDelta} <= outsideFloor ${probe.outsideFloor})`,
+  ).toBeGreaterThan(probe.outsideFloor);
 }
 
 function createHost(): HTMLElement {
@@ -229,6 +371,60 @@ describe('container clip under WebGL', () => {
 // 3. The real Mission Street scene under WebGL
 // ────────────────────────────────────────────────────────────────────────────
 
+/** The Help panel fields this file derives its own scroll rect from. */
+interface HelpPanelProbe {
+  container: Phaser.GameObjects.Container;
+  /** Panel width in px (the panel's `panelWidth`). */
+  panelWidth: number;
+  /** Top of the scrollable content (`_contentTopY`, set by `setupScrollMask`). */
+  _contentTopY?: number;
+  /** Height of the visible content area (`_visibleHeight`). */
+  _visibleHeight?: number;
+  open(): void;
+  close(): void;
+  isOpen: boolean;
+}
+
+/** The Settings panel fields this file derives its own scroll rect from. */
+interface SettingsPanelProbe {
+  container: Phaser.GameObjects.Container;
+  panelWidth: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  open(): void;
+  close(): void;
+  isOpen: boolean;
+}
+
+/**
+ * The Help panel's scroll rect, from the content geometry the panel computed in
+ * `setupScrollMask()` — never a hand-written rectangle, so the probe cannot
+ * silently measure the wrong region.
+ */
+function helpPanelScrollRect(panel: HelpPanelProbe): { x: number; y: number; w: number; h: number } {
+  // The panel stores its computed scroll geometry on `_contentTopY` /
+  // `_visibleHeight` — the very values its own `updateClip()` uses to place the
+  // content clip — so the probe measures the panel's real scroll rect rather
+  // than a copied literal.
+  if (typeof panel._contentTopY !== 'number' || typeof panel._visibleHeight !== 'number') {
+    throw new Error('HelpPanel has not published its scroll geometry — setupScrollMask() did not run');
+  }
+  return { x: panel.container.x, y: panel._contentTopY, w: panel.panelWidth, h: panel._visibleHeight };
+}
+
+/**
+ * The Settings panel's scroll rect — the same geometry the panel uses for its
+ * own `_scrollClip` (panel body, full canvas height).
+ */
+function settingsPanelScrollRect(panel: SettingsPanelProbe): { x: number; y: number; w: number; h: number } {
+  return {
+    x: panel.canvasWidth - panel.panelWidth,
+    y: 0,
+    w: panel.panelWidth,
+    h: panel.canvasHeight,
+  };
+}
+
 interface SceneProbe {
   layout: SceneLayout;
   streetContainer: Phaser.GameObjects.Container;
@@ -236,14 +432,21 @@ interface SceneProbe {
   streetMapClip: ContainerClip | null;
   logContentClip: ContainerClip | null;
   logContentMask: Phaser.Display.Masks.GeometryMask | null;
+  helpPanel: HelpPanelProbe;
+  settingsPanel: SettingsPanelProbe;
   updateStreetMapMask(): void;
   updateLogMask(): void;
 }
 
 async function bootMainStreet(type: number): Promise<Phaser.Game> {
+  seedTutorialSkipped();
   createHost();
   game = createMainStreetGame({ type } as never);
   await waitForScene(game, 'MainStreetScene');
+  // The tutorial offer is pre-skipped, so the boot flow presents the blocking
+  // New Game selector — a full-screen dim backdrop. Dismiss it before probing
+  // pixels; otherwise every sampled colour reads the backdrop-darkened scene.
+  await dismissBootModals(game.scene.getScene('MainStreetScene') as Phaser.Scene);
   await waitFrames(game, 3);
   return game;
 }
@@ -287,8 +490,9 @@ describe('MainStreetScene under WebGL', () => {
       h: scene.layout.logH - LOG_TITLE_H - 2,
     });
 
-    // AC: no Canvas-only setMask warning in a real WebGL boot.
-    expect(inRepoCanvasOnlyWarnings()).toEqual([]);
+    // AC: no Canvas-only setMask warning in a real WebGL boot — from ANY
+    // source, `/core/` included.
+    expect(canvasOnlyWarnings()).toEqual([]);
   });
 
   it('keeps the clip anchored to the viewport band after a street camera apply', async () => {
@@ -307,7 +511,116 @@ describe('MainStreetScene under WebGL', () => {
 
     expect(scene.streetMapClip!.rect).toEqual(before);
     expect(scene.streetMapClip!.active).toBe(true);
-    expect(inRepoCanvasOnlyWarnings()).toEqual([]);
+    expect(canvasOnlyWarnings()).toEqual([]);
+  });
+
+  it('paints the Help panel inside its scroll rect and nowhere outside it', async () => {
+    startWarningCapture();
+    await bootMainStreet(Phaser.WEBGL);
+    const scene = mainStreetScene();
+
+    scene.helpPanel.open();
+    // Wait for the 300 ms slide-in: the clip rect is anchored to the panel's
+    // current world x, so sampling mid-animation would measure a moving target.
+    await waitUntil(game!, 'Help panel to slide fully in', () => Math.abs(scene.helpPanel.container.x) < 0.5);
+    await waitFrames(game!, 2);
+
+    const rect = helpPanelScrollRect(scene.helpPanel);
+    expect(rect.w).toBe(scene.helpPanel.panelWidth);
+    expect(rect.h).toBeGreaterThan(0);
+
+    await expectPaintedInsideRect(game!, {
+      surface: 'Help panel scroll area',
+      rect,
+      paint: PANEL_BG,
+      // Inside: just left of the panel's scrollbar track and right of the
+      // wrapped text column (both widths come from the panel's own
+      // PADDING/TRACK_BAR_WIDTH constants), so only its background is painted.
+      inside: { x: rect.x + rect.w - 15, y: rect.y + rect.h / 2 },
+      // Outside: beyond the panel's right edge the street shows instead.
+      outside: { x: rect.x + rect.w + 30, y: rect.y + rect.h / 2 },
+      insideTolerance: 60,
+      outsideFloor: 25,
+    });
+
+    expect(canvasOnlyWarnings()).toEqual([]);
+    scene.helpPanel.close();
+  });
+
+  it('paints the Settings panel inside its scroll rect and nowhere outside it', async () => {
+    startWarningCapture();
+    await bootMainStreet(Phaser.WEBGL);
+    const scene = mainStreetScene();
+
+    scene.settingsPanel.open();
+    const rect = settingsPanelScrollRect(scene.settingsPanel);
+    await waitUntil(
+      game!,
+      'Settings panel to slide fully in',
+      () => Math.abs(scene.settingsPanel.container.x - rect.x) < 0.5,
+    );
+    await waitFrames(game!, 2);
+
+    await expectPaintedInsideRect(game!, {
+      surface: 'Settings panel scroll area',
+      rect,
+      paint: PANEL_BG,
+      // Inside: left of every label/slider (they start at the panel's PADDING),
+      // at mid height where only the panel background is painted.
+      inside: { x: rect.x + 8, y: rect.y + rect.h / 2 },
+      // Outside: beyond the panel's left edge the scene shows instead.
+      outside: { x: rect.x - 30, y: rect.y + rect.h / 2 },
+      insideTolerance: 60,
+      outsideFloor: 25,
+    });
+
+    expect(canvasOnlyWarnings()).toEqual([]);
+    scene.settingsPanel.close();
+  });
+
+  it('clips an overlay dialog content area to its scroll rect', async () => {
+    startWarningCapture();
+    await bootMainStreet(Phaser.WEBGL);
+    const scene = game!.scene.getScene('MainStreetScene') as Phaser.Scene;
+
+    // The same core primitive every Main Street overlay dialog is built from
+    // (`createOverlayDialog`), with a content block twice as tall as the visible
+    // area: with the clip missing, the overflow would paint over the dialog's
+    // header and button rows.
+    const dialog: OverlayDialogHandle = createOverlayDialog(scene, {
+      title: 'Clipping probe',
+      width: 520,
+      height: 360,
+    });
+    const canary = scene.add
+      .rectangle(0, 0, dialog.contentWidth, dialog.contentHeight * 2, 0xff00ff)
+      .setOrigin(0, 0);
+    dialog.scrollContainer.add(canary);
+    dialog.refresh(dialog.contentHeight * 2);
+    await waitFrames(game!, 3);
+
+    const rect = {
+      x: dialog.contentX,
+      y: dialog.contentY,
+      w: dialog.contentWidth,
+      h: dialog.contentHeight,
+    };
+
+    await expectPaintedInsideRect(game!, {
+      surface: 'overlay dialog content area',
+      rect,
+      paint: CANARY,
+      // Inside: the canary content.
+      inside: { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 },
+      // Outside: the dialog's own button row below the content viewport, where
+      // the un-clipped canary would otherwise bleed through.
+      outside: { x: rect.x + rect.w / 2, y: rect.y + rect.h + 20 },
+      insideTolerance: 40,
+      outsideFloor: 100,
+    });
+
+    expect(canvasOnlyWarnings()).toEqual([]);
+    dialog.close();
   });
 
   it('still uses a GeometryMask on the Canvas renderer (no Canvas regression)', async () => {
@@ -332,13 +645,19 @@ describe('MainStreetScene under WebGL', () => {
 
 interface GymProbe {
   listClip: ContainerClip;
+  listContainer: Phaser.GameObjects.Container;
   listBounds: { x: number; y: number; width: number; height: number };
   contentHeight: number;
   applyScroll(): void;
+  /** The scroll region in scene coordinates (public accessor). */
+  getListBounds(): { x: number; y: number; width: number; height: number };
+  /** Total scrollable overflow of the rendered list (0 when it fits). */
+  getMaxScroll(): number;
 }
 
 describe('GymCardIndexScene under WebGL', () => {
   async function bootGym(): Promise<GymProbe> {
+    seedTutorialSkipped();
     createHost();
     game = new Phaser.Game({
       type: Phaser.WEBGL,
@@ -379,6 +698,40 @@ describe('GymCardIndexScene under WebGL', () => {
     scene.applyScroll();
     expect(scene.listClip.active).toBe(false);
 
-    expect(inRepoCanvasOnlyWarnings()).toEqual([]);
+    expect(canvasOnlyWarnings()).toEqual([]);
+  });
+
+  it('clips the card list to its scroll rect (pixel probe)', async () => {
+    startWarningCapture();
+    const scene = await bootGym();
+
+    // The real index overflows its region, so the clip is live under WebGL.
+    expect(scene.getMaxScroll()).toBeGreaterThan(0);
+    expect(scene.listClip.active).toBe(true);
+
+    const bounds = scene.getListBounds();
+    const rect = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
+
+    // The list is text on the scene background, so a mis-applied clip would not
+    // change any single pixel. A canary block twice as tall as the list makes
+    // the clip observable: it must be confined to the list region.
+    const canary = scene.add
+      .rectangle(0, 0, rect.w, rect.h * 2, 0xff00ff)
+      .setOrigin(0, 0);
+    scene.listContainer.add(canary);
+    await waitFrames(game!, 2);
+
+    await expectPaintedInsideRect(game!, {
+      surface: 'gym card index list',
+      rect,
+      paint: CANARY,
+      inside: { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 },
+      // Outside: the strip below the list, where the overflow would bleed.
+      outside: { x: rect.x + rect.w / 2, y: rect.y + rect.h + 10 },
+      insideTolerance: 40,
+      outsideFloor: 100,
+    });
+
+    expect(canvasOnlyWarnings()).toEqual([]);
   });
 });

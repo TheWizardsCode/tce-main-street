@@ -69,6 +69,7 @@ export const EXPECTED_GROUP_NAMES = [
   'hand-panel-browser',
   'pedestrians-scene-visibility-browser',
   'loan-hud-browser',
+  'webgl-clipping-browser',
 ] as const;
 
 /** The shape of `.pi/test-config.json` this guard inspects. */
@@ -131,7 +132,7 @@ export function evaluateTimeoutPerCommand(config: TestConfigLike): Verdict {
 
 /**
  * Assert the config's structural invariants survive an edit to
- * `timeoutPerCommand`: the three-command full suite and all ten named groups.
+ * `timeoutPerCommand`: the three-command full suite and all eleven named groups.
  *
  * Returns an empty list when everything is present, otherwise one message per
  * problem found.
