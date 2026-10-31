@@ -56,13 +56,33 @@ WebGL browser test. It:
   un-clips and `setRect()` re-clips — rather than only inspecting the scene
   graph;
 - boots the real `MainStreetScene` and `GymCardIndexScene` on WebGL and
-  asserts no Canvas-only `setMask` warning originates from this repo's code.
-  Core-owned call sites (the `core` submodule) are excluded because they are
-  not editable from this repo; they are tracked in `MS-0MVTE0UP00013TNW`.
+  asserts **zero** `setMask … not supported in WebGL` warnings from **any**
+  source — this repo, the `./core` submodule and bundled libraries included.
+  Every clipping surface, core-owned panels included, migrated to the
+  renderer-aware `@ui/ContainerClip`, so there is no core-path exclusion left to
+  hide a Canvas-only mask behind: a single leftover `setMask` anywhere fails the
+  file (MS-0MVU03UEC000BX1O);
+- probes each clipping surface with `renderer.snapshotPixel()` — the Help panel,
+  the Settings panel, an overlay-dialog content area and the gym card index each
+  paint inside their own scroll rect and nowhere outside it.
 
 Pixel probes are cheap for single pixels (`snapshotPixel`) but expensive for
 areas — prefer scene-graph assertions plus a handful of pixel probes over
 full-frame snapshots.
+
+### The launcher is generator-owned — never hand-edit `./main.ts`
+
+`./main.ts` is not hand-authored: it is byte-for-byte what the engine-owned
+`core/scripts/game-repo-scaffold.ts` → `renderMainTs()` emits, and
+`npm run scaffold` rewrites it verbatim. `tests/main-street/main-ts-scaffold-drift.test.ts`
+fails the unit suite the moment the committed file drifts from that output.
+
+Change the launcher by changing the generator (or the engine pin) and re-running
+`npm run scaffold` — never hand-edit `./main.ts`. A hand edit is silently erased
+by the next scaffold, together with any comment explaining it, which is exactly
+how the `type: Phaser.AUTO` launcher switch was reverted once
+(MS-0MVU03TR0006KZDH). Launcher commentary belongs in the generator or in
+`docs/`. Full contract: [build-and-release.md](build-and-release.md).
 
 The `unit-cli` project is serialized by design (`fileParallelism: false` with
 its own `sequence.groupOrder`): its tests cold-start a CLI through `vite-node`,
