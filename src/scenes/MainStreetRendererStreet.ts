@@ -25,7 +25,7 @@ import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
 import { createGameZone } from '@ui/Renderer';
-import { createContainerClip } from '../ContainerClip';
+import { createContainerClip } from '@ui/ContainerClip';
 import Phaser from 'phaser';
 
 // Re-export for test imports

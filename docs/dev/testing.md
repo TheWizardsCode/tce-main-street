@@ -42,7 +42,7 @@ Phaser 4 diverges between them. The important known divergence is masks:
 `GameObject.setMask` is **Canvas-only** in Phaser 4 — under WebGL it logs
 `"Phaser.GameObjects.Components.Mask.setMask: This method is not supported in
 WebGL. Create a Mask filter instead."` and returns, so the object renders
-unclipped. `src/ContainerClip.ts` hides that difference behind
+unclipped. `@ui/ContainerClip` hides that difference behind
 `createContainerClip()`; see the "Viewport clipping" bullet in
 `src/README.md`.
 

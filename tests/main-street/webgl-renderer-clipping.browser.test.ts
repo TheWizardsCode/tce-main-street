@@ -53,7 +53,7 @@ import { GYM_CARD_INDEX_KEY, GymCardIndexScene } from '../../src/gym/GymCardInde
 import { GAME_H, GAME_W } from '@ui/constants';
 import { createOverlayDialog } from '@ui/Overlay';
 import type { OverlayDialogHandle } from '@ui/Overlay';
-import { createContainerClip, type ContainerClip } from '../../src/ContainerClip';
+import { createContainerClip, type ContainerClip } from '@ui/ContainerClip';
 import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
 import { dismissBootModals } from './helpers/bootModals';
 

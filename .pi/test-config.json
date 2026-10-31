@@ -145,7 +145,7 @@
       ],
       "paths": [
         "tests/main-street/webgl-renderer-clipping.browser.test.ts",
-        "src/ContainerClip.ts",
+        "core/src/ui/ContainerClip.ts",
         "src/createMainStreetGame.ts",
         "src/gym/GymCardIndexScene.ts",
         "src/scenes/MainStreetScene.ts"

@@ -21,7 +21,7 @@ import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
 import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { MainStreetLifecycleManager } from './MainStreetLifecycleManager';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
-import type { ContainerClip } from '../ContainerClip';
+import type { ContainerClip } from '@ui/ContainerClip';
 import {
   type SceneLayout,
   STREET_ROWS,

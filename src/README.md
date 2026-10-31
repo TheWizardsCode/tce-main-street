@@ -106,7 +106,7 @@ reset the framing. Dragging the street backdrop pans while zoomed out.
 - **Viewport clipping.** Only `streetContainer` is transformed; the street layer
 is clipped to the street band, so HUD chrome (market, hand, log, challenges)
 stays fixed and revealed neighbouring streets can never overdraw it.
-Clipping is **renderer-aware** (`src/ContainerClip.ts`): a `GeometryMask` on
+Clipping is **renderer-aware** (`@ui/ContainerClip`): a `GeometryMask` on
 the Canvas renderer, and a Phaser 4 **Mask filter** on WebGL. Phaser 4 made
 `GameObject.setMask` a no-op under WebGL (it logs
 `"not supported in WebGL"` and returns), so a bare `GeometryMask` silently
@@ -115,8 +115,10 @@ place that branches; the same helper clips the Activity Log scroll area and
 the gym card-index list. The mask shape is drawn in **screen space** and does
 not follow the clipped container, which is what keeps the street band fixed
 while the map pans and zooms (identical to the Canvas mask semantics).
-Core-owned mask sites (`HelpPanel`, `Overlay`, `SettingsPanel`) still use
-`GeometryMask` and are tracked in `MS-0MVTE0UP00013TNW`.
+The helper lives in the engine (`@ui/ContainerClip`), so core-owned mask sites
+(`HelpPanel`, `Overlay`, `SettingsPanel`, the gym help overlay) clip through the
+same renderer-aware path — the whole clipping pipeline is renderer-aware, and
+this repo no longer carries a local copy.
 - **Lattice.** `scene.setStreetViewLattice(cols, rows)` sets how many street
 cells the map displays (default `1×1`). Cells outside the playable board are
 **view-only**; `scene.setStreetPlayableLattice(cols, rows)` grows the playable

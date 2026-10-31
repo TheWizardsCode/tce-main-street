@@ -52,8 +52,8 @@ import {
   type ScreenLayoutDocument,
 } from '@ui/screen-layout-schema';
 import { TooltipManager } from '@ui/Tooltip';
+import { createContainerClip, type ContainerClip } from '@ui/ContainerClip';
 import { createOverlayDialog, type OverlayDialogHandle } from '@ui/Overlay';
-import { createContainerClip, type ContainerClip } from '../ContainerClip';
 import { getTooltips } from '@ui/SettingsStore';
 import {
   buildCardIndex,
@@ -153,7 +153,7 @@ export class GymCardIndexScene extends GymSceneBase {
    * Renderer-aware clip for the scrollable list.
    *
    * Phaser 4 only honours `setMask` on the Canvas renderer; under WebGL the
-   * clip is a Mask filter (`../ContainerClip`).
+   * clip is a Mask filter (`@ui/ContainerClip`).
    */
   private listClip!: ContainerClip;
   private tooltipManager!: TooltipManager;
