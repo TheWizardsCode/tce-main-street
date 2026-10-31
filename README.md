@@ -203,6 +203,15 @@ Run the game locally in watch mode:
 npm run dev     # Vite dev server on http://localhost:3000
 ```
 
+The dev server shares the host with sibling repos, agent worktrees and test
+suites, so it can be killed by host memory/swap pressure mid-session (the
+browser shows `[vite] server connection lost` and `ERR_CONNECTION_REFUSED` for
+every card asset). Run the read-only check before starting a long session
+(`scripts/hygiene_check.sh`), keep at most one `vite --host` server per host,
+and follow the host-pressure hygiene runbook in
+[docs/dev/testing.md](docs/dev/testing.md#host-pressure-hygiene-runbook-ms-0mvs0fnlh003vbmw)
+for pre-flight checks, worktree hygiene and the restart/reclamation steps.
+
 The documentation has a browsable, local-only site with sidebar navigation
 and rendered Mermaid diagrams (navigation is generated from the `docs/`
 tree, so new documents appear automatically):

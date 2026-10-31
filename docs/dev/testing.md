@@ -698,9 +698,12 @@ The cause is machine pressure, not app code:
 
 - **Memory pressure / swap exhaustion.** At report time this host had 7.3 GB of
   8 GB swap in use; a long-lived `vite --host` server (which also holds the
-  SVG/card asset caches in memory) is a prime victim of the OOM killer when
-  RAM+swap runs out. Check `free -m` / `swapon --show`; a server killed this
-  way leaves no trace in the app log, only the browser-side cascade.
+  SVG/card asset caches in memory) is the first process to lose its memory
+  headroom when RAM+swap runs out. Check `free -m` / `swapon --show`; a server
+  killed under this pressure leaves no trace in the app log, only the
+  browser-side cascade. Note the bounded finding below: on the reported boot
+  swap was exhausted **without** a kernel/`systemd-oomd` OOM kill, so exhaustion
+  is the ambient condition rather than the proven kill mechanism.
 - **Concurrent dev servers and browser suites.** Sibling repos (e.g. core
   worktrees, other `tce-*` game repos) running their own `vite --host` and
   Playwright browser suites multiply baseline memory and CPU.
@@ -709,9 +712,9 @@ The cause is machine pressure, not app code:
 - **inotify exhaustion is a sibling cause** — see the ENOSPC section below for
   that signature.
 
-Host-level remediation (swap headroom, killing orphaned dev servers, worktree
-hygiene) is tracked in the follow-up work item MS-0MVS0FNLH003VBMW — this
-section only documents the diagnosis so the cascade is not re-filed as a bug.
+Host-level remediation (swap headroom, orphaned dev servers, worktree hygiene)
+is covered by the runbook below (MS-0MVS0FNLH003VBMW); this section documents
+the diagnosis so the cascade is not re-filed as a bug.
 
 ### Console errors that are not app defects (browser extensions)
 
@@ -737,6 +740,172 @@ That run produces no such error, so the message is extension-origin and is
 an extension-free run (`npx vitest run --project browser
 tests/e2e/main-street-no-console-errors.browser.test.ts`, via `/skill:test`)
 before concluding the same about any new variant.
+
+## Host-pressure hygiene runbook (MS-0MVS0FNLH003VBMW)
+
+A long-lived `vite --host` session on this shared development host competes with
+sibling repositories, agent worktrees and test suites for RAM and swap. When
+the server dies mid-session that is a **host-capacity event**, not an app
+defect. This runbook bounds the cause, prevents the pressure, and restarts
+cleanly. Everything here is read-only until an explicitly approval-gated
+cleanup step.
+
+The single entry point is the committed, read-only detector:
+
+```bash
+scripts/hygiene_check.sh            # human report
+scripts/hygiene_check.sh --json     # stable JSON (see the script header)
+```
+
+It reports three things and never prunes, deletes or kills: the worktree
+inventory (registered git worktrees vs orphaned directories under
+`.worklog/worktrees/`), swap/memory pressure, and dev-server processes with
+their cwd ownership. Its classification logic is covered by
+`tests/tooling/hygiene-check.test.ts`.
+
+### Findings: what killed the server
+
+The candidate causes were resolved against this host's journal and process
+state. The report-window boot can no longer be re-inspected (journal
+rotation), so the determination rests on the intake-time inspection plus the
+boots that are still observable.
+
+| Hypothesis | Verdict | Evidence |
+| --- | --- | --- |
+| Kernel OOM killer / `systemd-oomd` killed the `vite`/`node` process | Ruled out for the report window | `journalctl -b -g 'Out of memory\|oom-kill\|Killed process'` reports no entries on the boot in which the cascade was seen, nor on the four boots since; `journalctl -u systemd-oomd -b` shows service starts only, never a kill action. The journal's most recent OOM kill (2026-10-03) predates the report. Swap *was* exhausted (7.3 GB of 8 GB) with no OOM kill, so exhaustion is the ambient pressure, not the proven kill mechanism. |
+| Manual or agent kill (terminal/session teardown, `wl cleanup-worktree`, `implement.py finish`/`abort` cleanup) | Undetermined, bounded | `wl cleanup-worktree` only signals processes it has *registered* for a worktree path, and 0 worktree-scoped processes were tracked at intake; `implement.py finish` targets its own worktree with documented self-exclusion guards (`cleanup_worktree_processes`). The affected server ran from the **main checkout**, which neither path reaps. The journal records no signal for the dead process, so the specific kill cannot be attributed retrospectively; the mechanisms that *could* have issued it are bounded to those listed above plus pane/terminal teardown when the owning session ends. |
+| `:3000` port conflict | Ruled out (structurally a startup failure, not a mid-session kill) | Vite binds the port during startup: a conflicting listener yields `EADDRINUSE` (or a fallback port) at launch, so the browser URL would never have worked in the first place. The reported signature is a *working* session that later drops, and `ss -ltn` showed no listener after the death — consistent with a process death, not a bound port. |
+
+Practically: treat the cascade as **process death under host pressure**. Do not
+file an app bug for it; use the fast triage above, then this runbook.
+
+### Pre-flight checks (before starting a dev server)
+
+```bash
+scripts/hygiene_check.sh --json   # inventory + pressure + dev servers, one shot
+free -m                           # RAM headroom (want > 4 GB available)
+swapon --show                     # swap use (want < 50 % of the device)
+ss -ltn | grep -E ':(3000|4173)\b' # an existing dev/preview listener?
+pgrep -af 'vite --host'           # how many servers are actually running?
+```
+
+Start the dev server only when all four hold:
+
+1. **No listener** on `:3000` — a second `vite --host` cannot share the port and
+the browser will attach to whichever process won the race.
+2. **Swap under 50 %** and **more than 4 GB RAM available**; `hygiene_check.sh`
+grades this as `pressure: ok`. A `warning` grade is tolerable for a short run;
+a `critical` grade means fix the pressure first — a server started there will be
+the first casualty.
+3. **No orphaned dev server** (`dev_servers.orphaned_count` 0): a server whose
+cwd is a removed worktree or a stale path is holding memory for nobody.
+4. **No orphaned directory is `in_use`** — if one is, a live shell is anchored
+there and the cleanup step below must skip it.
+
+### Concurrency cap (documented guideline, deliberately not enforced)
+
+Per producer decision Q3 = a this is guidance plus the pre-flight checks above;
+no launcher or registry refuses a second server.
+
+- **One `vite --host` dev server per host at a time.** The port is host-wide,
+  so a second checkout reuses the first session (point the browser at it) or
+  waits — it never starts its own.
+- **At most one `vite preview` (port 4173) alongside it**, and stop the preview
+  before a browser suite: preview plus Playwright plus a dev server is the
+  peak-memory combination observed on this host.
+- **Do not run the full or browser suite while a dev soak is running.** Vitest
+  workers are the largest single memory consumer on this host; use
+  `/skill:test --type unit` for cheap feedback.
+- **Re-run the pre-flight checks after an idle break** — sibling agents start
+  their own servers, so a session that was alone an hour ago may not be now.
+
+### Worktree hygiene: registered vs orphaned (approval-gated)
+
+A directory under `.worklog/worktrees/` is *registered* when
+`git worktree list` names it; everything else is a leftover. `hygiene_check.sh`
+classifies each leftover as:
+
+- **`safe-to-prune`** — empty, or containing only the cwd-anchor placeholders an
+  agent writes so a dead session's shell still resolves (`.cwd-placeholder`,
+  `.cwd-anchor`, `.keep`, `.recover_cwd`, `__session_recreate__.tmp`);
+- **`needs-review`** — contains anything else (a stale checkout, a broken `.git`
+  link, unknown files). A human decides; the procedure never touches these.
+
+Procedure (producer approval required before any deletion; this is the
+approval-gated step — nothing above it mutates the host):
+
+1. Snapshot the before state: `scripts/hygiene_check.sh --json > /tmp/hygiene-before.json`.
+2. Review `worktrees.orphaned`; list the `safe-to-prune` candidates and their
+   entries in the work item (or PR) and **get explicit producer approval**.
+3. Skip any candidate with `in_use: true` — a live process still has it as its
+   cwd, and removing the directory breaks that shell.
+4. For each approved candidate, confirm and remove only what was reviewed:
+
+   ```bash
+   candidate=.worklog/worktrees/<name>
+   git worktree list --porcelain | grep -F "$candidate" && echo 'REGISTERED - stop'
+   ls -A "$candidate"          # expect nothing, or only the reviewed placeholder
+   rmdir "$candidate"          # empty directory
+   # placeholder-only: delete exactly the reviewed placeholder file first
+   rm "$candidate/.keep" && rmdir "$candidate"
+   ```
+
+5. Clear stale administrative entries for worktrees that are already gone:
+   `git worktree prune` (never `--force`).
+6. Re-run `scripts/hygiene_check.sh --json` and record the before/after counts
+   on the work item. Host evidence belongs in work-item comments, not in
+   committed files (`.worklog/` is gitignored).
+
+**Hard limits:** never `git worktree remove --force`, never
+`git worktree prune --force`, never `rm -rf`, never remove a registered
+worktree, and never drop a stash as part of this procedure. A stash or a
+`needs-review` directory is triaged on its own work item first (see the
+implement skill's dirty-main-checkout recovery playbook).
+
+Note the honest scope of the win: the leftovers are usually placeholder stubs,
+so the memory reclaimed directly is small. The value is an accurate inventory
+(fewer directories for watchers, agents and humans to reason about) and
+stopping a stale server from being mistaken for a live session.
+
+### Restart and swap-reclamation procedure
+
+1. **Identify the corpse and the strays:** `scripts/hygiene_check.sh` → dev
+   servers section (pid, age, RSS, owner).
+2. **Confirm ownership** from `owner`: `orphaned-worktree` / `stale-path` are
+   safe to stop once recorded; `main-checkout` or `registered-worktree` means
+   someone is probably still using it — confirm before stopping.
+3. **Stop the server:** `Ctrl-C` in the terminal that ran `npm run dev`; if that
+   terminal is gone, `kill -TERM <pid>` and only use `kill -KILL` if SIGTERM is
+   ignored. Never kill a browser suite or `vitest`/`tsx` process you do not own.
+4. **Reclaim swap:** swap only frees when its pages stop being used, so stopping
+   the servers, browser suites and stray node processes is the lever. Verify
+   with `swapon --show`. A device reset (`swapoff -a && swapon -a`) needs root
+   **and** free RAM greater than swap in use — never run it on this host while
+   swap is nearly full.
+5. **Verify the pressure dropped:** `free -m`, `swapon --show`,
+   `scripts/hygiene_check.sh --json` (`memory.pressure`).
+6. **Restart and prove the server, not the assets, was the failure:**
+
+   ```bash
+   npm run dev
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     http://localhost:3000/assets/cards/5_of_diamonds.svg   # expect 200
+   ```
+
+7. **Soak it** (the AC4 bar): leave the server up for at least 30 minutes while
+   the card asset tree is loaded, probing periodically — every probe must return
+   `200` and the server must stay alive:
+
+   ```bash
+   for i in $(seq 1 31); do
+     curl -s -o /dev/null -w '%{http_code} ' \
+       http://localhost:3000/assets/cards/5_of_diamonds.svg
+     sleep 60
+   done
+   ```
+
+   A `200`-only run with no `[vite] server connection lost` cascade is the
+   evidence; record the observations (not the numbers) on the work item.
 
 ## Troubleshooting: ENOSPC (`System limit for number of file watchers reached`)
 
