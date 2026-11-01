@@ -109,7 +109,6 @@ export type TutorialHighlightZone =
   | 'incidentQueue'
   | 'investmentsRow'
   | 'challengePanel'
-  | 'helpButton'
   | 'completionModal'
   | 'hand'             // hand area (Your Hand / Triggering Events)
   | 'actionButtons'    // Community Favour button band (relocated into the HUD strip, CG-0MUFAITED0088AGN)

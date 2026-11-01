@@ -113,5 +113,17 @@ export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
  * game. Single-player parity value; the closing primitive's default
  * (`MainStreetTurnControllerAnimation`) and the three turn-flow deferral
  * sites must stay in sync with it (MS-0MVLINWHE004W4CP).
+ *
+ * **Enforcement contract (MS-0MVMKEU2000639TG, decision C):** the cap is
+ * enforced on the **wall clock**, not the scene clock. Phaser's `TimeStep`
+ * clamps each frame's delta to `1000 / fps.min`, so under rAF starvation a
+ * scene-clock-based deadline is only observed at clamped frame boundaries and
+ * is therefore detected late — exactly the case a stall bound must cover. The
+ * shared `deferUntilIncomeCollected` helper (`MainStreetTurnControllerAnimation`)
+ * owns a wall-clock deadline (`Date.now`) and a wall-clock watchdog
+ * (`setTimeout`) that forces the advance once this many ms of *wall* time have
+ * elapsed since the deferral began, even while the page paints nothing
+ * (backgrounded/hidden document). The choreography pacing itself is
+ * unchanged — only this safety bound's enforcement is wall-clock.
  */
 export const INCOME_COLLECTION_CAP_MS = 16_000;

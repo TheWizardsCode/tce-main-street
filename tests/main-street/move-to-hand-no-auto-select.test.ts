@@ -33,7 +33,6 @@ function createMockScene(): any {
     pendingHandIndex: null as number | null,
     pendingHandJustMoved: false,
     justMovedHandCardId: null as string | null,
-    instructionText: { setText: vi.fn() },
     refreshAll: vi.fn(),
     overlayObjects: [],
     hudContainer: null,
@@ -56,7 +55,6 @@ function createMockScene(): any {
     // controller after every undo-stack mutation.
     refreshUndoRedoButtons: vi.fn(),
     refreshAllAction: vi.fn(),
-    hintBar: null,
     msLifecycleManager: {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),

@@ -60,12 +60,63 @@ unexpected zone collisions) exactly as the default reporter would, so genuine
 diagnostics stay visible (MS-0MV26MOWT004ZCQC). `sceneWins` semantics and the
 tutorial rects are unchanged.
 
+## Play panel treatment (opaque panels, MS-0MVPWQIPZ002PHPD)
+
+The market box, the persistent player-hand panel and the HUD strip all share
+the Activity Log's opaque treatment, so the play surface reads as
+self-contained sections instead of letting the street/road grid show through:
+
+| Element | Value |
+|---|---|
+| Fill | `PANEL_FILL` `0x1a1408` at `PANEL_FILL_ALPHA` `0.85` |
+| Border | 1 px `BOX_STROKE` `0x665544` at `PANEL_STROKE_ALPHA` `0.5` |
+| Corner radius | `BOX_RADIUS` (6 px) |
+
+The literals live in `src/scenes/MainStreetConstants.ts` as the single
+authority (`PANEL_FILL`, `PANEL_FILL_ALPHA`, `PANEL_STROKE_ALPHA`), promoted
+out of the Activity Log so the three panels cannot drift apart. The Activity
+Log is the reference; the incident queue and the challenge tracker reuse the
+same fill and border with their own 4 px radius, and their title bars keep the
+`0x332816` @ 0.9 band.
+
+- **Market** — the section background spans `marketLeft`..`marketRight` (the
+  single layout authority, never recomputed inline) and replaced the previous
+  `BOX_FILL` @ 0.3 wash that let roads and grid lines read through the row.
+- **Hand** — `drawHandPanel()` draws a persistent opaque panel behind the hand
+  cards and ghost capacity outlines (see
+  [Player hand layout](#player-hand-layout)).
+- **HUD** — the top resource strip uses the same fill/alpha/border so it
+  matches the market box exactly.
+- **Presentation-only in every case** — no panel calls `setInteractive`, no
+  panel mutates state, and the panels are static so reduced motion and replay
+  are unaffected.
+- **Tests** — `tests/main-street/panel-opacity.browser.test.ts`,
+  `tests/main-street/hand-panel.browser.test.ts` and
+  `tests/main-street/hud-strip-layout.browser.test.ts`.
+
 ## Player hand layout
 
 Main Street renders the player hand with the core engine's single `HandView`
 (`MainStreetRendererStreet.ts`), anchored on `handCenterX` and declaring the
 hand's capacity up front with `maxSlots: state.maxHandSize`.
 
+- **Bottom-anchored hand (MS-0MVPWQMTL004J3GB).** The hand band is anchored at
+  the bottom of the viewport in `src/layouts/main-street.layout.json` (SLL
+  `hand` zone `topLeft` `y` ≈ 0.872 — 628 px at 1280×720) while `handCenterX`
+  stays centred on the street block. `handY` is read from that anchor, so the
+  hand sits below the street plot and its bottom road band. The End Turn /
+  Peek action row keeps its **own** `actionRow` anchor (≈ 0.9) precisely so
+  moving the hand does not drag the action button — and with it the tutorial
+  `endTurnButton` highlight and the button hit area — along.
+- **Persistent opaque panel (MS-0MVPWQIPZ002PHPD).** `drawHandPanel()` renders
+  exactly one graphics object named `ms-hand-panel` behind the hand: fill
+  `PANEL_FILL` @ `PANEL_FILL_ALPHA`, 1 px `BOX_STROKE` border, `BOX_RADIUS`
+  corners. It is sized from the capacity row (`maxSlots × (handCardW +
+  HAND_SLOT_PITCH_PAD)` wide, `handCardH + 2 × HAND_PANEL_PAD` tall) so a staff
+  hire/lay-off grows or shrinks it without clipping cards or ghost outlines,
+  sits at `HAND_PANEL_DEPTH` (-100 — below every hand-layer object, including
+  the negative-depth ghosts) and is never interactive, so hand-card clicks,
+  hand→street drags and market→hand drops behave exactly as before.
 - **Capacity-stable slots (CG-0MUAYBB4E007LWEQ).** Because `maxSlots` is set,
   the card row is placed into the *same fixed capacity template* the empty hand
   renders rather than being re-centred on the current card count. Adding or
@@ -89,6 +140,61 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   `HandView` semantics and browser coverage in
   `tests/main-street/hand-outlines.browser.test.ts` (including the
   slot/card-position stability assertion).
+
+## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
+
+The persistent instruction line under the board is gone. Messages that used to
+land there are routed through `src/scenes/MainStreetFeedback.ts`:
+
+- `flashFeedback(scene, text, { kind })` is the single entry point;
+  `flashError()` and `flashConfirmation()` are the convenience wrappers.
+- **Message taxonomy** (producer decision Q4a): **error** refusals / illegal
+  moves ("Not enough coins…", "Cannot hire…", "Hand full…") and
+  **confirmation** outcomes ("Applied … to slot N", "Sold …") are surfaced;
+  **guidance** phase-teaching lines ("Click an empty slot to place …", the
+  standard market instruction) and **progress** lines ("Placing …",
+  "Processing end of turn…") are dropped — they only told the player what to
+  do, or self-resolved visually.
+- **Anchor:** `feedbackAnchor(layout)` centres the text over the main content
+  area (`logX / 2`) and lifts it clear of the hand-card band
+  (`handY − handCardH / 2 − FEEDBACK_TOAST_MARGIN_PX`, margin 20 px), so it
+  follows the bottom-anchored hand and its card size instead of hard-coding a
+  pixel position. When the layout has no hand-card height it falls back to the
+  historical plain lift above `handY`; with no finite metrics at all it falls
+  back to the viewport centre/margin.
+- **Readable hold:** `feedbackHoldMs(text)` is `max(1, words) × 500 ms`
+  (`FEEDBACK_WORD_HOLD_MS`), where words are whitespace-delimited. Empty or
+  whitespace-only text returns 0 and shows nothing. A 5-word refusal
+  ("Not enough coins for Bakery") therefore holds for 2.5 s instead of the old
+  1.1 s total lifetime.
+- **Presentation sequence:** fade/scale in over
+  `FEEDBACK_TOAST_FADE_IN_MS` (160 ms, alpha 0 → 1, scale 0.9 → 1) → the
+  word-based fully-opaque hold (no fade or motion) → fade out over
+  `FEEDBACK_TOAST_FADE_OUT_MS` (300 ms) → destroy. Total lifetime is
+  `fadeIn + hold + fadeOut`. An explicit `holdMs` option overrides the
+  word-based hold (tests/back-compat; `duration` is a deprecated alias).
+- **Above everything:** the toast renders at `FEEDBACK_TOAST_DEPTH = 3000`,
+  above hand cards (0…n), the hand panel (−100), the action row (100),
+  overlays (200–201), stats (900–950), the HUD (1000) and the stats button
+  (1100) — it is never covered by the hand or a HUD/overlay layer.
+- **One toast, wrapped:** only one feedback toast is live per scene. A new
+  message cancels the previous hold/fade timers and tweens and destroys the
+  previous text before showing the new one, so repeated refusals never stack.
+  Long messages word-wrap at `min(FEEDBACK_TOAST_MAX_WIDTH, gameW − 40)` and
+  carry a dark stroke so they stay legible over any background. Scene
+  shutdown/destroy cleanup cancels pending timers and text.
+- **Reduced motion:** the same text is shown statically at alpha 1 at the same
+  depth and anchor, held for the same `feedbackHoldMs(text)`, then destroyed —
+  no tweens, never dropped.
+- **Presentation-only:** the toast is never interactive and never intercepts
+  pointer input.
+- **Observability:** `scene.lastFeedback` (`{ text, kind }`) and
+  `scene.feedbackHistory` record everything surfaced, so tests assert the
+  channel without scraping rendered objects
+  (`tests/main-street/feedback-pop-text.test.ts`,
+  `tests/main-street/illegal-afford-feedback.test.ts`).
+- **Activity Log is untouched** — this module owns only the on-screen channel;
+  every message that was logged stays logged.
 
 ## Event Feedback Animations
 
@@ -119,10 +225,12 @@ playing a phantom card transfer.
   `uiPhase = 'animating'` → start `animateTransferFromMarket` → execute the
   undoable command. Affordability, target eligibility, occupancy and tutorial
   gating are all evaluated before any of these mutations.
-- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus an
-  instruction-text reason **precedes any mutation** — no coins, action, hand or
-  grid change, and the current selection/`uiPhase` is retained so the player
-  can immediately retarget.
+- Illegal attempt: `playIllegalFeedback()` (ILLEGAL_MOVE SFX + shake) plus a
+  pop-text error reason (`flashError()` — see
+  [Transient pop-text feedback channel](#transient-pop-text-feedback-channel-ms-0mvpwqk3u003dir6))
+  **precedes any mutation** — no coins, action, hand or grid change, and the
+  current selection/`uiPhase` is retained so the player can immediately
+  retarget.
 - Click paths use the shared predicates `canPlaceFromHand`
   (`MainStreetEngineCommands.ts`) and `canPlayUpgradeFromHand`
   (`MainStreetMarketPurchase.ts`) before `onSlotClick` / `applyHandUpgradeToSlot`
@@ -391,9 +499,6 @@ void popTextOrIcon({
   replay/headless mode (`scene.replayMode`), `shouldRenderPedestrians()`
   returns false and the layer renders nothing (no figures, no dissolve, no
   flights); the existing text/HUD feedback is unchanged.
-- Lifecycle: the layer is created with the scene, re-attached after every
-  street rebuild (`refreshStreetGrid`), driven from the scene `update` loop,
-  re-clamped on resize and destroyed on scene shutdown.
 - Performance (MS-0MUYGFXMK009L1UU): the count is uncapped by producer
   decision; a single shared texture and constant per-figure work (position +
   bob) keep the frame cost low. Measured per-frame **model** cost (pure step
@@ -403,6 +508,65 @@ void popTextOrIcon({
   per-figure model update, not GPU sprite rendering; at representative
   reputations (tens of figures) the layer is immaterial, so the uncapped
   population remains an accepted risk rather than a blocker.
+
+#### Lifecycle and attach contract (MS-0MVRMI1EQ002I24K)
+
+Every link below is load-bearing: break one and the layer renders nothing,
+**silently**, because every method is defensive (a thrown layer failure is
+swallowed so it can never stall a turn). Preserve this contract when changing
+the street renderer, the scene boot path or the HUD refresh.
+
+- **Owning module:** `src/scenes/MainStreetPedestrians.ts` — the
+  `MainStreetPedestrians` layer class plus its pure helpers (`pedestrianCount`,
+  `shouldRenderPedestrians`, road network and shop occupancy).
+- **Construction sites:** `MainStreetLifecycleManagerLifecycle.create()`
+  assigns `s.msPedestrians = new MainStreetPedestrians(s)` twice — once in the
+  pre-reset helper block and once in the post-scaffolding block. The
+  post-scaffolding instance is the live layer (it is the one the HUD refresh,
+  rebuild attach hook and scene update loop see); the earlier assignment keeps
+  reset/early lifecycle callbacks safe before the scaffolding exists. Keep
+  both assignments and do not add a third construction path.
+- **Teardown, resize and frame drive:** the layer is destroyed on scene
+  `SHUTDOWN` (`MainStreetLifecycleManagerLifecycle`), re-clamped on resize
+  (`resize()`), driven each frame from `MainStreetScene.update()`
+  (`msPedestrians.update(delta)`), and opened/closed by the turn hooks
+  `MainStreetTurnControllerTurnFlow`: `startNewTurn()` on a new day,
+  `beginEndOfTurn()` at end of turn, plus `dissolveIntoCoins()` in the
+  `reputation` income phase.
+- **Attach hook (street rebuild):** `MainStreetRendererStreet.refreshStreetGrid()`
+  calls `streetContainer.removeAll(true)`, which destroys the layer's
+  container along with the rest of the street. Its **last** step is therefore
+  `s.msPedestrians?.attachToStreet?.()`. It must stay last: an early return,
+  reorder or thrown step between the `removeAll(true)` and the attach leaves
+  the layer detached (no crowd), and attaching before the roads/slots would
+  render it underneath them. `attachToStreet()` is idempotent and re-parents
+  the **existing** figures (positions, lanes, modes preserved), spawning only
+  when `targetCount > 0` and no figures exist yet.
+- **Population is reconciled only from the HUD path:**
+  `MainStreetAnimatorIncome.animateHudValueChanges()` — reached from
+  `MainStreetRendererHud.refreshHud()` — calls
+  `syncPedestrianPopulation(scene, reputation)`, which calls
+  `msPedestrians.setPopulation(pedestrianCount(reputation))`. `setPopulation()`
+  is the **only** path that raises the layer's target count; nothing else sets
+  it. If that path is skipped, early-returned, or fed a falsy reputation, the
+  layer stays attached with a zero target and renders no figures — silently.
+- **Modes that render nothing:** `shouldRenderPedestrians()` (used by
+  `isEnabled()`) returns false when Reduced Motion is enabled or the scene is
+  in replay/headless mode (`scene.replayMode`). In those modes the layer
+  renders nothing at all — no figures, no dissolve and no reputation coin
+  flights — and the text/HUD feedback is unchanged. Normal play (default
+  settings, Reduced Motion off, not replay) must render the crowd.
+
+#### Root cause note for the reported regression (MS-0MVRDVVH4001048Q)
+
+The crowd was reported missing in `MS-0MVRDVVH4001048Q`, but the scene-level
+guard is green on both the released `v0.1.22` build and on `dev`, so this
+repository has no integration defect to restore: the only demonstrated way to
+lose the crowd is to stop the HUD-path reconciliation above (zero target ⇒ an
+attached layer renders nothing, with no error).
+`tests/main-street/pedestrians-scene-visibility.browser.test.ts`
+(`MS-0MVRMHTW6006KQKI`) pins that contract against a real scene boot and a
+street rebuild.
 
 ### End-of-turn income presentation (phased coin-grid animation, CG-0MT23O6W8003AXWJ)
 
@@ -898,8 +1062,8 @@ condensed text-only summary.
      and any modal overlay (>1000) — so it never intercepts pointer
      events, never shifts layout, and leaves the market fully interactive
      (tutorial E2E safe; AC2).
-- Accessibility (reduced motion): skipped entirely — the current behaviour
-  (instruction text only) is preserved (spec AC3).
+- Accessibility (reduced motion): skipped entirely — the HUD week label is
+  the cue instead (no banner motion).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — returns
   immediately in replay/headless mode (`scene.replayMode`), never mutates
   state or transcript.
@@ -932,6 +1096,178 @@ condensed text-only summary.
   game state.
 - Reuse: `popTextOrIcon` + tweened circles (same deterministic pattern as
   `animateLevelUp`) + `SFX_KEYS.EVENT_CHEER`; no new engine infrastructure.
+
+### Turn Summary panel model (turn-ledger summary)
+
+- Model: `src/scenes/MainStreetTurnSummary.ts` (pure, no Phaser import) —
+  `buildTurnSummary(state, result)` turns the committed `TurnResult.turnLedger`
+  (MS-0MVP45KZV006TMUK) plus `MainStreetState` into the whole Turn Summary
+  dialog content (MS-0MVP45WBA001GAVY, parent MS-0MVL6HMDP004WI41).
+- Reported values, for the turn just closed:
+  - **Businesses owned** — one owner-keyed row per `businessesOwned` key
+    (`ownerId` / `playerId`, `label`, `isHuman`, count + wallet). The dialog
+    currently renders the single human seat (`humanOwner`); the multi-owner
+    rows are already present for a future per-player panel.
+  - **Income subtotals per phase** — base / synergy / reputation / events,
+    plus `incomeTotal` (the four rows sum to the income phase's credited
+    coins).
+  - **Ongoing expenses per category** — staff / community / business, plus
+    `expensesTotal` (signed: zero or negative).
+  - **Incident and one-off deltas** — the resolved incident name plus its
+    coin/reputation delta, and the non-recurring (market / event-play /
+    other) coin/reputation delta.
+  - **Net change** — coin / reputation / score for the day.
+  - **Closing balances** — coin / reputation / score, derived as
+    `day-start snapshot + ledger net`, the ledger's own reconciliation
+    identity (the deferred closing refreshes the net rows against the final
+    state, so closing balances are the post-turn values and stay
+    integer-consistent with the displayed rows).
+- Read-only: never mutates state, consumes no RNG, and never touches the
+  save-point ordering (the checkpoint stays in `finalizeTurn`).
+- Competitive closings carry no ledger, so `buildTurnSummary` returns `null`
+  and the dialog is not presented (parent AC4).
+- Tests: `tests/main-street/turn-summary-model.test.ts` (one test per
+  surfaced value, owner-keyed shape, and a real-engine
+  `processEndOfTurn` integration test); engine ledger coverage lives in
+  `tests/main-street/end-of-turn-ledger.test.ts`.
+
+### Turn Summary dialog and the closing gate
+
+- Overlay: `MainStreetOverlayContent.showTurnSummaryDialog()`
+  (MS-0MVP46AMO002SZUT) renders the model above — instant (no fade-in, so it
+  is reduced-motion safe), overlay-pattern compliant (`hudContainer`
+  parenting, depths 199/200/201, dismissal via `s.overlayObjects`). It shows
+  a `Turn Summary` / `Day <n>` title, then two columns: **left** income per
+  phase (base / synergy / reputation / events) with its total, ongoing
+  expenses per category (staff / community / business) with its total, and
+  **businesses owned** for the human seat; **right** the resolved incident
+  (name + coin/reputation delta), the one-off changes, the net coin /
+  reputation / score change and the closing coin / reputation / score
+  balances. The actions are **[ Next Turn ]** (primary) and an
+  always-disabled **[ Bank Loan ]** carrying the hint *“Bank loans are not
+  available yet — coming in a future update.”* — the seam reserved for
+  MS-0MVL6DZI0000F6CG (Bank Loans), which replaces only the
+  `onBankLoanAction` wiring; this item never enables it. The loan engine,
+  bailout flow and HUD readout have since shipped (MS-0MVL6DZI0000F6CG
+  children), so the button's enabling hint is now the only outstanding piece:
+  wiring is tracked by MS-0MVPWSQMG004198C, and until it lands the button
+  stays disabled with that copy.
+  `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
+  overlay manager (headless), continues the closing instead of stranding the
+  turn.
+- When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
+  `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
+  every closing animation (phased income show + incident reveal) has finished.
+  `finishTurnPresentation` hands the shared closing primitive
+  (`presentTurnClosing`) a gate callback instead of `advanceTurn` directly, so
+  the dialog is presented only after all end-of-turn animations complete and
+  the next day starts only when the player clicks **[ Next Turn ]** — that
+  click runs `advanceTurn`, which presents any pending banking hint first, then
+  waits out any running income choreography (bounded) and runs `finalizeTurn`
+  (checkpoint + `startTurnPhase`).
+- Scope: deferred single-player closings only. Reduced motion, the tutorial,
+  replay/headless and the resumed event-choice/piggyback tails keep the
+  existing auto-advance pacing, and competitive closings never present it
+  (per-seat `perSeatClosingSummary` text is unchanged; parent AC4).
+- Idempotence: the deferred deltas are applied under the scene's
+  `endOfTurnDeltasApplied` exactly-once guard before the panel renders (the
+  income/incident animation completions normally got there first), and the
+  gate also waits out a running income choreography (bounded by
+  `INCOME_COLLECTION_CAP_MS`) so the panel never opens over live animation.
+- Never stalls: a result without a ledger, a failing model build or a missing
+  dialog surface advances immediately, matching the pre-gate pacing.
+- Tests: `tests/main-street/turn-summary-gate.test.ts` (gate on/off per mode,
+  `onNextTurn` continuation, delta ordering/idempotence, banking-hint
+  ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
+  (overlay rendering in a real Phaser scene).
+
+### Bailout loan offer dialog
+
+- Renderer: `MainStreetLoanOverlay.showLoanOfferDialog()`, exposed as
+  `MainStreetOverlayContent.showLoanOfferDialog()` and delegated by
+  `MainStreetScene.showLoanOfferDialog()` (MS-0MVPWSBLG006YMBA, parent
+  MS-0MVL6DZI0000F6CG).
+- Model: `src/scenes/MainStreetLoanOverlayModel.ts` (pure, no Phaser import) —
+  `buildLoanOfferModel(state)` turns the outstanding
+  `state.pendingLoanOffer` into a title, intro, one **row per presented loan
+  option** (principal, term, per-turn repayment, total repayment and a
+  self-contained button label) and a Decline action. Repayment figures reuse
+  `MainStreetLoans.loanTotalRepayment` / `loanPerTurnRepayment`, so the dialog
+  can never disagree with the loan the engine records on acceptance; a row's
+  `principal`/`termTurns` are exactly the accepted `LoanOption`.
+- When it appears: `finishTurnPresentation()` presents the dialog whenever the
+  closing pauses on a pending offer (`result.pendingLoanOffer`) — or when
+  `state.pendingLoanOffer` is already open — **instead of** the game-over
+  summary. The deferred closing tail (`completeDeferredClosingTail`) also
+  routes a freshly raised offer to the dialog rather than starting the next
+  week, and `handleGameOver()` refuses to present the summary while an offer
+  is open (`hasOpenBailoutOffer()` in `MainStreetGameOverSummary.ts`). The
+  bankruptcy summary is therefore only shown after a decline.
+- Resume: `onLoanOfferChoice()` resolves the offer through the engine's
+  `acceptLoanOffer(optionIndex)` / `declineLoanOffer(state)` commands (both
+  clear `state.pendingLoanOffer`, so the handler is idempotent), applies any
+  outstanding deferred deltas under the `endOfTurnDeltasApplied` exactly-once
+  guard, runs `finishDeferredTurnClosing()` **once** and completes the turn
+  through the shared tail. No re-run of `processEndOfTurn` means the income,
+  incident draw and loan repayment are never replayed, and the per-turn
+  bailout guard prevents a duplicate offer.
+- Competitive seats (MS-0MVPWSAMH005LV9R): the shared closing evaluates **every**
+  seat before declaring failures. An AI seat at `coins < 0` with no active loan
+  auto-accepts the largest option inline (no dialog) and is not eliminated, so a
+  last-standing win is delayed accordingly; an AI seat already repaying a loan is
+  eliminated exactly as before. A human seat's offer pauses the shared closing
+  (`presentCompetitiveDayTail` presents the same dialog) and
+  `resolveCompetitiveLoanOffer` resumes the **competitive** closing tail — never
+  the single-player one, which reads the shared host wallet. The offer carries
+  the failing seat's `ownerId`, and the principal lands on that seat's own
+  `PlayerRecord` wallet (the shared mirror is left alone when it belongs to
+  another seat). Offers are raised at most once per seat per turn, so a decline
+  converges to the day's bankruptcy outcome in one pass.
+- Overlay pattern: instant (no fade-in, reduced-motion safe),
+  `createOverlayBackground` / `createOverlayButton` from `@ui`, every element
+  parented into `s.hudContainer`, depths 199/200/201, every object tracked in
+  `s.overlayObjects` for dismissal, and `safePlaySound` for the button SFX.
+  Presented **once per offer** (the offer object is the guard), and a
+  headless scene without an overlay surface falls back to the model's
+  deterministic `recommendedIndex` (the AI/headless largest-option policy).
+- Persistence (MS-0MVPWSE0E003QLKE): `loans` and `pendingLoanOffer` are part of
+  the run checkpoint at `MAIN_STREET_SAVE_SCHEMA_VERSION = 3` — a mid-loan save
+  resumes with the same remaining turns and per-turn amount (never a
+  re-derived schedule), and a save taken while the dialog is open still
+  presents the same menu. Both fields are omitted while empty, so a loan-free
+  payload is unchanged from v2; a v2 save loads through the serializer's
+  v2 → v3 migration with no loans and no offer. Loads are defensive
+  (`restoreActiveLoans` / `restorePendingLoanOffer`): malformed entries are
+  dropped, `turnsRemaining` is clamped to `termTurns`, and an unusable offer is
+  discarded rather than stalling the closing.
+- Tests: `tests/main-street/MainStreetLoanOverlay.test.ts` (model rows,
+  presentation-once, accept/decline resume, post-closing pause) and
+  `tests/main-street/MainStreetLoanOverlay.browser.test.ts` (rendering, button
+  count, dismissal).
+
+### Loan obligation HUD readout
+
+- Renderer: `refreshHud()` in `src/scenes/MainStreetRendererHud.ts`
+  (MS-0MVPWSCRD004A6Z4, parent MS-0MVL6DZI0000F6CG).
+- Copy: `MainStreetLoans.hudLoanReadout(state)` returns
+  `Loan: 110 coins/turn, 6 turns left` for the seat bound to the shared wallet,
+  or `null` when loans are disabled or the seat holds no active loan — so a
+  loan-free (and every `loansEnabled: false` headless) HUD is
+  pixel-identical to before the feature.
+- Placement: a 13 px bold `#ff6699` label named `loan-hud-readout`, right-aligned
+  immediately left of the `Score: N` label at the HUD strip baseline. Anchoring
+  to the Score label's measured left edge (not a fixed x) keeps the readout
+  clear of the score for every digit width; it is added to `hudContainer` so it
+  follows the standard HUD lifecycle.
+- Competitive play: each scoreboard row carries the compact variant
+  (`Loan: 110/turn, 6 left`) via
+  `formatCompetitiveScoreboardRow()` → `Loan: 110/turn, 6 left`, appended after
+  the score so every seat's remaining debt is visible from one HUD line. The
+  readout updates every refresh, so a repaid loan disappears immediately and
+  each instalment ticks the remaining turns down.
+- Acceptance: accepting a loan also logs the decision (amount, term, per-turn
+  repayment) to the activity log, and every instalment logs its own `loss` row
+  (see the rules documentation, §5.1).
 
 ### Game-over panel (two-column summary)
 
@@ -1012,8 +1348,9 @@ condensed text-only summary.
   command's `description` (already captured for the transcript) as the
   action label.
 - Behavior (reduced-motion OFF): a brief "Undid: <action>" / "Redid:
-  <action>" pop appears just above the hint bar (bottom-centre,
-  `popTextOrIcon` riseY −16) with a UI click SFX (`SFX_KEYS.CLICK`).
+  <action>" pop appears bottom-centre 60 px above the viewport bottom — over
+  the bottom-anchored hand band (`popTextOrIcon`, riseY −16, 1200 ms) — with
+  a UI click SFX (`SFX_KEYS.CLICK`).
 - Accessibility (reduced motion): the pop helper's reduced-motion fallback
   is used (no extra motion); the click SFX still plays (sound is not
   motion).

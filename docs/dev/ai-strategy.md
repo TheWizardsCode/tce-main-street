@@ -4,6 +4,16 @@
 
 Write the AI and player assistance section of The Build's Game Design Document covering AI strategy design for auto‑play, hint systems, and any tutorial/onboarding guidance.
 
+> **Hint feature status (MS-0MVPWQLIH008R5M3): design intent only — no shipped
+> hint consumer.** The game no longer has a hint subsystem: `MainStreetHint.ts`,
+> the Hint action-bar button and the persistent instruction/hint line were
+> removed, and nothing in the shipped code asks an AI strategy for a
+> player-facing hint. The AI strategy tiers in this document drive AI seats and
+> headless / Monte-Carlo runs only; on-screen assistance is the tutorial
+> overlay plus the transient pop-text feedback channel
+> (`src/scenes/MainStreetFeedback.ts`). The sections below that sketch a hint
+> system are the historical design record, not current behaviour.
+
 ## User Story
 
 As a game designer, I want The Build's AI behaviour and player assistance systems documented so that we can deliver smart hints and compelling auto‑play from an early milestone.
@@ -15,7 +25,7 @@ As a game designer, I want The Build's AI behaviour and player assistance system
    - **Random/Naive** – Makes valid moves randomly (baseline, useful for Monte Carlo testing)
    - **Heuristic/Greedy** – Follows simple priority rules (e.g. always craft if possible, prefer high‑value actions)
    - **Lookahead/Smart** (optional) – Considers future consequences of moves
-3. **Hint System** – How are hints generated? Single best move? Multiple suggestions? Progressive hints (vague to specific)?
+3. **Hint System** – How are hints generated? Single best move? Multiple suggestions? Progressive hints (vague to specific)? *(Historical design intent only — see the status note above; no hint consumer is shipped.)*
 4. **Move Evaluation Heuristics** – What makes a move "good" in The Build? Priority ordering of actions. Scoring function for comparing moves.
 5. **Tutorial / Onboarding** – Is there a tutorial? How does The Build teach the player its mechanics? Guided first game? Tooltip‑based learning?
 6. **Difficulty Adjustment** (if applicable) – Does the AI assist in difficulty? Dynamic difficulty? Selectable difficulty levels that change deal generation or available content?
@@ -403,7 +413,7 @@ A formal GDD section covering The Build's AI design with enough detail for an en
 ## Acceptance Criteria
 
 - At least 2 AI strategy tiers are fully specified with decision logic.
-- Hint system design documented with player‑facing behaviour.
+- Hint system design documented with player‑facing behaviour. *(Historical design intent — no hint feature is currently surfaced; MS-0MVPWQLIH008R5M3.)*
 - Move evaluation heuristics defined and prioritised.
 - Tutorial/onboarding approach documented.
 - Design references existing engine AI abstractions (AiStrategyBase, AiPlayer, pickRandom, pickBest).

@@ -206,8 +206,11 @@ registerStorylineOptions('evt-nationalise', [
 ]);
 ```
 
-The AI path needs no changes: `decideEventChoice` selects from the presented
-option list, which `condition` has already filtered at draw time.
+The AI path needs no option-list special-casing: `decideEventChoice` selects
+from the presented option list, which the draw-time compile has already
+filtered by `condition` **and** affordability (`cost`), so the AI never sees an
+option the player would not have been offered. It does fold the presented
+options' `cost` / `extraEffect` deltas into its value (§4).
 
 ---
 
@@ -271,12 +274,45 @@ Headless turns never stall: `resolveAiEventChoice` (re-exported from
 `MainStreetAiStrategy.ts`, implemented via `resolvePendingEventChoice`) resolves
 a pending choice by difficulty and completes the deferred closing.
 
-`decideEventChoice(state, event, difficulty)` returns the **index** of the
-automatically-chosen option over the compiled arbitrary option list:
+`decideEventChoice(state, event, difficulty, pending?)` returns the **index** of
+the automatically-chosen option **in the presented option list**:
 
-| Difficulty | Policy |
-|------------|--------|
-| **All** | Since every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B), the only differentiator is the successor chain: the AI picks the option whose **worst-case candidate** severity is lowest (terminal options win; ties resolve to the lowest index). Deterministic and RNG-free, so replays and Monte Carlo stay comparable. |
+- **Presented list only.** When the optional `pending` choice is supplied (the
+  normal AI resolve path) the AI reads the frozen draw-time snapshot via
+  `getPendingStorylineOptions(pending, state)`; the 3-argument form compiles the
+  event against the current state via `getStorylineOptions(event, state)`. Both
+  apply the draw-time filtering of the core presented-list compile — `condition`
+  **and** affordability (`cost`) — so the AI can never select an option the
+  player would not have been offered. The returned index addresses that
+  presented list, never the raw unfiltered one.
+- **Projected value, lowest wins.** Each presented option is scored by its
+  projected value (table below); the option with the lowest projected value is
+  chosen.
+
+| Term | Contribution to the projected option value |
+|------|--------------------------------------------|
+| **Successor chain** | Worst-case (maximum) severity across the option's candidate set — a terminal option (no candidates) scores 0. Every CSV-authored option applies the event effect (`effectPolicy: 'apply'`, Q4=B), so the chain is the severity lever. |
+| **`cost`** | `cost.coins` + `cost.reputation` × `REPUTATION_SEVERITY_SCALE`: the player **pays** it, so it adds to the value. |
+| **`extraEffect`** | `extraEffect.coins` + `extraEffect.reputation` × `REPUTATION_SEVERITY_SCALE`: the player **receives** it, so it subtracts from the value. |
+
+`REPUTATION_SEVERITY_SCALE` (100) is the same weight the severity model uses, so
+coins and reputation stay comparable in both terms. Ties resolve to the **lowest
+index** (index 0 is the presentation-default / legacy Accept slot). Options with
+neither `cost` nor `extraEffect` project a delta of 0, so legacy binary choice
+cards keep their pre-existing selection exactly (pinned by the storyline
+regression harness).
+
+The policy is a pure function of state and option and consumes no RNG (no
+`state.rng`, `Math.random` or clock), so repeated calls on identical input
+return the same index and seeded replays and Monte Carlo runs stay
+byte-identical. `cost` / `extraEffect` are core option fields — their contract
+(including the draw-time affordability gate and payment at resolution) is
+documented once in
+[`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md);
+this section only describes how the AI projects them into option value. The
+cost-gated, frozen-snapshot, extra-effect and tie-break cases are pinned by the
+`cost-aware scoring` cases in
+[`tests/main-street/MainStreetAiEventChoice.test.ts`](../../tests/main-street/MainStreetAiEventChoice.test.ts).
 
 The former Easy/Medium/Hard accept/reject ladder was superseded by this shared
 rule when the migrated model made Reject apply the effect too
@@ -292,6 +328,18 @@ choice, so replays are comparable.
 
 All scripts run under `vite-node` because the card model imports
 `card-data.csv` through Vite's `?raw` query.
+
+> **Where the authoring toolchain lives.** The *generic* story-line authoring
+toolkit — content model + content adapter, CSV/checksum, deterministic
+manifest/Mermaid generator, static validator, transactional author API and the
+visual editor — now ships in core
+([`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md),
+[`core/docs/DEVELOPER.md`](../../core/docs/DEVELOPER.md), `src/story-line/content/`
+and `src/story-line/editor/` in the core repo). Main Street's commands in this
+section remain game-side wrappers over its own typed CSV model; supplying a
+Main Street `ContentAdapter` so the core CLIs and the
+`npm run storylines:editor` visual editor can drive this content is tracked in
+the core worklog (`CG-0MVNE47TC0048WZ9`).
 
 | Command | Purpose |
 |---------|---------|
@@ -446,11 +494,19 @@ The mechanic has been extracted into the generic, game-agnostic core module
 system, so there is one implementation of compilation, resolution and the
 journal helpers.
 
+> **Doc-guard note:** `tests/main-street/storylines-doc-drift.test.ts` asserts
+the *semantic anchors* of this engine reference (the `createStorylineSystem` /
+`@story-line` / `GymStorylineScene` seam API, the documented section topics and
+the links resolving) — never its Markdown heading text, which is engine prose
+and not a cross-repo contract (MS-0MVMNO29Z009SF6O).
+
 **The adapters** ([`src/MainStreetStorylineAdapter.ts`](../../src/MainStreetStorylineAdapter.ts)):
 
 - `mainStreetStorylineEngineAdapter` maps the core engine seam onto
   `MainStreetState`: seeded `rng()`, `resolveEvent` effect application, the
-  activity log, and the incident-deck chain-card sink.
+  activity log, the incident-deck chain-card sink, and the
+  `applyResourceDelta` settlement seam (declarative option `cost` / `extraEffect`
+  mutate `resourceBank` and re-sync the shared `EconomyLedger`).
 - `mainStreetStorylineUiAdapter` supplies Main Street's presentation (names,
   dialog labels, story-update lines, journal formatting). It is the core
   default implementation, which was extracted from Main Street, so the shipped
@@ -484,8 +540,15 @@ remains the generalised entry point.
   `CompiledStoryline` types from core (specialised to `MainStreetState`), so
   there is no duplicate type definition.
 - Main-Street-specific concerns stay game-side: the transcript
-  (`recordStorylineResolution`), the overlay presentation, and the
-  graph/manifest tooling.
+  (`recordStorylineResolution`), the overlay presentation, and this repo's
+  `validate:storylines` / `storylines:graph` / `storylines:author` CLIs (bound
+  to the typed `card-data.csv` model).
+- The **generic authoring toolchain** (content adapter, CSV/checksum,
+  manifest/Mermaid, validator, transactional author API) and the **visual
+  editor** (`npm run storylines:editor`) live in core rather than this repo; see
+  `core/docs/core-engine/story-line.md` and `core/docs/DEVELOPER.md`. A Main
+  Street content adapter is tracked in the core worklog
+  (`CG-0MVNE47TC0048WZ9`).
 
 Full generic reference: [`core/docs/core-engine/story-line.md`](../../core/docs/core-engine/story-line.md).
 
@@ -500,7 +563,15 @@ Each is captured as a work item:
 | Done | Render the committed Mermaid graph to SVG in the docs build and link it here. Delivered by `MS-0MUNB54KU005084C` (see §7.2). | `MS-0MUNB54KU005084C` |
 | Low | Extend options with conditional/cost-gated effects (`StorylineOption` was designed to grow). | `MS-0MUNB58TK0025CB9` |
 | Low | Callback escape hatch: arbitrary `condition` / `successorResolver` callbacks on storyline options. | `MS-0MUPORT1Z000QX8N` |
-| Low | Visual storyline authoring editor backed by the manifest and the transactional author API. | `MS-0MUNB5D7K001GH19` |
+| Done | Visual storyline authoring editor backed by the manifest and the transactional author API. Shipped in core as `npm run storylines:editor` (see below). | `MS-0MUNB5D7K001GH19` |
+
+**Delivered:** the visual editor now ships in core as
+`npm run storylines:editor` — a local viewer plus guided, validated card and
+story-line editing over the same transactional author API (work item
+`MS-0MUNB5D7K001GH19`, delivered in core by `CG-0MVHZ1P1I000PVQ1`). It is a
+core developer tool, documented in `core/docs/core-engine/story-line.md` and
+`core/docs/DEVELOPER.md`; this repo's own authoring commands above are
+unchanged.
 
 ---
 

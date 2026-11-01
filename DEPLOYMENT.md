@@ -39,9 +39,13 @@ so only one deployment runs at a time):
    HTTPS (see [No stored credentials](#no-stored-credentials)).
 2. **Setup Node.js** 20 with the npm cache.
 3. **Install dependencies** — `npm ci`.
-4. **Test** — `npm test` (unit suite).
+4. **Test** — `npm test` (unit suite); every Vitest run first passes the
+   engine-checkout preflight (`npm run engine:check`), which fails loudly
+   when `./core` is not the pinned engine or a descendant of it.
 5. **Build** — `npm run build` (engine:sync + `tsc --noEmit && vite build` → `dist/`).
-   Dev builds auto-advance `./core` to the latest engine dev head; release
+   Dev builds auto-advance `./core` to the latest engine dev head **and re-pin
+   `configs/engine-pin.json` to that commit in the same step** (the pin tracks
+   the engine `dev` tip; the pin and the gitlink travel together); release
    builds use `npm run build:release` with the committed
    `configs/engine-pin.json` (see [docs/dev/build-and-release.md](docs/dev/build-and-release.md)).
 6. **Configure Pages** — `actions/configure-pages@v5`.
@@ -114,14 +118,17 @@ administrator must also allow it for the repository.)
 
 ```bash
 npm ci
-npm test          # unit suite
+npm test          # unit suite (engine-checkout preflight + Playwright Chromium pre-checks)
 npm run build     # engine:sync + tsc --noEmit && vite build -> dist/
 npm run preview   # serves dist/ at http://localhost:4173/tce-main-street/
 ```
 
 For a bit-for-bit reproducible engine, use the release path instead:
 `npm run build:release` compiles exactly the SHA in `configs/engine-pin.json`
-after `engine:verify` confirms it matches the tracked engine branch.
+after `engine:verify` confirms it matches the tracked engine branch. The pin
+tracks the engine `dev` tip: a pin that lags is a genuine failure, and a dev
+`engine:sync` re-pins it (staging the pin with the `core` gitlink), so a
+committed tree never records the two divergent.
 
 `npm run preview` runs `vite preview --host`, which serves the production bundle
 under the configured Pages base, so the URL includes the project path:

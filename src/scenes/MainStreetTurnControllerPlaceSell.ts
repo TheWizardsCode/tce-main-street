@@ -7,6 +7,7 @@
  */
 
 import { playIllegalFeedback } from './MainStreetTurnControllerUtils';
+import { flashError, flashConfirmation } from './MainStreetFeedback';
 import { canPlaceFromHand } from '../MainStreetEngineCommands';
 
 import { computeSynergyPairs } from '../MainStreetAdjacency';
@@ -36,7 +37,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
     if (pendingTargetCard && pendingTargetCard.family === 'upgrade') {
       const checkU = (s.msLifecycleManager as any).isTutorialActionAllowed?.('apply-upgrade' as TutorialActionType);
       if (checkU && !checkU.allowed) {
-        s.instructionText.setText(checkU.reason ?? 'Complete the highlighted step first.');
+        flashError(s, checkU.reason ?? 'Complete the highlighted step first.');
         const handSpriteU = s.msRenderer?.handView?.getSpriteAt?.(s.pendingHandIndex ?? -1) as any;
         playIllegalFeedback(handSpriteU ?? s.actionContainer, s);
         return;
@@ -48,7 +49,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
     // Tutorial gating: only allow place-business if it's the required action or tutorial is inactive
     const check = (s.msLifecycleManager as any).isTutorialActionAllowed?.('place-business' as TutorialActionType);
     if (check && !check.allowed) {
-      s.instructionText.setText(check.reason ?? 'Complete the highlighted step first.');
+      flashError(s, check.reason ?? 'Complete the highlighted step first.');
       const handSpriteGating = s.msRenderer?.handView?.getSpriteAt?.(s.pendingHandIndex ?? -1) as any;
       playIllegalFeedback(handSpriteGating ?? s.actionContainer, s);
       return;
@@ -69,7 +70,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
       const params = resolveTutorialCardParams(step);
       const cardName = params?.cardName ?? 'this card';
       const synergyName = params?.synergyCardName ?? 'the partner card';
-      s.instructionText.setText(`Place ${cardName} next to ${synergyName} for a Culture bonus.`);
+      flashError(s, `Place ${cardName} next to ${synergyName} for a Culture bonus.`);
       const handSpriteSynergy = s.msRenderer?.handView?.getSpriteAt?.(s.pendingHandIndex ?? -1) as any;
       playIllegalFeedback(handSpriteSynergy ?? s.actionContainer, s);
       return;
@@ -83,7 +84,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         s.pendingHandIndex = null;
         s.pendingHandJustMoved = false;
         s.uiPhase = 'market';
-        s.instructionText.setText('Card no longer in hand.');
+        flashError(s, 'Card no longer in hand.');
         return;
       }
 
@@ -99,7 +100,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
       if (!legality.legal) {
         const handSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex);
         playIllegalFeedback(handSprite ?? s.actionContainer, s);
-        s.instructionText.setText(legality.reason ?? 'Move not available.');
+        flashError(s, legality.reason ?? 'Move not available.');
         // Return to market phase so the next click can retry or cancel
         // (the hand card selection highlight is preserved for a quick retry).
         s.uiPhase = 'market';
@@ -119,7 +120,6 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
       s.pendingHandIndex = null;
       s.hiddenTransferSourceCardIds.add(cardId);
       s.uiPhase = 'animating';
-      s.instructionText.setText(`Placing "${cardName}"...`);
       s.refreshAll();
 
       const afterTransfer = (): void => {
@@ -161,7 +161,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
             }
             try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'play-business-from-hand', handIndex, slotIndex }, description: premiumApplies ? `Placed from hand to slot ${slotIndex} (50% premium, no action left)` : `Placed from hand to slot ${slotIndex}` }); } catch (_) {}
             try { s.gameEvents?.emit('card:placed', { handIndex, slotIndex }); } catch (_) {}
-            s.instructionText.setText(premiumApplies
+            flashConfirmation(s, premiumApplies
               ? `Placed "${cardName}" on slot ${slotIndex} (50% premium)`
               : `Placed "${cardName}" on slot ${slotIndex}`);
           } catch (e) {
@@ -169,7 +169,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
             console.error('[MS] playBusinessFromHandCommand failed', e);
             const handSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex) as any;
             playIllegalFeedback(handSprite ?? s.actionContainer, s);
-            s.instructionText.setText(`Error: ${msg}`);
+            flashError(s, `Error: ${msg}`);
           }
           finish();
         };
@@ -181,7 +181,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
           const handSprite = s.msRenderer?.handView?.getSpriteAt?.(handIndex);
           if (s.state.resourceBank.coins < premiumCost!) {
             playIllegalFeedback(handSprite, s);
-            s.instructionText.setText(`Error: Not enough coins to place ${cardName} at the premium price. Need ${premiumCost}, have ${s.state.resourceBank.coins}.`);
+            flashError(s, `Error: Not enough coins to place ${cardName} at the premium price. Need ${premiumCost}, have ${s.state.resourceBank.coins}.`);
             finish();
             return;
           }
@@ -190,7 +190,7 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
           // placement aborts and the card returns to hand (no cost, no
           // action consumed).
           s.showBuyAndPlacePremiumDialog(cardName, doPlace, () => {
-            s.instructionText.setText(`"${cardName}" stays in hand — placement cancelled.`);
+            flashConfirmation(s, `"${cardName}" stays in hand — placement cancelled.`);
             finish();
           });
           return;
@@ -216,13 +216,8 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
       const tutController = (s as any).tutorialController as any;
       if (tutController?.isActive) {
         const msg = 'You must first buy a business card. Click on a business card in the market.';
-        s.instructionText.setText(msg);
+        flashError(s, msg);
         playIllegalFeedback(s.actionContainer, s);
-        s.time.delayedCall(2000, () => {
-          if (s.instructionText?.text === msg) {
-            s.instructionText.setText('Complete the highlighted step.');
-          }
-        });
       }
       return;
     }
@@ -235,7 +230,6 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
     s.pendingBusinessSourceIndex = null;
     s.clearMarketSelection();
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Placing "${pendingCardName}"...`);
     s.hiddenTransferSourceCardIds.add(pendingCardId);
     s.refreshAll();
 
@@ -249,10 +243,10 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
         try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'buy-business', cardId: pendingCardId, slotIndex }, description: cmd.description }); } catch (_) {}
         try { s.gameEvents?.emit('card:placed', { cardId: pendingCardId, slotIndex }); } catch (_) {}
-        s.instructionText.setText(`Placed "${pendingCardName}" on slot ${slotIndex}`);
+        flashConfirmation(s, `Placed "${pendingCardName}" on slot ${slotIndex}`);
       } catch (e) {
         console.error('[MS] BuyBusiness failed', e);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
       }
 
       s.hiddenTransferSourceCardIds.delete(pendingCardId);
@@ -295,7 +289,7 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     // message instead (no Sell / Close command is wired up).
     const ownership = canActiveSeatActOnSlot(s.state, slotIndex);
     if (!ownership.legal) {
-      s.instructionText.setText(ownership.reason ?? 'You do not own that business.');
+      flashError(s, ownership.reason ?? 'You do not own that business.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
@@ -303,7 +297,7 @@ export function onSellCard(tcCtx: MainStreetTurnControllerContext, slotIndex: nu
     // Check legality
     const legality = canSellBusiness(s.state, slotIndex, false);
     if (!legality.legal) {
-      s.instructionText.setText(`Cannot sell: ${legality.reason ?? 'unknown'}`);
+      flashError(s, `Cannot sell: ${legality.reason ?? 'unknown'}`);
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
@@ -335,7 +329,7 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
       s.pendingHandIndex = null;
       s.pendingHandJustMoved = false;
       s.uiPhase = 'market';
-      s.instructionText.setText('Card no longer in hand.');
+      flashError(s, 'Card no longer in hand.');
       return;
     }
 
@@ -348,7 +342,7 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
     if (!isEligible) {
       // Illegal target: no state mutation, upgrade stays selected for a retry.
       playIllegalFeedback(handSprite ?? s.actionContainer ?? null, s);
-      s.instructionText.setText(
+      flashError(s, 
         `"${handCard.name}" can only upgrade ${handCard.targetBusiness} at level ${requiredLevel}. Click another business.`,
       );
       return;
@@ -361,7 +355,7 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
     const legality = canPlayUpgradeFromHand(s.state, handIndex, slotIndex);
     if (!legality.legal) {
       playIllegalFeedback(handSprite ?? s.actionContainer ?? null, s);
-      s.instructionText.setText(legality.reason ?? 'Move not available.');
+      flashError(s, legality.reason ?? 'Move not available.');
       return;
     }
 
@@ -376,7 +370,6 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
     s.pendingHandJustMoved = false;
     s.hiddenTransferSourceCardIds.add(cardId);
     s.uiPhase = 'animating';
-    s.instructionText.setText(`Applying "${cardName}"...`);
     s.refreshAll();
 
     const afterTransfer = (): void => {
@@ -391,12 +384,12 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
         }
         try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'play-upgrade-from-hand', handIndex, targetSlot: slotIndex }, description: cmd.description }); } catch (_) {}
         try { s.gameEvents?.emit('card:placed', { cardId, targetSlot: slotIndex }); } catch (_) {}
-        s.instructionText.setText(`Applied upgrade: "${cardName}"`);
+        flashConfirmation(s, `Applied upgrade: "${cardName}"`);
         applied = true;
       } catch (e) {
         console.error('[MS] playUpgradeFromHandCommand failed', e);
         playIllegalFeedback(handSprite ?? s.actionContainer, s);
-        s.instructionText.setText(`Error: ${(e as Error).message}`);
+        flashError(s, `Error: ${(e as Error).message}`);
       }
 
       s.hiddenTransferSourceCardIds.delete(cardId);
@@ -452,7 +445,6 @@ export function cancelPendingPlacement(tcCtx: MainStreetTurnControllerContext): 
     s.pendingHandIndex = null;
     s.pendingHandJustMoved = false;
     s.uiPhase = 'market';
-    s.instructionText.setText('Selection cleared — click a card to continue.');
 
     // Drop the hand selection highlight (null clears every border).
     if (s.msRenderer && typeof s.msRenderer.updateBusinessHandSelection === 'function') {

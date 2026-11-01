@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeMainStreetLayoutWithSll } from '../../src/scenes/MainStreetLayoutAdapter';
+import { computeMainStreetLayoutWithSll, mainStreetAnchorPoint } from '../../src/scenes/MainStreetLayoutAdapter';
 import { parseScreenLayoutDocument } from '@ui/screen-layout-schema';
 import { getZoneRect } from '@ui/screen-layout';
 import mainStreetLayoutJson from '../../src/layouts/main-street.layout.json';
@@ -25,6 +25,9 @@ describe('MainStreetLayoutAdapter', () => {
     expect(layout.streetX).toBe(77);
     // hand zone: x = 0.03125 * 1280 = 40
     expect(layout.handX).toBe(40);
+    // hand zone: y = 0.872222 * 720 ≈ 628 (moved down by one card-bottom
+    // margin, MS-0MVPWQMTL004J3GB AC7 — was 0.861111 × 720 = 620).
+    expect(layout.handY).toBe(628);
     // activityLog zone: x = 0.75 * 1280 = 960
     expect(layout.logX).toBe(960);
     // activityLog zone: width = (0.984375 - 0.75) * 1280 ≈ 300
@@ -88,6 +91,25 @@ describe('MainStreetLayoutAdapter', () => {
     // (the SLL anchor 410 shifted right by one road band so the road ring fits).
     expect(layout.handCenterX).toBe(layout.streetX + 390);
     expect(layout.handCenterX).toBe(467);
+  });
+
+  it('leaves an 8–12 px bottom margin under the hand row (AC7)', () => {
+    const layout = computeMainStreetLayoutWithSll();
+    const bottomMargin = layout.gameH - (layout.handY + layout.handCardH);
+    expect(bottomMargin).toBeGreaterThanOrEqual(8);
+    expect(bottomMargin).toBeLessThanOrEqual(12);
+  });
+
+  it('keeps the action row at 648, resolved from its own SLL zone (AC8)', () => {
+    const layout = computeMainStreetLayoutWithSll();
+    // The End Turn / Peek action row must not move when the hand moves: it
+    // is no longer derived from handTopLeft.y (previously handY + 28 = 648
+    // would have drifted to 656). It resolves from the base layout's
+    // `actionRow` zone (topRight anchor y = 0.9 × 720 = 648).
+    expect(layout.actionY).toBe(648);
+    expect(layout.actionY).not.toBe(layout.handY + 28);
+    const actionTopRight = mainStreetAnchorPoint('actionRow', 'topRight');
+    expect(actionTopRight.y).toBeCloseTo(layout.actionY, 0);
   });
 
   it('resolves the staff-applicant overlay centre from the SLL applicantOverlay zone', () => {

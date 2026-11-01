@@ -33,7 +33,7 @@ import type { EventCard } from './MainStreetCardsTypes';
 import type { MainStreetState } from './MainStreetStateTypes';
 import { getBaseTypeId, getEventTemplates } from './MainStreetCards';
 import { resolveEvent } from './MainStreetEngineEvents';
-import { addLog } from './MainStreetState';
+import { addLog, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Maps the core engine seam onto `MainStreetState`.
@@ -41,6 +41,9 @@ import { addLog } from './MainStreetState';
  * Semantics are identical to the previous Main Street implementation:
  * - `rng` is the seeded `state.rng()` (one draw per candidate selection).
  * - `applyEffect` is `resolveEvent` (the shipped effect application).
+ * - `applyResourceDelta` mutates the shared `resourceBank` and re-syncs the
+ *   `EconomyLedger`, so a declarative option `cost` is a real payment and an
+ *   `extraEffect` really lands (both independent of `effectPolicy`).
  * - the chain-card sink pushes onto the incident deck, and the serial scan
  *   covers the incident deck, event deck and event discard — the same
  *   locations the old `pushChainCard` scanned.
@@ -55,6 +58,13 @@ export const mainStreetStorylineEngineAdapter: StorylineEngineAdapter<
     coins: state.resourceBank.coins,
     reputation: state.resourceBank.reputation,
   }),
+  applyResourceDelta: (state, delta) => {
+    state.resourceBank.coins += delta.coins ?? 0;
+    state.resourceBank.reputation += delta.reputation ?? 0;
+    // Keep the shared ledger consistent with every mutation on the same path
+    // `resolveEventOption` uses after resolving an option.
+    syncResourceBankToLedger(state);
+  },
   appendLog: (state, text) => addLog(state, text, 'neutral'),
   getActivityLog: (state) => state.activityLog,
   getTemplate: (id) => getEventTemplates().find((t) => t.id === id) ?? null,

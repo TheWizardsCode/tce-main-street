@@ -61,25 +61,22 @@ function compState(seed: string): MainStreetState {
 
 interface FakeScene {
   scene: any;
-  instruction: { text: string };
   showSellConfirmation: ReturnType<typeof vi.fn>;
 }
 
 /** Minimal scene surface consumed by `onSellCard`. */
 function makeScene(state: MainStreetState): FakeScene {
-  const instruction = { text: '' };
   const showSellConfirmation = vi.fn();
   const scene: any = {
     state,
     uiPhase: 'market',
-    instructionText: { setText: (text: string) => { instruction.text = text; } },
     actionContainer: null,
     showSellConfirmation,
     // Presentation hooks `playIllegalFeedback` may touch.
     settingsPanel: { reducedMotion: true },
     sound: { play: () => {} },
   };
-  return { scene, instruction, showSellConfirmation };
+  return { scene, showSellConfirmation };
 }
 
 /** Occupies a slot and tags its owner. */
@@ -94,12 +91,12 @@ describe('Manage-Card dialog ownership guard', () => {
   it('blocks the dialog for an opponent-owned slot and shows ownership feedback', () => {
     const state = compState('dialog-block');
     place(state, makeBiz({ id: 'ai-dialog-biz' }), 0, 1);
-    const { scene, instruction, showSellConfirmation } = makeScene(state);
+    const { scene, showSellConfirmation } = makeScene(state);
 
     onSellCard({ scene } as any, 0);
 
     expect(showSellConfirmation).not.toHaveBeenCalled();
-    expect(instruction.text).toContain('AI 1');
+    expect(scene.lastFeedback?.text).toContain('AI 1');
     // No state mutation from a blocked click.
     expect(state.soldSlots[0]).toBe(false);
     expect(state.streetGrid[0]).not.toBeNull();

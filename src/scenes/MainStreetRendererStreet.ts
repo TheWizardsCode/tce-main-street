@@ -18,13 +18,14 @@ import { synergyColor } from '../MainStreetCards';
 import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
-import { BOX_STROKE, LOG_TITLE_H, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
+import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec, circularDistance, sampleShaderGradient, shouldAnimateShaderEffect, wrapShaderPhase } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
 import { createGameZone } from '@ui/Renderer';
+import { createContainerClip } from '@ui/ContainerClip';
 import Phaser from 'phaser';
 
 // Re-export for test imports
@@ -84,7 +85,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
       baseX: handX + handCardW / 2,
       baseY: handY,
       centerX: handCenterX,
-      spacing: handCardW + 8,
+      spacing: handCardW + HAND_SLOT_PITCH_PAD,
       cardWidth: handCardW - 4,
       cardHeight: handCardH - 4,
       showLabels: false,
@@ -256,8 +257,6 @@ export function createContainers(renderer: MainStreetRendererContext): void {
         if (s.uiPhase === 'placing-from-hand') {
           s.pendingHandIndex = cardIndex;
           renderer.updateBusinessHandSelection(cardIndex);
-          const cardName = s.state.hand?.[cardIndex]?.name ?? 'card';
-          s.instructionText.setText(`Click an empty slot to place "${cardName}"`);
         }
       },
       // Ghost capacity outlines (CG-0MT6ER7YY003G680): show one slot per
@@ -293,11 +292,12 @@ export function createContainers(renderer: MainStreetRendererContext): void {
       'logContainer',
     );
 
-    // Panel background
+    // Panel background — the reference treatment every opaque play panel
+    // shares (`PANEL_FILL` @ `PANEL_FILL_ALPHA`, 1 px `BOX_STROKE`).
     const bg = s.add.graphics();
-    bg.fillStyle(0x1a1408, 0.85);
+    bg.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
     bg.fillRoundedRect(0, 0, s.layout.logW, s.layout.logH, 4);
-    bg.lineStyle(1, BOX_STROKE, 0.5);
+    bg.lineStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
     bg.strokeRoundedRect(0, 0, s.layout.logW, s.layout.logH, 4);
     s.logContainer.add(bg);
 
@@ -316,20 +316,27 @@ export function createContainers(renderer: MainStreetRendererContext): void {
     s.logContentContainer = s.add.container(0, LOG_TITLE_H + 2);
     s.logContainer.add(s.logContentContainer);
 
-    // Geometry mask for clipping scrollable content
-    // IMPORTANT: Do NOT call setVisible(false) on the mask graphics!
-    // In Phaser 4 RC7, GeometryMask.preRenderCanvas calls
-    // graphics.renderCanvas() directly to draw the clip path to the
-    // canvas context. If the graphics is invisible, the Canvas Renderer's
+    // Renderer-aware clip for the scrollable content.
+    //
+    // Canvas keeps the long-standing `GeometryMask` path: `GeometryMask`
+    // clips to the *path* of its Graphics and ignores fill alpha, so a
+    // transparent fill keeps the shape invisible while still contributing
+    // the clip path.
+    //
+    // IMPORTANT (Canvas): Do NOT call setVisible(false) on the mask
+    // graphics! In Phaser 4 RC7, GeometryMask.preRenderCanvas calls
+    // graphics.renderCanvas() directly to draw the clip path to the canvas
+    // context. If the graphics is invisible, the Canvas Renderer's
     // SetTransform function may still process it (it checks alpha, not
     // visibility), but some internal paths skip invisible objects entirely.
-    // To be safe, we keep the graphics visible and use alpha=0 instead,
-    // so the mask shape is drawn to the context for clipping but has no
-    // visible appearance on screen.
-    s.logMaskGraphics = s.add.graphics();
-    s.logMaskGraphics.fillStyle(0xffffff, 0);  // transparent fill
-    s.logContentMask = new Phaser.Display.Masks.GeometryMask(s, s.logMaskGraphics);
-    s.logContentContainer.setMask(s.logContentMask);
+    // To be safe, we keep the graphics visible and use alpha=0 instead.
+    //
+    // WebGL cannot use `setMask` at all in Phaser 4 (it logs
+    // "not supported in WebGL" and returns), so `createContainerClip`
+    // installs an opaque, off-display-list Mask filter instead.
+    s.logContentClip = createContainerClip(s, s.logContentContainer);
+    s.logMaskGraphics = s.logContentClip.graphics;
+    s.logContentMask = s.logContentClip.geometryMask;
     s.updateLogMask();
 
     // Mouse-wheel scroll for the log panel
@@ -338,8 +345,72 @@ export function createContainers(renderer: MainStreetRendererContext): void {
   
 }
 
-export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
+/**
+ * Destroy the persistent hand panel, if one exists.
+ *
+ * The panel is a root-level display object (not a child of `handContainer`), so
+ * it is not removed by `handContainer.removeAll(true)`; `refreshPlayerHand`
+ * therefore rebuilds it explicitly to stay in sync with the live capacity. The
+ * `active` guard keeps the teardown idempotent after a scene shutdown has
+ * already destroyed every display object (scene restart / shutdown).
+ */
+function destroyHandPanel(renderer: MainStreetRendererContext): void {
 
+    const s = renderer.scene;
+    const panel = s.handPanelGraphics as Phaser.GameObjects.Graphics | undefined;
+    if (panel && panel.active) {
+      try { panel.destroy(); } catch (_) { /* already torn down */ }
+    }
+    s.handPanelGraphics = undefined;
+  
+}
+
+/**
+ * Draw the persistent opaque panel behind the player hand
+ * (MS-0MVPWQIPZ002PHPD AC3/AC4/AC5).
+ *
+ * Uses the shared Activity Log treatment (`PANEL_FILL` @ `PANEL_FILL_ALPHA`,
+ * 1 px `BOX_STROKE` border, `BOX_RADIUS` corners) so the market box, the hand
+ * panel and the HUD strip cannot drift apart. The panel is:
+ *
+ * - **sized from the capacity row** — `maxSlots × (handCardW + 8)`, centred on
+ *   `handCenterX` — so a staff hire/lay-off (`maxHandSize` change) grows or
+ *   shrinks it without clipping cards or ghost capacity outlines;
+ * - **behind the hand layer** — {@link HAND_PANEL_DEPTH} sits below every hand
+ *   card and ghost outline (the ghosts use negative depths) and the panel is
+ *   confined to the hand band, below the street plot and its bottom road band;
+ * - **non-interactive** — `setInteractive` is never called, so hand-card
+ *   clicks, hand→street drags and market→hand drops behave exactly as before.
+ *
+ * All geometry comes from the SLL layout authority (`s.layout`); only the panel
+ * padding is a local constant.
+ */
+export function drawHandPanel(renderer: MainStreetRendererContext): void {
+
+    const s = renderer.scene;
+    destroyHandPanel(renderer);
+
+    const maxSlots = Math.max(0, Number(s.state?.maxHandSize) || 0);
+    if (maxSlots === 0) return;
+
+    const { handCenterX, handY, handCardW, handCardH } = s.layout;
+    const width = maxSlots * (handCardW + HAND_SLOT_PITCH_PAD);
+    const height = handCardH + HAND_PANEL_PAD * 2;
+    const x = handCenterX - width / 2;
+    const y = handY - handCardH / 2 - HAND_PANEL_PAD;
+
+    const panel = s.add.graphics();
+    panel.setName(HAND_PANEL_NAME);
+    panel.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+    panel.fillRoundedRect(x, y, width, height, BOX_RADIUS);
+    panel.lineStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
+    panel.strokeRoundedRect(x, y, width, height, BOX_RADIUS);
+    panel.setDepth(HAND_PANEL_DEPTH);
+    s.handPanelGraphics = panel;
+  
+}
+
+export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     const s = renderer.scene;
     s.ensureStreetCamera?.();
     s.streetContainer.removeAll(true);
@@ -410,6 +481,12 @@ export function refreshStreetGrid(renderer: MainStreetRendererContext): void {
     // re-attach it last — on top of the roads/slots — to keep it alive across
     // refreshes. The figures are non-interactive, so they never intercept
     // slot/pan input. Presentation-only; failures are swallowed.
+    //
+    // This is the documented lifecycle/attach contract, and it MUST stay the
+    // last step of this function (docs/game/ux-visual-audio.md § "Ambient
+    // street pedestrians (reputation crowd)", MS-0MVRMI1EQ002I24K): an early
+    // return, a reorder or a throwing step between `removeAll(true)` and this
+    // call silently drops the crowd (no error is surfaced).
     try { s.msPedestrians?.attachToStreet?.(); } catch (_) { /* presentation-only */ }
   
 }
@@ -543,12 +620,14 @@ export function installStreetMapMask(renderer: MainStreetRendererContext): void 
     const s = renderer.scene;
     if (s.streetMapMaskGraphics || !s.streetContainer) return;
     try {
-      s.streetMapMaskGraphics = s.add.graphics();
-      const mask = new Phaser.Display.Masks.GeometryMask(s, s.streetMapMaskGraphics);
-      s.streetContainer.setMask(mask);
+      // Renderer-aware clip: `GeometryMask` on Canvas, a Mask filter on
+      // WebGL (Phaser 4 dropped `setMask` for WebGL).
+      s.streetMapClip = createContainerClip(s, s.streetContainer);
+      s.streetMapMaskGraphics = s.streetMapClip.graphics;
       renderer.updateStreetMapMask();
     } catch (_) {
       s.streetMapMaskGraphics = null;
+      s.streetMapClip = null;
     }
   
 }
@@ -559,9 +638,7 @@ export function updateStreetMapMask(renderer: MainStreetRendererContext): void {
     if (!s.streetMapMaskGraphics || !s.layout) return;
     const viewport = streetViewportRect(s.layout);
     try {
-      s.streetMapMaskGraphics.clear();
-      s.streetMapMaskGraphics.fillStyle(0xffffff, 0);
-      s.streetMapMaskGraphics.fillRect(viewport.x, viewport.y, viewport.w, viewport.h);
+      s.streetMapClip?.setRect({ x: viewport.x, y: viewport.y, w: viewport.w, h: viewport.h });
     } catch (_) {
       // ignore in constrained test environments
     }
@@ -602,7 +679,7 @@ export function installStreetZoomControls(renderer: MainStreetRendererContext): 
   
 }
 
-export function createZoomButton(renderer: MainStreetRendererContext, 
+export function createZoomButton(renderer: MainStreetRendererContext,
     x: number,
     y: number,
     size: number,
@@ -767,7 +844,6 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
 
     const s = renderer.scene;
     const { slotW, slotH } = s.layout;
-    const isHinted = s.hintedSlotIndex === _index;
 
     const renderW = Math.max(1, Math.round(slotW - 4));
     const renderH = Math.max(1, Math.round(slotH - 4));
@@ -815,13 +891,6 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
     }
 
     s.streetContainer.add(cardContainer);
-
-    if (isHinted) {
-      const hintRect = s.add.rectangle(x + slotW / 2, y + slotH / 2, slotW, slotH);
-      hintRect.setStrokeStyle(3, 0x44ffff);
-      hintRect.setFillStyle(0x000000, 0);
-      s.streetContainer.add(hintRect);
-    }
 
     // ── Sold card dimmed overlay ────────────────────────────────
     const soldSlots: boolean[] = s.state.soldSlots ?? [];
@@ -933,7 +1002,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
   
 }
 
-export function applyUpgradeOverlays(renderer: MainStreetRendererContext, 
+export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
     container: Phaser.GameObjects.Container,
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
@@ -1178,10 +1247,9 @@ export function drawEmptySlot(renderer: MainStreetRendererContext, x: number, y:
     const isSelectable =
       !isUpgradeTargeting &&
       (s.uiPhase === 'placing-business' || s.uiPhase === 'placing-from-hand');
-    const isHinted = s.hintedSlotIndex === index && !isSelectable;
-    const fillAlpha = isSelectable ? 0.4 : isHinted ? 0.35 : 0.2;
-    const strokeColor = isSelectable ? 0xffdd44 : isHinted ? 0x44ffff : 0x555544;
-    const strokeWidth = (isSelectable || isHinted) ? 2 : 1;
+    const fillAlpha = isSelectable ? 0.4 : 0.2;
+    const strokeColor = isSelectable ? 0xffdd44 : 0x555544;
+    const strokeWidth = isSelectable ? 2 : 1;
 
     const bg = s.add.rectangle(
       x + slotW / 2, y + slotH / 2,
@@ -1193,7 +1261,7 @@ export function drawEmptySlot(renderer: MainStreetRendererContext, x: number, y:
 
     // Slot number (1-indexed for readability: 1-10)
     const idxText = s.add.text(x + slotW / 2, y + slotH / 2, `${index + 1}`, {
-      fontSize: '18px', color: (isSelectable || isHinted) ? '#ffdd44' : '#666655',
+      fontSize: '18px', color: isSelectable ? '#ffdd44' : '#666655',
       fontFamily: FONT_FAMILY,
     }).setOrigin(0.5);
     s.streetContainer.add(idxText);

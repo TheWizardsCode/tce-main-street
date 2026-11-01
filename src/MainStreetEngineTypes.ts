@@ -92,16 +92,21 @@ export interface BuyAndPlaceAction {
 
 /**
  * Buy an upgrade from the market and apply it in one step (drag-drop path,
- * CG-0MT3IYSRL001VVUP). Charges a +50% premium on the upgrade's cost and
+ * CG-0MT3IYSRL001VVUP). Without overrides it charges a +50% premium and
  * consumes 1 action.
+ *
+ * Composite parity (MS-0MVKT3TZF0091IHC): with 2+ actions remaining the UI
+ * supplies the discounted listed cost as `priceOverride` and `extraActions: 1`
+ * (drag + placement); with ≤ 1 action it leaves both unset and the premium +
+ * explainer path applies.
  */
 export interface BuyAndPlaceUpgradeAction {
   type: 'buy-and-place-upgrade';
   cardId: string;
   targetSlot?: number;
-  /** Optional listed-price override for GM 2-action parity (see buyAndPlaceUpgrade). */
+  /** Optional listed-price override for the 2-action parity path (see buyAndPlaceUpgrade). */
   priceOverride?: number;
-  /** Additional daily actions to consume alongside the drag's action (GM parity). */
+  /** Additional daily actions to consume alongside the drag's action (parity path: 1). */
   extraActions?: number;
 }
 
@@ -147,6 +152,20 @@ export interface CloseBusinessAction {
   slotIndex: number;
 }
 
+/**
+ * Take a bank loan by choosing one option from the configured loan menu
+ * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS6WB008WP79).
+ *
+ * Carries the chosen `LoanOption` index into `config.loanOptions`. Costs **no
+ * action point** and is refused with a clear user-facing reason when the seat
+ * already holds an active loan (one loan at a time, producer Q1 = A).
+ */
+export interface TakeLoanAction {
+  type: 'take-loan';
+  /** Index into `config.loanOptions` for the option being taken. */
+  optionIndex: number;
+}
+
 /** Union of all player actions. */
 
 export type PlayerAction =
@@ -165,6 +184,7 @@ export type PlayerAction =
   | PeekIncidentAction
   | CommunityFavourAction
   | CloseBusinessAction
+  | TakeLoanAction
   | EndTurnAction;
 
 // ── Turn Result ─────────────────────────────────────────────
@@ -184,6 +204,66 @@ export interface PendingEndOfTurnDeltas {
   pendingRepDelta?: number;
   /** Score delta from challenges completed this turn (positive only). */
   pendingScoreDelta?: number;
+}
+
+/**
+ * End-of-turn ledger for one single-player closing (MS-0MVP45KZV006TMUK).
+ *
+ * Reporting-only data for the Turn Summary dialog (parent MS-0MVL6HMDP004WI41):
+ * it mirrors deltas already applied (or, on the deferred path, returned as
+ * {@link PendingEndOfTurnDeltas}) so reading it consumes no RNG and mutates no
+ * state. Populated by `processEndOfTurn` for the deferred and legacy paths;
+ * absent (`undefined`) for competitive closings and for hand-built results.
+ *
+ * Conventions:
+ * - `incomeByPhase` mirrors `IncomeResult.phaseBreakdown`: the four subtotals
+ *   sum to the coins the income phase credited.
+ * - `ongoingCosts` are **signed** coin deltas (zero or negative), mirroring the
+ *   ongoing-cost helpers' return values.
+ * - `oneOffDeltas` are non-recurring signed deltas — pre-closing MarketPhase
+ *   spending/earning (purchases, sales, event plays, Community Favour) plus any
+ *   closing effect outside income, ongoing costs and the incident — so the
+ *   ledger reconciles exactly:
+ *   `netCoinChange = incomeByPhase (sum) + ongoingCosts (sum) +
+ *   incidentCoinChange + oneOffDeltas.coins`; reputation reconciles the same
+ *   way against `income.repDelta` and `incidentRepChange`.
+ */
+export interface TurnLedger {
+  /** Per-phase coin income subtotals (sums to the income phase's credited coins). */
+  incomeByPhase: {
+    base: number;
+    synergy: number;
+    reputation: number;
+    events: number;
+  };
+  /** Ongoing (recurring) expense subtotals, signed (zero or negative). */
+  ongoingCosts: {
+    staff: number;
+    community: number;
+    business: number;
+  };
+  /** Net coin delta from the resolved incident (negative = loss). */
+  incidentCoinChange: number;
+  /** Net reputation delta from the resolved incident (negative = loss). */
+  incidentRepChange: number;
+  /** Non-recurring coin/reputation deltas (see {@link TurnOneOffDeltas}). */
+  oneOffDeltas: {
+    coins: number;
+    reputation: number;
+  };
+  /** Net coin change for the day (closing coins − day-start coins). */
+  netCoinChange: number;
+  /** Net reputation change for the day (closing rep − day-start rep). */
+  netRepChange: number;
+  /** Net score change for the day (closing score − day-start score). */
+  netScoreChange: number;
+  /**
+   * Businesses standing on the street at closing, keyed by owner id as a
+   * string (`String(playerId)`; `'0'` in single-player). Owner-keyed so the
+   * competitive per-player panel can reuse the same data later; sold slots
+   * are excluded (they no longer run as businesses).
+   */
+  businessesOwned: Record<string, number>;
 }
 
 export interface TurnResult extends PendingEndOfTurnDeltas {
@@ -218,6 +298,15 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    */
   piggybackPending?: boolean;
   /**
+   * True when the closing paused because a bankruptcy bailout loan offer was
+   * raised (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG).
+   * When set, `state.pendingLoanOffer` holds the offer and the caller resolves
+   * it via `acceptLoanOffer` / `declineLoanOffer` before the closing tail
+   * (`finishDeferredTurnClosing`) re-runs. Mirrors `choicePending` /
+   * `piggybackPending`; absent/false when no offer is open.
+   */
+  pendingLoanOffer?: boolean;
+  /**
    * True when this result came from the deferred-mutation path
    * (processEndOfTurn with `deferResourceApplication`, CG-0MTR72P14000VO6Q):
    * the resource deltas are un-applied and the closing tail (EndCheck → next
@@ -238,6 +327,19 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * `PlayerRecord`, so reading it consumes no RNG and mutates no state.
    */
   playerIncome?: OwnerIncomeResult[];
+  /**
+   * End-of-turn ledger (MS-0MVP45KZV006TMUK): per-phase income subtotals,
+   * ongoing-cost subtotals, incident and one-off deltas, net coin/reputation/
+   * score change for the day, and the businesses owned at closing. Populated
+   * by `processEndOfTurn` for both the deferred and the legacy single-player
+   * paths (refreshed against the final state by the deferred closing), so a
+   * Turn Summary can render every value from committed engine data. Absent
+   * for competitive closings and for hand-built results — consumers must
+   * treat it as optional. A paused result (pending event choice / piggyback)
+   * carries a day-to-date ledger: the net rows are still measured against the
+   * day-start snapshot, but the closing phases have not run yet.
+   */
+  turnLedger?: TurnLedger;
 }
 
 /**
@@ -257,6 +359,14 @@ export interface EndOfTurnOptions {
    * closes deterministically within this call.
    */
   deferResourceApplication?: boolean;
+  /**
+   * Skip this turn's loan-repayment pass (Bank Loans epic
+   * MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG). Used only when a
+   * pre-income bailout pause resumes: the repayment phase already ran before
+   * the offer was resolved, so the freshly accepted bailout loan must not be
+   * charged its first instalment in the same closing.
+   */
+  skipLoanRepayments?: boolean;
 }
 
 /**

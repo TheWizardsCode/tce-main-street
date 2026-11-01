@@ -231,12 +231,11 @@ describe('Main Street staff peek skill', () => {
     );
 
     const actionsAfterFirst = (scene.state as { actionsRemaining: number }).actionsRemaining;
-    const instruction = scene.instructionText as Phaser.GameObjects.Text;
 
     (scene.msTurnController as unknown as { onPeekClick: () => void }).onPeekClick();
     expect((scene.state as { actionsRemaining: number }).actionsRemaining).toBe(actionsAfterFirst);
     expect((scene.state as { peekUsedThisTurn: boolean }).peekUsedThisTurn).toBe(true);
-    expect(instruction.text).toContain('already peeked');
+    expect(scene.lastFeedback?.text).toContain('already peeked');
     expect(actionsAfterFirst).toBe(actionsBefore - 1);
   }, 30_000);
 });

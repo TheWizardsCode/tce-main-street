@@ -89,6 +89,18 @@ export interface BuildCompetitiveStateOptions {
   difficulty?: DifficultyName;
   /** Override `winThreshold` (default from config). */
   winThreshold?: number;
+  /**
+   * Bank-loan availability for the fixture (default `false`).
+   *
+   * The end-condition tests in this harness assert the **failure** semantics
+   * (per-seat bankruptcy / reputation collapse, elimination, last standing).
+   * Since the difficulty presets enable loans, a bankrupt seat would now be
+   * offered a bailout instead of failing, which would mask those assertions.
+   * The fixtures therefore isolate the loan mechanic by default; the
+   * integrated loans-on behaviour is covered by
+   * `MainStreetLoanCompetitive.test.ts`, which opts in explicitly.
+   */
+  loansEnabled?: boolean;
 }
 
 // ── Builders ──────────────────────────────────────────────────
@@ -119,9 +131,10 @@ export function buildCompetitiveState(opts: BuildCompetitiveStateOptions): MainS
     slotOverrides = [],
     difficulty,
     winThreshold,
+    loansEnabled = false,
   } = opts;
 
-  const state = createCompetitiveState({ seed, playerCount, difficulty });
+  const state = createCompetitiveState({ seed, playerCount, difficulty, loansEnabled });
 
   // Override winThreshold if specified.
   if (winThreshold !== undefined) {

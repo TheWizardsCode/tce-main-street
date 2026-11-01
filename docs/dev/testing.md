@@ -17,9 +17,82 @@ npx vitest run --project browser                                      # full bro
 npx vitest run --project browser tests/e2e/<name>.browser.test.ts     # a single file
 ```
 
+Every one of these invocations — including the changed-scope gate's direct
+`npx vitest run <files>` calls — passes through the **engine-checkout
+preflight** first (below).
+
 The `browser` project runs serially (`fileParallelism: false`) because the
 headless Chromium/GPU context is shared; keep browser tests free of cross-file
 state.
+
+### Renderer choice in browser tests
+
+Most browser tests pin `type: Phaser.CANVAS` on purpose: the Canvas renderer
+is roughly 10× faster under SwiftShader, and `TestGamePool` relies on that for
+CI throughput. Keep that default unless the test is *about* the WebGL
+renderer.
+
+`createCardGame` (and therefore `createMainStreetGame`) defaults to
+`Phaser.AUTO`, which picks WebGL on any GPU-capable browser — headless
+Chromium included. A browser test that omits `type` therefore exercises the
+WebGL path.
+
+Renderer-specific behaviour must be asserted on an explicit renderer, because
+Phaser 4 diverges between them. The important known divergence is masks:
+`GameObject.setMask` is **Canvas-only** in Phaser 4 — under WebGL it logs
+`"Phaser.GameObjects.Components.Mask.setMask: This method is not supported in
+WebGL. Create a Mask filter instead."` and returns, so the object renders
+unclipped. `@ui/ContainerClip` hides that difference behind
+`createContainerClip()`; see the "Viewport clipping" bullet in
+`src/README.md`.
+
+`tests/main-street/webgl-renderer-clipping.browser.test.ts` is the reference
+WebGL browser test. It:
+
+- boots with an explicit `type: Phaser.WEBGL` and asserts the renderer really
+  is WebGL (a silent Canvas fallback would otherwise pass);
+- asserts clipping **behaviourally** with `renderer.snapshotPixel()` probes —
+  content inside the clip rect is painted, content outside is not, `clear()`
+  un-clips and `setRect()` re-clips — rather than only inspecting the scene
+  graph;
+- boots the real `MainStreetScene` and `GymCardIndexScene` on WebGL and
+  asserts **zero** `setMask … not supported in WebGL` warnings from **any**
+  source — this repo, the `./core` submodule and bundled libraries included.
+  Every clipping surface, core-owned panels included, migrated to the
+  renderer-aware `@ui/ContainerClip`, so there is no core-path exclusion left to
+  hide a Canvas-only mask behind: a single leftover `setMask` anywhere fails the
+  file (MS-0MVU03UEC000BX1O);
+- probes each clipping surface with `renderer.snapshotPixel()` — the Help panel,
+  the Settings panel, an overlay-dialog content area and the gym card index each
+  paint inside their own scroll rect and nowhere outside it.
+
+Pixel probes are cheap for single pixels (`snapshotPixel`) but expensive for
+areas — prefer scene-graph assertions plus a handful of pixel probes over
+full-frame snapshots.
+
+### The launcher is generator-owned — never hand-edit `./main.ts`
+
+`./main.ts` is not hand-authored: it is byte-for-byte what the engine-owned
+`core/scripts/game-repo-scaffold.ts` → `renderMainTs()` emits.
+`tests/main-street/main-ts-scaffold-drift.test.ts` fails the unit suite the
+moment the committed file drifts from that output — that guard is the repo's
+check for this contract, not a raw scaffold run.
+
+**Never run `npm run scaffold` on this existing repo** (MS-0MVU03V1V0096L4O).
+It invokes `scaffoldGameRepo()` for the whole repository, not just
+`renderMainTs()`: it rewrites the core template's boilerplate — `package.json`,
+`index.html`, `tsconfig.json`, `vite.config.ts` and several tooling tests — over
+this repo's deliberate divergence and rewrites legacy `example-games` game
+paths to `src/` paths. The launcher itself comes out byte-identical (the later
+`git status --porcelain main.ts` is empty), so a full scaffold proves nothing
+about `main.ts` that the drift guard does not already prove, while discarding
+unrelated work. Regenerate `main.ts` only as part of an intentional fresh-repo
+scaffold; here, change the generator (or the engine pin) and let the guard
+verify the committed output. **Never hand-edit** `./main.ts`: a hand edit is
+silently erased by the next scaffold, together with any comment explaining it,
+which is exactly how the `type: Phaser.AUTO` launcher switch was reverted once
+(MS-0MVU03TR0006KZDH). Launcher commentary belongs in the generator or in
+`docs/`. Full contract: [build-and-release.md](build-and-release.md).
 
 The `unit-cli` project is serialized by design (`fileParallelism: false` with
 its own `sequence.groupOrder`): its tests cold-start a CLI through `vite-node`,
@@ -27,6 +100,53 @@ which takes 12-15 s on an idle host and regularly exceeds the 15 s `unit` budget
 under CPU contention — running them concurrently produced spurious non-zero CLI
 exits. If such a test times out, re-run rather than "fixing" a CLI that is fine
 — and prefer raising the margin over shrinking the workload.
+
+## End-to-end switch-over gate (build, engine, suite, WebGL smoke)
+
+A renderer or clipping change crosses the composed engine, the build and the
+renderer, so no single unit file proves it. Run the whole gate on the **final
+commit** of the change and record the evidence on the work item:
+
+```bash
+npx vitest run --project unit tests/main-street/main-ts-scaffold-drift.test.ts  # main.ts == renderMainTs()
+npm run engine:check                                 # composed ./core at the pin
+npm run build                                        # engine:sync + tsc + vite build
+npm test                                             # unit + unit-cli
+npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts
+npx vitest run --project browser tests/e2e/main-street-no-console-errors.browser.test.ts
+```
+
+`/skill:test` runs the three commands declared in `.pi/test-config.json`
+(`suiteCommands`: `npm test` plus the two browser files above), so it is the
+source of the audit-accepted full-suite evidence. The WebGL reference file is
+additionally run as its own group: `/skill:test --group webgl-clipping-browser`.
+
+### The manual half: WebGL launcher smoke
+
+The browser suites boot the scenes directly through their factories. The
+**launcher** — `main.ts`'s `Phaser.AUTO` config, the game selector and the
+composed engine — is only proven by booting `npm run dev` and inspecting the
+running game:
+
+1. `npm run dev`, then open the printed URL in a Chromium browser with WebGL
+   enabled.
+2. In the DevTools console, `window.__PHASER_GAME__.renderer.type` must be `2`
+   (`Phaser.WEBGL`), never `1` (the Canvas fallback).
+3. Play Main Street and scroll each clipping surface past its visible height —
+   the **Help** panel, the **Settings** panel, an **overlay dialog** and the
+   **Gym** card index — and confirm the content is clipped at the surface's
+   bounds: no paint over the heading, the footer, the scrollbar track or the
+   surrounding scene.
+4. The browser console must show **no** `setMask … not supported in WebGL`
+   warning.
+5. Record the renderer type, the surfaces checked, the warning count and the
+   commit in the work-item comment.
+
+The automated equivalent is
+`tests/main-street/webgl-renderer-clipping.browser.test.ts` (forced
+`Phaser.WEBGL`, pixel probes per surface, zero-warning capture). A smoke note
+confirms the **real launcher** boots that same path; it does not replace the
+probes.
 
 ## Deterministic invocation: the CLI group runs first
 
@@ -181,6 +301,44 @@ timeout message keeps the greppable shape
   `MainStreetScene.browser.test.ts` passes a per-class `floorMs`:
   24 000 ms for the end-of-turn wait and 12 000 ms for the transfer waits.
 
+### Interaction gates between the animation and the advance
+
+The day no longer always advances straight off the end-of-turn animations. In
+normal single-player play the deferred closing is gated on the **Turn Summary
+dialog** (MS-0MVP46Q8X003419R, parent MS-0MVL6HMDP004WI41): once every animation
+(phased income show + incident reveal) has completed the scene presents a
+dialog, and `finalizeTurn` (checkpoint + `startTurnPhase`) runs only when the
+player clicks **[ Next Turn ]**. Reduced-motion, tutorial, replay/headless and
+competitive closings are never gated — they keep the existing auto-advance
+pacing. See
+[`docs/game/ux-visual-audio.md`](../game/ux-visual-audio.md#turn-summary-dialog-and-the-closing-gate).
+
+So a browser test that drives a real single-player end-of-turn and then waits
+for `scene.state.turn` to advance must dismiss the dialog first, otherwise it
+polls a state the scene is deliberately holding. Use the shared helper
+(`tests/main-street/helpers/turn-summary-dialog.ts`):
+
+```ts
+import {
+  dismissTurnSummaryDialog,
+  dismissTurnSummaryDialogIfPresent,
+} from './helpers/turn-summary-dialog';
+
+// …after the animation-related waits…
+await dismissTurnSummaryDialog(scene); // waits for the dialog, clicks [ Next Turn ]
+await waitForCondition(() => scene.state.turn > beforeTurn, {
+  capMs: INCOME_COLLECTION_CAP_MS,
+  floorMs: END_TURN_STARVATION_MARGIN_MS,
+  label: 'turn to advance after end-of-turn presentation',
+});
+```
+
+A test whose subject *is* the gate asserts that the dialog is present and the
+day is still held before dismissing it (`tests/main-street/turn-summary-gate.test.ts`,
+`MainStreetScene.browser.test.ts`). `dismissTurnSummaryDialogIfPresent` is a
+`false` no-op when no dialog is up — the ungated modes (tutorial, reduced
+motion, replay/headless) — so calling it unconditionally is safe.
+
 ### The 60 s headroom rule
 
 `budget + scene-boot allowance` must stay inside the browser project's
@@ -326,6 +484,125 @@ remediation commands instead of an opaque Vitest unhandled error. It also warns
 when `node_modules` drifts from the lockfile — in that case run `npm ci` first,
 then `npx playwright install chromium`.
 
+## Engine checkout preflight: which engine did this test compose?
+
+A Vitest run composes whatever `./core` happens to be checked out — and in a
+fresh worktree that is the gitlink the branch recorded at fork time, which can
+silently predate the engine pin in `configs/engine-pin.json`. So the root
+`vite.config.ts` registers a `test.globalSetup`
+(`tests/tooling/engine-checkout-precheck.ts`, MS-0MVO26G5H0054SNV) that every
+invocation inherits — `npm test`, the changed-scope gate's direct
+`npx vitest run <files>` calls and the dev-push browser gate — and fails the
+run loudly when `./core` is not the pinned engine or a descendant of it,
+naming the composed SHA, the pin SHA and the `npm run engine:sync`
+remediation. On a pass it logs the composed engine identity (short SHA plus
+`git describe` tag when available) alongside the pin, once per process.
+
+The check is offline (local commit graph only — `git merge-base
+--is-ancestor`, never a fetch or a cached `origin/dev` ref) and sub-second.
+A dirty `./core` is warned about but never fails the run. Deliberate bypass:
+`ENGINE_CHECKOUT_CHECK=warn|off`, logged every time it is used. The same code
+path is available manually as `npm run engine:check` (exit 0/1). The Vitest
+wiring is a documented LOCAL SURGICAL ADDITION to the engine-owned
+auto-generated config, held by
+`tests/main-street/vite-config-engine-check-guard.test.ts`; the pass/fail
+branches are covered by `tests/main-street/engine-checkout-precheck.test.ts`
+(offline fixtures). See the composition matrix in
+[docs/dev/build-and-release.md](build-and-release.md#composition-matrix-which-engine-does-each-invocation-compose).
+
+### Two failures this preflight catches
+
+1. **A clone that cannot resolve the pinned commit.** When `./core` is a stale
+   clone whose object database does not contain the pin sha, every project
+   aborts before a single test runs and the `project-coverage-guard` reports
+   `project "<name>" executed 0 of N expected file(s)` for each project. The
+   preflight names the composed SHA, the pin SHA and the `npm run engine:sync`
+   remediation (MS-0MVO26G5H0054SNV); fetching the missing commit into `./core`
+   clears it. Worktrees get a fresh submodule checkout, so they are the usual
+   place this surfaces.
+2. **A node-environment import-chain regression.** `npm test` runs the `unit`
+   and `unit-cli` projects in the node environment, so anything they import must
+   not value-import Phaser — Phaser's device detection touches `window` at
+   module scope. `tests/tooling/ui-node-import-guard.test.ts` (parent item
+   `MS-0MVQO6N34007DHP8`) value-imports `@ui/shakeIllegalMove` with real Phaser
+   resolution and **no mocks**, so a regression fails the suite at collection
+   with `ReferenceError: window is not defined` instead of surfacing as a score
+   of unrelated scene-suite failures. Do not "fix" a red guard with a mock:
+   fix the engine import graph and re-pin.
+
+## The finish gate: composition, cache, timeout and queue
+
+`implement.py finish` (the implement skill) runs **build → test → commit** in
+a worktree before pushing a work item to `dev`. Three of its behaviours
+interact in a way that produced a 47-minute false gate failure
+(`MS-0MVSB1OVW00178W6`); this section records how they fit together so a
+failed gate is read correctly.
+
+### Composition: the build re-pins the engine, and that churn is not the item's
+
+1. **Build** runs `npm run build`, whose first step is `npm run engine:sync`.
+   When the engine `dev` tip has advanced past the commit the worktree pinned,
+   `engine:sync` checks out the new engine into `./core`, rewrites
+   `configs/engine-pin.json` and **stages** the pin together with the `core`
+   gitlink (`core/scripts/engine-sync.mjs`). That is the intended dev-build
+   behaviour — the pin tracks the engine `dev` tip (policy
+   `CG-0MVO268500071BPI`) — but it is **build-originated churn** relative to
+   the item's own changes.
+2. **Test** then evaluates a tree that is dirty because of the build, not
+   because of the item. The test-cache key is **`HEAD` plus the content of
+   every dirty path**, so build-originated churn stops the run from matching
+   any pre-warmed green entry: the gate runs the full suite from scratch even
+   for a documentation- or evidence-only item.
+3. **Commit** must not sweep that churn into the item's commit unless the item
+   itself changed the engine composition (producer decision Q2=A on
+   `MS-0MVSB1OVW00178W6`; framework fix `SA-0MVL2NH1G0094FA2`). The gate
+   validates and commits the composition in `HEAD` and records the composed
+   engine SHA plus whether the suite ran or was cache-served, so a green
+   verdict is traceable to the engine it actually exercised.
+
+### The timeout is per command, and shared with `git push`
+
+`timeoutPerCommand` from `.pi/test-config.json` bounds **each** entry of
+`suiteCommands` individually — not their aggregate — and the same value also
+bounds the `git push` step of finish
+(`implement.py:_resolve_test_timeout`). Measured on this host: the full
+suite took **2846.6 s** under load while the config declared 1800 s, and a
+2215 s gate run was killed and reported as `reason: unknown` with
+`failures: []`. The floor is now **3600 s** (2846.6 s + 26 % headroom,
+rounded up to a whole minute) and is enforced by
+`tests/tooling/test-config-timeout-guard.test.ts` — lowering the config below
+the floor fails the suite, so the config, the guard and this paragraph cannot
+drift apart.
+
+### Queue wait is separate from test time
+
+Tests run under a host-wide semaphore (`TEST_MAX_CONCURRENCY=2`, shared by
+all agent projects). Waiting for a slot is its own duration, distinct from
+suite elapsed time; on this host slot waits measured 1040–2400 s and surfaced
+as `notice_code: slot_busy` / `reason: slot_contention`, not as suite time.
+Reporting the wait separately from suite time, and classifying timeouts and
+kills without `reason: unknown`, is `SA-0MVTET8KQ0031R6Z` (slot fairness is
+`SA-0MVSJX5HS002JDHI`). When a gate fails, read the verdict before retrying: a
+code failure, a timeout/kill and a slot wait are three different problems with
+three different fixes.
+
+### Changed scope is currently the full suite in this repo
+
+`implement.py finish` first tries a named group from `.pi/test-config.json`,
+then a file-level selector, and falls back to the **full suite** with a logged
+warning when no subset can be selected — with `suiteCommands` declared, that
+fallback is what normally fires today. Restoring a targeted selection for this
+stack (vitest/TypeScript-aware mapping; `groups` honoured even when
+`suiteCommands` is present, which continues to define only the full suite) is
+`SA-0MVL7YOMJ006UMDO`; when it lands, the finish log reports
+`scope: changed` with the selected commands instead of the full fallback.
+
+The engine-composition preflight above is the complementary guard: this
+section is about what the gate *does*, the preflight is about which engine a
+run *composed* (`npm run engine:check`,
+`tests/tooling/engine-checkout-precheck.ts`; the release pin contract lives in
+`tests/main-street/engine-submodule-sync.test.ts`).
+
 ## Import shared helpers through the core aliases
 
 The engine and its shared test helpers live in the `core` git submodule
@@ -372,7 +649,11 @@ so the failure mode is not reintroduced.
 Shared runtime dependencies (`phaser`, `tone`) must resolve to **exactly one**
 copy: this repo's root `node_modules`. `vite.config.ts` enforces that with
 `resolve.dedupe: ['phaser', 'tone']` (the same guard `core/vite.config.ts`
-carries).
+carries). That config is **auto-generated by the scaffold template**
+(`core/scripts/game-repo-scaffold.ts` → `renderViteConfig`), and the template
+emits the dedupe itself (CG-0MVPWPWLA008FTDJ), so `npm run scaffold`
+regenerates the guard instead of silently dropping a hand-applied copy
+(MS-0MVK4TS31000YNFL).
 
 Why it matters: this repo composes the engine from the `./core` submodule,
 which normally has **no `node_modules` of its own**, so core-owned modules (for
@@ -398,9 +679,310 @@ Consequences for day-to-day work:
 - If the suite suddenly fails with a wall of `ReferenceError: window is not
   defined` collection errors, check for `core/node_modules` before debugging
   the tests: `ls -d core/node_modules`.
-- `tests/tooling/phaser-single-copy.test.ts` guards the contract — it fails if
-  the dedupe is dropped (including by a re-scaffold) or if a nested copy
-  produces a second module identity.
+- `tests/tooling/phaser-single-copy.test.ts` guards the **checked-in config**
+  — it fails if the dedupe is dropped from `vite.config.ts` or if a nested
+  copy produces a second module identity. The **template** side is guarded in
+  the core repository by the `renderViteConfig` and `scaffoldGameRepo` cases in
+  `core/tests/scripts/game-repo-scaffold.test.ts`, which assert the rendered
+  source and the on-disk `vite.config.ts` both carry the guard inside the
+  `resolve` block (after `alias: resolveCoreAliases(coreRoot)`), so a
+  re-scaffold cannot regress it unnoticed.
+
+## Dev-session transcript persistence (`POST /api/transcripts`)
+
+Every game-over stores a transcript in the browser (`TranscriptStore`) and
+mirrors it to disk through a dev-server middleware:
+
+```
+POST /api/transcripts  ->  data/transcripts/<gameType>/<gameType>-<ISO>.json
+```
+
+`vite.config.ts` registers the middleware from the engine's
+`transcriptPersistPlugin()` for `command: 'serve'` runs only, and never when
+`process.env.VITEST` is set (the plugin writes to disk, so a test run must not
+have that side effect). The scaffold template emits the identical registration
+(`core/scripts/game-repo-scaffold.ts` → `renderViteConfig`, core item
+CG-0MVSIB5LH0069LB3), so `npm run scaffold` regenerates the wiring instead of
+dropping it — the same drift pattern as `resolve.dedupe` above.
+
+Two arms guard it:
+
+- `tests/tooling/vite-transcript-plugin-registration.test.ts` loads the real
+  `vite.config.ts` factory and asserts the plugin is present for `serve`,
+  absent under `VITEST`, and absent for a production build — plus an
+  in-process dev-server smoke that POSTs a transcript and asserts HTTP 200 and
+  the JSON file under a temp `destRoot` (the repo's own `data/` is never
+  touched).
+- `tests/e2e/main-street-no-console-errors.browser.test.ts` saves a transcript
+  in the browser and asserts the console stays free of
+  `[TranscriptStore] … 404` warnings.
+
+The disk mirror is deliberately quiet: the request is issued only where the
+endpoint can exist (`import.meta.env.DEV`), and a failure is reported **at most
+once per store instance** — an absent endpoint (404/405) or an unreachable
+server at `console.debug`, any other non-2xx at `console.warn`.
+
+**A `404` on `POST /api/transcripts` in a dev session** therefore means the
+running `vite.config.ts` predates this wiring (an out-of-date generated
+config): re-run the scaffold or copy the
+`...(command === 'serve' && !process.env.VITEST ? [transcriptPersistPlugin()] : [])`
+entry into `plugins`. Full contract: `core/docs/DEVELOPER.md` § Transcript
+Persistence.
+
+## Troubleshooting: dev server died mid-session (`[vite] server connection lost`, WS retries, `ERR_CONNECTION_REFUSED`)
+
+A dev session that ends with a flood of browser console noise — `[vite] server
+connection lost`, repeated `WebSocket connection to ws://<host>:3000/ failed`
+HMR retries and `net::ERR_CONNECTION_REFUSED` for every card SVG /
+`csv-checksum.json` request — means the **Vite dev server process is gone**, not
+that the assets are missing. Proven on this host (see below): the same assets
+return HTTP 200 from a live server, and the failure signature disappears when
+the server is restarted (MS-0MVREB31W004F48D).
+
+### Signature
+
+1. `[vite] server connection lost` / `[vite] http proxy error` in the page.
+2. HMR WebSocket reconnects fail: `WebSocket connection to 'ws://<host>:3000/' failed`.
+3. Every subsequent asset request fails with `net::ERR_CONNECTION_REFUSED` —
+   roughly one line per card SVG, plus `csv-checksum.json` (and, in a
+   Main Street session, the `[MainStreetLifecycleManager] Could not fetch
+   csv-checksum.json` note — now a quiet `console.debug`, see AC3).
+4. No server-side crash trace is visible in the terminal that ran
+   `npm run dev` beyond the process having exited.
+
+### Fast triage (30 seconds)
+
+```bash
+ss -ltn | grep :3000
+```
+
+- **A listener is present** → the server is alive; the disconnect is transient
+  (HMR full-reload). Refresh and continue.
+- **No listener** → the server is gone, not the assets. Restart `npm run dev`;
+  the same URLs, including every card SVG, return 200 again from the live
+  server. (A live-server probe is the definitive check: start `npm run dev`
+  and `curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/<svg-url>`.)
+
+Do **not** file a bug for the cascade: it is the symptom of a process death,
+not a code defect. The two bounded classes that *are* app-owned — the
+`/api/transcripts` 404 and repeated expected-condition warnings — are fixed
+and guarded (AC1–AC3): a red line in a dev-session console now means
+something is actually wrong.
+
+### Likely causes on this host and remediation
+
+The cause is machine pressure, not app code:
+
+- **Memory pressure / swap exhaustion.** At report time this host had 7.3 GB of
+  8 GB swap in use; a long-lived `vite --host` server (which also holds the
+  SVG/card asset caches in memory) is the first process to lose its memory
+  headroom when RAM+swap runs out. Check `free -m` / `swapon --show`; a server
+  killed under this pressure leaves no trace in the app log, only the
+  browser-side cascade. Note the bounded finding below: on the reported boot
+  swap was exhausted **without** a kernel/`systemd-oomd` OOM kill, so exhaustion
+  is the ambient condition rather than the proven kill mechanism.
+- **Concurrent dev servers and browser suites.** Sibling repos (e.g. core
+  worktrees, other `tce-*` game repos) running their own `vite --host` and
+  Playwright browser suites multiply baseline memory and CPU.
+- **Many `.worklog` worktrees.** Each worktree duplicates watchers and, when
+  active, its own processes; 10+ worktrees materially raise the working set.
+- **inotify exhaustion is a sibling cause** — see the ENOSPC section below for
+  that signature.
+
+Host-level remediation (swap headroom, orphaned dev servers, worktree hygiene)
+is covered by the runbook below (MS-0MVS0FNLH003VBMW); this section documents
+the diagnosis so the cascade is not re-filed as a bug.
+
+### Console errors that are not app defects (browser extensions)
+
+A dev-session console can also show messages the app can neither cause nor
+suppress, because they come from a loaded browser extension. The known class is:
+
+```
+Uncaught (in promise) Error: A listener indicated an asynchronous response by
+returning true, but the message channel closed before a response was received
+```
+
+Signature: the stack includes an extension hook such as `installHook.js`, and
+there is no corresponding `chrome.runtime` / `window.postMessage` usage in the
+app.
+
+Verification (MS-0MVREB31W004F48D, AC4a): the guard
+`tests/e2e/main-street-no-console-errors.browser.test.ts` runs the game in the
+Vitest `browser` project — Playwright's headless Chromium, which loads **no
+extensions** — and asserts a clean console on boot *and* on a transcript save.
+That run produces no such error, so the message is extension-origin and is
+**out of scope** for app code: do not add it to the guard's benign-pattern list
+(that would weaken a real guard), and do not file it as an app bug. Verify with
+an extension-free run (`npx vitest run --project browser
+tests/e2e/main-street-no-console-errors.browser.test.ts`, via `/skill:test`)
+before concluding the same about any new variant.
+
+## Host-pressure hygiene runbook (MS-0MVS0FNLH003VBMW)
+
+A long-lived `vite --host` session on this shared development host competes with
+sibling repositories, agent worktrees and test suites for RAM and swap. When
+the server dies mid-session that is a **host-capacity event**, not an app
+defect. This runbook bounds the cause, prevents the pressure, and restarts
+cleanly. Everything here is read-only until an explicitly approval-gated
+cleanup step.
+
+The single entry point is the committed, read-only detector:
+
+```bash
+scripts/hygiene_check.sh            # human report
+scripts/hygiene_check.sh --json     # stable JSON (see the script header)
+```
+
+It reports three things and never prunes, deletes or kills: the worktree
+inventory (registered git worktrees vs orphaned directories under
+`.worklog/worktrees/`), swap/memory pressure, and dev-server processes with
+their cwd ownership. Its classification logic is covered by
+`tests/tooling/hygiene-check.test.ts`.
+
+### Findings: what killed the server
+
+The candidate causes were resolved against this host's journal and process
+state. The report-window boot can no longer be re-inspected (journal
+rotation), so the determination rests on the intake-time inspection plus the
+boots that are still observable.
+
+| Hypothesis | Verdict | Evidence |
+| --- | --- | --- |
+| Kernel OOM killer / `systemd-oomd` killed the `vite`/`node` process | Ruled out for the report window | `journalctl -b -g 'Out of memory\|oom-kill\|Killed process'` reports no entries on the boot in which the cascade was seen, nor on the four boots since; `journalctl -u systemd-oomd -b` shows service starts only, never a kill action. The journal's most recent OOM kill (2026-10-03) predates the report. Swap *was* exhausted (7.3 GB of 8 GB) with no OOM kill, so exhaustion is the ambient pressure, not the proven kill mechanism. |
+| Manual or agent kill (terminal/session teardown, `wl cleanup-worktree`, `implement.py finish`/`abort` cleanup) | Undetermined, bounded | `wl cleanup-worktree` only signals processes it has *registered* for a worktree path, and 0 worktree-scoped processes were tracked at intake; `implement.py finish` targets its own worktree with documented self-exclusion guards (`cleanup_worktree_processes`). The affected server ran from the **main checkout**, which neither path reaps. The journal records no signal for the dead process, so the specific kill cannot be attributed retrospectively; the mechanisms that *could* have issued it are bounded to those listed above plus pane/terminal teardown when the owning session ends. |
+| `:3000` port conflict | Ruled out (structurally a startup failure, not a mid-session kill) | Vite binds the port during startup: a conflicting listener yields `EADDRINUSE` (or a fallback port) at launch, so the browser URL would never have worked in the first place. The reported signature is a *working* session that later drops, and `ss -ltn` showed no listener after the death — consistent with a process death, not a bound port. |
+
+Practically: treat the cascade as **process death under host pressure**. Do not
+file an app bug for it; use the fast triage above, then this runbook.
+
+### Pre-flight checks (before starting a dev server)
+
+```bash
+scripts/hygiene_check.sh --json   # inventory + pressure + dev servers, one shot
+free -m                           # RAM headroom (want > 4 GB available)
+swapon --show                     # swap use (want < 50 % of the device)
+ss -ltn | grep -E ':(3000|4173)\b' # an existing dev/preview listener?
+pgrep -af 'vite --host'           # how many servers are actually running?
+```
+
+Start the dev server only when all four hold:
+
+1. **No listener** on `:3000` — a second `vite --host` cannot share the port and
+the browser will attach to whichever process won the race.
+2. **Swap under 50 %** and **more than 4 GB RAM available**; `hygiene_check.sh`
+grades this as `pressure: ok`. A `warning` grade is tolerable for a short run;
+a `critical` grade means fix the pressure first — a server started there will be
+the first casualty.
+3. **No orphaned dev server** (`dev_servers.orphaned_count` 0): a server whose
+cwd is a removed worktree or a stale path is holding memory for nobody.
+4. **No orphaned directory is `in_use`** — if one is, a live shell is anchored
+there and the cleanup step below must skip it.
+
+### Concurrency cap (documented guideline, deliberately not enforced)
+
+Per producer decision Q3 = a this is guidance plus the pre-flight checks above;
+no launcher or registry refuses a second server.
+
+- **One `vite --host` dev server per host at a time.** The port is host-wide,
+  so a second checkout reuses the first session (point the browser at it) or
+  waits — it never starts its own.
+- **At most one `vite preview` (port 4173) alongside it**, and stop the preview
+  before a browser suite: preview plus Playwright plus a dev server is the
+  peak-memory combination observed on this host.
+- **Do not run the full or browser suite while a dev soak is running.** Vitest
+  workers are the largest single memory consumer on this host; use
+  `/skill:test --type unit` for cheap feedback.
+- **Re-run the pre-flight checks after an idle break** — sibling agents start
+  their own servers, so a session that was alone an hour ago may not be now.
+
+### Worktree hygiene: registered vs orphaned (approval-gated)
+
+A directory under `.worklog/worktrees/` is *registered* when
+`git worktree list` names it; everything else is a leftover. `hygiene_check.sh`
+classifies each leftover as:
+
+- **`safe-to-prune`** — empty, or containing only the cwd-anchor placeholders an
+  agent writes so a dead session's shell still resolves (`.cwd-placeholder`,
+  `.cwd-anchor`, `.keep`, `.recover_cwd`, `__session_recreate__.tmp`);
+- **`needs-review`** — contains anything else (a stale checkout, a broken `.git`
+  link, unknown files). A human decides; the procedure never touches these.
+
+Procedure (producer approval required before any deletion; this is the
+approval-gated step — nothing above it mutates the host):
+
+1. Snapshot the before state: `scripts/hygiene_check.sh --json > /tmp/hygiene-before.json`.
+2. Review `worktrees.orphaned`; list the `safe-to-prune` candidates and their
+   entries in the work item (or PR) and **get explicit producer approval**.
+3. Skip any candidate with `in_use: true` — a live process still has it as its
+   cwd, and removing the directory breaks that shell.
+4. For each approved candidate, confirm and remove only what was reviewed:
+
+   ```bash
+   candidate=.worklog/worktrees/<name>
+   git worktree list --porcelain | grep -F "$candidate" && echo 'REGISTERED - stop'
+   ls -A "$candidate"          # expect nothing, or only the reviewed placeholder
+   rmdir "$candidate"          # empty directory
+   # placeholder-only: delete exactly the reviewed placeholder file first
+   rm "$candidate/.keep" && rmdir "$candidate"
+   ```
+
+5. Clear stale administrative entries for worktrees that are already gone:
+   `git worktree prune` (never `--force`).
+6. Re-run `scripts/hygiene_check.sh --json` and record the before/after counts
+   on the work item. Host evidence belongs in work-item comments, not in
+   committed files (`.worklog/` is gitignored).
+
+**Hard limits:** never `git worktree remove --force`, never
+`git worktree prune --force`, never `rm -rf`, never remove a registered
+worktree, and never drop a stash as part of this procedure. A stash or a
+`needs-review` directory is triaged on its own work item first (see the
+implement skill's dirty-main-checkout recovery playbook).
+
+Note the honest scope of the win: the leftovers are usually placeholder stubs,
+so the memory reclaimed directly is small. The value is an accurate inventory
+(fewer directories for watchers, agents and humans to reason about) and
+stopping a stale server from being mistaken for a live session.
+
+### Restart and swap-reclamation procedure
+
+1. **Identify the corpse and the strays:** `scripts/hygiene_check.sh` → dev
+   servers section (pid, age, RSS, owner).
+2. **Confirm ownership** from `owner`: `orphaned-worktree` / `stale-path` are
+   safe to stop once recorded; `main-checkout` or `registered-worktree` means
+   someone is probably still using it — confirm before stopping.
+3. **Stop the server:** `Ctrl-C` in the terminal that ran `npm run dev`; if that
+   terminal is gone, `kill -TERM <pid>` and only use `kill -KILL` if SIGTERM is
+   ignored. Never kill a browser suite or `vitest`/`tsx` process you do not own.
+4. **Reclaim swap:** swap only frees when its pages stop being used, so stopping
+   the servers, browser suites and stray node processes is the lever. Verify
+   with `swapon --show`. A device reset (`swapoff -a && swapon -a`) needs root
+   **and** free RAM greater than swap in use — never run it on this host while
+   swap is nearly full.
+5. **Verify the pressure dropped:** `free -m`, `swapon --show`,
+   `scripts/hygiene_check.sh --json` (`memory.pressure`).
+6. **Restart and prove the server, not the assets, was the failure:**
+
+   ```bash
+   npm run dev
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     http://localhost:3000/assets/cards/5_of_diamonds.svg   # expect 200
+   ```
+
+7. **Soak it** (the AC4 bar): leave the server up for at least 30 minutes while
+   the card asset tree is loaded, probing periodically — every probe must return
+   `200` and the server must stay alive:
+
+   ```bash
+   for i in $(seq 1 31); do
+     curl -s -o /dev/null -w '%{http_code} ' \
+       http://localhost:3000/assets/cards/5_of_diamonds.svg
+     sleep 60
+   done
+   ```
+
+   A `200`-only run with no `[vite] server connection lost` cascade is the
+   evidence; record the observations (not the numbers) on the work item.
 
 ## Troubleshooting: ENOSPC (`System limit for number of file watchers reached`)
 

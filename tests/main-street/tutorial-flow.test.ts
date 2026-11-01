@@ -32,7 +32,7 @@ describe('UNIFIED_TUTORIAL_STEPS', () => {
       expect(body.length).toBeGreaterThan(0);
     }
   });
-  it('each step has valid highlightZone', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['centerModal','hud','marketBusinessRow','developmentRow','streetGrid','endTurnButton','incidentQueue','investmentsRow','challengePanel','helpButton','completionModal','hand','actionButtons','actionCounter','laundromatCard','festivalCard']).toContain(step.highlightZone); });
+  it('each step has valid highlightZone', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['centerModal','hud','marketBusinessRow','developmentRow','streetGrid','endTurnButton','incidentQueue','investmentsRow','challengePanel','completionModal','hand','actionButtons','actionCounter','laundromatCard','festivalCard']).toContain(step.highlightZone); });
   it('each step has gate confirm or action', () => { for(const step of UNIFIED_TUTORIAL_STEPS) expect(['confirm','action']).toContain(step.gate); });
   // MS-0MT3JK16W006A66P: 9 confirm + 16 action (the free Community Favour day
   // merged into the Bookshop-placement day; the T22 banking end-turn was

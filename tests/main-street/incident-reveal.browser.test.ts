@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissTurnSummaryDialog } from './helpers/turn-summary-dialog';
 import type { EventCard } from '../../src/MainStreetCards';
 
 // ── Timing constants ───────────────────────────────────────────
@@ -164,8 +165,12 @@ describe('MainStreet incident reveal presentation', () => {
     const earlyPhase = (scene.state as { phase: string }).phase;
     expect(earlyPhase).not.toBe('MarketPhase');
 
-    // After the full reveal (hold + return animation), the next week starts.
-    // Use generous timeout: nominal ~4s + 16s margin for contention-induced RAF lag.
+    // After the full reveal (hold + return animation), the deferred closing
+    // presents the Turn Summary dialog (MS-0MVP46Q8X003419R) — dismiss it so
+    // the next week starts. Wait for the dialog first: it only appears once
+    // the reveal hold has completed.
+    expect(await dismissTurnSummaryDialog(scene)).toBe(true);
+
     await waitForCondition(() => (scene.state as { phase: string }).phase === 'MarketPhase', {
       timeoutMs: REVEAL_WAIT_MS,
       label: 'next week start after reveal hold (gated)',
@@ -221,7 +226,11 @@ describe('MainStreet incident reveal presentation', () => {
     // The reveal should not be called when there's no incident.
     expect(spy).not.toHaveBeenCalled();
 
-    // The day should advance quickly (the ~800ms path).
+    // The day advances once the Turn Summary dialog is dismissed (the gate
+    // replaces the old ~800ms immediate advance in normal play).
+    expect(await dismissTurnSummaryDialog(scene)).toBe(true);
+
+    // The day should advance quickly.
     await waitForCondition(() => (scene.state as { phase: string }).phase === 'MarketPhase', {
       timeoutMs: FAST_PATH_WAIT_MS,
       label: 'next week start without incident (fast)',

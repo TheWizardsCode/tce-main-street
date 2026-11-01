@@ -203,7 +203,6 @@ function createHarness(opts: HarnessOptions = {}) {
     tweens: tweenManager,
     uiPhase: 'idle',
     pendingHandIndex: null,
-    hintedSlotIndex: null,
     state,
     add: {
       container: vi.fn((x: number, y: number) => {

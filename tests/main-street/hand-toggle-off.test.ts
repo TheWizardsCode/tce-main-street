@@ -45,8 +45,6 @@ function createMockScene(): any {
     pendingHandIndex: null,
     pendingHandJustMoved: false,
     justMovedHandCardId: null,
-    instructionText: { setText: vi.fn() },
-    hintBar: { setText: vi.fn(), textObject: { text: '' } },
     refreshAll: vi.fn(),
     overlayObjects: [],
     hudContainer: null,
@@ -110,9 +108,9 @@ describe('Hand card re-click toggle-off (MS-0MV767QTO008JUDJ)', () => {
       // Same-week trackers reset so a re-selected card costs an action again.
       expect(scene.justMovedHandCardId).toBeNull();
       expect(scene.state.justMovedUpgradeCardId).toBeNull();
-      // Hint bar returns to the standard market instruction.
-      const hint = String(scene.hintBar.setText.mock.calls.at(-1)?.[0] ?? '');
-      expect(hint).toContain('Buy cards from the market');
+      // The standard market instruction is a dropped guidance line
+      // (MS-0MVPWQK3U003DIR6) — no persistent text after cancel.
+      expect(scene.lastFeedback).toBeUndefined();
       // The card stays in hand.
       expect(scene.state.hand.some((c: any) => c.id === BUSINESS_CARD.id)).toBe(true);
     });
@@ -162,8 +160,7 @@ describe('Hand card re-click toggle-off (MS-0MV767QTO008JUDJ)', () => {
       expect(scene.uiPhase).toBe('market');
       expect(scene.msRenderer.updateBusinessHandSelection).toHaveBeenCalledWith(null);
       expect(scene.clearMarketSelection).toHaveBeenCalled();
-      const hint = String(scene.hintBar.setText.mock.calls.at(-1)?.[0] ?? '');
-      expect(hint).toContain('Buy cards from the market');
+      expect(scene.lastFeedback).toBeUndefined();
       expect(scene.state.hand.some((c: any) => c.id === UPGRADE_CARD.id)).toBe(true);
     });
 
@@ -195,8 +192,7 @@ describe('Hand card re-click toggle-off (MS-0MV767QTO008JUDJ)', () => {
       expect(scene.uiPhase).toBe('market');
       expect(scene.msRenderer.updateBusinessHandSelection).toHaveBeenCalledWith(null);
       expect(scene.clearMarketSelection).toHaveBeenCalled();
-      const hint = String(scene.hintBar.setText.mock.calls.at(-1)?.[0] ?? '');
-      expect(hint).toContain('Buy cards from the market');
+      expect(scene.lastFeedback).toBeUndefined();
       expect(scene.state.hand.some((c: any) => c.id === EVENT_CARD.id)).toBe(true);
     });
 

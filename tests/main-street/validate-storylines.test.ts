@@ -34,6 +34,7 @@ import {
 import { getEventTemplates, loadTemplatesFromCsv, resetTemplatesToDefault } from '../../src/MainStreetCards';
 import type { EventCard, StorylineOption } from '../../src/MainStreetCardsTypes';
 import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
+import { hermeticGitEnv } from '../tooling/git-fixture-env';
 
 // ── Fixture helpers ─────────────────────────────────────────
 
@@ -555,10 +556,16 @@ describe('AC6 — opt-in pre-push reminder installer', () => {
   it('installs a non-blocking reminder, is idempotent, and can be removed', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'tce-storyline-hook-'));
     try {
-      // Minimal git repo so `git rev-parse --show-toplevel` resolves.
-      spawnSync('git', ['init', '-q'], { cwd: repo });
+      // Minimal git repo so `git rev-parse --show-toplevel` resolves. The env is
+      // hermetic so a suite run under the finish gate's GIT_INDEX_FILE does not
+      // operate on the gate's index (MS-0MVVOQPVY006G2ZE).
+      spawnSync('git', ['init', '-q'], { cwd: repo, env: hermeticGitEnv() });
 
-      const install = spawnSync('sh', [INSTALLER], { cwd: repo, encoding: 'utf-8' });
+      const install = spawnSync('sh', [INSTALLER], {
+        cwd: repo,
+        encoding: 'utf-8',
+        env: hermeticGitEnv(),
+      });
       expect(install.status).toBe(0);
 
       const hookFile = path.join(repo, '.git', 'hooks', 'pre-push');
@@ -571,13 +578,17 @@ describe('AC6 — opt-in pre-push reminder installer', () => {
       expect(hook).toContain('|| echo');
 
       // Idempotent: a second install does not duplicate the block.
-      spawnSync('sh', [INSTALLER], { cwd: repo, encoding: 'utf-8' });
+      spawnSync('sh', [INSTALLER], { cwd: repo, encoding: 'utf-8', env: hermeticGitEnv() });
       const hook2 = fs.readFileSync(hookFile, 'utf-8');
       const markerCount = hook2.split('storyline-pre-push-reminder').length - 1;
       expect(markerCount).toBe(1);
 
       // Removable.
-      const remove = spawnSync('sh', [INSTALLER, '--remove'], { cwd: repo, encoding: 'utf-8' });
+      const remove = spawnSync('sh', [INSTALLER, '--remove'], {
+        cwd: repo,
+        encoding: 'utf-8',
+        env: hermeticGitEnv(),
+      });
       expect(remove.status).toBe(0);
       const hook3 = fs.readFileSync(hookFile, 'utf-8');
       expect(hook3).not.toContain('storyline-pre-push-reminder');

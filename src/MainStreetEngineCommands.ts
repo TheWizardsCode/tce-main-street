@@ -12,12 +12,21 @@ import { canActiveSeatActOnSlot } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard, SynergyType } from './MainStreetCards';
 import { SELL_VALUE_RATIO, staffMatchesBusiness } from './MainStreetCards';
 import { roundInt } from './MainStreetDifficulty';
+import {
+  activeLoanFor,
+  buildActiveLoan,
+  canTakeLoan,
+  largestBailoutOption,
+  loanOwnerId,
+  optionsFor,
+} from './MainStreetLoans';
+import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
 import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, classifyEffect } from './MainStreetState';
+import { addLog, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Places a card from the player's hand onto an empty tableau slot.
@@ -1340,5 +1349,193 @@ export function declineApplicantAction(state: MainStreetState): void {
 
 export function letGoStaffAction(state: MainStreetState, idx: number): void {
   letGoStaffMember(state, idx);
+}
+
+// ── Bank Loans (MS-0MVPWS6WB008WP79) ────────────────────────
+
+/**
+ * Takes a bank loan by choosing one option from the configured loan menu.
+ *
+ * Effects on success (all three asserted by `tests/main-street/MainStreetLoans.test.ts`):
+ * - the principal is credited to the borrowing seat's wallet immediately, via
+ *   the `resourceBank` / `EconomyLedger` path (single-player) or the seat's
+ *   `PlayerRecord` (competitive mode, mirroring the shared wallet when it is
+ *   bound to that seat) — never by an ad-hoc wallet mutation; see
+ *   {@link creditLoanPrincipal};
+ * - the `ActiveLoan` is recorded in `state.loans` (one per `ownerId`);
+ * - the decision is logged as a `gain` activity-log row.
+ *
+ * **No action point is spent**: this handler never calls `consumeAction`, so
+ * `actionsRemaining`/`bankedActions` are unchanged (seed requirement — a loan
+ * must not eat the seat's daily action).
+ *
+ * Refusal rules (see {@link canTakeLoan}) leave all resources untouched: the
+ * legality check runs to completion before the first mutation and throws a
+ * `Error` carrying the user-facing reason, matching the other command
+ * implementations' contract.
+ *
+ * @param state       Current game state (mutated in-place on success).
+ * @param optionIndex Index into `config.loanOptions`.
+ * @param ownerId     Borrowing seat (defaults to the active seat).
+ * @returns The recorded {@link ActiveLoan}.
+ * @throws Error with a user-facing reason when the loan is refused.
+ */
+export function takeLoan(
+  state: MainStreetState,
+  optionIndex: number,
+  ownerId?: number,
+): ActiveLoan {
+  const legality = canTakeLoan(state, optionIndex, ownerId);
+  if (!legality.legal) {
+    throw new Error(legality.reason);
+  }
+
+  return recordLoan(state, optionIndex, ownerId);
+}
+
+/**
+ * Records a loan and credits its principal — the shared successful half of
+ * {@link takeLoan} and {@link acceptLoanOffer}.
+ *
+ * Deliberately performs **no legality checks**: the caller has already
+ * validated the attempt (the normal `takeLoan` rules, or the bailout offer's
+ * own eligibility). This keeps the acceptance path usable while the closing
+ * sequence is paused outside `MarketPhase`.
+ */
+function recordLoan(
+  state: MainStreetState,
+  optionIndex: number,
+  ownerId?: number,
+): ActiveLoan {
+  const seatId = loanOwnerId(state, ownerId);
+  const option = optionsFor(state)[optionIndex];
+  const loan = buildActiveLoan(state, option, seatId);
+
+  state.loans = state.loans ?? [];
+  state.loans.push(loan);
+  creditLoanPrincipal(state, seatId, loan.principal);
+
+  addLog(
+    state,
+    seatId,
+    `Took a bank loan: +€${loan.principal} principal, €${loan.perTurnRepayment}/turn for ` +
+      `${loan.termTurns} turns (€${loan.totalRepayment} total) ` +
+      `(${describeEventEffects(loan.principal, 0)})`,
+    classifyEffect(loan.principal, 0),
+  );
+
+  return loan;
+}
+
+/**
+ * Resolves a pending bankruptcy bailout offer by accepting one of the
+ * presented options (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
+ * MS-0MVPWS9L9001PVXG).
+ *
+ * The closing sequence pauses outside `MarketPhase`, so this path deliberately
+ * bypasses {@link canTakeLoan}'s phase and pending-offer gates — the offer
+ * itself is the authorisation. The remaining one-active-loan rule, the loan
+ * menu and the enabled flag are still enforced before anything is mutated.
+ *
+ * @param state  Current game state (mutated). Must hold a pending offer.
+ * @param option The chosen option: a {@link LoanOption} from the presented
+ *               menu, an index into it, or omitted to use the AI/headless
+ *               policy (the largest option — {@link largestBailoutOption}).
+ * @returns The recorded {@link ActiveLoan}.
+ * @throws Error when no offer is pending, the loan rules refuse the seat, or
+ *         the chosen option is not part of the presented menu.
+ */
+export function acceptLoanOffer(
+  state: MainStreetState,
+  option?: LoanOption | number,
+): ActiveLoan {
+  const pending = state.pendingLoanOffer;
+  if (!pending) {
+    throw new Error('No pending loan offer to accept.');
+  }
+  if (!state.config.loansEnabled) {
+    throw new Error('Bank loans are disabled in this game.');
+  }
+  if (activeLoanFor(state, pending.ownerId)) {
+    throw new Error('One loan at a time: this seat already holds an active loan.');
+  }
+
+  const chosen = resolveOfferedOption(pending.options, option);
+  if (!chosen) {
+    throw new Error('The chosen option is not part of the presented loan menu.');
+  }
+  const menuIndex = optionsFor(state).findIndex(
+    (candidate) =>
+      candidate.principal === chosen.principal && candidate.termTurns === chosen.termTurns,
+  );
+  if (menuIndex < 0) {
+    throw new Error('The chosen option is not part of the configured loan menu.');
+  }
+
+  // Clear the decision before recording the loan: the offer must not survive
+  // as a second decision, and `recordLoan` bypasses the pending-offer gate.
+  state.pendingLoanOffer = null;
+  return recordLoan(state, menuIndex, pending.ownerId);
+}
+
+/**
+ * Resolves the caller's bailout choice against the presented menu.
+ *
+ * Accepts an option object (matched by principal + term), an index into the
+ * presented list, or `undefined` for the deterministic AI/headless policy.
+ */
+function resolveOfferedOption(
+  offered: readonly LoanOption[],
+  choice?: LoanOption | number,
+): LoanOption | undefined {
+  if (choice === undefined) return largestBailoutOption(offered);
+  if (typeof choice === 'number') return offered[choice];
+  return offered.find(
+    (option) =>
+      option.principal === choice.principal && option.termTurns === choice.termTurns,
+  );
+}
+
+/**
+ * Credits a loan principal to the borrowing seat's wallet through the
+ * established economy path, and keeps the ledger in step.
+ *
+ * Wallet resolution mirrors the bind/restore model
+ * (`bindCompetitiveSeat` / `restoreCompetitiveSeat`, MainStreetAiStrategy):
+ *
+ * - **Single-player** (no `PlayerRecord` for the seat): the shared
+ *   `state.resourceBank` is the wallet — the principal is credited there and
+ *   `syncResourceBankToLedger` records it against the `EconomyLedger`.
+ * - **Competitive** (`state.players` present): the seat's `PlayerRecord` is
+ *   the authoritative wallet at rest, so the principal is credited there.
+ *   While a seat is bound its record and the shared wallet mirror one another
+ *   (`bindCompetitiveSeat` copies record → shared wallet), so the credit is
+ *   mirrored into `resourceBank` only when that mirror currently holds —
+ *   otherwise a later `bind` propagates the record's balance on its own and a
+ *   stale shared wallet belonging to another seat is never inflated.
+ *
+ * Consumes no RNG; keeps `state.resourceBank` and `state.ledger` consistent
+ * whenever either was written.
+ */
+export function creditLoanPrincipal(
+  state: MainStreetState,
+  seatId: number,
+  principal: number,
+): void {
+  const seat = state.players?.find((player) => player.playerId === seatId);
+  if (!seat) {
+    state.resourceBank.coins += principal;
+    syncResourceBankToLedger(state);
+    return;
+  }
+
+  // Bound-seat mirror: the shared wallet still equals the seat's balance
+  // before the credit ⇒ the seat is bound, so keep both views in step.
+  const mirrorBound = state.resourceBank.coins === seat.coins;
+  seat.coins += principal;
+  if (mirrorBound) {
+    state.resourceBank.coins += principal;
+  }
+  syncResourceBankToLedger(state);
 }
 

@@ -9,8 +9,25 @@
  * AC2 — Per-player metrics: wins, average score, loss-reason distribution.
  * AC3 — Extension only: existing runMonteCarlo / runAllCombinations / tests pass.
  * AC4 — Validated against CompetitiveGreedyStrategy.
+ *
+ * Cost-aware AI event-choice verification (MS-0MVNU5HNV007R803): the harnesses
+ * also run with cost-gated and extra-effect options in play, proving they
+ * complete without an AI stall, never raise `No storyline option at index`,
+ * leave no `pendingEventChoice` unresolved, and replay identically per seed.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import * as aiStrategyModule from '../../src/MainStreetAiStrategy';
+import * as engineModule from '../../src/MainStreetEngine';
+import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
+import type { MainStreetState } from '../../src/MainStreetState';
+import type { MonteCarloRunSummary } from '../../src/MainStreetMonteCarlo';
+import {
+  COST_FIXTURE_EVENT_ID,
+  EXTRA_EFFECT_LABEL,
+  PRESENTED_LABELS,
+  registerAiCostFixtures,
+} from './helpers/aiEventChoiceCostFixtures';
 
 import {
   runCompetitiveMonteCarlo,
@@ -34,6 +51,89 @@ import {
 function makeSeeds(count: number): string[] {
   return Array.from({ length: count }, (_, i) => `seed-${String(i + 1).padStart(4, '0')}`);
 }
+
+/** Handle returned by the pending-choice guards. */
+interface PendingChoiceGuard {
+  /** Number of paused choices the AI resolved while the guard was installed. */
+  calls: number;
+  /** Removes the spy (always call from a `finally`). */
+  restore: () => void;
+}
+
+/**
+ * Seeds whose `market-greedy` single-player runs draw the fixture card and
+ * therefore exercise the presented-list decision end-to-end. Calibrated
+ * against the shipped content; the assertions also fail loudly if these seeds
+ * stop reaching the fixture (rather than passing vacuously).
+ */
+const FIXTURE_SEEDS = ['cost-mc-3', 'cost-det-8'] as const;
+
+/**
+ * Installs a spy over the single-player AI choice resolver that enforces the
+ * no-stall contract on every paused turn: the call must clear the pending
+ * choice, and the game clock of the *same* state must advance before the next
+ * pause (a stalled harness would re-enter the same turn until the maxTurns
+ * cap). `calls` counts how many paused choices were resolved.
+ */
+function guardSinglePlayerPendingChoices(): PendingChoiceGuard {
+  const guard: PendingChoiceGuard = { calls: 0, restore: () => {} };
+  const lastTurn = new WeakMap<MainStreetState, number>();
+  const original = aiStrategyModule.resolveAiEventChoice;
+  const spy = vi
+    .spyOn(aiStrategyModule, 'resolveAiEventChoice')
+    .mockImplementation((state: MainStreetState) => {
+      original(state);
+      // No `pendingEventChoice` survives the AI resolution (no stall).
+      expect(state.pendingEventChoice).toBeNull();
+      const previous = lastTurn.get(state);
+      if (previous !== undefined) {
+        // A stalled choice would resolve on the same turn forever.
+        expect(state.turn).toBeGreaterThan(previous);
+      }
+      lastTurn.set(state, state.turn);
+      guard.calls++;
+    });
+  guard.restore = () => spy.mockRestore();
+  return guard;
+}
+
+/**
+ * Installs the equivalent no-stall guard over the competitive dual-choice
+ * resolver ({@link engineModule.resolveCompetitivePendingChoice}).
+ */
+function guardCompetitivePendingChoices(): PendingChoiceGuard {
+  const guard: PendingChoiceGuard = { calls: 0, restore: () => {} };
+  const lastTurn = new WeakMap<MainStreetState, number>();
+  const original = engineModule.resolveCompetitivePendingChoice;
+  const spy = vi
+    .spyOn(engineModule, 'resolveCompetitivePendingChoice')
+    .mockImplementation((state: MainStreetState) => {
+      const result = original(state);
+      expect(state.pendingEventChoice).toBeNull();
+      const previous = lastTurn.get(state);
+      if (previous !== undefined) {
+        expect(state.turn).toBeGreaterThanOrEqual(previous);
+      }
+      lastTurn.set(state, state.turn);
+      guard.calls++;
+      return result;
+    });
+  guard.restore = () => spy.mockRestore();
+  return guard;
+}
+
+/** Fixture-card choices captured in a single-player run summary. */
+function fixtureChoices(run: MonteCarloRunSummary): string[] {
+  return (run.storylineEvents ?? [])
+    .filter((event) => event.baseEventId === COST_FIXTURE_EVENT_ID)
+    .map((event) => event.choice);
+}
+
+// The registered fixture options are global; clear them after every test so
+// the pre-existing harness cases keep their shipped-content behaviour.
+afterEach(() => {
+  resetStorylineRegistry();
+});
 
 // ── AC1: Deterministic head-to-head execution ────────────────
 
@@ -79,9 +179,22 @@ describe('AC1 — Deterministic head-to-head execution', () => {
   // an explicit timeout keeps the case clear of the project's 15 s unit
   // default under CI/agent load — matching monte-carlo-greedy-guardrail
   // (MS-0MVFQ5ODR001R7U2).
+  //
+  // MS-0MVNU5HNV007R803: the cost-gated + extra-effect fixture options are
+  // registered for the run and the dual-choice resolver is guarded, so the
+  // same 200 seeds (no seed-count inflation) also prove there is no AI stall
+  // and no unresolved pending choice. A `No storyline option at index` would
+  // throw out of the run and fail this case.
   it('should run ≥200 seeds in the batch harness', () => {
+    registerAiCostFixtures();
+    const guard = guardCompetitivePendingChoices();
     const seeds = makeSeeds(200);
-    const result = runCompetitiveMonteCarlo({ seeds, maxTurns: 30 });
+    let result: ReturnType<typeof runCompetitiveMonteCarlo>;
+    try {
+      result = runCompetitiveMonteCarlo({ seeds, maxTurns: 30 });
+    } finally {
+      guard.restore();
+    }
 
     expect(result.runs.length).toBe(200);
     expect(result.metrics.runs).toBe(200);
@@ -89,8 +202,13 @@ describe('AC1 — Deterministic head-to-head execution', () => {
     // All runs should have completed without error
     for (const run of result.runs) {
       expect(run.turns).toBeGreaterThan(0);
+      expect(run.turns).toBeLessThanOrEqual(30);
       expect(run.players).toHaveLength(2);
     }
+
+    // The AI really resolved pausing incidents; each resolution cleared the
+    // pending choice and time never stalled (asserted per state in the guard).
+    expect(guard.calls).toBeGreaterThan(0);
   }, 120_000);
 });
 
@@ -188,8 +306,100 @@ describe('AC3 — Extension of existing Monte Carlo', () => {
   });
 });
 
-// ── AC4: Validated against CompetitiveGreedyStrategy ─────────
+// ── Cost-aware AI event-choice harness verification ──────────
+//
+// MS-0MVNU5HNV007R803 (child of MS-0MVI0APQY000OIOY). With a cost-gated and an
+// extra-effect option registered on a shipped incident, every harness must run
+// to completion, never select an option outside the presented list, resolve
+// every paused choice, and replay identically for the same seed.
 
+describe('Cost-aware event-choice harness verification (MS-0MVNU5HNV007R803)', () => {
+  it('single-player runMonteCarlo completes with no AI stall or unresolved choice', () => {
+    registerAiCostFixtures();
+    const guard = guardSinglePlayerPendingChoices();
+    const seeds = [...FIXTURE_SEEDS, 'cost-mc-1', 'cost-mc-4'];
+    let result: ReturnType<typeof runMonteCarlo>;
+    try {
+      result = runMonteCarlo({ seeds, maxTurns: 30, strategy: 'market-greedy' });
+    } finally {
+      guard.restore();
+    }
+
+    expect(result.runs.map((run) => run.seed)).toEqual(seeds);
+    for (const run of result.runs) {
+      expect(run.turns).toBeGreaterThan(0);
+      expect(run.turns).toBeLessThanOrEqual(30);
+      // Every recorded fixture choice is one the draw-time filter presented.
+      for (const choice of fixtureChoices(run)) {
+        expect(PRESENTED_LABELS).toContain(choice);
+      }
+    }
+
+    // The AI path really ran, and the fixture card was genuinely in play.
+    expect(guard.calls).toBeGreaterThan(0);
+    expect(result.runs.flatMap(fixtureChoices).length).toBeGreaterThan(0);
+  });
+
+  it('runAllCombinations completes with cost/extra-effect options in play', () => {
+    registerAiCostFixtures();
+    const guard = guardSinglePlayerPendingChoices();
+    let results: ReturnType<typeof runAllCombinations>;
+    try {
+      results = runAllCombinations({
+        seeds: ['cost-combo-1', 'cost-combo-2'],
+        maxTurns: 20,
+        strategies: ['market-greedy'],
+        difficulties: ['Medium'],
+      });
+    } finally {
+      guard.restore();
+    }
+
+    expect(results).toHaveLength(1);
+    for (const run of results[0].runs) {
+      expect(run.turns).toBeGreaterThan(0);
+      expect(run.turns).toBeLessThanOrEqual(20);
+      for (const choice of fixtureChoices(run)) {
+        expect(PRESENTED_LABELS).toContain(choice);
+      }
+    }
+    expect(guard.calls).toBeGreaterThan(0);
+  });
+
+  it('same seed twice yields identical single-player outcomes (cost/extra-effect policy is RNG-free)', () => {
+    registerAiCostFixtures();
+    const seeds = [...FIXTURE_SEEDS];
+    const first = runMonteCarlo({ seeds, maxTurns: 30, strategy: 'market-greedy' });
+    const second = runMonteCarlo({ seeds, maxTurns: 30, strategy: 'market-greedy' });
+
+    // Whole per-seed summary — scores, turns, economy history and the
+    // storyline transcript choices — replays byte-identically.
+    expect(second.runs).toEqual(first.runs);
+
+    // …and the fixture card was genuinely in play (the check is not vacuous).
+    const choices = first.runs.flatMap(fixtureChoices);
+    expect(choices.length).toBeGreaterThan(0);
+    for (const choice of choices) {
+      expect(choice).toBe(EXTRA_EFFECT_LABEL);
+    }
+  });
+
+  it('same competitive seed twice yields identical per-seed outcomes (determinism)', () => {
+    registerAiCostFixtures();
+    for (const seed of ['cost-comp-replay-1', 'cost-comp-replay-2']) {
+      const first = runCompetitiveSeed(seed, 20);
+      const second = runCompetitiveSeed(seed, 20);
+
+      expect(second.winnerId).toBe(first.winnerId);
+      expect(second.turns).toBe(first.turns);
+      expect(second.endReason).toBe(first.endReason);
+      expect(second.players).toEqual(first.players);
+      expect(second.finalGrid).toEqual(first.finalGrid);
+    }
+  });
+});
+
+// ── AC4: Validated against CompetitiveGreedyStrategy ─────────
 describe('AC4 — CompetitiveGreedyStrategy validation', () => {
   it('should run head-to-head with CompetitiveGreedyStrategy', () => {
     const seeds = makeSeeds(30);

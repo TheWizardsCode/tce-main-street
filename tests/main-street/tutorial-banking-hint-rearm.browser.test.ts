@@ -13,6 +13,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { getEventTemplates } from '../../src/MainStreetCards';
+import { dismissTurnSummaryDialog } from './helpers/turn-summary-dialog';
 
 const TUTORIAL_STATE_KEY = 'tce-main-street-tutorial-state';
 
@@ -111,6 +112,10 @@ async function endTurnWithSpareAction(scene: any): Promise<Element | null> {
   scene.state.bankedActions = 0;
   const beforeTurn = scene.state.turn;
   scene.msTurnController.endTurn();
+  // The Turn Summary gate (MS-0MVP46Q8X003419R) blocks the advance until
+  // [ Next Turn ] is clicked; dismiss it so the turn-advance wait below is
+  // unchanged, then the hint presents after the dialog on the closing tail.
+  await dismissTurnSummaryDialog(scene, { timeoutMs: 15_000 });
   await waitFor(() => scene.state.turn > beforeTurn, 15_000);
   // Give the closing presentation a beat before reading the DOM.
   await new Promise((r) => setTimeout(r, 2500));

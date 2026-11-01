@@ -143,16 +143,6 @@ function computeExpectedZoneBounds(
         h: layout.handCardH,
       };
     }
-    case 'helpButton': {
-      // Hint button sits to the left of End Turn (12px gap)
-      const rightX = layout.gameW - 24;
-      return {
-        x: rightX - layout.actionButtonW - 12 - layout.hintButtonW,
-        y: layout.actionY + 4,
-        w: layout.hintButtonW,
-        h: layout.actionButtonH,
-      };
-    }
     case 'actionCounter': {
       // Actions-remaining + banked count text: right-aligned above
       // the action row at (gameW-24, actionY-22). Zone covers the full
@@ -211,7 +201,6 @@ const TUTORIAL_ZONE_NAMES = [
   'incidentQueue',
   'investmentsRow',
   'hand',
-  'helpButton',
   'actionCounter',
 ];
 
@@ -364,15 +353,6 @@ describe('Tutorial layout resolution', () => {
       const expected = computeExpectedZoneBounds('hand');
       expect(expected).not.toBeNull();
       boundsAlmostEqual(resolved.zones.hand.rect, expected!);
-    });
-
-    it('helpButton zone matches zoneToAnchor() pixel math within 1px', () => {
-      const resolved = composeResolvedLayouts(
-        parseBaseLayout(), parseTutorialLayout(), VIEWPORT, 1,
-      );
-      const expected = computeExpectedZoneBounds('helpButton');
-      expect(expected).not.toBeNull();
-      boundsAlmostEqual(resolved.zones.helpButton.rect, expected!);
     });
 
     it('all tutorial zones match zoneToAnchor() within 1px tolerance', () => {
@@ -535,6 +515,36 @@ describe('Tutorial layout resolution', () => {
     });
   });
 
+  describe('hand zone sync with the base layout (AC8)', () => {
+    it('keeps the tutorial hand zone rect and anchor equal to the base zone', () => {
+      const resolved = composeResolvedLayouts(
+        parseBaseLayout(),
+        parseTutorialLayout(),
+        VIEWPORT,
+        1,
+      );
+
+      // The hand bottom-anchor (MS-0MVPWQMTL004J3GB) moved both documents in
+      // lockstep: the tutorial highlight rect must equal the rendered hand
+      // rect, which resolves from the base `hand` zone (layout.handY/handX).
+      const expected = computeExpectedZoneBounds('hand');
+      expect(expected).not.toBeNull();
+      boundsAlmostEqual(resolved.zones.hand.rect, expected!);
+
+      // The rendered hand rect = { handCenterX − 144, handY, 288, 80 } at
+      // 1280×720 — pinned so an unintended move breaks the sync loudly.
+      expect(resolved.zones.hand.rect.x).toBeCloseTo(323, 0);
+      expect(resolved.zones.hand.rect.y).toBeCloseTo(628, 0);
+    });
+
+    it('keeps the tutorial hand anchor equal to the base hand anchor', () => {
+      const base = parseBaseLayout();
+      const tutorial = parseTutorialLayout();
+      expect(tutorial.zones.hand.rect.y).toBe(base.zones.hand.rect.y);
+      expect(tutorial.zones.hand.anchors?.topLeft.y).toBe(base.zones.hand.anchors?.topLeft.y);
+    });
+  });
+
   describe('sceneWins policy', () => {
     it('tutorial zones overlay base zones when names collide', () => {
       const issues: ComposeResolvedLayoutsIssue[] = [];
@@ -580,7 +590,6 @@ describe('Tutorial layout resolution', () => {
       expect(resolved.zones.marketBusinessRow).toBeDefined();
       expect(resolved.zones.streetGrid).toBeDefined();
       expect(resolved.zones.investmentsRow).toBeDefined();
-      expect(resolved.zones.helpButton).toBeDefined();
     });
 
     it('sceneWins keeps base-only zones', () => {
@@ -653,7 +662,6 @@ describe('Tutorial layout resolution', () => {
         streetGrid: computeExpectedZoneBounds('streetGrid')!,
         endTurnButton: computeExpectedZoneBounds('endTurnButton')!,
         investmentsRow: computeExpectedZoneBounds('investmentsRow')!,
-        helpButton: computeExpectedZoneBounds('helpButton')!,
         hud: computeExpectedZoneBounds('hud')!,
       };
 
