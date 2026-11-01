@@ -73,14 +73,24 @@ full-frame snapshots.
 ### The launcher is generator-owned — never hand-edit `./main.ts`
 
 `./main.ts` is not hand-authored: it is byte-for-byte what the engine-owned
-`core/scripts/game-repo-scaffold.ts` → `renderMainTs()` emits, and
-`npm run scaffold` rewrites it verbatim. `tests/main-street/main-ts-scaffold-drift.test.ts`
-fails the unit suite the moment the committed file drifts from that output.
+`core/scripts/game-repo-scaffold.ts` → `renderMainTs()` emits.
+`tests/main-street/main-ts-scaffold-drift.test.ts` fails the unit suite the
+moment the committed file drifts from that output — that guard is the repo's
+check for this contract, not a raw scaffold run.
 
-Change the launcher by changing the generator (or the engine pin) and re-running
-`npm run scaffold` — never hand-edit `./main.ts`. A hand edit is silently erased
-by the next scaffold, together with any comment explaining it, which is exactly
-how the `type: Phaser.AUTO` launcher switch was reverted once
+**Never run `npm run scaffold` on this existing repo** (MS-0MVU03V1V0096L4O).
+It invokes `scaffoldGameRepo()` for the whole repository, not just
+`renderMainTs()`: it rewrites the core template's boilerplate — `package.json`,
+`index.html`, `tsconfig.json`, `vite.config.ts` and several tooling tests — over
+this repo's deliberate divergence and rewrites legacy `example-games` game
+paths to `src/` paths. The launcher itself comes out byte-identical (the later
+`git status --porcelain main.ts` is empty), so a full scaffold proves nothing
+about `main.ts` that the drift guard does not already prove, while discarding
+unrelated work. Regenerate `main.ts` only as part of an intentional fresh-repo
+scaffold; here, change the generator (or the engine pin) and let the guard
+verify the committed output. **Never hand-edit** `./main.ts`: a hand edit is
+silently erased by the next scaffold, together with any comment explaining it,
+which is exactly how the `type: Phaser.AUTO` launcher switch was reverted once
 (MS-0MVU03TR0006KZDH). Launcher commentary belongs in the generator or in
 `docs/`. Full contract: [build-and-release.md](build-and-release.md).
 
@@ -90,6 +100,53 @@ which takes 12-15 s on an idle host and regularly exceeds the 15 s `unit` budget
 under CPU contention — running them concurrently produced spurious non-zero CLI
 exits. If such a test times out, re-run rather than "fixing" a CLI that is fine
 — and prefer raising the margin over shrinking the workload.
+
+## End-to-end switch-over gate (build, engine, suite, WebGL smoke)
+
+A renderer or clipping change crosses the composed engine, the build and the
+renderer, so no single unit file proves it. Run the whole gate on the **final
+commit** of the change and record the evidence on the work item:
+
+```bash
+npx vitest run --project unit tests/main-street/main-ts-scaffold-drift.test.ts  # main.ts == renderMainTs()
+npm run engine:check                                 # composed ./core at the pin
+npm run build                                        # engine:sync + tsc + vite build
+npm test                                             # unit + unit-cli
+npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts
+npx vitest run --project browser tests/e2e/main-street-no-console-errors.browser.test.ts
+```
+
+`/skill:test` runs the three commands declared in `.pi/test-config.json`
+(`suiteCommands`: `npm test` plus the two browser files above), so it is the
+source of the audit-accepted full-suite evidence. The WebGL reference file is
+additionally run as its own group: `/skill:test --group webgl-clipping-browser`.
+
+### The manual half: WebGL launcher smoke
+
+The browser suites boot the scenes directly through their factories. The
+**launcher** — `main.ts`'s `Phaser.AUTO` config, the game selector and the
+composed engine — is only proven by booting `npm run dev` and inspecting the
+running game:
+
+1. `npm run dev`, then open the printed URL in a Chromium browser with WebGL
+   enabled.
+2. In the DevTools console, `window.__PHASER_GAME__.renderer.type` must be `2`
+   (`Phaser.WEBGL`), never `1` (the Canvas fallback).
+3. Play Main Street and scroll each clipping surface past its visible height —
+   the **Help** panel, the **Settings** panel, an **overlay dialog** and the
+   **Gym** card index — and confirm the content is clipped at the surface's
+   bounds: no paint over the heading, the footer, the scrollbar track or the
+   surrounding scene.
+4. The browser console must show **no** `setMask … not supported in WebGL`
+   warning.
+5. Record the renderer type, the surfaces checked, the warning count and the
+   commit in the work-item comment.
+
+The automated equivalent is
+`tests/main-street/webgl-renderer-clipping.browser.test.ts` (forced
+`Phaser.WEBGL`, pixel probes per surface, zero-warning capture). A smoke note
+confirms the **real launcher** boots that same path; it does not replace the
+probes.
 
 ## Deterministic invocation: the CLI group runs first
 
