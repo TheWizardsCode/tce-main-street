@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.1.23 (2026-11-01)
+> **Release focus:** This release focuses on strengthening the game's engine and build reliability while improving core gameplay feedback, including a new end-of-turn summary, bank loans to avoid bankruptcy, and corrected story choice costs and bonuses. It also refines the interface with solid panels, readable error messages, restored reputation crowds, and smoother GPU rendering.
+### Features
+- Tests now fail fast with a clear fix if they'd run against an outdated game engine, so green results always reflect the right engine. (MS-0MVO26G5H0054SNV)
+- Help, Settings, and overlay panels now display correctly with the WebGL renderer. (MS-0MVTMJ2GA008GRZ7)
+- See a clear end-of-turn summary of your income, expenses, and businesses before starting the next turn. (MS-0MVL6HMDP004WI41)
+- Re-scaffolding a game repo no longer breaks Phaser loading, so the test suite keeps passing. (MS-0MVK4TS31000YNFL)
+- The market, hand, and HUD panels are now solid, your cards sit at the screen bottom, and the Hint button is gone. (MS-0MVKTB6WS000VLWK)
+- Bank loans let you avoid bankruptcy and keep playing by repaying a fixed debt over time. (MS-0MVL6DZI0000F6CG)
+- Error messages now stay on screen long enough to read and appear above your cards. (MS-0MVRDBD3P0026CXH)
+- Main Street's AI now weighs costs and bonus effects when choosing event options. (MS-0MVI0APQY000OIOY)
+- Main Street now uses smoother GPU rendering, paving the way for better visual effects. (MS-0MV1HJ9ES009Y8GK)
+### Bug Fixes
+- Upgrade drags now use the same pricing as business drags, so affordable upgrades apply at listed cost with 2 actions. (MS-0MVKT3TZF0091IHC)
+- Releases now ship exactly the files they should, so version updates won't fail unexpectedly. (MS-0MVN0G6VB000ZF57)
+- The street crowd that shows your reputation is back, so a busier street reflects your growing fame. (MS-0MVRDVVH4001048Q)
+- Dev sessions now show a clean console, so real errors stand out instead of being buried in noise. (MS-0MVREB31W004F48D)
+- Engine updates now stay in sync automatically, so builds no longer fail with confusing version mismatch errors. (MS-0MVN1OAG1005JWFX)
+- The game now builds and tests reliably on the latest engine, so updates ship without hidden test failures. (MS-0MVQO6N34007DHP8)
+- Test runs no longer fail from leftover git settings, so releases ship reliably. (MS-0MVVOQPVY006G2ZE)
+- Engine doc updates no longer break the test suite, so dev builds stay green. (MS-0MVMNO29Z009SF6O)
+- Resuming work in a worktree now finishes cleanly, so sessions no longer get stranded. (MS-0MVM7NJF70037YU4)
+- Story choices that cost coins or reputation now actually charge you and apply their bonuses. (MS-0MVNU5M7Z0095CEM)
+### Other
+- Dev servers now stay stable during long sessions, so you won't lose your place to mid-session disconnects. (MS-0MVS0FNLH003VBMW)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.22 (2026-10-25)
 > **Release focus:** This release focuses on improving gameplay flow and reliability, with drag-and-drop card play, easier card deselection, and reworked challenge, reputation, and Grand Opening Sale rewards. It also strengthens the storyline engine, balance monitoring, and build/test infrastructure so updates ship consistently.
 ### Features
