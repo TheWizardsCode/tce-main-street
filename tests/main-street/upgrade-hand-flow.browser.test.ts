@@ -614,7 +614,7 @@ describe('Main Street upgrade hand-first click flow (browser)', () => {
     expect(scene.state.streetGrid[1]?.level).toBe(1);
     expect(scene.pendingHandIndex).toBe(0);
     expect(scene.uiPhase).toBe('placing-from-hand');
-    expect(scene.instructionText?.text).toContain('can only upgrade');
+    expect(scene.lastFeedback?.text).toContain('can only upgrade');
 
     // Clicking the eligible business applies the upgrade.
     const eligibleZone = findBusinessZone(scene, 0);

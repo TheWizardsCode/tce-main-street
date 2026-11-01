@@ -282,7 +282,6 @@ function createMockScene(state: MainStreetState): any {
     pendingStaffMoveId: null,
     actionContainer: null,
     settingsPanel: { reducedMotion: true },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     refreshAll: vi.fn(),
     refreshStreetGrid: vi.fn(),
@@ -316,9 +315,7 @@ describe('onFreeMarketRerollClick (AC1)', () => {
     expect(state.actionsRemaining).toBe(2);
     expect(scene.undoManager.canUndo()).toBe(true);
     expect(ctx.animateMarketSwap).toHaveBeenCalledWith('market', expect.any(Array));
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      expect.stringContaining('coin-free'),
-    );
+    expect(scene.lastFeedback?.text).toContain('coin-free');
   });
 
   it('refuses with illegal feedback when no Investor is employed', () => {
@@ -330,9 +327,7 @@ describe('onFreeMarketRerollClick (AC1)', () => {
 
     expect(state.investorFreeRerollUsedThisTurn).toBe(false);
     expect(scene.animateMarketSwap).not.toHaveBeenCalled();
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      expect.stringContaining('Cannot free re-roll'),
-    );
+    expect(scene.lastFeedback?.text).toContain('Cannot free re-roll');
   });
 });
 
@@ -374,9 +369,7 @@ describe('move-staff handlers (AC2)', () => {
     expect(scene.uiPhase).toBe('moving-staff');
     expect(state.actionsRemaining).toBe(2);
     expect(state.staffCards.find(c => c.id === chef.id)!.employedAtSlot).toBe(0);
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      expect.stringContaining('type does not match'),
-    );
+    expect(scene.lastFeedback?.text).toContain('type does not match');
   });
 
   it('does not enter the moving phase when no actions remain', () => {
@@ -386,8 +379,6 @@ describe('move-staff handlers (AC2)', () => {
 
     expect(scene.uiPhase).toBe('market');
     expect(scene.pendingStaffMoveId).toBeNull();
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(
-      expect.stringContaining('No actions remaining'),
-    );
+    expect(scene.lastFeedback?.text).toContain('No actions remaining');
   });
 });

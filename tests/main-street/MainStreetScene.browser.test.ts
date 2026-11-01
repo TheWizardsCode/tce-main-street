@@ -3,6 +3,10 @@ import Phaser from 'phaser';
 
 import { waitForCondition } from '@core-tests/helpers/waitForCondition';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import {
+  dismissTurnSummaryDialogIfPresent,
+  findTurnSummaryNextTurnButton,
+} from './helpers/turn-summary-dialog';
 import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
 import { getEventTemplates } from '../../src/MainStreetCards';
 import { canPurchaseBusiness, canPurchaseEvent, getEmptySlots } from '../../src/MainStreetMarket';
@@ -216,7 +220,6 @@ describe('MainStreetScene browser tests', () => {
           street: { x: number; y: number; w: number; h: number };
           hand: { x: number; y: number; w: number; h: number };
           action: { x: number; y: number; w: number; h: number };
-          instruction: { x: number; y: number; w: number; h: number };
         };
       };
 
@@ -226,7 +229,6 @@ describe('MainStreetScene browser tests', () => {
       expect(overlaps(rects.queue, rects.street), `queue/street overlap at ${vp.width}x${vp.height}`).toBe(false);
       expect(overlaps(rects.street, rects.hand), `street/hand overlap at ${vp.width}x${vp.height}`).toBe(false);
       expect(overlaps(rects.hand, rects.action), `hand/action overlap at ${vp.width}x${vp.height}`).toBe(false);
-      expect(overlaps(rects.action, rects.instruction), `action/instruction overlap at ${vp.width}x${vp.height}`).toBe(false);
 
       destroyGame(game);
       game = null;
@@ -647,6 +649,22 @@ describe('MainStreetScene browser tests', () => {
     // Dispatch Enter
     const ev = new KeyboardEvent('keydown', { key: 'Enter' });
     if (typeof window !== 'undefined') window.dispatchEvent(ev);
+
+    // The Turn Summary gate (MS-0MVP46Q8X003419R) presents the deferred
+    // closing's summary dialog first: the next day must NOT advance while it
+    // is up. Wait for it, assert the day is still held, then take the
+    // primary action.
+    await waitForCondition(
+      () => findTurnSummaryNextTurnButton(scene) !== null,
+      {
+        capMs: INCOME_COLLECTION_CAP_MS,
+        floorMs: END_TURN_STARVATION_MARGIN_MS,
+        intervalMs: 100,
+        label: 'Turn Summary dialog after end-of-turn presentation',
+      },
+    );
+    expect(scene.state.turn).toBe(beforeTurn);
+    expect(dismissTurnSummaryDialogIfPresent(scene)).toBe(true);
 
     // Poll for the day to advance instead of assuming synchronous
     // advancement: the day advances only after the deferred

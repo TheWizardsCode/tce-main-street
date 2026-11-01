@@ -31,7 +31,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { INCOME_COLLECTION_CAP_MS } from '../../src/scenes/MainStreetAnimatorTiming';
-import { getDefaultIncomeCollectionCapMs } from '../../src/scenes/MainStreetTurnControllerAnimation';
+import {
+  deferUntilIncomeCollected,
+  getDefaultIncomeCollectionCapMs,
+} from '../../src/scenes/MainStreetTurnControllerAnimation';
 
 const SCENES_DIR = path.resolve(__dirname, '../../src/scenes');
 
@@ -94,5 +97,63 @@ describe('MainStreetTurnControllerAnimation default (consumer 4)', () => {
     const withoutConstant = ANIMATION_SOURCE.replace(/INCOME_COLLECTION_CAP_MS/g, '');
     const literals = withoutConstant.match(capLiteralPattern()) ?? [];
     expect(literals).toHaveLength(0);
+  });
+});
+
+/**
+ * MS-0MVMKEU2000639TG (decision C): the wall-clock bounded-deferral helper is
+ * the single place the cap is enforced. Pinning it here means the extraction
+ * cannot silently drift back into per-site literals: the helper consumes the
+ * exported constant (never a restated number) and an injected `capMs` actually
+ * overrides the bound it enforces.
+ */
+describe('deferUntilIncomeCollected consumes the shared cap (decision C)', () => {
+  it('defaults its cap to INCOME_COLLECTION_CAP_MS', () => {
+    const scene: any = {
+      incomeCollectionActive: true,
+      time: { now: 0, delayedCall: () => {} },
+    };
+    const armed: number[] = [];
+    let now = 0;
+
+    deferUntilIncomeCollected(scene, () => {}, {
+      now: () => now,
+      schedule: (_cb, delayMs) => {
+        armed.push(delayMs);
+        return armed.length;
+      },
+      clear: () => {},
+    });
+
+    // The bound the helper arms is the production constant, not a literal.
+    expect(armed).toEqual([INCOME_COLLECTION_CAP_MS]);
+    expect(now).toBe(0);
+  });
+
+  it('honours an injected cap override instead of the default', () => {
+    const scene: any = {
+      incomeCollectionActive: true,
+      time: { now: 0, delayedCall: () => {} },
+    };
+    const armed: number[] = [];
+
+    deferUntilIncomeCollected(scene, () => {}, {
+      now: () => 0,
+      schedule: (_cb, delayMs) => {
+        armed.push(delayMs);
+        return armed.length;
+      },
+      clear: () => {},
+      capMs: INCOME_COLLECTION_CAP_MS / 2,
+    });
+
+    expect(armed).toEqual([INCOME_COLLECTION_CAP_MS / 2]);
+  });
+
+  it('names the shared constant in the helper source rather than restating it', () => {
+    const helper = ANIMATION_SOURCE.match(
+      /capMs\s*\?\?\s*INCOME_COLLECTION_CAP_MS/,
+    );
+    expect(helper).not.toBeNull();
   });
 });

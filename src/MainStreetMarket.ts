@@ -81,6 +81,9 @@ export {
   canPurchaseUpgrade,
   effectiveUpgradeCost,
   bestEffectiveUpgradeCost,
+  computeUpgradeDragPricing,
+  upgradeDragPremiumOf,
+  upgradeDragVetoReason,
   canPurchaseEvent,
   canPlayEvent,
   purchaseBusiness,
@@ -94,3 +97,5 @@ export {
   canPurchaseStaff,
   purchaseStaffCard,
 } from './MainStreetMarketPurchase';
+
+export type { UpgradeDragPricing } from './MainStreetMarketPurchase';

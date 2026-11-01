@@ -34,6 +34,7 @@
  */
 
 import { createSeededRng } from '@core-engine';
+import { flashConfirmation } from './MainStreetFeedback';
 import {
   executeAction,
   findHumanSeatId,
@@ -47,6 +48,7 @@ import {
   getActivePlayerId,
   getNextActivePlayerId,
   resolveCompetitiveClosingPhases,
+  resolveCompetitiveLoanOffer,
   resolveCompetitivePendingChoice,
   resolveCompetitivePendingPiggyback,
 } from '../MainStreetEngineCompetitiveTurn';
@@ -72,6 +74,7 @@ import {
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult } from '../MainStreetAdjacency';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
@@ -502,10 +505,9 @@ function presentPerSeatCompetitiveClosing(
   // AC3: per-seat income feedback from each seat's own authoritative total.
   // Set before the choreography so reduced motion / replay / headless still
   // receive the text; the shared host total is never shown.
-  try { s.instructionText?.setText?.('Resolving end-of-turn effects...'); } catch { /* presentation-only */ }
   const summary = perSeatClosingSummary(seats);
   if (summary) {
-    try { s.instructionText?.setText?.(summary); } catch { /* presentation-only */ }
+    flashConfirmation(s, summary);
   }
 
   // AC1 (amended by the producer audit of 2026-10-08): one phase-major sweep
@@ -562,7 +564,6 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
   const state: MainStreetState = s.state;
 
   s.uiPhase = 'animating';
-  try { s.instructionText?.setText?.('AI opponents are taking their turns...'); } catch { /* presentation-only */ }
   try { s.refreshActionButtons?.(); } catch { /* presentation-only */ }
 
   if (state.gameResult === 'playing') {
@@ -619,6 +620,21 @@ export function presentCompetitiveDayTail(
   closing: TurnResult,
 ): void {
   const state: MainStreetState = tcCtx.scene.state;
+  // Competitive seat bailout pause (MS-0MVPWSAMH005LV9R): while a seat's offer
+  // is open the shared day has NOT closed — present the dialog and wait. The
+  // resumed closing re-enters this tail (accept continues the day, decline
+  // produces today's bankruptcy outcome).
+  if (closing.pendingLoanOffer === true || hasOpenBailoutOffer(state)) {
+    if (typeof tcCtx.presentLoanOfferDialog === 'function' && tcCtx.presentLoanOfferDialog(closing)) {
+      return;
+    }
+    // No interactive surface (headless/replay): resolve deterministically with
+    // the AI policy so the day never stalls.
+    if (state.pendingLoanOffer) {
+      presentCompetitiveDayTail(tcCtx, resolveCompetitiveLoanOffer(state, closing));
+      return;
+    }
+  }
   if (state.gameResult !== 'playing') {
     tcCtx.handleGameOver(closing);
     return;

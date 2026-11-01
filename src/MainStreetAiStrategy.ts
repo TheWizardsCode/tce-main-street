@@ -28,6 +28,7 @@ import {
   processEndOfTurn,
   executeAction,
   resolvePendingEventChoice,
+  resolvePendingLoanOffer,
   type PlayerAction,
   type BuyBusinessAction,
   type BuyUpgradeAction,
@@ -754,7 +755,7 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   }
 
   // Action economy (CG-0MSTOF1N5005PK2R): when the daily action budget is
-  // spent, only end-turn is legal. Free operations (refresh/sell/hint/
+  // spent, only end-turn is legal. Free operations (refresh/sell/
   // discard/end-turn) stay available to the player, but the AI simply ends
   // the day rather than cycling through non-actions. The free Community
   // Favour fallback (added above) stays legal too — with end-turn always
@@ -1652,12 +1653,23 @@ export class MainStreetAiPlayer extends AiPlayerBase<MainStreetAiStrategy> {
         action = this.chooseAction(state);
       }
 
-      processEndOfTurn(state);
+      const closing = processEndOfTurn(state);
+      // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): an AI seat auto-accepts the
+      // largest loan option (parent Q5 = A) and the closing resumes — never
+      // stalling on a pending offer. AI seats take no proactive loans.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state, closing);
+      }
       // Dual-choice incident (CG-0MTSHG8RP008E128): processEndOfTurn pauses
       // with choicePending when the drawn incident requires a decision.
       // Resolve it per the difficulty strategy so the sim never stalls.
       if (state.pendingEventChoice && !state.pendingEventChoice.resolved) {
         resolveAiEventChoice(state);
+      }
+      // A resolved choice can leave the seat negative, surfacing a bailout
+      // offer from the resumed closing tail; resolve it too.
+      if (state.pendingLoanOffer) {
+        resolvePendingLoanOffer(state);
       }
     }
   }
@@ -2013,9 +2025,12 @@ export function scoreCloseBusinessAction(
  * Enumerate all legal actions for the given state and compute a heuristic
  * score for each one.
  *
- * This is the primary building block for the Greedy strategy and the hint
- * system.  Callers can sort by score descending or pass the results directly
- * to `pickBest` to select the highest-scoring action with tie-breaking.
+ * This is the primary building block for the Greedy strategy.  Callers can
+ * sort by score descending or pass the results directly to `pickBest` to
+ * select the highest-scoring action with tie-breaking.
+ *
+ * Note: the deprecated hint subsystem was removed (MS-0MVPWQLIH008R5M3) —
+ * this enumerator no longer has the hint generator as a consumer.
  *
  * @param state Current game state.
  * @returns Array of `{ action, score }` pairs for every legal action.

@@ -75,13 +75,15 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  *   - streetGrid     (77, 337, 780, 172) — streetX (shifted right by one road
  *                      band so the road ring is visible at the default zoom),
  *                      streetTop, 5×140 + 4×20, 2×80 + 12
- *   - hand           (323, 620, 288, 80) — centred on handCenterX (467), max
- *                                          3 cards (3×140 + 16 gap)
+ *   - hand           (323, 628, 288, 80) — centred on handCenterX (467), max
+ *                                          3 cards (3×140 + 16 gap). The row is
+ *                                          bottom-anchored: its bottom edge sits
+ *                                          12 px above the 720 px viewport bottom
+ *                                          (MS-0MVPWQMTL004J3GB AC7).
  *   - endTurnButton  (1116, 652, 140, 34) — gameW-24-140, actionY + 4
  *   - incidentQueue  (960, 408, 300, 125) — queueTop, boot-time panel (one
  *     face-down deck stack + count, CG-0MSXOWLHU0099QF6; 0 active effects:
  *     22+8+87+8)
- *   - helpButton     (1000, 652, 104, 34) — to the left of End Turn
  *   - actionCounter  (1028, 616, 240, 28)  — actions-remaining + banked count
  *                                            text (right-aligned above action
  *                                            row, CG-0MT3JK16W006A66P)

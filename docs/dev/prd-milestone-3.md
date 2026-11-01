@@ -158,6 +158,11 @@ Deliver AI auto-play, a player-facing hint system, and undo/redo functionality f
 **I want to** press a "Hint" button during my turn to see a suggested move highlighted with a brief explanation,
 **so that** I can learn effective strategies without reading a manual.
 
+> **Superseded (MS-0MVPWQLIH008R5M3):** the hint feature described by this
+> user story is **design intent only** — no hint control ships. The
+> implementation was removed; see `docs/dev/ai-strategy.md` and
+> `docs/game/the-build-gdd.md` § *AI Strategy and Hint System*.
+
 **Acceptance Criteria:**
 - [ ] AC-3.1: A "Hint" button is visible during the MarketPhase.
 - [ ] AC-3.2: Pressing Hint queries the Greedy strategy for the recommended action.

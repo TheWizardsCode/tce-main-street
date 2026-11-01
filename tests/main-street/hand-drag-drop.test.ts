@@ -109,7 +109,6 @@ function createMockScene(overrides: Record<string, unknown> = {}): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     showBuyAndPlacePremiumDialog: vi.fn((_cardName: string, onProceed: () => void) => {
       scene.premiumDialogOnProceed = onProceed;

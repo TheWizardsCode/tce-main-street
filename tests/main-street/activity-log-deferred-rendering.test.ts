@@ -87,7 +87,6 @@ function makeHarness() {
 
   const scene: any = {
     state: { resourceBank: { coins: 0, reputation: 0 } },
-    instructionText: { setText: vi.fn() },
     // The behaviour under test:
     logDeferredUntilPhaseComplete: false,
     // Force the non-animated path so `advanceTurn` schedules `finalizeTurn`

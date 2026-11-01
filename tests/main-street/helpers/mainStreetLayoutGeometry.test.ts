@@ -38,7 +38,6 @@ describe('computeMainStreetLayoutGeometry — Node purity', () => {
     expect(g.favourCoinsToRepButton).toBeDefined();
     expect(g.favourRepToCoinsButton).toBeDefined();
     expect(g.endTurnButton).toBeDefined();
-    expect(g.hintButton).toBeDefined();
     expect(g.peekButton).toBeDefined();
     expect(g.actionCounter).toBeDefined();
     // All rects have numeric x/y/width/height.
@@ -48,7 +47,6 @@ describe('computeMainStreetLayoutGeometry — Node purity', () => {
       'favourCoinsToRepButton',
       'favourRepToCoinsButton',
       'endTurnButton',
-      'hintButton',
       'peekButton',
       'actionCounter',
     ] as const) {
@@ -175,11 +173,13 @@ describe('Action cluster geometry', () => {
     expect(g.endTurnButton.y).toBe(652);
   });
 
-  it('Hint button is to the left of End Turn with 12px gap', () => {
+  it('Peek sits immediately left of End Turn with no reserved hint slot', () => {
     const g = geom();
-    const hintRight = g.hintButton.x + g.hintButton.width;
+    // The Hint button slot was removed (MS-0MVPWQLIH008R5M3): the next
+    // control left of End Turn is exactly 12px away — no 104px hint gap.
+    const peekRight = g.peekButton.x + g.peekButton.width;
     const endTurnLeft = g.endTurnButton.x;
-    expect(endTurnLeft - hintRight).toBe(12);
+    expect(endTurnLeft - peekRight).toBe(12);
   });
 
   it('Action counter is right-aligned above End Turn', () => {

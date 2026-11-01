@@ -42,6 +42,9 @@ export type {
   PendingEventChoice,
   PendingPiggyback,
   PendingPiggybackDecision,
+  LoanOption,
+  ActiveLoan,
+  PendingLoanOffer,
   MainStreetSerializedState,
   MilestoneRecord,
   MainStreetCampaignProgress,
@@ -86,4 +89,5 @@ export type { MarketRelevanceBias } from './MainStreetStateSetup';
 export {
   serializeMainStreetState,
   deserializeMainStreetState,
+  migrateMainStreetSerializedState,
 } from './MainStreetStateSerialize';

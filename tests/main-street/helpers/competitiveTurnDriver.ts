@@ -39,6 +39,7 @@ import {
   executeAction,
   executeCompetitiveWeekStart,
   resolveCompetitiveClosingPhases,
+  resolveCompetitiveLoanOffer,
   resolveCompetitivePendingChoice,
   resolveCompetitivePendingPiggyback,
   updateCompetitiveScores,
@@ -261,6 +262,12 @@ export function runCompetitiveGame(options: RunCompetitiveGameOptions): Competit
         // day loop never stalls.
         resolveCompetitivePendingPiggyback(state);
         pendingChoicesResolved += 1;
+      }
+      // Competitive seat bailout (MS-0MVPWSAMH005LV9R): every seat in this
+      // harness is AI-driven, so a pending offer is resolved inline with the
+      // deterministic largest-option policy. One pass per seat (bounded).
+      for (let pass = 0; pass < playerCount + 1 && state.pendingLoanOffer; pass++) {
+        resolveCompetitiveLoanOffer(state, closing);
       }
       recordMainStreetEvent({ type: 'turn-end', turn: state.turn });
     }

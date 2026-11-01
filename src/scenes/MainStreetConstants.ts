@@ -10,6 +10,23 @@ export const BOX_STROKE = 0x665544;
 export const BOX_FILL = 0x2a1f14;
 export const BOX_RADIUS = 6;
 
+// ── Shared opaque play-panel treatment (Activity Log reference) ──────────
+//
+// The market box, the player-hand panel and the HUD strip all read as solid,
+// self-contained sections using the Activity Log's treatment. The three
+// literals below are the single authority for that treatment: promoting them
+// out of the Activity Log means the panels cannot drift apart
+// (MS-0MVPWQIPZ002PHPD AC7).
+
+/** Fill colour of the opaque play panels (Activity Log reference). */
+export const PANEL_FILL = 0x1a1408;
+
+/** Fill alpha of the opaque play panels (Activity Log reference, 0.85). */
+export const PANEL_FILL_ALPHA = 0.85;
+
+/** Border alpha of the opaque play panels. */
+export const PANEL_STROKE_ALPHA = 0.5;
+
 // Base metrics are tuned for 1280x720 and scaled at runtime for narrower/taller viewports.
 export const BASE_HUD_Y = 50;
 
@@ -159,6 +176,32 @@ export const PEDESTRIAN_OFF_BLOCK_MARGIN = 60;
 export const BASE_HAND_CARD_W = 140;
 export const BASE_HAND_CARD_H = 80;
 
+/**
+ * Horizontal padding (px) added to `handCardW` to form the hand row's slot
+ * pitch (`handCardW + 8`). Single authority for both the `HandView` spacing
+ * and the persistent hand panel's width, so the panel always covers the full
+ * capacity row however wide it gets (MS-0MVPWQIPZ002PHPD AC4).
+ */
+export const HAND_SLOT_PITCH_PAD = 8;
+
+/** Padding (px) between the hand cards and the hand panel's edges. */
+export const HAND_PANEL_PAD = 6;
+
+/**
+ * Display depth of the persistent hand panel (MS-0MVPWQIPZ002PHPD AC3).
+ *
+ * `HandView` gives the ghost capacity outlines negative depths
+ * (`index - 0.5 - count` for slots beyond the current card run), so the panel
+ * must sit below every hand-layer object to stay behind the cards *and* the
+ * ghosts. The panel is also geometrically confined to the hand band, below the
+ * street plot and its bottom road band, so it never overlaps the street/road
+ * layer it renders underneath.
+ */
+export const HAND_PANEL_DEPTH = -100;
+
+/** Display-object name of the persistent hand panel (observable contract). */
+export const HAND_PANEL_NAME = 'ms-hand-panel';
+
 // ── Main Street SFX keys (logical keys used by SoundManager)
 // All SFX keys use the standard `sfx-` prefix — no game-specific prefix.
 // See docs/SFX_CONVENTION.md for the naming convention.
@@ -270,11 +313,9 @@ export interface SceneLayout {
   handCenterX: number;
   handCardW: number;
   handCardH: number;
-  instructionY: number;
   actionY: number;
   actionButtonH: number;
   actionButtonW: number;
-  hintButtonW: number;
   smallButtonW: number;
   /** Left-edge X of the coins-to-rep Community Favour button (SLL-driven). */
   favourCoinsToRepX: number;
@@ -309,6 +350,32 @@ export interface SceneLayout {
   logW: number;
   logH: number;
 }
+
+// ── Transient feedback toast (MS-0MVRDBD3P0026CXH) ──────────
+//
+// Readability contract for the feedback channel in `MainStreetFeedback.ts`:
+// the toast fades/scales in, holds fully opaque for `words × 500 ms`, then
+// fades out. It renders above every Main Street layer (hand cards 0…n, hand
+// panel −100, action row 100, overlays 200–201, stats 900–950, HUD 1000,
+// stats button 1100) and its anchor is lifted clear of the hand-card band.
+
+/** Depth of the transient feedback toast — above every Main Street layer. */
+export const FEEDBACK_TOAST_DEPTH = 3000;
+
+/** Fade/scale-in duration (ms) of the feedback toast. */
+export const FEEDBACK_TOAST_FADE_IN_MS = 160;
+
+/** Fade-out duration (ms) of the feedback toast. */
+export const FEEDBACK_TOAST_FADE_OUT_MS = 300;
+
+/** Fully-opaque hold per whitespace-delimited word (ms). */
+export const FEEDBACK_WORD_HOLD_MS = 500;
+
+/** Gap (px) between the top of the hand-card band and the toast anchor. */
+export const FEEDBACK_TOAST_MARGIN_PX = 20;
+
+/** Maximum wrap width (px) of the feedback toast on wide viewports. */
+export const FEEDBACK_TOAST_MAX_WIDTH = 720;
 
 /**
  * Legacy HUD coin-flight destination fallback (MS-0MUYT57J80021CWW): the

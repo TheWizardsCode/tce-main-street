@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissTurnSummaryDialog } from './helpers/turn-summary-dialog';
 import {
   getBusinessTemplates,
   type BusinessCard,
@@ -256,11 +257,20 @@ describe('MainStreet end-of-turn income presentation (controller wiring)', () =>
     // completes), and the day must advance only after the flag clears.
     const coinsAfterIncome = (state.resourceBank.coins as number);
 
-    // Wait for the full show AND the deferred day start (the controller polls
-    // on a 250ms cadence, so MarketPhase can land up to ~250ms after clear).
-    await waitForCondition(() => scene.incomeCollectionActive === false && state.phase === 'MarketPhase', {
+    // Wait for the full show to collect (the deferred day start now waits on
+    // the Turn Summary dialog, MS-0MVP46Q8X003419R).
+    await waitForCondition(() => scene.incomeCollectionActive === false, {
       timeoutMs: PHASED_SHOW_WAIT_MS,
-      label: 'phased income show to complete and the day to start',
+      label: 'phased income show to complete',
+    });
+
+    // The gate presents the summary; [ Next Turn ] resumes the deferred
+    // closing (income wait is vacuous — the show already completed).
+    expect(await dismissTurnSummaryDialog(scene)).toBe(true);
+
+    await waitForCondition(() => state.phase === 'MarketPhase', {
+      timeoutMs: 10_000,
+      label: 'day to start after [ Next Turn ]',
     });
 
     // The deferred deltas landed with the completed collection (income > 0).
@@ -355,6 +365,11 @@ describe('MainStreet end-of-turn income presentation (controller wiring)', () =>
     expect(spy).toHaveBeenCalledTimes(1);
     // The catch resets the flag defensively...
     expect(scene.incomeCollectionActive).toBe(false);
+
+    // ...and the day still starts once the Turn Summary dialog is dismissed
+    // (MS-0MVP46Q8X003419R: normal single-player closings gate behind
+    // [ Next Turn ]).
+    expect(await dismissTurnSummaryDialog(scene)).toBe(true);
 
     // ...and the day still starts in the usual window.
     // Under full-suite CPU contention the 800ms delayedCall can stretch,

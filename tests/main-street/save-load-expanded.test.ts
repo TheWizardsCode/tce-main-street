@@ -14,9 +14,10 @@
  *    on an expanded grid removes the card and reverts the resources.
  *  - AC4: a re-seeded expanded fixture reproduces the same state.
  *
- * The MainStreet save schema version stays 1: `SaveLoadStore` strictly rejects
- * version mismatches, so backward compatibility is provided by migration
- * defaults (mirroring `pendingEventChoice`, CG-0MTT7F1JG007E7UL).
+ * Backward compatibility comes from migration defaults (mirroring
+ * `pendingEventChoice`, CG-0MTT7F1JG007E7UL) plus the serializer's
+ * forward-migration hook, so the schema version can advance without stranding
+ * older saves.
  *
  * @module tests/main-street/save-load-expanded
  */
@@ -95,9 +96,10 @@ describe('expanded grid save/load, camera & undo (CG-0MTH9OWF2002YQQ3)', () => {
 
   it('bumps the MainStreet save schema and still loads legacy saves via migration (AC2)', () => {
     // The day→week terminology rename (CG-0MTMYIHKO001QCWL) bumped the schema
-    // to v2 and added a forward-migration hook, so pre-change saves still load
-    // while the wire format carries the new field names.
-    expect(MAIN_STREET_SAVE_SCHEMA_VERSION).toBe(2);
+    // to v2, and active bank loans + the pending bailout offer
+    // (MS-0MVPWSE0E003QLKE) bumped it to v3; the forward-migration hook keeps
+    // pre-change saves loadable while the wire format carries the new fields.
+    expect(MAIN_STREET_SAVE_SCHEMA_VERSION).toBe(3);
   });
 
   // ── AC1: round-trip ──────────────────────────────────────

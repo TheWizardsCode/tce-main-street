@@ -97,7 +97,6 @@ function createMockScene(overrides: Record<string, unknown> = {}): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     selectMarketCardById: vi.fn(),
     clearMarketSelection: vi.fn(),
@@ -207,7 +206,7 @@ describe('AC2: market-row staff click hires through the animated action path', (
     expect(scene.sound.play).toHaveBeenCalledWith(COMMON_SFX_KEYS.ILLEGAL_MOVE);
     expect(scene.state.staffCards).toHaveLength(staffBefore);
     expect(scene.state.market.cards.some((c: any) => c.id === staff.id)).toBe(true);
-    expect(scene.instructionText.setText).toHaveBeenCalledWith(expect.stringContaining('Cannot hire'));
+    expect(scene.lastFeedback?.text).toContain('Cannot hire');
   });
 
   it('blocks the hire when the tutorial step is not allowed', async () => {
@@ -223,7 +222,7 @@ describe('AC2: market-row staff click hires through the animated action path', (
 
     expect(scene.state.staffCards).toHaveLength(0);
     expect(scene.animateTransferFromMarket).not.toHaveBeenCalled();
-    expect(scene.instructionText.setText).toHaveBeenCalledWith('Complete the highlighted step first.');
+    expect(scene.lastFeedback?.text).toBe('Complete the highlighted step first.');
   });
 
   it('does nothing for an unknown staff card id (card missing from the row)', async () => {

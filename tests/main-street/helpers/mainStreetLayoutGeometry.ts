@@ -40,8 +40,6 @@ export interface MainStreetLayoutGeometry {
   favourRepToCoinsButton: Rect;
   /** Action cluster: End Turn button area. */
   endTurnButton: Rect;
-  /** Action cluster: Hint button area. */
-  hintButton: Rect;
   /** Action counter area (right-aligned above End Turn). */
   actionCounter: Rect;
   /** Peek / small button area. */
@@ -121,13 +119,12 @@ function deriveFavourButtons(
  *
  * The action cluster is the bottom-right area containing:
  * - End Turn button (right-aligned)
- * - Hint button (to the left of End Turn)
- * - Peek / small buttons (to the left of Hint)
+ * - Peek / small buttons (immediately left of End Turn; the Hint button slot
+ *   was removed, MS-0MVPWQLIH008R5M3 — no reserved gap)
  * - Action counter (right-aligned, above End Turn)
  */
 function deriveActionCluster(layout: ReturnType<typeof computeMainStreetLayoutWithSll>): {
   endTurnButton: Rect;
-  hintButton: Rect;
   peekButton: Rect;
   actionCounter: Rect;
 } {
@@ -140,16 +137,10 @@ function deriveActionCluster(layout: ReturnType<typeof computeMainStreetLayoutWi
       width: layout.actionButtonW,
       height: layout.actionButtonH,
     },
-    hintButton: {
-      x: rightX - layout.actionButtonW - 12 - layout.hintButtonW,
-      y: by,
-      width: layout.hintButtonW,
-      height: layout.actionButtonH,
-    },
     peekButton: {
-      x: rightX - layout.actionButtonW - 12 - layout.hintButtonW - layout.smallButtonW,
+      x: rightX - layout.actionButtonW - 12 - layout.actionButtonW,
       y: by,
-      width: layout.smallButtonW,
+      width: layout.actionButtonW,
       height: layout.actionButtonH,
     },
     actionCounter: {
@@ -191,7 +182,6 @@ export function computeMainStreetLayoutGeometry(
     favourCoinsToRepButton: favour.coinsToRep,
     favourRepToCoinsButton: favour.repToCoins,
     endTurnButton: cluster.endTurnButton,
-    hintButton: cluster.hintButton,
     peekButton: cluster.peekButton,
     actionCounter: cluster.actionCounter,
   };

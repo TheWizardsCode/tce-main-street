@@ -421,6 +421,8 @@ export function createTutorialScenario(
     pendingApplicant: null,
     pendingEventChoice: null,
     pendingPiggyback: null,
+    loans: [],
+    pendingLoanOffer: null,
   };
 
   // Select challenges for this run using seeded RNG

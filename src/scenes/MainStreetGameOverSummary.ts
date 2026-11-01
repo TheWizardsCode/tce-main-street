@@ -50,6 +50,21 @@ function isCompetitive(state: MainStreetState): boolean {
 }
 
 /**
+ * True while an unresolved bankruptcy bailout loan offer is open
+ * (MS-0MVPWSBLG006YMBA): the run has **not** been declared lost — the seat
+ * must accept a loan or decline first — so the game-over panel must never be
+ * presented in that window. The closing resumes through the loan dialog and
+ * only presents the summary after a decline (or when no offer is open).
+ *
+ * Read-only and Phaser-free so the turn-flow guard can use it directly.
+ */
+export function hasOpenBailoutOffer(
+  state: Pick<MainStreetState, 'pendingLoanOffer'>,
+): boolean {
+  return state.pendingLoanOffer != null;
+}
+
+/**
  * Formats the plain-language end-reason headline for the overlay.
  *
  * For per-seat failures (`bankruptcy`, `reputation_collapse`) in competitive

@@ -11,6 +11,7 @@
     "build:release": "npm run engine:verify && tsc --noEmit && vite build",
     "engine:sync": "node ./core/scripts/engine-sync.mjs sync",
     "engine:verify": "node ./core/scripts/engine-sync.mjs verify",
+    "engine:check": "tsx tests/tooling/engine-checkout-precheck.ts",
     "preview": "vite preview --host",
     "balance-cards": "tsx src/scripts/run-balance-cards.ts",
     "validate:storylines": "vite-node src/scripts/validate-storylines-cli.ts",

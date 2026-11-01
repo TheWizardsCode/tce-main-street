@@ -3,7 +3,6 @@ import type { DifficultyName } from '../MainStreetDifficulty';
 import type { BusinessCard } from '../MainStreetCards';
 import {
   CardGameScene,
-  HintBar,
   TooltipManager,
 } from '@ui';
 import type { SelectionController, SingleSelectionManager } from '@ui';
@@ -22,6 +21,7 @@ import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
 import { MainStreetPedestrians } from './MainStreetPedestrians';
 import { MainStreetLifecycleManager } from './MainStreetLifecycleManager';
 import { MainStreetTutorialHints } from './MainStreetTutorialHints';
+import type { ContainerClip } from '@ui/ContainerClip';
 import {
   type SceneLayout,
   STREET_ROWS,
@@ -225,6 +225,13 @@ export class MainStreetScene extends CardGameScene {
   public streetPlayableLattice: StreetLatticeDims = { cols: 1, rows: 1 };
   /** Mask graphics clipping the street map to its viewport band. */
   public streetMapMaskGraphics: Phaser.GameObjects.Graphics | null = null;
+  /**
+   * Renderer-aware clip for the street map viewport band.
+   *
+   * Phaser 4 only honours a `GeometryMask` on the Canvas renderer; under
+   * WebGL the clip is a Mask filter (see `ContainerClip`).
+   */
+  public streetMapClip: ContainerClip | null = null;
   /** Zoom control objects (owned by `hudContainer`, rebuilt on refresh). */
   public streetZoomControls: Phaser.GameObjects.GameObject[] = [];
   /** Active drag-to-pan gesture on the street backdrop (null when idle). */
@@ -242,6 +249,12 @@ export class MainStreetScene extends CardGameScene {
   public marketContainer!: Phaser.GameObjects.Container;
   public incidentQueueContainer!: Phaser.GameObjects.Container;
   public handContainer!: Phaser.GameObjects.Container;
+  /**
+   * Persistent opaque panel behind the player hand (MS-0MVPWQIPZ002PHPD).
+   * Root-level so it renders below every hand-layer object; rebuilt by
+   * `refreshPlayerHand` and destroyed with the scene's display list.
+   */
+  public handPanelGraphics?: Phaser.GameObjects.Graphics;
 
   public actionContainer!: Phaser.GameObjects.Container;
 
@@ -250,6 +263,13 @@ export class MainStreetScene extends CardGameScene {
   public logContentContainer!: Phaser.GameObjects.Container;
   public logMaskGraphics: Phaser.GameObjects.Graphics | null = null;
   public logContentMask: Phaser.Display.Masks.GeometryMask | null = null;
+  /**
+   * Renderer-aware clip for the Activity Log scroll area.
+   *
+   * Canvas applies `logContentMask` (a `GeometryMask`); WebGL applies a Mask
+   * filter instead, because `setMask` is a no-op there (see `ContainerClip`).
+   */
+  public logContentClip: ContainerClip | null = null;
   public logScrollOffset = 0;
   public logMaxScroll = 0;
   public logTotalContentH = 0;
@@ -273,10 +293,6 @@ export class MainStreetScene extends CardGameScene {
   // Challenge Tracker panel
   public challengeContainer!: Phaser.GameObjects.Container;
 
-  // Instruction text (managed by HintBar; kept as public property for backward compat)
-  public instructionText!: Phaser.GameObjects.Text;
-  /** Shared HintBar instance for standardised hint/instruction display at bottom-centre. */
-  public hintBar!: HintBar;
 
   // Overlay objects
   public overlayObjects: Phaser.GameObjects.GameObject[] = [];
@@ -359,14 +375,6 @@ export class MainStreetScene extends CardGameScene {
   public activeTransferVisuals = new Set<Phaser.GameObjects.GameObject>();
   public hiddenTransferSourceCardIds = new Set<string>();
 
-  // Hint system
-  /** True after the player has used their one hint for this turn. */
-  public hintUsedThisTurn = false;
-  /** Card ID of the card highlighted by the current hint (null = none). */
-  public hintedCardId: string | null = null;
-  /** Grid slot index highlighted by the current hint (null = none). */
-  public hintedSlotIndex: number | null = null;
-
   // Persistent market-card selection UX
   public marketSelectionManager!: SingleSelectionManager;
   public marketSelectionByCardId = new Map<string, SelectionController>();
@@ -441,9 +449,6 @@ export class MainStreetScene extends CardGameScene {
   }
   public createContainers(...args: any[]): any {
     return (this.msRenderer as any).createContainers.apply(this.msRenderer, args);
-  }
-  public createInstructions(...args: any[]): any {
-    return (this.msRenderer as any).createInstructions.apply(this.msRenderer, args);
   }
   public initSvgDebugOverlay(...args: any[]): any {
     return (this.msInputManager as any).initSvgDebugOverlay.apply(this.msInputManager, args);
@@ -991,19 +996,6 @@ export class MainStreetScene extends CardGameScene {
     return (this.msTurnController as any).onCommunityFavourClick.apply(this.msTurnController, args);
   }
 
-  /**
-   * Creates a "Hint" button that is disabled after first use per turn.
-   * When clicked, queries the Greedy strategy and highlights the recommended
-   * card/slot with a one-line rationale in the instruction text area.
-   */
-  public createHintButton(...args: any[]): any {
-    return (this.msRenderer as any).createHintButton.apply(this.msRenderer, args);
-  }
-
-  /** Handles the Hint button click: generates and displays the hint. */
-  public onHintClick(...args: any[]): any {
-    return (this.msInputManager as any).onHintClick.apply(this.msInputManager, args);
-  }
   public performUndo(...args: any[]): any {
     return (this.msTurnController as any).performUndo.apply(this.msTurnController, args);
   }
@@ -1118,7 +1110,6 @@ export class MainStreetScene extends CardGameScene {
     street: { x: number; y: number; w: number; h: number };
     hand: { x: number; y: number; w: number; h: number };
     action: { x: number; y: number; w: number; h: number };
-    instruction: { x: number; y: number; w: number; h: number };
   } {
     const l = this.layout;
     const market = {
@@ -1151,7 +1142,9 @@ export class MainStreetScene extends CardGameScene {
     // Note: undo/redo buttons were removed from the action bar in the MS
     // migration (CG-0MQHARH7J004XP4V). They are now placed via the shared
     // initUndoRedoButtons() mechanism in the header area, not the action bar.
-    const actionW = l.actionButtonW + 12 + l.hintButtonW;
+    // The hint control was removed by MS-0MVPWQLIH008R5M3: the action rect
+    // covers only the right-aligned End Turn button (no reserved hint slot).
+    const actionW = l.actionButtonW;
     const action = {
       x: rightX - actionW,
       y: actionRowY,
@@ -1159,14 +1152,7 @@ export class MainStreetScene extends CardGameScene {
       h: l.actionButtonH,
     };
 
-    const instruction = {
-      x: this.instructionText.x - this.instructionText.displayWidth,
-      y: this.instructionText.y - this.instructionText.displayHeight / 2,
-      w: this.instructionText.displayWidth,
-      h: this.instructionText.displayHeight,
-    };
-
-    return { market, queue, street, hand, action, instruction };
+    return { market, queue, street, hand, action };
   }
 
   // ── Replay: load board state ─────────────────────────────
@@ -1411,6 +1397,58 @@ export class MainStreetScene extends CardGameScene {
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showPiggybackDialog === 'function') {
       (this.msOverlayManager as any).showPiggybackDialog(info, onJoin, onKeep);
+    }
+  }
+
+  /**
+   * Shows the bankruptcy bailout loan offer dialog (MS-0MVPWSBLG006YMBA):
+   * one button per presented loan option (each labelled with its principal,
+   * per-turn and total repayment and term) plus a Decline action. Delegates to
+   * the overlay manager; with no overlay surface (headless/tests) it accepts
+   * the model's deterministic default (the AI/headless policy) so a paused
+   * turn can never strand.
+   *
+   * @param model      The presentation model (Phaser-free).
+   * @param onAccept   Called with the chosen row's index.
+   * @param onDecline  Called when the player declines (the run ends).
+   */
+  public showLoanOfferDialog(
+    model: import('./MainStreetLoanOverlayModel').LoanOfferModel,
+    onAccept: (optionIndex: number) => void,
+    onDecline: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showLoanOfferDialog === 'function') {
+      (this.msOverlayManager as any).showLoanOfferDialog(model, onAccept, onDecline);
+      return;
+    }
+    // No overlay manager (headless/tests): accept the deterministic default
+    // rather than strand the paused closing.
+    onAccept(model.recommendedIndex);
+  }
+
+  /**
+   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
+   * per-phase income, per-category ongoing expenses, incident and one-off
+   * deltas, the net change and the closing balances, with a primary
+   * [ Next Turn ] action and an always-disabled [ Bank Loan ] affordance.
+   * Delegates to the overlay manager's showTurnSummaryDialog.
+   *
+   * @param summary          The turn's rendered summary model.
+   * @param onNextTurn       Called when the player clicks [ Next Turn ].
+   * @param onBankLoanAction Seam for the future loans feature
+   *                          (MS-0MVL6DZI0000F6CG); unused today.
+   */
+  public showTurnSummaryDialog(
+    summary: import('./MainStreetTurnSummary').TurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: () => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showTurnSummaryDialog === 'function') {
+      (this.msOverlayManager as any).showTurnSummaryDialog(summary, onNextTurn, onBankLoanAction);
+    } else {
+      // No overlay manager (headless/tests): continue the closing rather than
+      // strand the turn.
+      onNextTurn();
     }
   }
 

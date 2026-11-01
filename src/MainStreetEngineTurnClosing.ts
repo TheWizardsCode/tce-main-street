@@ -9,18 +9,22 @@
  */
 
 import { executeAction } from './MainStreetEngineActions';
-import { applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
+import { acceptLoanOffer, applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, hasPendingPiggyback, resolveEvent } from './MainStreetEngineEvents';
 import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
-import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnResult } from './MainStreetEngineTypes';
+import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnLedger, TurnResult } from './MainStreetEngineTypes';
+import { roundInt } from './MainStreetDifficulty';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
+import type { IncomeResult } from './MainStreetAdjacency';
+import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, EventCard } from './MainStreetCards';
 import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
+import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
@@ -331,9 +335,198 @@ export function resolvePendingEventChoice(
   if (!pending || pending.resolved) return null;
   // F7 (MS-0MV8KQSF1004E53Y): the AI picks an option index over the compiled
   // arbitrary option list (all CSV options apply the event effect — Q4=B).
-  const optionIndex = decideEventChoice(state, pending.event, difficulty ?? state.config.difficultyName);
+  // Cost-aware (MS-0MVNU5EEC006ZCTF): the pending choice makes the AI score
+  // exactly the presented (frozen, cost-filtered) option list.
+  const optionIndex = decideEventChoice(
+    state,
+    pending.event,
+    difficulty ?? state.config.difficultyName,
+    pending,
+  );
   resolveEventOption(state, optionIndex);
   return finishDeferredEndOfTurn(state);
+}
+
+/**
+ * Ongoing-cost subtotals for one turn, as signed coin deltas (zero or
+ * negative). Shared alias of the ledger field so the engine and the ledger
+ * builder cannot drift (MS-0MVP45KZV006TMUK).
+ */
+type TurnOngoingCosts = TurnLedger['ongoingCosts'];
+
+/** Everything the end-of-turn ledger reports, measured at one moment in time. */
+interface TurnLedgerInputs {
+  /** Income phase result (null when the income phase did not run). */
+  income: IncomeResult | null;
+  /** Ongoing-cost subtotals measured as the closing applied them. */
+  ongoingCosts: TurnOngoingCosts;
+  /** Net coin delta from the resolved incident. */
+  incidentCoinChange: number;
+  /** Net reputation delta from the resolved incident. */
+  incidentRepChange: number;
+  /** Coin balance to measure the net change against (closing or projected). */
+  coins: number;
+  /** Reputation balance to measure the net change against (closing or projected). */
+  reputation: number;
+  /** Score to measure the net change against (closing or projected). */
+  score: number;
+}
+
+/**
+ * Counts the businesses standing on the street per owner
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * Keys are owner ids as strings (`String(playerId)`; `'0'` in single-player) so
+ * the map is owner-keyed and JSON-serialisable, ready for the deferred
+ * competitive per-player panel. Sold slots are excluded: a sold business no
+ * longer runs as a business on the street.
+ */
+function countBusinessesOwnedByOwner(state: MainStreetState): Record<string, number> {
+  const owned: Record<string, number> = {};
+  const soldSlots = state.soldSlots ?? [];
+  for (let slotIndex = 0; slotIndex < state.streetGrid.length; slotIndex++) {
+    const card = state.streetGrid[slotIndex];
+    if (!card || card.family !== 'business') continue;
+    if (soldSlots[slotIndex]) continue;
+    const ownerKey = String(getSlotOwnerId(state, slotIndex));
+    owned[ownerKey] = (owned[ownerKey] ?? 0) + 1;
+  }
+  return owned;
+}
+
+/**
+ * Builds the end-of-turn ledger for the turn currently being closed
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * Day-start snapshots (`weekStart*`, written at WeekStart) are the baseline for
+ * the net rows, so the ledger covers the whole day — the MarketPhase spending
+ * included — not just the closing phases. The one-off deltas are the residual
+ * of that reconciliation (see {@link TurnLedger}), which is why the ledger
+ * always balances even when a closing phase clamps a deduction (e.g. an
+ * unaffordable staff salary). Integer-rounded because the reputation coin
+ * multiplier splits its bonus proportionally across slots.
+ *
+ * Read-only with respect to `state`: it only reads the grid/snapshots.
+ */
+function buildTurnLedger(state: MainStreetState, inputs: TurnLedgerInputs): TurnLedger {
+  // Day-start snapshot fallback keeps legacy/hand-built states (no snapshot)
+  // from reporting a bogus net change.
+  const startCoins = state.weekStartCoins ?? state.resourceBank.coins;
+  const startRep = state.weekStartRep ?? state.resourceBank.reputation;
+  const startScore = state.weekStartScore ?? state.finalScore;
+
+  let base = 0;
+  let synergy = 0;
+  let reputation = 0;
+  let events = 0;
+  for (const slot of inputs.income?.phaseBreakdown?.perSlotBreakdown ?? []) {
+    base += slot.baseIncome;
+    synergy += slot.synergyBonus;
+    reputation += slot.repBonus;
+    for (const delta of slot.eventDeltas) events += delta.delta;
+  }
+  const incomeByPhase = {
+    base: roundInt(base),
+    synergy: roundInt(synergy),
+    reputation: roundInt(reputation),
+    events: roundInt(events),
+  };
+
+  const netCoinChange = roundInt(inputs.coins - startCoins);
+  const netRepChange = roundInt(inputs.reputation - startRep);
+  const incomeCoins =
+    incomeByPhase.base + incomeByPhase.synergy + incomeByPhase.reputation + incomeByPhase.events;
+  const ongoingTotal =
+    inputs.ongoingCosts.staff + inputs.ongoingCosts.community + inputs.ongoingCosts.business;
+
+  return {
+    incomeByPhase,
+    ongoingCosts: { ...inputs.ongoingCosts },
+    incidentCoinChange: inputs.incidentCoinChange,
+    incidentRepChange: inputs.incidentRepChange,
+    oneOffDeltas: {
+      coins: netCoinChange - incomeCoins - ongoingTotal - inputs.incidentCoinChange,
+      reputation:
+        netRepChange - (inputs.income?.repDelta ?? 0) - inputs.incidentRepChange,
+    },
+    netCoinChange,
+    netRepChange,
+    netScoreChange: roundInt(inputs.score - startScore),
+    businessesOwned: countBusinessesOwnedByOwner(state),
+  };
+}
+
+/**
+ * Rebuilds a deferred result's ledger against the now-final state
+ * (MS-0MVP45KZV006TMUK).
+ *
+ * `processEndOfTurn` reports the deferred ledger before the scene applies the
+ * pending deltas (it can only project the closing balances), and the closing
+ * tail that follows can still move the score (challenge completions, EndCheck
+ * recompute). Rebuilding keeps the attribution measured at pause time (the
+ * ongoing-cost subtotals) while replacing the net rows/closing balances with
+ * the authoritative post-closing values. No-op when the result carries no
+ * ledger (hand-built results).
+ */
+function refreshDeferredTurnLedger(state: MainStreetState, result: TurnResult): void {
+  const ledger = result.turnLedger;
+  if (!ledger) return;
+  result.turnLedger = buildTurnLedger(state, {
+    income: result.income,
+    ongoingCosts: ledger.ongoingCosts,
+    incidentCoinChange: result.incidentCoinChange,
+    incidentRepChange: result.incidentRepChange,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
+}
+
+/**
+ * Builds the paused `TurnResult` for a raised bankruptcy bailout offer
+ * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS9L9001PVXG).
+ *
+ * The closing is deferred (`requiresDeferredClosing`) because no loss has been
+ * declared yet: the caller resolves the offer (`acceptLoanOffer` /
+ * `declineLoanOffer`) and then re-runs the closing tail exactly once.
+ */
+function pausedLoanOfferResult(
+  state: MainStreetState,
+  base?: Partial<TurnResult>,
+): TurnResult {
+  return {
+    income: base?.income ?? null,
+    incident: base?.incident ?? null,
+    incidentCoinChange: base?.incidentCoinChange ?? 0,
+    incidentRepChange: base?.incidentRepChange ?? 0,
+    gameResult: state.gameResult,
+    finalScore: state.finalScore,
+    newlyCompletedChallenges: [],
+    choicePending: false,
+    pendingLoanOffer: true,
+    pendingCoinDelta: base?.pendingCoinDelta ?? 0,
+    pendingRepDelta: base?.pendingRepDelta ?? 0,
+    pendingScoreDelta: 0,
+    requiresDeferredClosing: true,
+    turnLedger: base?.turnLedger,
+  };
+}
+
+/** An empty result for resuming a paused offer when the paused result was lost. */
+function emptyTurnResult(state: MainStreetState): TurnResult {
+  return {
+    income: null,
+    incident: null,
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    gameResult: state.gameResult,
+    finalScore: state.finalScore,
+    newlyCompletedChallenges: [],
+    choicePending: false,
+    pendingCoinDelta: 0,
+    pendingRepDelta: 0,
+    pendingScoreDelta: 0,
+  };
 }
 
 /**
@@ -358,6 +551,24 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   const coinsAtTurnStart = state.resourceBank.coins;
   const repAtTurnStart = state.resourceBank.reputation;
   const scoreAtTurnStart = state.finalScore;
+  // Ongoing-cost subtotals measured by the closing helpers (signed, zero when a
+  // family has no costs) — reported through the turn ledger so the summary can
+  // break expenses down per category (MS-0MVP45KZV006TMUK).
+  const ongoingCosts: TurnOngoingCosts = { staff: 0, community: 0, business: 0 };
+
+  // Helper that builds the ledger against the CURRENT state balances. Used by
+  // the early-return paths (income phase hasn't run) and where the closing has
+  // already applied everything.
+  const ledgerAtCurrentState = (income: IncomeResult | null): TurnLedger =>
+    buildTurnLedger(state, {
+      income,
+      ongoingCosts,
+      incidentCoinChange: 0,
+      incidentRepChange: 0,
+      coins: state.resourceBank.coins,
+      reputation: state.resourceBank.reputation,
+      score: state.finalScore,
+    });
 
   // AC7 (CG-0MTSHG8RP008E128): while a dual-choice incident is pending and
   // unresolved, the closing sequence must NOT proceed to IncomePhase — the
@@ -376,6 +587,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
   }
   // F3 piggyback pause (epic MS-0MUYC47EL005Z69H): an unresolved piggyback
@@ -396,7 +608,14 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
+  }
+  // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): an already-open offer is the
+  // pause. Re-entering the closing must never silently declare the loss while
+  // the seat still has a decision to make.
+  if (state.pendingLoanOffer) {
+    return pausedLoanOfferResult(state, { turnLedger: ledgerAtCurrentState(null) });
   }
   if (state.phase !== 'MarketPhase') {
     throw new Error(`Cannot end turn during ${state.phase}. Must be in MarketPhase.`);
@@ -412,6 +631,15 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   // The turn being summarised by the net row (turn is incremented below on
   // a continuing game, so capture it before that happens).
   const turnEnded = state.turn;
+
+  // Bankruptcy bailout, pre-income guard (MS-0MVPWS9L9001PVXG): a state that
+  // is already at `coins < 0` when the closing begins (a defensive/legacy
+  // state; normal play cannot overdraw its MarketPhase actions) is offered a
+  // loan BEFORE `checkImmediateLoss` declares the loss. The phase is still
+  // MarketPhase, so resolving the offer re-runs the whole closing.
+  if (maybeOfferBailout(state)) {
+    return pausedLoanOfferResult(state, { turnLedger: ledgerAtCurrentState(null) });
+  }
 
   // Phase: InvestmentResolution
   // Held Investment events are NO LONGER auto-resolved. The player must
@@ -438,6 +666,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingCoinDelta: 0,
       pendingRepDelta: 0,
       pendingScoreDelta: 0,
+      turnLedger: ledgerAtCurrentState(null),
     };
   }
 
@@ -453,6 +682,12 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
 
   // Apply business card ongoing costs (street-placed cards only)
   const businessDelta = applyBusinessOngoingCosts(state, applyOpts);
+
+  // Ledger expense attribution: the helpers return the signed delta actually
+  // charged (clamped when coins ran short), which is what the summary reports.
+  ongoingCosts.staff = staffDelta;
+  ongoingCosts.community = communityDelta;
+  ongoingCosts.business = businessDelta;
 
   // Phase: IncidentPhase
   state.phase = 'IncidentPhase';
@@ -487,9 +722,22 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     } catch { /* presentation-only — never break the closing */ }
   }
 
+  // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
+  // MS-0MVPWS885006O5QR). Every active loan pays its fixed per-turn amount
+  // after the incident and before the end-condition checks, so the deduction
+  // lands in this turn's net summary as a one-off expense. Repayment is
+  // unconditional (never clamped): a shortfall leaves coins < 0 for the
+  // bankruptcy path in the closing tail below. `loansEnabled: false` is a hard
+  // no-op, keeping loans-off headless baselines byte-identical (parent AC8).
+  // Deferred mode books the term/log row and reports the debit through
+  // `pendingCoinDelta`; the scene applies it with the turn's other deltas.
+  const loanRepayment = opts?.skipLoanRepayments
+    ? 0
+    : applyLoanRepayments(state, applyOpts);
+
   if (deferred) {
     pendingCoinDelta =
-      (income?.coinDelta ?? 0) + staffDelta + communityDelta + businessDelta + incidentCoinChange;
+      (income?.coinDelta ?? 0) + staffDelta + communityDelta + businessDelta + incidentCoinChange + loanRepayment;
     pendingRepDelta = (income?.repDelta ?? 0) + incidentRepChange;
   }
 
@@ -518,7 +766,48 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       // scene applies them (idempotently) so the income lands when the turn
       // pauses, exactly as in the legacy UX.
       requiresDeferredClosing: true,
+      // Ledger with the paused turn's attribution and the projected closing
+      // balances (the scene applies the deltas before presenting anything).
+      turnLedger: buildTurnLedger(state, {
+        income,
+        ongoingCosts,
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+        coins: state.resourceBank.coins + pendingCoinDelta,
+        reputation: state.resourceBank.reputation + pendingRepDelta,
+        score: state.finalScore,
+      }),
     };
+  }
+
+  // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): once the turn's economy is
+  // resolved the acting seat may be at a negative balance (ongoing costs, the
+  // incident or a loan repayment). Raise the offer and pause BEFORE the loss
+  // declaration so the seat can borrow instead of losing the run. In deferred
+  // mode the deltas are not applied yet, so evaluate the projected closing
+  // balance. The dual-choice pause above wins when both are open (the incident
+  // decision comes first); the resumed choice closing re-checks here.
+  const projectedCoins = deferred
+    ? state.resourceBank.coins + pendingCoinDelta
+    : state.resourceBank.coins;
+  if (maybeOfferBailout(state, { projectedCoins })) {
+    return pausedLoanOfferResult(state, {
+      income,
+      incident,
+      incidentCoinChange,
+      incidentRepChange,
+      pendingCoinDelta,
+      pendingRepDelta,
+      turnLedger: buildTurnLedger(state, {
+        income,
+        ongoingCosts,
+        incidentCoinChange,
+        incidentRepChange,
+        coins: projectedCoins,
+        reputation: state.resourceBank.reputation + pendingRepDelta,
+        score: state.finalScore,
+      }),
+    });
   }
 
   // Deferred mode (CG-0MTR72P14000VO6Q): the turn's resource deltas are
@@ -540,6 +829,18 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       pendingRepDelta,
       pendingScoreDelta: 0, // challenges evaluated at closing (safety net; normally completed per-action)
       requiresDeferredClosing: true,
+      // Projected closing balances: the scene applies the pending deltas after
+      // the end-of-turn animations, then finishDeferredTurnClosing refreshes
+      // the ledger against the final state (score / closing balances).
+      turnLedger: buildTurnLedger(state, {
+        income,
+        ongoingCosts,
+        incidentCoinChange,
+        incidentRepChange,
+        coins: state.resourceBank.coins + pendingCoinDelta,
+        reputation: state.resourceBank.reputation + pendingRepDelta,
+        score: state.finalScore,
+      }),
     };
   }
 
@@ -555,6 +856,17 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   closed.pendingCoinDelta = state.resourceBank.coins - coinsAtTurnStart;
   closed.pendingRepDelta = state.resourceBank.reputation - repAtTurnStart;
   closed.pendingScoreDelta = state.finalScore - scoreAtTurnStart;
+  // Legacy closings applied every delta in place, so the ledger measures the
+  // authoritative post-closing balances against the day-start snapshot.
+  closed.turnLedger = buildTurnLedger(state, {
+    income,
+    ongoingCosts,
+    incidentCoinChange,
+    incidentRepChange,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
   return closed;
 }
 
@@ -985,6 +1297,30 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
 }
 
 /**
+ * Resolves one seat's bankruptcy bailout with the AI/headless policy
+ * (largest option — parent Q3 = A / Q5 = A) without ever leaving an offer
+ * pending for the UI.
+ *
+ * Raises the offer through {@link maybeOfferBailoutForSeat} and immediately
+ * accepts it, so the seat is credited before the failure list is applied and
+ * is therefore not eliminated. Best-effort: a refusal (e.g. no configured
+ * menu) leaves today's behaviour untouched and returns `false`.
+ */
+function autoAcceptBailoutForSeat(state: MainStreetState, seatId: number): boolean {
+  if (!maybeOfferBailoutForSeat(state, seatId)) return false;
+  const pending = state.pendingLoanOffer;
+  if (!pending) return false;
+  try {
+    acceptLoanOffer(state, largestBailoutOption(pending.options));
+    return true;
+  } catch {
+    // Never strand a half-raised offer: fall back to today's elimination.
+    state.pendingLoanOffer = null;
+    return false;
+  }
+}
+
+/**
  * Applies the competitive per-seat failure evaluation to the game result.
  *
  * A failing **human** seat keeps the existing single-player loss semantics
@@ -993,10 +1329,32 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
  * and does **not** end the game; when the last AI is eliminated the human is
  * declared the winner by last-standing.
  *
+ * **Bailout intercept (MS-0MVPWSAMH005LV9R).** Before any failure is
+ * declared, every failing seat is evaluated against the bankruptcy bailout
+ * (parent AC4/AC5): a seat at `coins < 0` that holds no active loan is offered
+ * a loan instead of being eliminated/losing.
+ *
+ * - **AI seats** resolve inline via the AI policy (the largest option), so an
+ *   unlucky week never knocks an AI out and a last-standing win is delayed
+ *   accordingly.
+ * - **A human seat** keeps its offer **pending** for the UI; the pending
+ *   offer *is* the closing pause (the caller surfaces
+ *   `TurnResult.pendingLoanOffer === true` and resumes via
+ *   `resolveCompetitiveLoanOffer`). Nothing is declared while it is open.
+ *
+ * Ineligible seats keep today's behaviour exactly: an already-active loan
+ * (producer Q6 = A), reputation collapse, or `loansEnabled: false` eliminate /
+ * end as before. AI offers are resolved first so a pending human offer never
+ * blocks another seat's automatic bailout.
+ *
  * @param state Current game state (mutated on a human failure / AI elimination).
- * @returns `true` when the game ended / a win was declared, `false` otherwise.
+ * @returns `true` when the game ended / a win was declared, `false` otherwise
+ *          (including while a human bailout offer pauses the closing).
  */
 export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean {
+  // An unresolved offer is already the pause: never re-declare failures while
+  // the seat still has a decision to make (the resume re-evaluates).
+  if (state.pendingLoanOffer) return false;
   // Opening-day grace (MS-0MVJNFESC005QJ41): no seat is bankrupt on turn 1.
   applyFirstSharedDaySolvencyGrace(state);
   const failures = checkCompetitiveSeatFailure(state);
@@ -1006,8 +1364,33 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
     return checkLastStanding(state);
   }
 
+  // Pass 1 — AI bailouts inline (largest option), so a pending human offer
+  // below can never prevent another seat's automatic bailout.
+  const remaining: CompetitiveSeatFailure[] = [];
+  for (const failure of failures) {
+    const seat = state.players![failure.playerId];
+    if (failure.reason === 'bankruptcy' && seat.controller === 'ai' && autoAcceptBailoutForSeat(state, failure.playerId)) {
+      continue;
+    }
+    remaining.push(failure);
+  }
+
+  // Pass 2 — a human bankruptcy failure raises a pending offer (the pause);
+  // nothing is declared while any offer is open.
+  for (const failure of remaining) {
+    const seat = state.players![failure.playerId];
+    if (failure.reason !== 'bankruptcy' || seat.controller === 'ai') continue;
+    if (maybeOfferBailoutForSeat(state, failure.playerId)) return false;
+  }
+  if (state.pendingLoanOffer) return false;
+  if (remaining.length === 0) {
+    // Every failure was bailed out — a prior elimination may still have left
+    // the human as the last seat standing (idempotent).
+    return checkLastStanding(state);
+  }
+
   // A human seat failure keeps the existing single-player loss semantics.
-  const humanFailure = failures.find(
+  const humanFailure = remaining.find(
     failure => state.players![failure.playerId].controller !== 'ai',
   );
   if (humanFailure) {
@@ -1020,7 +1403,7 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
   }
 
   // AI seat failure(s): eliminate the seat(s) and let the survivors play on.
-  for (const failure of failures) {
+  for (const failure of remaining) {
     eliminateCompetitiveSeat(state, failure.playerId);
   }
   // Declare last-standing if no AI seats survive (idempotent).
@@ -1074,6 +1457,10 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
  * `gameResult` to `'playing'` and scoring continues; the marker is kept so
  * later EndChecks do not re-open the offer.
  *
+ * A human bankruptcy bailout offer pauses this EndCheck
+ * (MS-0MVPWSAMH005LV9R): `false` is returned without declaring a threshold
+ * or turn-limit winner while the seat still has a decision to make.
+ *
  * In single-player (no players[]), delegates to the legacy checkEndConditions.
  */
 export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
@@ -1082,6 +1469,9 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   }
 
   if (resolveCompetitiveSeatFailures(state)) return true;
+  // A human bailout offer pauses the closing (MS-0MVPWSAMH005LV9R): no
+  // threshold/turn-limit winner may be declared while the seat decides.
+  if (state.pendingLoanOffer) return false;
 
   updateCompetitiveScores(state);
 
@@ -1164,28 +1554,81 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
 /** Recomputes every PlayerRecord.score and syncs the shared ledger/finalScore. */
 
 /**
+ * Resolves a pending bankruptcy bailout offer with the deterministic AI/headless
+ * policy (the largest option, parent Q5 = A) and completes the paused closing.
+ *
+ * A pre-income pause leaves the game in `MarketPhase` (the closing never
+ * advanced), so the whole closing is re-run. Every other pause happened after
+ * the closing's economy, so the deferred closing tail is completed from the
+ * paused result.
+ *
+ * @param state  Current game state (mutated). Must hold a pending offer.
+ * @param paused The paused `TurnResult` returned by `processEndOfTurn` (or the
+ *               choice-resume closing). Optional; an empty result is used when
+ *               omitted, but passing it preserves income/ledger reporting.
+ * @returns The completed (or further-paused) closing result.
+ */
+export function resolvePendingLoanOffer(
+  state: MainStreetState,
+  paused?: TurnResult,
+): TurnResult {
+  const pending = state.pendingLoanOffer;
+  if (!pending) {
+    throw new Error('No pending loan offer to resolve.');
+  }
+  acceptLoanOffer(state, largestBailoutOption(pending.options));
+  if (state.phase === 'MarketPhase') {
+    // Pre-income pause: the repayment phase has not run yet, so resume the
+    // whole closing but skip repayment — the bailout loan's first instalment
+    // starts next turn, and accepting never immediately re-bankrupts the seat.
+    return processEndOfTurn(state, { skipLoanRepayments: true });
+  }
+  return finishDeferredTurnClosing(state, paused ?? emptyTurnResult(state));
+}
+
+/**
  * Ends the current MarketPhase for a HEADLESS / AI / test turn and returns
  * the completed result (CG-0MTT7FC7A000AA58 Q1).
  *
- * Wraps processEndOfTurn and, when the drawn incident was a dual-choice event
- * (result.choicePending), automatically resolves the choice via the
- * difficulty-based policy (config.difficultyName) and completes the deferred
- * closing — so headless sims never stall waiting for dialog input.
- * Interactive callers (the scene's TurnController) use processEndOfTurn
- * directly: they present the Accept/Reject dialog and resolve via
- * resolveEventChoice + finishDeferredEndOfTurn.
+ * Wraps processEndOfTurn and resolves every pending decision deterministically
+ * so headless sims never stall:
+ *
+ * - a bankruptcy bailout offer is accepted with the AI policy (the largest
+ *   option, parent Q5 = A) and the paused closing completes;
+ * - a drawn dual-choice incident is resolved via the difficulty-based policy
+ *   (config.difficultyName) and the deferred closing completes.
+ *
+ * Both pauses can surface each other (a resolved choice closing can leave the
+ * seat negative), so resolution loops with a small safety bound. Interactive
+ * callers (the scene's TurnController) use processEndOfTurn directly: they
+ * present the decision dialogs and resolve via resolveEventChoice /
+ * finishDeferredEndOfTurn or acceptLoanOffer / declineLoanOffer +
+ * finishDeferredTurnClosing.
  *
  * @param state Current game state (mutated). Must be in MarketPhase.
- * @returns The completed turn result (choicePending is always false).
+ * @returns The completed turn result (no pending decision remains).
  */
 export function endTurnHeadless(state: MainStreetState): TurnResult {
-  const result = processEndOfTurn(state);
-  if (!result.choicePending) return result;
-  const finished = resolvePendingEventChoice(state);
-  if (!finished) return result;
-  // Surface the income that was already applied in the paused turn; the
-  // deferred closing (finish) reports income null.
-  return { ...finished, income: result.income };
+  let result = processEndOfTurn(state);
+  // Safety bound: each pass resolves one pending decision, and the per-turn
+  // bailout guard guarantees a declined/raised offer cannot loop. The state
+  // fields are the source of truth (a completed result flags both as false).
+  for (let pass = 0; pass < 8; pass++) {
+    if (state.pendingLoanOffer) {
+      result = resolvePendingLoanOffer(state, result);
+      continue;
+    }
+    if (result.choicePending) {
+      const finished = resolvePendingEventChoice(state);
+      if (!finished) return result;
+      // Surface the income that was already applied in the paused turn; the
+      // deferred closing (finish) reports income null.
+      result = { ...finished, income: result.income };
+      continue;
+    }
+    break;
+  }
+  return result;
 }
 
 /**
@@ -1256,13 +1699,28 @@ export function finishDeferredEndOfTurn(state: MainStreetState): TurnResult {
   // its effect applied (accept) or refused (reject), and the escalation (if
   // any) is already on the deck top — nothing remains deferred.
   state.pendingEventChoice = null;
-  return runSinglePlayerTurnClosing(state, {
+  const result = runSinglePlayerTurnClosing(state, {
     income: null, // income for this turn was already applied & presented
     incident: null, // the incident consequence was presented by resolveEventChoice
     incidentCoinChange: 0,
     incidentRepChange: 0,
     turnEnded,
   });
+  // Best-effort ledger for the resumed closing (MS-0MVP45KZV006TMUK): the
+  // paused turn's income/ongoing-cost attribution does not reach this tail
+  // (the paused TurnResult is not carried here), so those subtotals report 0
+  // and the residual lands in `oneOffDeltas`. The net rows and closing
+  // balances are authoritative, so the ledger still reconciles exactly.
+  result.turnLedger = buildTurnLedger(state, {
+    income: null,
+    ongoingCosts: { staff: 0, community: 0, business: 0 },
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+  });
+  return result;
 }
 
 /**
@@ -1300,6 +1758,22 @@ export function finishDeferredTurnClosing(
   state: MainStreetState,
   result: TurnResult,
 ): TurnResult {
+  // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): the deferred deltas have been
+  // applied by now, so this is the authoritative balance the loss check would
+  // read. Offer a loan and pause again before any closing side effect runs;
+  // the per-turn guard / active-loan rule make this a one-shot pause.
+  if (state.pendingLoanOffer || maybeOfferBailout(state)) {
+    return {
+      ...result,
+      gameResult: state.gameResult,
+      finalScore: state.finalScore,
+      newlyCompletedChallenges: [],
+      choicePending: false,
+      pendingLoanOffer: true,
+      requiresDeferredClosing: true,
+    };
+  }
+
   const turnEnded = state.turn;
 
   // Phase: EndCheck
@@ -1329,14 +1803,18 @@ export function finishDeferredTurnClosing(
   // post-incident check). Banner emitted first, then the net row.
   if (checkImmediateLoss(state)) {
     appendTurnNetRow(state, turnEnded);
-    return {
+    const closed: TurnResult = {
       ...result,
       gameResult: state.gameResult,
       finalScore: state.finalScore,
       newlyCompletedChallenges,
       choicePending: false,
+      pendingLoanOffer: false,
       pendingScoreDelta,
     };
+    // Refresh the ledger against the now-final state (MS-0MVP45KZV006TMUK).
+    refreshDeferredTurnLedger(state, closed);
+    return closed;
   }
 
   // 4. EndCheck (game-over evaluation — AC4: runs after the animations and
@@ -1362,14 +1840,20 @@ export function finishDeferredTurnClosing(
   //    (CG-0MT5W7UJJ0065MEZ AC3). Reads the post-delta resources.
   appendTurnNetRow(state, turnEnded);
 
-  return {
+  const closed: TurnResult = {
     ...result,
     gameResult: state.gameResult,
     finalScore: state.finalScore,
     newlyCompletedChallenges,
     choicePending: false,
+    pendingLoanOffer: false,
     pendingScoreDelta,
   };
+  // Refresh the ledger against the now-final state (MS-0MVP45KZV006TMUK): the
+  // projected closing balances from processEndOfTurn are replaced by the
+  // authoritative post-closing ones (score included).
+  refreshDeferredTurnLedger(state, closed);
+  return closed;
 }
 
 // ── Headless Choice Policy (CG-0MTT7FC7A000AA58 Q1 / CG-0MTSHG8RP008E128) ──
@@ -1394,6 +1878,19 @@ function runSinglePlayerTurnClosing(
   ctx: SinglePlayerTurnClosingContext,
 ): TurnResult {
   const { income, incident, incidentCoinChange, incidentRepChange, turnEnded } = ctx;
+
+  // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): this tail is also reached from
+  // the resolved dual-choice path, which may leave the seat negative without
+  // the earlier closing checks seeing it. Offer a loan before the loss check;
+  // the per-turn guard / active-loan rule make this a one-shot pause.
+  if (state.pendingLoanOffer || maybeOfferBailout(state)) {
+    return pausedLoanOfferResult(state, {
+      income,
+      incident,
+      incidentCoinChange,
+      incidentRepChange,
+    });
+  }
 
   // Check for immediate loss after incident. Banner is emitted first,
   // then the per-turn net row as the final entry (mirrors the pre-income

@@ -45,6 +45,7 @@ import {
   moveStaffOnBusiness,
   removeStaffFromBusiness,
   layoffStaffCard,
+  takeLoan,
 } from './MainStreetEngine';
 
 // ── Action Budget Enforcement ────────────────────────────────
@@ -145,6 +146,17 @@ interface MarketActionSnapshot {
    * re-adds it exactly once (CG-0MUEQ19VX0009VIW).
    */
   discards: any | null;
+  /**
+   * Active bank loans (Bank Loans epic MS-0MVL6DZI0000F6CG). Captured so
+   * undoing a `take-loan` removes the recorded loan and restoring resources
+   * also restores the one-active-loan invariant.
+   */
+  loans: any | null;
+  /**
+   * Pending loan offer (bailout flow). Captured so undo restores an
+   * unresolved offer exactly as it was (and redo re-arms it).
+   */
+  pendingLoanOffer: any | null;
 }
 
 /** Safe cloning helper that uses structuredClone when available, else falls back to JSON clone. */
@@ -183,6 +195,13 @@ function clonePendingChoice(pending: any): any {
           successorId: o.successorId ?? null,
           successorIds: o.successorIds ? [...o.successorIds] : undefined,
           effectPolicy: o.effectPolicy,
+          // Declarative settlement data (MS-0MVNU5M7Z0095CEM): preserved by
+          // reference-copy so undo → redo re-charges the option's cost and
+          // re-applies its extra effect. Without these, the restored pending
+          // choice would resolve as if it were free.
+          cost: o.cost ? { ...o.cost } : undefined,
+          extraEffect: o.extraEffect ? { ...o.extraEffect } : undefined,
+          conditionalSuccessors: o.conditionalSuccessors,
           condition: o.condition,
           successorResolver: o.successorResolver,
         }))
@@ -231,6 +250,8 @@ function captureSnapshot(state: MainStreetState): MarketActionSnapshot {
     // (safeClone's JSON fallback would coerce it to null).
     completedBySeatIds: (state.activeChallenges ?? []).map(ac => ac.completedBySeatId),
     discards: safeClone(state.discards ?? {}),
+    loans: safeClone(state.loans ?? []),
+    pendingLoanOffer: safeClone(state.pendingLoanOffer ?? null),
   };
 }
 
@@ -321,6 +342,14 @@ function restoreSnapshot(state: MainStreetState, snap: MarketActionSnapshot): vo
   // its pile (and redo re-adds it exactly once) — CG-0MUEQ19VX0009VIW.
   if (snap.discards !== null && snap.discards !== undefined) {
     state.discards = snap.discards;
+  }
+  // Restore the bank-loan record + pending offer so undo returns to the exact
+  // one-active-loan state (MS-0MVPWS6WB008WP79).
+  if ('loans' in snap) {
+    state.loans = snap.loans ?? [];
+  }
+  if ('pendingLoanOffer' in snap) {
+    state.pendingLoanOffer = snap.pendingLoanOffer ?? null;
   }
 }
 
@@ -603,14 +632,21 @@ export function buyAndPlaceBusinessCommand(
 
 /**
  * Command: Buy & Place Upgrade directly onto a business (drag-drop path,
- * CG-0MT3IYSRL001VVUP). Consumes 1 action and charges the +50% premium
- * (Math.ceil(cost * 1.5 * 2) / 2, matching business buy-and-place).
+ * CG-0MT3IYSRL001VVUP). Without overrides it consumes 1 action and charges
+ * the +50% premium (Math.ceil(cost * 1.5 * 2) / 2, matching business
+ * buy-and-place).
+ *
+ * Composite parity (MS-0MVKT3TZF0091IHC): the UI resolves one price/action
+ * pair from `actionsRemaining` and passes it here unchanged — on the 2+-action
+ * listed-cost path `priceOverride` is the discounted listed cost and
+ * `extraActions` is 1 (drag + placement); on the ≤ 1-action premium path both
+ * are left unset (premium replaces the placement action). The undo snapshot
+ * restores both consumed actions and the banked decrement.
  *
  * @param priceOverride Optional price to charge instead of the +50% premium
- *                      (listed cost for GM parity on 2-action days — when
- *                      supplied, still consumes 1 action).
- * @param extraActions  Additional daily actions to consume (GM parity — 1 on
- *                      Golden Mile days where the composite consumes 2 actions).
+ *                      (discounted listed cost on the 2-action parity path).
+ * @param extraActions  Additional daily actions to consume (1 on the parity
+ *                      path, where the drag also pays the placement action).
  */
 export function buyAndPlaceUpgradeCommand(
   state: MainStreetState,
@@ -737,6 +773,28 @@ export function hireApplicantCommand(state: MainStreetState) {
     snapshotAction(
       (s) => { hireApplicantAction(s); },
       'HireApplicant',
+    ),
+  );
+}
+
+/**
+ * Command: Take a bank loan by choosing an option from the configured loan
+ * menu (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS6WB008WP79).
+ *
+ * Deliberately does **not** consume an action: the loan is AP-neutral and the
+ * snapshot captures the active-loan record (`loans`), the pending offer and
+ * the credited resources, so undo removes the loan and restores the exact
+ * one-active-loan state and redo re-applies it.
+ *
+ * @param state       Current game state.
+ * @param optionIndex Index into `config.loanOptions`.
+ */
+export function takeLoanCommand(state: MainStreetState, optionIndex: number) {
+  return toCommand(
+    state,
+    snapshotAction(
+      (s) => takeLoan(s, optionIndex),
+      `TakeLoan option ${optionIndex}`,
     ),
   );
 }

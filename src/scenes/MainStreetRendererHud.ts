@@ -9,18 +9,19 @@
  * @module
  */
 
-import { FONT_FAMILY, HintBar, clearTransientHud, markHudTransient } from '@ui';
-import { attachHudTooltipZone, createMainStreetHintButton, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
+import { FONT_FAMILY, clearTransientHud, markHudTransient } from '@ui';
+import { attachHudTooltipZone, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
 import { computeScore } from '../MainStreetEngine';
-import { buildCardTooltipInfo, turnLabel, weekLabel } from '../MainStreetFormatting';
+import { buildCardTooltipInfo, weekLabel } from '../MainStreetFormatting';
+import { hudLoanReadout } from '../MainStreetLoans';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import type { PendingApplicant } from '../MainStreetState';
 import { resolveLogSeatColour } from '../MainStreetStateLog';
-import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H } from './MainStreetConstants';
+import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
 import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -75,17 +76,7 @@ function createCardPacksButton(s: MainStreetRendererContext['scene']): void {
   }
 }
 
-export function createInstructions(renderer: MainStreetRendererContext): void {
 
-    const s = renderer.scene;
-    // Shared HintBar for hint/instruction display at bottom-center
-    s.hintBar = new HintBar(s);
-
-    // Keep legacy instructionText for backward compatibility (tests),
-    // referencing the HintBar's underlying text object.
-    s.instructionText = s.hintBar.textObject;
-  
-}
 
 export function refreshAll(renderer: MainStreetRendererContext): void {
 
@@ -237,11 +228,13 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // Background strip — market-aligned to `hudLeft`..`hudRight` (AC2,
     // CG-0MUFAISSZ002TE1B). `setOrigin(0, 0.5)` makes x the left edge, so the
     // strip spans exactly [hudLeft, hudLeft + hudWidth] with no half-width maths.
+    // Opaque panel alpha (0.85) shared with the market box / hand panel / Activity
+    // Log so the strip reads as a solid section (MS-0MVPWQIPZ002PHPD AC2).
     const strip = markHudTransient(
-      s.add.rectangle(hudLeft, hudY, hudWidth, HUD_BAR_HEIGHT_PX, 0x1a1408, 0.6),
+      s.add.rectangle(hudLeft, hudY, hudWidth, HUD_BAR_HEIGHT_PX, PANEL_FILL, PANEL_FILL_ALPHA),
     );
     strip.setOrigin(0, 0.5);
-    strip.setStrokeStyle(1, BOX_STROKE, 0.5);
+    strip.setStrokeStyle(1, BOX_STROKE, PANEL_STROKE_ALPHA);
     s.hudContainer.add(strip);
 
     // Coins - left-aligned at the strip's left edge
@@ -302,6 +295,30 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
       }
     ).setOrigin(1, 0));
     s.hudContainer.add(weekText);
+
+    // Active-loan obligation (MS-0MVPWSCRD004A6Z4): the remaining turns and
+    // per-turn repayment sit beside the coin/reputation readouts, right-aligned
+    // immediately left of the Score label. Anchoring to the Score's rendered
+    // left edge (rather than a fixed x) keeps the readout clear of that label
+    // for every score width. The readout is hidden entirely when loans are
+    // disabled or the seat holds no loan (`hudLoanReadout` returns null), so
+    // loans-off runs are pixel-identical.
+    const loanReadout = hudLoanReadout(s.state);
+    if (loanReadout) {
+      const loanText = markHudTransient(s.add.text(
+        scoreText.x - scoreText.width - 16,
+        hudY,
+        loanReadout,
+        {
+          fontSize: '13px',
+          fontStyle: 'bold',
+          color: '#ff6699',
+          fontFamily: FONT_FAMILY,
+        },
+      ).setOrigin(1, 0.5));
+      loanText.setName('loan-hud-readout');
+      s.hudContainer.add(loanText);
+    }
 
     // Community Favour buttons — inside the widened strip, between Coins and
     // Reputation (CG-0MUFAITED0088AGN).
@@ -526,29 +543,23 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
 
       // End Turn button (right-aligned)
       const btnW = s.layout.actionButtonW;
-      const hintBtnW = s.layout.hintButtonW;
 
       const endBtn = createActionButton(s, rightX - btnW, by + 4, btnW, 'End Turn', () => {
         s.endTurn();
       });
       s.actionContainer.add(endBtn);
 
-      // Hint button (to the left of End Turn)
-      const hintBtn = createMainStreetHintButton(
-        s, rightX - btnW - 12 - hintBtnW, by + 4, hintBtnW, s.layout.actionButtonH,
-        s.hintUsedThisTurn, () => s.onHintClick(),
-      );
-      s.actionContainer.add(hintBtn);
-
-      // Peek button (staff peek skill, CG-0MSXOW6GN008ZSMN) — to the left of
-      // the Hint button. Only offered while a peek-capable staff member is
-      // employed; disabled once the once-per-turn gate is spent, when no
-      // daily actions remain, or when the incident deck is empty.
+      // Peek button (staff peek skill, CG-0MSXOW6GN008ZSMN) — immediately to
+      // the left of End Turn. Only offered while a peek-capable staff member
+      // is employed; disabled once the once-per-turn gate is spent, when no
+      // daily actions remain, or when the incident deck is empty. The Hint
+      // button slot (MS-0MVPWQLIH008R5M3) is gone, so the row no longer
+      // reserves 104px between End Turn and Peek.
       const hasPeekStaff = hasPeekCapableStaff(s.state);
       if (hasPeekStaff) {
         const peekDisabled = s.state.peekUsedThisTurn || s.state.actionsRemaining <= 0 || s.state.incidentDeck.length === 0;
         const peekBtn = createActionButton(
-          s, rightX - btnW - 12 - hintBtnW - 12 - btnW, by + 4, btnW,
+          s, rightX - btnW - 12 - btnW, by + 4, btnW,
           peekDisabled ? 'Peek \u2713' : 'Peek',
           () => s.onPeekClick(),
           {
@@ -564,10 +575,11 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.actionContainer.add(peekBtn);
       }
 
-      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the Hint/Peek
-      // cluster. Opens the journal overlay listing past storyline choices and
-      // outcomes. Always available (it shows an empty state before any choice).
-      let leftmostX = rightX - btnW - 12 - hintBtnW;
+      // Storyline Journal button (MS-0MUMP97LQ006PP1D) — left of the
+      // End Turn/Peek cluster. Opens the journal overlay listing past
+      // storyline choices and outcomes. Always available (it shows an empty
+      // state before any choice).
+      let leftmostX = rightX - btnW;
       if (hasPeekStaff) leftmostX -= 12 + btnW;
       const journalBtn = createActionButton(
         s, leftmostX - 12 - btnW, by + 4, btnW, 'Journal',
@@ -588,9 +600,7 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
       const by = s.layout.actionY;
 
       const hand = s.state.hand ?? [];
-      const handCount = hand.length;
       const selected = s.pendingHandIndex !== null ? hand[s.pendingHandIndex] : undefined;
-      s.hintBar.setText(`Card in hand (${handCount}) — click an empty slot to place`);
 
       // Keep the action budget visible while placing from hand.
       renderActionCounter(s, rightX, by);
@@ -625,12 +635,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.clearMarketSelection();
         s.uiPhase = 'market';
         renderer.refreshAll();
-        // Reset the HintBar to the standard market instruction (AC3).
-        // s.instructionText is the same text object as s.hintBar.textObject,
-        // so route the reset through HintBar explicitly for consistency.
-        s.hintBar.setText(
-          `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`,
-        );
       });
       s.actionContainer.add(cancelBtn);
 
@@ -644,7 +648,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
 
       const hand = s.state.hand ?? [];
       const selected = s.pendingHandIndex !== null ? hand[s.pendingHandIndex] : undefined;
-      s.hintBar.setText('Event selected — Play it or Discard it');
 
       // Discard (rightmost — the End Turn slot).
       const repCost = selected?.cost ?? 0;
@@ -691,9 +694,6 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
       const rightX = s.layout.gameW - 24;
       const by = s.layout.actionY;
 
-      const cardName = s.pendingBusinessCard?.name ?? '???';
-      s.hintBar.setText(`Place "${cardName}" -- click an empty slot`);
-
       // Keep the action budget visible while placing a business.
       renderActionCounter(s, rightX, by);
 
@@ -705,27 +705,13 @@ export function refreshActionButtons(renderer: MainStreetRendererContext): void 
         s.clearMarketSelection();
         s.uiPhase = 'market';
         renderer.refreshAll();
-        // Reset the HintBar to the standard market instruction (AC3).
-        // s.instructionText is the same text object as s.hintBar.textObject,
-        // so route the reset through HintBar explicitly for consistency.
-        s.hintBar.setText(
-          `${turnLabel(s.state.config, s.state.turn)} (${weekLabel(s.state.week, s.state.year)}) -- Buy cards from the market or End Turn`,
-        );
       });
       s.actionContainer.add(cancelBtn);
     }
 
-    // Staff applicant phase (CG-0MSTOATDU006UGAX): the market action bar
-    // above stays available (Hire/Decline live on the applicant overlay
-    // itself) so the player can resolve the applicant or End Turn to skip.
-    if (s.uiPhase === 'applicant') {
-      const applicantCard = s.pendingApplicant?.card;
-      const name = applicantCard?.name ?? 'Staff Applicant';
-      const salary = applicantCard?.ongoingCost ?? 0;
-      s.hintBar.setText(
-        `${name} — Hire (free, salary ${salary}/turn) or Decline; End Turn to skip`,
-      );
-    }
+    // Staff applicant phase (CG-0MSTOATDU006UGAX): the applicant overlay
+    // presents Hire/Decline itself; the former persistent applicant guidance
+    // line is dropped (see the producer list on MS-0MVPWQK3U003DIR6).
   
 }
 
@@ -850,11 +836,17 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     s.logContentContainer.setY(LOG_TITLE_H + 2 - s.logScrollOffset);
 
     // ── Per-entry visibility safety net ────────────────
-    // Phaser 4 RC7's GeometryMask clip is unreliable. As a safety net,
-    // explicitly hide any child whose local Y falls outside the visible
+    // Explicitly hide any child whose local Y falls outside the visible
     // window [scrollOffset, scrollOffset + visibleH).
-    // This ensures no content renders above the title bar or below the
-    // panel bottom, regardless of whether the mask clips.
+    //
+    // The clip itself is renderer-aware (`ContainerClip`): a GeometryMask on
+    // Canvas, a Mask filter on WebGL (Phaser 4 made `setMask` a no-op under
+    // WebGL, so relying on the mask alone used to leak content in WebGL
+    // boots). This visibility pass still earns its keep on both renderers:
+    // it keeps off-window entries out of the display list's render work and
+    // bounds the damage if a clip is ever unavailable (e.g. no WebGL
+    // context). It cannot clip a *partially* visible entry, which is why the
+    // renderer-aware clip above remains the primary mechanism.
     const visibleStart = s.logScrollOffset;
     const visibleEnd = s.logScrollOffset + visibleH;
     for (const child of s.logContentContainer.list) {
@@ -898,7 +890,7 @@ export function refreshApplicant(renderer: MainStreetRendererContext): boolean {
 
     const container: Phaser.GameObjects.Container = s.add.container(0, 0);
     container.setName('applicantOverlay');
-    // Above the action bar / hint bar (depth 100 within hudContainer) but
+    // Above the action bar (depth 100 within hudContainer) but
     // below modal overlays (199-201), so the applicant reads as a prominent
     // in-play decision without covering dialogs.
     container.setDepth(120);
@@ -1037,7 +1029,7 @@ export function refreshApplicant(renderer: MainStreetRendererContext): boolean {
   
 }
 
-export function animateUpcomingEffectLine(renderer: MainStreetRendererContext, 
+export function animateUpcomingEffectLine(renderer: MainStreetRendererContext,
     effect: { sourceEventId: string; description: string },
     rowIndex: number,
   ): Phaser.GameObjects.Text[] {

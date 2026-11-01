@@ -49,6 +49,7 @@ import {
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
 import {
+  getPendingStorylineOptions,
   getStorylineOptions,
   registerStorylineOptions,
   resetStorylineRegistry,
@@ -71,6 +72,15 @@ import {
   STANDARD_TUTORIAL_SCENARIO,
 } from '../../src/TutorialScenario';
 import type { EventCard } from '../../src/MainStreetCards';
+import {
+  COST_FIXTURE_EVENT_ID,
+  COST_GATED_LABEL,
+  ESCALATING_LABEL,
+  EXTRA_EFFECT_LABEL,
+  PRESENTED_LABELS,
+  queueCostFixtureChoice,
+  registerAiCostFixtures,
+} from './helpers/aiEventChoiceCostFixtures';
 
 // ── The seven shipped choice cards (alphabetical) ───────────
 
@@ -390,6 +400,54 @@ describe('AC3d — resolveAiEventChoice completes a paused turn with a shipped c
   }
 });
 
+// ── AC1: AI decision parity with the pre-policy behaviour ────
+//
+// MS-0MVNU5HNV007R803: the cost-aware policy (MS-0MVNU5EEC006ZCTF) must not
+// move a single shipped-card decision. The table below is the decision the
+// pre-policy severity-only implementation (`decideEventChoice` over the
+// unfiltered list) returned for each card at `d09735a8^` — the commit before
+// the cost-aware policy landed. Only `evt-tax-inquiry` is non-zero: its Accept
+// option escalates to `evt-tax-error` (severity 200) while Reject is terminal.
+// Shipped options declare no `cost`/`extraEffect`, so the projected value
+// delta is 0 and the policy is decision-for-decision identical.
+const LEGACY_AI_CHOICE_INDEX: Record<string, number> = {
+  'evt-flu-outbreak': 0,
+  'evt-popular-menu': 0,
+  'evt-recession': 0,
+  'evt-strike-service': 0,
+  'evt-tax': 0,
+  'evt-tax-error': 0,
+  'evt-tax-inquiry': 1,
+};
+
+describe('AC1 — AI decision parity with the pre-policy behaviour', () => {
+  it('pins a legacy index for every shipped choice card', () => {
+    expect(Object.keys(LEGACY_AI_CHOICE_INDEX).sort()).toEqual([...CHOICE_CARDS].sort());
+  });
+
+  for (const cardId of CHOICE_CARDS) {
+    it(`${cardId}: Easy/Medium/Hard all return the pre-policy index`, () => {
+      const template = shippedChoice(cardId);
+      for (const difficulty of ['Easy', 'Medium', 'Hard'] as const) {
+        const state = setupMainStreetGame({
+          seed: `legacy-parity-${cardId}-${difficulty}`,
+          difficulty,
+        });
+        const presented = getStorylineOptions(template, state);
+        const index = decideEventChoice(state, template, difficulty);
+
+        // Behavioural parity: the same index the legacy policy selected.
+        expect(index).toBe(LEGACY_AI_CHOICE_INDEX[cardId]);
+        // …and that index addresses an option the player is actually offered.
+        expect(presented[index]).toBeDefined();
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(index).toBeLessThan(presented.length);
+        expect(LEGACY_AI_CHOICE_INDEX[cardId]).toBeLessThan(presented.length);
+      }
+    });
+  }
+});
+
 // ── AC4: Tutorial exclusion pinned ───────────────────────────
 
 describe('AC4 — choice incidents excluded from tutorial play', () => {
@@ -417,6 +475,53 @@ describe('AC4 — choice incidents excluded from tutorial play', () => {
       ...STANDARD_TUTORIAL_SCENARIO,
       incidentDeck: ['evt-award'],
     })).toThrow(/hasChoices/);
+  });
+});
+
+// ── AC4: cost-gated / extra-effect transcript harness ────────
+//
+// MS-0MVNU5HNV007R803: register BOTH a cost-gated and an extra-effect option
+// on a shipped choice card and drive the decision through the real draw →
+// presented-list → transcript path. The recorded transcript label must always
+// be one that was actually presented, so the cost-gated (unaffordable) option
+// can never appear and the extra-effect option must win.
+
+describe('AC4 — cost-gated and extra-effect options in the transcript harness', () => {
+  it('records an option label that was actually presented, never a cost-gated one', () => {
+    registerAiCostFixtures();
+    const recorder = new MainStreetTranscriptRecorder({ seed: 'ac4-cost-transcript' });
+    setMainStreetRecorder(recorder);
+    const state = setupMainStreetGame({ seed: 'ac4-cost-transcript', difficulty: 'Medium' });
+    state.phase = 'MarketPhase';
+    queueCostFixtureChoice(state);
+
+    const paused = processEndOfTurn(state);
+    expect(paused.choicePending).toBe(true);
+    const pending = state.pendingEventChoice;
+    if (!pending) throw new Error('fixture choice was not paused');
+
+    // Draw-time snapshot: the unaffordable bribe is filtered out. This is
+    // exactly the list the player and the AI are offered.
+    const presented = getPendingStorylineOptions(pending, state).map((o) => o.label);
+    expect(presented).toEqual([...PRESENTED_LABELS]);
+    expect(presented).not.toContain(COST_GATED_LABEL);
+
+    expect(() => resolveAiEventChoice(state)).not.toThrow();
+    expect(state.pendingEventChoice).toBeNull();
+
+    const choiceEvent = recorder
+      .getTranscript()
+      .events.find((e) => e.type === 'event-choice' && e.eventId.startsWith(COST_FIXTURE_EVENT_ID));
+    expect(choiceEvent).toBeDefined();
+    if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
+
+    // The transcript label is one of the presented options…
+    expect(presented).toContain(choiceEvent.option);
+    // …never the cost-gated option that the filter dropped…
+    expect(choiceEvent.option).not.toBe(COST_GATED_LABEL);
+    // …and the extra-effect option wins over the punitive escalation.
+    expect(choiceEvent.option).toBe(EXTRA_EFFECT_LABEL);
+    expect(choiceEvent.option).not.toBe(ESCALATING_LABEL);
   });
 });
 

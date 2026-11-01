@@ -93,6 +93,11 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
   // visually aligned after the shift.
   const columnCenterX = streetX + rowWidth / 2;
   const handTopLeft = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'hand', 'topLeft', viewport, 1);
+  // The End Turn / Peek action row keeps its own anchor (MS-0MVPWQMTL004J3GB
+  // AC8): it must NOT be derived from the hand zone, otherwise moving the hand
+  // to the bottom of the viewport would drag the action row (and therefore the
+  // tutorial `endTurnButton` highlight and the button hit areas) with it.
+  const actionRowTopRight = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'actionRow', 'topRight', viewport, 1);
   const challengeTopLeft = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'challengePanel', 'topLeft', viewport, 1);
   const challengeBottomRight = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'challengePanel', 'bottomRight', viewport, 1);
   const logTopLeft = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'activityLog', 'topLeft', viewport, 1);
@@ -113,7 +118,6 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
   const hudWidth = hudRight - hudLeft;
 
   const actionButtonH = 34;
-  const hintButtonW = 104;
   const smallButtonW = 68;
   const favourButtonW = 110;
   const actionButtonW = 140; // from per-game constants (matches legacy endTurnButton.width)
@@ -178,11 +182,9 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     handCenterX: Math.round(columnCenterX),
     handCardW: BASE_HAND_CARD_W,
     handCardH: BASE_HAND_CARD_H,
-    instructionY: Math.round(handTopLeft.y - 20),
-    actionY: Math.round(handTopLeft.y + 28),
+    actionY: Math.round(actionRowTopRight.y),
     actionButtonH,
     actionButtonW,
-    hintButtonW,
     smallButtonW,
     favourButtonW,
     favourCoinsToRepX: Math.round(favourCoinsToRepCenter.x - favourButtonW / 2),

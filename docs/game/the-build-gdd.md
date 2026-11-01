@@ -176,7 +176,7 @@ stateDiagram-v2
 2. **MarketPhase** – The market shows 4 Business cards and 3 Investments (2 Upgrades + 1 Investment event). The player may purchase any combination as long as they have enough coins.
 3. **ActionPhase** – The player resolves purchases:
    - **Buy Business** → `resourceBank.coins -= cost` → place card into a chosen empty slot (1 action).
-   - **Buy Upgrade** → the market click **moves the card to hand (1 action)**; it is then applied from the hand by clicking the card and a matching business (same-week apply is a **free composite**; an upgrade held from a previous week costs 1 action). Dragging the upgrade from the market straight onto a matching business is a same-turn buy-and-apply at a **+50% premium** (1 action) — the same gesture and pricing as business buy-and-place (CG-0MT3IYSRL001VVUP).
+   - **Buy Upgrade** → the market click **moves the card to hand (1 action)**; it is then applied from the hand by clicking the card and a matching business (same-week apply is a **free composite**; an upgrade held from a previous week costs 1 action). Dragging the upgrade from the market straight onto a matching business is a same-turn buy-and-apply: with **2+ actions** it charges the **discounted listed cost** and consumes **both** actions (drag + placement, no premium dialog); with **1 action** it charges the discount-first **+50% premium** and consumes 1 action, with the premium explainer dialog firing first — the same parity rule and gesture as the business buy-and-place (CG-0MT3IYSRL001VVUP, MS-0MVKT3TZF0091IHC).
    - **Buy Event (Investment)** → add the event card to the player's hand (any mix of business/event cards up to `maxHandSize`). The player may play it during MarketPhase via a `play-event` action.
    - **Play Event (from hand)** → resolve an Investment event card from the hand immediately and remove it.
 4. **InvestmentResolution** – Reserved phase; Investment events are **not** auto‑resolved here. Unplayed events persist in the hand until the player plays them during a later MarketPhase.
@@ -202,7 +202,7 @@ The turn ends when either:
 | Action | Description | Preconditions | Result |
 |--------|-------------|---------------|--------|
 | **Buy Business** | Move a Business card from the market to the hand (`coins >= cost` at placement) and place it on an empty slot (1 action). | Market contains Business card; `actionsRemaining >= 1`; at least one empty slot. | Card moved to hand; action spent; listed cost paid when placed from hand (same-week placement is a free composite). |
-| **Buy Upgrade** | Move an Upgrade card from the market to the hand (1 action); it is then applied from hand by clicking the card and a matching business. | Market contains Upgrade card targeting a placed Business at the required level; hand has room. | Upgrade moves to hand; action spent. Same-week apply is free; a held upgrade costs 1 action when applied. Dragging the upgrade straight onto a matching business buys-and-applies it at a **+50% premium** (1 action). |
+| **Buy Upgrade** | Move an Upgrade card from the market to the hand (1 action); it is then applied from hand by clicking the card and a matching business. | Market contains Upgrade card targeting a placed Business at the required level; hand has room. | Upgrade moves to hand; action spent. Same-week apply is free; a held upgrade costs 1 action when applied. Dragging the upgrade straight onto a matching business buys-and-applies it: **2+ actions** → **discounted listed cost** + both actions (drag + placement); **1 action** → discount-first **+50% premium** + 1 action with the premium explainer dialog (MS-0MVKT3TZF0091IHC). |
 | **Buy Event** | Take an Investment event card from the market into the hand **for free** (cost is paid when the event is executed from hand). | Market contains Investment event card; hand has room (`hand.length < maxHandSize`). | Event appended to hand; **no coins deducted** at take time. Player pays the event's listed cost when it is played during MarketPhase. There is **no limit on the number of event cards** in hand — only hand capacity (`maxHandSize`) applies. |
 | **Play Event (from hand)** | Play an Investment event card from the hand during MarketPhase. | Player holds an Investment event card in hand; current phase is MarketPhase. | Event resolved and removed from hand. |
 | **Place Business** | Choose an empty slot and put the purchased Business card there. | Business card in hand; slot is empty. | Card is now part of `streetGrid`. |
@@ -411,6 +411,17 @@ A formal GDD section with wireframes (ASCII/text‑based is acceptable), style g
 
 # Main Street: AI Strategy and Hint System
 
+> **Status (MS-0MVPWQLIH008R5M3): the hint feature is design intent only.**
+> No hint feature is currently surfaced in the game. The original hint
+> subsystem was removed — `MainStreetHint.ts`, the Hint action-bar control and
+> its one-line rationale — and nothing shipped replaces it, so the sections
+> below record the *intended* design, not current player-facing behaviour. The
+> AI strategies described here drive AI seats and headless / Monte-Carlo runs;
+> player-facing guidance today is the tutorial overlay plus the transient
+> pop-text feedback channel (`docs/game/ux-visual-audio.md` § *Transient
+> pop-text feedback channel*). The implemented AI design is documented in
+> `docs/dev/ai-strategy.md`.
+
 ## Summary
 
 Write the AI and player assistance section of The Build's Game Design Document covering AI strategy design for auto‑play, hint systems, and any tutorial/onboarding guidance.
@@ -426,7 +437,7 @@ As a game designer, I want The Build's AI behaviour and player assistance system
    - **Random/Naive** – Makes valid moves randomly (baseline, useful for Monte Carlo testing)
    - **Heuristic/Greedy** – Follows simple priority rules (e.g. always craft if possible, prefer high‑value actions)
    - **Lookahead/Smart** (optional) – Considers future consequences of moves
-3. **Hint System** – How are hints generated? Single best move? Multiple suggestions? Progressive hints (vague to specific)?
+3. **Hint System** – How are hints generated? Single best move? Multiple suggestions? Progressive hints (vague to specific)? *Design intent only — not currently surfaced in the game (MS-0MVPWQLIH008R5M3).*
 4. **Move Evaluation Heuristics** – What makes a move "good" in The Build? Priority ordering of actions. Scoring function for comparing moves.
 5. **Tutorial / Onboarding** – Is there a tutorial? How does The Build teach the player its mechanics? Guided first game? Tooltip‑based learning?
 6. **Difficulty Adjustment** (if applicable) – Does the AI assist in difficulty? Dynamic difficulty? Selectable difficulty levels that change deal generation or available content?
@@ -437,7 +448,9 @@ A formal GDD section covering The Build's AI design with enough detail for an en
 
 ## Acceptance Criteria
 - At least 2 AI strategy tiers are fully specified with decision logic.
-- Hint system design documented with player‑facing behaviour.
+- Hint system design documented with player‑facing behaviour. *(Satisfied as
+  design intent only: the document states explicitly that the hint feature is
+  not currently surfaced — MS-0MVPWQLIH008R5M3.)*
 - Move evaluation heuristics defined and prioritised.
 - Tutorial/onboarding approach documented.
 - Design references existing engine AI abstractions (AiStrategyBase, AiPlayer, pickRandom, pickBest).
@@ -452,7 +465,9 @@ A formal GDD section covering The Build's AI design with enough detail for an en
 - **Resource Bank** – Holds Coins and Reputation.
 - **Challenge** – Optional meta‑goal that provides bonus points.
 - **AI Strategy** – Algorithm used by the computer to decide actions.
-- **Hint** – Suggested move presented to the player.
+- **Hint** – Design-intent concept: a suggested move that would be presented
+  to the player. Not currently surfaced in the game
+  (MS-0MVPWQLIH008R5M3).
 
 ---
 

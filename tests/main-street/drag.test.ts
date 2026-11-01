@@ -95,7 +95,6 @@ function createMockScene(overrides: Record<string, unknown> = {}): any {
       isTutorialActionAllowed: vi.fn().mockReturnValue({ allowed: true }),
       onTutorialActionComplete: vi.fn(),
     },
-    instructionText: { setText: vi.fn() },
     tooltipManager: { hide: vi.fn(), show: vi.fn() },
     // Buy-and-play premium explainer dialog (CG-0MT24X0SX007RLHN): captures
     // the callbacks so tests can proceed/cancel the premium placement.

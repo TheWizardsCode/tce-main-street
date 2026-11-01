@@ -757,6 +757,9 @@ describe('MainStreetEngine', () => {
 
     it('should detect loss from events causing bankruptcy', () => {
       const state = createTestState();
+      // Loans off: pin the legacy bankruptcy exit; with loans enabled the
+      // bankruptcy bailout (MS-0MVPWS9L9001PVXG) offers a loan instead.
+      state.config = { ...state.config, loansEnabled: false };
       state.resourceBank.coins = 1;
       // Ensure the incident queue has a negative event that causes bankruptcy
       state.incidentDeck = [

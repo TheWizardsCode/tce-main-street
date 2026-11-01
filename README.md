@@ -172,6 +172,14 @@ If you cloned without `--recurse-submodules`, initialise it afterwards:
 git submodule update --init --recursive
 ```
 
+**Tests verify the composed engine.** A fresh worktree checks out whatever
+gitlink its branch recorded, which can silently lag the engine pin in
+`configs/engine-pin.json`. Every Vitest run therefore passes an engine-checkout
+preflight (`npm run engine:check`) that fails loudly — naming the composed SHA,
+the pin SHA and the exact remediation — when `./core` is not the pinned engine
+or a descendant of it; run `npm run engine:sync` in a fresh worktree before
+testing (see [docs/dev/build-and-release.md](docs/dev/build-and-release.md)).
+
 ## Install, test and build
 
 ```bash
@@ -181,7 +189,8 @@ npm run build   # engine:sync (latest engine dev) + type-check + production bund
 ```
 
 Builds follow the dev/release split — dev builds auto-sync the `./core`
-engine submodule to the latest engine dev head, while `npm run build:release`
+engine submodule to the latest engine dev head **and re-pin
+`configs/engine-pin.json` to it**, while `npm run build:release`
 compiles exactly the SHA pinned in `configs/engine-pin.json`. See
 [docs/dev/build-and-release.md](docs/dev/build-and-release.md).
 
@@ -193,6 +202,15 @@ Run the game locally in watch mode:
 ```bash
 npm run dev     # Vite dev server on http://localhost:3000
 ```
+
+The dev server shares the host with sibling repos, agent worktrees and test
+suites, so it can be killed by host memory/swap pressure mid-session (the
+browser shows `[vite] server connection lost` and `ERR_CONNECTION_REFUSED` for
+every card asset). Run the read-only check before starting a long session
+(`scripts/hygiene_check.sh`), keep at most one `vite --host` server per host,
+and follow the host-pressure hygiene runbook in
+[docs/dev/testing.md](docs/dev/testing.md#host-pressure-hygiene-runbook-ms-0mvs0fnlh003vbmw)
+for pre-flight checks, worktree hygiene and the restart/reclamation steps.
 
 The documentation has a browsable, local-only site with sidebar navigation
 and rendered Mermaid diagrams (navigation is generated from the `docs/`
@@ -233,10 +251,18 @@ npm run preview   # http://localhost:4173/tce-main-street/
 | `public/assets/` | Card art, audio and other static assets bundled into the build. |
 | `configs/game.json` | The single-game preset: the core-owned Gym plus Main Street. |
 | `core/` | Git submodule pointing at the Tableau Card Engine (shared engine + toolchain). |
-| `configs/engine-pin.json` | Release engine pin: `{"sha": "…"}` — written only by the release process, never by dev builds. |
+| `configs/engine-pin.json` | Engine pin `{"sha": "…"}` — created by the release process, then **tracked to the engine `dev` tip by every dev `engine:sync`** (the pin and the `core` gitlink travel together). |
 | `docs/` | Design, balance and localization documentation — including `docs/game/tutorial-localization.md`, the guide for editing the spreadsheet-editable tutorial copy (`src/i18n/tutorial-en.csv`). Served as a **local VitePress site** via `npm run docs` (see [docs/index.md](docs/index.md)). |
 | `.github/workflows/deploy.yml` | GitHub Pages build-and-deploy workflow. |
 
 The `./core` submodule pins a specific engine commit; **dev builds advance it
-automatically** (`engine:sync`, tracked on engine `dev`), and release builds
-(`build:release`) compile exactly the SHA in `configs/engine-pin.json`. See[docs/dev/build-and-release.md](docs/dev/build-and-release.md) for the policy; never edit a dev build into a release silently — use `build:release` for pinned, reproducible output.
+automatically** (`engine:sync`, tracked on engine `dev`) **and re-pin
+`configs/engine-pin.json` to the advanced commit in the same step**, and
+release builds (`build:release`) compile exactly the SHA in
+`configs/engine-pin.json`. The policy: **the pin tracks the engine `dev` tip**;
+a lag is a genuine failure and the pin and the gitlink travel together
+(mechanical re-pin delivered by engine change `CG-0MVO268500071BPI`; before
+that fix the pin was written by hand at release time only). Every
+test run states which engine it composed via the engine-checkout preflight
+(`npm run engine:check`) and fails loudly when the checkout is not the pin or
+a descendant of it. See[docs/dev/build-and-release.md](docs/dev/build-and-release.md) for the policy; never edit a dev build into a release silently — use `build:release` for pinned, reproducible output.

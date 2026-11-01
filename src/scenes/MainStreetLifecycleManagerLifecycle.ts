@@ -214,6 +214,11 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    // Ambient pedestrian layer (MS-0MUYGFW7T00579Z1). Constructed here (pre-reset
+    // helpers) and again after the UI scaffolding below; the later assignment is
+    // the live layer. Lifecycle/attach contract:
+    // docs/game/ux-visual-audio.md § "Ambient street pedestrians (reputation
+    // crowd)" (MS-0MVRMI1EQ002I24K).
     s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
@@ -239,11 +244,6 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.transferAnimationCount = 0;
     s.cleanupTransferAnimations();
     s.hiddenTransferSourceCardIds.clear();
-
-    // Reset hint state
-    s.hintUsedThisTurn = false;
-    s.hintedCardId = null;
-    s.hintedSlotIndex = null;
 
     s.marketSelectionByCardId.clear();
     s.selectedMarketCardId = null;
@@ -297,6 +297,11 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msOverlayManager = new MainStreetOverlayContent(s);
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
+    // Live ambient pedestrian layer (MS-0MUYGFW7T00579Z1): keep this second
+    // assignment — `refreshHud()` reconciles the population through this
+    // instance and `refreshStreetGrid()` re-attaches it last. Contract:
+    // docs/game/ux-visual-audio.md § "Ambient street pedestrians (reputation
+    // crowd)" (MS-0MVRMI1EQ002I24K).
     s.msPedestrians = new MainStreetPedestrians(s);
     s.layout = s.computeLayout();
     s.svgDebugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('msSvgDebug') === '1';
@@ -400,7 +405,6 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
       });
     s.createHeader();
     s.createContainers();
-    s.createInstructions();
     // Street-map camera (CG-0MTH9OVMC001V44E): install the viewport mask and
     // register the always-available zoom/pan controls once the street
     // container exists.
@@ -670,6 +674,18 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
 
     s.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       markSceneInvalid(s);
+      // Release the renderer-aware clips. Under WebGL their mask Graphics is
+      // deliberately off the display list (the Mask filter renders it), so
+      // the scene teardown would not otherwise dispose of it.
+      try {
+        s.streetMapClip?.destroy();
+        s.logContentClip?.destroy();
+      } catch (_) { /* presentation-only */ }
+      s.streetMapClip = null;
+      s.streetMapMaskGraphics = null;
+      s.logContentClip = null;
+      s.logMaskGraphics = null;
+      s.logContentMask = null;
       s.cleanupTransferAnimations();
       // Tear down the drag-drop manager (removes its scene input listeners).
       try { s.dragDropManager?.destroy(); s.dragDropManager = undefined; } catch (_) { /* ignore */ }
@@ -715,9 +731,6 @@ export function handleResize(lmCtx: MainStreetLifecycleManagerContext): void {
     try { s.msPedestrians?.resize?.(); } catch (_) { /* presentation-only */ }
     s.challengeContainer.setPosition(s.layout.challengeX, s.layout.challengeY);
     s.logContainer.setPosition(s.layout.logX, s.layout.logY);
-    // Centre instruction text in the main content area (between left margin and right column)
-    const instructionCX = Math.round(s.layout.logX / 2);
-    s.instructionText.setPosition(instructionCX, s.layout.instructionY);
     s.refreshAll();
   
 }

@@ -8,11 +8,14 @@
  * LOCAL SURGICAL ADDITIONS not present in the scaffold template (precedent:
  * MS-0MV8M9IAF000KPNY): the exported `CLI_TEST_FILES` + `unit-cli` project
  * (MS-0MV5PNIPO00940KG), the `unit`/`unit-cli` `sequence.groupOrder` split
- * with `unit-cli` first, and the `projectCoverageReporter` guard
- * (MS-0MVK37SK5009M0NG). A re-scaffold drops all of these; the guards in
- * `tests/main-street/vitest-cli-project-isolation.test.ts` and
- * `tests/main-street/testing-docs-projects.test.ts` fail loudly if they are
- * lost.
+ * with `unit-cli` first, the `projectCoverageReporter` guard
+ * (MS-0MVK37SK5009M0NG), and the engine-checkout preflight registered as the
+ * root `test.globalSetup` (MS-0MVO26G5H0054SNV). A re-scaffold drops all of
+ * these; the guards in
+ * `tests/main-street/vitest-cli-project-isolation.test.ts`,
+ * `tests/main-street/testing-docs-projects.test.ts` and
+ * `tests/main-street/vite-config-engine-check-guard.test.ts` fail loudly if
+ * they are lost.
  *
  * The engine toolchain (the config-driven game-discovery plugin and the core
  * path aliases) is imported from the sibling core checkout at `./core`.
@@ -24,7 +27,7 @@ import {
   gameDiscoveryPlugin,
   resolveCoreAliases,
 } from './core/scripts/vite-game-discovery-plugin';
-import { DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin';
+import { transcriptPersistPlugin, DEV_WATCH_IGNORE_PATTERNS } from './core/scripts/vite-transcript-plugin';
 import { writeCardTestResults } from './tests/main-street/cards/CardTestResultWriter';
 import { createProjectCoverageReporter } from './tests/tooling/vitest-project-coverage-reporter';
 import { computeCsvChecksum } from './src/CsvChecksum';
@@ -139,7 +142,7 @@ function cardResultsWriterPlugin() {
   };
 }
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ command, mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -153,6 +156,14 @@ export default defineConfig(({ mode }) => ({
     // 'virtual:game-registry' (Gym from the core + this one game).
     gameDiscoveryPlugin({ projectRoot: __dirname, coreRoot, env: presetEnv }),
     cardResultsWriterPlugin(),
+    // Persist game-over transcripts to data/transcripts/<game>/ during a
+    // normal dev session: this is the middleware behind POST /api/transcripts,
+    // so without it every game-over 404s in the browser console
+    // (MS-0MVREB31W004F48D). Dev-serve only, and never under Vitest (the
+    // plugin writes to disk). Mirrors core/vite.config.ts; also emitted by the
+    // scaffold template (`core/scripts/game-repo-scaffold.ts` →
+    // `renderViteConfig`), so a re-scaffold carries it forward.
+    ...(command === 'serve' && !process.env.VITEST ? [transcriptPersistPlugin()] : []),
   ],
   resolve: {
     alias: resolveCoreAliases(coreRoot),
@@ -185,6 +196,17 @@ export default defineConfig(({ mode }) => ({
     },
   },
   test: {
+    // Engine-checkout preflight (MS-0MVO26G5H0054SNV) — LOCAL SURGICAL
+    // ADDITION. Every Vitest invocation in this repo (`npm test`, the
+    // changed-scope gate's direct `npx vitest run <files>`, the dev-push
+    // browser gate) inherits this root setting, so each run states which
+    // `./core` commit it composed and fails loudly when that checkout is
+    // behind (or diverged from) `configs/engine-pin.json` instead of
+    // returning a green suite that never saw the pinned engine. The check is
+    // offline (local commit graph only) and sub-second; the config-level
+    // hook is the only place that also covers direct Vitest runs, which a
+    // `pretest`-only hook would miss. Manual: `npm run engine:check`.
+    globalSetup: ['./tests/tooling/engine-checkout-precheck.ts'],
     // Loud zero-coverage guard (MS-0MVK37SK5009M0NG): fails the run when a
     // project that was scheduled contributed no files — or fewer files than the
     // run intended — naming the project and the files that never executed.

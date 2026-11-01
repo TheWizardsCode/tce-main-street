@@ -1,10 +1,22 @@
 {
-  "timeoutPerCommand": 1800,
+  "timeoutPerCommand": 3600,
   "suiteCommands": [
     "npm --silent test",
-    "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts"
+    "npx vitest run --project browser tests/main-street/MainStreetScene.browser.test.ts",
+    "npx vitest run --project browser tests/e2e/main-street-no-console-errors.browser.test.ts"
   ],
   "groups": {
+    "hand-bottom-anchor-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hand-bottom-anchor.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hand-bottom-anchor.browser.test.ts",
+        "src/layouts/main-street.layout.json",
+        "src/layouts/main-street-tutorial.layout.json",
+        "src/scenes/MainStreetLayoutAdapter.ts"
+      ]
+    },
     "tutorial-browser": {
       "commands": [
         "npx vitest run --project browser tests/main-street/TutorialOverlayHighlights.browser.test.ts tests/main-street/TutorialOverlayManager.browser.test.ts tests/e2e/main-street-tutorial-e2e-part4.browser.test.ts tests/e2e/main-street-tutorial-e2e-part5.browser.test.ts tests/e2e/main-street-tutorial-e2e-part6.browser.test.ts"
@@ -28,11 +40,11 @@
     },
     "deselect-toggle-browser": {
       "commands": [
-        "npx vitest run --project browser tests/main-street/card-deselect.browser.test.ts tests/main-street/hint-bar-placement.browser.test.ts tests/main-street/composite-click.browser.test.ts tests/main-street/upgrade-hand-flow.browser.test.ts tests/main-street/event-card-select-then-act.browser.test.ts tests/main-street/discard-from-hand.browser.test.ts tests/main-street/hand-outlines.browser.test.ts"
+        "npx vitest run --project browser tests/main-street/card-deselect.browser.test.ts tests/main-street/hint-removal.browser.test.ts tests/main-street/composite-click.browser.test.ts tests/main-street/upgrade-hand-flow.browser.test.ts tests/main-street/event-card-select-then-act.browser.test.ts tests/main-street/discard-from-hand.browser.test.ts tests/main-street/hand-outlines.browser.test.ts"
       ],
       "paths": [
         "tests/main-street/card-deselect.browser.test.ts",
-        "tests/main-street/hint-bar-placement.browser.test.ts",
+        "tests/main-street/hint-removal.browser.test.ts",
         "tests/main-street/composite-click.browser.test.ts",
         "tests/main-street/upgrade-hand-flow.browser.test.ts",
         "tests/main-street/event-card-select-then-act.browser.test.ts",
@@ -48,6 +60,95 @@
       "paths": [
         "tests/main-street/hand-drag-drop.test.ts",
         "tests/main-street/hand-drag-post-refresh.browser.test.ts"
+      ]
+    },
+    "upgrade-drag-browser": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/upgrade-drag-pricing.test.ts tests/main-street/upgrade-action-economy.test.ts tests/main-street/financial-advisor-upgrade-discount.test.ts tests/main-street/drag.test.ts",
+        "npx vitest run --project browser tests/main-street/upgrade-drag-drop.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetTurnControllerDragDrop.ts",
+        "src/scenes/MainStreetRendererDragDrop.ts",
+        "src/scenes/MainStreetRendererMarket.ts",
+        "src/MainStreetMarketPurchase.ts",
+        "src/MainStreetMarket.ts",
+        "src/MainStreetCommands.ts",
+        "src/MainStreetEngineTypes.ts",
+        "tests/main-street/upgrade-drag-pricing.test.ts",
+        "tests/main-street/upgrade-drag-drop.browser.test.ts",
+        "tests/main-street/upgrade-action-economy.test.ts"
+      ]
+    },
+    "main-street-overlay-dialogs": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetOverlayContent.ts",
+        "src/scenes/MainStreetScene.ts",
+        "src/scenes/MainStreetTurnSummary.ts",
+        "src/scenes/MainStreetLoanOverlay.ts",
+        "src/scenes/MainStreetLoanOverlayModel.ts",
+        "src/scenes/MainStreetGameOverSummary.ts",
+        "src/scenes/MainStreetTurnControllerTurnFlow.ts",
+        "tests/main-street/turn-summary-dialog.browser.test.ts",
+        "tests/main-street/MainStreetLoanOverlay.test.ts",
+        "tests/main-street/MainStreetLoanOverlay.browser.test.ts"
+      ]
+    },
+    "hand-panel-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/hand-panel.browser.test.ts tests/main-street/hud-strip-layout.browser.test.ts tests/main-street/panel-opacity.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/hand-panel.browser.test.ts",
+        "tests/main-street/hud-strip-layout.browser.test.ts",
+        "tests/main-street/panel-opacity.browser.test.ts",
+        "tests/main-street/helpers/panelTreatment.ts"
+      ]
+    },
+    "pedestrians-scene-visibility-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/pedestrians-scene-visibility.browser.test.ts tests/main-street/pedestrians-scene-behaviour.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/pedestrians-scene-visibility.browser.test.ts",
+        "tests/main-street/pedestrians-scene-behaviour.browser.test.ts",
+        "src/scenes/MainStreetPedestrians.ts",
+        "src/scenes/MainStreetRendererStreet.ts",
+        "src/scenes/MainStreetAnimatorIncome.ts",
+        "src/scenes/MainStreetLifecycleManagerLifecycle.ts",
+        "src/scenes/MainStreetConstants.ts",
+        "src/MainStreetMapView.ts"
+      ]
+    },
+    "loan-hud-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/MainStreetLoanHud.browser.test.ts tests/main-street/MainStreet-hud-week.browser.test.ts tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/MainStreetLoanHud.browser.test.ts",
+        "tests/main-street/loan-hud.test.ts",
+        "src/MainStreetLoans.ts",
+        "src/scenes/MainStreetRendererHud.ts",
+        "src/scenes/MainStreetRendererCompetitiveHud.ts",
+        "src/scenes/MainStreetCompetitiveScoreboard.ts",
+        "tests/main-street/MainStreet-hud-week.browser.test.ts",
+        "tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ]
+    },
+    "webgl-clipping-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/webgl-renderer-clipping.browser.test.ts",
+        "core/src/ui/ContainerClip.ts",
+        "src/createMainStreetGame.ts",
+        "src/gym/GymCardIndexScene.ts",
+        "src/scenes/MainStreetScene.ts"
       ]
     }
   }
