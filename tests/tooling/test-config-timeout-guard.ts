@@ -59,7 +59,8 @@ export const EXPECTED_SUITE_COMMANDS = [
  * deliberate pin, not a mirror that updates itself. `help-settings-panels-browser`
  * is the worked example: MS-0MVWMDMLE007I8E1 added it to the config without
  * updating this pin, which failed the guard and was triaged as
- * MS-0MVZGAEF6004Q8XD.
+ * MS-0MVZGAEF6004Q8XD. A concurrent fix then appended it a second time, so
+ * duplicate names are rejected too (`Set` comparison in the test).
  */
 export const EXPECTED_GROUP_NAMES = [
   'hand-bottom-anchor-browser',
@@ -69,7 +70,6 @@ export const EXPECTED_GROUP_NAMES = [
   'hand-drag-post-refresh',
   'upgrade-drag-browser',
   'main-street-overlay-dialogs',
-  'help-settings-panels-browser',
   'hand-panel-browser',
   'pedestrians-scene-visibility-browser',
   'loan-hud-browser',

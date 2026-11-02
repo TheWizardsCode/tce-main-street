@@ -77,6 +77,16 @@ describe('the repository config', () => {
       EXPECTED_GROUP_NAMES.length,
     );
   });
+
+  it('pins exactly the groups the config declares, with no duplicates', () => {
+    // A duplicate name inflates the pinned count and reports the config as
+    // one group short — the shape that landed on dev twice
+    // (MS-0MVZGAEF6004Q8XD). Compare as sets so order stays free.
+    const declared = Object.keys(readConfig().groups as Record<string, unknown>);
+
+    expect([...new Set(EXPECTED_GROUP_NAMES)]).toEqual([...EXPECTED_GROUP_NAMES]);
+    expect([...declared].sort()).toEqual([...EXPECTED_GROUP_NAMES].sort());
+  });
 });
 
 describe('the documented floor', () => {
