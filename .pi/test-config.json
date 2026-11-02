@@ -91,6 +91,8 @@
         "src/scenes/MainStreetTurnSummary.ts",
         "src/scenes/MainStreetLoanOverlay.ts",
         "src/scenes/MainStreetLoanOverlayModel.ts",
+        "src/scenes/MainStreetLoanRowModel.ts",
+        "src/scenes/MainStreetLoanSelectorModel.ts",
         "src/scenes/MainStreetGameOverSummary.ts",
         "src/scenes/MainStreetTurnControllerTurnFlow.ts",
         "tests/main-street/turn-summary-dialog.browser.test.ts",

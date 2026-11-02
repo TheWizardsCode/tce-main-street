@@ -23,51 +23,30 @@
  * Read-only: nothing here mutates `state`, consumes no RNG and has no Phaser
  * import, so the model is unit-testable in a plain Node environment.
  *
+ * The row arithmetic and label formatting live in the shared
+ * {@link module:scenes/MainStreetLoanRowModel}, so the mid-game loan selector
+ * ({@link module:scenes/MainStreetLoanSelectorModel}) presents exactly the
+ * same menu without a duplicated format string.
+ *
  * @module src/scenes/MainStreetLoanOverlayModel
  */
 
 import type { MainStreetState } from '../MainStreetState';
+import { largestBailoutOption } from '../MainStreetLoans';
 import {
-  DEFAULT_LOAN_INTEREST_RATE,
-  largestBailoutOption,
-  loanPerTurnRepayment,
-  loanTotalRepayment,
-} from '../MainStreetLoans';
+  buildLoanRows,
+  formatCoins,
+  resolveLoanInterestRate,
+  type LoanOfferRow,
+} from './MainStreetLoanRowModel';
 
 // ── Types ───────────────────────────────────────────────────
 
-/** One selectable loan option row in the bailout dialog. */
-export interface LoanOfferRow {
-  /** Index into the presented offer menu (`PendingLoanOffer.options`). */
-  readonly index: number;
-  /** Coins credited to the wallet immediately. */
-  readonly principal: number;
-  /** Number of turns over which the loan is repaid. */
-  readonly termTurns: number;
-  /** Total to repay over the whole term (`round(principal × (1 + rate))`). */
-  readonly totalRepayment: number;
-  /** Fixed deduction per turn (`round(totalRepayment / termTurns)`). */
-  readonly perTurnRepayment: number;
-  /**
-   * Self-contained button label naming the principal, the per-turn and total
-   * repayment and the term — one button per option, as the overlay requires —
-   * plus the row's coverage of the closing shortfall when that figure is known
-   * (a "closes the gap" / "€N short" suffix).
-   */
-  readonly label: string;
-  /**
-   * Whether this option's principal alone restores a non-negative balance.
-   * `null` when the shortfall is unknown (a save taken before the figure was
-   * recorded), in which case the row states no coverage at all.
-   */
-  readonly coversShortfall: boolean | null;
-  /**
-   * Coins the seat would still be short after taking this option
-   * (`max(0, shortfall - principal)`), or `null` when the shortfall is
-   * unknown. `0` exactly when {@link coversShortfall} is `true`.
-   */
-  readonly stillShort: number | null;
-}
+/**
+ * One selectable loan option row (shared with the mid-game selector via
+ * {@link module:scenes/MainStreetLoanRowModel}).
+ */
+export type { LoanOfferRow } from './MainStreetLoanRowModel';
 
 /** The complete, presentation-ready content of the bailout dialog. */
 export interface LoanOfferModel {
@@ -108,43 +87,7 @@ export interface LoanOfferModel {
   readonly recommendedIndex: number;
 }
 
-// ── Formatting ──────────────────────────────────────────────
-
-/** Formats a whole-coin amount with the game's currency symbol. */
-function formatCoins(amount: number): string {
-  return `€${amount}`;
-}
-
-/**
- * Appends a row's coverage of the closing shortfall to its self-contained
- * label: "covers the gap" when the principal alone restores a non-negative
- * balance, otherwise how many coins the seat would still be short.
- *
- * Returns the label unchanged when the shortfall is unknown, so a save taken
- * before the figure was recorded renders exactly as it did then.
- */
-function withCoverage(
-  label: string,
-  coversShortfall: boolean | null,
-  stillShort: number | null,
-): string {
-  if (coversShortfall === null) return label;
-  if (coversShortfall) return `${label} — covers the gap`;
-  return `${label} — ${formatCoins(stillShort ?? 0)} short`;
-}
-
-/** Builds a row's self-contained button label. */
-function formatRowLabel(
-  principal: number,
-  perTurnRepayment: number,
-  totalRepayment: number,
-  termTurns: number,
-): string {
-  return (
-    `[ Borrow ${formatCoins(principal)} — ${formatCoins(perTurnRepayment)}/turn, ` +
-    `${formatCoins(totalRepayment)} total over ${termTurns} turns ]`
-  );
-}
+// ── Copy ────────────────────────────────────────────────────
 
 /**
  * Line stating how far short of this turn's costs the seat is — the copy that
@@ -172,8 +115,9 @@ const NO_OPTION_COVERS_WARNING =
  * Uses the offer's presented menu (never re-reads `config.loanOptions`, so a
  * menu that changed after the offer was raised cannot desynchronise the
  * dialog from the accept handler) and the configured interest rate, falling
- * back to {@link DEFAULT_LOAN_INTEREST_RATE} for legacy configs that predate
- * the loan fields (the same defensive default as `buildActiveLoan`).
+ * back to `DEFAULT_LOAN_INTEREST_RATE` for legacy configs that predate the
+ * loan fields (see `resolveLoanInterestRate`, the same defensive default as
+ * `buildActiveLoan`).
  *
  * @param state The current game state (read-only). Only `pendingLoanOffer`
  *              and the loan interest rate are consulted.
@@ -185,10 +129,6 @@ export function buildLoanOfferModel(
   const pending = state.pendingLoanOffer;
   if (!pending) return null;
 
-  const interestRate = Number.isFinite(state.config?.loanInterestRate)
-    ? (state.config.loanInterestRate as number)
-    : DEFAULT_LOAN_INTEREST_RATE;
-
   // The shortfall is a snapshot taken when the offer was raised (never
   // recomputed here: on the deferred-mutation path the turn's deltas are still
   // un-applied, so a live re-read would show the wrong figure). A whole,
@@ -199,35 +139,13 @@ export function buildLoanOfferModel(
       ? Math.floor(rawShortfall)
       : null;
 
-  const rows: LoanOfferRow[] = pending.options.map((option, index) => {
-    const totalRepayment = loanTotalRepayment(option.principal, interestRate);
-    const perTurnRepayment = loanPerTurnRepayment(totalRepayment, option.termTurns);
-    // A loan's principal is credited immediately, so it closes the gap exactly
-    // when it covers the shortfall; the first instalment is charged next turn
-    // and therefore never deepens this figure.
-    const coversShortfall = shortfall === null ? null : option.principal >= shortfall;
-    const stillShort =
-      shortfall === null ? null : Math.max(0, shortfall - option.principal);
-    return {
-      index,
-      principal: option.principal,
-      termTurns: option.termTurns,
-      totalRepayment,
-      perTurnRepayment,
-      coversShortfall,
-      stillShort,
-      label: withCoverage(
-        formatRowLabel(
-          option.principal,
-          perTurnRepayment,
-          totalRepayment,
-          option.termTurns,
-        ),
-        coversShortfall,
-        stillShort,
-      ),
-    };
-  });
+  // Shared with the mid-game selector so both dialogs price the same menu the
+  // same way (MS-0MVXYCHV2000ST0C).
+  const rows: readonly LoanOfferRow[] = buildLoanRows(
+    pending.options,
+    resolveLoanInterestRate(state.config),
+    shortfall,
+  );
 
   // Deterministic default (largest principal, longest term as the
   // tie-break), matching the headless/AI bailout policy. The offer is only
