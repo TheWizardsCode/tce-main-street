@@ -1430,21 +1430,34 @@ export class MainStreetScene extends CardGameScene {
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
    * per-phase income, per-category ongoing expenses, incident and one-off
    * deltas, the net change and the closing balances, with a primary
-   * [ Next Turn ] action and an always-disabled [ Bank Loan ] affordance.
+   * [ Next Turn ] action and a [ Bank Loan ] affordance whose availability
+   * comes from the loans descriptor (MS-0MVXYCICT0051LU7).
    * Delegates to the overlay manager's showTurnSummaryDialog.
    *
    * @param summary          The turn's rendered summary model.
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
-   * @param onBankLoanAction Seam for the future loans feature
-   *                          (MS-0MVL6DZI0000F6CG); unused today.
+   * @param loanDescriptor   Phaser-free loan availability for the acting seat,
+   *                          built by the gate from the live state; forwarded
+   *                          to the overlay manager unchanged. Optional so
+   *                          existing call sites (and a state that cannot
+   *                          produce a descriptor) still work.
+   * @param onBankLoanAction Seam for the loans feature (MS-0MVL6DZI0000F6CG);
+   *                          invoked when the descriptor enables the button.
+   *                          Unused by this slice.
    */
   public showTurnSummaryDialog(
     summary: import('./MainStreetTurnSummary').TurnSummary,
     onNextTurn: () => void,
+    loanDescriptor?: import('./MainStreetLoanSelectorModel').TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showTurnSummaryDialog === 'function') {
-      (this.msOverlayManager as any).showTurnSummaryDialog(summary, onNextTurn, onBankLoanAction);
+      (this.msOverlayManager as any).showTurnSummaryDialog(
+        summary,
+        onNextTurn,
+        loanDescriptor,
+        onBankLoanAction,
+      );
     } else {
       // No overlay manager (headless/tests): continue the closing rather than
       // strand the turn.

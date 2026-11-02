@@ -32,6 +32,7 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import type { TurnSummary } from './MainStreetTurnSummary';
+import type { TurnSummaryLoanDescriptor } from './MainStreetLoanSelectorModel';
 import { showLoanOfferDialog as renderLoanOfferDialog } from './MainStreetLoanOverlay';
 import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
@@ -1149,9 +1150,12 @@ export class MainStreetOverlayContent {
    * ongoing expenses, incident and one-off deltas, the net change and the
    * closing balances. `[ Next Turn ]` is the primary action and resumes the
    * closing flow via {@link onNextTurn}; `[ Bank Loan ]` is **always**
-   * rendered disabled with an explanatory hint, behind the
+   * rendered disabled with an explanatory hint in this slice, behind the
    * `onBankLoanAction` seam that MS-0MVL6DZI0000F6CG (Bank Loans) will
-   * replace — it is never shown enabled by this item.
+   * replace. The availability answer arrives pre-computed as
+   * {@link loanDescriptor} (MS-0MVXYCICT0051LU7), so this overlay never reaches
+   * into scene state; wiring the descriptor to the button is
+   * MS-0MVXYCJCK006UE62's behaviour.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
@@ -1162,20 +1166,27 @@ export class MainStreetOverlayContent {
    *
    * @param summary          The turn's rendered summary model.
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
+   * @param loanDescriptor   Loans availability for the acting seat, built by
+   *                          the Turn Summary gate from the live state. Optional
+   *                          so existing call sites keep working; accepted and
+   *                          forwarded by MS-0MVXYCICT0051LU7, consumed by
+   *                          MS-0MVXYCJCK006UE62.
    * @param onBankLoanAction Wiring seam for MS-0MVL6DZI0000F6CG; never
    *                          invoked while loans are unimplemented.
    */
   public showTurnSummaryDialog(
     summary: TurnSummary,
     onNextTurn: () => void,
+    loanDescriptor?: TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
 
     // Wiring seam retained for MS-0MVL6DZI0000F6CG (Bank Loans). The button
-    // stays disabled in this item, so the callback is deliberately never
-    // invoked here.
+    // stays disabled in this slice, so neither the descriptor nor the callback
+    // is consumed here yet (MS-0MVXYCJCK006UE62 enables the affordance).
+    void loanDescriptor;
     void onBankLoanAction;
 
     const centerX = s.layout.gameW / 2;

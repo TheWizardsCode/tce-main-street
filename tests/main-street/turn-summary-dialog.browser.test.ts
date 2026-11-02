@@ -21,13 +21,14 @@
  * The model values themselves are unit-tested Phaser-free in
  * `turn-summary-model.test.ts`; this suite covers the overlay rendering path.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import type { EventCard } from '../../src/MainStreetCards';
 import type { TurnLedger } from '../../src/MainStreetEngineTypes';
 import { buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
+import { buildTurnSummaryLoanDescriptor } from '../../src/scenes/MainStreetLoanSelectorModel';
 
 // ── Boot helpers (mirrors event-choice-dialog.browser.test.ts) ──
 
@@ -222,5 +223,44 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     expect((s.overlayObjects ?? []).length).toBe(0);
     expect(hudText(s, '[ Next Turn ]')).toBeUndefined();
     expect(hudText(s, '[ Bank Loan ]')).toBeUndefined();
+  }, 30_000);
+
+  it('forwards the loans descriptor to the overlay manager unchanged, and the headless branch advances once with no UI', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    const summary = makeSummary(s);
+    // Built from the live scene state — exactly what the gate hands over.
+    const descriptor = buildTurnSummaryLoanDescriptor(s.state);
+    const manager = s.msOverlayManager;
+    let nextTurnCalls = 0;
+
+    // ── Delegation: the descriptor reaches the overlay manager by identity ──
+    // The spy stubs the render so the scene stays UI-free for the headless
+    // half of this case (no stale dialog to confuse the "creates no UI" check).
+    const spy = vi
+      .spyOn(manager, 'showTurnSummaryDialog')
+      .mockImplementation(() => {});
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, descriptor);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [forwardedSummary, , forwardedDescriptor] = spy.mock.calls[0];
+    expect(forwardedSummary).toBe(summary);
+    expect(forwardedDescriptor).toBe(descriptor);
+    // The dialog holds the day until [ Next Turn ] — the delegation itself
+    // never resumes the closing.
+    expect(nextTurnCalls).toBe(0);
+    spy.mockRestore();
+
+    // ── Headless (no overlay manager): advance exactly once, create no UI ──
+    s.msOverlayManager = undefined;
+    const overlayObjectsBefore = (s.overlayObjects ?? []).length;
+    const hudChildrenBefore = s.hudContainer.list.length;
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, descriptor);
+    expect(nextTurnCalls).toBe(1);
+    expect((s.overlayObjects ?? []).length).toBe(overlayObjectsBefore);
+    expect(s.hudContainer.list.length).toBe(hudChildrenBefore);
+    expect(overlayText(s, 'Turn Summary')).toBeUndefined();
+
+    s.msOverlayManager = manager;
   }, 30_000);
 });

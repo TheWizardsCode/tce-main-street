@@ -25,6 +25,10 @@ import type { MainStreetTurnControllerContext } from './MainStreetTurnController
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { deferUntilIncomeCollected, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
+import {
+  buildTurnSummaryLoanDescriptor,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
 import { buildLoanOfferModel } from './MainStreetLoanOverlayModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
@@ -569,13 +573,17 @@ export function shouldGateTurnSummary(
  *     there, and `finalizeTurn`'s own guard covers the rest.
  *  2. Builds the dialog content through the Phaser-free
  *     {@link buildTurnSummary} model from the committed ledger.
- *  3. Delegates to `scene.showTurnSummaryDialog`, whose `onNextTurn` callback
- *     is `advanceTurn` — so the banking hint, the income-collection wait and
- *     `finalizeTurn` all run after the dialog is dismissed (AC2/AC5).
+ *  3. Builds the loans descriptor for the acting seat from the live
+ *     `s.state` (config + seat) and delegates to `scene.showTurnSummaryDialog`,
+ *     whose `onNextTurn` callback is `advanceTurn` — so the banking hint, the
+ *     income-collection wait and `finalizeTurn` all run after the dialog is
+ *     dismissed (AC2/AC5, MS-0MVXYCICT0051LU7). The descriptor is the one
+ *     small Phaser-free object the overlay needs, so it never reaches into
+ *     scene state.
  *
  * Never stalls: a result without a ledger (competitive / hand-built), a
- * failing model build or a scene without dialog support advances immediately,
- * matching the previous pacing.
+ * failing model build, an unbuildable loans descriptor or a scene without
+ * dialog support advances immediately, matching the previous pacing.
  */
 export function presentTurnSummaryGate(
   tcCtx: MainStreetTurnControllerContext,
@@ -605,7 +613,15 @@ export function presentTurnSummaryGate(
       return;
     }
 
-    s.showTurnSummaryDialog(summary, onNextTurn);
+    // Presentation-only: a state without the loans config (hand-built/legacy)
+    // must not strand the closing, so an unbuildable descriptor is simply
+    // omitted — the dialog then keeps its disabled affordance.
+    let loanDescriptor: TurnSummaryLoanDescriptor | undefined;
+    try {
+      loanDescriptor = buildTurnSummaryLoanDescriptor(s.state);
+    } catch { /* presentation-only — never strand the closing */ }
+
+    s.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor);
   };
 
   // AC1: the dialog appears after ALL end-of-turn animations complete. The no-

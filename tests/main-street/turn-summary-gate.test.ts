@@ -101,6 +101,17 @@ function makeHarness(overrides: Record<string, unknown> = {}) {
       weekStartCoins: 1000,
       weekStartRep: 10,
       weekStartScore: 20,
+      // Loans config + state the Turn Summary descriptor is built from
+      // (MS-0MVXYCICT0051LU7). The acting seat defaults to `activePlayerId`.
+      activePlayerId: 0,
+      loans: [] as unknown[],
+      config: {
+        loansEnabled: true,
+        loanOptions: [
+          { principal: 300, termTurns: 3 },
+          { principal: 600, termTurns: 6 },
+        ],
+      },
     },
     incomeCollectionActive: false,
     endOfTurnDeltasApplied: false,
@@ -331,6 +342,75 @@ describe('Turn Summary gate in finishTurnPresentation (MS-0MVP46Q8X003419R)', ()
 
     onNextTurn();
     expect(scene.tutorialOverlay.showBankingHint).toHaveBeenCalledTimes(1);
+    expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The gate builds one Phaser-free loans descriptor from the live `s.state`
+ * (`config` + acting seat) and hands it to the dialog as the third argument, so
+ * the overlay never reaches into scene state (MS-0MVXYCICT0051LU7).
+ */
+describe('Turn Summary loans descriptor forwarding (MS-0MVXYCICT0051LU7)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('forwards a descriptor built from the live config (loans enabled, no active loan)', () => {
+    const { scene, tcCtx } = makeHarness();
+
+    finishTurnPresentation(tcCtx, makeResult(), false);
+
+    const [, , descriptor] = scene.showTurnSummaryDialog.mock.calls[0];
+    expect(descriptor).toBeDefined();
+    expect(descriptor.enabled).toBe(true);
+    expect(descriptor.reason).toBeNull();
+    expect(descriptor.activeLoan).toBeNull();
+    expect(descriptor.hint).toBeNull();
+    // The menu is the configured table, not a hard-coded copy.
+    expect(descriptor.options).toEqual(scene.state.config.loanOptions);
+  });
+
+  it('forwards `enabled: false` / `loans-disabled` when config.loansEnabled is false', () => {
+    const { scene, tcCtx } = makeHarness();
+    scene.state.config = { ...scene.state.config, loansEnabled: false };
+
+    finishTurnPresentation(tcCtx, makeResult(), false);
+
+    const [, , descriptor] = scene.showTurnSummaryDialog.mock.calls[0];
+    expect(descriptor.enabled).toBe(false);
+    expect(descriptor.reason).toBe('loans-disabled');
+    expect(descriptor.options).toEqual([]);
+  });
+
+  it('evaluates the acting seat, not seat 0 (the live active-player id)', () => {
+    const { scene, tcCtx } = makeHarness();
+    scene.state.activePlayerId = 1;
+    scene.state.loans = [
+      { ownerId: 1, perTurnRepayment: 110, turnsRemaining: 4 },
+    ];
+
+    finishTurnPresentation(tcCtx, makeResult(), false);
+
+    const [, , descriptor] = scene.showTurnSummaryDialog.mock.calls[0];
+    // Seat 1 owes 110/week for 4 more weeks, so its affordance is blocked.
+    expect(descriptor.enabled).toBe(false);
+    expect(descriptor.reason).toBe('active-loan');
+    expect(descriptor.activeLoan).toEqual({ perTurnRepayment: 110, turnsRemaining: 4 });
+  });
+
+  it('still presents the dialog when the descriptor cannot be built (never strands)', () => {
+    const { scene, tcCtx } = makeHarness();
+    // A hand-built/legacy state with no config: the descriptor build throws, the
+    // dialog must still appear rather than stalling the deferred closing.
+    delete (scene.state as { config?: unknown }).config;
+
+    finishTurnPresentation(tcCtx, makeResult(), false);
+
+    expect(scene.showTurnSummaryDialog).toHaveBeenCalledTimes(1);
+    const [, onNextTurn, descriptor] = scene.showTurnSummaryDialog.mock.calls[0];
+    expect(descriptor).toBeUndefined();
+    onNextTurn();
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
   });
 });
