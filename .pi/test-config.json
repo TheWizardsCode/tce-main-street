@@ -157,6 +157,17 @@
         "core/src/ui/SettingsButton.ts"
       ]
     },
+    "event-choice-dialogs-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/event-choice-dialog.browser.test.ts tests/main-street/event-choice-dialog-slice.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/event-choice-dialog.browser.test.ts",
+        "tests/main-street/event-choice-dialog-slice.browser.test.ts",
+        "src/MainStreetStoryline.ts",
+        "src/MainStreetStorylineContentAdapter.ts"
+      ]
+    },
     "webgl-clipping-browser": {
       "commands": [
         "npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts"
