@@ -211,6 +211,7 @@ export {
   canTakeLoan,
   debitLoanRepayment,
   declineLoanOffer,
+  isDeferredClosingPause,
   largestBailoutOption,
   maybeOfferBailout,
   maybeOfferBailoutForSeat,
@@ -221,6 +222,7 @@ export {
 } from './MainStreetLoans';
 
 export type { ActiveLoan, LoanOption, PendingLoanOffer } from './MainStreetStateTypes';
+export type { TakeLoanOptions } from './MainStreetLoans';
 
 // ── Re-exports kept for convenience (tests/consumers import these from the engine) ──
 export { reputationCoinMultiplier, applyReputationMultiplier } from './MainStreetDifficulty';

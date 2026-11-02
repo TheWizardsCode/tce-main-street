@@ -19,6 +19,7 @@ import {
   largestBailoutOption,
   loanOwnerId,
   optionsFor,
+  type TakeLoanOptions,
 } from './MainStreetLoans';
 import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
@@ -1377,6 +1378,11 @@ export function letGoStaffAction(state: MainStreetState, idx: number): void {
  * @param state       Current game state (mutated in-place on success).
  * @param optionIndex Index into `config.loanOptions`.
  * @param ownerId     Borrowing seat (defaults to the active seat).
+ * @param opts        Optional {@link TakeLoanOptions}. Without
+ *                    `allowDuringClosing` the `MarketPhase`-only precondition
+ *                    is unchanged; with it, a take is also legal while the
+ *                    closing is paused at the Turn Summary gate
+ *                    (MS-0MVXYCIU00053HL1).
  * @returns The recorded {@link ActiveLoan}.
  * @throws Error with a user-facing reason when the loan is refused.
  */
@@ -1384,8 +1390,9 @@ export function takeLoan(
   state: MainStreetState,
   optionIndex: number,
   ownerId?: number,
+  opts?: TakeLoanOptions,
 ): ActiveLoan {
-  const legality = canTakeLoan(state, optionIndex, ownerId);
+  const legality = canTakeLoan(state, optionIndex, ownerId, opts);
   if (!legality.legal) {
     throw new Error(legality.reason);
   }

@@ -177,6 +177,49 @@ export function buildActiveLoan(
 }
 
 /**
+ * Opt-in flags for a loan-taking attempt (`canTakeLoan` / `takeLoan` / the
+ * reversible `takeLoanCommand`).
+ *
+ * The only flag is the deferred-closing window opt-in: the `MarketPhase`-only
+ * precondition is the *default* for every caller, so a loan can never be taken
+ * mid-closing by accident — the Turn Summary dialog passes the flag
+ * explicitly because it is the surface that owns the pause.
+ */
+export interface TakeLoanOptions {
+  /**
+   * Permit the take while the acting seat's own closing is paused awaiting the
+   * Turn Summary gate ({@link isDeferredClosingPause}), instead of requiring
+   * `MarketPhase`.
+   *
+   * Every other rule still applies unchanged (loans enabled, one active loan,
+   * a resolvable seat, an existing option and no unresolved offer for that
+   * seat), so the flag relaxes the phase precondition and nothing else.
+   */
+  allowDuringClosing?: boolean;
+}
+
+/**
+ * Whether the state is parked in the deferred-closing pause — the window
+ * between `processEndOfTurn`'s closing and the day advancing.
+ *
+ * The Turn Summary gate (`presentTurnSummaryGate`) runs in that window, before
+ * `advanceTurn` resumes `finishDeferredTurnClosing()`, so `state.phase` has
+ * already left `MarketPhase` (a deferred closing rests in `IncidentPhase`;
+ * other closings pause on `EndCheck`). This predicate names the window once so
+ * the loan eligibility rule and the dialog share a single definition
+ * (MS-0MVXYCIU00053HL1).
+ *
+ * A finished game is never in the window: the day cannot be resumed, so no
+ * loan can be booked against it.
+ *
+ * @param state Current game state (never mutated).
+ */
+export function isDeferredClosingPause(state: MainStreetState): boolean {
+  if (state.gameResult !== 'playing') return false;
+  return state.phase === 'IncidentPhase' || state.phase === 'EndCheck';
+}
+
+/**
  * Validates a loan-taking attempt against every rule without mutating state.
  *
  * Returns `{ legal: true }` when the seat may take a loan by choosing the
@@ -185,22 +228,32 @@ export function buildActiveLoan(
  * change (the caller refuses before any mutation).
  *
  * Rules enforced (parent Q1 = A; this slice's ACs):
- * - the game is still playing and the phase is MarketPhase;
+ * - the game is still playing and the phase is MarketPhase — or, when the
+ *   caller opts in via `allowDuringClosing`, the deferred-closing pause
+ *   ({@link isDeferredClosingPause});
  * - loans are enabled in the config;
  * - the seat does not already hold an active loan;
  * - the chosen option exists in `config.loanOptions`;
  * - the seat has no unresolved pending loan offer (bailout must decide
  *   first, so a pending offer is never stacked or queued — Q1/A).
+ *
+ * @param state       Current game state (never mutated).
+ * @param optionIndex Index into `config.loanOptions`.
+ * @param ownerId     Borrowing seat (defaults to the active seat).
+ * @param opts        Optional {@link TakeLoanOptions} — the explicit
+ *                    closing-window opt-in.
  */
 export function canTakeLoan(
   state: MainStreetState,
   optionIndex: number,
   ownerId?: number,
+  opts?: TakeLoanOptions,
 ): import('@rule-engine').LegalityResult {
   if (state.gameResult !== 'playing') {
     return { legal: false, reason: 'The game is over; no more loans can be taken.' };
   }
-  if (state.phase !== 'MarketPhase') {
+  const closingWindowOpen = opts?.allowDuringClosing === true && isDeferredClosingPause(state);
+  if (state.phase !== 'MarketPhase' && !closingWindowOpen) {
     return { legal: false, reason: `Loans can only be taken during the market phase, not ${state.phase}.` };
   }
   if (!state.config.loansEnabled) {
