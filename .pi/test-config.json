@@ -139,6 +139,20 @@
         "tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
       ]
     },
+    "help-settings-panels-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/HelpSettingsButtons.browser.test.ts tests/main-street/HelpPanelLayering.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/HelpSettingsButtons.browser.test.ts",
+        "tests/main-street/HelpPanelLayering.browser.test.ts",
+        "tests/main-street/helpers/panelPixelProbe.ts",
+        "core/src/ui/HelpPanel.ts",
+        "core/src/ui/SettingsPanel.ts",
+        "core/src/ui/HelpButton.ts",
+        "core/src/ui/SettingsButton.ts"
+      ]
+    },
     "webgl-clipping-browser": {
       "commands": [
         "npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts"
