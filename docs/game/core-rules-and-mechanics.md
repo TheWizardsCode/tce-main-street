@@ -277,7 +277,17 @@ re-balancing is an edit rather than a code change).
 
 - **No action cost.** Taking a loan is not an action-type operation: it never decrements
   the weekly action budget or the banked reserve (§6.0). The `takeLoan` command is
-  legal in the **MarketPhase** only.
+  legal in the **MarketPhase**, and — through the explicit `allowDuringClosing` opt-in
+  only — during the acting seat's own deferred-closing pause (the End of Turn summary
+  window, MS-0MVXYCIU00053HL1). Every other rule in this section still applies there.
+- **Two entry points.** Mid-game, the **[ Bank Loan ]** button on the End of Turn
+  summary opens the loan selector: one row per `config.loanOptions` entry with its
+  per-turn and total repayment, plus Cancel. The button is enabled only when
+  `config.loansEnabled` is `true` and the seat holds no active loan; otherwise it is
+  disabled with a reason-specific hint (loans disabled, no configured options, or the
+  outstanding obligation). Taking a loan there costs no action point and does not
+  advance the day — **[ Next Turn ]** remains the only way to resume the closing. The
+  bailout dialog below is the second entry point.
 - **One active loan per player.** A seat that already holds an active loan cannot take
   or accept another; the attempt is rejected with a clear, user-facing reason and no
   resource change. Debt never stacks.
@@ -294,9 +304,10 @@ re-balancing is an edit rather than a code change).
   repayment, and while the loan is active the HUD shows what is still owed —
   `Loan: 110 coins/turn, 6 turns left` (compact `Loan: 110/turn, 6 left` on the
   competitive scoreboard) — so the debt burden is never hidden.
-- **First instalment timing.** A bailout loan accepted during a closing pays its first
-  instalment on the **next** turn, so accepting a bailout can never immediately
-  re-bankrupt the seat it just rescued.
+- **First instalment timing.** A loan accepted during a closing — the bailout offer,
+  or the End of Turn summary's mid-game selector — pays its first instalment on the
+  **next** turn, so accepting a loan can never immediately re-bankrupt the seat it
+  just rescued.
 - **The offer states the shortfall.** The bailout dialog names the exact amount the
   seat is short of this turn's costs (`max(0, -coins)` on the balance the bankruptcy
   test used — the projected closing balance on the deferred path), snapshotted on the

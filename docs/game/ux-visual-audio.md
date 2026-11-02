@@ -1150,12 +1150,20 @@ condensed text-only summary.
   reputation / score change and the closing coin / reputation / score
   balances. The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
   whose availability comes from the Phaser-free loans descriptor
-  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7): interactive with
-  no hint line exactly when the acting seat may borrow, otherwise muted and
-  inert with a reason-specific hint (loans disabled / no configured options /
-  the seat's outstanding obligation — `Loan: 110 coins/turn, 4 turns left`)
-  (MS-0MVXYCJCK006UE62). Pressing the enabled button opens the mid-game loan
-  selector below; the day still advances only on **[ Next Turn ]**.
+  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7). The
+  **enabled/disabled matrix** is strictly two-way:
+  - **Enabled** — normal colour, clickable, `UI_CLICK` SFX and no hint line —
+    only when `config.loansEnabled` is `true` **and** the acting seat holds no
+    active loan.
+  - **Disabled** — muted, `input` disabled and inert — in every other case,
+    with a reason-specific hint naming the cause: loans disabled in this game,
+    no configured `config.loanOptions`, or the seat's outstanding obligation
+    (`Loan: 110 coins/turn, 4 turns left`) (MS-0MVXYCJCK006UE62).
+
+  Pressing the enabled button opens the mid-game loan selector below.
+  **[ Next Turn ]** remains the only way to resume the deferred closing, so
+  the day still advances only on that click. No descriptor (a hand-built /
+  legacy state) means disabled with no hint, because no reason is known.
   `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
   overlay manager (headless), continues the closing instead of stranding the
   turn.
@@ -1197,9 +1205,10 @@ condensed text-only summary.
   alternative action's label and the handler it calls — `[ Decline — end the
   run ]` (red, bailout) versus the neutral `[ Cancel ]` (select).
 - Model: `src/scenes/MainStreetLoanSelectorModel.ts` (pure, no Phaser import) —
-  `buildLoanSelectorModel(state)` builds one row per `config.loanOptions` entry
-  through the **same** `buildLoanRows()` builder as the bailout dialog, so the
-  per-turn/total repayment figures and labels are identical for the same menu.
+  `buildLoanSelectorModel(state)` builds **one row per `config.loanOptions`
+  entry**, each showing the principal and term with its **per-turn repayment
+  and total repayment**, through the **same** `buildLoanRows()` builder as the
+  bailout dialog, so those figures and labels are identical for the same menu.
   The selector is driven by the configured menu only; `state.pendingLoanOffer`
   never leaks into it.
 - Entry point and back-out: pressing the Turn Summary dialog's enabled
@@ -1211,11 +1220,12 @@ condensed text-only summary.
 - Confirming a row (MS-0MVXYCKFE000VF76): dispatches
   `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` for the
   acting seat — the deferred-closing opt-in is required because the selector is
-  presented while the closing is paused outside `MarketPhase`. The command is
+  presented while the closing is paused outside `MarketPhase`. Taking a loan
+  **costs no action point** and **does not advance the day**: the command is
   AP-neutral and reversible (it goes through the undo manager), so
   `actionsRemaining`/`bankedActions` are untouched, `state.turn` does not move
-  and the closing is **not** resumed: the day advances only on
-  **[ Next Turn ]**. On success the Turn Summary dialog is re-rendered in place
+  and the closing is **not** resumed — the day advances only on
+  **[ Next Turn ]**, exactly once. On success the Turn Summary dialog is re-rendered in place
   from the **same** `TurnResult` (`buildTurnSummary(state, result)`) against the
   post-take state, and its loans descriptor is re-derived from the live state,
   so the freshly booked obligation appears as the disabled **[ Bank Loan ]**
