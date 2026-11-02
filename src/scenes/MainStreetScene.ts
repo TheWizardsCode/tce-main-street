@@ -1443,12 +1443,17 @@ export class MainStreetScene extends CardGameScene {
    *                          produce a descriptor) still work.
    * @param onBankLoanAction Invoked once per press of the enabled
    *                          `[ Bank Loan ]` button (MS-0MVXYCJCK006UE62).
+   * @param result            The closed turn's result the summary was built
+   *                          from; forwarded so the dialog can re-render itself
+   *                          from the same result after a mid-game loan
+   *                          (MS-0MVXYCKFE000VF76).
    */
   public showTurnSummaryDialog(
     summary: import('./MainStreetTurnSummary').TurnSummary,
     onNextTurn: () => void,
     loanDescriptor?: import('./MainStreetLoanSelectorModel').TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'turnLedger' | 'incident'>,
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showTurnSummaryDialog === 'function') {
       (this.msOverlayManager as any).showTurnSummaryDialog(
@@ -1456,6 +1461,7 @@ export class MainStreetScene extends CardGameScene {
         onNextTurn,
         loanDescriptor,
         onBankLoanAction,
+        result,
       );
     } else {
       // No overlay manager (headless/tests): continue the closing rather than

@@ -579,7 +579,10 @@ export function shouldGateTurnSummary(
  *     income-collection wait and `finalizeTurn` all run after the dialog is
  *     dismissed (AC2/AC5, MS-0MVXYCICT0051LU7). The descriptor is the one
  *     small Phaser-free object the overlay needs, so it never reaches into
- *     scene state.
+ *     scene state. The committed `result` is handed over as well, so a
+ *     mid-game loan taken from the dialog can re-render the panel from the
+ *     **same** result against the post-take state
+ *     (MS-0MVXYCKFE000VF76).
  *
  * Never stalls: a result without a ledger (competitive / hand-built), a
  * failing model build, an unbuildable loans descriptor or a scene without
@@ -621,7 +624,7 @@ export function presentTurnSummaryGate(
       loanDescriptor = buildTurnSummaryLoanDescriptor(s.state);
     } catch { /* presentation-only — never strand the closing */ }
 
-    s.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor);
+    s.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor, undefined, result);
   };
 
   // AC1: the dialog appears after ALL end-of-turn animations complete. The no-

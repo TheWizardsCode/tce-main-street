@@ -1207,16 +1207,36 @@ condensed text-only summary.
   at a time, so no Turn Summary button can be pressed behind it. `[ Cancel ]`
   dismisses the selector and re-presents the Turn Summary dialog from the same
   summary model with **no** state change (no loan, no action point, no day
-  advance). Confirming an option dispatches `takeLoan` and refreshes the dialog
-  in place (MS-0MVXYCKFE000VF76).
+  advance).
+- Confirming a row (MS-0MVXYCKFE000VF76): dispatches
+  `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` for the
+  acting seat — the deferred-closing opt-in is required because the selector is
+  presented while the closing is paused outside `MarketPhase`. The command is
+  AP-neutral and reversible (it goes through the undo manager), so
+  `actionsRemaining`/`bankedActions` are untouched, `state.turn` does not move
+  and the closing is **not** resumed: the day advances only on
+  **[ Next Turn ]**. On success the Turn Summary dialog is re-rendered in place
+  from the **same** `TurnResult` (`buildTurnSummary(state, result)`) against the
+  post-take state, and its loans descriptor is re-derived from the live state,
+  so the freshly booked obligation appears as the disabled **[ Bank Loan ]**
+  with its `Loan: <n> coins/turn, <n> turns left` hint. A refused confirm
+  (e.g. a race into an active loan) re-draws the selector with the engine's own
+  reason in an extra red line and leaves every resource untouched, because the
+  engine validates before it mutates.
+- `MainStreetTurnControllerTurnFlow.presentTurnSummaryGate()` forwards the
+  committed `TurnResult` as the dialog's fifth argument — the seam the in-place
+  refresh rebuilds from.
 - Overlay pattern: instant (no fade-in, reduced-motion safe), every element
   parented into `s.hudContainer` and tracked in `s.overlayObjects`, and never
   presented in `replayMode`.
 - Tests: `tests/main-street/turn-summary-bank-loan.browser.test.ts` (selector
   content, cancel with no state change, shared row rendering with the bailout
-  dialog, configured-menu-only content, replay/headless suppression) and the
+  dialog, configured-menu-only content, replay/headless suppression, the
+  `takeLoan` dispatch with its AP-neutral / no-day-advance rule, the in-place
+  refresh and its leak check, and the refusal path) and the
   rewritten `[ Bank Loan ]` case in
-  `tests/main-street/turn-summary-dialog.browser.test.ts`.
+  `tests/main-street/turn-summary-dialog.browser.test.ts`; the gate's
+  `TurnResult` forwarding is pinned in `tests/main-street/turn-summary-gate.test.ts`.
 
 ### Bailout loan offer dialog
 

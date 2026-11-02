@@ -1,4 +1,4 @@
-import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
+import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand, takeLoanCommand } from '../MainStreetCommands';
 import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
 import { flashError, flashConfirmation } from './MainStreetFeedback';
@@ -31,9 +31,10 @@ import {
   buildGameOverPlayerRows,
   formatEndReason,
 } from './MainStreetGameOverSummary';
-import type { TurnSummary } from './MainStreetTurnSummary';
+import { buildTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
 import {
   buildLoanSelectorModel,
+  buildTurnSummaryLoanDescriptor,
   type LoanSelectorModel,
   type TurnSummaryLoanDescriptor,
 } from './MainStreetLoanSelectorModel';
@@ -1174,13 +1175,18 @@ export class MainStreetOverlayContent {
    * @param model    The presentation model (built Phaser-free by
    *                 `buildLoanSelectorModel`).
    * @param handlers Confirm / cancel callbacks; the confirm dispatch
-   *                 (`takeLoan`) lands with MS-0MVXYCKFE000VF76.
+   *                 (`takeLoan`) is wired by `showTurnSummaryDialog`.
+   * @param error    The engine's refusal reason from a rejected confirm, or
+   *                 absent — drawn as an extra red line so the dialog can stay
+   *                 open and say why the loan was not taken
+   *                 (MS-0MVXYCKFE000VF76).
    */
   public showLoanSelectorDialog(
     model: LoanSelectorModel,
     handlers: LoanSelectorDialogHandlers,
+    error?: string | null,
   ): void {
-    renderLoanSelectorDialog(this.scene, model, handlers);
+    renderLoanSelectorDialog(this.scene, model, handlers, error);
   }
 
   /**
@@ -1207,9 +1213,22 @@ export class MainStreetOverlayContent {
    * its `select` mode, driven by the configured `config.loanOptions` menu. One
    * modal at a time — this panel is dismissed first, so no Turn Summary button
    * can be pressed behind the selector's backdrop — and closing the selector
-   * (Cancel, or an option press until the `takeLoan` dispatch lands with
-   * MS-0MVXYCKFE000VF76) re-presents this dialog from the same summary with no
-   * state change. The day still advances only on `[ Next Turn ]`.
+   * (Cancel, or a refused option) re-presents this dialog with no state change.
+   *
+   * Confirming a selector option takes the loan (MS-0MVXYCKFE000VF76):
+   * `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` runs
+   * through the undo stack (AP-neutral and reversible — no action point is
+   * spent and the day never advances), then this dialog is re-rendered from the
+   * **same** {@link result} against the post-take state, so the newly recorded
+   * obligation shows up as the disabled `[ Bank Loan ]` hint. A refusal (for
+   * example a race into an active loan) re-draws the selector with the engine's
+   * own reason and leaves every resource untouched. `[ Next Turn ]` remains the
+   * only way to resume the deferred closing either way.
+   *
+   * The initial affordance answer still arrives pre-computed through
+   * {@link loanDescriptor}; the overlay re-derives it from the live state only
+   * when it re-renders itself after a take, because that take is what changed
+   * the answer.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
@@ -1228,12 +1247,19 @@ export class MainStreetOverlayContent {
    * @param onBankLoanAction Invoked exactly once per press of the enabled
    *                          `[ Bank Loan ]` button; the loans feature hangs
    *                          its selector off this seam.
+   * @param result            The closed turn's result the summary was built
+   *                          from (`turnLedger` + `incident`). Supplied so a
+   *                          post-take refresh can rebuild the summary from the
+   *                          **same** result against the live state; absent (a
+   *                          hand-built dialog) the supplied summary is re-used
+   *                          unchanged and only the loans descriptor refreshes.
    */
   public showTurnSummaryDialog(
     summary: TurnSummary,
     onNextTurn: () => void,
     loanDescriptor?: TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
+    result?: Pick<TurnResult, 'turnLedger' | 'incident'>,
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
@@ -1421,23 +1447,101 @@ export class MainStreetOverlayContent {
         }
         if (!selector || selector.rows.length === 0) return;
 
-        /** Back to this dialog from the selector — no state change either way. */
+        /**
+         * Re-presents this dialog from the **same** result against the live
+         * state (MS-0MVXYCKFE000VF76): the summary is rebuilt with
+         * `buildTurnSummary(state, result)` and the loans descriptor is
+         * re-derived, so a loan taken in the selector shows up immediately as
+         * the disabled `[ Bank Loan ]` with its outstanding-obligation hint.
+         * Presentation-only: a failed rebuild keeps the values we were given
+         * rather than stranding the closing.
+         */
         const returnToSummary = (): void => {
-          this.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor, onBankLoanAction);
+          let nextSummary = summary;
+          if (result) {
+            try {
+              nextSummary = buildTurnSummary(s.state, result) ?? summary;
+            } catch { /* presentation-only — keep the summary we were given */ }
+          }
+          let nextDescriptor = loanDescriptor;
+          try {
+            nextDescriptor = buildTurnSummaryLoanDescriptor(s.state);
+          } catch { /* presentation-only — keep the pre-take descriptor */ }
+          this.showTurnSummaryDialog(
+            nextSummary,
+            onNextTurn,
+            nextDescriptor,
+            onBankLoanAction,
+            result,
+          );
+        };
+
+        /**
+         * Draws the mid-game selector. `error` carries the engine's own refusal
+         * reason after a rejected confirm, so the dialog stays open and says
+         * why (MS-0MVXYCKFE000VF76).
+         */
+        const openSelector = (error?: string): void => {
+          this.showLoanSelectorDialog(
+            selector!,
+            {
+              // Confirming takes the loan through the command surface — never
+              // by mutating state inline — with the deferred-closing opt-in
+              // from MS-0MVXYCIU00053HL1 (the dialog lives in that window).
+              onAccept: (optionIndex) => confirmSelection(optionIndex),
+              // Cancel closes the selector and re-presents the Turn Summary
+              // dialog with no state change (parent AC2).
+              onCancel: returnToSummary,
+            },
+            error,
+          );
+        };
+
+        /**
+         * Dispatches `takeLoanCommand` for one menu row, then refreshes in place.
+         *
+         * AP-neutral and reversible, so no action point is spent and the day
+         * never advances; the take is undoable through the shared undo manager.
+         * On success the dialog is re-rendered from the same `result` against
+         * the post-take state. On refusal the engine's reason is shown in the
+         * still-open selector and nothing in `s.state` changes.
+         */
+        const confirmSelection = (optionIndex: number): void => {
+          let refusal: string | null = null;
+          try {
+            const cmd = takeLoanCommand(s.state, optionIndex, { allowDuringClosing: true });
+            if (s.undoManager) {
+              s.undoManager.execute(cmd);
+            } else {
+              cmd.execute();
+            }
+          } catch (e) {
+            console.error('[BankLoan] Failed:', e);
+            refusal = (e as Error).message;
+          }
+
+          if (refusal !== null) {
+            // Public API contract: the engine refuses before any mutation, so
+            // there is nothing to roll back — only the reason to surface.
+            openSelector(refusal);
+            return;
+          }
+
+          // The take changed the wallet and booked an obligation: re-render the
+          // street/HUD from the post-take state and enable Undo, since the take
+          // pushed a reversible command.
+          s.refreshAll();
+          if (s.undoManager) {
+            s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+          }
+
+          returnToSummary();
         };
 
         // One modal at a time: dismiss this panel before the selector appears,
         // so no Turn Summary button can be pressed behind its backdrop.
         dismissDialog();
-        this.showLoanSelectorDialog(selector, {
-          // Confirming is where the `takeLoan` dispatch (and the in-place
-          // refresh) lands with MS-0MVXYCKFE000VF76; until then a press only
-          // closes the selector, exactly like Cancel.
-          onAccept: returnToSummary,
-          // Cancel closes the selector and re-presents the Turn Summary dialog
-          // with no state change (parent AC2).
-          onCancel: returnToSummary,
-        });
+        openSelector();
       });
     } else {
       // The muted colour above already signals unavailability; disabling input

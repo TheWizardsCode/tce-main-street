@@ -25,7 +25,9 @@
  * presented option closes that gap, an extra warning line
  * (MS-0MVZC1DAS001C8LF) — the panel chrome grows by one block for it so the
  * rows never collide. That warning is bailout-only: a mid-game selection is not
- * raised against any closing shortfall.
+ * raised against any closing shortfall. The selector uses the same extra-line
+ * slot for the engine's refusal reason when a confirm is rejected
+ * (MS-0MVXYCKFE000VF76), so the dialog can stay open and say why.
  *
  * Overlay conventions (AGENTS.md UI Best Practices), matching
  * `showEventChoiceDialog` / `showTurnSummaryDialog`:
@@ -92,6 +94,12 @@ interface LoanDialogContent {
   readonly intro: string;
   /** Bailout-only shortfall warning, or absent when there is nothing to warn. */
   readonly warning?: string | null;
+  /**
+   * The engine's own refusal reason for a rejected confirm, or absent. Present
+   * only when a mid-game confirm was refused (MS-0MVXYCKFE000VF76), so the
+   * dialog can stay open and say *why* instead of failing silently.
+   */
+  readonly error?: string | null;
   readonly rows: readonly LoanOfferRow[];
   /** Label for the single non-borrowing action (Decline / Cancel). */
   readonly alternativeLabel: string;
@@ -111,11 +119,13 @@ const PANEL_WIDTH = 640;
 /** Vertical space reserved for the title, intro and footer. */
 const PANEL_CHROME_HEIGHT = 200;
 /**
- * Extra chrome height reserved for the shortfall warning line when no
- * presented option closes the gap (MS-0MVZC1DAS001C8LF), so the extra line
- * never collides with the option rows.
+ * Extra chrome height reserved for each extra line under the intro — the
+ * shortfall warning when no presented option closes the gap
+ * (MS-0MVZC1DAS001C8LF) and the engine's refusal reason after a rejected
+ * confirm (MS-0MVXYCKFE000VF76) — so an extra line never collides with the
+ * option rows.
  */
-const WARNING_BLOCK_HEIGHT = 46;
+const EXTRA_LINE_HEIGHT = 46;
 /** Height of one option row (button + spacing). */
 const ROW_HEIGHT = 40;
 
@@ -159,10 +169,14 @@ function renderLoanDialog(
 
   const optionCount = content.rows.length;
   const rowCount = Math.max(optionCount, 1);
-  // The intro states the shortfall; when no option covers it an extra warning
-  // line is drawn below the intro and the chrome grows to make room.
-  const warningOffset = content.warning ? WARNING_BLOCK_HEIGHT : 0;
-  const panelH = PANEL_CHROME_HEIGHT + warningOffset + rowCount * ROW_HEIGHT;
+  // Extra lines under the intro: the bailout's "none of these loans is enough"
+  // warning and the selector's engine-refusal reason. Each grows the chrome by
+  // one block so no line collides with the option rows.
+  const extraLines = [content.warning, content.error].filter(
+    (line): line is string => typeof line === 'string' && line.length > 0,
+  );
+  const extraOffset = extraLines.length * EXTRA_LINE_HEIGHT;
+  const panelH = PANEL_CHROME_HEIGHT + extraOffset + rowCount * ROW_HEIGHT;
   const panelY = s.layout.gameH / 2 - panelH / 2;
   const centerX = s.layout.gameW / 2;
 
@@ -206,15 +220,16 @@ function renderLoanDialog(
     lineSpacing: 4,
   });
 
-  // "None of these loans is enough" warning, only when every presented option
-  // still leaves the seat below zero (the run ends regardless of the choice).
-  if (content.warning) {
-    addText(panelY + 100, content.warning, {
+  // The extra lines, in red: the "none of these loans is enough" warning (only
+  // when every presented option still leaves the seat below zero) and the
+  // engine's refusal reason for a rejected mid-game confirm.
+  extraLines.forEach((line, index) => {
+    addText(panelY + 100 + index * EXTRA_LINE_HEIGHT, line, {
       fontSize: '13px',
       color: '#ff8888',
       lineSpacing: 4,
     });
-  }
+  });
 
   /** Dismisses the whole overlay and releases the tracked objects. */
   const dismiss = (): void => {
@@ -230,7 +245,7 @@ function renderLoanDialog(
     const btn = createOverlayButton(
       s,
       centerX,
-      panelY + 110 + warningOffset + index * ROW_HEIGHT,
+      panelY + 110 + extraOffset + index * ROW_HEIGHT,
       row.label,
       201,
       { fontSize: '14px', color: '#aaddff', hoverColor: '#cceeff' },
@@ -251,7 +266,7 @@ function renderLoanDialog(
   const alternativeBtn = createOverlayButton(
     s,
     centerX,
-    panelY + 110 + warningOffset + rowCount * ROW_HEIGHT,
+    panelY + 110 + extraOffset + rowCount * ROW_HEIGHT,
     content.alternativeLabel,
     201,
     { fontSize: '14px', ...alternativeStyle },
@@ -264,7 +279,7 @@ function renderLoanDialog(
   });
   s.overlayObjects.push(alternativeBtn);
 
-  addText(panelY + 126 + warningOffset + rowCount * ROW_HEIGHT, content.footer, {
+  addText(panelY + 126 + extraOffset + rowCount * ROW_HEIGHT, content.footer, {
     fontSize: '12px',
     color: '#999988',
   });
@@ -312,11 +327,15 @@ export function showLoanOfferDialog(
  * @param s        The Main Street scene.
  * @param model    The presentation model from {@link buildLoanSelectorModel}.
  * @param handlers Resolution callbacks (confirm / cancel).
+ * @param error    The engine's refusal reason when a confirm was rejected
+ *                 (MS-0MVXYCKFE000VF76): drawn as an extra red line so the
+ *                 re-presented dialog says why it did not take the loan.
  */
 export function showLoanSelectorDialog(
   s: any,
   model: LoanSelectorModel,
   handlers: LoanSelectorDialogHandlers,
+  error?: string | null,
 ): void {
   renderLoanDialog(
     s,
@@ -324,6 +343,7 @@ export function showLoanSelectorDialog(
     {
       title: model.title,
       intro: model.intro,
+      error: error ?? null,
       rows: model.rows,
       alternativeLabel: model.cancelLabel,
       footer: model.footer,

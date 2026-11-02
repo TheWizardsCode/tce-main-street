@@ -169,16 +169,21 @@ describe('Turn Summary gate in finishTurnPresentation (MS-0MVP46Q8X003419R)', ()
   it('AC1 — deferred single-player presents the dialog and holds the next day until [ Next Turn ]', () => {
     const { scene, tcCtx } = makeHarness();
 
-    finishTurnPresentation(tcCtx, makeResult(), false);
+    const result = makeResult();
+    finishTurnPresentation(tcCtx, result, false);
 
     // The dialog appears once, after the closing presentation.
     expect(scene.showTurnSummaryDialog).toHaveBeenCalledTimes(1);
-    const [summary, onNextTurn] = scene.showTurnSummaryDialog.mock.calls[0];
+    const [summary, onNextTurn, , , forwardedResult] =
+      scene.showTurnSummaryDialog.mock.calls[0];
     // The summary flows through the real model (wired content, not a stub).
     expect(summary.turn).toBe(7);
     expect(summary.net.coins).toBe(-10);
     expect(summary.closing.coins).toBe(990);
     expect(summary.humanOwner?.businessesOwned).toBe(3);
+    // MS-0MVXYCKFE000VF76: the same committed result is forwarded, so a
+    // mid-game loan taken from the dialog can re-render the panel from it.
+    expect(forwardedResult).toBe(result);
 
     // The next day must NOT have started yet.
     expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
