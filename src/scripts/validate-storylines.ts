@@ -7,7 +7,7 @@
  * wrapper (bottom of this file) runs it against the typed CSV model.
  *
  * Failure classes (hard errors — exit non-zero):
- *  - `dangling-link`   — a `hasChoices` card links to a card id that does not exist.
+ *  - `dangling-link`   — a choice card's option links to a card id that does not exist.
  *  - `unknown-target`  — a registered option successor references a missing card.
  *  - `duplicate-id`    — two templates share the same id.
  *  - `invalid-option`  — an option has an empty/duplicate label, an invalid effect
@@ -77,7 +77,7 @@ export interface StorylineValidationResult {
   readonly findings: readonly StorylineFinding[];
   /** True when there are no hard errors. */
   readonly valid: boolean;
-  /** Count of cards that present a choice (hasChoices or registered options). */
+  /** Count of cards that present a choice (compiled options or registry). */
   readonly choiceCardCount: number;
   /** Storyline ids observed, sorted. */
   readonly storylineIds: readonly string[];

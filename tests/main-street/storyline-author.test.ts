@@ -37,10 +37,10 @@ const AUTHOR_CLI = 'src/scripts/storyline-author-cli.ts';
 
 /** A minimal valid fixture CSV: one plain card + one two-link choice card. */
 const FIXTURE_CSV = [
-  'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId,storylineId,storylineTitle',
-  'event,evt-fx-a,Fixture A,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,A test,true,evt-fx-b,evt-fx-c,storyline-fx,Fixture Arc',
-  'event,evt-fx-b,Fixture B,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,B test,,,,storyline-fx,Fixture Arc',
-  'event,evt-fx-c,Fixture C,0,,,,,,,,,1,Incident,Gain 25 coins,All,,25,0,,,,,,,,,,,,,,,,C test,,,,storyline-fx,Fixture Arc',
+  'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,options,storylineId,storylineTitle',
+  'event,evt-fx-a,Fixture A,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,A test,Accept|evt-fx-b;Reject|evt-fx-c,storyline-fx,Fixture Arc',
+  'event,evt-fx-b,Fixture B,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,B test,,storyline-fx,Fixture Arc',
+  'event,evt-fx-c,Fixture C,0,,,,,,,,,1,Incident,Gain 25 coins,All,,25,0,,,,,,,,,,,,,,,,C test,,storyline-fx,Fixture Arc',
 ].join('\n') + '\n';
 
 function makeSpec(overrides: Partial<AddCardSpec> = {}): AddCardSpec {
@@ -86,6 +86,57 @@ describe('AC3 — CSV parse/serialise round-trip', () => {
   });
 });
 
+// ── AC4: shipped-CSV round-trip idempotence ─────────────────
+
+describe('AC4 — shipped CSV round-trip is byte-identical and legacy-free', () => {
+  const SHIPPED_CSVS = [
+    'src/card-data.csv',
+    'packs/main-street/main-street-residential-pack/cards.csv',
+  ];
+
+  /**
+   * The shipped CSV schema after the migration: the legacy three-column block
+   * is gone and nothing else was reordered (the `options` encoding now sits
+   * directly after `art_notes`, in the removed block's slot).
+   */
+  const EXPECTED_HEADER = (
+    'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,' +
+    'reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,' +
+    'trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,' +
+    'effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,' +
+    'requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,' +
+    'refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,' +
+    'purchaseCostDiscount,art_notes,options,availableWeekStart,availableWeekEnd,' +
+    'allowedBusinessTypes,coinPercentDelta,taxAuditRate,storylineId,' +
+    'storylineTitle,unitTestStatus,unitTestFailReason,browserTestStatus,' +
+    'browserTestFailReason,marketRelevanceBias,freeMarketRerollPerTurn,' +
+    'drawWeight,piggybackable'
+  ).split(',');
+
+  for (const relPath of SHIPPED_CSVS) {
+    it(`${relPath}: parse → serialise is lossless with the migrated header`, () => {
+      const csv = fs.readFileSync(path.join(PROJECT_ROOT, relPath), 'utf-8');
+      const parsed = parseCsv(csv);
+
+      expect(parsed.header).toEqual(EXPECTED_HEADER);
+      expect(serializeCsv(parsed)).toBe(csv);
+    });
+  }
+
+  it('a no-op link on a shipped card rewrites it byte-identically', () => {
+    const abs = path.join(PROJECT_ROOT, 'src/card-data.csv');
+    const csv = fs.readFileSync(abs, 'utf-8');
+    const parsed = parseCsv(csv);
+    const row = parsed.rows.find((r) => r[parsed.header.indexOf('id')] === 'evt-tax')!;
+    const options = row[parsed.header.indexOf('options')];
+    expect(options).not.toBe('');
+
+    const result = linkCard(csv, { id: 'evt-tax', options });
+    expect(result.ok, result.errors.join('; ')).toBe(true);
+    expect(result.csv).toBe(csv);
+  });
+});
+
 // ── AC1: add-card ───────────────────────────────────────────
 
 describe('AC1 — add-card', () => {
@@ -122,12 +173,10 @@ describe('AC1 — add-card', () => {
     }
   });
 
-  it('can add a choice card with links and storyline metadata', () => {
+  it('can add a choice card with an options encoding and storyline metadata', () => {
     const result = addCard(FIXTURE_CSV, makeSpec({
       id: 'evt-fx-choice',
-      hasChoices: true,
-      acceptNextCardId: 'evt-fx-b',
-      rejectNextCardId: 'evt-fx-c',
+      options: 'Accept|evt-fx-b;Reject|evt-fx-c',
       storylineId: 'storyline-fx',
       storylineTitle: 'Fixture Arc',
     }));
@@ -139,23 +188,20 @@ describe('AC1 — add-card', () => {
 // ── AC1: link ───────────────────────────────────────────────
 
 describe('AC1 — link', () => {
-  it('sets accept/reject links and marks the card as a choice', () => {
+  it("sets the options encoding that links the card's successors", () => {
     // First add an unlinked card, then link it.
     const added = addCard(FIXTURE_CSV, makeSpec({ id: 'evt-fx-link' }));
     expect(added.ok).toBe(true);
 
     const linked = linkCard(added.csv, {
       id: 'evt-fx-link',
-      acceptNextCardId: 'evt-fx-b',
-      rejectNextCardId: 'evt-fx-c',
+      options: 'Accept|evt-fx-b;Reject|evt-fx-c',
     });
     expect(linked.ok, linked.errors.join('; ')).toBe(true);
 
     const parsed = parseCsv(linked.csv);
     const row = parsed.rows.find((r) => r[parsed.header.indexOf('id')] === 'evt-fx-link')!;
-    expect(row[parsed.header.indexOf('hasChoices')]).toBe('true');
-    expect(row[parsed.header.indexOf('acceptNextCardId')]).toBe('evt-fx-b');
-    expect(row[parsed.header.indexOf('rejectNextCardId')]).toBe('evt-fx-c');
+    expect(row[parsed.header.indexOf('options')]).toBe('Accept|evt-fx-b;Reject|evt-fx-c');
     expect(validate(linked.csv).valid).toBe(true);
   });
 
@@ -172,16 +218,16 @@ describe('AC1 — link', () => {
   });
 
   it('refuses an unknown card id', () => {
-    const result = linkCard(FIXTURE_CSV, { id: 'evt-nope', acceptNextCardId: 'evt-fx-b' });
+    const result = linkCard(FIXTURE_CSV, { id: 'evt-nope', options: 'Accept|evt-fx-b' });
     expect(result.ok).toBe(false);
     expect(result.errors.join(' ')).toContain('not found');
     expect(result.csv).toBe(FIXTURE_CSV);
   });
 
-  it('refuses a link target that does not exist', () => {
-    const result = linkCard(FIXTURE_CSV, { id: 'evt-fx-b', acceptNextCardId: 'evt-missing' });
+  it('refuses an options encoding whose candidate does not exist', () => {
+    const result = linkCard(FIXTURE_CSV, { id: 'evt-fx-b', options: 'Accept|evt-missing' });
     expect(result.ok).toBe(false);
-    expect(result.errors.join(' ')).toContain('does not exist');
+    expect(result.errors.join(' ')).toContain('evt-missing');
     expect(result.csv).toBe(FIXTURE_CSV);
   });
 });
@@ -192,8 +238,7 @@ describe('AC2 — self-validating, no partial write', () => {
   it('refuses an add that introduces a dangling link', () => {
     const result = addCard(FIXTURE_CSV, makeSpec({
       id: 'evt-fx-bad',
-      hasChoices: true,
-      acceptNextCardId: 'evt-nowhere',
+      options: 'Accept|evt-nowhere',
     }));
     expect(result.ok).toBe(false);
     expect(result.errors.join(' ')).toContain('evt-nowhere');
@@ -207,7 +252,7 @@ describe('AC2 — self-validating, no partial write', () => {
       fs.writeFileSync(file, FIXTURE_CSV, 'utf-8');
 
       const result = applyToFile(file, (csv) =>
-        addCard(csv, makeSpec({ id: 'evt-fx-bad', hasChoices: true, acceptNextCardId: 'evt-nowhere' })),
+        addCard(csv, makeSpec({ id: 'evt-fx-bad', options: 'Accept|evt-nowhere' })),
       );
 
       expect(result.ok).toBe(false);
@@ -241,7 +286,7 @@ describe('AC2 — self-validating, no partial write', () => {
       expect(add.command).toBe('add-card');
       expect((add.spec as AddCardSpec).id).toBe('x');
     }
-    const link = parseAuthorArgs(['link', '--id', 'x', '--accept-next', 'y']);
+    const link = parseAuthorArgs(['link', '--id', 'x', '--options', 'Accept|y']);
     expect('error' in link).toBe(false);
     if (!('error' in link)) expect(link.command).toBe('link');
     expect(parseAuthorArgs(['bogus'])).toHaveProperty('error');
@@ -346,7 +391,7 @@ describe('AC1/AC2 — authoring CLI via vite-node (fixture file)', { timeout: 60
     const file = writeFixture('link.csv');
     // Add then link.
     runAuthor(['add-card', '--id', 'evt-cli-link', '--name', 'CLI Link', '--effect', 'Lose 5 coins', '--csv', file]);
-    const res = runAuthor(['link', '--id', 'evt-cli-link', '--accept-next', 'evt-fx-b', '--reject-next', 'evt-fx-c', '--csv', file]);
+    const res = runAuthor(['link', '--id', 'evt-cli-link', '--options', 'Accept|evt-fx-b;Reject|evt-fx-c', '--csv', file]);
     expect(res.exitCode).toBe(0);
     const after = fs.readFileSync(file, 'utf-8');
     expect(after).toContain('evt-cli-link');
@@ -358,7 +403,7 @@ describe('AC1/AC2 — authoring CLI via vite-node (fixture file)', { timeout: 60
     const before = fs.readFileSync(file, 'utf-8');
     const res = runAuthor([
       'add-card', '--id', 'evt-cli-bad', '--name', 'Bad', '--effect', 'Lose 5 coins',
-      '--has-choices', '--accept-next', 'evt-nowhere', '--csv', file,
+      '--options', 'Accept|evt-nowhere', '--csv', file,
     ]);
     expect(res.exitCode).not.toBe(0);
     expect(res.stderr).toContain('evt-nowhere');

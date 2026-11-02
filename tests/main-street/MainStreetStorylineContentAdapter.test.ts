@@ -73,9 +73,6 @@ describe('MainStreetStorylineContentAdapter', () => {
       name: 'name',
       effect: 'effect',
       options: 'options',
-      hasChoices: 'hasChoices',
-      acceptNextCardId: 'acceptNextCardId',
-      rejectNextCardId: 'rejectNextCardId',
       storylineId: 'storylineId',
       storylineTitle: 'storylineTitle',
     });
@@ -191,8 +188,8 @@ describe('MainStreetStorylineContentAdapter', () => {
     expect(byId.get('evt-tax')?.impact).toBe('−45% coins · −300 coins');
 
     expect(byId.get('evt-farm-table')?.impact).toBe('+400 coins · +65 reputation');
-    expect(byId.get('evt-general-strike')?.hasChoices).toBe(false);
-    expect(byId.get('evt-tax')?.hasChoices).toBe(true);
+    expect(byId.get('evt-general-strike')?.isChoice).toBe(false);
+    expect(byId.get('evt-tax')?.isChoice).toBe(true);
     expect(byId.get('evt-tax')?.optionCount).toBe(2);
   });
 });

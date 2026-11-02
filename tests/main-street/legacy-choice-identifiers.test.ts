@@ -118,28 +118,11 @@ export interface LegacyMatch {
 export const LEGACY_ALLOWLIST: Readonly<
   Record<string, readonly LegacyIdentifier[]>
 > = {
-  // --- Slice 2: content, adapter and authoring tools (MS-0MVZNRA85009L01U)
-  'src/card-data.csv': ['acceptNextCardId', 'hasChoices', 'rejectNextCardId'],
-  'src/MainStreetMonteCarlo.ts': ['acceptNextCardId', 'rejectNextCardId'],
-  'src/MainStreetStorylineContentAdapter.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/scripts/storyline-author.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  // The graph node keeps the legacy `hasChoices` field name on its manifest
-  // nodes until the schema/manifest rename to `isChoice` (slice 4).
+  // Slice 2 (content, adapter and authoring tools, MS-0MVZNRA85009L01U) is
+  // complete: its CSVs, adapter, CLI and Monte Carlo harness carry no legacy
+  // identifier. The graph node keeps the legacy `hasChoices` field name on its
+  // manifest nodes until the schema/manifest rename to `isChoice` (slice 4).
   'src/scripts/storyline-graph.ts': ['hasChoices'],
-  'src/scripts/validate-storylines.ts': ['hasChoices'],
-  'packs/main-street/main-street-residential-pack/cards.csv': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
 
   // --- Slice 3: transcript and journal schema (MS-0MVZNRAL3000C1Z7) ------
   // The event-choice write still carries the two legacy id fields (as null)
@@ -165,16 +148,8 @@ export const LEGACY_ALLOWLIST: Readonly<
   'src/README.md': ['acceptNextCardId', 'hasChoices', 'rejectNextCardId'],
 
   // --- Tests: retired by the slice that migrates the contract they cover -
-  'tests/main-street/MainStreetStorylineContentAdapter.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/storyline-author.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
+  // The content/adapter slice tests are migrated; the doc-drift guard keeps
+  // asserting the documented columns until the docs/schema slice migrates them.
   'tests/main-street/storylines-doc-drift.test.ts': [
     'acceptNextCardId',
     'hasChoices',
