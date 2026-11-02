@@ -156,8 +156,7 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
       // loans only exist as a bailout.
       heading: 'Bank Loans',
       body:
-        'Loans credit the principal immediately and cost no action point; take one from\n' +
-        '[ Bank Loan ] on the End of Turn summary.\n' +
+        'Loans credit the principal immediately and cost no action point; take one from the [ Bank Loan ] button on the End of Turn summary.\n' +
         'Menu: choose 300 coins over 3 weeks, 600 over 6 weeks or 1000 over 10 weeks;\n' +
         'each option repays 110 coins per week (principal plus a flat 10% interest).\n' +
         'One loan at a time: repay the current loan before taking another.\n' +

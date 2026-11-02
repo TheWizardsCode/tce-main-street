@@ -123,7 +123,7 @@ describe('Bank loans rules documentation (core-rules-and-mechanics.md §5.1)', (
 describe('Bank Loans in-game help (MainStreetHelpContent.ts)', () => {
   it('names the mid-game [ Bank Loan ] entry point without contradicting the shipped rules', () => {
     const body = normalise(helpBody('Bank Loans'));
-    expect(body).toContain('[ bank loan ] on the end of turn summary');
+    expect(body).toContain('[ bank loan ] button on the end of turn summary');
     // The rules the Button must not contradict.
     expect(body).toContain('no action point');
     expect(body).toContain('one loan at a time');
