@@ -19,7 +19,16 @@
  *   {@link markChoiceResolved} — pending-choice lifecycle.
  *
  * Main Street owns only {@link recordStorylineResolution}, which writes the
- * Main Street transcript shape (a game-specific concern).
+ * Main Street transcript shape (a game-specific concern), plus a small
+ * **legacy two-way compatibility bridge** (see {@link legacyOptionList}): the
+ * core dev tip `4975f6ff` (CG-0MVZFVZK1003F8HY) removed the legacy
+ * `hasChoices` / `acceptNextCardId` / `rejectNextCardId` compilation from the
+ * generic module, but Main Street's card format still declares those columns
+ * and its public API (`compileStorylineFromEvent` / `eventHasStoryline` /
+ * `createPendingStorylineChoice`) must keep working. The bridge synthesises
+ * the same two options (Accept `apply`, Reject `skip`, no RNG draw) only when
+ * core finds no explicit options or registered list, so explicit and CSV
+ * options keep precedence unchanged.
  *
  * @module
  */
@@ -28,6 +37,38 @@ import type { EventCard, StorylineOption, CompiledStoryline } from './MainStreet
 import type { MainStreetState, PendingEventChoice } from './MainStreetStateTypes';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { getMainStreetStorylineSystem } from './MainStreetStorylineAdapter';
+
+/**
+ * True when the card declares a legacy two-way choice and no explicit option
+ * source, i.e. the case the game-side compatibility bridge covers.
+ *
+ * A non-empty CSV `options` encoding always wins (core compiles it), and
+ * registered options are found by core before this predicate is consulted, so
+ * the bridge can never shadow an authored option list.
+ */
+function isLegacyChoiceCard(event: EventCard): boolean {
+  if (event.hasChoices !== true) return false;
+  return !(event.options && event.options.trim() !== '');
+}
+
+/**
+ * The legacy two-way option list, as the pre-`4975f6ff` core compiled it:
+ * Accept applies the incident effect, Reject skips it, and each names its
+ * single successor directly (`successorId`, so no seeded draw is consumed).
+ *
+ * Kept game-side because Main Street's card format still declares the legacy
+ * columns; see the module docblock.
+ */
+function legacyOptionList(event: EventCard): StorylineOption[] {
+  return [
+    event.acceptNextCardId
+      ? { label: 'Accept', effectPolicy: 'apply', successorId: event.acceptNextCardId }
+      : { label: 'Accept', effectPolicy: 'apply' },
+    event.rejectNextCardId
+      ? { label: 'Reject', effectPolicy: 'skip', successorId: event.rejectNextCardId }
+      : { label: 'Reject', effectPolicy: 'skip' },
+  ];
+}
 
 /**
  * Pushes a chain successor card onto the incident deck.
@@ -94,14 +135,18 @@ export function parseStorylineOptionsEncoding(encoding: string): StorylineOption
  * Compiles a card's storyline into the generalised option model.
  *
  * Precedence: explicit registry options > CSV `options` encoding > legacy
- * two-way choice fields. When `state` is provided, registry options whose
- * `condition` callback returns `false` are omitted (draw-time filtering).
+ * two-way choice fields (the game-side compatibility bridge). When `state` is
+ * provided, registry options whose `condition` callback returns `false` are
+ * omitted (draw-time filtering).
  */
 export function compileStorylineFromEvent(
   event: EventCard,
   state?: MainStreetState,
 ): CompiledStoryline {
-  return getMainStreetStorylineSystem().compileStorylineFromEvent(event, state);
+  const compiled = getMainStreetStorylineSystem().compileStorylineFromEvent(event, state);
+  if (compiled.compiledOptions.length > 0) return compiled;
+  if (!isLegacyChoiceCard(event)) return compiled;
+  return { storylineId: compiled.storylineId, compiledOptions: legacyOptionList(event) };
 }
 
 /**
@@ -110,7 +155,7 @@ export function compileStorylineFromEvent(
  * option list. A bare `storylineId` is descriptive metadata, not a choice.
  */
 export function eventHasStoryline(event: EventCard): boolean {
-  return getMainStreetStorylineSystem().eventHasStoryline(event);
+  return getMainStreetStorylineSystem().eventHasStoryline(event) || isLegacyChoiceCard(event);
 }
 
 /**
@@ -121,7 +166,7 @@ export function getStorylineOptions(
   event: EventCard,
   state?: MainStreetState,
 ): StorylineOption[] {
-  return getMainStreetStorylineSystem().getStorylineOptions(event, state);
+  return compileStorylineFromEvent(event, state).compiledOptions;
 }
 
 /**
@@ -131,7 +176,7 @@ export function storylineOptionCount(
   event: EventCard,
   state?: MainStreetState,
 ): number {
-  return getMainStreetStorylineSystem().storylineOptionCount(event, state);
+  return getStorylineOptions(event, state).length;
 }
 
 // ── Resolution: apply a storyline option ─────────────────────
@@ -164,13 +209,21 @@ export function createPendingStorylineChoice(
   event: EventCard,
   state?: MainStreetState,
 ): PendingEventChoice | null {
-  // The core pending choice is structurally identical to `PendingEventChoice`;
-  // its snapshot array is mutable in practice, so the widened readonly type is
-  // safe to present as Main Street's mutable `options` field.
-  return getMainStreetStorylineSystem().createPendingStorylineChoice(
+  const pending = getMainStreetStorylineSystem().createPendingStorylineChoice(
     event,
     state,
   ) as PendingEventChoice | null;
+  if (pending) return pending;
+  // Game-side legacy bridge: core no longer recognises `hasChoices` cards, so
+  // build the pending state the pre-`4975f6ff` module produced.
+  if (!isLegacyChoiceCard(event)) return null;
+  const legacyPending: PendingEventChoice = {
+    event,
+    chosenOption: null,
+    resolved: false,
+  };
+  if (state) legacyPending.options = legacyOptionList(event);
+  return legacyPending;
 }
 
 /**
@@ -181,7 +234,9 @@ export function getPendingStorylineOptions(
   pending: PendingEventChoice,
   state?: MainStreetState,
 ): StorylineOption[] {
-  return getMainStreetStorylineSystem().getPendingStorylineOptions(pending, state);
+  const options = getMainStreetStorylineSystem().getPendingStorylineOptions(pending, state);
+  if (options.length > 0) return options;
+  return isLegacyChoiceCard(pending.event) ? legacyOptionList(pending.event) : options;
 }
 
 /**
