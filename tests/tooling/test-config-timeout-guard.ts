@@ -69,6 +69,7 @@ export const EXPECTED_GROUP_NAMES = [
   'hand-drag-post-refresh',
   'upgrade-drag-browser',
   'main-street-overlay-dialogs',
+  'help-settings-panels-browser',
   'hand-panel-browser',
   'pedestrians-scene-visibility-browser',
   'loan-hud-browser',
