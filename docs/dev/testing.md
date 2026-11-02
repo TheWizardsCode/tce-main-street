@@ -649,6 +649,11 @@ three-command full suite and every named `groups` entry in
 `EXPECTED_GROUP_NAMES`. Adding a group is therefore a two-file change — the
 config **and** the pin — and forgetting the pin fails the guard rather than
 silently shrinking the targeted-scope mechanism (`MS-0MVZGAEF6004Q8XD`).
+`event-choice-dialogs-browser` (added with its pin by
+`MS-0MVZNRBDJ001L19R`) covers the two event-choice dialog browser suites
+(`event-choice-dialog.browser.test.ts`, `event-choice-dialog-slice.browser.test.ts`);
+before that group existed they were in no group at all, so neither the pinned
+full suite nor changed scope ever selected them.
 
 ### Queue wait is separate from test time
 

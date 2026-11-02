@@ -61,6 +61,10 @@ export const EXPECTED_SUITE_COMMANDS = [
  * updating this pin, which failed the guard and was triaged as
  * MS-0MVZGAEF6004Q8XD. A concurrent fix then appended it a second time, so
  * duplicate names are rejected too (`Set` comparison in the test).
+ * `event-choice-dialogs-browser` was added the other way round — pin and config
+ * together (MS-0MVZNRBDJ001L19R) — so the two touched event-choice dialog
+ * browser suites are selectable at last: they sat in no group, so neither the
+ * pinned full suite nor changed scope ever ran them.
  */
 export const EXPECTED_GROUP_NAMES = [
   'hand-bottom-anchor-browser',
@@ -74,6 +78,7 @@ export const EXPECTED_GROUP_NAMES = [
   'pedestrians-scene-visibility-browser',
   'loan-hud-browser',
   'help-settings-panels-browser',
+  'event-choice-dialogs-browser',
   'webgl-clipping-browser',
 ] as const;
 
@@ -137,7 +142,7 @@ export function evaluateTimeoutPerCommand(config: TestConfigLike): Verdict {
 
 /**
  * Assert the config's structural invariants survive an edit to
- * `timeoutPerCommand`: the three-command full suite and all twelve named groups.
+ * `timeoutPerCommand`: the three-command full suite and all thirteen named groups.
  *
  * Returns an empty list when everything is present, otherwise one message per
  * problem found.
