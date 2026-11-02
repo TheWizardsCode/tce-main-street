@@ -7,8 +7,8 @@
  *
  * 1. Overlay pattern compliance — backdrop 199 / box 200 / elements 201,
  *    ALL elements parented into `hudContainer`.
- * 2. Button text — Accept shows "<event name> (Accept)", Reject shows
- *    "Reject" (no escalation preview).
+ * 2. Button text — one button per compiled option, labelled with the option
+ *    label (the options-only dialog contract).
  * 3. Reduced motion — the dialog appears instantly (no fade-in choreography);
  *    it is present in the HUD right after the end-of-turn pause resolves.
  *
@@ -23,6 +23,7 @@ import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import type { EventCard } from '../../src/MainStreetCards';
+import { registerStorylineOptions } from '../../src/MainStreetStoryline';
 
 // ── Boot helpers (mirrors incident-reveal.browser.test.ts) ──
 
@@ -72,7 +73,6 @@ function makeChoiceIncident(): EventCard {
     target: 'All',
     coinDelta: -40,
     reputationDelta: 0,
-    hasChoices: true,
   };
 }
 
@@ -89,6 +89,12 @@ function hudText(s: SceneWithHud, label: string): Phaser.GameObjects.Text | unde
 }
 
 function triggerChoicePause(s: SceneWithHud): void {
+  // The options-only model: a two-option node whose second option refuses the
+  // consequence (`skip` is registry-only; CSV-authored options always apply).
+  registerStorylineOptions('inc-browser-dialog-choice', [
+    { label: 'Accept', effectPolicy: 'apply' },
+    { label: 'Reject', effectPolicy: 'skip' },
+  ]);
   s.state.incidentDeck = [makeChoiceIncident()];
   (s.msTurnController as { endTurn: () => void }).endTurn();
 }
@@ -107,14 +113,14 @@ describe('Main Street event-choice dialog overlay (browser)', () => {
 
     triggerChoicePause(s);
 
-    // Accept button text = "<event name> (Accept)"; Reject = bare "Reject".
+    // One button per option, labelled with the option label.
     await waitForCondition(
-      () => Boolean(hudText(s, 'Service Workers Strike (Accept)') && hudText(s, 'Reject')),
+      () => Boolean(hudText(s, 'Accept') && hudText(s, 'Reject')),
       { timeoutMs: 12_000, label: 'dialog buttons in hud' },
     );
 
     // AC1: backdrop 199 / box 200 / elements 201, all in the HUD container.
-    const acceptBtn = hudText(s, 'Service Workers Strike (Accept)')!;
+    const acceptBtn = hudText(s, 'Accept')!;
     const rejectBtn = hudText(s, 'Reject')!;
     const titleText = hudText(s, 'Service Workers Strike')!;
     expect(acceptBtn.depth).toBe(201);
@@ -148,7 +154,7 @@ describe('Main Street event-choice dialog overlay (browser)', () => {
       timeoutMs: 4000,
       label: 'instant dialog appearance',
     });
-    expect(hudText(s, 'Service Workers Strike (Accept)')).toBeDefined();
+    expect(hudText(s, 'Accept')).toBeDefined();
 
     // Resolve via Reject: consequence refused, no resources change, and the
     // deferred closing advances the day (reduced-motion path still resolves).

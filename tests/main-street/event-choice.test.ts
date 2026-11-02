@@ -2,13 +2,14 @@
  * Engine: Event Choice Resolution Paths (CG-0MTT78RRQ0056KUZ / parent
  * CG-0MTSHG8RP008E128)
  *
- * Canonical unit-test suite for the dual-choice event engine slice, covering
- * the resolution acceptance criteria:
+ * Canonical unit-test suite for the choice-event engine slice, covering the
+ * resolution acceptance criteria over the options-only model:
  *
- *  1. Accept path — event effect applied + acceptNextCardId pushed to deck.
- *  2. Reject path — effect skipped + rejectNextCardId pushed to deck.
+ *  1. First option path — event effect applied + its successor pushed to deck.
+ *  2. Second option path — a `skip` option leaves the effect unapplied and
+ *     pushes its own successor.
  *  3. Non-choice events resolve normally (no dialog, deterministic effect).
- *  4. Chain termination — null/absent next ids end the chain cleanly.
+ *  4. Chain termination — options with no successor end the chain cleanly.
  *  5. Chain continuation — a pushed escalation card is drawn next.
  *  6. Cycle detection — chains that cycle (e.g. Tax cycle) never loop.
  *  7. pendingEventChoice state — { event, chosenOption, resolved } tracked
@@ -16,9 +17,9 @@
  *  8. processEndOfTurn deferral — an unresolved pending choice returns early
  *     (choicePending) without proceeding through the closing phases.
  *
- * The shipped card-data.csv has no `hasChoices` cards yet (content child
- * CG-0MTT7FC7A000AA58), so tests register synthetic choice + escalation
- * templates AFTER setup and force the incident deck.
+ * The shipped card-data.csv has no choice cards yet (content child
+ * CG-0MTT7FC7A000AA58), so tests load synthetic escalation templates and
+ * register their option lists through the options-only registry seam.
  *
  * @module
  */
@@ -44,24 +45,59 @@ import {
   finishDeferredEndOfTurn,
   type TurnResult,
 } from '../../src/MainStreetEngine';
+import {
+  registerStorylineOptions,
+  resetStorylineRegistry,
+} from '../../src/MainStreetStoryline';
+import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 
 // ── Synthetic CSV: a 3-step cycle + a 2-step escalation chain ──
 
-const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-tax-e1,Cycle One,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,true,,evt-tax-e2
-event,evt-tax-e2,Cycle Two,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,,true,,evt-tax-e3
-event,evt-tax-e3,Cycle Three,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,0,,,,,,,,,,,,,,,,,true,evt-tax-e1,
-event,evt-chain-a,Chain A,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,true,evt-chain-b,evt-chain-worse
-event,evt-chain-b,Chain B,0,,,,,,,,,1,Incident,Lose 75 coins,All,,-75,0,,,,,,,,,,,,,,,,,,,
-event,evt-chain-worse,Chain Worse,0,,,,,,,,,1,Incident,Lose 600 coins,All,,-600,0,,,,,,,,,,,,,,,,,,,
-event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Lose 20 coins,All,,-20,0,,,,,,,,,,,,,,,,,,,`;
+const SYNTHETIC_CSV = [
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta',
+  'event,evt-tax-e1,Cycle One,0,1,Incident,Lose 100 coins,All,-100,0',
+  'event,evt-tax-e2,Cycle Two,0,1,Incident,Lose 200 coins,All,-200,0',
+  'event,evt-tax-e3,Cycle Three,0,1,Incident,Lose 300 coins,All,-300,0',
+  'event,evt-chain-a,Chain A,0,1,Incident,Lose 50 coins,All,-50,0',
+  'event,evt-chain-b,Chain B,0,1,Incident,Lose 75 coins,All,-75,0',
+  'event,evt-chain-worse,Chain Worse,0,1,Incident,Lose 600 coins,All,-600,0',
+  'event,evt-plain,Plain Event,0,1,Incident,Lose 20 coins,All,-20,0',
+].join('\n');
+
+/**
+ * A two-option node: the first applies the event effect, the second skips it
+ * (`skip` is registry-only, which is why these fixtures use the registry seam).
+ */
+function twoWayOptions(
+  accept: string | null,
+  reject: string | null,
+): StorylineOption[] {
+  return [
+    {
+      label: 'Accept',
+      effectPolicy: 'apply',
+      ...(accept !== null ? { successorId: accept } : {}),
+    },
+    {
+      label: 'Reject',
+      effectPolicy: 'skip',
+      ...(reject !== null ? { successorId: reject } : {}),
+    },
+  ];
+}
 
 // ── Helpers ─────────────────────────────────────────────────
 
 function makeState(seed = 'event-choice-suite'): MainStreetState {
   const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
   loadTemplatesFromCsv(SYNTHETIC_CSV);
+  registerStorylineOptions('evt-tax-e1', twoWayOptions(null, 'evt-tax-e2'));
+  registerStorylineOptions('evt-tax-e2', twoWayOptions(null, 'evt-tax-e3'));
+  registerStorylineOptions('evt-tax-e3', twoWayOptions('evt-tax-e1', null));
+  registerStorylineOptions('evt-chain-a', twoWayOptions('evt-chain-b', 'evt-chain-worse'));
+  // Duration-shaped instances re-use the cycle's reject successor.
+  registerStorylineOptions('evt-dur-accept', twoWayOptions(null, 'evt-tax-e2'));
+  registerStorylineOptions('evt-dur-reject', twoWayOptions(null, 'evt-tax-e2'));
   state.phase = 'MarketPhase';
   return state;
 }
@@ -89,11 +125,12 @@ function endTurnAndPause(state: MainStreetState): TurnResult {
 
 afterEach(() => {
   resetTemplatesToDefault();
+  resetStorylineRegistry();
 });
 
-// ── AC1: Accept path ────────────────────────────────────────
+// ── AC1: first option (Accept) path ────────────────────────
 
-describe('AC1 — Accept path applies the effect and pushes acceptNextCardId', () => {
+describe('AC1 — Accept path applies the effect and pushes its successor', () => {
   it('applies the effect then adds the accept chain card to the deck', () => {
     const state = makeState();
     forceNextIncident(state, 'evt-chain-a');
@@ -104,7 +141,7 @@ describe('AC1 — Accept path applies the effect and pushes acceptNextCardId', (
 
     // Effect applied (Chain A: -50 coins).
     expect(coins(state)).toBe(coinsBefore - 50);
-    // acceptNextCardId pushed to the incident deck.
+    // The accept successor was pushed to the incident deck.
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-chain-b');
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-chain-b');
@@ -118,7 +155,8 @@ describe('AC1 — Accept path applies the effect and pushes acceptNextCardId', (
     // Reuse evt-cycle templates is not a duration; build one inline by
     // extending the deck with a duration-shaped instance.
     const template = getEventTemplates().find((c) => c.id === 'evt-tax-e1')!;
-    // A DurationEventCard variant of a choice template (hasChoices preserved).
+    // A DurationEventCard variant of a choice template (its options come from
+    // the registry entry keyed by base type id).
     const durEvent: EventCard = {
       ...template,
       id: 'evt-dur-accept-0',
@@ -138,9 +176,9 @@ describe('AC1 — Accept path applies the effect and pushes acceptNextCardId', (
   });
 });
 
-// ── AC2: Reject path ────────────────────────────────────────
+// ── AC2: second option (Reject) path ───────────────────────
 
-describe('AC2 — Reject path skips the effect and pushes rejectNextCardId', () => {
+describe('AC2 — Reject path skips the effect and pushes its successor', () => {
   it('refuses the effect but adds the (worse) reject chain card', () => {
     const state = makeState();
     forceNextIncident(state, 'evt-chain-a');
@@ -149,9 +187,9 @@ describe('AC2 — Reject path skips the effect and pushes rejectNextCardId', () 
 
     const res = resolveEventChoice(state, 'reject');
 
-    // No effect applied.
+    // No effect applied (the reject option is authored with effectPolicy skip).
     expect(coins(state)).toBe(coinsBefore);
-    // rejectNextCardId pushed instead.
+    // The reject successor was pushed instead.
     expect(res.pushedCard).not.toBeNull();
     expect(getBaseTypeId(res.pushedCard!.id)).toBe('evt-chain-worse');
     // Label token stored on the pending state (F3 AC3).
@@ -199,13 +237,12 @@ describe('AC3 — non-choice events resolve normally', () => {
     expect(state.turn).toBe(2);
   });
 
-  it('cards without the hasChoices flag behave exactly as before', () => {
+  it('cards without any option source behave exactly as before', () => {
     const state = makeState();
     const plain = getEventTemplates().find((c) => c.id === 'evt-plain')!;
-    const noFlag: EventCard = { ...plain, id: 'evt-noflag-0' };
-    delete (noFlag as { hasChoices?: boolean }).hasChoices;
+    const noOptions: EventCard = { ...plain, id: 'evt-noflag-0' };
     state.incidentDeck.length = 0;
-    state.incidentDeck.push(noFlag);
+    state.incidentDeck.push(noOptions);
     const coinsBefore = coins(state);
 
     const drawn = resolveIncident(state);
@@ -218,34 +255,20 @@ describe('AC3 — non-choice events resolve normally', () => {
 
 // ── AC4: Chain termination ──────────────────────────────────
 
-describe('AC4 — chain ends cleanly when next ids are null/absent', () => {
-  it('accept with no acceptNextCardId adds nothing', () => {
+describe('AC4 — chain ends cleanly when an option has no successor', () => {
+  it('reject with no reject successor adds nothing', () => {
     const state = makeState();
-    forceNextIncident(state, 'evt-tax-e3'); // acceptNext evt-tax-e1; rejectNext absent
+    forceNextIncident(state, 'evt-tax-e3'); // accept → evt-tax-e1; reject terminal
     endTurnAndPause(state);
-    // Reject path has NO next id → chain ends.
     const deckLen = state.incidentDeck.length;
     const res = resolveEventChoice(state, 'reject');
     expect(res.pushedCard).toBeNull();
     expect(state.incidentDeck.length).toBe(deckLen);
   });
 
-  it('reject with no rejectNextCardId adds nothing', () => {
+  it('accept with no accept successor adds nothing', () => {
     const state = makeState();
-    // evt-tax-e3: acceptNext = evt-tax-e1 (set), rejectNext absent.
-    forceNextIncident(state, 'evt-tax-e3');
-    endTurnAndPause(state);
-    const deckLen = state.incidentDeck.length;
-
-    const res = resolveEventChoice(state, 'reject');
-
-    expect(res.pushedCard).toBeNull();
-    expect(state.incidentDeck.length).toBe(deckLen);
-  });
-
-  it('accept with no acceptNextCardId adds nothing', () => {
-    const state = makeState();
-    // evt-tax-e1: acceptNext absent, rejectNext = evt-tax-e2 (set).
+    // evt-tax-e1: accept terminal, reject → evt-tax-e2.
     forceNextIncident(state, 'evt-tax-e1');
     endTurnAndPause(state);
     const deckLen = state.incidentDeck.length;
@@ -308,7 +331,7 @@ describe('AC6 — cycling chains never loop infinitely', () => {
     const result = processEndOfTurn(state);
     expect(result.choicePending).toBe(true);
 
-    resolveEventChoice(state, 'accept'); // acceptNext = evt-tax-e1
+    resolveEventChoice(state, 'accept'); // accept successor = evt-tax-e1
 
     // The cycle re-seeded: cycle-1 sits on top of the incident deck.
     expect(getBaseTypeId(state.incidentDeck[state.incidentDeck.length - 1].id)).toBe('evt-tax-e1');

@@ -91,7 +91,7 @@ describe('AC1 — named storylines surfaced', () => {
   });
 
   it('the dialog title falls back to the card name for non-storyline choices', () => {
-    const plain = makeEvent({ hasChoices: true, name: 'Plain Choice' });
+    const plain = makeEvent({ name: 'Plain Choice' });
     expect(choiceDialogTitle(plain)).toBe('Plain Choice');
     expect(choiceDialogSubtitle(plain)).toBe('');
   });
@@ -120,7 +120,7 @@ describe('AC2 — outcome feedback line', () => {
   });
 
   it('returns null for cards without a storyline (no update line)', () => {
-    expect(storyUpdateLine(makeEvent({ hasChoices: true }), 'accept', -10, 0)).toBeNull();
+    expect(storyUpdateLine(makeEvent(), 'accept', -10, 0)).toBeNull();
   });
 
   it('names a generalised multi-way option label', () => {
@@ -149,7 +149,7 @@ describe('AC2 — outcome feedback line', () => {
     const plain: EventCard = {
       family: 'event', id: 'evt-plain-choice', name: 'Plain Choice', trigger: 'Incident',
       cost: 0, effect: 'Lose 10 coins', target: 'All', coinDelta: -10, reputationDelta: 0,
-      hasChoices: true,
+      options: 'Accept|;Reject|',
     } as EventCard;
     state.phase = 'MarketPhase';
     state.incidentDeck.length = 0;

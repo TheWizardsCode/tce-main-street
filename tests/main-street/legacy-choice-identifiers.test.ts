@@ -118,36 +118,6 @@ export interface LegacyMatch {
 export const LEGACY_ALLOWLIST: Readonly<
   Record<string, readonly LegacyIdentifier[]>
 > = {
-  // --- Slice 1: runtime model options-only (MS-0MVZNR9U70068PL3) ---------
-  'src/MainStreetCardsTemplates.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/MainStreetCardsTypes.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/MainStreetEngineTurnClosing.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/MainStreetStateTypes.ts': ['hasChoices'],
-  'src/MainStreetStoryline.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/gym/GymCardIndex.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'src/scenes/MainStreetScene.ts': ['hasChoices'],
-  'src/TutorialScenario.ts': ['hasChoices'],
-
   // --- Slice 2: content, adapter and authoring tools (MS-0MVZNRA85009L01U)
   'src/card-data.csv': ['acceptNextCardId', 'hasChoices', 'rejectNextCardId'],
   'src/MainStreetMonteCarlo.ts': ['acceptNextCardId', 'rejectNextCardId'],
@@ -161,6 +131,8 @@ export const LEGACY_ALLOWLIST: Readonly<
     'hasChoices',
     'rejectNextCardId',
   ],
+  // The graph node keeps the legacy `hasChoices` field name on its manifest
+  // nodes until the schema/manifest rename to `isChoice` (slice 4).
   'src/scripts/storyline-graph.ts': ['hasChoices'],
   'src/scripts/validate-storylines.ts': ['hasChoices'],
   'packs/main-street/main-street-residential-pack/cards.csv': [
@@ -170,6 +142,9 @@ export const LEGACY_ALLOWLIST: Readonly<
   ],
 
   // --- Slice 3: transcript and journal schema (MS-0MVZNRAL3000C1Z7) ------
+  // The event-choice write still carries the two legacy id fields (as null)
+  // until the transcript schema drops them.
+  'src/MainStreetStoryline.ts': ['acceptNextCardId', 'rejectNextCardId'],
   'src/MainStreetStorylineJournal.ts': ['choiceClarityLabels'],
   'src/MainStreetTranscript.ts': ['acceptNextCardId', 'rejectNextCardId'],
 
@@ -190,45 +165,6 @@ export const LEGACY_ALLOWLIST: Readonly<
   'src/README.md': ['acceptNextCardId', 'hasChoices', 'rejectNextCardId'],
 
   // --- Tests: retired by the slice that migrates the contract they cover -
-  'tests/main-street/ai-choice.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/chain-content.test.ts': ['hasChoices'],
-  'tests/main-street/challenge-evaluation-seat-context.test.ts': ['hasChoices'],
-  'tests/main-street/event-choice-dialog.browser.test.ts': ['hasChoices'],
-  'tests/main-street/event-choice-dialog-slice.browser.test.ts': ['hasChoices'],
-  'tests/main-street/event-choice.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/main-street-engine-deltas.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/MainStreetAiEventChoice.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/MainStreetEngineEventChoice.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/MainStreetEventChoice.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/MainStreetEventChoiceUndo.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
   'tests/main-street/MainStreetStorylineContentAdapter.test.ts': [
     'acceptNextCardId',
     'hasChoices',
@@ -239,37 +175,7 @@ export const LEGACY_ALLOWLIST: Readonly<
     'hasChoices',
     'rejectNextCardId',
   ],
-  'tests/main-street/storyline-csv-options.test.ts': ['hasChoices'],
-  'tests/main-street/storyline-graph.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/storyline-model.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/storyline-player-agency.test.ts': ['hasChoices'],
-  'tests/main-street/storyline-regression-harness.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
   'tests/main-street/storylines-doc-drift.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/tutorial-banking-hint-rearm.browser.test.ts': [
-    'hasChoices',
-  ],
-  'tests/main-street/tutorial-choice-exclusion.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'tests/main-street/validate-storylines.test.ts': [
     'acceptNextCardId',
     'hasChoices',
     'rejectNextCardId',

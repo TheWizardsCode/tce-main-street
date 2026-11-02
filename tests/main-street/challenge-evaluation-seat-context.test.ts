@@ -90,7 +90,6 @@ function makeIncident(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All' as const,
     coinDelta: -10,
     reputationDelta: 0,
-    hasChoices: false,
     ...overrides,
   };
 }
@@ -188,11 +187,16 @@ describe('resolveCompetitivePendingChoice seat context (AC4)', () => {
     driveToClosing(state);
     state.activePlayerId = 1;
     state.activeChallenges = [activeChallenge('ch-foodie-row')];
-    // A legacy dual-choice incident, directly staged as unresolved.
+    // A two-option incident, directly staged as unresolved with its
+    // draw-time frozen option list (the engine reads the presented list).
     state.pendingEventChoice = {
-      event: makeIncident({ id: 'evt-choice-seat', hasChoices: true }),
+      event: makeIncident({ id: 'evt-choice-seat' }),
       chosenOption: null,
       resolved: false,
+      options: [
+        { label: 'Accept', effectPolicy: 'apply' },
+        { label: 'Reject', effectPolicy: 'skip' },
+      ],
     };
 
     const result = resolveCompetitivePendingChoice(state);

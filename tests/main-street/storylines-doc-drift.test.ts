@@ -32,7 +32,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreetCards';
-import { compileStorylineFromEvent } from '../../src/MainStreetStoryline';
+import { compileStorylineFromEvent, getStorylineOptions } from '../../src/MainStreetStoryline';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/storylines.md');
@@ -167,7 +167,7 @@ describe('AC3 — documented chains match src/card-data.csv', () => {
   it('documents every shipped choice card', () => {
     const documentedIds = new Set(parseDocumentedChains(DOC()).map((r) => r.id));
     const shippedChoiceIds = getEventTemplates()
-      .filter((t) => t.id.startsWith('evt-') && Boolean(t.hasChoices))
+      .filter((t) => t.id.startsWith('evt-') && getStorylineOptions(t).length > 0)
       .map((t) => t.id);
     expect(shippedChoiceIds.length).toBe(7);
     for (const id of shippedChoiceIds) {

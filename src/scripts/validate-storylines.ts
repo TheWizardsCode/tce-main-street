@@ -145,7 +145,7 @@ export function validateStorylines(
 
     const options = compiledOptions(card);
     if (options === null) continue;
-    const isChoice = Boolean(card.hasChoices) || options.length > 0;
+    const isChoice = options.length > 0;
     if (!isChoice) continue;
     choiceCards.push(card);
 

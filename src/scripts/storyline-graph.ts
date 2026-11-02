@@ -188,7 +188,7 @@ export function buildStorylineManifest(
     const card = byBase.get(base)!;
     if (card.storylineId) storylineIds.add(card.storylineId);
     const options = optionGetter(card);
-    const hasChoices = Boolean(card.hasChoices) || options.length > 0;
+    const hasChoices = options.length > 0;
 
     nodes.push({
       id: base,

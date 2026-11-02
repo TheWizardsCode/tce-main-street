@@ -47,8 +47,7 @@ const CSV_COLUMNS = [
   'targetBusiness', 'incomeBonus', 'synergyRangeBonus', 'requiredLevel',
   'reputationBonus', 'newDisplayName', 'ongoingCost', 'handSlotsAdded',
   'refreshCostDiscount', 'actionsPerTurn', 'peekOncePerTurn',
-  'upgradeCostDiscount', 'art_notes', 'hasChoices', 'acceptNextCardId',
-  'rejectNextCardId', 'options', 'storylineId', 'storylineTitle',
+  'upgradeCostDiscount', 'art_notes', 'options', 'storylineId', 'storylineTitle',
 ];
 
 interface CsvEventSpec {
@@ -56,10 +55,7 @@ interface CsvEventSpec {
   name?: string;
   effect?: string;
   coinDelta?: number;
-  hasChoices?: boolean;
-  acceptNextCardId?: string;
-  rejectNextCardId?: string;
-  /** Arbitrary multi-outcome `options` encoding (F4). */
+  /** `options` encoding: the only choice encoding in the model. */
   options?: string;
   storylineId?: string;
   storylineTitle?: string;
@@ -87,9 +83,6 @@ function buildCsv(events: CsvEventSpec[]): string {
       coinDelta: String(e.coinDelta ?? -10),
       reputationDelta: '0',
     };
-    if (e.hasChoices) row.hasChoices = 'true';
-    if (e.acceptNextCardId) row.acceptNextCardId = e.acceptNextCardId;
-    if (e.rejectNextCardId) row.rejectNextCardId = e.rejectNextCardId;
     if (e.options !== undefined) row.options = e.options;
     if (e.storylineId) row.storylineId = e.storylineId;
     if (e.storylineTitle) row.storylineTitle = e.storylineTitle;
@@ -143,7 +136,7 @@ afterEach(() => {
 describe('AC3 — valid fixture passes', () => {
   it('a well-formed two-option chain validates with no issues', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true, acceptNextCardId: 'evt-b', rejectNextCardId: null }),
+      makeEvent({ id: 'evt-a', options: 'Accept|evt-b;Reject|' }),
       makeEvent({ id: 'evt-b' }),
     ];
     const result = validateStorylines(cards);
@@ -154,7 +147,7 @@ describe('AC3 — valid fixture passes', () => {
 
   it('a choice card with both successor paths present validates', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true, acceptNextCardId: 'evt-b', rejectNextCardId: 'evt-c' }),
+      makeEvent({ id: 'evt-a', options: 'Accept|evt-b;Reject|evt-c' }),
       makeEvent({ id: 'evt-b' }),
       makeEvent({ id: 'evt-c' }),
     ];
@@ -164,7 +157,7 @@ describe('AC3 — valid fixture passes', () => {
 
 describe('AC3 — dangling link fails', () => {
   it('a choice card linking to a missing accept card is invalid', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true, acceptNextCardId: 'evt-missing' })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|evt-missing;Reject|' })];
     const result = validateStorylines(cards);
     expect(result.valid).toBe(false);
     const issue = result.issues.find((i) => i.kind === 'dangling-link');
@@ -175,14 +168,14 @@ describe('AC3 — dangling link fails', () => {
   });
 
   it('a choice card linking to a missing reject card is invalid', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true, rejectNextCardId: 'evt-missing' })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|evt-missing' })];
     const result = validateStorylines(cards);
     expect(result.valid).toBe(false);
     expect(result.issues.some((i) => i.kind === 'dangling-link' && i.target === 'evt-missing')).toBe(true);
   });
 
   it('an invalid option-list successor is flagged as a dangling link', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' })];
     const opts: StorylineOption[] = [
       { label: 'Go', successorId: 'evt-nope', effectPolicy: 'apply' },
     ];
@@ -194,7 +187,7 @@ describe('AC3 — dangling link fails', () => {
 
 describe('AC3 — unknown target fails', () => {
   it('a registered successor that does not exist fails validation', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' })];
     const opts: StorylineOption[] = [
       { label: 'Accept', successorId: 'evt-ghost', effectPolicy: 'apply' },
     ];
@@ -224,22 +217,15 @@ describe('AC3 — duplicate id fails', () => {
 
 describe('AC3 — invalid option fails', () => {
   it('an empty option label is invalid', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' })];
     const opts: StorylineOption[] = [{ label: '  ', successorId: null, effectPolicy: 'skip' }];
     const result = validateStorylines(cards, { getOptions: () => opts });
     expect(result.valid).toBe(false);
     expect(result.issues.some((i) => i.kind === 'invalid-option')).toBe(true);
   });
 
-  it('a choice card with zero options is invalid', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
-    const result = validateStorylines(cards, { getOptions: () => [] });
-    expect(result.valid).toBe(false);
-    expect(result.issues.some((i) => i.kind === 'invalid-option')).toBe(true);
-  });
-
   it('a duplicate label within a node is invalid and names the row/options column', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' })];
     const opts: StorylineOption[] = [
       { label: 'Accept', successorIds: ['evt-b'], effectPolicy: 'apply' },
       { label: 'accept', successorIds: ['evt-c'], effectPolicy: 'apply' },
@@ -258,7 +244,7 @@ describe('AC3 — invalid option fails', () => {
 describe('F4 — candidate successor sets (successorIds)', () => {
   it('every candidate of a successor set must resolve to a known card', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true }),
+      makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' }),
       makeEvent({ id: 'evt-b' }),
     ];
     const opts: StorylineOption[] = [
@@ -273,7 +259,7 @@ describe('F4 — candidate successor sets (successorIds)', () => {
   });
 
   it('an empty candidate set is a valid terminal option (no dangling check)', () => {
-    const cards = [makeEvent({ id: 'evt-a', hasChoices: true })];
+    const cards = [makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' })];
     const opts: StorylineOption[] = [
       { label: 'Walk away', successorIds: [], effectPolicy: 'apply' },
     ];
@@ -284,7 +270,7 @@ describe('F4 — candidate successor sets (successorIds)', () => {
 
   it('three labelled options with candidate sets validate', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true }),
+      makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' }),
       makeEvent({ id: 'evt-b' }),
       makeEvent({ id: 'evt-c' }),
       makeEvent({ id: 'evt-d' }),
@@ -301,8 +287,8 @@ describe('F4 — candidate successor sets (successorIds)', () => {
 
   it('cycle detection follows candidate successor sets', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true }),
-      makeEvent({ id: 'evt-b', hasChoices: true }),
+      makeEvent({ id: 'evt-a', options: 'Accept|;Reject|' }),
+      makeEvent({ id: 'evt-b', options: 'Accept|;Reject|' }),
     ];
     const optsA: StorylineOption[] = [{ label: 'A', successorIds: ['evt-b'], effectPolicy: 'apply' }];
     const optsB: StorylineOption[] = [{ label: 'B', successorIds: ['evt-a'], effectPolicy: 'apply' }];
@@ -370,7 +356,7 @@ describe('F4 — CSV options encoding through the typed model', () => {
 describe('AC2 — validation reuses the typed CSV parser/model', () => {
   it('validates templates parsed by the shared CSV model loader', () => {
     const csv = buildCsv([
-      { id: 'evt-model-a', hasChoices: true, acceptNextCardId: 'evt-model-b', storylineId: 'arc-1' },
+      { id: 'evt-model-a', options: 'Accept|evt-model-b;Reject|', storylineId: 'arc-1' },
       { id: 'evt-model-b', storylineId: 'arc-1' },
     ]);
     loadTemplatesFromCsv(csv);
@@ -382,7 +368,7 @@ describe('AC2 — validation reuses the typed CSV parser/model', () => {
 
   it('a broken model-loaded fixture reports the parsed card id', () => {
     const csv = buildCsv([
-      { id: 'evt-model-a', hasChoices: true, acceptNextCardId: 'evt-nowhere' },
+      { id: 'evt-model-a', options: 'Accept|evt-nowhere;Reject|' },
     ]);
     loadTemplatesFromCsv(csv);
     const result = validateStorylines(getEventTemplates());
@@ -405,8 +391,8 @@ describe('AC4 — cycles are informational by default', () => {
 
   it('an unintentional cycle is surfaced in the same report but still valid', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true, rejectNextCardId: 'evt-b' }),
-      makeEvent({ id: 'evt-b', hasChoices: true, rejectNextCardId: 'evt-a' }),
+      makeEvent({ id: 'evt-a', options: 'Accept|;Reject|evt-b' }),
+      makeEvent({ id: 'evt-b', options: 'Accept|;Reject|evt-a' }),
     ];
     const result = validateStorylines(cards);
     expect(result.valid).toBe(true);
@@ -417,8 +403,8 @@ describe('AC4 — cycles are informational by default', () => {
 
   it('with failOnCycle the same cycle becomes a hard error', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true, rejectNextCardId: 'evt-b' }),
-      makeEvent({ id: 'evt-b', hasChoices: true, rejectNextCardId: 'evt-a' }),
+      makeEvent({ id: 'evt-a', options: 'Accept|;Reject|evt-b' }),
+      makeEvent({ id: 'evt-b', options: 'Accept|;Reject|evt-a' }),
     ];
     const result = validateStorylines(cards, { failOnCycle: true });
     expect(result.valid).toBe(false);
@@ -427,7 +413,7 @@ describe('AC4 — cycles are informational by default', () => {
 
   it('a self-link is reported as a self-link finding', () => {
     const cards = [
-      makeEvent({ id: 'evt-self', hasChoices: true, acceptNextCardId: 'evt-self' }),
+      makeEvent({ id: 'evt-self', options: 'Accept|evt-self;Reject|' }),
     ];
     const result = validateStorylines(cards);
     expect(result.valid).toBe(true);
@@ -508,7 +494,7 @@ describe('AC1 — CLI exit codes via vite-node', () => {
 
   it('exits non-zero for a dangling-link fixture, naming the offending card/link', () => {
     const csv = buildCsv([
-      { id: 'evt-broken', hasChoices: true, acceptNextCardId: 'evt-nowhere' },
+      { id: 'evt-broken', options: 'Accept|evt-nowhere;Reject|' },
     ]);
     const fixture = writeFixture('dangling.csv', csv);
     const res = runValidatorCli(['--csv', fixture]);
@@ -528,8 +514,8 @@ describe('AC1 — CLI exit codes via vite-node', () => {
 
   it('exits 0 for a valid fixture with a cycle (cycle is informational)', () => {
     const csv = buildCsv([
-      { id: 'evt-cyc-a', hasChoices: true, rejectNextCardId: 'evt-cyc-b' },
-      { id: 'evt-cyc-b', hasChoices: true, rejectNextCardId: 'evt-cyc-a' },
+      { id: 'evt-cyc-a', options: 'Accept|;Reject|evt-cyc-b' },
+      { id: 'evt-cyc-b', options: 'Accept|;Reject|evt-cyc-a' },
     ]);
     const fixture = writeFixture('cycle.csv', csv);
     const res = runValidatorCli(['--csv', fixture]);
@@ -539,8 +525,8 @@ describe('AC1 — CLI exit codes via vite-node', () => {
 
   it('exits non-zero for the same cycle with --fail-on-cycle', () => {
     const csv = buildCsv([
-      { id: 'evt-cyc-a', hasChoices: true, rejectNextCardId: 'evt-cyc-b' },
-      { id: 'evt-cyc-b', hasChoices: true, rejectNextCardId: 'evt-cyc-a' },
+      { id: 'evt-cyc-a', options: 'Accept|;Reject|evt-cyc-b' },
+      { id: 'evt-cyc-b', options: 'Accept|;Reject|evt-cyc-a' },
     ]);
     const fixture = writeFixture('cycle-fail.csv', csv);
     const res = runValidatorCli(['--csv', fixture, '--fail-on-cycle']);
@@ -613,7 +599,7 @@ describe('AC6 — opt-in pre-push reminder installer', () => {
 describe('report renderers', () => {
   it('formatStorylineReport lists errors, findings and the verdict', () => {
     const cards = [
-      makeEvent({ id: 'evt-a', hasChoices: true, acceptNextCardId: 'evt-missing' }),
+      makeEvent({ id: 'evt-a', options: 'Accept|evt-missing;Reject|' }),
     ];
     const text = formatStorylineReport(validateStorylines(cards));
     expect(text).toContain('[dangling-link]');

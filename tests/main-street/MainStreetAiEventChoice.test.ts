@@ -56,11 +56,11 @@ import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 // ── Synthetic chain templates (registry lookups for severity) ──
 
 const CHAIN_CSV = [
-  'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId,options,storylineId,storylineTitle',
-  'event,evt-chain-bad,Bad Escalation,0,,,,,,,,,1,Incident,Very bad,All,,-1000,0,,,,,,,,,,,,,,,,,,,,',
-  'event,evt-chain-mid,Mid Escalation,0,,,,,,,,,1,Incident,Mid,All,,-200,0,,,,,,,,,,,,,,,,,,,,',
-  'event,evt-chain-small,Small Escalation,0,,,,,,,,,1,Incident,Small,All,,-50,0,,,,,,,,,,,,,,,,,,,,',
-  'event,evt-chain-positive,Positive Esc,0,,,,,,,,,1,Incident,Positive,All,,50,0,,,,,,,,,,,,,,,,,,,,',
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta',
+  'event,evt-chain-bad,Bad Escalation,0,1,Incident,Very bad,All,-1000,0',
+  'event,evt-chain-mid,Mid Escalation,0,1,Incident,Mid,All,-200,0',
+  'event,evt-chain-small,Small Escalation,0,1,Incident,Small,All,-50,0',
+  'event,evt-chain-positive,Positive Esc,0,1,Incident,Positive,All,50,0',
 ].join('\n');
 
 function makeEvent(overrides: Partial<EventCard> = {}): EventCard {
@@ -74,7 +74,6 @@ function makeEvent(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All',
     coinDelta: -300,
     reputationDelta: 0,
-    hasChoices: true,
     ...overrides,
   } as EventCard;
 }
@@ -102,41 +101,41 @@ describe('decideEventChoice picks the least-harmful option chain', () => {
   it('prefers a terminal option (severity 0) over any escalation', () => {
     const state = makeState('Easy');
     // Reject targets a small card; accept is terminal → accept (index 0).
-    const evt = makeEvent({ acceptNextCardId: null, rejectNextCardId: 'evt-chain-small' });
+    const evt = makeEvent({ options: 'Accept|;Reject|evt-chain-small' });
     expect(decideEventChoice(state, evt, 'Easy')).toBe(0);
 
     // Accept escalates to a big card; reject is terminal → reject (index 1).
-    const evt2 = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: null });
+    const evt2 = makeEvent({ options: 'Accept|evt-chain-bad;Reject|' });
     expect(decideEventChoice(state, evt2, 'Hard')).toBe(1);
   });
 
   it('compares chain severities across options (worst candidate drives the score)', () => {
     const state = makeState('Medium');
     // Options [Accept→bad, Reject→small]; both apply the effect → Reject (1).
-    const evt = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: 'evt-chain-small' });
+    const evt = makeEvent({ options: 'Accept|evt-chain-bad;Reject|evt-chain-small' });
     expect(decideEventChoice(state, evt, 'Medium')).toBe(1);
   });
 
   it('is deterministic and difficulty-invariant across the ladder', () => {
     const stateM = makeState('Medium');
     const stateH = makeState('Hard');
-    const evt = makeEvent({ acceptNextCardId: 'evt-chain-mid', rejectNextCardId: 'evt-chain-small' });
+    const evt = makeEvent({ options: 'Accept|evt-chain-mid;Reject|evt-chain-small' });
     const medium = decideEventChoice(stateM, evt, 'Medium');
     // Same seed ⇒ same state ⇒ same decision on Hard.
     expect(decideEventChoice(stateH, evt, 'Hard')).toBe(medium);
     expect(medium).toBe(1);
   });
 
-  it('handles missing/unknown chain templates without crashing (unknown → severity 0)', () => {
+  it('handles unknown chain templates without crashing (unknown → severity 0)', () => {
     const state = makeState('Hard', 600);
-    const evt = makeEvent({ acceptNextCardId: 'evt-chain-bad', rejectNextCardId: 'evt-missing-too' });
+    const evt = makeEvent({ options: 'Accept|evt-chain-bad;Reject|evt-missing-too' });
     // Reject's unknown candidate contributes 0 → reject (index 1) is safest.
     expect(decideEventChoice(state, evt, 'Hard')).toBe(1);
   });
 
-  it('returns 0 for a single-option or non-choice event (no crash)', () => {
+  it('returns 0 for a non-choice event (no crash)', () => {
     const state = makeState('Easy');
-    expect(decideEventChoice(state, makeEvent({ hasChoices: false }), 'Easy')).toBe(0);
+    expect(decideEventChoice(state, makeEvent(), 'Easy')).toBe(0);
   });
 });
 

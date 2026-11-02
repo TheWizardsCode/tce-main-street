@@ -88,8 +88,8 @@ afterEach(() => {
 describe('AC1 — manifest build is deterministic', () => {
   it('two builds from the same cards are deeply equal and stable-ordered', () => {
     const cards = [
-      makeEvent({ id: 'evt-b', hasChoices: true, rejectNextCardId: 'evt-c' }),
-      makeEvent({ id: 'evt-a', hasChoices: true, acceptNextCardId: 'evt-c' }),
+      makeEvent({ id: 'evt-b', options: 'Accept|;Reject|evt-c' }),
+      makeEvent({ id: 'evt-a', options: 'Accept|evt-c;Reject|' }),
       makeEvent({ id: 'evt-c' }),
     ];
     const first = buildStorylineManifest(cards);
@@ -142,8 +142,8 @@ describe('F5 — arbitrary option/successor-set graph export', () => {
     'effect','target','targetSynergy','coinDelta','reputationDelta','duration','effectType',
     'multiplier','targetBusiness','incomeBonus','synergyRangeBonus','requiredLevel',
     'reputationBonus','newDisplayName','ongoingCost','handSlotsAdded','refreshCostDiscount',
-    'actionsPerTurn','peekOncePerTurn','upgradeCostDiscount','art_notes','hasChoices',
-    'acceptNextCardId','rejectNextCardId','options','storylineId','storylineTitle',
+    'actionsPerTurn','peekOncePerTurn','upgradeCostDiscount','art_notes','options',
+    'storylineId','storylineTitle',
   ];
   const quote = (v: string): string => (/[,"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   const multiRow = (id: string, name: string, options?: string): string => {

@@ -1,16 +1,22 @@
 /**
- * Event Choice Data Model (CG-0MTT7DUJE002HPPM / parent CG-0MTSHG8RP008E128)
+ * Event Choice Data Model — options-only contract
+ * (CG-0MTT7DUJE002HPPM / parent CG-0MTSHG8RP008E128; migrated by
+ * MS-0MVZNR9U70068PL3)
  *
- * Tests for the three choice-event fields added to EventCard:
- * - hasChoices      boolean  (true => intercepts at resolution)
- * - acceptNextCardId string | null (added to incident deck on Accept)
- * - rejectNextCardId string | null (added to incident deck on Reject)
+ * The runtime model has one choice encoding: the `options` column on an
+ * `EventCard` (a CSV-authored option list) or an explicitly registered option
+ * list. This suite pins that contract at the data-model layer:
  *
- * DurationEventCard inherits them via EventCard.
- * Backward compat: missing fields => non-choice behavior (hasChoices falsy).
- *
- * CSV parsing: new columns are present in header; existing rows default to
- * empty / falsy; hasChoices==='true' is parsed as true else absent.
+ * - a card with a non-empty `options` encoding compiles to an ordered option
+ *   list; a blank / absent encoding is not a choice;
+ * - a bare `storylineId` is descriptive metadata and never makes a card a
+ *   choice;
+ * - terminal options (`label|`) compile to an empty candidate set;
+ * - multi-candidate options compile to their candidate successor set;
+ * - `DurationEventCard` inherits the same model;
+ * - CSV parsing populates `options` and ignores unknown columns, so legacy
+ *   columns left in a row cannot resurrect the removed two-way model;
+ * - the shipped CSV's seven designed chain cards are the only choice events.
  *
  * @module
  */
@@ -24,6 +30,12 @@ import {
   loadTemplatesFromCsv,
   resetTemplatesToDefault,
 } from '../../src/MainStreetCards';
+import {
+  compileStorylineFromEvent,
+  eventHasStoryline,
+  getStorylineOptions,
+  resetStorylineRegistry,
+} from '../../src/MainStreetStoryline';
 
 // ── Factories ───────────────────────────────────────────────
 
@@ -60,210 +72,158 @@ function makeDurationEventCard(overrides: Partial<DurationEventCard> = {}): Dura
   };
 }
 
-// ── Interface presence / backward compat ────────────────────
+/** Labels + candidate sets of a card's compiled options. */
+function shape(event: EventCard): Array<[string, string[]]> {
+  return getStorylineOptions(event).map((option) => [
+    option.label,
+    [...(option.successorIds ?? [])],
+  ]);
+}
 
-describe('EventCard choice fields — interface & backward compat', () => {
-  it('card without hasChoices is treated as non-choice (falsy)', () => {
+afterEach(() => {
+  resetTemplatesToDefault();
+  resetStorylineRegistry();
+});
+
+// ── Options-only choice model ───────────────────────────────
+
+describe('EventCard choice model — the options encoding is the only choice', () => {
+  it('a card without options is not a choice', () => {
     const card = makeEventCard();
-    // must not have truthy hasChoices when absent
-    expect(Boolean((card as EventCard).hasChoices)).toBe(false);
+    expect(eventHasStoryline(card)).toBe(false);
+    expect(compileStorylineFromEvent(card).compiledOptions).toEqual([]);
+    expect(shape(card)).toEqual([]);
   });
 
-  it('card with hasChoices: true is a choice event', () => {
-    const card = makeEventCard({ hasChoices: true });
-    expect(card.hasChoices).toBe(true);
+  it('a card with a CSV options encoding is a choice with an ordered option list', () => {
+    const card = makeEventCard({ options: 'Accept|evt-next;Reject|evt-later' });
+    expect(eventHasStoryline(card)).toBe(true);
+    expect(shape(card)).toEqual([
+      ['Accept', ['evt-next']],
+      ['Reject', ['evt-later']],
+    ]);
   });
 
-  it('card with hasChoices: false explicitly is not a choice event', () => {
-    const card = makeEventCard({ hasChoices: false });
-    expect(card.hasChoices).toBe(false);
-    expect(Boolean(card.hasChoices)).toBe(false);
+  it('a blank options encoding is not a choice', () => {
+    const card = makeEventCard({ options: '   ' });
+    expect(eventHasStoryline(card)).toBe(false);
+    expect(shape(card)).toEqual([]);
   });
 
-  it('acceptNextCardId null ends the chain (no card added)', () => {
-    const card = makeEventCard({ hasChoices: true, acceptNextCardId: null });
-    expect(card.acceptNextCardId).toBeNull();
+  it('a bare storylineId does not make a card a choice', () => {
+    const card = makeEventCard({ storylineId: 'storyline-economy' });
+    expect(eventHasStoryline(card)).toBe(false);
+    expect(shape(card)).toEqual([]);
   });
 
-  it('rejectNextCardId null ends the chain (no card added)', () => {
-    const card = makeEventCard({ hasChoices: true, rejectNextCardId: null });
-    expect(card.rejectNextCardId).toBeNull();
+  it('an empty candidate list is a terminal option', () => {
+    const card = makeEventCard({ options: 'Accept|;Reject|evt-worse' });
+    expect(shape(card)).toEqual([
+      ['Accept', []],
+      ['Reject', ['evt-worse']],
+    ]);
   });
 
-  it('acceptNextCardId with a card id links the chain', () => {
-    const card = makeEventCard({ hasChoices: true, acceptNextCardId: 'evt-next' });
-    expect(card.acceptNextCardId).toBe('evt-next');
+  it('a comma-separated candidate list compiles to a candidate successor set', () => {
+    const card = makeEventCard({ options: 'Fight|evt-a,evt-b;Flee|evt-c' });
+    expect(shape(card)).toEqual([
+      ['Fight', ['evt-a', 'evt-b']],
+      ['Flee', ['evt-c']],
+    ]);
   });
 
-  it('rejectNextCardId with a card id links the chain', () => {
-    const card = makeEventCard({ hasChoices: true, rejectNextCardId: 'evt-worse' });
-    expect(card.rejectNextCardId).toBe('evt-worse');
+  it('CSV-authored options always apply the event effect', () => {
+    const card = makeEventCard({ options: 'Accept|;Reject|' });
+    expect(getStorylineOptions(card).map((option) => option.effectPolicy)).toEqual([
+      'apply',
+      'apply',
+    ]);
   });
 
-  it('omitting acceptNextCardId and rejectNextCardId ends both paths', () => {
-    const card = makeEventCard({ hasChoices: true });
-    expect(card.acceptNextCardId).toBeUndefined();
-    expect(card.rejectNextCardId).toBeUndefined();
-  });
-
-  it('choice fields can differ per path (accept null, reject set)', () => {
-    const card = makeEventCard({
-      hasChoices: true,
-      acceptNextCardId: null,
-      rejectNextCardId: 'evt-escalation',
-    });
-    expect(card.acceptNextCardId).toBeNull();
-    expect(card.rejectNextCardId).toBe('evt-escalation');
+  it('a malformed options encoding is rejected at compilation, not silently ignored', () => {
+    const card = makeEventCard({ options: 'Accept' }); // no '|' separator
+    expect(() => compileStorylineFromEvent(card)).toThrow(/missing the "\|" separator/);
   });
 });
 
 // ── DurationEventCard inherits ─────────────────────────────
 
-describe('DurationEventCard inherits choice fields', () => {
-  it('DurationEventCard can carry hasChoices + next-card ids', () => {
-    const card = makeDurationEventCard({
-      hasChoices: true,
-      acceptNextCardId: null,
-      rejectNextCardId: 'evt-recession-worse',
-    });
-    expect(card.hasChoices).toBe(true);
-    expect(card.acceptNextCardId).toBeNull();
-    expect(card.rejectNextCardId).toBe('evt-recession-worse');
+describe('DurationEventCard inherits the options model', () => {
+  it('DurationEventCard can carry an options encoding and compiles it', () => {
+    const card = makeDurationEventCard({ options: 'Accept|;Reject|evt-recession-worse' });
     expect(isDurationEventCard(card)).toBe(true);
+    expect(shape(card)).toEqual([
+      ['Accept', []],
+      ['Reject', ['evt-recession-worse']],
+    ]);
   });
 
-  it('DurationEventCard without choice fields is non-choice', () => {
+  it('DurationEventCard without options is not a choice', () => {
     const card = makeDurationEventCard();
-    expect(Boolean(card.hasChoices)).toBe(false);
-    expect(card.acceptNextCardId).toBeUndefined();
-    expect(card.rejectNextCardId).toBeUndefined();
-  });
-
-  it('CSV-built DurationEventCard preserves choice fields', () => {
-    // Covered in the CSV suite below, but smoke-check the type layer here:
-    const d: DurationEventCard = makeDurationEventCard({
-      hasChoices: true,
-      rejectNextCardId: 'evt-depression',
-    });
-    const asEvent: EventCard = d; // must be assignable
-    expect(asEvent.hasChoices).toBe(true);
+    expect(eventHasStoryline(card)).toBe(false);
+    expect(shape(card)).toEqual([]);
   });
 });
 
 // ── CSV parsing ─────────────────────────────────────────────
 
-describe('CSV parsing: hasChoices / acceptNextCardId / rejectNextCardId', () => {
-  const csvWithChoices =
-    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-yes,Choice Yes,0,,,,,,,,,1,Incident,Test incident,All,,-300,0,,,,,,,,,,,,,,,,,true,evt-next-accept,evt-next-reject
-event,evt-choice-no,Choice No,0,,,,,,,,,1,Incident,Test incident 2,All,,0,0,,,,,,,,,,,,,,,,,false,,
-event,evt-plain,Plain Event,0,,,,,,,,,1,Incident,Plain incident,All,,-100,0,,,,,,,,,,,,,,,,,,,,
-event,evt-duration-choice,Duration Choice,100,,,,,,,,,1,Incident,Duration incident,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-depression
-event,evt-accept-only,Accept Only,0,,,,,,,,,1,Incident,Accept only,All,,-300,0,,,,,,,,,,,,,,,,,true,,
-event,evt-reject-only,Reject Only,0,,,,,,,,,1,Incident,Reject only,All,,-300,0,,,,,,,,,,,,,,,,,true,,evt-worse`;
+describe('CSV parsing: the options column', () => {
+  const csvWithChoices = [
+    'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,duration,effectType,multiplier,storylineId,options',
+    'event,evt-choice-yes,Choice Yes,0,1,Incident,Test incident,All,-300,0,,,,,"Accept|evt-next-accept;Reject|evt-next-reject"',
+    'event,evt-plain,Plain Event,0,1,Incident,Plain incident,All,-100,0,,,,,',
+    'event,evt-duration-choice,Duration Choice,100,1,Incident,Duration incident,All,0,0,5,income-multiplier,0.8,,"Accept|;Reject|evt-depression"',
+    'event,evt-accept-only,Accept Only,0,1,Incident,Accept only,All,-300,0,,,,,"Accept|evt-next"',
+  ].join('\n');
 
-  afterEach(() => {
-    resetTemplatesToDefault();
-  });
-
-  it('parses a choice event with both next-card ids', () => {
+  it('parses a choice event with both option labels and successors', () => {
     loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-choice-yes') as EventCard;
+    const t = getEventTemplates().find((c) => c.id === 'evt-choice-yes') as EventCard;
     expect(t).toBeDefined();
-    expect(t.hasChoices).toBe(true);
-    expect(t.acceptNextCardId).toBe('evt-next-accept');
-    expect(t.rejectNextCardId).toBe('evt-next-reject');
+    expect(t.options).toBe('Accept|evt-next-accept;Reject|evt-next-reject');
+    expect(shape(t)).toEqual([
+      ['Accept', ['evt-next-accept']],
+      ['Reject', ['evt-next-reject']],
+    ]);
   });
 
-  it("treats hasChoices=false as non-choice (falsy)", () => {
+  it('an event with a blank options cell carries no options and is not a choice', () => {
     loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-choice-no') as EventCard;
+    const t = getEventTemplates().find((c) => c.id === 'evt-plain') as EventCard;
     expect(t).toBeDefined();
-    expect(t.hasChoices).toBeUndefined(); // parser omits hasChoices when not true
-    expect(Boolean(t.hasChoices)).toBe(false);
+    expect(t.options).toBeUndefined();
+    expect(eventHasStoryline(t)).toBe(false);
   });
 
-  it('plain event with empty choice columns is non-choice with undefined next ids', () => {
+  it('a DurationEventCard from CSV carries its options encoding', () => {
     loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-plain') as EventCard;
-    expect(t).toBeDefined();
-    expect(t.hasChoices).toBeUndefined();
-    expect(t.acceptNextCardId).toBeUndefined();
-    expect(t.rejectNextCardId).toBeUndefined();
-  });
-
-  it('DurationEventCard from CSV carries choice fields', () => {
-    loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-duration-choice') as EventCard;
+    const t = getEventTemplates().find((c) => c.id === 'evt-duration-choice') as EventCard;
     expect(t).toBeDefined();
     expect(isDurationEventCard(t)).toBe(true);
-    expect((t as EventCard).hasChoices).toBe(true);
-    expect((t as EventCard).rejectNextCardId).toBe('evt-depression');
-    // accept was empty -> omitted
-    expect((t as EventCard).acceptNextCardId).toBeUndefined();
+    expect(t.options).toBe('Accept|;Reject|evt-depression');
+    expect(shape(t)).toEqual([
+      ['Accept', []],
+      ['Reject', ['evt-depression']],
+    ]);
   });
 
-  it('choice event with both next ids blank has undefined next ids', () => {
+  it('a single-option encoding parses to one option (terminal)', () => {
     loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-accept-only') as EventCard;
+    const t = getEventTemplates().find((c) => c.id === 'evt-accept-only') as EventCard;
     expect(t).toBeDefined();
-    expect(t.hasChoices).toBe(true);
-    expect(t.acceptNextCardId).toBeUndefined();
-    expect(t.rejectNextCardId).toBeUndefined();
+    expect(shape(t)).toEqual([['Accept', ['evt-next']]]);
   });
 
-  it('choice event with only reject next id has rejectNextCardId set', () => {
-    loadTemplatesFromCsv(csvWithChoices);
-    const t = getEventTemplates().find(c => c.id === 'evt-reject-only') as EventCard;
-    expect(t).toBeDefined();
-    expect(t.hasChoices).toBe(true);
-    expect(t.rejectNextCardId).toBe('evt-worse');
-    expect(t.acceptNextCardId).toBeUndefined();
-  });
-
-  it('bundled CSV still parses; only the designed chain cards carry hasChoices (CG-0MTT7FC7A000AA58)', () => {
-    // Content child CG-0MTT7FC7A000AA58 ships the chain cards (approved by
-    // producer 2026-09-09). Cards WITHOUT the choice columns must remain
-    // non-choice; only the explicit chain/retrofit templates are flagged.
-    const choiceIds = new Set([
+  it('the shipped CSV makes exactly the designed chain cards choices', () => {
+    const choiceIds = [
       'evt-tax-error', 'evt-tax', 'evt-tax-inquiry',
       'evt-strike-service',
       'evt-popular-menu',
       'evt-recession',
       'evt-flu-outbreak',
-    ]);
-    const all = getEventTemplates();
-    for (const c of all) {
-      if (choiceIds.has(c.id)) {
-        expect(Boolean(c.hasChoices)).toBe(true);
-      } else {
-        expect(Boolean(c.hasChoices)).toBe(false);
-      }
+    ];
+    for (const c of getEventTemplates()) {
+      expect(shape(c).length > 0, `${c.id} choice-ness`).toBe(choiceIds.includes(c.id));
     }
-  });
-});
-
-// ── hasChoices boolean semantics (strict 'true') ────────────
-
-describe('CSV hasChoices is strict: only literal "true" is accepted', () => {
-  const csvMixedCase =
-    `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-yes-lower,Yes Lower,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,true,,
-event,evt-yes-upper,Yes Upper,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,TRUE,,
-event,evt-yes-one,Yes One,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,1,,
-event,evt-no,No,0,,,,,,,,,1,Incident,event,All,,0,0,,,,,,,,,,,,,,,,,false,,`;
-
-  afterEach(() => resetTemplatesToDefault());
-
-  it('only "true" (case-insensitive) is treated as hasChoices=true; others are falsy', () => {
-    loadTemplatesFromCsv(csvMixedCase);
-    const lower = getEventTemplates().find(c => c.id === 'evt-yes-lower') as EventCard;
-    const upper = getEventTemplates().find(c => c.id === 'evt-yes-upper') as EventCard;
-    const one = getEventTemplates().find(c => c.id === 'evt-yes-one') as EventCard;
-    const no = getEventTemplates().find(c => c.id === 'evt-no') as EventCard;
-    expect(lower?.hasChoices).toBe(true);
-    expect(upper?.hasChoices).toBe(true); // TRUE normalized to lowercase
-    expect(one?.hasChoices).toBeUndefined(); // "1" !== "true"
-    expect(no?.hasChoices).toBeUndefined();
   });
 });

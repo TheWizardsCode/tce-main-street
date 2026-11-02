@@ -1354,10 +1354,11 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
-   * Shows the dual-choice incident dialog for a pending `hasChoices` event
-   * (CG-0MTSHG8RP008E128). Accept applies the event's stated consequence;
-   * Reject refuses it and an unknown escalation card replaces it in the deck.
-   * Delegates to the overlay manager's showEventChoiceDialog.
+   * Shows the dual-choice incident dialog for a pending choice event
+   * (CG-0MTSHG8RP008E128). The presented labels come from the compiled option
+   * list; for a two-option node the first option applies the event's stated
+   * consequence and the second refuses it and an escalation card may replace
+   * it in the deck. Delegates to the overlay manager's showEventChoiceDialog.
    *
    * @param event    The pending choice event (effect deferred).
    * @param onAccept Callback when the player accepts.
