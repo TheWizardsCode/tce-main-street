@@ -53,6 +53,13 @@ import {
 registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
 
 /**
+ * Muted text colour for an unavailable overlay affordance — the Turn Summary
+ * dialog's `[ Bank Loan ]` button when the loans descriptor says the acting
+ * seat may not borrow (MS-0MVXYCJCK006UE62).
+ */
+const UNAVAILABLE_ACTION_COLOUR = '#6b6459';
+
+/**
  * Formats a signed integer for dialog rows as `+N` / `-N` / `0`. Coins are
  * whole numbers (integer economy, CG-0MTIO1M15001E9Y6), so no rounding is
  * applied here.
@@ -1149,13 +1156,15 @@ export class MainStreetOverlayContent {
    * MS-0MVP45WBA001GAVY): businesses owned, per-phase income, per-category
    * ongoing expenses, incident and one-off deltas, the net change and the
    * closing balances. `[ Next Turn ]` is the primary action and resumes the
-   * closing flow via {@link onNextTurn}; `[ Bank Loan ]` is **always**
-   * rendered disabled with an explanatory hint in this slice, behind the
-   * `onBankLoanAction` seam that MS-0MVL6DZI0000F6CG (Bank Loans) will
-   * replace. The availability answer arrives pre-computed as
-   * {@link loanDescriptor} (MS-0MVXYCICT0051LU7), so this overlay never reaches
-   * into scene state; wiring the descriptor to the button is
-   * MS-0MVXYCJCK006UE62's behaviour.
+   * closing flow via {@link onNextTurn}. `[ Bank Loan ]` follows the
+   * pre-computed {@link loanDescriptor} (MS-0MVXYCICT0051LU7, wired by
+   * MS-0MVXYCJCK006UE62): interactive — normal colour, `UI_CLICK` SFX, one
+   * {@link onBankLoanAction} call per press — exactly when the descriptor is
+   * enabled, otherwise muted and inert with the descriptor's reason-specific
+   * hint (loans disabled / no configured options / the seat's outstanding
+   * obligation) and **no** hint line at all when it is enabled. Because the
+   * availability answer arrives pre-computed, this overlay never reaches into
+   * scene state.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
@@ -1168,11 +1177,12 @@ export class MainStreetOverlayContent {
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
    * @param loanDescriptor   Loans availability for the acting seat, built by
    *                          the Turn Summary gate from the live state. Optional
-   *                          so existing call sites keep working; accepted and
-   *                          forwarded by MS-0MVXYCICT0051LU7, consumed by
-   *                          MS-0MVXYCJCK006UE62.
-   * @param onBankLoanAction Wiring seam for MS-0MVL6DZI0000F6CG; never
-   *                          invoked while loans are unimplemented.
+   *                          so existing call sites keep working; absent (a
+   *                          legacy/hand-built state) means disabled with no
+   *                          hint, because no reason is known.
+   * @param onBankLoanAction Invoked exactly once per press of the enabled
+   *                          `[ Bank Loan ]` button; the loans feature hangs
+   *                          its selector off this seam.
    */
   public showTurnSummaryDialog(
     summary: TurnSummary,
@@ -1182,12 +1192,6 @@ export class MainStreetOverlayContent {
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
-
-    // Wiring seam retained for MS-0MVL6DZI0000F6CG (Bank Loans). The button
-    // stays disabled in this slice, so neither the descriptor nor the callback
-    // is consumed here yet (MS-0MVXYCJCK006UE62 enables the affordance).
-    void loanDescriptor;
-    void onBankLoanAction;
 
     const centerX = s.layout.gameW / 2;
     const panelW = 640;
@@ -1336,23 +1340,42 @@ export class MainStreetOverlayContent {
     });
     s.overlayObjects.push(nextTurnBtn);
 
-    // [ Bank Loan ] is always rendered disabled (AC4): muted colour, no
-    // interactivity, and an explanatory hint. The onBankLoanAction seam above
-    // is what MS-0MVL6DZI0000F6CG (Bank Loans) replaces to enable it.
+    // ── [ Bank Loan ] (MS-0MVXYCJCK006UE62) ───────────────────────
+    // Interactive exactly when the descriptor says the acting seat may borrow:
+    // normal colour, `UI_CLICK` SFX and exactly one `onBankLoanAction` call per
+    // press. Every other case (loans off, no configured menu, an active loan,
+    // or no descriptor at all) is muted and inert.
+    const loanEnabled = loanDescriptor?.enabled === true;
     const bankLoanBtn = createOverlayButton(
       s, centerX + 120, btnY,
       '[ Bank Loan ]', 201,
-      { color: '#6b6459', hoverColor: '#6b6459' },
+      loanEnabled
+        ? undefined
+        : { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
     );
-    bankLoanBtn.disableInteractive();
+    if (loanEnabled) {
+      bankLoanBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        onBankLoanAction?.();
+      });
+    } else {
+      // The muted colour above already signals unavailability; disabling input
+      // keeps the button inert (no hover, no press, no seam call).
+      bankLoanBtn.disableInteractive();
+    }
     if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
     s.overlayObjects.push(bankLoanBtn);
 
-    addText(centerX, panelY + panelH - 24,
-      'Bank loans are not available yet — coming in a future update.', {
+    // Reason-specific hint: the descriptor's own copy (loans disabled, no
+    // configured options, or the seat's outstanding obligation). Nothing is
+    // rendered when the button is enabled, and nothing when there is no
+    // descriptor to supply a reason.
+    if (!loanEnabled && loanDescriptor?.hint) {
+      addText(centerX, panelY + panelH - 24, loanDescriptor.hint, {
         fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
         wordWrap: { width: panelW - 60 },
       }, 0.5);
+    }
   }
 
   /**

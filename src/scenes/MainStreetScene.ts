@@ -1441,9 +1441,8 @@ export class MainStreetScene extends CardGameScene {
    *                          to the overlay manager unchanged. Optional so
    *                          existing call sites (and a state that cannot
    *                          produce a descriptor) still work.
-   * @param onBankLoanAction Seam for the loans feature (MS-0MVL6DZI0000F6CG);
-   *                          invoked when the descriptor enables the button.
-   *                          Unused by this slice.
+   * @param onBankLoanAction Invoked once per press of the enabled
+   *                          `[ Bank Loan ]` button (MS-0MVXYCJCK006UE62).
    */
   public showTurnSummaryDialog(
     summary: import('./MainStreetTurnSummary').TurnSummary,
