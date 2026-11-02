@@ -23,8 +23,7 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
-import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
-import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { deferUntilIncomeCollected, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
 import { buildLoanOfferModel } from './MainStreetLoanOverlayModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
@@ -433,20 +432,13 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         (s as any).pendingBankingHint = false;
       }
       if (s.incomeCollectionActive) {
-        // Bounded deferral: start the next week once the choreography
-        // completes (AC7 collect clears the flag); a safety cap forces
-        // the day start even if the flag is somehow never cleared, so
-        // end-of-turn can never hang the game (AC5).
-        const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-        const startAfterIncomeShow = (): void => {
-          if (s.incomeCollectionActive && s.time.now < startAt) {
-            s.time.delayedCall(250, startAfterIncomeShow);
-          } else {
-            s.incomeCollectionActive = false;
-            finalizeTurn();
-          }
-        };
-        startAfterIncomeShow();
+        // Bounded, wall-clock enforced deferral (MS-0MVMKEU2000639TG
+        // decision C): start the next week once the choreography completes
+        // (AC7 collect clears the flag). The cap is enforced on the wall
+        // clock, so it forces the day start even if the flag is somehow never
+        // cleared or the page is starved of frames — end-of-turn can never
+        // hang the game (AC5).
+        deferUntilIncomeCollected(s, finalizeTurn);
       } else {
         s.time.delayedCall(800, () => finalizeTurn());
       }
@@ -621,18 +613,9 @@ export function presentTurnSummaryGate(
   // finished collecting, so wait for the choreography (bounded by the same
   // safety cap as `advanceTurn`) before rendering; the incident-reveal path
   // already waited for collection inside `presentTurnClosing`. A clock-less
-  // scene (headless) proceeds immediately.
-  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
-    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
-    const waitForIncome = (): void => {
-      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-        s.time.delayedCall(250, waitForIncome);
-      } else {
-        s.incomeCollectionActive = false;
-        show();
-      }
-    };
-    waitForIncome();
+  // scene (headless) proceeds immediately inside the helper.
+  if (s.incomeCollectionActive) {
+    deferUntilIncomeCollected(s, show);
   } else {
     show();
   }
@@ -764,19 +747,11 @@ export function presentLoanOfferDialog(
     }
   };
 
-  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
-    // Bounded deferral: present once the income choreography completes; a
-    // safety cap forces the dialog even if the flag is never cleared.
-    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
-    const waitForIncome = (): void => {
-      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-        s.time.delayedCall(250, waitForIncome);
-      } else {
-        s.incomeCollectionActive = false;
-        show();
-      }
-    };
-    waitForIncome();
+  if (s.incomeCollectionActive) {
+    // Bounded, wall-clock enforced deferral (decision C): present once the
+    // income choreography completes; the cap forces the dialog even if the
+    // flag is never cleared or the page stops painting.
+    deferUntilIncomeCollected(s, show);
   } else {
     show();
   }
@@ -933,19 +908,11 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
     };
 
     if (s.incomeCollectionActive) {
-      // Bounded deferral: present once the income choreography completes; a
-      // safety cap forces the dialog even if the flag is never cleared, so a
-      // pending choice can never hang the game (AC5).
-      const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-      const waitForIncome = (): void => {
-        if (s.incomeCollectionActive && s.time.now < startAt) {
-          s.time.delayedCall(250, waitForIncome);
-        } else {
-          s.incomeCollectionActive = false;
-          show();
-        }
-      };
-      waitForIncome();
+      // Bounded, wall-clock enforced deferral (decision C): present once the
+      // income choreography completes; the cap forces the dialog even if the
+      // flag is never cleared or the page stops painting, so a pending choice
+      // can never hang the game (AC5).
+      deferUntilIncomeCollected(s, show);
     } else {
       show();
     }
@@ -1099,19 +1066,11 @@ export function presentPiggybackDialog(tcCtx: MainStreetTurnControllerContext): 
     };
 
     if (s.incomeCollectionActive) {
-      // Bounded deferral: present once the income choreography completes; a
-      // safety cap forces the dialog even if the flag is never cleared, so a
-      // pending decision can never hang the game.
-      const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-      const waitForIncome = (): void => {
-        if (s.incomeCollectionActive && s.time.now < startAt) {
-          s.time.delayedCall(250, waitForIncome);
-        } else {
-          s.incomeCollectionActive = false;
-          show();
-        }
-      };
-      waitForIncome();
+      // Bounded, wall-clock enforced deferral (decision C): present once the
+      // income choreography completes; the cap forces the dialog even if the
+      // flag is never cleared or the page stops painting, so a pending
+      // decision can never hang the game.
+      deferUntilIncomeCollected(s, show);
     } else {
       show();
     }

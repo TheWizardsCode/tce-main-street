@@ -411,25 +411,14 @@ export function presentTurnClosing(
       // Bounded deferral (AC6): when the caller ran a phased income
       // choreography, wait for it to finish collecting before advancing so the
       // animation is never left running in the background while the next day
-      // starts. A safety cap forces the advance even if the flag is somehow
-      // never cleared, so the closing can never hang the game. A clock-less
-      // scene (headless) cannot advance the poll, so it proceeds immediately
-      // (the animator clears the flag when it cannot schedule).
-      if (
-        options.waitForIncomeCollection === true &&
-        s.incomeCollectionActive &&
-        typeof s.time?.delayedCall === 'function'
-      ) {
-        const startAt = (s.time?.now ?? 0) + incomeCapMs;
-        const waitForIncome = (): void => {
-          if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-            scheduleOrRun(s, 250, waitForIncome);
-          } else {
-            s.incomeCollectionActive = false;
-            complete();
-          }
-        };
-        waitForIncome();
+      // starts. The bound is enforced on the wall clock
+      // (MS-0MVMKEU2000639TG decision C), so the advance is forced even if the
+      // flag is somehow never cleared or the page stops painting, and the
+      // closing can never hang the game. A clock-less scene (headless) proceeds
+      // immediately inside the helper (the animator clears the flag when it
+      // cannot schedule).
+      if (options.waitForIncomeCollection === true && s.incomeCollectionActive) {
+        deferUntilIncomeCollected(s, complete, { capMs: incomeCapMs });
         return;
       }
       complete();
@@ -462,19 +451,11 @@ export function presentTurnClosing(
 
     // Single-player parity: if the phased income choreography is still
     // running, wait for it to complete before starting the incident reveal so
-    // the phases stay distinct and non-overlapping. Bounded by a safety cap so
-    // the day can never stall (AC6).
+    // the phases stay distinct and non-overlapping. The bound is enforced on
+    // the wall clock (MS-0MVMKEU2000639TG decision C) so the day can never
+    // stall (AC6) — not even when the page stops painting.
     if (s.incomeCollectionActive) {
-      const startAt = (s.time?.now ?? 0) + incomeCapMs;
-      const startAfterIncome = (): void => {
-        if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-          scheduleOrRun(s, 250, startAfterIncome);
-        } else {
-          s.incomeCollectionActive = false;
-          reveal();
-        }
-      };
-      startAfterIncome();
+      deferUntilIncomeCollected(s, reveal, { capMs: incomeCapMs });
     } else {
       reveal();
     }
