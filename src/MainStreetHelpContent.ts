@@ -157,9 +157,9 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
         'each option repays 110 coins per week (principal plus a flat 10% interest).\n' +
         'One loan at a time: repay the current loan before taking another.\n' +
         'Repayment is deducted every turn until the term expires; the HUD shows the\n' +
-        'turns left and the per-turn amount.\n' +
-        'Ending a turn below zero coins with no active loan offers a bailout loan\n' +
-        'instead of losing. Decline and bankruptcy stands; AI rivals take the largest.',
+        'turns left and the per-turn amount. A bailout loan offered below zero coins\n' +
+        'states your shortfall and which options close the gap; decline it and\n' +
+        'bankruptcy stands, while AI rivals take the largest.',
     },
     {
       heading: 'Win / Loss Conditions',

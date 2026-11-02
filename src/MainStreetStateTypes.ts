@@ -721,6 +721,20 @@ export interface PendingLoanOffer {
   reason: 'bankruptcy';
   /** The options the seat may choose from (the configured loan menu). */
   options: LoanOption[];
+  /**
+   * Coins needed to reach zero at the closing that raised the offer
+   * (`max(0, -coins)` on the very balance the bankruptcy test used), so the
+   * dialog can state how far short the seat is (MS-0MVZC1DAS001C8LF).
+   *
+   * A **snapshot** taken when the offer is raised, never recomputed: on the
+   * deferred-mutation path the turn's deltas are still un-applied when the
+   * dialog renders, so a live re-read would show the wrong figure.
+   *
+   * Optional and additive (no save schema bump): a v2/v3 save whose offer
+   * predates this field restores without it and the dialog shows the figure as
+   * unknown rather than inventing one.
+   */
+  shortfall?: number | null;
 }
 
 /**

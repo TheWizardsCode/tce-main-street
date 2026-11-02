@@ -297,6 +297,17 @@ re-balancing is an edit rather than a code change).
 - **First instalment timing.** A bailout loan accepted during a closing pays its first
   instalment on the **next** turn, so accepting a bailout can never immediately
   re-bankrupt the seat it just rescued.
+- **The offer states the shortfall.** The bailout dialog names the exact amount the
+  seat is short of this turn's costs (`max(0, -coins)` on the balance the bankruptcy
+  test used — the projected closing balance on the deferred path), snapshotted on the
+  offer so a save taken mid-offer restores the same figure (MS-0MVZC1DAS001C8LF).
+  It excludes the first instalment, which is charged next turn.
+- **Each option states its coverage.** Every option row says whether its principal
+  closes the gap or how many coins the seat would still be short after taking it, and
+  when **no** presented option is large enough the dialog warns that any of these
+  loans still leaves the seat below zero and the run ends.
+- **The log row agrees.** The activity-log row written when the offer is raised states
+  the shortfall in coins, so the log and the dialog can never disagree.
 
 **Bankruptcy bailout.** In the closing sequence, *before* the bankruptcy / seat-failure
 declaration, a seat that would fail on `coins < 0` **and holds no active loan** is

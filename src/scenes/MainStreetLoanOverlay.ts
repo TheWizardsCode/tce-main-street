@@ -7,6 +7,11 @@
  * from the Phaser-free {@link buildLoanOfferModel} so it stays testable
  * without a browser; this module owns only the presentation.
  *
+ * The dialog states the shortfall the offer was raised with and, when no
+ * presented option closes that gap, an extra warning line
+ * (MS-0MVZC1DAS001C8LF) — the panel chrome grows by one block for it so the
+ * rows never collide.
+ *
  * Overlay conventions (AGENTS.md UI Best Practices), matching
  * `showEventChoiceDialog` / `showTurnSummaryDialog`:
  *
@@ -48,6 +53,12 @@ export interface LoanOfferDialogHandlers {
 const PANEL_WIDTH = 640;
 /** Vertical space reserved for the title, intro and footer. */
 const PANEL_CHROME_HEIGHT = 200;
+/**
+ * Extra chrome height reserved for the shortfall warning line when no
+ * presented option closes the gap (MS-0MVZC1DAS001C8LF), so the extra line
+ * never collides with the option rows.
+ */
+const WARNING_BLOCK_HEIGHT = 46;
 /** Height of one option row (button + spacing). */
 const ROW_HEIGHT = 40;
 
@@ -72,7 +83,10 @@ export function showLoanOfferDialog(
 
   const optionCount = model.rows.length;
   const rowCount = Math.max(optionCount, 1);
-  const panelH = PANEL_CHROME_HEIGHT + rowCount * ROW_HEIGHT;
+  // The intro states the shortfall; when no option covers it an extra warning
+  // line is drawn below the intro and the chrome grows to make room.
+  const warningOffset = model.warning ? WARNING_BLOCK_HEIGHT : 0;
+  const panelH = PANEL_CHROME_HEIGHT + warningOffset + rowCount * ROW_HEIGHT;
   const panelY = s.layout.gameH / 2 - panelH / 2;
   const centerX = s.layout.gameW / 2;
 
@@ -116,6 +130,16 @@ export function showLoanOfferDialog(
     lineSpacing: 4,
   });
 
+  // "None of these loans is enough" warning, only when every presented option
+  // still leaves the seat below zero (the run ends regardless of the choice).
+  if (model.warning) {
+    addText(panelY + 100, model.warning, {
+      fontSize: '13px',
+      color: '#ff8888',
+      lineSpacing: 4,
+    });
+  }
+
   /** Dismisses the whole overlay and releases the tracked objects. */
   const dismiss = (): void => {
     dismissOverlay(s.overlayObjects);
@@ -123,12 +147,14 @@ export function showLoanOfferDialog(
   };
 
   // One button per presented option. Each label carries the principal, the
-  // per-turn repayment, the total repayment and the term.
+  // per-turn repayment, the total repayment and the term — plus, when the
+  // shortfall is known, whether that option closes the gap or how short it
+  // still leaves the seat.
   model.rows.forEach((row, index) => {
     const btn = createOverlayButton(
       s,
       centerX,
-      panelY + 110 + index * ROW_HEIGHT,
+      panelY + 110 + warningOffset + index * ROW_HEIGHT,
       row.label,
       201,
       { fontSize: '14px', color: '#aaddff', hoverColor: '#cceeff' },
@@ -147,7 +173,7 @@ export function showLoanOfferDialog(
   const declineBtn = createOverlayButton(
     s,
     centerX,
-    panelY + 110 + rowCount * ROW_HEIGHT,
+    panelY + 110 + warningOffset + rowCount * ROW_HEIGHT,
     model.declineLabel,
     201,
     { fontSize: '14px', color: '#ff8888', hoverColor: '#ffaaaa' },
@@ -160,7 +186,7 @@ export function showLoanOfferDialog(
   });
   s.overlayObjects.push(declineBtn);
 
-  addText(panelY + 126 + rowCount * ROW_HEIGHT, model.footer, {
+  addText(panelY + 126 + warningOffset + rowCount * ROW_HEIGHT, model.footer, {
     fontSize: '12px',
     color: '#999988',
   });

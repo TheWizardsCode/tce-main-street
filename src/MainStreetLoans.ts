@@ -355,8 +355,9 @@ function recordBailoutOffered(state: MainStreetState, ownerId: number): void {
  * mutates only the transitional decision fields:
  *
  * - `state.pendingLoanOffer` is set to the presented menu (a snapshot of
- *   `config.loanOptions`) with `reason: 'bankruptcy'` and the failing seat's
- *   `ownerId`;
+ *   `config.loanOptions`) with `reason: 'bankruptcy'`, the failing seat's
+ *   `ownerId` and the **shortfall** (`max(0, -coins)` on the same balance the
+ *   bankruptcy test used) so the dialog can state how far short the seat is;
  * - `state._bailoutOffered` records `{ ownerId, turn }` so a second
  *   evaluation in the same turn (after a decline) cannot re-offer that seat;
  * - one `neutral` activity-log row announces the decision, attributed to the
@@ -418,12 +419,18 @@ export function maybeOfferBailoutForSeat(
   const options = optionsFor(state).map((option) => ({ ...option }));
   if (options.length === 0) return false;
 
-  state.pendingLoanOffer = { ownerId: seatId, reason: 'bankruptcy', options };
+  // Snapshot the shortfall from the very balance the bankruptcy test used, so
+  // the dialog, the log row and the decision can never disagree — and so the
+  // deferred-mutation path (where the deltas are still un-applied at render
+  // time) still shows the projected closing figure (MS-0MVZC1DAS001C8LF).
+  const shortfall = Math.max(0, -coins);
+
+  state.pendingLoanOffer = { ownerId: seatId, reason: 'bankruptcy', options, shortfall };
   recordBailoutOffered(state, seatId);
   addLog(
     state,
     seatId,
-    `Bankruptcy bailout: coins are ${coins}; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
+    `Bankruptcy bailout: ${shortfall} coins short of covering this turn's costs; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
     'neutral',
   );
   return true;
@@ -739,7 +746,11 @@ export function restoreActiveLoans(raw: unknown): ActiveLoan[] {
  * - `options` must be an array with at least one usable option (positive
  *   `principal`, integral `termTurns >= 1`); unusable options are dropped, and
  *   an offer with no option left is dropped entirely — `largestBailoutOption`
- *   throws on an empty menu, and a human could never resolve one.
+ *   throws on an empty menu, and a human could never resolve one;
+ * - `shortfall` is optional (MS-0MVZC1DAS001C8LF): a finite, non-negative
+ *   integer is kept; a missing or malformed value restores as **unknown**
+ *   (`undefined`) rather than dropping the offer — a save taken mid-offer must
+ *   stay resolvable, and the dialog omits the figure instead of inventing one.
  *
  * @param raw The untrusted `pendingLoanOffer` value from the serialized state.
  * @returns The offer to resume, or `null` when there is nothing to resume.
@@ -748,7 +759,7 @@ export function restorePendingLoanOffer(raw: unknown): PendingLoanOffer | null {
   if (!raw || typeof raw !== 'object') return null;
   const offer = raw as Record<string, unknown>;
 
-  const { ownerId, reason, options: rawOptions } = offer;
+  const { ownerId, reason, options: rawOptions, shortfall: rawShortfall } = offer;
   if (!isFiniteNumber(ownerId) || !Number.isInteger(ownerId) || ownerId < 0) return null;
   if (reason !== 'bankruptcy') return null;
   if (!Array.isArray(rawOptions)) return null;
@@ -763,5 +774,14 @@ export function restorePendingLoanOffer(raw: unknown): PendingLoanOffer | null {
   }
   if (options.length === 0) return null;
 
-  return { ownerId, reason: 'bankruptcy', options };
+  // Additive, optional field: keep only a whole, non-negative coin amount and
+  // otherwise leave the figure unknown (never drop the offer for it).
+  const shortfall =
+    isFiniteNumber(rawShortfall) && Number.isInteger(rawShortfall) && rawShortfall >= 0
+      ? rawShortfall
+      : undefined;
+
+  return shortfall === undefined
+    ? { ownerId, reason: 'bankruptcy', options }
+    : { ownerId, reason: 'bankruptcy', options, shortfall };
 }

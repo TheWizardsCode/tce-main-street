@@ -446,8 +446,43 @@ describe('bankruptcy bailout offer (single-player)', () => {
     expect(state.endReason ?? '').not.toBe('bankruptcy');
     expect(state.pendingLoanOffer).toMatchObject({ ownerId: 0, reason: 'bankruptcy' });
     expect(state.pendingLoanOffer!.options).toEqual([...DEFAULT_LOAN_OPTIONS]);
+    // AC2 (MS-0MVZC1DAS001C8LF): the closing deficit that raised the offer is
+    // snapshotted on it, so the dialog and the decision can never disagree.
+    expect(state.pendingLoanOffer!.shortfall).toBe(50);
+    // AC4: the log row states the shortfall, not a raw negative balance.
+    const bailoutRow = state.activityLog.find((row) =>
+      row.text.startsWith('Bankruptcy bailout:'),
+    );
+    expect(bailoutRow).toBeDefined();
+    expect(bailoutRow!.text).toContain('50 coins short');
+    expect(bailoutRow!.text).not.toContain('coins are -');
     // The paused turn has not advanced yet — resolving the offer completes it.
     expect(state.turn).toBe(turnBefore);
+  });
+
+  it('records the projected closing shortfall on the deferred-mutation path', () => {
+    const state = quietMarketState('bailout-shortfall-deferred');
+    // The live wallet is still positive: only the *projected* closing balance
+    // is negative, exactly as `processEndOfTurn` passes it while the turn's
+    // deltas are un-applied. A render-time re-read would show the wrong figure.
+    state.resourceBank.coins = 500;
+
+    expect(maybeOfferBailout(state, { projectedCoins: -80 })).toBe(true);
+
+    expect(state.pendingLoanOffer!.shortfall).toBe(80);
+    expect(state.resourceBank.coins).toBe(500); // the live wallet is untouched
+  });
+
+  it('never raises an offer on a non-negative balance (no shortfall to state)', () => {
+    const state = quietMarketState('bailout-shortfall-none');
+
+    state.resourceBank.coins = 0;
+    expect(maybeOfferBailout(state)).toBe(false);
+    expect(state.pendingLoanOffer).toBeNull();
+
+    // Same guard on the projected path: a zero closing balance needs no loan.
+    expect(maybeOfferBailout(state, { projectedCoins: 0 })).toBe(false);
+    expect(state.pendingLoanOffer).toBeNull();
   });
 
   it('does not offer when loans are disabled and bankruptcy stands', () => {
