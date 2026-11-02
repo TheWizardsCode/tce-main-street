@@ -16,6 +16,10 @@
  *   (AC5) The tuned card values and the Community Favour invariants are
  *         asserted so future rebalances cannot silently regress.
  *
+ * Later rebalances that deliberately move a card outside the ×4 rule are
+ * recorded in `POST_RETUNE_OVERRIDES` below, each pinned to the work item that
+ * made the change — a silent regression can never hide in a new baseline.
+ *
  * @module
  */
 
@@ -75,9 +79,26 @@ const PRE_RETUNE_COMMUNITY_SPACE_REP: Record<string, number> = {
 
 const RETUNE_MULTIPLIER = 4;
 
+/**
+ * Deliberate post-retune value changes, pinned to the work item that made them.
+ *
+ * `cs-park`: MS-0MVRDGNFU001DDQW gave the Park its producer-confirmed +20
+ * reputation per turn (up from 0; pricing kept at 150 cost / 40 ongoing). It is
+ * the only card whose value changes outside the ×4 re-tune, so it is listed
+ * here as a documented contract change rather than a silent baseline edit.
+ */
+const POST_RETUNE_OVERRIDES: Record<string, number> = {
+  'cs-park': 20,
+};
+
 /** Expected post-retune value: positives scale ×4, non-positives are unchanged. */
 function expectedRetuned(pre: number): number {
   return pre > 0 ? pre * RETUNE_MULTIPLIER : pre;
+}
+
+/** Expected shipped value: a deliberate override wins over the ×4 rule. */
+function expectedPostRetune(id: string, pre: number): number {
+  return POST_RETUNE_OVERRIDES[id] ?? expectedRetuned(pre);
 }
 
 describe('Reputation-source re-tune contract (MS-0MUR9IMN60093HIE)', () => {
@@ -92,14 +113,26 @@ describe('Reputation-source re-tune contract (MS-0MUR9IMN60093HIE)', () => {
     }
   });
 
-  it('scales every positive community-space reputationPerTurn ×4, leaving zero unchanged', () => {
+  it('scales every positive community-space reputationPerTurn ×4, leaving zero unchanged (deliberate overrides excepted)', () => {
     const templates = getCommunitySpaceTemplates();
     expect(templates).toHaveLength(Object.keys(PRE_RETUNE_COMMUNITY_SPACE_REP).length);
 
     for (const t of templates) {
       const pre = PRE_RETUNE_COMMUNITY_SPACE_REP[t.id];
       expect(pre, `no pre-retune baseline recorded for ${t.id}`).toBeDefined();
-      expect(t.reputationPerTurn ?? 0).toBe(expectedRetuned(pre));
+      expect(t.reputationPerTurn ?? 0).toBe(expectedPostRetune(t.id, pre));
+    }
+  });
+
+  it('documents every post-retune override with a value that deviates from the ×4 rule', () => {
+    for (const [id, value] of Object.entries(POST_RETUNE_OVERRIDES)) {
+      const pre = PRE_RETUNE_COMMUNITY_SPACE_REP[id];
+      expect(pre, `no pre-retune baseline recorded for override ${id}`).toBeDefined();
+      // An override that matches the ×4 result is redundant and must be removed
+      // so the deviation stays visible.
+      expect(value, `${id}: override value equals the ×4 retune`).not.toBe(
+        expectedRetuned(pre),
+      );
     }
   });
 
@@ -117,6 +150,8 @@ describe('Reputation-source re-tune contract (MS-0MUR9IMN60093HIE)', () => {
     expect(rep(business, 'biz-clinic')).toBe(160);
     expect(rep(community, 'cs-library')).toBe(40);
     expect(rep(community, 'cs-playground')).toBe(20);
+    // MS-0MVRDGNFU001DDQW: the Park is now the cheapest reputation entry.
+    expect(rep(community, 'cs-park')).toBe(20);
     expect(rep(community, 'cs-public-art')).toBe(80);
   });
 
