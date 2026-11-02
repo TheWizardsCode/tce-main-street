@@ -579,7 +579,11 @@ suite took **2846.6 s** under load while the config declared 1800 s, and a
 rounded up to a whole minute) and is enforced by
 `tests/tooling/test-config-timeout-guard.test.ts` — lowering the config below
 the floor fails the suite, so the config, the guard and this paragraph cannot
-drift apart.
+drift apart. The same guard pins the **shape** of the config: the
+three-command full suite and every named `groups` entry in
+`EXPECTED_GROUP_NAMES`. Adding a group is therefore a two-file change — the
+config **and** the pin — and forgetting the pin fails the guard rather than
+silently shrinking the targeted-scope mechanism (`MS-0MVZGAEF6004Q8XD`).
 
 ### Queue wait is separate from test time
 
