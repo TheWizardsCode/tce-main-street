@@ -228,14 +228,37 @@ Rules that follow from this:
 - `tests/main-street/main-ts-scaffold-drift.test.ts` enforces the rule: the
   committed `./main.ts` must be byte-for-byte `renderMainTs()` output, so any
   hand edit fails the unit suite instead of being silently erased later.
-- **A scaffold run touches more than `./main.ts`.** `npm run scaffold` also
-  rewrites `package.json`, `vite.config.ts`, `tsconfig.json` and `index.html`,
-  and re-points the legacy per-game tree (`example-games/…`) paths to `src/`.
-  This repo carries deliberate LOCAL SURGICAL ADDITIONS in those files, so run
-  it on a clean tree, diff the result, and **revert everything except the file
-  you meant to regenerate** — recording the classification in the work item
-  that requested the re-scaffold. Making the script itself non-destructive is
-  tracked in `MS-0MVVGUYYG004XXOB`.
+- **`npm run scaffold` is scoped to the launcher.** The script runs the
+  generator with `--only main.ts --force` (`package.json` → `scripts.scaffold`),
+  so a run writes `./main.ts` and nothing else: every other generated file is
+  classified `skip-local` (or `unchanged`) and left untouched, and none of the
+  full-run side effects happen — no `core` symlink, no shared-asset or
+  app-icon links, no legacy `example-games/…` → `src/` path rewrite. This is
+  the default for this repo because it carries deliberate LOCAL SURGICAL
+  ADDITIONS in `package.json`, `vite.config.ts`, `tsconfig.json` and
+  `index.html`; the blanket overwrite is what made the old “run it on a clean
+  tree, diff, then revert everything but the file you meant” rule necessary
+  (`MS-0MVVGUYYG004XXOB`, superseded).
+
+  What the generator now offers (`core/scripts/game-repo-scaffold.ts`,
+  MS-0MVWGI4CB0055IT0): `--only <file,…>` selects generated files, `--force`
+  permits overwriting a **selected** file that has diverged from the template,
+  `--dry-run` classifies (`create` / `update` / `unchanged` / `skip-local`) and
+  writes nothing, `--json` emits that classification machine-readably, and
+  `--migrate-game-paths` opts in to the path rewrite (off by default, and
+  mutually exclusive with `--only`). A **full** run (no `--only`) still
+  overwrites every generated file — that is what fresh and extracted game
+  repos rely on to receive template updates — so never invoke the generator
+  here without `--only`. Use `npx tsx ./core/scripts/game-repo-scaffold.ts
+  --game main-street --game-repo-root . --core-root ./core --only <file>
+  --force` when a specific generated wiring file genuinely has to be
+  re-emitted, and `--dry-run` first to preview the classification.
+
+  `tests/tooling/scaffold-non-destructive.test.ts` guards the contract: it runs
+  this repo's own `scaffold` script arguments against a temporary copy of the
+  wiring files and fails if anything but `main.ts` changes (and if `--dry-run`
+  writes at all). Wiring changes therefore arrive by a deliberate engine pin
+  bump — never as a side effect of regenerating the launcher.
 
 ## Tests
 

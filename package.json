@@ -48,7 +48,7 @@
     "balance:drift-report": "vite-node src/scripts/balance/drift-report.ts",
     "balance:synergy-diversity-report": "vite-node src/scripts/balance/synergy-diversity-report.ts",
     "test:unit": "tsx scripts/run-tests.ts --timeout-ms 720000 --project unit --project unit-cli",
-    "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core"
+    "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core --only main.ts --force"
   },
   "dependencies": {
     "phaser": "4.0.0-rc.7",
