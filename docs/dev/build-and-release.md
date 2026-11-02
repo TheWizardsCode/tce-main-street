@@ -39,6 +39,7 @@ superseded (with its historical shas) is described under
 
 | Script | Engine behaviour | Purpose |
 |--------|------------------|---------|
+| `npm run dev` | `engine:dev-sync` **first**: the **soft** variant of `engine:sync` — advances `./core` to the tracked branch tip and re-pins when it is clean, and **warns + serves the current checkout** when `./core` is dirty (never blocks the dev server) | **Interactive dev start**: serve the latest engine without giving up a dirty engine working tree. |
 | `npm run build` | `engine:sync` **first**: advances `./core` to the latest remote head of the branch it tracks **and re-pins** `configs/engine-pin.json` to that commit, then type-checks and bundles | **Dev builds always compose the latest engine**, so behaviour is tested against current engine code; the pin keeps tracking it. |
 | `npm run build:electron` | Same dev sync (pin included), Electron `vite` mode | Desktop dev builds. |
 | `npm run build:release` | `engine:verify` **instead**: pins `./core` to exactly the SHA in `configs/engine-pin.json`, then type-checks and bundles | **Deterministic, reproducible release builds** — compile exactly the recorded engine commit. |
@@ -46,9 +47,14 @@ superseded (with its historical shas) is described under
 The standalone npm scripts are independently invocable:
 
 ```bash
+npm run engine:dev-sync # dev start: soft sync — dirty ./core is skipped with a warning, never blocks
 npm run engine:sync     # dev: dirty-guard + `git submodule update --remote core` + re-pin
 npm run engine:verify   # release: dirty-guard + pin check (lag vs bad pin) + exact checkout
 ```
+
+Rule of thumb: **`engine:sync` for anything that ends in a commit or a build,
+`engine:dev-sync` for an interactive dev server, `engine:verify` for a release
+build.** Only the dirty-guard outcome differs between the two sync modes.
 
 They wrap the engine-owned script `core/scripts/engine-sync.mjs` (re-scaffolded
 into this repo's submodule by the game-repo scaffold — never edit a game-repo
@@ -89,6 +95,33 @@ pin** as pending changes — commit them together (never one without the other).
 A repo without a `configs/engine-pin.json` is never given one by `engine:sync`;
 a repo is pinned once the pin file exists, and `engine:sync` maintains it from
 then on.
+
+## Dev start (`engine:dev-sync`) — soft sync, never blocks
+
+`npm run dev` runs `npm run engine:dev-sync` before `vite --host`
+(`MS-0MVZJ3JLG0074ACP`). It is the same engine-owned script in **soft mode**
+(`core/scripts/engine-sync.mjs sync --soft`), with exactly one difference:
+
+- **Dirty `./core` → skip and warn.** Instead of the loud failure that
+  `engine:sync` raises, a dirty submodule produces a `WARNING`, **no git
+  operation at all**, no pin write, and exit code 0 — the dev server boots on
+  your engine working tree. A dirty engine is the normal state while working
+  engine-side, and a dev start must never block or clobber it.
+- **Clean `./core` → identical to `engine:sync`.** It advances the checkout to
+  the tracked branch tip and, when the pin exists, rewrites and stages the pin
+  with the gitlink.
+
+Consequences to keep in mind:
+
+1. **A dev start on a clean-but-behind checkout can move `./core` and stage the
+   pin + gitlink.** That is the pin policy working as intended — commit the pair
+   together with a message naming the engine SHA. Do not start a long dev
+   session and then sweep the bump into an unrelated commit.
+2. **Every dev start needs the network.** Offline falls back to the current
+   checkout with a warning and still serves.
+3. **It is opt-in and never gates anything.** Builds and releases keep the
+   strict `engine:sync` / `engine:verify` paths, so a red or lagging engine is
+   still caught where it matters.
 
 ## Retired: the `0409c1eb` engine hold
 
@@ -144,6 +177,7 @@ descendant of it.
 
 | Invocation | `./core` checkout | Gate |
 |---|---|---|
+| `npm run dev` | tracked branch tip when `./core` was clean (soft sync), otherwise the current checkout | `engine:dev-sync` soft guard — warns and continues on a dirty submodule |
 | `npm test` (Vitest `unit` + `unit-cli`), and the pre-push/dev-push suite gate | the checkout present in `./core` — the preflight must accept it (pin, or a descendant of the pin) | preflight fail → run aborts |
 | changed-scope gate (`npx vitest run <files>`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |
 | dev-push browser gate (`npx vitest run --project browser …`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |

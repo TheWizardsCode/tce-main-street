@@ -11,6 +11,11 @@
  *
  * @see core/scripts/engine-sync.d.mts — the typed API contract.
  * @see core/tests/scripts/engine-sync.test.ts — the engine-side canonical suite.
+ *
+ * The soft mode used by `npm run dev` (`engine:dev-sync`,
+ * MS-0MVZJ3JLG0074ACP) is covered here too: a dirty `./core` is skipped with a
+ * warning (exit 0) so the dev server still boots, while the strict
+ * `engine:sync` keeps its hard failure for the build/release gates.
  */
 import { describe, expect, it, afterAll, afterEach, beforeAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -27,11 +32,14 @@ import {
   syncEngine,
   verifyEngine,
 } from '@core-scripts/engine-sync.mjs';
+import { renderPackageJson } from '@core-scripts/game-repo-scaffold';
 import { hermeticGitEnv, hideGitRepoOverrides } from '../tooling/git-fixture-env';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
 const PIN_REL = path.join('configs', 'engine-pin.json');
+/** The engine-owned sync script, as this repo composes it (submodule). */
+const ENGINE_SYNC_SCRIPT = path.join(REPO_ROOT, 'core', 'scripts', 'engine-sync.mjs');
 
 const tempRoots: string[] = [];
 
@@ -277,6 +285,111 @@ describe('engine:verify — lag vs bad/foreign pin diagnostics (policy, CG-0MVO2
       /does not resolve on the tracked branch dev/,
     );
     expect(() => verifyEngine({ repoRoot: f.game })).toThrow(/bad or foreign pin/);
+  });
+});
+
+describe('engine:dev-sync — soft mode for npm run dev (MS-0MVZJ3JLG0074ACP)', () => {
+  it('skips a dirty ./core with a warning instead of blocking the dev server', () => {
+    const f = makeGame();
+    const tip = f.advance();
+    fs.writeFileSync(f.pinPath, JSON.stringify({ sha: f.devTip() }));
+    const headBefore = git(path.join(f.game, 'core'), ['rev-parse', 'HEAD']).stdout;
+    const pinBefore = fs.readFileSync(f.pinPath, 'utf-8');
+    fs.appendFileSync(path.join(f.game, 'core', 'version.txt'), 'wip\n');
+    const logged: string[] = [];
+
+    const res = syncEngine({ repoRoot: f.game, soft: true, log: (l) => logged.push(l) });
+
+    expect(res.updated).toBe(false);
+    expect(res.pinWritten).toBe(false);
+    expect(res.skipped).toBe('dirty');
+    expect(logged.join('\n')).toMatch(/WARNING[\s\S]*uncommitted changes/);
+    // Skipped, never clobbered: the checkout, the WIP file and the pin stand.
+    expect(git(path.join(f.game, 'core'), ['rev-parse', 'HEAD']).stdout).toBe(headBefore);
+    expect(fs.readFileSync(path.join(f.game, 'core', 'version.txt'), 'utf-8')).toContain('wip');
+    expect(fs.readFileSync(f.pinPath, 'utf-8')).toBe(pinBefore);
+    expect(headBefore).not.toBe(tip);
+  });
+
+  it('keeps strict engine:sync a hard failure on the same dirty fixture', () => {
+    const f = makeGame();
+    fs.appendFileSync(path.join(f.game, 'core', 'version.txt'), 'wip\n');
+    expect(() => syncEngine({ repoRoot: f.game })).toThrow(/uncommitted changes/);
+  });
+
+  it('behaves exactly like strict mode on a clean checkout (advance + re-pin)', () => {
+    const f = makeGame();
+    fs.writeFileSync(f.pinPath, JSON.stringify({ sha: f.devTip() }));
+    const tip = f.advance();
+
+    const res = syncEngine({ repoRoot: f.game, soft: true });
+
+    expect(res.updated).toBe(true);
+    expect(res.pinWritten).toBe(true);
+    expect(res.skipped).toBeUndefined();
+    expect(readPin(f.game)).toBe(tip);
+    const staged = git(f.game, ['diff', '--cached', '--name-only']).stdout.split('\n');
+    expect(staged).toContain(PIN_REL);
+    expect(staged).toContain('core');
+  });
+
+  it('exits 0 with --soft and 1 without it on a dirty ./core (real CLI)', () => {
+    const f = makeGame();
+    fs.appendFileSync(path.join(f.game, 'core', 'version.txt'), 'wip\n');
+    const run = (args: string[]): { code: number; stdout: string; stderr: string } => {
+      const res = spawnSync(process.execPath, [ENGINE_SYNC_SCRIPT, ...args], {
+        cwd: f.game,
+        encoding: 'utf8',
+        env: { ...hermeticGitEnv(), GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0' },
+        windowsHide: true,
+      });
+      return { code: res.status ?? -1, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
+    };
+    // The CLI logs to stdout before the JSON result line.
+    const result = (stdout: string): Record<string, unknown> => {
+      const lines = stdout.trim().split('\n');
+      return JSON.parse(lines[lines.length - 1] ?? '{}') as Record<string, unknown>;
+    };
+
+    const soft = run(['sync', '--soft']);
+    expect(soft.code).toBe(0);
+    expect(result(soft.stdout)).toMatchObject({ ok: true, skipped: 'dirty' });
+
+    const strict = run(['sync']);
+    expect(strict.code).toBe(1);
+    expect(result(strict.stdout)).toMatchObject({ ok: false });
+    expect(strict.stderr).toMatch(/uncommitted changes/);
+  });
+});
+
+describe('package.json — engine script composition is scaffold-owned (MS-0MVZJ3JLG0074ACP)', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf-8')) as {
+    version: string;
+    scripts: Record<string, string>;
+  };
+  const coreManifest = JSON.parse(
+    fs.readFileSync(path.join(REPO_ROOT, 'core', 'package.json'), 'utf-8'),
+  ) as Record<string, unknown>;
+  const rendered = JSON.parse(
+    renderPackageJson('main-street', coreManifest, './core', pkg.version),
+  ) as { scripts: Record<string, string> };
+
+  it('runs the soft engine sync before the dev server, exactly as the template renders it', () => {
+    expect(pkg.scripts.dev).toBe('npm run engine:dev-sync && vite --host');
+    expect(pkg.scripts.dev).toBe(rendered.scripts.dev);
+  });
+
+  it('exposes engine:dev-sync (soft) alongside the strict engine:sync / engine:verify pair', () => {
+    expect(pkg.scripts['engine:dev-sync']).toBe(
+      'node ./core/scripts/engine-sync.mjs sync --soft',
+    );
+    expect(pkg.scripts['engine:dev-sync']).toBe(rendered.scripts['engine:dev-sync']);
+    // The build/release gates keep the strict variants — a re-render must never
+    // move a gate onto the soft path.
+    expect(rendered.scripts.build).toContain('npm run engine:sync &&');
+    expect(rendered.scripts['build:release']).toContain('npm run engine:verify &&');
+    expect(pkg.scripts.build).toBe(rendered.scripts.build);
+    expect(pkg.scripts['build:release']).toBe(rendered.scripts['build:release']);
   });
 });
 
