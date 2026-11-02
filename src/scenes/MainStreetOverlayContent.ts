@@ -32,8 +32,16 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import type { TurnSummary } from './MainStreetTurnSummary';
-import type { TurnSummaryLoanDescriptor } from './MainStreetLoanSelectorModel';
-import { showLoanOfferDialog as renderLoanOfferDialog } from './MainStreetLoanOverlay';
+import {
+  buildLoanSelectorModel,
+  type LoanSelectorModel,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
+import {
+  showLoanOfferDialog as renderLoanOfferDialog,
+  showLoanSelectorDialog as renderLoanSelectorDialog,
+  type LoanSelectorDialogHandlers,
+} from './MainStreetLoanOverlay';
 import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
@@ -1148,6 +1156,34 @@ export class MainStreetOverlayContent {
   }
 
   /**
+   * Shows the mid-game loan selector (MS-0MVXYCJVU000QBK1, parent
+   * MS-0MVPWSQMG004198C).
+   *
+   * The shipped bailout renderer in its `select` mode: one button per
+   * configured `config.loanOptions` entry — each labelled with its principal,
+   * per-turn repayment, total repayment and term, exactly as the bailout dialog
+   * prices the same menu — plus a Cancel action that only closes the dialog.
+   *
+   * Overlay conventions are the renderer's
+   * ({@link module:scenes/MainStreetLoanOverlay}): `createOverlayBackground` /
+   * `createOverlayButton` from `@ui`, every element parented into
+   * `s.hudContainer`, depths 199/200/201, every object tracked in
+   * `s.overlayObjects`, `safePlaySound` for the button SFX, instant appearance
+   * (reduced-motion safe) and never presented in replay/headless.
+   *
+   * @param model    The presentation model (built Phaser-free by
+   *                 `buildLoanSelectorModel`).
+   * @param handlers Confirm / cancel callbacks; the confirm dispatch
+   *                 (`takeLoan`) lands with MS-0MVXYCKFE000VF76.
+   */
+  public showLoanSelectorDialog(
+    model: LoanSelectorModel,
+    handlers: LoanSelectorDialogHandlers,
+  ): void {
+    renderLoanSelectorDialog(this.scene, model, handlers);
+  }
+
+  /**
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT).
    *
    * Presented after the end-of-turn animations complete (gated into the
@@ -1164,7 +1200,16 @@ export class MainStreetOverlayContent {
    * hint (loans disabled / no configured options / the seat's outstanding
    * obligation) and **no** hint line at all when it is enabled. Because the
    * availability answer arrives pre-computed, this overlay never reaches into
-   * scene state.
+   * scene state to decide it.
+   *
+   * Pressing the enabled `[ Bank Loan ]` swaps this panel for the mid-game loan
+   * selector (MS-0MVXYCJVU000QBK1, parent AC2): the shared bailout renderer in
+   * its `select` mode, driven by the configured `config.loanOptions` menu. One
+   * modal at a time — this panel is dismissed first, so no Turn Summary button
+   * can be pressed behind the selector's backdrop — and closing the selector
+   * (Cancel, or an option press until the `takeLoan` dispatch lands with
+   * MS-0MVXYCKFE000VF76) re-presents this dialog from the same summary with no
+   * state change. The day still advances only on `[ Next Turn ]`.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
@@ -1192,6 +1237,12 @@ export class MainStreetOverlayContent {
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
+
+    /** Dismisses everything this dialog owns and releases the tracked objects. */
+    const dismissDialog = (): void => {
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+    };
 
     const centerX = s.layout.gameW / 2;
     const panelW = 640;
@@ -1334,8 +1385,7 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
     nextTurnBtn.on('pointerdown', () => {
       safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
+      dismissDialog();
       onNextTurn();
     });
     s.overlayObjects.push(nextTurnBtn);
@@ -1357,6 +1407,37 @@ export class MainStreetOverlayContent {
       bankLoanBtn.on('pointerdown', () => {
         safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
         onBankLoanAction?.();
+
+        // Mid-game loan selector (MS-0MVXYCJVU000QBK1): the shipped bailout
+        // renderer in its `select` mode, driven by the configured menu rather
+        // than a pending offer. Built before the swap, so a menu that cannot be
+        // built (or is empty) leaves this dialog on screen instead of opening
+        // an empty modal.
+        let selector: LoanSelectorModel | null = null;
+        try {
+          selector = buildLoanSelectorModel(s.state);
+        } catch {
+          selector = null;
+        }
+        if (!selector || selector.rows.length === 0) return;
+
+        /** Back to this dialog from the selector — no state change either way. */
+        const returnToSummary = (): void => {
+          this.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor, onBankLoanAction);
+        };
+
+        // One modal at a time: dismiss this panel before the selector appears,
+        // so no Turn Summary button can be pressed behind its backdrop.
+        dismissDialog();
+        this.showLoanSelectorDialog(selector, {
+          // Confirming is where the `takeLoan` dispatch (and the in-place
+          // refresh) lands with MS-0MVXYCKFE000VF76; until then a press only
+          // closes the selector, exactly like Cancel.
+          onAccept: returnToSummary,
+          // Cancel closes the selector and re-presents the Turn Summary dialog
+          // with no state change (parent AC2).
+          onCancel: returnToSummary,
+        });
       });
     } else {
       // The muted colour above already signals unavailability; disabling input

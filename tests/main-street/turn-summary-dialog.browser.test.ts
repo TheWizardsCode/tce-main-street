@@ -17,7 +17,10 @@
  *    exactly when enabled and then with **no** hint line; otherwise muted,
  *    inert and explained by the descriptor's reason-specific hint (loans
  *    disabled / no configured options / the seat's outstanding obligation)
- *    (AC4).
+ *    (AC4). An enabled press opens the mid-game loan selector
+ *    (MS-0MVXYCJVU000QBK1), whose Cancel re-presents this dialog with no state
+ *    change; the selector's own rendering is covered by
+ *    `turn-summary-bank-loan.browser.test.ts`.
  * 5. The dialog appears instantly — no fade-in choreography, so it is
  *    reduced-motion safe (AC5).
  *
@@ -33,6 +36,8 @@ import type { TurnLedger } from '../../src/MainStreetEngineTypes';
 import type { ActiveLoan } from '../../src/MainStreetStateTypes';
 import { buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
 import {
+  LOAN_SELECTOR_CANCEL_LABEL,
+  LOAN_SELECTOR_TITLE,
   LOANS_DISABLED_HINT,
   NO_LOAN_OPTIONS_HINT,
   buildTurnSummaryLoanDescriptor,
@@ -287,11 +292,23 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     enabledBtn.emit('pointerdown');
     expect(bankLoanCalls).toBe(1);
     expect(playSpy).toHaveBeenCalledWith('sfx-ui-click');
-    enabledBtn.emit('pointerdown');
-    expect(bankLoanCalls).toBe(2);
-    playSpy.mockRestore();
+    // The press swaps the panel for the mid-game loan selector
+    // (MS-0MVXYCJVU000QBK1): one modal at a time, so the summary's own actions
+    // are gone until the selector closes.
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeDefined();
+    expect(overlayText(s, '[ Next Turn ]')).toBeUndefined();
     // AC3 still holds: the seam never resumes the closing by itself.
     expect(nextTurnCalls).toBe(0);
+
+    // Cancelling re-presents the summary with no state change, so the button
+    // can be pressed again — the seam still fires exactly once per press.
+    overlayText(s, LOAN_SELECTOR_CANCEL_LABEL)!.emit('pointerdown');
+    expect(overlayText(s, '[ Next Turn ]')).toBeDefined();
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeUndefined();
+    overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2);
+    playSpy.mockRestore();
+    overlayText(s, LOAN_SELECTOR_CANCEL_LABEL)!.emit('pointerdown');
 
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
     expect(nextTurnCalls).toBe(1);

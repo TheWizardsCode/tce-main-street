@@ -1,16 +1,31 @@
 /**
- * Main Street: Bailout Loan Offer overlay (Phaser)
+ * Main Street: loan dialogs (Phaser) — bailout offer + mid-game selector
  *
- * Renders the bankruptcy bailout dialog (MS-0MVPWSBLG006YMBA, parent
- * MS-0MVL6DZI0000F6CG): one button per presented loan option — each showing
- * its per-turn and total repayment — plus a Decline action. The content comes
- * from the Phaser-free {@link buildLoanOfferModel} so it stays testable
- * without a browser; this module owns only the presentation.
+ * One renderer, two modes (MS-0MVXYCJVU000QBK1, parent MS-0MVPWSQMG004198C):
+ *
+ * - **`'bailout'`** — the bankruptcy bailout dialog (MS-0MVPWSBLG006YMBA, parent
+ *   MS-0MVL6DZI0000F6CG): one button per presented loan option — each showing
+ *   its per-turn and total repayment — plus a Decline action. The content comes
+ *   from the Phaser-free {@link buildLoanOfferModel} so it stays testable
+ *   without a browser; this module owns only the presentation.
+ * - **`'select'`** — the mid-game loan selector opened from the Turn Summary
+ *   dialog's `[ Bank Loan ]`: the same rows for the same menu, but driven by
+ *   the configured `config.loanOptions` (via the Phaser-free
+ *   {@link buildLoanSelectorModel}) and with a Cancel action that only closes
+ *   the dialog.
+ *
+ * The row loop — button construction, label text, depths, HUD parenting and
+ * SFX — exists **once**, in {@link renderLoanDialog}: the two modes differ only
+ * in their model content, the alternative action's label and the handler it
+ * calls (and, because declining ends the run while cancelling does not, the
+ * alternative action's colour). A duplicated bailout dialog would leave two
+ * loan selectors to maintain (parent AC4).
  *
  * The dialog states the shortfall the offer was raised with and, when no
  * presented option closes that gap, an extra warning line
  * (MS-0MVZC1DAS001C8LF) — the panel chrome grows by one block for it so the
- * rows never collide.
+ * rows never collide. That warning is bailout-only: a mid-game selection is not
+ * raised against any closing shortfall.
  *
  * Overlay conventions (AGENTS.md UI Best Practices), matching
  * `showEventChoiceDialog` / `showTurnSummaryDialog`:
@@ -34,10 +49,19 @@ import {
 } from '@ui';
 import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
+import type { LoanOfferRow } from './MainStreetLoanRowModel';
+import type { LoanSelectorModel } from './MainStreetLoanSelectorModel';
 
 /**
- * Callbacks the dialog invokes when the seat decides. The handlers resolve the
- * offer and resume the paused closing (see
+ * Which dialog the shared renderer draws. The mode carries the dialog's
+ * semantics — the alternative action's meaning and therefore its styling —
+ * and is not expected to grow with every model field.
+ */
+export type LoanDialogMode = 'bailout' | 'select';
+
+/**
+ * Callbacks the bailout dialog invokes when the seat decides. The handlers
+ * resolve the offer and resume the paused closing (see
  * `MainStreetTurnControllerTurnFlow.onLoanOfferChoice`).
  */
 export interface LoanOfferDialogHandlers {
@@ -45,6 +69,39 @@ export interface LoanOfferDialogHandlers {
   onAccept: (optionIndex: number) => void;
   /** Called when the Decline button is pressed. */
   onDecline: () => void;
+}
+
+/**
+ * Callbacks the mid-game selector invokes when the seat decides. Confirming a
+ * row takes the loan (MS-0MVXYCKFE000VF76); cancelling only closes the dialog —
+ * it never takes a loan, spends an action or advances the day.
+ */
+export interface LoanSelectorDialogHandlers {
+  /** Called with the chosen row's index when an option button is pressed. */
+  onAccept: (optionIndex: number) => void;
+  /** Called when the Cancel button is pressed. */
+  onCancel: () => void;
+}
+
+/**
+ * The presentation-only union of both models: everything the shared renderer
+ * needs, with the alternative action reduced to its label.
+ */
+interface LoanDialogContent {
+  readonly title: string;
+  readonly intro: string;
+  /** Bailout-only shortfall warning, or absent when there is nothing to warn. */
+  readonly warning?: string | null;
+  readonly rows: readonly LoanOfferRow[];
+  /** Label for the single non-borrowing action (Decline / Cancel). */
+  readonly alternativeLabel: string;
+  readonly footer: string;
+}
+
+/** Mode-neutral handlers the shared renderer drives. */
+interface LoanDialogHandlers {
+  onAccept: (optionIndex: number) => void;
+  onAlternative: () => void;
 }
 
 // ── Layout constants ────────────────────────────────────────
@@ -63,29 +120,48 @@ const WARNING_BLOCK_HEIGHT = 46;
 const ROW_HEIGHT = 40;
 
 /**
- * Shows the bailout loan offer dialog.
+ * Styling of the alternative action per mode.
  *
- * The dialog is a single modal: the seat must choose one option or decline.
+ * The bailout's `[ Decline — end the run ]` ends the run, so it stays red. The
+ * selector's `[ Cancel ]` merely closes the dialog, so it is rendered in a
+ * neutral colour and can never be mistaken for a destructive choice.
+ */
+const ALTERNATIVE_ACTION_STYLE: Record<
+  LoanDialogMode,
+  { color: string; hoverColor: string }
+> = {
+  bailout: { color: '#ff8888', hoverColor: '#ffaaaa' },
+  select: { color: '#ddccbb', hoverColor: '#eeddcc' },
+};
+
+/**
+ * Draws a loan dialog: title, intro, optional warning, one button per option
+ * row, the single alternative action and the footer.
+ *
+ * The only place the loan-dialog rows are built — both modes go through here,
+ * so their buttons, labels, depths, HUD parenting and SFX cannot drift apart.
+ *
  * Every button dismisses the overlay before invoking its handler, so a second
- * press can never resolve the same offer twice (and the handler itself is
- * idempotent — the resolving command clears `state.pendingLoanOffer`).
+ * press can never resolve the same dialog twice.
  *
  * @param s        The Main Street scene.
- * @param model    The presentation model from {@link buildLoanOfferModel}.
+ * @param mode     Which dialog is being drawn (alternative-action semantics).
+ * @param content  Presentation content, already built by the Phaser-free model.
  * @param handlers Resolution callbacks.
  */
-export function showLoanOfferDialog(
+function renderLoanDialog(
   s: any,
-  model: LoanOfferModel,
-  handlers: LoanOfferDialogHandlers,
+  mode: LoanDialogMode,
+  content: LoanDialogContent,
+  handlers: LoanDialogHandlers,
 ): void {
   if (s.replayMode) return; // headless/replay: never present UI
 
-  const optionCount = model.rows.length;
+  const optionCount = content.rows.length;
   const rowCount = Math.max(optionCount, 1);
   // The intro states the shortfall; when no option covers it an extra warning
   // line is drawn below the intro and the chrome grows to make room.
-  const warningOffset = model.warning ? WARNING_BLOCK_HEIGHT : 0;
+  const warningOffset = content.warning ? WARNING_BLOCK_HEIGHT : 0;
   const panelH = PANEL_CHROME_HEIGHT + warningOffset + rowCount * ROW_HEIGHT;
   const panelY = s.layout.gameH / 2 - panelH / 2;
   const centerX = s.layout.gameW / 2;
@@ -118,13 +194,13 @@ export function showLoanOfferDialog(
     return obj;
   };
 
-  addText(panelY + 22, model.title, {
+  addText(panelY + 22, content.title, {
     fontSize: '21px',
     fontStyle: 'bold',
     color: '#ffcc44',
   });
 
-  addText(panelY + 56, model.intro, {
+  addText(panelY + 56, content.intro, {
     fontSize: '13px',
     color: '#ddccbb',
     lineSpacing: 4,
@@ -132,8 +208,8 @@ export function showLoanOfferDialog(
 
   // "None of these loans is enough" warning, only when every presented option
   // still leaves the seat below zero (the run ends regardless of the choice).
-  if (model.warning) {
-    addText(panelY + 100, model.warning, {
+  if (content.warning) {
+    addText(panelY + 100, content.warning, {
       fontSize: '13px',
       color: '#ff8888',
       lineSpacing: 4,
@@ -150,7 +226,7 @@ export function showLoanOfferDialog(
   // per-turn repayment, the total repayment and the term — plus, when the
   // shortfall is known, whether that option closes the gap or how short it
   // still leaves the seat.
-  model.rows.forEach((row, index) => {
+  content.rows.forEach((row, index) => {
     const btn = createOverlayButton(
       s,
       centerX,
@@ -169,25 +245,89 @@ export function showLoanOfferDialog(
     s.overlayObjects.push(btn);
   });
 
-  // Decline is the single alternative to borrowing.
-  const declineBtn = createOverlayButton(
+  // The single non-borrowing action: Decline ends the run, Cancel only closes
+  // the selector — the mode supplies the wording and the styling.
+  const alternativeStyle = ALTERNATIVE_ACTION_STYLE[mode];
+  const alternativeBtn = createOverlayButton(
     s,
     centerX,
     panelY + 110 + warningOffset + rowCount * ROW_HEIGHT,
-    model.declineLabel,
+    content.alternativeLabel,
     201,
-    { fontSize: '14px', color: '#ff8888', hoverColor: '#ffaaaa' },
+    { fontSize: '14px', ...alternativeStyle },
   );
-  if (s.hudContainer) s.hudContainer.add(declineBtn);
-  declineBtn.on('pointerdown', () => {
+  if (s.hudContainer) s.hudContainer.add(alternativeBtn);
+  alternativeBtn.on('pointerdown', () => {
     safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
     dismiss();
-    handlers.onDecline();
+    handlers.onAlternative();
   });
-  s.overlayObjects.push(declineBtn);
+  s.overlayObjects.push(alternativeBtn);
 
-  addText(panelY + 126 + warningOffset + rowCount * ROW_HEIGHT, model.footer, {
+  addText(panelY + 126 + warningOffset + rowCount * ROW_HEIGHT, content.footer, {
     fontSize: '12px',
     color: '#999988',
   });
+}
+
+/**
+ * Shows the bailout loan offer dialog (`mode: 'bailout'`).
+ *
+ * The dialog is a single modal: the seat must choose one option or decline.
+ * Behaviours are unchanged from MS-0MVPWSBLG006YMBA — only the row loop moved
+ * into the shared renderer.
+ *
+ * @param s        The Main Street scene.
+ * @param model    The presentation model from {@link buildLoanOfferModel}.
+ * @param handlers Resolution callbacks.
+ */
+export function showLoanOfferDialog(
+  s: any,
+  model: LoanOfferModel,
+  handlers: LoanOfferDialogHandlers,
+): void {
+  renderLoanDialog(
+    s,
+    'bailout',
+    {
+      title: model.title,
+      intro: model.intro,
+      warning: model.warning,
+      rows: model.rows,
+      alternativeLabel: model.declineLabel,
+      footer: model.footer,
+    },
+    { onAccept: handlers.onAccept, onAlternative: handlers.onDecline },
+  );
+}
+
+/**
+ * Shows the mid-game loan selector dialog (`mode: 'select'`).
+ *
+ * Same rows as the bailout dialog for the same menu, driven by the configured
+ * `config.loanOptions` rather than `state.pendingLoanOffer`, with Cancel as the
+ * only alternative: it closes the selector and returns to the Turn Summary
+ * dialog without taking a loan, spending an action or advancing the day.
+ *
+ * @param s        The Main Street scene.
+ * @param model    The presentation model from {@link buildLoanSelectorModel}.
+ * @param handlers Resolution callbacks (confirm / cancel).
+ */
+export function showLoanSelectorDialog(
+  s: any,
+  model: LoanSelectorModel,
+  handlers: LoanSelectorDialogHandlers,
+): void {
+  renderLoanDialog(
+    s,
+    'select',
+    {
+      title: model.title,
+      intro: model.intro,
+      rows: model.rows,
+      alternativeLabel: model.cancelLabel,
+      footer: model.footer,
+    },
+    { onAccept: handlers.onAccept, onAlternative: handlers.onCancel },
+  );
 }

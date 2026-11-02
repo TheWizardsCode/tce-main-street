@@ -1148,15 +1148,14 @@ condensed text-only summary.
   **businesses owned** for the human seat; **right** the resolved incident
   (name + coin/reputation delta), the one-off changes, the net coin /
   reputation / score change and the closing coin / reputation / score
-  balances. The actions are **[ Next Turn ]** (primary) and an
-  always-disabled **[ Bank Loan ]** carrying the hint *“Bank loans are not
-  available yet — coming in a future update.”* — the seam reserved for
-  MS-0MVL6DZI0000F6CG (Bank Loans), which replaces only the
-  `onBankLoanAction` wiring; this item never enables it. The loan engine,
-  bailout flow and HUD readout have since shipped (MS-0MVL6DZI0000F6CG
-  children), so the button's enabling hint is now the only outstanding piece:
-  wiring is tracked by MS-0MVPWSQMG004198C, and until it lands the button
-  stays disabled with that copy.
+  balances. The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
+  whose availability comes from the Phaser-free loans descriptor
+  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7): interactive with
+  no hint line exactly when the acting seat may borrow, otherwise muted and
+  inert with a reason-specific hint (loans disabled / no configured options /
+  the seat's outstanding obligation — `Loan: 110 coins/turn, 4 turns left`)
+  (MS-0MVXYCJCK006UE62). Pressing the enabled button opens the mid-game loan
+  selector below; the day still advances only on **[ Next Turn ]**.
   `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
   overlay manager (headless), continues the closing instead of stranding the
   turn.
@@ -1186,12 +1185,46 @@ condensed text-only summary.
   ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
   (overlay rendering in a real Phaser scene).
 
+### Mid-game loan selector
+
+- Renderer: the bailout dialog's `MainStreetLoanOverlay` renderer in its
+  `'select'` mode — `showLoanSelectorDialog()` — exposed as
+  `MainStreetOverlayContent.showLoanSelectorDialog()`
+  (MS-0MVXYCJVU000QBK1, parent MS-0MVPWSQMG004198C). One renderer serves both
+  modes: the row loop (button construction, label text, depths 199/200/201,
+  HUD parenting, `UI_CLICK` SFX) exists once, so the two dialogs can never
+  drift apart (parent AC4). Modes differ only in their model content, the
+  alternative action's label and the handler it calls — `[ Decline — end the
+  run ]` (red, bailout) versus the neutral `[ Cancel ]` (select).
+- Model: `src/scenes/MainStreetLoanSelectorModel.ts` (pure, no Phaser import) —
+  `buildLoanSelectorModel(state)` builds one row per `config.loanOptions` entry
+  through the **same** `buildLoanRows()` builder as the bailout dialog, so the
+  per-turn/total repayment figures and labels are identical for the same menu.
+  The selector is driven by the configured menu only; `state.pendingLoanOffer`
+  never leaks into it.
+- Entry point and back-out: pressing the Turn Summary dialog's enabled
+  **[ Bank Loan ]** dismisses that panel and presents the selector — one modal
+  at a time, so no Turn Summary button can be pressed behind it. `[ Cancel ]`
+  dismisses the selector and re-presents the Turn Summary dialog from the same
+  summary model with **no** state change (no loan, no action point, no day
+  advance). Confirming an option dispatches `takeLoan` and refreshes the dialog
+  in place (MS-0MVXYCKFE000VF76).
+- Overlay pattern: instant (no fade-in, reduced-motion safe), every element
+  parented into `s.hudContainer` and tracked in `s.overlayObjects`, and never
+  presented in `replayMode`.
+- Tests: `tests/main-street/turn-summary-bank-loan.browser.test.ts` (selector
+  content, cancel with no state change, shared row rendering with the bailout
+  dialog, configured-menu-only content, replay/headless suppression) and the
+  rewritten `[ Bank Loan ]` case in
+  `tests/main-street/turn-summary-dialog.browser.test.ts`.
+
 ### Bailout loan offer dialog
 
 - Renderer: `MainStreetLoanOverlay.showLoanOfferDialog()`, exposed as
   `MainStreetOverlayContent.showLoanOfferDialog()` and delegated by
   `MainStreetScene.showLoanOfferDialog()` (MS-0MVPWSBLG006YMBA, parent
-  MS-0MVL6DZI0000F6CG).
+  MS-0MVL6DZI0000F6CG). Shares its row rendering with the mid-game loan
+  selector (`mode: 'bailout' | 'select'`).
 - Model: `src/scenes/MainStreetLoanOverlayModel.ts` (pure, no Phaser import) —
   `buildLoanOfferModel(state)` turns the outstanding
   `state.pendingLoanOffer` into a title, intro, one **row per presented loan
