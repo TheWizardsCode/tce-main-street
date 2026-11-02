@@ -356,6 +356,18 @@ end-of-turn budget is 40 000 ms. Above ~2× CPU oversubscription the scene's own
 choreography can outlive the hook; that ceiling is measured and recorded in the
 soak envelope below rather than papered over with a longer poll.
 
+**The deferral cap is enforced on wall clock (MS-0MVMKEU2000639TG, decision C).**
+The end-of-turn safety cap (`INCOME_COLLECTION_CAP_MS`, 16 000 ms) is applied by
+the shared `deferUntilIncomeCollected` helper through a `Date.now` deadline and a
+`setTimeout` watchdog, not through the scene clock's `delayedCall` re-polls. The
+consequence is a documented semantic: a hidden or backgrounded document forces
+the day start after the cap instead of stalling until the tab paints again
+(producer Q2 = 1) — the cap exists to bound a stall, and nothing is visible
+while hidden. The 40 000 ms end-of-turn budget and the headroom rule are
+unchanged, and the choreography pacing is untouched; the wall-clock enforcement
+removes the *deferral* leg from the starvation race, which is what the measured
+envelope below reflects (and where it still ends).
+
 ### The guard
 
 `tests/tooling/wait-budget-guard.test.ts` (node `unit` project, no browser)
@@ -461,6 +473,40 @@ recorded on the work item, not a test-side tweak.
 When you re-run the soak, record the burner count next to the result — an
 under-load pass at 8 burners on a host already at load 20 is a stronger
 statement than one at 16 burners on an idle host.
+
+#### Re-measured after the wall-clock deferral cap (2026-11-02, 16-core host)
+
+The wall-clock cap (`deferUntilIncomeCollected`, MS-0MVMKEU2000639TG decision C)
+changed *which* wait fails first and how the day start behaves in a hidden tab,
+but it did not lift the ≈2× ceiling. Nine 16-burner soak attempts
+(`--runs 5`, fail-fast) on a host shared with sibling agent suites, so peaks
+swung 28.60-58.04 from start loads of 6.71-47.95:
+
+| Attempt peak load | Runs pass/fail | Result |
+|---|---|---|
+| 47.46 / 56.76 / 56.73 / 49.01 / 51.20 | 0 / 1 | dialog wait failed; the two most oversubscribed attempts also broke 1-3 transfer waits |
+| 49.32 | 1 / 1 | run 1 **passed** at 28.98 |
+| 58.04 | 1 / 1 | run 1 **passed** at 36.03 |
+| **30.77** | **2 / 1** | runs 1-2 **passed** (29.98 / 30.77), run 3 failed at 29.37 |
+| **28.60** | 0 / 1 | failed on the first run — the dialog wait **only**; the other 19 tests passed in 2-19 s |
+
+Every failure is the same wait — `Turn Summary dialog after end-of-turn
+presentation` at its cap-derived 40 000 ms budget — and it now trips at peaks
+*below* the pre-change failure point (28.60 and 29.37 versus 34.86). The cause is
+structural, not a regression: the Turn Summary gate (MS-0MVP46Q8X003419R)
+presents the dialog *before* the day advance, behind the income choreography and
+the incident reveal, and both remain scene-clock paced (pacing is a shipped
+feature and deliberately unchanged). The wall-clock cap bounds the deferral leg
+— and unit contract tests prove it forces the continuation within one poll
+interval of the cap on a frozen scene clock — but it cannot bound the animation
+chain in front of the dialog.
+
+So the ≈2× ceiling still applies to the *Turn Summary dialog* wait, and the
+16-burner gate can still go red on a loaded shared host. The remediations on the
+table are test-side: drive the Enter test on the reduced-motion path and keep the
+deferred-income property in a separate contract test (filed as
+MS-0MVZI4OXL0050RPP), or accept the measured envelope as the documented design
+limit. Neither is delivered by the cap change alone.
 
 ## Prerequisites: Playwright Chromium
 

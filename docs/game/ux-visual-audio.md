@@ -703,10 +703,15 @@ street rebuild.
   phase) and re-enacted by the reveal bubbles, so it is counted once
   (`scene.displayedIncomeCounted` guards the replay); the reputation phase
   therefore excludes the incident share from its HUD pip flight.
-- Week-start deferral: the controller polls `incomeCollectionActive` on a
-  250ms cadence (with a 16s safety cap) before starting the next week, so
-  the street refresh + HUD update never cut the show short; the street
-  render itself is deferred via `refreshAllExceptStreet` while the show runs.
+- Week-start deferral: the controller waits on `incomeCollectionActive`
+  (via the shared wall-clock `deferUntilIncomeCollected` helper) before
+  starting the next week, so the street refresh + HUD update never cut the
+  show short; the street render itself is deferred via
+  `refreshAllExceptStreet` while the show runs. The helper re-checks the flag
+  on a 250ms scene-clock cadence and bounds the wait with a 16s **wall-clock**
+  cap (MS-0MVMKEU2000639TG): under CPU starvation, or in a hidden/backgrounded
+  document, the day start is forced once 16s of wall time have elapsed instead
+  of waiting for the frame clock to catch up. Pacing itself is unchanged.
 - Accessibility (reduced motion): the coin grids and flights are skipped;
   the phase labels still progress and the single final pop + income sound
   still play.
