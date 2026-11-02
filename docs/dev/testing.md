@@ -354,7 +354,9 @@ guard). A wait that breaks this rule dies in the hook with an unattributed
 timeout instead of failing with its own label — so the largest legal
 end-of-turn budget is 40 000 ms. Above ~2× CPU oversubscription the scene's own
 choreography can outlive the hook; that ceiling is measured and recorded in the
-soak envelope below rather than papered over with a longer poll.
+soak envelope below rather than papered over with a longer poll, and it is
+**accepted as the design limit** (producer decision, 2026-11-02 — see the
+measured envelope below).
 
 **The deferral cap is enforced on wall clock (MS-0MVMKEU2000639TG, decision C).**
 The end-of-turn safety cap (`INCOME_COLLECTION_CAP_MS`, 16 000 ms) is applied by
@@ -502,11 +504,28 @@ interval of the cap on a frozen scene clock — but it cannot bound the animatio
 chain in front of the dialog.
 
 So the ≈2× ceiling still applies to the *Turn Summary dialog* wait, and the
-16-burner gate can still go red on a loaded shared host. The remediations on the
-table are test-side: drive the Enter test on the reduced-motion path and keep the
-deferred-income property in a separate contract test (filed as
-MS-0MVZI4OXL0050RPP), or accept the measured envelope as the documented design
-limit. Neither is delivered by the cap change alone.
+16-burner gate can still go red on a loaded shared host.
+
+**Decision (producer, 2026-11-02): this envelope is the documented design
+limit.** The measured ≈2× ceiling is accepted as the behaviour of the
+full-motion end-to-end path: a 16-burner soak failure on a host that is already
+running sibling suites is treated as host weather — recorded, retried, and
+reported as the envelope — **not** chased as a behavioural regression. The
+wall-clock cap stays: it is what makes the player-facing guarantee true (the day
+start is forced at 16 000 ms of wall time even in a hidden or backgrounded
+document), and it bounds the deferral leg only — it deliberately does not bound
+the scene-clock-paced income choreography and incident reveal that sit in front
+of the Turn Summary dialog, because that pacing is a shipped feature
+(MS-0MVMKEU2000639TG AC5).
+
+The test-side alternative — drive the Enter test on the reduced-motion path and
+keep the deferred-income property in a separate contract test — was **considered
+and not pursued** (filed, then closed un-implemented, as MS-0MVZI4OXL0050RPP).
+It would remove the race instead of widening the budget, at the cost of
+end-to-end coverage of the deferred closing behind a real choreography. If a
+future item needs the gate green under sustained ≈2× oversubscription, that is
+the recorded starting point; re-opening it is a design decision, not a tweak to
+any wait budget here.
 
 ## Prerequisites: Playwright Chromium
 
