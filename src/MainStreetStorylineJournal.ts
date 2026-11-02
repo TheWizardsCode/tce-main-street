@@ -1,25 +1,27 @@
 /**
- * Storyline journal & choice-clarity helpers — Main Street adapter over the
- * generic core story-line module (`@story-line`).
+ * Storyline journal helpers — Main Street adapter over the generic core
+ * story-line module (`@story-line`).
  *
- * The journal derivation, story-update parsing and choice-clarity labels now
- * live in core as game-agnostic helpers; this module keeps Main Street's
- * historical API surface and the shipped wording (via the Main Street UI
- * adapter).
+ * The journal derivation and story-update parsing live in core as
+ * game-agnostic helpers; this module keeps Main Street's historical API
+ * surface and the shipped wording (via the Main Street UI adapter).
  *
  * - {@link parseStoryUpdate} / {@link buildJournal} / {@link journalIsEmpty} —
  *   journal rows derived from the activity log's "story update" lines, most
  *   recent first.
- * - {@link choiceClarityLabels} — the Accept/Reject explanatory labels. These
- *   describe the consequence semantics (apply vs skip) and MUST NOT reveal the
- *   escalation card id (asserted by tests).
+ *
+ * The former `choiceClarityLabels` helper was removed with the core dev tip
+ * `4975f6ff` (CG-0MVZFVZK1003F8HY), which deleted the choice-clarity seam from
+ * `StorylineUiAdapter` along with the legacy two-way choice model. The labels
+ * were never rendered by the game (the event-choice dialog shows the compiled
+ * option labels), so nothing presentation-side changed.
  *
  * @module
  */
 
-import type { EventCard, StorylineOption } from './MainStreetCardsTypes';
+import type { EventCard } from './MainStreetCardsTypes';
 import type { MainStreetState } from './MainStreetStateTypes';
-import type { ChoiceClarityLabels, StorylineJournalEntry } from '@story-line';
+import type { StorylineJournalEntry } from '@story-line';
 import { getMainStreetStorylineSystem } from './MainStreetStorylineAdapter';
 
 /** Prefix of the narrative lines written when a storyline choice resolves. */
@@ -27,9 +29,6 @@ export { STORY_UPDATE_PREFIX } from '@story-line';
 
 /** A single journal row: a past storyline choice outcome. */
 export type JournalEntry = StorylineJournalEntry;
-
-/** The explanatory labels for the two option buttons. */
-export type { ChoiceClarityLabels };
 
 /**
  * Parses a story-update log line into `{ storyline, outcome }`, or null when
@@ -52,18 +51,6 @@ export function buildJournal(state: MainStreetState): JournalEntry[] {
 /** True when the journal has no entries yet (empty-state). */
 export function journalIsEmpty(state: MainStreetState): boolean {
   return getMainStreetStorylineSystem().journalIsEmpty(state);
-}
-
-/**
- * Builds the choice-clarity labels for a pending choice card.
- *
- * The labels explain what each option *does* (apply vs skip the incident's
- * effect) without revealing which card the chain escalates to.
- */
-export function choiceClarityLabels(event: EventCard): ChoiceClarityLabels {
-  const system = getMainStreetStorylineSystem();
-  const options: StorylineOption[] = system.compileStorylineFromEvent(event).compiledOptions;
-  return system.ui.choiceClarityLabels(event, options);
 }
 
 /** Journal title: names the active storyline(s) when available. */
