@@ -66,16 +66,15 @@ Event cards are split into two trigger types:
 
 ### 1.2a Storyline Choice Cards
 
-Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/game/storylines.md](./storylines.md)**.
+Some incidents are **storyline choice cards**: they pause resolution and present an ordered option list, then queue the chosen option's successor card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns. The full model, lifecycle, tooling and authoring walkthrough live in **[docs/game/storylines.md](./storylines.md)**.
 
-New choice nodes author an **arbitrary option list** through a single `options`
-CSV column instead of the two-way `hasChoices`/`acceptNextCardId`/
-`rejectNextCardId` trio. The encoding is `label|cardA,cardB;label2|cardC`, where
+Choice cards author an **arbitrary option list** through a single `options`
+CSV column. The encoding is `label|cardA,cardB;label2|cardC`, where
 `;` separates options, `|` separates a label from its candidate successor ids
 and `,` separates candidates. A blank cell means the card is not a choice; an
 empty candidate list (`label|`) is a terminal option that ends the chain. CSV
-options always apply the incident's effect, and `hasChoices` is derived from a
-non-empty option list. See
+options always apply the incident's effect, and choice-ness is derived from a
+non-empty option list (the manifest's `isChoice` flag). See
 [the `options` column reference](./storylines.md#the-options-csv-column-arbitrary-multi-outcome-encoding)
 for the full grammar and worked example.
 

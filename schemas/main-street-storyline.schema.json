@@ -50,7 +50,7 @@
         "name",
         "storylineId",
         "storylineTitle",
-        "hasChoices",
+        "isChoice",
         "optionCount",
         "coinDelta",
         "reputationDelta",
@@ -71,7 +71,10 @@
         "name": { "type": "string", "minLength": 1 },
         "storylineId": { "type": ["string", "null"] },
         "storylineTitle": { "type": ["string", "null"] },
-        "hasChoices": { "type": "boolean" },
+        "isChoice": {
+          "type": "boolean",
+          "description": "Derived choice flag: true exactly when the card's compiled option list (CSV `options` or a registered option list) is non-empty. The flag is not authored — the option list is the only choice encoding."
+        },
         "optionCount": { "type": "integer", "minimum": 0 },
         "options": {
           "type": "array",

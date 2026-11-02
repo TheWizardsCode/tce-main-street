@@ -40,8 +40,13 @@ export interface StorylineGraphNode {
   readonly storylineId: string | null;
   /** Storyline title, or null. */
   readonly storylineTitle: string | null;
-  /** True when the card presents a choice (hasChoices or registered options). */
-  readonly hasChoices: boolean;
+  /**
+   * True when the card presents a choice. **Derived**: true exactly when the
+   * compiled option list (CSV `options` or a registered option list) is
+   * non-empty. The field matches the core manifest contract (`isChoice`), which
+   * renamed the retired core boolean.
+   */
+  readonly isChoice: boolean;
   /** Number of options (0 for plain incidents). */
   readonly optionCount: number;
   /** Ordered labelled option list (arbitrary multi-outcome model); empty for plain incidents. */
@@ -188,14 +193,14 @@ export function buildStorylineManifest(
     const card = byBase.get(base)!;
     if (card.storylineId) storylineIds.add(card.storylineId);
     const options = optionGetter(card);
-    const hasChoices = options.length > 0;
+    const isChoice = options.length > 0;
 
     nodes.push({
       id: base,
       name: card.name,
       storylineId: card.storylineId ?? null,
       storylineTitle: card.storylineTitle ?? null,
-      hasChoices,
+      isChoice,
       optionCount: options.length,
       options: options.map((option) => ({
         label: option.label,
@@ -319,7 +324,7 @@ export function renderMermaid(manifest: StorylineManifest): string {
   for (const node of manifest.nodes) {
     const id = mermaidId(node.id);
     const label = nodeLabel(node);
-    if (node.hasChoices) {
+    if (node.isChoice) {
       lines.push(`  ${id}{"${label}"}`);
     } else {
       lines.push(`  ${id}("${label}")`);

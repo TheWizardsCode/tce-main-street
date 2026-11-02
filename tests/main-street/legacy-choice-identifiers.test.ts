@@ -110,49 +110,15 @@ export interface LegacyMatch {
 /**
  * The migration debt ledger: path → identifiers that may still appear there.
  *
- * Grouped per migration slice, so each child of the parent item deletes its
- * own entries and the list only ever shrinks. Seeded from the parent's
- * refreshed 2026-11-02 sweep (44 tracked files: 17 `src/`, 22 `tests/`,
- * 5 docs/schema/packs).
+ * Grouped per migration slice, so each child of the parent item deleted its own
+ * entries and the list only ever shrank. **The migration is complete**: every
+ * slice has been retired and the ledger is empty, so the guard is now the plain
+ * executable form of "no legacy identifiers remain" (see the migration-target
+ * case at the end of this file).
  */
 export const LEGACY_ALLOWLIST: Readonly<
   Record<string, readonly LegacyIdentifier[]>
-> = {
-  // Slice 2 (content, adapter and authoring tools, MS-0MVZNRA85009L01U) is
-  // complete: its CSVs, adapter, CLI and Monte Carlo harness carry no legacy
-  // identifier. The graph node keeps the legacy `hasChoices` field name on its
-  // manifest nodes until the schema/manifest rename to `isChoice` (slice 4).
-  'src/scripts/storyline-graph.ts': ['hasChoices'],
-
-  // Slice 3 (transcript and journal schema, MS-0MVZNRAL3000C1Z7) is complete:
-  // the event-choice record carries only the chosen option label and the
-  // journal adapter documents the options-only contract.
-  //
-  // --- Slice 4: schema, manifest artefact and docs (MS-0MVZNRAYU001IFLR) -
-  'docs/dev/assets/storyline-manifest.json': ['hasChoices'],
-  'docs/game/content-design-and-progression.md': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'docs/game/storylines.md': [
-    'acceptNextCardId',
-    'choiceClarityLabels',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-  'schemas/main-street-storyline.schema.json': ['hasChoices'],
-  'src/README.md': ['acceptNextCardId', 'hasChoices', 'rejectNextCardId'],
-
-  // --- Tests: retired by the slice that migrates the contract they cover -
-  // The content/adapter slice tests are migrated; the doc-drift guard keeps
-  // asserting the documented columns until the docs/schema slice migrates them.
-  'tests/main-street/storylines-doc-drift.test.ts': [
-    'acceptNextCardId',
-    'hasChoices',
-    'rejectNextCardId',
-  ],
-};
+> = {};
 
 /** `true` when *relPath* is or lives under one of the excluded paths. */
 export function isExcluded(
@@ -434,10 +400,11 @@ describe('legacy choice-identifier guard', () => {
     ).toEqual([]);
   });
 
-  // Test-first (red) phase: turns green-by-inversion once the allowlist is
-  // empty. The closing slice of parent MS-0MVZLKEU5000Q7SQ flips `it.fails`
-  // to a plain `it` and deletes the now-empty LEGACY_ALLOWLIST.
-  it.fails('no legacy choice identifiers remain in the tree', () => {
+  // Test-first (red) phase: this case was `it.fails` while the allowlist was
+  // non-empty. The closing slice of parent MS-0MVZLKEU5000Q7SQ emptied the
+  // allowlist and flipped it to a plain `it` — it is now the executable form of
+  // "no legacy choice identifiers remain in the tree".
+  it('no legacy choice identifiers remain in the tree', () => {
     expect(collectMatches(PROJECT_ROOT).map(formatMatch)).toEqual([]);
     expect(Object.keys(LEGACY_ALLOWLIST)).toEqual([]);
   });
