@@ -124,13 +124,10 @@ export const LEGACY_ALLOWLIST: Readonly<
   // manifest nodes until the schema/manifest rename to `isChoice` (slice 4).
   'src/scripts/storyline-graph.ts': ['hasChoices'],
 
-  // --- Slice 3: transcript and journal schema (MS-0MVZNRAL3000C1Z7) ------
-  // The event-choice write still carries the two legacy id fields (as null)
-  // until the transcript schema drops them.
-  'src/MainStreetStoryline.ts': ['acceptNextCardId', 'rejectNextCardId'],
-  'src/MainStreetStorylineJournal.ts': ['choiceClarityLabels'],
-  'src/MainStreetTranscript.ts': ['acceptNextCardId', 'rejectNextCardId'],
-
+  // Slice 3 (transcript and journal schema, MS-0MVZNRAL3000C1Z7) is complete:
+  // the event-choice record carries only the chosen option label and the
+  // journal adapter documents the options-only contract.
+  //
   // --- Slice 4: schema, manifest artefact and docs (MS-0MVZNRAYU001IFLR) -
   'docs/dev/assets/storyline-manifest.json': ['hasChoices'],
   'docs/game/content-design-and-progression.md': [

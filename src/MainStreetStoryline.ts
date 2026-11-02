@@ -194,9 +194,9 @@ export function getPendingStorylineOptions(
  * Records the resolution in the Main Street transcript.
  *
  * Main Street-specific: the generic core module has no transcript concept.
- * The legacy successor ids are still carried as `null` on the event-choice
- * entry until the transcript schema drops those fields; the chosen option
- * label is the recorded token.
+ * The chosen option label is the only recorded token — the options-only
+ * model resolves successors from the card's compiled option list, so the
+ * event carries no resolved-successor id.
  */
 export function recordStorylineResolution(
   state: MainStreetState,
@@ -210,8 +210,6 @@ export function recordStorylineResolution(
     cardName: event.name,
     // The chosen option's label, recorded as a stable token.
     option,
-    acceptNextCardId: null,
-    rejectNextCardId: null,
   });
 }
 

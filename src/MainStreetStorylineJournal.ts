@@ -10,11 +10,12 @@
  *   journal rows derived from the activity log's "story update" lines, most
  *   recent first.
  *
- * The former `choiceClarityLabels` helper was removed with the core dev tip
- * `4975f6ff` (CG-0MVZFVZK1003F8HY), which deleted the choice-clarity seam from
- * `StorylineUiAdapter` along with the legacy two-way choice model. The labels
- * were never rendered by the game (the event-choice dialog shows the compiled
- * option labels), so nothing presentation-side changed.
+ * Storyline presentation is options-only: a choice card pauses resolution and
+ * presents its compiled option list (the CSV `options` encoding or a
+ * registered option list), and the chosen option's label is the token the
+ * transcript records. The event-choice dialog renders those labels directly,
+ * so this module derives journal rows only and adapts no choice-presentation
+ * helper — the legacy two-way model's presentation seam is fully retired.
  *
  * @module
  */

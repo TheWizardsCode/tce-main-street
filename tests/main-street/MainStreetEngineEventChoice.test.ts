@@ -612,6 +612,39 @@ describe('transcript recording for event choices', () => {
     // lowercase 'reject' value.
     expect(choiceEvent.option).toBe('Reject');
   });
+
+  it('records the options-only event-choice schema (no resolved-successor ids)', () => {
+    // AC4: the recorded event is the schema of record for a resolved choice,
+    // so its key set is pinned. The chosen option label is the only
+    // resolution token the options-only model records; re-introducing a
+    // successor-id field widens this key set and fails here (a JSON-level
+    // assertion, not a source scan).
+    const recorder = new MainStreetTranscriptRecorder({ seed: 'x' });
+    setMainStreetRecorder(recorder);
+    const state = createChoiceAwareState();
+    forceNextIncident(state, 'evt-choice-test');
+    processEndOfTurn(state);
+
+    resolveEventChoice(state, 'accept');
+
+    const choiceEvent = recorder
+      .getTranscript()
+      .events.find((e) => e.type === 'event-choice');
+    expect(choiceEvent).toBeDefined();
+    if (!choiceEvent) return;
+
+    // `week`/`year` are the calendar stamp the recorder attaches to every
+    // event (CG-0MTT0K9RX0004QTE).
+    expect(Object.keys(choiceEvent).sort()).toEqual([
+      'cardName',
+      'eventId',
+      'option',
+      'turn',
+      'type',
+      'week',
+      'year',
+    ]);
+  });
 });
 
 // ── F1: multi-outcome transcript label (MS-0MV8KQHYJ003EJO6) ─
