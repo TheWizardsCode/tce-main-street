@@ -18,7 +18,8 @@ import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { applyActiveEffectMultiplier } from '@core-engine/ActiveEffect';
 import { computePerBusinessSkillBuffs, getEmployedSpecializationSkillsForBusiness } from './MainStreetStaffBuffs';
 import type { GridDims } from './MainStreetAdjacencyGeometry';
-import { hasAdjacentSameType, resolveNeighbors } from './MainStreetAdjacencyGeometry';
+import { hasAdjacentSameType, resolveNeighbors, sameStreetCell } from './MainStreetAdjacencyGeometry';
+import { DUPLICATE_FACTOR_MAX_COUNT, DUPLICATE_FACTOR_TABLE } from './MainStreetCardsConstants';
 import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
@@ -230,6 +231,78 @@ export function computeSynergyRepBonus(
   }
 
   return bonus;
+}
+
+/**
+ * Resolves the income factor for a given same-type copy count on one street.
+ *
+ * Counts at or below one copy earn their full income (factor 1); larger
+ * counts are clamped to `DUPLICATE_FACTOR_MAX_COUNT`, so four or more copies
+ * all use the 1/3 row of `DUPLICATE_FACTOR_TABLE`.
+ *
+ * @param count Number of businesses of one base type on the street.
+ * @returns The factor to multiply the business's usual coin income by.
+ */
+export function duplicateFactorForCount(count: number): number {
+  if (count <= 1) return 1;
+  const row = Math.min(count, DUPLICATE_FACTOR_MAX_COUNT);
+  return DUPLICATE_FACTOR_TABLE[row] ?? 1;
+}
+
+/**
+ * Resolves the duplicate-business (market-saturation) income factor for the
+ * card at `index` (MS-0MVYG50V1007W8BP).
+ *
+ * Every business on the same 5×2 street cell that shares the card's base type
+ * (`getBaseTypeId`) competes for the same customers, so the factor falls as
+ * copies accumulate: 2 copies → 2/3, 3 → 1/2, 4+ → 1/3. The caller multiplies
+ * the business's usual total coin income (base after the adjacent same-type
+ * 60% penalty, plus adjacency synergy) by the factor and rounds with
+ * `roundInt`; the two penalties stack multiplicatively. Reputation is never
+ * affected.
+ *
+ * Counting rules:
+ *   - sold businesses count — a sold card still saturates its type;
+ *   - community-space cards are excluded from both the count and the factor;
+ *   - duplicates on different streets do not interact, and the default 1×1
+ *     board is a single street.
+ *
+ * The card at `index` itself counts, so a lone business always returns 1.
+ *
+ * @param grid       The street grid.
+ * @param index      The slot index of the business.
+ * @param soldSlots  Array of sold slot flags; a sold card earns no income, so
+ *                   there is nothing to reduce and the factor is 1.
+ * @param gridDims   Optional grid dimensions for expanded lattices.
+ * @returns The income factor (1, 2/3, 1/2 or 1/3).
+ */
+export function duplicateIncomeFactor(
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  index: number,
+  soldSlots: boolean[] = [],
+  gridDims?: GridDims,
+): number {
+  const card = grid[index];
+  if (!card) return 1;
+  // Community spaces are not businesses: they never receive the factor.
+  if (card.family !== 'business') return 1;
+  // A sold card earns no income, so there is nothing to reduce.
+  if (soldSlots[index]) return 1;
+
+  const baseType = getBaseTypeId(card.id);
+  let count = 0;
+  for (let i = 0; i < grid.length; i++) {
+    const other = grid[i];
+    if (!other) continue;
+    // Community-space cards are excluded from the count.
+    if (other.family !== 'business') continue;
+    if (getBaseTypeId(other.id) !== baseType) continue;
+    if (!sameStreetCell(i, index, gridDims)) continue;
+    // Sold businesses still count (soldSlots is deliberately not consulted).
+    count++;
+  }
+
+  return duplicateFactorForCount(count);
 }
 
 /**

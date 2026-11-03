@@ -20,6 +20,7 @@
 export {
   neighbors,
   hasAdjacentSameType,
+  sameStreetCell,
   toWorldPosition,
   fromWorldPosition,
   expandedNeighbors,
@@ -34,6 +35,8 @@ export {
   computeSynergyBonus,
   synergyCoinContributionPerNeighbor,
   computeSynergyRepBonus,
+  duplicateFactorForCount,
+  duplicateIncomeFactor,
   computeBusinessIncome,
   computeSingleCardReputation,
   syncCardCurrentIncome,

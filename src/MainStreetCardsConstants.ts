@@ -78,6 +78,32 @@ export const STARTING_REPUTATION = 300;
 /** Points awarded per completed challenge. */
 export const CHALLENGE_BONUS_POINTS = 1000;
 
+// ── Duplicate-Business Saturation ──────────────────────────
+
+/**
+ * Income factor applied to every business of a type that is duplicated on the
+ * same street (market saturation, MS-0MVYG50V1007W8BP).
+ *
+ * Keyed by the number of businesses of that base type on the street:
+ * one copy earns its full income, and each further copy splits the same
+ * customer base, so two copies earn 2/3 each, three 1/2 each and four or more
+ * 1/3 each. The factor multiplies the business's usual total coin income
+ * (base after the adjacent same-type 60% penalty, plus adjacency synergy) and
+ * the product is rounded with `roundInt`; reputation is unaffected.
+ *
+ * Counts are clamped to `DUPLICATE_FACTOR_MAX_COUNT`, so the 4+ row is the
+ * floor for saturated types.
+ */
+export const DUPLICATE_FACTOR_TABLE: Record<number, number> = {
+  1: 1,
+  2: 2 / 3,
+  3: 1 / 2,
+  4: 1 / 3,
+};
+
+/** Highest table row; every larger same-type count uses the 4-copy factor. */
+export const DUPLICATE_FACTOR_MAX_COUNT = 4;
+
 // ── Market Sizing ───────────────────────────────────────────
 
 /**
