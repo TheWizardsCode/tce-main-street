@@ -785,6 +785,10 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
         repBonus: 0,
         eventDeltas: [],
         upcomingDeltas: [],
+        // Presentation-only: the owning seat, so the animator can resolve a
+        // destination per owner. The economy above never reads it
+        // (MS-0MW083KRZ009NJTA).
+        ownerId,
       });
       total += buffedIncome;
 
@@ -1098,6 +1102,17 @@ export interface SlotPhaseBreakdown {
    * on by the deferred-mutation economy is preserved (AC4).
    */
   upcomingDeltas: SlotEventDelta[];
+  /**
+   * Presentation-only owner identity: the `PlayerRecord.playerId` of the seat
+   * that owns this slot (MS-0MW083KRZ009NJTA). Populated by
+   * `applyCompetitiveIncome` so the closing presentation can tell whose slot
+   * it is drawing; absent for the single-player `applyIncome` path and for
+   * legacy constructors (treated as owner `0`).
+   *
+   * Never read by the deferred-mutation economy: the phase-sum invariant and
+   * the `creditedIncomeTotal` exclusions are unchanged by it.
+   */
+  ownerId?: number;
 }
 
 /**

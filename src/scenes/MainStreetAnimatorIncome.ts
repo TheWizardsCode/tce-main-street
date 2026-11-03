@@ -397,7 +397,16 @@ export function animateIncomePhases(animator: MainStreetAnimatorContext, phaseDa
       for (const pd of phaseData) {
         const card = animator.findStreetCardContainer(pd.slotIndex);
         if (!card) continue;
-        slots.push({ pd, card, handle: createCoinGrid(s, card), displayed: 0 });
+        slots.push({
+          pd,
+          card,
+          handle: createCoinGrid(s, card),
+          displayed: 0,
+          // Presentation-only owner identity (MS-0MW083KRZ009NJTA): absent
+          // owner maps to the human seat so single-player and legacy phase
+          // data stay on the shared HUD path.
+          ownerId: pd.ownerId ?? 0,
+        });
       }
       if (slots.length === 0) return;
 

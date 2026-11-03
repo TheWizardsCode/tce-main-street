@@ -950,25 +950,26 @@ describe('per-seat closing authoritative values (AC2)', () => {
 // `applyCompetitiveIncome`) while leaving seat order and phase-major ordering
 // untouched. Per-seat closing summary text and the day advance are unchanged.
 //
-// ## Why `it.fails` (red phase)
+// ## Why `it.fails` was used (red phase — now green)
 //
-// The owner cases are authored **red-phase** with `it.fails` (repo test-first
+// The owner cases were authored **red-phase** with `it.fails` (repo test-first
 // tracer-bullet convention — see `competitive-per-seat-hand-capacity.test.ts`,
 // `competitive-seat-anchors.test.ts` and the sibling item
-// MS-0MW083E5H009ACB4): `SlotPhaseBreakdown` carries no `ownerId` today, so the
-// owner assertions fail. The implementing child MS-0MW083KRZ009NJTA flips them
-// to a plain `it` once the field lands — leaving them as `it.fails` afterwards
-// is itself a failure, so this suite cannot go stale. Seat order and
-// phase-major ordering are already pinned green by the sequencing cases above;
-// the new owner cases additionally assert the sweep stays in that order. The
-// AC4 case (summary text + day advance) holds today and stays plain `it` so it
-// keeps protecting the closing through the change.
+// MS-0MW083E5H009ACB4) because `SlotPhaseBreakdown` carried no `ownerId`. The
+// implementing child MS-0MW083KRZ009NJTA added the field and popped the trap:
+// they are plain `it` now, so a dropped owner fails instead of passing
+// silently. Seat order and phase-major ordering are pinned green by the
+// sequencing cases above; the new owner cases additionally assert the sweep
+// stays in that order. The AC4 case (summary text + day advance) held
+// throughout and stays plain `it` so it keeps protecting the closing through
+// the change.
 
 /**
  * Reads a presented slot's optional presentation-only owner identity.
  *
- * The field does not exist until MS-0MW083KRZ009NJTA lands, hence the
- * structural read rather than a `SlotPhaseBreakdown` property access.
+ * Kept as a structural read so the assertions stay independent of the field's
+ * typing (optional by design: absent for single-player and legacy
+ * constructors).
  */
 function ownerOfPresentedSlot(slot: unknown): number | undefined {
   return (slot as { ownerId?: number }).ownerId;
@@ -998,7 +999,7 @@ function closingBiz(
 }
 
 describe('combined phase-major sweep preserves owner identity', () => {
-  it.fails(
+  it(
     'AC1/AC2 — every combined slot carries the owning seat through the sweep (end-to-end closing)',
     () => {
       const state = perSeatClosingState('combined-owner-end-to-end', 3);
@@ -1038,7 +1039,7 @@ describe('combined phase-major sweep preserves owner identity', () => {
     },
   );
 
-  it.fails(
+  it(
     'AC2 — a multi-slot seat keeps its owner on every concatenated slot',
     () => {
       const state = createCompetitiveState({

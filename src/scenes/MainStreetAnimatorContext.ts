@@ -48,6 +48,15 @@ export interface IncomePhaseSlot {
   handle: CoinGridHandle;
   /** Coins currently shown in the on-card grid (integer). */
   displayed: number;
+  /**
+   * Presentation-only owner identity, copied from
+   * `SlotPhaseBreakdown.ownerId` by `animateIncomePhases`
+   * (MS-0MW083KRZ009NJTA). Defaults to `0` (the human seat) when the phase
+   * data carries no owner — single-player, legacy constructors and direct
+   * test constructions. Downstream phases use it to resolve a per-seat
+   * flight destination; it never feeds the economy.
+   */
+  ownerId?: number;
 }
 
 /**

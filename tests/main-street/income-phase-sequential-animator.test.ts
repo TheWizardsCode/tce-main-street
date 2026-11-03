@@ -209,10 +209,8 @@ function makePhaseData(
     repBonus: reps[slotIndex] ?? 0,
     eventDeltas: [],
     upcomingDeltas: [],
-    // `ownerId` is added to `SlotPhaseBreakdown` by MS-0MW083KRZ009NJTA; the
-    // cast keeps this suite compiling while that child is still landing.
     ...(ownerIds[slotIndex] === undefined ? {} : { ownerId: ownerIds[slotIndex] }),
-  }) as unknown as SlotPhaseBreakdown);
+  }));
 }
 
 /**
@@ -506,6 +504,47 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     expect(scheduled).toEqual([]);
     expect(gridRegistry.handles).toEqual([]);
     expect(scene.incomeCollectionActive).toBe(false);
+  });
+});
+
+// ── Owner identity on IncomePhaseSlot (MS-0MW083KRZ009NJTA) ────────────
+//
+// `animateIncomePhases` copies each producing slot's presentation-only
+// `SlotPhaseBreakdown.ownerId` onto the `IncomePhaseSlot` it builds, so the
+// later phases can resolve a flight destination per owning seat. Phase data
+// with no owner (single-player / legacy constructors) defaults to the human
+// seat (`0`), which keeps that path unchanged.
+
+describe('MainStreetAnimator.animateIncomePhases — owner identity on phase slots', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gridRegistry.handles.length = 0;
+    gridRegistry.addLog.length = 0;
+  });
+
+  it('threads each slot owner onto the collection slots, treating an absent owner as the human seat', () => {
+    const { scene, scheduled } = createMockScene(3);
+    const animator = new MainStreetAnimator(scene);
+    const collectSpy = vi
+      .spyOn(animator, 'collectIncomeGrids')
+      .mockImplementation(() => {});
+
+    // Slot 0 carries no owner (legacy / single-player shape), slot 1 belongs
+    // to AI seat 1, slot 2 to AI seat 3.
+    animator.animateIncomePhases(makePhaseData([100, 100, 100], [], { 1: 1, 2: 3 }), {
+      phaseGapMs: 100_000,
+    });
+
+    // Only base contributes, so the initial schedule is exactly the base
+    // dispatch followed by the collection.
+    const initial = scheduled.length;
+    for (let i = 0; i < initial; i++) scheduled[i].fn();
+
+    expect(collectSpy).toHaveBeenCalledTimes(1);
+    const slots = collectSpy.mock.calls[0][0];
+    expect(slots.map((slot) => slot.ownerId)).toEqual([0, 1, 3]);
+    // The animator only copies — it never invents an owner on the phase data.
+    expect(slots.map((slot) => slot.pd.ownerId)).toEqual([undefined, 1, 3]);
   });
 });
 

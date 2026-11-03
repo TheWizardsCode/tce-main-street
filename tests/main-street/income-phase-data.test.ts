@@ -387,24 +387,24 @@ describe('IncomeResult.phaseBreakdown (CG-0MT23O6W8003AXWJ)', () => {
 // single-player `applyIncome` path (and the N=1 fallback) carries none, so
 // single-player behaviour and the economy are unchanged.
 //
-// ## Why `it.fails` (red phase)
+// ## Why `it.fails` was used (red phase — now green)
 //
 // Per the repo's test-first tracer-bullet convention (see
 // `competitive-per-seat-hand-capacity.test.ts`, `competitive-seat-anchors.test.ts`
-// and the sibling test item MS-0MW083E5H009ACB4), the owner-identity cases are
-// authored **red-phase** with `it.fails`: `SlotPhaseBreakdown` carries no
-// `ownerId` today, so every one of them fails. The implementing child
-// MS-0MW083KRZ009NJTA ("Carry ownerId on slot phase breakdown") flips them to a
-// plain `it` once the field lands — leaving them as `it.fails` afterwards is
-// itself a failure, so this suite cannot go stale. Guards that already hold
-// today (single-player unchanged) stay plain `it` so they keep protecting the
-// N=1 contract through the change.
+// and the sibling test item MS-0MW083E5H009ACB4), the owner-identity cases were
+// authored **red-phase** with `it.fails` because `SlotPhaseBreakdown` carried no
+// `ownerId`. The implementing child MS-0MW083KRZ009NJTA ("Carry ownerId on slot
+// phase breakdown") added the field and popped the trap: they are plain `it`
+// now, so a regression fails instead of passing silently. Guards that already
+// held (single-player unchanged) were plain `it` throughout, and keep
+// protecting the N=1 contract through the change.
 
 /**
  * Reads the optional presentation-only owner identity.
  *
- * The field does not exist until MS-0MW083KRZ009NJTA lands, hence the
- * structural read rather than a `SlotPhaseBreakdown` property access.
+ * Kept as a structural read so the assertions stay independent of how the
+ * field is typed (it is optional by design: absent for single-player and
+ * legacy constructors).
  */
 function ownerOfPhaseSlot(slot: unknown): number | undefined {
   return (slot as { ownerId?: number }).ownerId;
@@ -444,7 +444,7 @@ function competitiveOwnerState(seed: string): MainStreetState {
 }
 
 describe('owner identity on SlotPhaseBreakdown (MS-0MW083HFW008H1Q2)', () => {
-  it.fails('AC1 — applyCompetitiveIncome tags every slot with the owning seat playerId', () => {
+  it('AC1 — applyCompetitiveIncome tags every slot with the owning seat playerId', () => {
     const state = competitiveOwnerState('phase-owner-single-slot');
     placeOwned(state, competitiveBiz('seat-0-biz', 80, ['Food']), 0, 0);
     placeOwned(state, competitiveBiz('seat-1-biz', 40, ['Culture']), 6, 1);
@@ -468,7 +468,7 @@ describe('owner identity on SlotPhaseBreakdown (MS-0MW083HFW008H1Q2)', () => {
     expect(owners).toEqual([0, 1]);
   });
 
-  it.fails('AC1 — every producing slot of a multi-slot seat keeps that seat as owner', () => {
+  it('AC1 — every producing slot of a multi-slot seat keeps that seat as owner', () => {
     const state = competitiveOwnerState('phase-owner-multi-slot');
     // Seat 0 owns two slots, seat 1 owns one: tagging must follow ownership,
     // not the order in which the slots were placed.
