@@ -1008,8 +1008,11 @@ scripts/hygiene_check.sh --json     # stable JSON (see the script header)
 It reports three things and never prunes, deletes or kills: the worktree
 inventory (registered git worktrees vs orphaned directories under
 `.worklog/worktrees/`), swap/memory pressure, and dev-server processes with
-their cwd ownership. Its classification logic is covered by
-`tests/tooling/hygiene-check.test.ts`.
+their cwd ownership — plus whether the dev (`:3000`) and preview (`:4173`)
+ports have a listener (`dev_servers.port_listeners`). The socket table is read
+once per run and matched without a pipe, so a busy host's large `ss -ltn`
+listing cannot be truncated into a false "not listening". Its classification
+logic is covered by `tests/tooling/hygiene-check.test.ts`.
 
 ### Findings: what killed the server
 

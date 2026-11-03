@@ -227,7 +227,7 @@ classify_directory() {
   for e in "${entries[@]:-}"; do
     [ -n "$e" ] || continue
     if [ "$e" = "." ] || [ "$e" = ".." ]; then continue; fi
-    if ! printf '%s\n' "$PLACEHOLDER_NAMES" | grep -qxF -- "$e"; then
+    if ! grep -qxF -- "$e" <<<"$PLACEHOLDER_NAMES"; then
       CAND_CLASS="needs-review"
       break
     fi
@@ -377,10 +377,15 @@ collect_dev_servers() {
   )
 
   LISTENERS_JSON=""
-  local port listening
+  local port listening ss_table
+  # One read of the socket table, matched from a here-string. Piping into
+  # `grep -q` would let grep exit at the first match while the producer is
+  # still writing, and `pipefail` would turn that SIGPIPE into a spurious
+  # "not listening" for a busy host (MS-0MW0LLUHF00211KY).
+  ss_table="$(ss_out)"
   for port in "$DEV_PORT" "$PREVIEW_PORT"; do
     listening=false
-    if printf '%s\n' "$(ss_out)" | grep -qE "[:.]$port[[:space:]]"; then listening=true; fi
+    if grep -qE "[:.]$port[[:space:]]" <<<"$ss_table"; then listening=true; fi
     LISTENERS_JSON+="${LISTENERS_JSON:+,}{\"port\":$port,\"listening\":$listening}"
   done
 }
