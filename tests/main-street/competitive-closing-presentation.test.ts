@@ -1237,3 +1237,43 @@ function presentedTotal(phaseData: any[]): number {
     0,
   );
 }
+
+// ── Human-only feedback stays flight-free in reduced motion / replay ────────
+//
+// Parent AC4/AC5 (MS-0MW083IXO002Q8K3, parent MS-0MVWNS9L7007CTK9): with the
+// per-owner feedback gating in place, reduced motion / replay / headless remain
+// flight-free — the shared HUD display-only totals are never initialised (so no
+// seat's income can step them) — while the day still advances exactly once with
+// the per-seat closing text. This exercises the real engine→presentation path
+// (each slot carries its owning seat) rather than a synthetic sweep.
+const FLIGHT_FREE_MODES: Array<[string, Record<string, unknown>]> = [
+  ['reduced motion', { settingsPanel: { reducedMotion: true } }],
+  ['replay / headless', { replayMode: true }],
+];
+
+describe('human-only HUD feedback in flight-free modes', () => {
+  it.each(FLIGHT_FREE_MODES)('AC5 — %s presents the per-seat closing with no flights and still advances', (mode, overrides) => {
+    const state = perSeatClosingState(`human-only-flight-free-${mode}`, 2);
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome).toHaveLength(2);
+
+    const h = makePerSeatHarness({
+      state,
+      displayedCoins: null,
+      displayedReputation: null,
+      ...overrides,
+    });
+    let completed = 0;
+
+    presentCompetitiveClosing(asCtx(h.scene), result, () => { completed += 1; });
+
+    // Flight-free: no income choreography runs, so the display-only totals are
+    // never initialised and cannot step for any seat.
+    expect(h.incomeCalls).toHaveLength(0);
+    expect(h.scene.displayedCoins).toBeNull();
+    expect(h.scene.displayedReputation).toBeNull();
+    // The day still advances, after the per-seat closing text.
+    expect(completed).toBe(1);
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
+  });
+});

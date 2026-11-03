@@ -463,3 +463,200 @@ describe('animateIncidentDeltaBubbles display counting', () => {
     expect(scene.displayedCoins).toBe(500);
   });
 });
+
+// ── Human-only HUD feedback gating (MS-0MW083IXO002Q8K3) ────────────────────
+//
+// Test-first contract for the parent's AC4 / AC5 (parent MS-0MVWNS9L7007CTK9):
+// in competitive play every seat's income is presented in one shared sweep, but
+// the shared HUD's display-only running totals (`displayedCoins` /
+// `displayedReputation`), its delta pop and its `+total` landing pop are
+// human-only feedback. A producing slot therefore carries its owning seat as
+// `ownerId` (added to `SlotPhaseBreakdown` / `IncomePhaseSlot` by
+// MS-0MW083KRZ009NJTA); owner `0` — and every legacy / single-player slot with
+// no owner at all — keeps the shared HUD feedback, while an AI owner
+// (`ownerId >= 1`) credits its own seat summary and never moves the HUD totals.
+//
+// ## Why `it.fails` (red phase)
+//
+// The owner-gated cases are authored **red-phase** with `it.fails` (repo
+// test-first tracer-bullet convention — see `competitive-seat-anchors.test.ts`
+// and the sibling items MS-0MW083E5H009ACB4 / MS-0MW083HFW008H1Q2): every
+// flight still steps the shared totals today, regardless of owner. The
+// implementing child MS-0MW083PZ8001QEHS flips them to a plain `it` once the
+// gate lands — leaving them as `it.fails` afterwards is itself a failure, so
+// this suite cannot go stale. The explicit-owner-0 case stays a plain `it` so
+// the unchanged human / single-player contract keeps being protected through
+// the change.
+
+/** A producing slot with an optional presentation-only seat owner. */
+function ownedSlot(spec: {
+  slotIndex: number;
+  ownerId?: number;
+  baseIncome?: number;
+  repBonus?: number;
+  gridIcons?: number;
+  upcomingDeltas?: Array<{
+    cardId: string;
+    name: string;
+    delta: number;
+    kind?: 'coin' | 'rep';
+    attachedSlotIndex?: number | null;
+  }>;
+}) {
+  const icons = Array.from({ length: spec.gridIcons ?? 0 }, () => makeIcon());
+  return {
+    pd: {
+      slotIndex: spec.slotIndex,
+      businessName: `Biz ${spec.slotIndex}`,
+      baseIncome: spec.baseIncome ?? 0,
+      synergyBonus: 0,
+      repBonus: spec.repBonus ?? 0,
+      eventDeltas: [],
+      upcomingDeltas: spec.upcomingDeltas ?? [],
+      ...(spec.ownerId === undefined ? {} : { ownerId: spec.ownerId }),
+    },
+    handle: {
+      container: { list: icons, remove: vi.fn(), destroy: vi.fn() },
+      addCoins: vi.fn().mockReturnValue({ positions: [] }),
+      getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+    },
+    displayed: 0,
+    ...(spec.ownerId === undefined ? {} : { ownerId: spec.ownerId }),
+  };
+}
+
+describe('human-only HUD feedback gating (MS-0MW083IXO002Q8K3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('steps the coin total per landed icon for an explicit human owner (owner 0)', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    vi.spyOn(animator, 'applyPendingDeltasOnce').mockImplementation(() => {});
+    scene.previousCoins = 100;
+    scene.displayedCoins = 100;
+
+    animator.collectIncomeGrids(
+      [ownedSlot({ slotIndex: 0, ownerId: 0, baseIncome: 200, gridIcons: 2 })] as any,
+      { reducedMotion: false, creditedTotal: 200 },
+    );
+    runScheduled(scheduled);
+
+    (moveGameObject.mock.calls[0][0] as { onComplete: () => void }).onComplete();
+    expect(scene.displayedCoins).toBe(200);
+    (moveGameObject.mock.calls[1][0] as { onComplete: () => void }).onComplete();
+    expect(scene.displayedCoins).toBe(300);
+    expect(scene.syncHudTotals).toHaveBeenCalled();
+  });
+
+  it.fails('never steps the human coin total from an AI-owned collection (red-phase)', () => {
+    const { scene, scheduled } = createMockScene({ hudCoinAnchor: { x: 409, y: 50 } });
+    const animator = new MainStreetAnimator(scene);
+    vi.spyOn(animator, 'applyPendingDeltasOnce').mockImplementation(() => {});
+    scene.previousCoins = 100;
+    scene.displayedCoins = 100;
+
+    animator.collectIncomeGrids(
+      [ownedSlot({ slotIndex: 1, ownerId: 1, baseIncome: 400, gridIcons: 4 })] as any,
+      { reducedMotion: false, creditedTotal: 400 },
+    );
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    // The human counter never moves for an AI seat's collection...
+    expect(scene.displayedCoins).toBe(100);
+    expect(scene.syncHudTotals).not.toHaveBeenCalled();
+    // ...and no landing pop is written at the human counter (an AI pop at that
+    // seat's own anchor, or none at all, are both acceptable).
+    const humanCounterPops = scene.add.text.mock.calls.filter(
+      (call: any[]) => call[0] === 409 && String(call[2] ?? '').startsWith('+'),
+    );
+    expect(humanCounterPops).toHaveLength(0);
+  });
+
+  it.fails('never steps the human reputation total from AI-owned reputation pips (red-phase)', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    scene.previousReputation = 300;
+    scene.displayedReputation = 300;
+
+    animator.runIncomePhase(
+      'reputation',
+      [ownedSlot({ slotIndex: 1, ownerId: 1, repBonus: 500 })] as any,
+      {
+        reducedMotion: false,
+        pendingDeltas: { pendingCoinDelta: 0, pendingRepDelta: 5, pendingScoreDelta: 0 },
+      },
+    );
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    // Five reputation pips flew, but none of them ticked the human counter.
+    expect(scene.displayedReputation).toBe(300);
+    expect(scene.syncHudTotals).not.toHaveBeenCalled();
+  });
+
+  it.fails('never steps the human coin total from an AI-owned upcoming gain (red-phase)', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    scene.previousCoins = 500;
+    scene.displayedCoins = 500;
+
+    animator.runIncomePhase(
+      'upcoming',
+      [ownedSlot({
+        slotIndex: 1,
+        ownerId: 1,
+        upcomingDeltas: [
+          { cardId: 'e', name: 'Festival', delta: 200, kind: 'coin', attachedSlotIndex: null },
+        ],
+      })] as any,
+      { reducedMotion: false },
+    );
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    expect(scene.displayedCoins).toBe(500);
+  });
+
+  it.fails('never steps the human reputation total from an AI-owned upcoming gain (red-phase)', () => {
+    const { scene, scheduled } = createMockScene();
+    const animator = new MainStreetAnimator(scene);
+    scene.previousReputation = 10;
+    scene.displayedReputation = 10;
+
+    animator.runIncomePhase(
+      'upcoming',
+      [ownedSlot({
+        slotIndex: 1,
+        ownerId: 1,
+        upcomingDeltas: [
+          { cardId: 'e', name: 'Award', delta: 2, kind: 'rep', attachedSlotIndex: 0 },
+        ],
+      })] as any,
+      { reducedMotion: false },
+    );
+    runScheduled(scheduled);
+    runMoveCompletes();
+
+    expect(scene.displayedReputation).toBe(10);
+  });
+
+  it('never counts under reduced motion, even for a human owner (flight-free modes)', () => {
+    const { scene } = createMockScene({ settingsPanel: { reducedMotion: true } });
+    const animator = new MainStreetAnimator(scene);
+    vi.spyOn(animator, 'applyPendingDeltasOnce').mockImplementation(() => {});
+    scene.previousCoins = 100;
+    // Reduced motion never initialises the display-only counters.
+    scene.displayedCoins = null;
+
+    animator.collectIncomeGrids(
+      [ownedSlot({ slotIndex: 0, ownerId: 0, baseIncome: 100, gridIcons: 1 })] as any,
+      { reducedMotion: true, creditedTotal: 100 },
+    );
+
+    expect(scene.displayedCoins).toBeNull();
+    expect(scene.syncHudTotals).not.toHaveBeenCalled();
+  });
+});

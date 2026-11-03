@@ -533,3 +533,109 @@ describe('MainStreetAnimator.collectIncomeGrids owner-aware routing', () => {
     expect(destinations[0].destY).toBeLessThanOrEqual(50);
   });
 });
+
+// ── Human-only "+total" landing feedback (MS-0MW083IXO002Q8K3) ──────────────
+//
+// Test-first contract for the parent's AC4 / AC5 (parent MS-0MVWNS9L7007CTK9):
+// the collection's landing pop is per-owner feedback, not one combined total at
+// the human counter. The human seat (owner `0`, and every legacy / single-player
+// slot with no owner at all) keeps the HUD coin anchor and pops that seat's own
+// credited total; an AI seat (`ownerId >= 1`) pops at its own competitive
+// scoreboard anchor — or is suppressed — and the combined multi-seat total is
+// never shown at the human counter.
+//
+// ## Why `it.fails` (red phase)
+//
+// The per-owner cases are authored **red-phase** with `it.fails` (repo
+// test-first tracer-bullet convention — see the sibling item
+// MS-0MW083E5H009ACB4 above): the collection still pops one combined total at
+// the single HUD anchor today. The implementing child MS-0MW083PZ8001QEHS flips
+// them to a plain `it`; leaving them as `it.fails` afterwards is itself a
+// failure, so this suite cannot go stale. The single-player case stays a plain
+// `it` so the unchanged owner-0 contract keeps being protected.
+
+/** The human seat's published coin counter for these cases. */
+const TOTAL_POP_HUD_COIN = { x: 409, y: 50 };
+/** The AI seat's published competitive-scoreboard summary row. */
+const TOTAL_POP_AI_SEAT = { x: 900, y: 32 };
+
+/** The "+..." texts created by a collection, in creation order. */
+function plusTexts(
+  created: Array<{ x: number; y: number; label: string }>,
+): Array<{ x: number; y: number; label: string }> {
+  return created.filter((text) => text.label.startsWith('+'));
+}
+
+describe('MainStreetAnimator.collectIncomeGrids human-only "+total" pop', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('pops the landed total at the HUD coin anchor for a legacy / human-only collection', () => {
+    const { scene, scheduled, createdTexts } = createMockScene({
+      hudCoinAnchor: TOTAL_POP_HUD_COIN,
+      hudRepAnchor: { x: 777, y: 50 },
+      hudSeatAnchors: null,
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    runCollection(animator, [makeCollectionSlot({ slotIndex: 0, gridCoins: 3 })], scheduled);
+
+    const pops = plusTexts(createdTexts);
+    expect(pops.map((text) => text.label)).toEqual(['+300']);
+    expect(pops[0].x).toBe(TOTAL_POP_HUD_COIN.x);
+  });
+
+  it.fails('pops each seat\'s own total — never one combined total at the human counter (red-phase)', () => {
+    const { scene, scheduled, createdTexts } = createMockScene({
+      hudCoinAnchor: TOTAL_POP_HUD_COIN,
+      hudRepAnchor: { x: 777, y: 50 },
+      hudSeatAnchors: { 1: TOTAL_POP_AI_SEAT },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    // Human seat: 3 collected icons (300). AI seat: 5 collected icons (500).
+    // The combined sweep credits 800 — the human counter must never see it.
+    runCollection(
+      animator,
+      [
+        makeCollectionSlot({ slotIndex: 0, ownerId: 0, gridCoins: 3 }),
+        makeCollectionSlot({ slotIndex: 1, ownerId: 1, gridCoins: 5 }),
+      ],
+      scheduled,
+    );
+
+    const pops = plusTexts(createdTexts);
+    // The human counter pops the human seat's own credited total, exactly once.
+    expect(
+      pops.filter((text) => text.x === TOTAL_POP_HUD_COIN.x).map((text) => text.label),
+    ).toEqual(['+300']);
+    // Never the combined multi-seat total, anywhere.
+    expect(pops.some((text) => text.label === '+800')).toBe(false);
+    // Any AI landing pop sits on that seat's own anchor with that seat's total
+    // (or is suppressed — an absent AI pop is equally acceptable).
+    for (const pop of pops.filter((text) => text.x !== TOTAL_POP_HUD_COIN.x)) {
+      expect(pop.x).toBe(TOTAL_POP_AI_SEAT.x);
+      expect(pop.label).toBe('+500');
+    }
+  });
+
+  it.fails('emits no landing pop at the human counter when only AI seats produced income (red-phase)', () => {
+    const { scene, scheduled, createdTexts } = createMockScene({
+      hudCoinAnchor: TOTAL_POP_HUD_COIN,
+      hudRepAnchor: { x: 777, y: 50 },
+      hudSeatAnchors: { 1: TOTAL_POP_AI_SEAT },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    runCollection(
+      animator,
+      [makeCollectionSlot({ slotIndex: 1, ownerId: 1, gridCoins: 4 })],
+      scheduled,
+    );
+
+    expect(
+      plusTexts(createdTexts).filter((text) => text.x === TOTAL_POP_HUD_COIN.x),
+    ).toHaveLength(0);
+  });
+});
