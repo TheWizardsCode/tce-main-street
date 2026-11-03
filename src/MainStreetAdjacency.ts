@@ -37,6 +37,7 @@ export {
   computeSynergyRepBonus,
   duplicateFactorForCount,
   duplicateIncomeFactor,
+  applyDuplicateIncomeFactor,
   computeBusinessIncome,
   computeSingleCardReputation,
   syncCardCurrentIncome,

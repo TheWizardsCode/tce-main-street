@@ -29,6 +29,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  applyDuplicateIncomeFactor,
   duplicateIncomeFactor,
 } from '../../src/MainStreetAdjacencyScoring';
 import { sameStreetCell, streetSlotToWorldIndex } from '../../src/MainStreetAdjacencyGeometry';
@@ -158,6 +159,30 @@ describe('duplicate income factor — factor table', () => {
 
   it('returns 1 for an empty slot', () => {
     expect(duplicateIncomeFactor(emptyGrid(), 0)).toBe(1);
+  });
+});
+
+// ── Factor application ─────────────────────────────────────
+
+describe('duplicate income factor — applying the factor to income', () => {
+  it('rounds the reduced income with roundInt (half-up)', () => {
+    // 5 × 2/3 = 3.33… → 3;  7 × 2/3 = 4.66… → 5;  5 × 1/2 = 2.5 → 3.
+    expect(applyDuplicateIncomeFactor(5, DUPLICATE_FACTOR_TABLE[2])).toBe(3);
+    expect(applyDuplicateIncomeFactor(7, DUPLICATE_FACTOR_TABLE[2])).toBe(5);
+    expect(applyDuplicateIncomeFactor(5, DUPLICATE_FACTOR_TABLE[3])).toBe(3);
+  });
+
+  it('leaves income untouched at a factor of 1', () => {
+    expect(applyDuplicateIncomeFactor(12, 1)).toBe(12);
+    expect(applyDuplicateIncomeFactor(0, 1)).toBe(0);
+  });
+
+  it('composes with duplicateIncomeFactor for a saturated street', () => {
+    const grid = emptyGrid();
+    placeCopies(grid, 4);
+
+    // Six copies of a 12-coin business on one street: 1/3 each → 4.
+    expect(applyDuplicateIncomeFactor(12, duplicateIncomeFactor(grid, 0))).toBe(4);
   });
 });
 

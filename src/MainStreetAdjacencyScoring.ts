@@ -306,6 +306,25 @@ export function duplicateIncomeFactor(
 }
 
 /**
+ * Applies a duplicate-business income factor to a business's usual total coin
+ * income (MS-0MVYG50V1007W8BP).
+ *
+ * `roundInt(usualCoinIncome × factor)` is the mechanic's single rounding rule,
+ * so every income path that applies the factor rounds identically and no
+ * fractional coins leak into the economy. Pure and deterministic: it reads no
+ * state and never touches reputation — the factor is a coin-income rule only.
+ *
+ * @param usualCoinIncome The business's total coin income before the factor
+ *                        (base after the adjacent same-type 60% penalty, plus
+ *                        adjacency synergy).
+ * @param factor          The factor from `duplicateIncomeFactor`.
+ * @returns The reduced coin income, rounded half-up with `roundInt`.
+ */
+export function applyDuplicateIncomeFactor(usualCoinIncome: number, factor: number): number {
+  return roundInt(usualCoinIncome * factor);
+}
+
+/**
  * Computes the total income for a single business at a given slot.
  *
  * totalIncome = effectiveBase + synergyBonus
