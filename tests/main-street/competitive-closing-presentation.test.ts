@@ -941,6 +941,168 @@ describe('per-seat closing authoritative values (AC2)', () => {
   });
 });
 
+// ── Owner identity through the combined sweep (MS-0MW083HFW008H1Q2) ────────
+//
+// Test-first contract for parent AC1 / AC6(c)(d) (parent MS-0MVWNS9L7007CTK9):
+// the phase-major sweep that `presentPerSeatCompetitiveClosing` builds by
+// concatenating each seat's `phaseBreakdown.perSlotBreakdown` must preserve
+// every slot's owning seat (`SlotPhaseBreakdown.ownerId`, populated by
+// `applyCompetitiveIncome`) while leaving seat order and phase-major ordering
+// untouched. Per-seat closing summary text and the day advance are unchanged.
+//
+// ## Why `it.fails` (red phase)
+//
+// The owner cases are authored **red-phase** with `it.fails` (repo test-first
+// tracer-bullet convention — see `competitive-per-seat-hand-capacity.test.ts`,
+// `competitive-seat-anchors.test.ts` and the sibling item
+// MS-0MW083E5H009ACB4): `SlotPhaseBreakdown` carries no `ownerId` today, so the
+// owner assertions fail. The implementing child MS-0MW083KRZ009NJTA flips them
+// to a plain `it` once the field lands — leaving them as `it.fails` afterwards
+// is itself a failure, so this suite cannot go stale. Seat order and
+// phase-major ordering are already pinned green by the sequencing cases above;
+// the new owner cases additionally assert the sweep stays in that order. The
+// AC4 case (summary text + day advance) holds today and stays plain `it` so it
+// keeps protecting the closing through the change.
+
+/**
+ * Reads a presented slot's optional presentation-only owner identity.
+ *
+ * The field does not exist until MS-0MW083KRZ009NJTA lands, hence the
+ * structural read rather than a `SlotPhaseBreakdown` property access.
+ */
+function ownerOfPresentedSlot(slot: unknown): number | undefined {
+  return (slot as { ownerId?: number }).ownerId;
+}
+
+/** Minimal business card fixture for the combined-sweep fixtures. */
+function closingBiz(
+  id: string,
+  baseIncome: number,
+  synergyTypes: BusinessCard['synergyTypes'],
+): BusinessCard {
+  return {
+    family: 'business',
+    id,
+    name: id,
+    cost: 100,
+    baseIncome,
+    synergyTypes,
+    maxLevel: 1,
+    description: 'test',
+    level: 0,
+    incomeBonus: 0,
+    synergyRangeBonus: 0,
+    reputationBonus: 0,
+    ongoingCost: 0,
+  } as BusinessCard;
+}
+
+describe('combined phase-major sweep preserves owner identity', () => {
+  it.fails(
+    'AC1/AC2 — every combined slot carries the owning seat through the sweep (end-to-end closing)',
+    () => {
+      const state = perSeatClosingState('combined-owner-end-to-end', 3);
+      // Seat 1 is eliminated after the day is driven to the closing, so the
+      // engine surfaces seats 0 and 2 only (existing fixture behaviour).
+      state.players![1].eliminated = true;
+      const result = resolveCompetitiveClosingPhases(state);
+      expect(result.playerIncome!.map((seat) => seat.ownerId)).toEqual([0, 2]);
+
+      const h = makePerSeatHarness({ state });
+      presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+      // One combined sweep, in seat order (no re-grouping by owner).
+      expect(h.incomeCalls).toHaveLength(1);
+      const combined = h.incomeCalls[0];
+      expect(combined.map((slot) => slot.slotIndex)).toEqual(
+        result.playerIncome!.flatMap((seat) =>
+          seat.income.phaseBreakdown.perSlotBreakdown.map((slot) => slot.slotIndex),
+        ),
+      );
+
+      // Every slot keeps the owner of the seat slice it came from.
+      for (const seat of result.playerIncome!) {
+        const seatIndices = new Set(
+          seat.income.phaseBreakdown.perSlotBreakdown.map((slot) => slot.slotIndex),
+        );
+        const presented = combined.filter((slot) => seatIndices.has(slot.slotIndex));
+        expect(presented).toHaveLength(
+          seat.income.phaseBreakdown.perSlotBreakdown.length,
+        );
+        for (const slot of presented) {
+          expect(ownerOfPresentedSlot(slot)).toBe(
+            state.players![seat.ownerId].playerId,
+          );
+        }
+      }
+    },
+  );
+
+  it.fails(
+    'AC2 — a multi-slot seat keeps its owner on every concatenated slot',
+    () => {
+      const state = createCompetitiveState({
+        seed: 'combined-owner-multi-slot',
+        playerCount: 2,
+      });
+      state.resourceBank.coins = 100000;
+      state.resourceBank.reputation = 1000;
+      for (const player of state.players!) {
+        player.coins = 1000;
+        player.reputation = 0;
+      }
+      // Seat 0 owns two slots, seat 1 owns one — the concatenation must not
+      // drop (or overwrite) any seat's owner identity.
+      const seat0a = closingBiz('Seat 0 Food', 60, ['Food']);
+      const seat0b = closingBiz('Seat 0 Service', 50, ['Service']);
+      const seat1a = closingBiz('Seat 1 Culture', 40, ['Culture']);
+      for (const [card, slotIndex, ownerId] of [
+        [seat0a, 0, 0],
+        [seat0b, 9, 0],
+        [seat1a, 6, 1],
+      ] as Array<[BusinessCard, number, number]>) {
+        state.streetGrid[slotIndex] = card;
+        updateNeighborsOnPlacement(state, slotIndex);
+        state.ownerTaggedGrid![slotIndex] = { card, ownerId };
+      }
+      const playerIncome = applyCompetitiveIncome(state);
+      const result: TurnResult = { ...makeResult({ income: null }), playerIncome };
+
+      const h = makePerSeatHarness({ state });
+      presentCompetitiveClosing(asCtx(h.scene), result, () => {});
+
+      expect(h.incomeCalls).toHaveLength(1);
+      const combined = h.incomeCalls[0];
+      // Seat order preserved: seat 0's grid-order slots, then seat 1's.
+      expect(combined.map((slot) => slot.slotIndex)).toEqual([0, 9, 6]);
+      expect(combined.map(ownerOfPresentedSlot)).toEqual([0, 0, 1]);
+    },
+  );
+
+  it('AC4 — the per-seat closing summary text and day advance are unchanged', () => {
+    const state = perSeatClosingState('combined-owner-text-unchanged', 2);
+    const result = resolveCompetitiveClosingPhases(state);
+    expect(result.playerIncome).toHaveLength(2);
+    let completed = 0;
+
+    const h = makePerSeatHarness({ state });
+    presentCompetitiveClosing(asCtx(h.scene), result, () => {
+      completed += 1;
+    });
+
+    // Per-seat summary text: one `Player N: +X coins` line per seat, in seat
+    // order, using each seat's own authoritative income total.
+    const expectedSummary = result.playerIncome!
+      .map((seat) => `Player ${seat.ownerId + 1}: +${seat.income.total} coins`)
+      .join(' | ');
+    expect(h.instructions()).toContain(expectedSummary);
+    expect(lastInstruction(h.instructions())).toBe('End of turn complete.');
+
+    // The day advances exactly once after the closing.
+    expect(completed).toBe(1);
+  });
+});
+
 // ── Global fast-forward bound (AC6, bounded fallback) ──────────────────────
 //
 // The bounded / non-blocking contract: the phase-major choreography runs once
