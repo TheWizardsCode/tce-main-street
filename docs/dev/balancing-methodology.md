@@ -242,6 +242,32 @@ required): `tests/main-street/difficulty-presets.test.ts` asserts each preset's
 per-difficulty win-rate bands and the ladder. Any future difficulty tune must be
 raised as a **new** balance work item, not by editing these pins.
 
+## Park +20 Reputation Drift Check (MS-0MVRDGNFU001DDQW)
+
+The Park (`cs-park`) gained its producer-confirmed **+20 reputation per turn**
+(pricing unchanged at 150 cost / 40 ongoing). Per the drift-report-then-ask
+workflow (CG-0MTD0F66A0005BEX) the change was **measured**, not assumed:
+`npm run balance:drift-report` on the canonical profile (200 seeds
+`mc-balance-0…199`, 60-turn cap, `greedy`) compares the current tree against
+the committed baseline `docs/dev/assets/monte-carlo-baseline.json`
+(`commitSha 4001972c`, generated 2026-10-15).
+
+| Difficulty | winRate (Δ vs baseline) | coins/turn (Δ) | medianScore (Δ) |
+|---|---:|---:|---:|
+| Easy   | 0.730 (+0.0150) | 405.75 (+37.79) | 10,882.0 (+438.0) |
+| Medium | 0.605 (+0.0000) | 349.53 (+3.38)  | 12,563.5 (+86.5)  |
+| Hard   | 0.275 (+0.0050) | 126.83 (+8.62)  | 210.0 (+0.0)      |
+
+**Result: 0 of 3 difficulties exceed tolerance** (winRate ±0.25; coins ±30 %
+of baseline). The primary ladder `Easy 0.730 ≥ Medium 0.605 ≥ Hard 0.275` is
+intact and **no guardrail band was widened**. The committed baseline was
+deliberately **not** regenerated: the drift is the intended, small,
+directional effect of the +20 reputation, and the catch-breakage guardrail
+`tests/main-street/monte-carlo-guardrails.test.ts` (drift vs the committed
+baseline) plus `tests/main-street/monte-carlo-greedy-guardrail.test.ts`
+(design-intent bands and ladder) both stay green. Any future re-tune must go
+through its own work item, not a silent baseline edit.
+
 ## 8-Way Adjacency Re-Tune (CG-0MSP1HCAS00785MP / CG-0MSP26Q5N002EH8P)
 
 The adjacency metric was changed from **Manhattan (orthogonal-only)** to **Chebyshev (8-way)**:
