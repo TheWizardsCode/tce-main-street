@@ -197,6 +197,13 @@ export function refreshHud(renderer: MainStreetRendererContext): void {
     // (and the live game) to lose the panels after the first refresh.
     clearTransientHud(s.hudContainer);
 
+    // Competitive seat flight anchors are part of the transient HUD contract
+    // (MS-0MW083MAN004JSCH): clearing them here — before anything re-renders —
+    // means a shrunk roster, a re-layout or a return to single-player can never
+    // leave a flight pointing at geometry that is gone. The renderer below
+    // republishes the full map for the current roster.
+    s.hudSeatAnchors = null;
+
     const score = computeScore(s.state);
     // Deferred-mutation window (CG-0MTR72P14000VO6Q): while the end-of-turn
     // animations run (income collection and/or incident reveal), the HUD must

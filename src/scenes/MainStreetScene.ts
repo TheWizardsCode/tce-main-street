@@ -347,6 +347,27 @@ export class MainStreetScene extends CardGameScene {
   public hudRepAnchor: { x: number; y: number } | null = null;
 
   /**
+   * Live per-seat flight anchors published by
+   * `renderCompetitiveScoreboard()` every time the competitive scoreboard
+   * re-renders (MS-0MW083MAN004JSCH, parent MS-0MVWNS9L7007CTK9 AC3/AC6(b)).
+   *
+   * One entry per rendered seat row, keyed by the row's `playerId`, valued with
+   * that row's own centre x / baseline y — the same anchor shape as
+   * `hudCoinAnchor` / `hudRepAnchor`, but per seat instead of shared. The AI
+   * "bank" is, for now, the seat's summary row position: this map is the
+   * deliberately swappable seam a real AI bank renderer replaces later, with no
+   * animator changes.
+   *
+   * `null` before the first competitive render (and after every transient HUD
+   * clear — see `refreshHud`), so consumers must fall back to
+   * `hudSeatFallback(layout, seatIndex, seatCount)` when it is null or the seat
+   * id is absent. Reassigned (never merged) on each render, so a shrunk roster
+   * or a re-layout never leaves stale seat geometry behind. Single-player runs
+   * never publish it.
+   */
+  public hudSeatAnchors: Record<number, { x: number; y: number }> | null = null;
+
+  /**
    * True while the end-of-turn income collection animation is running
    * (coins/pips flying to the HUD). Suppresses the immediate HUD delta pop
    * in `animateHudValueChanges` so the collection's final "+total" pop is

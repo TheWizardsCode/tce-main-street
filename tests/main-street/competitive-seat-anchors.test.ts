@@ -23,18 +23,17 @@
  *    `hudWidth` / row count, and matches what the renderer publishes for a
  *    stable layout — mirroring `hudCoinFallback` / `hudRepFallback`.
  *
- * ## Why `it.fails` (red phase)
+ * ## Flipped from `it.fails` (landed)
  *
  * Per the repo's test-first tracer-bullet convention (see
  * `competitive-per-seat-hand-capacity.test.ts` and the sibling test item
- * `MS-0MW083E5H009ACB4`), the contract cases are authored **red-phase** with
- * `it.fails`: today the renderer publishes no anchors and the helper does not
- * exist, so every one of them fails. The implementing child
- * `MS-0MW083MAN004JSCH` ("Publish per-seat scoreboard anchors") flips them to a
- * plain `it` once the seam lands — leaving them as `it.fails` afterwards is
- * itself a failure, so this suite cannot go stale. Guards that already hold
- * today stay plain `it` so they keep protecting the existing row rendering
- * through the change.
+ * `MS-0MW083E5H009ACB4`), the contract cases were authored **red-phase** with
+ * `it.fails` by `MS-0MW083FMS009O2CT` and flipped to a plain `it` by the
+ * implementing child `MS-0MW083MAN004JSCH` ("Publish per-seat scoreboard
+ * anchors") once the seam landed; they now hold as ordinary guards over that
+ * contract, so leaving any of them as `it.fails` would itself be a failure and
+ * this suite cannot go stale. Guards that already held before the change stay
+ * plain `it` so they keep protecting the existing row rendering.
  *
  * The AI bank is deliberately the seat's own summary row (the documented
  * stopgap until a real AI bank exists): these tests pin the **anchor seam** —
@@ -121,9 +120,9 @@ type SeatAnchorStore = Record<number, SeatAnchor>;
 /** Why a red-phase case failed, in terms the implementing child can act on. */
 function missingAnchorStore(): Error {
   return new Error(
-    'scene.hudSeatAnchors is not published yet — red-phase contract authored by ' +
-      'MS-0MW083FMS009O2CT, landed by MS-0MW083MAN004JSCH (one anchor per rendered ' +
-      'competitive scoreboard row, keyed by playerId).',
+    'scene.hudSeatAnchors is not published — contract authored by ' +
+      'MS-0MW083FMS009O2CT and implemented by MS-0MW083MAN004JSCH (one anchor per ' +
+      'rendered competitive scoreboard row, keyed by playerId).',
   );
 }
 
@@ -135,8 +134,8 @@ function seatFallback(): SeatFallback {
   if (typeof fn !== 'function') {
     throw new Error(
       'hudSeatFallback(layout, seatIndex, seatCount) is not exported from ' +
-        'MainStreetConstants yet — red-phase contract authored by ' +
-        'MS-0MW083FMS009O2CT, landed by MS-0MW083MAN004JSCH.',
+        'MainStreetConstants — contract authored by MS-0MW083FMS009O2CT and ' +
+        'implemented by MS-0MW083MAN004JSCH.',
     );
   }
   return fn;
@@ -245,7 +244,7 @@ function anchorEntries(store: SeatAnchorStore): Array<[number, SeatAnchor]> {
 
 // ── Publication (AC1, AC2) ─────────────────────────────────
 
-describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', () => {
+describe('renderCompetitiveScoreboard publishes per-seat anchors', () => {
   it('still renders one tagged row per seat when no anchor store exists yet', () => {
     const { renderer, scene, texts } = createHarness(competitiveState());
 
@@ -276,7 +275,7 @@ describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', (
     expect(rowsByPlayer(texts).size).toBe(3);
   });
 
-  it.fails('publishes one anchor per rendered row, keyed by playerId, at the row centre x and baseline y', () => {
+  it('publishes one anchor per rendered row, keyed by playerId, at the row centre x and baseline y', () => {
     const { renderer, scene, texts } = createHarness(competitiveState());
 
     renderCompetitiveScoreboard(renderer as never);
@@ -305,7 +304,7 @@ describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', (
     expect(ys[0]).toBeLessThan(LAYOUT_A.hudY);
   });
 
-  it.fails('publishes into a scene whose anchor store starts null (safe before the first render)', () => {
+  it('publishes into a scene whose anchor store starts null (safe before the first render)', () => {
     const { renderer, scene, texts } = createHarness(competitiveState(), { hudSeatAnchors: null });
 
     renderCompetitiveScoreboard(renderer as never);
@@ -314,7 +313,7 @@ describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', (
     expect(rowsByPlayer(texts).size).toBe(3);
   });
 
-  it.fails('recomputes on every render: a shrunken roster leaves no stale seat anchor', () => {
+  it('recomputes on every render: a shrunken roster leaves no stale seat anchor', () => {
     const state = competitiveState();
     const { renderer, scene } = createHarness(state, {
       // Stale entries from an earlier, larger roster must not survive.
@@ -331,7 +330,7 @@ describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', (
     expect(anchorEntries(publishedAnchors(scene)).map(([id]) => id)).toEqual([0, 1]);
   });
 
-  it.fails('recomputes on every render: a re-layout moves every anchor', () => {
+  it('recomputes on every render: a re-layout moves every anchor', () => {
     const { renderer, scene } = createHarness(competitiveState());
 
     renderCompetitiveScoreboard(renderer as never);
@@ -357,8 +356,8 @@ describe('renderCompetitiveScoreboard publishes per-seat anchors (red-phase)', (
 
 // ── Pre-render fallback geometry (AC4) ─────────────────────
 
-describe('hudSeatFallback pre-render geometry (red-phase)', () => {
-  it.fails('matches the anchors the renderer publishes for a stable layout', () => {
+describe('hudSeatFallback pre-render geometry', () => {
+  it('matches the anchors the renderer publishes for a stable layout', () => {
     const { renderer, scene } = createHarness(competitiveState());
     renderCompetitiveScoreboard(renderer as never);
     const published = publishedAnchors(scene);
@@ -371,7 +370,7 @@ describe('hudSeatFallback pre-render geometry (red-phase)', () => {
     }
   });
 
-  it.fails('is deterministic, per-seat, left-to-right and inside the HUD strip band', () => {
+  it('is deterministic, per-seat, left-to-right and inside the HUD strip band', () => {
     const fallback = seatFallback();
 
     const seats = [0, 1, 2].map((seatIndex) => fallback(LAYOUT_A, seatIndex, 3));
@@ -396,8 +395,8 @@ describe('hudSeatFallback pre-render geometry (red-phase)', () => {
 
 // ── Clearing with the transient HUD (AC3) ──────────────────
 
-describe('refreshHud clears the per-seat anchors with the transient HUD (red-phase)', () => {
-  it.fails('publishes while the competitive scoreboard renders and clears when it goes away', () => {
+describe('refreshHud clears the per-seat anchors with the transient HUD', () => {
+  it('publishes while the competitive scoreboard renders and clears when it goes away', () => {
     const state = competitiveState();
     const { renderer, scene } = createHarness(state);
 
@@ -413,7 +412,7 @@ describe('refreshHud clears the per-seat anchors with the transient HUD (red-pha
     expect(cleared === null || cleared === undefined || Object.keys(cleared).length === 0).toBe(true);
   });
 
-  it.fails('republishes on a re-layout and leaves no stale geometry behind', () => {
+  it('republishes on a re-layout and leaves no stale geometry behind', () => {
     const state = competitiveState();
     const { renderer, scene } = createHarness(state);
 

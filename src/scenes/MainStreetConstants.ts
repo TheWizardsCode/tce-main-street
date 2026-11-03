@@ -395,3 +395,47 @@ export function hudCoinFallback(layout: SceneLayout): { x: number; y: number } {
 export function hudRepFallback(layout: SceneLayout): { x: number; y: number } {
   return { x: layout.gameW * 0.5, y: layout.hudY };
 }
+
+/**
+ * Vertical lift (px) of the competitive scoreboard's row baseline above the HUD
+ * strip's centre line (`hudY`): the row text is drawn at
+ * `hudY - HUD_BAR_HEIGHT_PX / 2 - HUD_SEAT_ROW_OFFSET_PX` with origin
+ * `(0.5, 1)`, i.e. its centre x / baseline y. Shared by the renderer and
+ * {@link hudSeatFallback} so the pre-render fallback always lands on the
+ * rendered row (MS-0MW083MAN004JSCH).
+ */
+export const HUD_SEAT_ROW_OFFSET_PX = 4;
+
+/**
+ * Pre-render fallback for a competitive seat's flight anchor
+ * (MS-0MW083MAN004JSCH, parent MS-0MVWNS9L7007CTK9 AC3 / AC6(b)) — the
+ * per-seat counterpart of `hudCoinFallback` / `hudRepFallback`.
+ *
+ * Returns the **same** cell `renderCompetitiveScoreboard` publishes into
+ * `scene.hudSeatAnchors` for that seat: the centre of seat `seatIndex`'s cell
+ * in the evenly-divided HUD strip band (`hudLeft`..`hudLeft + hudWidth`) at the
+ * shared row baseline. Consumers use it only when no anchor has been published
+ * yet (the first frame, or before the scoreboard has rendered) — the live map
+ * always wins once it exists.
+ *
+ * Deterministic and total: `seatIndex` is clamped into `0..seatCount - 1` (and
+ * `seatCount` to at least 1) so a stale or out-of-range owner id still resolves
+ * a cell **inside** the strip band instead of a coordinate off the HUD.
+ *
+ * The AI "bank" is deliberately the seat's own summary row for now
+ * (MS-0MW083MAN004JSCH): this helper is the swappable seam a real AI bank
+ * replaces later, without animator changes.
+ */
+export function hudSeatFallback(
+  layout: SceneLayout,
+  seatIndex: number,
+  seatCount: number,
+): { x: number; y: number } {
+  const count = Math.max(1, Math.floor(seatCount));
+  const index = Math.min(Math.max(0, Math.floor(seatIndex)), count - 1);
+  const colWidth = layout.hudWidth / count;
+  return {
+    x: layout.hudLeft + colWidth * index + colWidth / 2,
+    y: layout.hudY - HUD_BAR_HEIGHT_PX / 2 - HUD_SEAT_ROW_OFFSET_PX,
+  };
+}
