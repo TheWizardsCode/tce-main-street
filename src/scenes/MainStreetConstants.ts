@@ -407,6 +407,20 @@ export function hudRepFallback(layout: SceneLayout): { x: number; y: number } {
 export const HUD_SEAT_ROW_OFFSET_PX = 4;
 
 /**
+ * Seat count assumed by {@link hudSeatFallback} consumers when the live roster
+ * size (`state.playerCount` / `state.players.length`) is unknown
+ * (MS-0MW083O38005B22F). It is the largest roster the game offers — the human
+ * seat plus `MAX_AI_OPPONENTS` (3) AI seats (see
+ * `MainStreetNewGameSelection`) — so a per-owner flight resolved before the
+ * first scoreboard render still lands on a distinct cell inside the HUD strip
+ * band instead of clamping onto another seat's cell.
+ *
+ * A known roster size always wins over this constant: the fallback then lands
+ * exactly on the cell the renderer will draw for that roster.
+ */
+export const HUD_FALLBACK_SEAT_COUNT = 4;
+
+/**
  * Pre-render fallback for a competitive seat's flight anchor
  * (MS-0MW083MAN004JSCH, parent MS-0MVWNS9L7007CTK9 AC3 / AC6(b)) — the
  * per-seat counterpart of `hudCoinFallback` / `hudRepFallback`.
@@ -420,7 +434,10 @@ export const HUD_SEAT_ROW_OFFSET_PX = 4;
  *
  * Deterministic and total: `seatIndex` is clamped into `0..seatCount - 1` (and
  * `seatCount` to at least 1) so a stale or out-of-range owner id still resolves
- * a cell **inside** the strip band instead of a coordinate off the HUD.
+ * a cell **inside** the strip band instead of a coordinate off the HUD. A
+ * partially-populated layout (a test double, or a layout captured before the
+ * HUD strip geometry was derived) degrades to the viewport width starting at
+ * `0` rather than resolving a non-finite coordinate.
  *
  * The AI "bank" is deliberately the seat's own summary row for now
  * (MS-0MW083MAN004JSCH): this helper is the swappable seam a real AI bank
@@ -433,9 +450,11 @@ export function hudSeatFallback(
 ): { x: number; y: number } {
   const count = Math.max(1, Math.floor(seatCount));
   const index = Math.min(Math.max(0, Math.floor(seatIndex)), count - 1);
-  const colWidth = layout.hudWidth / count;
+  const left = Number.isFinite(layout.hudLeft) ? layout.hudLeft : 0;
+  const width = Number.isFinite(layout.hudWidth) ? layout.hudWidth : layout.gameW;
+  const colWidth = width / count;
   return {
-    x: layout.hudLeft + colWidth * index + colWidth / 2,
+    x: left + colWidth * index + colWidth / 2,
     y: layout.hudY - HUD_BAR_HEIGHT_PX / 2 - HUD_SEAT_ROW_OFFSET_PX,
   };
 }

@@ -12,7 +12,7 @@ import type { SlotIncome, SlotPhaseBreakdown, SynergyPair } from '../MainStreetA
 import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import type { CoinGridHandle } from '../coin-grid';
 import type { SceneLayout } from './MainStreetConstants';
-import { hudCoinFallback, hudRepFallback } from './MainStreetConstants';
+import { HUD_FALLBACK_SEAT_COUNT, hudCoinFallback, hudRepFallback, hudSeatFallback } from './MainStreetConstants';
 
 export type IncomePhaseKey = 'base' | 'synergy' | 'reputation' | 'events' | 'upcoming' | 'collect';
 
@@ -117,6 +117,87 @@ export function hudFlightTarget(
 ): HudAnchor {
   if (kind === 'rep') return host.hudRepAnchor ?? hudRepFallback(layout);
   return host.hudCoinAnchor ?? hudCoinFallback(layout);
+}
+
+/**
+ * Host exposing the live **per-seat** competitive-scoreboard anchors published
+ * by `MainStreetRendererCompetitiveHud.renderCompetitiveScoreboard()`
+ * (MS-0MW083MAN004JSCH) plus the roster hint the pre-render fallback needs.
+ *
+ * The scene carries both; `hudSeatAnchors` is `null` before the first
+ * competitive render (and after every transient HUD clear) and the roster hint
+ * is absent in single-player / legacy states, so every consumer must treat
+ * both as optional.
+ */
+export interface HudSeatAnchorHost extends HudAnchorHost {
+  /** Live seat anchors keyed by `playerId`; `null`/absent before a render. */
+  hudSeatAnchors?: Record<number, HudAnchor> | null;
+  /**
+   * Roster hint for the pre-render fallback's cell width: `state.playerCount`
+   * (competitive) or `state.players.length`. Absent for single-player and for
+   * legacy / partial states, in which case the fallback assumes
+   * {@link HUD_FALLBACK_SEAT_COUNT} seats.
+   */
+  state?: {
+    playerCount?: number | null;
+    players?: readonly unknown[] | null;
+  } | null;
+}
+
+/**
+ * Number of seats the HUD strip is divided into, for the pre-render fallback.
+ *
+ * A known roster size wins, so the fallback lands exactly on the cell the
+ * scoreboard will draw. When the roster is unknown (a test double, a state
+ * captured before players were seeded) the widest supported roster is assumed
+ * — never a per-owner count, so seat cells stay ordered left-to-right by owner
+ * id and one owner never shifts another's cell. `ownerId + 1` is always
+ * honoured so an out-of-range owner still resolves its own cell.
+ */
+function seatCountFor(host: HudSeatAnchorHost, ownerId: number): number {
+  const roster = host.state?.playerCount ?? host.state?.players?.length;
+  const known = typeof roster === 'number' && Number.isFinite(roster) && roster > 0
+    ? Math.floor(roster)
+    : HUD_FALLBACK_SEAT_COUNT;
+  return Math.max(known, ownerId + 1);
+}
+
+/**
+ * Resolve the destination of an income flight by the **owning seat**
+ * (MS-0MW083O38005B22F, parent MS-0MVWNS9L7007CTK9 AC2).
+ *
+ * In competitive play the shared HUD counters belong to the human seat only,
+ * so the three HUD-bound income routes (grid → bank collection, the reputation
+ * phase's card → rep-bank pips, and the `upcoming` coin/reputation flows) must
+ * resolve their HUD side per owner:
+ *
+ * - owner `0` — the human seat, and every single-player / legacy slot that
+ *   carries no owner — resolves exactly like {@link hudFlightTarget}: the
+ *   published `hudCoinAnchor` / `hudRepAnchor`, else the shared legacy
+ *   fallback. Single-player behaviour is therefore unchanged.
+ * - an AI owner (`ownerId >= 1`) resolves to that seat's published
+ *   competitive-scoreboard anchor (`hudSeatAnchors[ownerId]`) — the documented
+ *   stopgap for "the AI's bank" — falling back to {@link hudSeatFallback}'s
+ *   deterministic cell only while no anchor has been published.
+ *
+ * The AI seat anchor is deliberately the summary row's position: this helper
+ * is the swappable seam a real per-seat bank replaces later, with no animator
+ * changes. Presentation-only — it never feeds the economy.
+ */
+export function flightTargetFor(
+  host: HudSeatAnchorHost,
+  kind: 'coin' | 'rep',
+  layout: SceneLayout,
+  ownerId: number = 0,
+): HudAnchor {
+  const owner = Number.isFinite(ownerId) ? Math.floor(ownerId) : 0;
+  // The human seat (and every owner-less / legacy slot) keeps the shared HUD
+  // counters — including their published-anchor-then-fallback semantics.
+  if (owner <= 0) return hudFlightTarget(host, kind, layout);
+  const seatAnchor = host.hudSeatAnchors?.[owner];
+  if (seatAnchor) return seatAnchor;
+  // One seat, one bank: coin and reputation flights share the seat's cell.
+  return hudSeatFallback(layout, owner, seatCountFor(host, owner));
 }
 
 /** MainStreetAnimator -- animation and HUD-delta helper for Main Street scene. */

@@ -17,7 +17,7 @@ import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { SFX_KEYS } from './MainStreetConstants';
 import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
-import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal, hudFlightTarget } from './MainStreetAnimatorContext';
+import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal, flightTargetFor, hudFlightTarget } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
 import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
 
@@ -264,7 +264,9 @@ export function animateIncomeCollection(animator: MainStreetAnimatorContext, par
     const { hudY } = s.layout;
     // HUD landing targets (MS-0MUYT57J80021CWW): the published coin/reputation
     // number anchors, with a conservative fallback to the legacy approximate
-    // coordinates before the first HUD render.
+    // coordinates before the first HUD render. This legacy non-phased path
+    // carries no per-slot owner data, so it keeps the human seat's counters
+    // (owner-0 semantics — single-player / tutorial / replay).
     const coinTarget = hudFlightTarget(s, 'coin', s.layout);
     const repTarget = hudFlightTarget(s, 'rep', s.layout);
     const flightMs = 600;
@@ -553,7 +555,6 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
           (sum, sl) => sum + Math.max(0, roundHalf(sl.pd.repBonus)),
           0,
         );
-        const hudRepTarget = hudFlightTarget(s, 'rep', s.layout);
         // Near-instant launch (MS-0MV8LHN0W0017XU1): every producing
         // business's reputation coins/pips start with only the small
         // synergy-phase stagger (`INCOME_FLIGHT_STAGGER_MS`) between flights
@@ -577,12 +578,16 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
           const from = sources[si] ?? streetAnchor;
           const flightMs = animator.getFlightDuration(numSlots, si);
           animator.flyCoinsIn(slot, amount, from, at, flightMs);
-          // Reputation income flies card → HUD rep counter, ticking per pip
+          // Reputation income flies card → rep bank, ticking per pip
           // landing (the display-only running total; see flyRepPips). Each
-          // exporting slot carries its proportional share of incomeRep.
+          // exporting slot carries its proportional share of incomeRep. The
+          // bank is resolved per owning seat (MS-0MW083O38005B22F): the human
+          // seat keeps the shared HUD reputation counter, an AI seat lands on
+          // its own competitive-scoreboard summary anchor.
           if (incomeRep > 0 && totalRepBonus > 0) {
             const slotRepShare = incomeRep * (amount / totalRepBonus);
-            animator.flyRepPips(from, hudRepTarget, slotRepShare, at, flightMs, slotRepShare);
+            const repTarget = flightTargetFor(s, 'rep', s.layout, slot.ownerId);
+            animator.flyRepPips(from, repTarget, slotRepShare, at, flightMs, slotRepShare);
           }
           // Per-business launch stagger only — the synergy-phase model.
           at += INCOME_FLIGHT_STAGGER_MS;
@@ -644,14 +649,17 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
         // credited income. Presentation-only: never mutates state or the
         // credited total.
         const upcomingSource = { x: s.layout.gameW * 0.5, y: s.layout.queueTop };
-        // HUD destinations: the published coin/reputation number anchors
-        // (MS-0MUYT57J80021CWW), falling back to the legacy approximate
-        // coordinates before the first HUD render.
-        const hudCoin = hudFlightTarget(s, 'coin', s.layout);
-        const hudRep = hudFlightTarget(s, 'rep', s.layout);
         let delayOffset = 0;
         for (let si = 0; si < numSlots; si++) {
           const slot = slots[si];
+          // Per-owner bank (MS-0MW083O38005B22F): the HUD side of every flow
+          // is resolved by the slot's owning seat — the human seat keeps the
+          // shared coin/reputation counters, an AI seat uses its own
+          // competitive-scoreboard summary anchor (as destination for a gain,
+          // origin for a loss). Single-player / owner-less slots resolve
+          // exactly as before (owner 0).
+          const hudCoin = flightTargetFor(s, 'coin', s.layout, slot.ownerId);
+          const hudRep = flightTargetFor(s, 'rep', s.layout, slot.ownerId);
           for (const d of slot.pd.upcomingDeltas ?? []) {
             const amount = Math.abs(roundHalf(d.delta));
             if (iconsForAmount(amount) === 0) continue;
@@ -1023,7 +1031,7 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
 
     const s = animator.scene;
     const { hudY } = s.layout;
-    // HUD landing target (MS-0MUYT57J80021CWW): the published coin number
+    // Landing pop target (MS-0MUYT57J80021CWW): the published coin number
     // anchor, with a conservative fallback before the first HUD render.
     const coinTarget = hudFlightTarget(s, 'coin', s.layout);
     const numSlots = slots.length;
@@ -1081,6 +1089,12 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
     let delayOffset = 0;
     for (let si = 0; si < numSlots; si++) {
       const slot = slots[si];
+      // Per-owner bank (MS-0MW083O38005B22F, parent MS-0MVWNS9L7007CTK9 AC2):
+      // the grid → bank collection lands on the *owning* seat's bank — the
+      // human seat's HUD coin counter, or an AI seat's competitive-scoreboard
+      // summary anchor. Owner-less (single-player / legacy) slots resolve to
+      // the HUD counter exactly as before.
+      const slotTarget = flightTargetFor(s, 'coin', s.layout, slot.ownerId);
       const grid = slot.handle.container;
       const icons = [...grid.list];
       // Display-only counting (MS-0MUYAESVU007X2U8): each collected icon steps
@@ -1102,8 +1116,8 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
             moveGameObject({
               scene: s,
               target: icon,
-              destX: coinTarget.x,
-              destY: hudY,
+              destX: slotTarget.x,
+              destY: slotTarget.y,
               duration: flightMs,
               ease: 'Quad.easeIn',
               soundManager: s.soundManager,

@@ -17,15 +17,15 @@
  *   competitive-scoreboard anchor (`hudSeatAnchors[ownerId]`), falling back to
  *   a deterministic per-seat cell when no anchor has been published yet.
  *
- * Why `it.fails`: per the repo's test-first tracer-bullet convention
- * (see `competitive-per-seat-hand-capacity.test.ts`), the contract cases are
- * authored **red-phase** with `it.fails` — the resolver does not exist yet, so
- * every one of them fails today. The implementing child
- * (MS-0MW083O38005B22F, "Resolve income flights per owner") flips them to a
- * plain `it` once the resolver lands; leaving them as `it.fails` after the
- * implementation ships is itself a failure, so the suite cannot go stale.
- * Guards that already hold today stay plain `it` so they keep protecting the
- * single-player contract through the change.
+ * Why `it.fails` was used (red phase — now green): per the repo's test-first
+ * tracer-bullet convention (see `competitive-per-seat-hand-capacity.test.ts`),
+ * the contract cases were authored **red-phase** with `it.fails` by
+ * `MS-0MW083E5H009ACB4` — the resolver did not exist, so every one of them
+ * failed. The implementing child `MS-0MW083O38005B22F` ("Resolve income flights
+ * per owner") flipped them to a plain `it` once the resolver landed; leaving
+ * them as `it.fails` after the implementation ships is itself a failure, so the
+ * suite cannot go stale. Guards that already held before the change stay plain
+ * `it` so they keep protecting the single-player contract.
  *
  * The seat-fallback geometry is owned by the implementation
  * (`MainStreetConstants`, MS-0MW083MAN004JSCH), so this suite pins the
@@ -90,9 +90,9 @@ type FlightTargetFor = (
 ) => Target;
 
 /**
- * Resolve the not-yet-implemented `flightTargetFor` export. Read through an
- * `unknown` cast so the suite type-checks while the implementing child is
- * still landing the typed export (repo red-phase convention).
+ * Resolve the `flightTargetFor` export. Read through an `unknown` cast so the
+ * suite keeps type-checking against the public module surface rather than a
+ * private import path.
  */
 function resolver(): FlightTargetFor {
   const fn = (AnimatorContext as unknown as { flightTargetFor?: FlightTargetFor })
@@ -100,8 +100,8 @@ function resolver(): FlightTargetFor {
   if (typeof fn !== 'function') {
     throw new Error(
       'flightTargetFor(host, kind, layout, ownerId) is not exported from ' +
-        'MainStreetAnimatorContext yet — red-phase contract authored by ' +
-        'MS-0MW083E5H009ACB4, landed by MS-0MW083O38005B22F.',
+        'MainStreetAnimatorContext — contract authored by ' +
+        'MS-0MW083E5H009ACB4 and implemented by MS-0MW083O38005B22F.',
     );
   }
   return fn;
@@ -127,10 +127,10 @@ describe('hudFlightTarget — the owner-0 / single-player contract (unchanged)',
   });
 });
 
-// ── flightTargetFor — red-phase contract ────────────────────
+// ── flightTargetFor — per-owner income flight destination ───
 
-describe('flightTargetFor — per-owner income flight destination (red-phase)', () => {
-  it.fails('resolves the human seat (owner 0) to the published HUD anchors', () => {
+describe('flightTargetFor — per-owner income flight destination', () => {
+  it('resolves the human seat (owner 0) to the published HUD anchors', () => {
     const host = publishedHost();
     const resolve = resolver();
 
@@ -142,7 +142,7 @@ describe('flightTargetFor — per-owner income flight destination (red-phase)', 
     );
   });
 
-  it.fails("resolves an AI seat (ownerId >= 1) to that seat's published scoreboard anchor", () => {
+  it("resolves an AI seat (ownerId >= 1) to that seat's published scoreboard anchor", () => {
     const host = publishedHost();
     const resolve = resolver();
 
@@ -156,7 +156,7 @@ describe('flightTargetFor — per-owner income flight destination (red-phase)', 
     expect(resolve(host, 'rep', LAYOUT, 2)).not.toEqual(HUD_REP_ANCHOR);
   });
 
-  it.fails('is null-safe: an unpublished seat anchor falls back deterministically per seat', () => {
+  it('is null-safe: an unpublished seat anchor falls back deterministically per seat', () => {
     const resolve = resolver();
     // The scoreboard has not published anchors yet (first frame / re-layout).
     const host = blankHost();
@@ -175,7 +175,7 @@ describe('flightTargetFor — per-owner income flight destination (red-phase)', 
     expect(resolve(partial, 'coin', LAYOUT, 2)).toEqual(resolve(blankHost(), 'coin', LAYOUT, 2));
   });
 
-  it.fails('gives each seat its own cell inside the HUD strip band (deterministic layout)', () => {
+  it('gives each seat its own cell inside the HUD strip band (deterministic layout)', () => {
     const resolve = resolver();
     const host = blankHost();
 
@@ -193,7 +193,7 @@ describe('flightTargetFor — per-owner income flight destination (red-phase)', 
     }
   });
 
-  it.fails('treats an absent ownerId exactly like hudFlightTarget (legacy / single-player)', () => {
+  it('treats an absent ownerId exactly like hudFlightTarget (legacy / single-player)', () => {
     const resolve = resolver();
 
     // Published anchors: absent owner and explicit owner 0 both match today's

@@ -367,10 +367,10 @@ describe('MainStreetAnimator.animateHudValueChanges income suppression', () => {
 // competitive-scoreboard summary anchor.
 //
 // Following the repo's test-first tracer-bullet convention, the owner-aware
-// cases are authored **red-phase** with `it.fails` (the collection still routes
-// every slot to the single HUD anchor today); the implementing child
-// MS-0MW083O38005B22F flips them to a plain `it`. The single-player guard stays
-// a plain `it` so it keeps protecting owner-0 behaviour through the change.
+// cases were authored **red-phase** with `it.fails` (the collection routed
+// every slot to the single HUD anchor) and flipped to plain `it` by the
+// implementing child MS-0MW083O38005B22F. The single-player guard stays a
+// plain `it` so it keeps protecting owner-0 behaviour through the change.
 
 /** Where the HUD publishes the human seat's coin counter for these cases. */
 const COLLECTION_HUD_COIN = { x: 409, y: 50 };
@@ -483,7 +483,7 @@ describe('MainStreetAnimator.collectIncomeGrids owner-aware routing', () => {
     expect(collectionDestinations()).toEqual([dest(COLLECTION_HUD_COIN)]);
   });
 
-  it.fails("routes an AI-owned slot's grid coins to that seat's anchor, not the human HUD (red-phase)", () => {
+  it("routes an AI-owned slot's grid coins to that seat's anchor, not the human HUD", () => {
     const { scene, scheduled } = createMockScene({
       hudCoinAnchor: COLLECTION_HUD_COIN,
       hudRepAnchor: { x: 777, y: 50 },
@@ -504,12 +504,16 @@ describe('MainStreetAnimator.collectIncomeGrids owner-aware routing', () => {
     ]);
   });
 
-  it.fails('falls back to the deterministic seat cell for an AI slot before the scoreboard publishes anchors (red-phase)', () => {
+  it('falls back to the deterministic seat cell for an AI slot before the scoreboard publishes anchors', () => {
     const fallbackCoin = { destX: 1280 * 0.25 + 70, destY: 50 };
     const destinations: Array<{ destX: number; destY: number }> = [];
 
-    // Two identical collections must resolve the same seat cell.
+    // Two identical collections must resolve the same seat cell. Each run is
+    // measured on its own: `moveGameObject` accumulates across the loop, so the
+    // recorded calls are cleared before each collection (otherwise the second
+    // pass would also re-count the first run's flight).
     for (let run = 0; run < 2; run++) {
+      vi.clearAllMocks();
       const { scene, scheduled } = createMockScene({
         hudCoinAnchor: COLLECTION_HUD_COIN,
         hudRepAnchor: { x: 777, y: 50 },

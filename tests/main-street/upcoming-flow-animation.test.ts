@@ -403,10 +403,10 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
 // as origin for a loss.
 //
 // Following the repo's test-first tracer-bullet convention, the owner-aware
-// cases are authored **red-phase** with `it.fails` (the phase still routes every
-// flow to the single HUD anchor today); the implementing child
-// MS-0MW083O38005B22F flips them to a plain `it`. The existing owner-less cases
-// in this suite stay plain `it`, so they keep protecting the owner-0 contract.
+// cases were authored **red-phase** with `it.fails` (the phase routed every
+// flow to the single HUD anchor) and flipped to plain `it` by the implementing
+// child MS-0MW083O38005B22F. The existing owner-less cases in this suite stay
+// plain `it`, so they keep protecting the owner-0 contract.
 
 /** Published AI seat anchor (the seat's scoreboard summary row). */
 const UPCOMING_SEAT_ANCHOR = { x: 900, y: 32 };
@@ -427,7 +427,7 @@ describe('runIncomePhase("upcoming") owner-aware routing (MS-0MW083E5H009ACB4)',
     vi.clearAllMocks();
   });
 
-  it.fails("routes an AI-owned slot's coin gain to that seat's anchor, not the human HUD (red-phase)", () => {
+  it("routes an AI-owned slot's coin gain to that seat's anchor, not the human HUD", () => {
     // Attached gains originate at the business card, unattached at the panel;
     // either way the HUD side of the flow is the AI seat's own bank.
     for (const attachedSlotIndex of [0, null] as const) {
@@ -446,7 +446,7 @@ describe('runIncomePhase("upcoming") owner-aware routing (MS-0MW083E5H009ACB4)',
     }
   });
 
-  it.fails("routes an AI-owned slot's coin loss from that seat's anchor to the card (red-phase)", () => {
+  it("routes an AI-owned slot's coin loss from that seat's anchor to the card", () => {
     const { scene, scheduled, circles } = createOwnerAwareScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot(
@@ -461,7 +461,7 @@ describe('runIncomePhase("upcoming") owner-aware routing (MS-0MW083E5H009ACB4)',
     expect(lastMove()).toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
   });
 
-  it.fails("routes an AI-owned slot's reputation gain to that seat's anchor (red-phase)", () => {
+  it("routes an AI-owned slot's reputation gain to that seat's anchor", () => {
     const { scene, scheduled } = createOwnerAwareScene();
     const animator = new MainStreetAnimator(scene);
     const slot = makeSlot(

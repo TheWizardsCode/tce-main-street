@@ -557,10 +557,10 @@ describe('MainStreetAnimator.animateIncomePhases — owner identity on phase slo
 // that seat's competitive-scoreboard summary anchor.
 //
 // Following the repo's test-first tracer-bullet convention, the owner-aware
-// cases are authored **red-phase** with `it.fails` (the phase still routes every
-// slot to the single HUD anchor today); the implementing child
-// MS-0MW083O38005B22F flips them to a plain `it`. The owner-0 guard stays a
-// plain `it` so it keeps protecting single-player behaviour through the change.
+// cases were authored **red-phase** with `it.fails` (the phase routed every
+// slot to the single HUD anchor) and flipped to plain `it` by the implementing
+// child MS-0MW083O38005B22F. The owner-0 guard stays a plain `it` so it keeps
+// protecting single-player behaviour through the change.
 
 /** Published HUD reputation anchor (the human seat's rep bank). */
 const REP_ROUTE_HUD_ANCHOR = { x: 777, y: 50 };
@@ -608,7 +608,7 @@ describe('MainStreetAnimator.animateIncomePhases — owner-aware reputation rout
     expect(destinations).toContainEqual({ ...REP_ROUTE_HUD_ANCHOR });
   });
 
-  it.fails("routes an AI-owned slot's reputation pips to that seat's anchor, not the human HUD (red-phase)", () => {
+  it("routes an AI-owned slot's reputation pips to that seat's anchor, not the human HUD", () => {
     const { scene, scheduled } = createMockScene(2, {
       hudRepAnchor: REP_ROUTE_HUD_ANCHOR,
       hudSeatAnchors: { 1: REP_ROUTE_SEAT_ANCHOR },
@@ -633,7 +633,7 @@ describe('MainStreetAnimator.animateIncomePhases — owner-aware reputation rout
     expect(destinations.filter((d) => d.x === REP_ROUTE_SEAT_ANCHOR.x)).toHaveLength(1);
   });
 
-  it.fails('falls back to the deterministic seat cell for an AI slot with no published seat anchor (red-phase)', () => {
+  it('falls back to the deterministic seat cell for an AI slot with no published seat anchor', () => {
     const { scene, scheduled } = createMockScene(1, {
       hudRepAnchor: REP_ROUTE_HUD_ANCHOR,
       hudSeatAnchors: null,
