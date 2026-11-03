@@ -308,6 +308,80 @@ timeout message keeps the greppable shape
   `MainStreetScene.browser.test.ts` passes a per-class `floorMs`:
   24 000 ms for the end-of-turn wait and 12 000 ms for the transfer waits.
 
+### Sampling *during* a choreography: observe the production step, not a wall-clock window
+
+A test that observes an animation-driven value (the live HUD totals, a count-up)
+must tie the observation to the **choreography's own progress**, never to a fixed
+wall-clock window. Two clocks are in play: the show is scene-clock paced (Phaser
+clamps each frame's delta), and the deferred HUD window is closed by the
+wall-clock deferral cap (`INCOME_COLLECTION_CAP_MS`, 16 000 ms). On a CPU-starved
+host the show's phases land several times later in wall time than their nominal
+schedule, the cap closes the window while the scene-clock-paced show is still
+flying, and any windowed observation of the rendered total ends before the very
+arrivals under test. That is exactly the MS-0MW08THR2000YXEO failure: at ≈1.3×
+CPU oversubscription the reputation phase started at 11.7 s of wall time against
+a 2.2 s nominal phase gap, the grid-to-HUD collection landed after a fixed 14 s
+window, and the scene — which was correct — was reported as a regression.
+
+So observe the **production step** the HUD re-render hangs off. The
+reconciliation publishes every coin/pip arrival (and the final snap) through
+`scene.syncHudTotals`, the same call the HUD uses to re-render its totals, so a
+recording wrapper captures the tick sequence at the arrivals themselves:
+
+```ts
+const coinSteps: number[] = [];
+const original = scene.syncHudTotals.bind(scene);
+scene.syncHudTotals = () => {
+  original();
+  if (typeof scene.displayedCoins === 'number') coinSteps.push(scene.displayedCoins);
+};
+
+await waitForCondition(() => coinSteps.some((v) => v !== pre), {
+  capMs: INCOME_COLLECTION_CAP_MS,
+  floorMs: CHOREOGRAPHY_STARVATION_MARGIN_MS, // races the scene clock
+  intervalMs: 100,
+  label: 'coin total to tick at a HUD arrival',
+});
+```
+
+The wrapper preserves behaviour (the original call still runs), and the recording
+is unaffected by frame scheduling — a tick that landed after a wall-clock window
+would have closed is still recorded.
+
+**Budget the two waits separately, from the clock each one actually races.**
+This is the part that is easy to get wrong. A single conjunction such as
+`endOfTurnDeltasApplied === true && coinSteps.some(…)` looks tidier but makes the
+budget span the **entire** scene-clock-paced show, because
+`endOfTurnDeltasApplied` is only set once the closing continuation runs. Under
+starvation that exceeds any cap-derived budget and a correct scene fails again:
+
+| Wait | Clock it races | Budget |
+|---|---|---|
+| the **first arrival** ticks the total | scene clock (the flights) — *not* bounded by the wall-clock cap, which abandons the *wait*, not the flights | `INCOME_COLLECTION_CAP_MS` + a deliberately larger choreography margin (`CHOREOGRAPHY_STARVATION_MARGIN_MS`) |
+| `endOfTurnDeltasApplied === true` (authoritative final value) | wall clock — the closing continuation is capped at `INCOME_COLLECTION_CAP_MS` | `INCOME_COLLECTION_CAP_MS` + `END_OF_TURN_STARVATION_MARGIN_MS` |
+
+Because the arrival wait can legitimately take much longer than a 60 s test
+timeout, the per-test timeout is raised to 180 s for these two cases. The
+budgets are ceilings, not costs: a green run returns as soon as the condition
+holds.
+
+**Make "ticked at arrivals" distinguishable from "jumped at the snap".** The
+recorded sequence also contains the final snap, so `some((v) => v !== pre)` alone
+cannot tell a per-arrival count-up from a single jump — a regression that froze
+the counter until the snap would still satisfy it. Assert a value **strictly
+between** the pre and post totals, and choose a scenario that publishes several
+arrivals (for reputation, one pip per `iconsForAmount` icon, i.e. one per 100
+reputation — a single-pip amount makes the only published value the final one).
+
+Keep the rendered-text assertions in a deterministic renderer test
+(`main-street-renderer-deferred.browser.test.ts`, `hud-total-counting.test.ts`)
+rather than racing the choreography for them; the live test owns the end-to-end
+wiring (a real end-of-turn drives the real flights that step the totals).
+
+A sampled value that persists once it changes (a count-up total) needs no
+frame-accurate sampling either — the **window**, not the interval, is what has to
+be progress-driven.
+
 ### Interaction gates between the animation and the advance
 
 The day no longer always advances straight off the end-of-turn animations. In
