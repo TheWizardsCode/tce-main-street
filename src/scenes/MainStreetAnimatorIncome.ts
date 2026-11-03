@@ -17,7 +17,7 @@ import type { PendingEndOfTurnDeltas } from '../MainStreetEngine';
 import { SFX_KEYS } from './MainStreetConstants';
 import { createCoinGrid, iconsForAmount, roundHalf } from '../coin-grid';
 import type { IncomePhaseKey, IncomePhaseOptions, IncomePhaseSlot, MainStreetAnimatorContext } from './MainStreetAnimatorContext';
-import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal, flightTargetFor, hudFlightTarget } from './MainStreetAnimatorContext';
+import { resolveDeltaFlow, snapDisplayedTotals, stepDisplayedTotal, flightTargetFor, hudFlightTarget, ownsSharedHudFeedback } from './MainStreetAnimatorContext';
 import { INCOME_CARD_FULL_PAUSE_MULTIPLIER, INCOME_COLLECT_STAGGER_MS, INCOME_FLIGHT_MS, INCOME_FLIGHT_STAGGER_MS, INCOME_PHASE_GAP_MS, INCOME_PHASE_LABEL_MS } from './MainStreetAnimatorTiming';
 import { pedestrianCount, pedestrianStreetAnchor } from './MainStreetPedestrians';
 
@@ -587,7 +587,10 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
           if (incomeRep > 0 && totalRepBonus > 0) {
             const slotRepShare = incomeRep * (amount / totalRepBonus);
             const repTarget = flightTargetFor(s, 'rep', s.layout, slot.ownerId);
-            animator.flyRepPips(from, repTarget, slotRepShare, at, flightMs, slotRepShare);
+            // Human-only feedback (MS-0MW083PZ8001QEHS): an AI seat's pips land
+            // on its own anchor but carry no display delta, so the shared HUD
+            // reputation total never ticks for AI income.
+            animator.flyRepPips(from, repTarget, slotRepShare, at, flightMs, slotRepShare, slot.ownerId);
           }
           // Per-business launch stagger only — the synergy-phase model.
           at += INCOME_FLIGHT_STAGGER_MS;
@@ -676,12 +679,13 @@ export function runIncomePhase(animator: MainStreetAnimatorContext, phase: Incom
               // (Upcoming panel ↔ HUD coin counter) coin deltas both fly
               // point-to-point without touching a business grid. The signed
               // delta steps the display-only coin total as each icon lands /
-              // departs (MS-0MUYAESVU007X2U8).
-              animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs, d.delta);
+              // departs (MS-0MUYAESVU007X2U8) — human-only feedback, so an AI
+              // seat's flight carries no display delta (MS-0MW083PZ8001QEHS).
+              animator.flyCoinsToPoint(route.from, route.to, amount, at, flightMs, d.delta, slot.ownerId);
             } else {
               // Reputation parity (AC3): same attachment + direction rule,
               // flying reputation pips instead of coins.
-              animator.flyRepPips(route.from, route.to, amount, at, flightMs, d.delta);
+              animator.flyRepPips(route.from, route.to, amount, at, flightMs, d.delta, slot.ownerId);
             }
           }
           const pauseMs = INCOME_CARD_FULL_PAUSE_MULTIPLIER * animator.currentCoinStagger;
@@ -910,16 +914,26 @@ export function flyCoinsToPoint(animator: MainStreetAnimatorContext,
      * then no-ops (the counter is not counting).
      */
     displayDelta?: number,
+    /**
+     * Presentation-only owning seat (MS-0MW083PZ8001QEHS). An AI owner
+     * (`ownerId >= 1`) carries no display delta — the shared HUD coin total
+     * and delta pop are human-only feedback. Absent = human/legacy.
+     */
+    ownerId?: number,
   ): void {
 
     const s = animator.scene;
     const iconCount = iconsForAmount(amount);
     if (iconCount === 0) return;
+    // Human-only feedback (MS-0MW083PZ8001QEHS, parent AC4): an AI owner's
+    // flight carries no display delta, so the shared HUD running total never
+    // ticks for it. Only the human seat (owner 0 / owner-less legacy) counts.
+    const delta = ownsSharedHudFeedback(ownerId) ? displayDelta : undefined;
     const duration = flightMs ?? INCOME_FLIGHT_MS;
-    const perIcon = (displayDelta ?? 0) / iconCount;
+    const perIcon = (delta ?? 0) / iconCount;
     // A loss departs from the HUD, a gain lands on it — step the display-only
     // total at the HUD end of the flight (MS-0MUYAESVU007X2U8 AC1/AC2).
-    const stepOnLaunch = (displayDelta ?? 0) < 0;
+    const stepOnLaunch = (delta ?? 0) < 0;
     for (let i = 0; i < iconCount; i++) {
       s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
         try {
@@ -964,14 +978,18 @@ export function flyRepPips(animator: MainStreetAnimatorContext,
     flightMs?: number,
     /** Signed reputation delta for the display-only running total (see flyCoinsToPoint). */
     displayDelta?: number,
+    /** Presentation-only owning seat (see flyCoinsToPoint) — AI owners carry no display delta. */
+    ownerId?: number,
   ): void {
 
     const s = animator.scene;
     const iconCount = iconsForAmount(amount);
     if (iconCount === 0) return;
+    // Human-only feedback (MS-0MW083PZ8001QEHS, parent AC4): see flyCoinsToPoint.
+    const delta = ownsSharedHudFeedback(ownerId) ? displayDelta : undefined;
     const duration = flightMs ?? INCOME_FLIGHT_MS;
-    const perIcon = (displayDelta ?? 0) / iconCount;
-    const stepOnLaunch = (displayDelta ?? 0) < 0;
+    const perIcon = (delta ?? 0) / iconCount;
+    const stepOnLaunch = (delta ?? 0) < 0;
     for (let i = 0; i < iconCount; i++) {
       s.time.delayedCall(at + animator.getIconStagger(iconCount, i), () => {
         try {
@@ -1033,8 +1051,39 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
     const { hudY } = s.layout;
     // Landing pop target (MS-0MUYT57J80021CWW): the published coin number
     // anchor, with a conservative fallback before the first HUD render.
-    const coinTarget = hudFlightTarget(s, 'coin', s.layout);
+    const humanCoinTarget = hudFlightTarget(s, 'coin', s.layout);
     const numSlots = slots.length;
+
+    // Human-only landing feedback (MS-0MW083PZ8001QEHS, parent AC5): the
+    // collection's `+total` pop is per owning seat, never one combined
+    // multi-seat total at the human counter. Group each seat's credited amount
+    // (the same per-slot pricing the grid icons carry) so every seat pops its
+    // own total at its own target. A human-only collection keeps the exact
+    // legacy behaviour: one pop, the authoritative combined credited total.
+    const seatTotals = new Map<number, number>();
+    for (const slot of slots) {
+      const owner = ownsSharedHudFeedback(slot.ownerId) ? 0 : Math.floor(slot.ownerId as number);
+      seatTotals.set(owner, (seatTotals.get(owner) ?? 0) + creditedSlotAmount(slot.pd));
+    }
+    const humanOnly = [...seatTotals.keys()].every((owner) => owner === 0);
+
+    /** Pops one seat's `+total` at that seat's own landing target. */
+    const popSeatTotal = (target: { x: number; y: number }, total: number): void => {
+      const totalText = s.add.text(target.x, hudY - 8, `+${total}`, {
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: '#ffdd66',
+        fontFamily: FONT_FAMILY,
+      }).setOrigin(0.5).setDepth(500);
+      void popTextOrIcon({
+        scene: s,
+        target: totalText,
+        duration: 1000,
+        riseY: 24,
+        scale: 1.3,
+        reducedMotion: false,
+      });
+    };
 
     let pending = 0;
     const finalize = (): void => {
@@ -1057,20 +1106,22 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
           snapDisplayedTotals(s, ctx.pendingDeltas);
         }
         if (!ctx.reducedMotion || pending === 0) {
-          const totalText = s.add.text(coinTarget.x, hudY - 8, `+${ctx.creditedTotal}`, {
-            fontSize: '18px',
-            fontStyle: 'bold',
-            color: '#ffdd66',
-            fontFamily: FONT_FAMILY,
-          }).setOrigin(0.5).setDepth(500);
-          void popTextOrIcon({
-            scene: s,
-            target: totalText,
-            duration: 1000,
-            riseY: 24,
-            scale: 1.3,
-            reducedMotion: false,
-          });
+          if (humanOnly) {
+            // Single-player / human-only: the unchanged legacy pop — one total
+            // at the HUD coin anchor, the authoritative credited total.
+            popSeatTotal(humanCoinTarget, ctx.creditedTotal);
+          } else {
+            for (const [owner, total] of seatTotals) {
+              // Whole-number landing feedback; a net-zero / net-loss seat has
+              // no positive total to report, so it is suppressed.
+              const seatTotal = Math.round(total);
+              if (seatTotal <= 0) continue;
+              popSeatTotal(
+                owner === 0 ? humanCoinTarget : flightTargetFor(s, 'coin', s.layout, owner),
+                seatTotal,
+              );
+            }
+          }
           try { s.soundManager?.play(SFX_KEYS.INCOME_POSITIVE); } catch { /* ignore */ }
         }
       } catch { /* ignore */ }
@@ -1100,8 +1151,13 @@ export function collectIncomeGrids(animator: MainStreetAnimatorContext, slots: I
       // Display-only counting (MS-0MUYAESVU007X2U8): each collected icon steps
       // the HUD coin total by an equal share of the slot's credited amount, so
       // the running total tracks the collection and sums exactly per slot.
+      // Human-only feedback (MS-0MW083PZ8001QEHS, parent AC4): only the human
+      // seat's collection ticks the shared HUD coin total — an AI seat's coins
+      // land on its own anchor and never move the human counter.
       const iconCount = icons.length;
-      const perIcon = iconCount > 0 ? creditedSlotAmount(slot.pd) / iconCount : 0;
+      const perIcon = ownsSharedHudFeedback(slot.ownerId) && iconCount > 0
+        ? creditedSlotAmount(slot.pd) / iconCount
+        : 0;
       const flightMs = animator.getFlightDuration(numSlots, si);
       for (let i = 0; i < icons.length; i++) {
         const icon = icons[i] as Phaser.GameObjects.Image;

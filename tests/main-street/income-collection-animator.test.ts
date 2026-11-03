@@ -548,15 +548,15 @@ describe('MainStreetAnimator.collectIncomeGrids owner-aware routing', () => {
 // scoreboard anchor — or is suppressed — and the combined multi-seat total is
 // never shown at the human counter.
 //
-// ## Why `it.fails` (red phase)
+// ## Red phase (flipped)
 //
-// The per-owner cases are authored **red-phase** with `it.fails` (repo
+// The per-owner cases were authored **red-phase** with `it.fails` (repo
 // test-first tracer-bullet convention — see the sibling item
-// MS-0MW083E5H009ACB4 above): the collection still pops one combined total at
-// the single HUD anchor today. The implementing child MS-0MW083PZ8001QEHS flips
-// them to a plain `it`; leaving them as `it.fails` afterwards is itself a
-// failure, so this suite cannot go stale. The single-player case stays a plain
-// `it` so the unchanged owner-0 contract keeps being protected.
+// MS-0MW083E5H009ACB4 above): the collection popped one combined total at the
+// single HUD anchor. The implementing child MS-0MW083PZ8001QEHS flipped them to
+// plain `it`; leaving them as `it.fails` afterwards is itself a failure, so
+// this suite cannot go stale. The single-player case was always a plain `it` so
+// the unchanged owner-0 contract keeps being protected.
 
 /** The human seat's published coin counter for these cases. */
 const TOTAL_POP_HUD_COIN = { x: 409, y: 50 };
@@ -590,7 +590,7 @@ describe('MainStreetAnimator.collectIncomeGrids human-only "+total" pop', () => 
     expect(pops[0].x).toBe(TOTAL_POP_HUD_COIN.x);
   });
 
-  it.fails('pops each seat\'s own total — never one combined total at the human counter (red-phase)', () => {
+  it('pops each seat\'s own total — never one combined total at the human counter ', () => {
     const { scene, scheduled, createdTexts } = createMockScene({
       hudCoinAnchor: TOTAL_POP_HUD_COIN,
       hudRepAnchor: { x: 777, y: 50 },
@@ -624,7 +624,7 @@ describe('MainStreetAnimator.collectIncomeGrids human-only "+total" pop', () => 
     }
   });
 
-  it.fails('emits no landing pop at the human counter when only AI seats produced income (red-phase)', () => {
+  it('emits no landing pop at the human counter when only AI seats produced income ', () => {
     const { scene, scheduled, createdTexts } = createMockScene({
       hudCoinAnchor: TOTAL_POP_HUD_COIN,
       hudRepAnchor: { x: 777, y: 50 },

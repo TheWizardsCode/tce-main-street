@@ -200,6 +200,26 @@ export function flightTargetFor(
   return hudSeatFallback(layout, owner, seatCountFor(host, owner));
 }
 
+/**
+ * Whether a slot's owning seat owns the **shared HUD feedback**
+ * (MS-0MW083PZ8001QEHS, parent MS-0MVWNS9L7007CTK9 AC4/AC5/AC6).
+ *
+ * The shared HUD's running totals (`displayedCoins` / `displayedReputation`),
+ * its `+/-` delta pop and its `+total` landing pop are human-only feedback. So
+ * only owner `0` — the human seat — and every owner-less / legacy /
+ * single-player slot (no `ownerId` at all) may move or pop them. An AI owner
+ * (`ownerId >= 1`) presents its income at its own seat anchor and never
+ * reports at the human counter.
+ *
+ * Presentation-only: this decides feedback only, never the economy.
+ */
+export function ownsSharedHudFeedback(ownerId?: number): boolean {
+  const owner = typeof ownerId === 'number' && Number.isFinite(ownerId)
+    ? Math.floor(ownerId)
+    : 0;
+  return owner <= 0;
+}
+
 /** MainStreetAnimator -- animation and HUD-delta helper for Main Street scene. */
 
 export interface MainStreetAnimatorContext {
@@ -288,6 +308,12 @@ export interface MainStreetAnimatorContext {
     flightMs?: number,
     /** Signed delta for the display-only coin total (MS-0MUYAESVU007X2U8). */
     displayDelta?: number,
+    /**
+     * Presentation-only owning seat (MS-0MW083PZ8001QEHS). An AI owner
+     * (`ownerId >= 1`) never carries a display delta — the shared HUD coin
+     * total and delta pop are human-only feedback. Absent = human/legacy.
+     */
+    ownerId?: number,
   ): void;
   /**
    * Flies reputation-pip visuals point-to-point (CG-0MUA1UH3A008M4BS AC3 —
@@ -302,6 +328,11 @@ export interface MainStreetAnimatorContext {
     flightMs?: number,
     /** Signed delta for the display-only reputation total (MS-0MUYAESVU007X2U8). */
     displayDelta?: number,
+    /**
+     * Presentation-only owning seat; see `flyCoinsToPoint` — an AI owner never
+     * carries a display delta.
+     */
+    ownerId?: number,
   ): void;
   applyPendingDeltasOnce(deltas: PendingEndOfTurnDeltas | undefined): void;
   collectIncomeGrids(slots: IncomePhaseSlot[], ctx: {

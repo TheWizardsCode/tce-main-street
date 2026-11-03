@@ -476,17 +476,16 @@ describe('animateIncidentDeltaBubbles display counting', () => {
 // no owner at all — keeps the shared HUD feedback, while an AI owner
 // (`ownerId >= 1`) credits its own seat summary and never moves the HUD totals.
 //
-// ## Why `it.fails` (red phase)
+// ## Red phase (flipped)
 //
-// The owner-gated cases are authored **red-phase** with `it.fails` (repo
+// The owner-gated cases were authored **red-phase** with `it.fails` (repo
 // test-first tracer-bullet convention — see `competitive-seat-anchors.test.ts`
 // and the sibling items MS-0MW083E5H009ACB4 / MS-0MW083HFW008H1Q2): every
-// flight still steps the shared totals today, regardless of owner. The
-// implementing child MS-0MW083PZ8001QEHS flips them to a plain `it` once the
-// gate lands — leaving them as `it.fails` afterwards is itself a failure, so
-// this suite cannot go stale. The explicit-owner-0 case stays a plain `it` so
-// the unchanged human / single-player contract keeps being protected through
-// the change.
+// flight stepped the shared totals regardless of owner. The implementing child
+// MS-0MW083PZ8001QEHS flipped them to plain `it` once the gate landed — leaving
+// them as `it.fails` afterwards is itself a failure, so this suite cannot go
+// stale. The explicit-owner-0 case was always a plain `it` so the unchanged
+// human / single-player contract keeps being protected.
 
 /** A producing slot with an optional presentation-only seat owner. */
 function ownedSlot(spec: {
@@ -516,7 +515,16 @@ function ownedSlot(spec: {
       ...(spec.ownerId === undefined ? {} : { ownerId: spec.ownerId }),
     },
     handle: {
-      container: { list: icons, remove: vi.fn(), destroy: vi.fn() },
+      // `flyCoinsIn` reads the card container's world transform before it
+      // schedules the on-card flights (every income phase does), so the double
+      // must expose it — a missing method used to be masked by the red-phase
+      // `it.fails` (any throw counted as the expected failure).
+      container: {
+        list: icons,
+        remove: vi.fn(),
+        destroy: vi.fn(),
+        getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
+      },
       addCoins: vi.fn().mockReturnValue({ positions: [] }),
       getWorldTransformMatrix: () => ({ getX: () => 0, getY: () => 0 }),
     },
@@ -550,7 +558,7 @@ describe('human-only HUD feedback gating (MS-0MW083IXO002Q8K3)', () => {
     expect(scene.syncHudTotals).toHaveBeenCalled();
   });
 
-  it.fails('never steps the human coin total from an AI-owned collection (red-phase)', () => {
+  it('never steps the human coin total from an AI-owned collection ', () => {
     const { scene, scheduled } = createMockScene({ hudCoinAnchor: { x: 409, y: 50 } });
     const animator = new MainStreetAnimator(scene);
     vi.spyOn(animator, 'applyPendingDeltasOnce').mockImplementation(() => {});
@@ -575,7 +583,7 @@ describe('human-only HUD feedback gating (MS-0MW083IXO002Q8K3)', () => {
     expect(humanCounterPops).toHaveLength(0);
   });
 
-  it.fails('never steps the human reputation total from AI-owned reputation pips (red-phase)', () => {
+  it('never steps the human reputation total from AI-owned reputation pips ', () => {
     const { scene, scheduled } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     scene.previousReputation = 300;
@@ -597,7 +605,7 @@ describe('human-only HUD feedback gating (MS-0MW083IXO002Q8K3)', () => {
     expect(scene.syncHudTotals).not.toHaveBeenCalled();
   });
 
-  it.fails('never steps the human coin total from an AI-owned upcoming gain (red-phase)', () => {
+  it('never steps the human coin total from an AI-owned upcoming gain ', () => {
     const { scene, scheduled } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     scene.previousCoins = 500;
@@ -620,7 +628,7 @@ describe('human-only HUD feedback gating (MS-0MW083IXO002Q8K3)', () => {
     expect(scene.displayedCoins).toBe(500);
   });
 
-  it.fails('never steps the human reputation total from an AI-owned upcoming gain (red-phase)', () => {
+  it('never steps the human reputation total from an AI-owned upcoming gain ', () => {
     const { scene, scheduled } = createMockScene();
     const animator = new MainStreetAnimator(scene);
     scene.previousReputation = 10;
