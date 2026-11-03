@@ -601,6 +601,30 @@ future item needs the gate green under sustained ≈2× oversubscription, that i
 the recorded starting point; re-opening it is a design decision, not a tweak to
 any wait budget here.
 
+### Triaging a red browser wait against the envelope
+
+Every wait in `tests/main-street/MainStreetScene.browser.test.ts` fails with its
+own label and derived budget (`Timed out waiting for <label> after <budget>ms
+(cap <cap>ms)`), and the suite summary records the host load the run saw
+(`host load average N`). Those two facts decide a `test-failure` item:
+
+1. **At or above ≈2× `nproc`** (≈31 on the documented 16-core host) a
+   wait-budget timeout is *inside* the measured envelope. Record the load with
+   the failure, re-run on a quieter host, and close as flaky / not a regression
+   when the re-run is green — that is the disposition already taken for
+   MS-0MVZESMNI004EQII (green `--force` full-suite re-run at the same commit).
+   The transfer waits (`first`/`second business`, `event materialized`) are the
+   ones recorded to break first at the most oversubscribed peaks
+   (47.46-58.04 in the re-measure above); the Turn Summary dialog wait breaks
+   first from ≈28.6 upwards.
+2. **Below the envelope** the same timeout is *not* excused by load: the scene
+   failed to reach a gated state its derived budget demonstrably covers, so it
+   is treated as a behavioural regression and fixed in code, not re-run away.
+
+Soak before suspecting the envelope: `/skill:test --type soak` on the quiet host
+is the cheap disproof of flakiness, and a single labelled timeout below ≈2×
+oversubscription is a real red gate.
+
 ## Prerequisites: Playwright Chromium
 
 Some **unit** tests also launch Chromium (`storyline-graph-svg.test.ts` renders
