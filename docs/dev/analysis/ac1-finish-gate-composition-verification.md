@@ -165,7 +165,11 @@ a different engine being served.
   advanced the engine past the rename and `tsc --noEmit` failed. That is a
   pre-existing property of syncing at build time, not of the exclusion (which
   runs after a successful build); the probe therefore used `99489ad8`, which
-  is compatible with the engine tip.
+  is compatible with the engine tip. The condition, its stdout diagnostic and
+  the two remedies are now published in
+  [Testing § "Limitation: a lagging pin can fail the build before the
+  gate"](../testing.md#limitation-a-lagging-pin-can-fail-the-build-before-the-gate)
+  so this record is no longer its only description.
 - The exclusion is conditional on origin: a pin/gitlink the item itself
   changed before the build is committed, never restored.
 - Restore is fail-closed: an unrestorable gitlink refuses finish with an

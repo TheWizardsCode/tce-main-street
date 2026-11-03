@@ -729,6 +729,42 @@ failed gate is read correctly.
    engine SHA plus whether the suite ran or was cache-served, so a green
    verdict is traceable to the engine it actually exercised.
 
+#### Limitation: a lagging pin can fail the build before the gate
+
+`npm run build` is `npm run engine:sync && tsc --noEmit && vite build`, so
+`engine:sync` runs **first** and advances the engine **before** the type-check
+and the bundle. On a worktree whose committed pin lags the engine tracked
+tip, that means a source written against the older engine API
+is compiled against the new one, and `tsc --noEmit` or `vite build` can fail
+even though the item changed nothing. The composition exclusion above
+(`SA-0MVZE164P0048306`) cannot help here: it restores the pre-build
+composition only **after** a successful build, so a build that fails at `tsc`
+never reaches it. This is a pre-existing property of syncing at build time —
+and the reason an engine-induced compile error looks exactly like a genuine
+source break.
+
+The diagnostic is in the build's **stdout**. A lagging pin produces a
+`engine:sync: core updated <from> → <to>` line (the engine checkout moved),
+normally followed by the pin-rewrite line
+`engine:sync: engine pin <from> → <to> (staged with the core gitlink)`. The
+check is whether the engine that was actually compiled — the `core` checkout
+`HEAD` — differs from the composition the commit records: the `core` gitlink
+in `HEAD` and the `sha` in `configs/engine-pin.json`. When they differ, the
+failure is engine-induced rather than caused by the item's source, and the
+advance is **not** part of the item's commit: the gate's restore puts the
+pre-build composition back, so build-originated pin/gitlink churn never
+travels in a commit the item did not originate. `SA-0MW06FLFR009F0P4` is the
+item that makes this condition explicit in the finish report and the
+build-failure comment; until it lands, the check is made by hand from the
+stdout and the composition comparison above.
+
+What to do next: either make the re-pin the item's own deliberate change —
+commit the pin and the `core` gitlink together — or, when the pin must stay,
+rebase the source onto the current engine API so it builds against the tip.
+Neither changes what the gate composes: it never edits build composition on
+the item's behalf (Option B — having the gate choose the build's composition —
+remains unadopted and needs producer sign-off).
+
 ### The timeout is per command, and shared with `git push`
 
 `timeoutPerCommand` from `.pi/test-config.json` bounds **each** entry of
