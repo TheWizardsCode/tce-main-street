@@ -178,9 +178,9 @@ descendant of it.
 | Invocation | `./core` checkout | Gate |
 |---|---|---|
 | `npm run dev` | tracked branch tip when `./core` was clean (soft sync), otherwise the current checkout | `engine:dev-sync` soft guard — warns and continues on a dirty submodule |
-| `npm test` (Vitest `unit` + `unit-cli`), and the pre-push/dev-push suite gate | the checkout present in `./core` — the preflight must accept it (pin, or a descendant of the pin) | preflight fail → run aborts |
-| changed-scope gate (`npx vitest run <files>`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |
-| dev-push browser gate (`npx vitest run --project browser …`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |
+| `npm test` (Vitest `unit` + `unit-cli`), and a full-suite run via `/skill:test` | the checkout present in `./core` — the preflight must accept it (pin, or a descendant of the pin) | preflight fail → run aborts |
+| changed-scope gate (`npx vitest run <files>`, run by `implement.py finish`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |
+| browser-project runs (`npx vitest run --project browser …`) | the checkout present in `./core` — same preflight | preflight fail → run aborts |
 | `npm run build` / `build:electron` / the implement.py finish build step | engine dev head **after** `engine:sync` (the pin follows it) | `engine:sync` dirty guard |
 | `npm run build:release` / `engine:verify` | **detached at the pin** after `engine:verify` | `engine:verify` pin match + dirty guard |
 | freshly created worktree | whatever gitlink its branch recorded, **until** `engine:sync` runs | the preflight fails such a test run loudly, naming the composed SHA, the pin SHA and the exact remediation |
@@ -223,6 +223,49 @@ suppresses (off) the failure; every use is logged. The Vitest wiring is a
 documented LOCAL SURGICAL ADDITION to the auto-generated `vite.config.ts`,
 held in place by `tests/main-street/vite-config-engine-check-guard.test.ts`;
 a re-scaffold cannot silently drop the gate.
+
+## Dev-push gate (current state)
+
+This checkout runs the **v2** pre-push hook (`MS-0MVTI7F5R009OQ14`), activated
+with `git config core.hooksPath .githooks`. The gates it actually enforces are:
+
+1. **Branch policy** — a push whose current branch is `main`, `master` or
+   `HEAD` is refused.
+2. **Context-budget regression gate** — `docs/dev/context-budget.thresholds.json`
+   pins the startup context surface (here: `AGENTS.md` only — this repo ships
+   no `AGENTS_GLOBAL.md` and no `skill/` tree) and a push that exceeds it is
+   refused. Regenerate the thresholds and commit them with the change that
+   moved the surface:
+
+   ```bash
+   python3 ~/.pi/agent/skills/context-audit/scripts/measure_context.py \
+     --repo-root . --include-hidden \
+     --write-thresholds docs/dev/context-budget.thresholds.json
+   ```
+
+3. **Worklog sync** — `wl sync` runs from the main checkout; it is a no-op
+   inside a linked worktree.
+
+**There is no full-suite step in this repo's hook.** `implement.py finish`
+deliberately defers the full suite to a "dev-push gate", so a `dev` push from
+this repo is **not** full-suite-gated: a red tree can reach `dev` unless someone
+runs `/skill:test --scope full` first. The framework ships the v2 hook to
+non-SorraAgents projects by design; the game-repo full-suite variant, the
+scaffold wiring and the `install_pi.sh` selection are tracked in
+**`CG-0MW0KURL8002XOV9`** (engine store). Until that lands:
+
+- run `/skill:test --scope full` before a `dev` push instead of assuming a gate
+  did it;
+- do **not** treat a missing full-suite cache entry as a gate that failed to
+  record itself — no gate here produces one.
+
+Activation is **per-clone** local config (`core.hooksPath` is never cloned), so
+a fresh clone silently loses all three gates until the `git config` line is run
+again. Verify from the checkout that will push with
+`git config --get core.hooksPath` (expect `.githooks`) and
+`git rev-parse --git-path hooks` (expect `.githooks`, resolved against the
+current worktree root); the full check is in
+[Testing](testing.md#dev-push-gate-activation).
 
 ## Updating the engine / releasing
 

@@ -497,11 +497,10 @@ scripts/soak-browser-waits.sh --runs 20            # quiet-host soak
 scripts/soak-browser-waits.sh --runs 20 --load     # soak under imposed load
 ```
 
-Each run invokes the **canonical gate runner**
+Each run invokes the **canonical retry/hang-bound runner**
 (`npx tsx core/scripts/vitest-run-with-retry.ts --project browser
- tests/main-street/MainStreetScene.browser.test.ts`), so retry and hang-bound
-semantics match the dev-push gate exactly — the soak measures the gate, not a
-look-alike.
+ tests/main-street/MainStreetScene.browser.test.ts`), so the soak measures the
+real gate runner, not a look-alike.
 
 Behaviour:
 
@@ -662,7 +661,7 @@ silently predate the engine pin in `configs/engine-pin.json`. So the root
 `vite.config.ts` registers a `test.globalSetup`
 (`tests/tooling/engine-checkout-precheck.ts`, MS-0MVO26G5H0054SNV) that every
 invocation inherits — `npm test`, the changed-scope gate's direct
-`npx vitest run <files>` calls and the dev-push browser gate — and fails the
+`npx vitest run <files>` calls and the browser-project runs — and fails the
 run loudly when `./core` is not the pinned engine or a descendant of it,
 naming the composed SHA, the pin SHA and the `npm run engine:sync`
 remediation. On a pass it logs the composed engine identity (short SHA plus
@@ -792,6 +791,46 @@ section is about what the gate *does*, the preflight is about which engine a
 run *composed* (`npm run engine:check`,
 `tests/tooling/engine-checkout-precheck.ts`; the release pin contract lives in
 `tests/main-street/engine-submodule-sync.test.ts`).
+
+## Dev-push gate activation
+
+`implement.py finish` defers the full suite to the "dev-push gate", so whether a
+`dev` push is gated at all depends on which hook git actually runs. In this
+checkout the active gate set is the **v2** hook — branch policy, context budget
+and worklog sync, with **no full-suite step**; the game-repo full-suite variant
+is tracked in `CG-0MW0KURL8002XOV9`. The current-state note, including the
+accepted risk that a red tree can reach `dev` meanwhile, lives in
+[Build & release](build-and-release.md#dev-push-gate-current-state).
+
+Activation is per-clone local git config and is **not** cloned, so verify it
+before relying on any gate:
+
+```bash
+git config --get core.hooksPath   # expect: .githooks
+git rev-parse --git-path hooks    # expect: .githooks (relative to the worktree root)
+```
+
+Check both from the checkout **or linked worktree** that will push: with
+`core.hooksPath` set, a worktree resolves `.githooks` to its own committed copy
+of the hook. Repair a fresh clone with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The context-budget gate only enforces when
+`docs/dev/context-budget.thresholds.json` exists and matches the measured
+surface; regenerate and commit it with the change that moved the surface:
+
+```bash
+python3 ~/.pi/agent/skills/context-audit/scripts/measure_context.py \
+  --repo-root . --include-hidden \
+  --write-thresholds docs/dev/context-budget.thresholds.json
+```
+
+Because no hook step runs the suite here, run `/skill:test --scope full`
+yourself before a `dev` push, and treat a missing full-suite cache entry as the
+expected state rather than as evidence that a gate ran.
 
 ## Import shared helpers through the core aliases
 
@@ -1188,9 +1227,12 @@ A full-suite run that fails with `ENOSPC: System limit for number of file
 watchers reached` from vite-node CLI subprocesses (spawned by the `unit-cli`
 tests) is an **environmental** failure, not a test-code or product-code defect.
 
-The commit under test typically passes the full suite via independent gates
-(implement finish + pre-push hook); all individual tests pass when run in
-isolation. The trigger is host inotify-watch exhaustion: orphaned long-running
+The commit under test typically passes the full suite via independent runs
+(`implement.py finish`'s changed-scope gate plus an explicit `/skill:test` full
+run — this repo's pre-push hook has no suite step, see
+[Dev-push gate activation](#dev-push-gate-activation)); all individual tests
+pass when run in isolation. The trigger is host inotify-watch exhaustion:
+orphaned long-running
 processes (e.g. a hung `npx vitest run --project browser` from a dead session)
 plus several long-lived `vite --host` dev servers can consume most of
 `fs.inotify.max_user_watches` (default 65536). Each additional worktree adds
