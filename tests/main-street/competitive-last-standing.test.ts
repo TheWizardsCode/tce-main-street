@@ -20,6 +20,7 @@ import { buildCompetitiveState, buildHumanVsAis } from './helpers/competitive-fi
 import {
   checkLastStanding,
   continueAfterLastStanding,
+  effectiveWinThreshold,
   findHumanSeatId,
   resolveCompetitiveSeatFailures,
   checkCompetitiveEndConditions,
@@ -27,6 +28,7 @@ import {
   endCompetitiveMarketTurn,
   resolveCompetitiveClosingPhases,
 } from '../../src/MainStreetEngine';
+import { deserializeMainStreetState, serializeMainStreetState } from '../../src/MainStreetState';
 import { continueCompetitiveLastStanding } from '../../src/scenes/MainStreetTurnControllerCompetitive';
 import { MainStreetTurnController } from '../../src/scenes/MainStreetTurnController';
 import type { MainStreetState } from '../../src/MainStreetState';
@@ -247,5 +249,136 @@ describe('AC6 — scene-level offered/declined paths', () => {
     expect(controller.continueCompetitiveLastStanding()).toBe(true);
     expect(startSpy).toHaveBeenCalledTimes(1);
     expect(state.endReason).toBe('last_standing_continue');
+  });
+});
+
+// ── Continue-solo threshold reset (MS-0MVWNXEX5006E7AT) ────
+
+/**
+ * Builds a last-standing win and accepts the continue-solo offer.
+ *
+ * The fixture pins the base threshold to 10 000 so the competitively-divided
+ * values are unambiguous: P=2 → 5 000, P=3 → 3 350.
+ */
+function buildContinuedSolo(seed: string, aiCount: number): MainStreetState {
+  const wallets: Array<[number, number]> = [[500, 5]];
+  for (let i = 0; i < aiCount; i++) wallets.push([500, 0]);
+  const state = buildHumanVsAis(seed, aiCount, wallets, 10000);
+  state.turn = 2;
+  expect(resolveCompetitiveSeatFailures(state)).toBe(true);
+  expect(state.endReason).toBe('last_standing');
+  expect(continueAfterLastStanding(state)).toBe(true);
+  return state;
+}
+
+describe('MS-0MVWNXEX5006E7AT AC1 — score target resets on continue-solo', () => {
+  it('P=2: the effective threshold reverts from 5 000 to the base 10 000', () => {
+    const state = buildHumanVsAis('tgt-reset-1v1', 1, [[500, 5], [500, 0]], 10000);
+    state.turn = 2;
+    resolveCompetitiveSeatFailures(state);
+    expect(effectiveWinThreshold(state)).toBe(5000);
+
+    continueAfterLastStanding(state);
+
+    expect(effectiveWinThreshold(state)).toBe(state.config.winThreshold);
+    expect(effectiveWinThreshold(state)).toBe(10000);
+  });
+
+  it('P=3: the effective threshold reverts from 3 350 to the base 10 000', () => {
+    const state = buildContinuedSolo('tgt-reset-1v2', 2);
+    expect(effectiveWinThreshold(state)).toBe(10000);
+  });
+
+  it('the reset threshold survives a save/load round-trip', () => {
+    const state = buildContinuedSolo('tgt-reset-save', 1);
+    const saved = JSON.parse(JSON.stringify(serializeMainStreetState(state))) as ReturnType<typeof serializeMainStreetState>;
+    const restored = deserializeMainStreetState(saved);
+
+    expect(restored.endReason).toBe('last_standing_continue');
+    expect(effectiveWinThreshold(restored)).toBe(10000);
+  });
+});
+
+describe('MS-0MVWNXEX5006E7AT AC2 — subsequent wins use the reset threshold', () => {
+  it('a score at the old divided threshold no longer ends the game', () => {
+    const state = buildContinuedSolo('tgt-win-divided', 1);
+    // 5 005 points: above the old P=2 target (5 000), below the base target.
+    state.players![0].coins = 5000;
+
+    expect(checkCompetitiveEndConditions(state)).toBe(false);
+    expect(state.gameResult).toBe('playing');
+    expect(state.endReason).toBe('last_standing_continue');
+  });
+
+  it('reaching the base threshold ends the game as a human win', () => {
+    const state = buildContinuedSolo('tgt-win-base', 1);
+    state.players![0].coins = 10000;
+
+    expect(checkCompetitiveEndConditions(state)).toBe(true);
+    expect(state.gameResult).toBe('win');
+    expect(state.endReason).toBe('score_threshold');
+    expect(state.competitiveWinnerId).toBe(0);
+  });
+});
+
+describe('MS-0MVWNXEX5006E7AT AC3 — end-checks respect the reset threshold', () => {
+  it('P=3: 3 350 points (the old divided target) does not end the resumed game', () => {
+    const state = buildContinuedSolo('tgt-endcheck-1v2', 2);
+    expect(state.playerCount).toBe(3);
+    // 3 350 points exactly equals the old P=3 effective target.
+    state.players![0].coins = 3345;
+
+    expect(checkCompetitiveEndConditions(state)).toBe(false);
+    expect(state.endReason).toBe('last_standing_continue');
+  });
+
+  it('P=3: the base 10 000 target still ends the resumed game', () => {
+    const state = buildContinuedSolo('tgt-endcheck-base', 2);
+    state.players![0].coins = 9995;
+
+    expect(checkCompetitiveEndConditions(state)).toBe(true);
+    expect(state.gameResult).toBe('win');
+    expect(state.endReason).toBe('score_threshold');
+  });
+});
+
+describe('MS-0MVWNXEX5006E7AT AC4 — idempotent, no effect when not continuing', () => {
+  it('is a no-op without an open offer — the competitive threshold is untouched', () => {
+    const state = buildHumanVsAis('tgt-no-offer', 1, [[500, 5], [500, 3]], 10000);
+    const turnBefore = state.turn;
+
+    expect(continueAfterLastStanding(state)).toBe(false);
+
+    expect(state.turn).toBe(turnBefore);
+    expect(effectiveWinThreshold(state)).toBe(5000);
+  });
+
+  it('a second continue is a no-op that leaves the reset threshold in place', () => {
+    const state = buildContinuedSolo('tgt-idem', 1);
+    const snapshot = {
+      turn: state.turn,
+      bankedActions: state.bankedActions,
+      phase: state.phase,
+      activePlayerId: state.activePlayerId,
+    };
+
+    expect(continueAfterLastStanding(state)).toBe(false);
+
+    expect(state.turn).toBe(snapshot.turn);
+    expect(state.bankedActions).toBe(snapshot.bankedActions);
+    expect(state.phase).toBe(snapshot.phase);
+    expect(state.activePlayerId).toBe(snapshot.activePlayerId);
+    expect(effectiveWinThreshold(state)).toBe(10000);
+  });
+
+  it('does not touch the endless-mode score_threshold_continue threshold', () => {
+    const state = buildHumanVsAis('tgt-endless', 1, [[500, 5], [500, 3]], 10000);
+    state.gameResult = 'win';
+    state.endReason = 'score_threshold_continue';
+
+    // The endless continuation keeps the competitively-divided target.
+    expect(effectiveWinThreshold(state)).toBe(5000);
+    expect(continueAfterLastStanding(state)).toBe(false);
+    expect(effectiveWinThreshold(state)).toBe(5000);
   });
 });

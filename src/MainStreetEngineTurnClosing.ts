@@ -1192,6 +1192,12 @@ export function checkLastStanding(state: MainStreetState): boolean {
  * Idempotent — a no-op unless the offer is open (`endReason ===
  * 'last_standing'`).
  *
+ * Returning to play also reverts the win target to the undivided
+ * single-player threshold (MS-0MVWNXEX5006E7AT): `effectiveWinThreshold`
+ * sees `endReason === 'last_standing_continue'` and stops dividing by the
+ * original roster, so the resumed solo game must reach the base
+ * `config.winThreshold` to win again.
+ *
  * @returns `true` when play resumed, `false` when no offer was open.
  */
 export function continueAfterLastStanding(state: MainStreetState): boolean {
@@ -1428,7 +1434,9 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   // value divided by the seat count (human + AI) and rounded to the nearest
   // 50, so a larger roster still reaches the win in a comparable run length
   // (MS-0MUZH6V7C0091SGE). Single-player (`playerCount` undefined) resolves
-  // to the unchanged base value, which is already a multiple of 50.
+  // to the unchanged base value, which is already a multiple of 50. A
+  // last-standing win continued solo also resolves to the base value
+  // (MS-0MVWNXEX5006E7AT): only the human remains in play.
   const effectiveThreshold = effectiveWinThreshold(state);
   for (let i = 0; i < state.players.length; i++) {
     if (state.players[i].score >= effectiveThreshold) {
