@@ -741,16 +741,27 @@ kills without `reason: unknown`, is `SA-0MVTET8KQ0031R6Z` (slot fairness is
 code failure, a timeout/kill and a slot wait are three different problems with
 three different fixes.
 
-### Changed scope is currently the full suite in this repo
+### Changed scope: groups and vitest files are selectable
 
-`implement.py finish` first tries a named group from `.pi/test-config.json`,
-then a file-level selector, and falls back to the **full suite** with a logged
-warning when no subset can be selected — with `suiteCommands` declared, that
-fallback is what normally fires today. Restoring a targeted selection for this
-stack (vitest/TypeScript-aware mapping; `groups` honoured even when
-`suiteCommands` is present, which continues to define only the full suite) is
-`SA-0MVL7YOMJ006UMDO`; when it lands, the finish log reports
-`scope: changed` with the selected commands instead of the full fallback.
+`implement.py finish` first maps the changed paths to a declared `groups`
+entry in `.pi/test-config.json`, then to the affected vitest `.test.ts` files,
+and falls back to the **full suite** with a logged, specific reason when no
+subset can be selected. Declaring `suiteCommands` no longer disables that
+selection — it defines the **full** suite only (`SA-0MVL7YOMJ006UMDO`, shipped
+in v0.1.25).
+
+Verified against this tree on 2026-11-03 (the installed test skill's
+`changed_scope_selection`):
+
+| Changed file | Selection | Reported reason |
+|---|---|---|
+| `tests/tooling/test-config-timeout-guard.test.ts` | `node_modules/.bin/vitest run tests/tooling/test-config-timeout-guard.test.ts` | selected 1 affected test file(s) |
+| `src/scenes/MainStreetScene.ts` | `npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts` | matched group `webgl-clipping-browser` |
+| `docs/dev/testing.md` | full suite | no changed source or test files |
+
+The fallback states why it fell back ("no changed files", "no changed source
+or test files", "no matching group") rather than giving a generic list, so a
+finish log that ran the full suite says which case applied.
 
 The engine-composition preflight above is the complementary guard: this
 section is about what the gate *does*, the preflight is about which engine a
