@@ -852,9 +852,18 @@ export function applyIncome(
  * Applies income per-owner for competitive states (N >= 2).
  *
  * Each placed business's income (base + adjacency synergy + upgrades — all
- * folded into the `currentIncome` cache by the adjacency system — plus
- * per-business staff buffs) accrues ONLY to the slot's owning player
- * (`ownerTaggedGrid`, falling back to the active player for untagged slots).
+ * folded into the `currentIncome` cache by the adjacency system, duplicate
+ * factor included — plus per-business staff buffs) accrues ONLY to the slot's
+ * owning player (`ownerTaggedGrid`, falling back to the active player for
+ * untagged slots).
+ *
+ * Duplicate-business parity (MS-0MW0UG07W009PO4E): the duplicate-business
+ * (market-saturation) factor is resolved over the SHARED street grid, so every
+ * seat's businesses saturate their type regardless of owner. The cached
+ * `currentIncome` already carries the factor, and the per-slot base/synergy
+ * split is resolved through `computeBusinessIncomeParts` — mirroring
+ * `applyIncome` — so both components are scaled by the same factor and the
+ * per-owner phase sum still equals the credited total.
  * Hand cards contribute no income (CG-0MTRDX0DN004EECN). Per-owner
  * reputation drives the reputation coin multiplier independently; shared
  * `activeEffects` income/rep multipliers apply to every owner's income phase
@@ -900,14 +909,18 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
 
       const slotIncome = card.currentIncome ?? 0;
       // Board adjacency synergy (board-wide, ownership-independent) is
-      // reported separately from base income (CG-0MTV6LZEA003YS3E).
-      const synergy = computeSynergyBonus(
+      // reported separately from base income (CG-0MTV6LZEA003YS3E). The parts
+      // helper returns the synergy share AFTER the duplicate-business factor,
+      // exactly as `applyIncome` does, so `slotIncome - synergy` is the
+      // factor-scaled base rather than an unreduced one
+      // (MS-0MW0UG07W009PO4E AC2).
+      const synergy = computeBusinessIncomeParts(
         grid,
         i,
         state.config.synergyBonusPerNeighbor,
         soldSlots,
         gridDims,
-      );
+      ).synergyBonus;
       const profile = {
         synergyTypes: (card as BusinessCard).synergyTypes ?? [],
         baseIncome: (card as BusinessCard).baseIncome ?? 0,

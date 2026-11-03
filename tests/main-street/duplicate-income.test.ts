@@ -39,7 +39,12 @@ import {
   recalculateCard,
   syncCardCurrentIncome,
 } from '../../src/MainStreetAdjacencyScoring';
-import { setupMainStreetGame } from '../../src/MainStreetState';
+import { createCompetitiveState, setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
+import {
+  applyCompetitiveIncome,
+  getSlotOwnerId,
+  updateNeighborsOnPlacement,
+} from '../../src/MainStreetAdjacency';
 import { sameStreetCell, streetSlotToWorldIndex } from '../../src/MainStreetAdjacencyGeometry';
 import {
   DUPLICATE_FACTOR_TABLE,
@@ -484,5 +489,202 @@ describe('duplicate income factor — single-player income integration', () => {
     expect(slot0.synergyBonus).toBe(0);
     expect(phase0.baseIncome).toBe(8);
     expect(phase0.synergyBonus).toBe(0);
+  });
+});
+
+// ── Competitive parity ─────────────────────────────────────
+// MS-0MW0UG07W009PO4E wires the factor into the competitive (N >= 2) income
+// path. The street is SHARED, so every seat's businesses saturate their type
+// and cross-owner duplicates reduce each other's income (assumption 5).
+
+/** Two-seat competitive state with zero reputation (income multiplier 1). */
+function compState(seed: string): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount: 2 });
+  for (const player of state.players!) {
+    player.coins = 0;
+    player.reputation = 0;
+  }
+  return state;
+}
+
+/** Places `card` at `slot`, tags its owner, and refreshes the income caches. */
+function placeOwned(
+  state: MainStreetState,
+  card: BusinessCard | CommunitySpaceCard,
+  slot: number,
+  ownerId: number,
+): void {
+  state.streetGrid[slot] = card;
+  state.ownerTaggedGrid![slot] = { card, ownerId };
+  updateNeighborsOnPlacement(state, slot);
+}
+
+describe('duplicate income factor — competitive parity (MS-0MW0UG07W009PO4E)', () => {
+  it('credits the factor-reduced currentIncome to each owning seat (2 copies → 2/3)', () => {
+    const state = compState('comp-two-copy');
+    const p0Biz = makeBiz('biz-bakery-0', { baseIncome: 12 });
+    const p1Biz = makeBiz('biz-bakery-1', { baseIncome: 12 });
+    placeOwned(state, p0Biz, 0, 0);
+    placeOwned(state, p1Biz, GRID_SIZE - 1, 1);
+
+    // AC1: the cached income the competitive path reads is already reduced.
+    expect(p0Biz.currentIncome).toBe(8);
+    expect(p1Biz.currentIncome).toBe(8);
+
+    const results = applyCompetitiveIncome(state);
+    const p0 = results.find((r) => r.ownerId === 0)!;
+    const p1 = results.find((r) => r.ownerId === 1)!;
+
+    // AC5: the credited total per seat is the reduced income, exactly.
+    expect(state.players![0].coins).toBe(8);
+    expect(state.players![1].coins).toBe(8);
+    expect(p0.income.total).toBe(8);
+    expect(p1.income.total).toBe(8);
+    expect(p0.income.breakdown).toHaveLength(1);
+    expect(p1.income.breakdown).toHaveLength(1);
+  });
+
+  it('counts every seat\'s businesses towards the shared-street saturation count', () => {
+    const state = compState('comp-shared-count');
+    placeOwned(state, makeBiz('biz-bakery-0', { baseIncome: 12 }), 0, 0);
+    placeOwned(state, makeBiz('biz-bakery-1', { baseIncome: 12 }), GRID_SIZE - 1, 1);
+
+    // AC3: the count is over the shared grid, not the owner's own slots — the
+    // two copies sit in different seats' ownership and still saturate.
+    expect(getSlotOwnerId(state, 0)).toBe(0);
+    expect(getSlotOwnerId(state, GRID_SIZE - 1)).toBe(1);
+    expect(duplicateIncomeFactor(state.streetGrid, 0, state.soldSlots, undefined)).toBe(
+      DUPLICATE_FACTOR_TABLE[2],
+    );
+    expect(duplicateIncomeFactor(state.streetGrid, GRID_SIZE - 1, state.soldSlots, undefined)).toBe(
+      DUPLICATE_FACTOR_TABLE[2],
+    );
+  });
+
+  it('reduces cross-owner same-type businesses to 1/2 at three copies', () => {
+    const state = compState('comp-three-copy');
+    // Three mutually non-adjacent bakeries split across both seats.
+    const copies = [
+      { slot: 0, owner: 0 },
+      { slot: 2, owner: 1 },
+      { slot: GRID_SIZE - 1, owner: 0 },
+    ];
+    for (const [n, { slot, owner }] of copies.entries()) {
+      placeOwned(state, makeBiz(`biz-bakery-${n}`, { baseIncome: 12 }), slot, owner);
+    }
+
+    const results = applyCompetitiveIncome(state);
+    // AC4 + AC6: cross-owner duplicates each earn 12 × 1/2 = 6.
+    for (const { slot } of copies) {
+      const card = state.streetGrid[slot] as BusinessCard;
+      expect(card.currentIncome).toBe(6);
+    }
+    expect(results.find((r) => r.ownerId === 0)!.income.total).toBe(12); // 6 + 6
+    expect(results.find((r) => r.ownerId === 1)!.income.total).toBe(6);
+    expect(state.players![0].coins).toBe(12);
+    expect(state.players![1].coins).toBe(6);
+  });
+
+  it('reduces cross-owner same-type businesses to 1/3 at four or more copies', () => {
+    const state = compState('comp-four-copy');
+    // A 5×2 street holds at most three mutually non-adjacent slots, so four
+    // copies must touch: the adjacent same-type 60% penalty (30 → 18) and the
+    // 1/3 factor compose multiplicatively → 6 each.
+    const copies = [
+      { slot: 0, owner: 0 },
+      { slot: 1, owner: 1 },
+      { slot: 2, owner: 0 },
+      { slot: 3, owner: 1 },
+    ];
+    for (const [n, { slot, owner }] of copies.entries()) {
+      placeOwned(state, makeBiz(`biz-bakery-${n}`, { baseIncome: 30 }), slot, owner);
+    }
+
+    const results = applyCompetitiveIncome(state);
+    for (const { slot } of copies) {
+      expect((state.streetGrid[slot] as BusinessCard).currentIncome).toBe(6);
+    }
+    expect(results.find((r) => r.ownerId === 0)!.income.total).toBe(12);
+    expect(results.find((r) => r.ownerId === 1)!.income.total).toBe(12);
+  });
+
+  it('still lets a sold business from another seat saturate the street', () => {
+    const state = compState('comp-sold-shared');
+    const sold = makeBiz('biz-bakery-0', { baseIncome: 12 });
+    placeOwned(state, sold, 0, 0);
+    state.soldSlots[0] = true; // P0's bakery sold (still on the street)
+    const live = makeBiz('biz-bakery-1', { baseIncome: 12 });
+    placeOwned(state, live, GRID_SIZE - 1, 1);
+
+    expect(duplicateIncomeFactor(state.streetGrid, GRID_SIZE - 1, state.soldSlots, undefined)).toBe(
+      DUPLICATE_FACTOR_TABLE[2],
+    );
+
+    const results = applyCompetitiveIncome(state);
+    // The sold business earns nothing itself, but still cuts P1's income.
+    expect(results.find((r) => r.ownerId === 0)!.income.total).toBe(0);
+    expect(results.find((r) => r.ownerId === 1)!.income.total).toBe(8);
+    expect(state.players![1].coins).toBe(8);
+  });
+
+  it('scales the per-owner base and synergy by the same factor and keeps the phase sum', () => {
+    const state = compState('comp-phase-split');
+    const factor = DUPLICATE_FACTOR_TABLE[2];
+    // Per-link synergy for a 12-coin business at the default 50% rate, scaled
+    // by this difficulty's per-neighbour multiplier (Medium = 0.35).
+    const perLink = roundInt(12 * 0.5 * state.config.synergyBonusPerNeighbor);
+    // P0: bakery (12, duplicated with P1's bakery) next to a diner that grants
+    // it synergy, so its usual income is 12 base + `perLink` synergy; the
+    // duplicate factor reduces that and both components are scaled with it.
+    const bakery = makeBiz('biz-bakery-0', { baseIncome: 12 });
+    const diner = makeBiz('biz-diner-0', { baseIncome: 12 });
+    placeOwned(state, bakery, 0, 0);
+    placeOwned(state, diner, 1, 0);
+    placeOwned(state, makeBiz('biz-bakery-1', { baseIncome: 12 }), GRID_SIZE - 1, 1);
+
+    const results = applyCompetitiveIncome(state);
+    const p0 = results.find((r) => r.ownerId === 0)!;
+
+    const slot0 = p0.income.breakdown.find((b) => b.slotIndex === 0)!;
+    expect(slot0.baseIncome).toBe(reducedIncome(12, factor));
+    expect(slot0.synergyBonus).toBe(reducedIncome(perLink, factor));
+    expect(slot0.total).toBe(reducedIncome(12 + perLink, factor));
+
+    // A non-duplicated type keeps its full split.
+    const dinerSlot = p0.income.breakdown.find((b) => b.slotIndex === 1)!;
+    expect(dinerSlot.baseIncome).toBe(12);
+    expect(dinerSlot.synergyBonus).toBe(perLink);
+    expect(dinerSlot.total).toBe(12 + perLink);
+
+    // AC2: the phase breakdown mirrors the split, and per owner the phase sum
+    // equals the presented total.
+    for (const result of results) {
+      let phaseSum = 0;
+      for (const phaseSlot of result.income.phaseBreakdown.perSlotBreakdown) {
+        const slot = result.income.breakdown.find((b) => b.slotIndex === phaseSlot.slotIndex)!;
+        expect(phaseSlot.baseIncome + phaseSlot.synergyBonus).toBe(slot.total);
+        phaseSum +=
+          phaseSlot.baseIncome +
+          phaseSlot.synergyBonus +
+          phaseSlot.repBonus +
+          phaseSlot.eventDeltas.reduce((acc, e) => acc + e.delta, 0);
+      }
+      expect(phaseSum).toBe(result.income.total);
+    }
+    expect(p0.income.total).toBe(reducedIncome(12 + perLink, factor) + 12 + perLink);
+  });
+
+  it('delegates to the single-player path at N=1 with the factor still applied', () => {
+    const state = createCompetitiveState({ seed: 'comp-n1', playerCount: 1 });
+    state.resourceBank.coins = 0;
+    state.resourceBank.reputation = 0;
+    state.streetGrid[0] = makeBiz('biz-bakery-0', { baseIncome: 12 });
+    state.streetGrid[GRID_SIZE - 1] = makeBiz('biz-bakery-1', { baseIncome: 12 });
+    recalculateCard(state, 0);
+    recalculateCard(state, GRID_SIZE - 1);
+
+    // N=1 keeps returning no per-owner results and credits the legacy path.
+    expect(applyCompetitiveIncome(state)).toEqual([]);
+    expect(state.resourceBank.coins).toBe(16); // 8 + 8
   });
 });
