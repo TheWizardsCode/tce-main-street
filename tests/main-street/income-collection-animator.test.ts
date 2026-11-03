@@ -33,6 +33,8 @@ vi.mock('@ui', () => ({
 
 import { MainStreetAnimator } from '../../src/scenes/MainStreetAnimator';
 import { SFX_KEYS } from '../../src/scenes/MainStreetConstants';
+import type { IncomePhaseSlot } from '../../src/scenes/MainStreetAnimatorContext';
+import type { SlotPhaseBreakdown } from '../../src/MainStreetAdjacency';
 
 // ── Mock scene helpers ──────────────────────────────────────
 
@@ -86,6 +88,8 @@ function createMockScene(overrides: Record<string, unknown> = {}) {
           setDepth: vi.fn().mockReturnThis(),
         };
       }),
+      // `collectIncomeGrids` re-parents each collected grid icon to the scene.
+      existing: vi.fn(),
     },
     ...overrides,
   };
@@ -351,5 +355,181 @@ describe('MainStreetAnimator.animateHudValueChanges income suppression', () => {
     expect(scene.add.text).toHaveBeenCalledTimes(1);
     expect(popTextOrIcon).toHaveBeenCalledTimes(1);
     expect(scene.gameEvents.emit).toHaveBeenCalledWith('income-gained', { amount: 4 });
+  });
+});
+
+// ── Owner-aware collection routing (MS-0MW083E5H009ACB4) ────────────────
+//
+// The grid → bank collection is one of the three HUD-bound income routes
+// (parent MS-0MVWNS9L7007CTK9 AC2). In competitive play the collected coins
+// must fly to the *owning* seat's bank: owner `0` (the human) keeps the shared
+// HUD coin counter, an AI owner (`ownerId >= 1`) targets that seat's
+// competitive-scoreboard summary anchor.
+//
+// Following the repo's test-first tracer-bullet convention, the owner-aware
+// cases are authored **red-phase** with `it.fails` (the collection still routes
+// every slot to the single HUD anchor today); the implementing child
+// MS-0MW083O38005B22F flips them to a plain `it`. The single-player guard stays
+// a plain `it` so it keeps protecting owner-0 behaviour through the change.
+
+/** Where the HUD publishes the human seat's coin counter for these cases. */
+const COLLECTION_HUD_COIN = { x: 409, y: 50 };
+/** Where the competitive scoreboard publishes an AI seat's summary row. */
+const COLLECTION_SEAT_ANCHOR = { x: 900, y: 32 };
+
+interface CollectionSlotSpec {
+  slotIndex: number;
+  /** Presentation-only seat owner; absent for single-player / legacy slots. */
+  ownerId?: number;
+  /** Coins sitting in the slot's on-card grid (one collected icon each). */
+  gridCoins: number;
+}
+
+/**
+ * A producing slot with a fake on-card coin grid: one icon per grid coin, each
+ * reporting a distinct world position, so the collection's flight origins and
+ * destinations are observable without any rendering.
+ */
+function makeCollectionSlot(spec: CollectionSlotSpec): IncomePhaseSlot {
+  const icons = Array.from({ length: spec.gridCoins }, (_, i) => {
+    const icon = {
+      getWorldTransformMatrix: () => ({
+        getX: () => spec.slotIndex * 160 + i,
+        getY: () => 140,
+      }),
+      setPosition: () => icon,
+      setDepth: () => icon,
+      destroy: vi.fn(),
+    };
+    return icon;
+  });
+  const container = {
+    list: icons as unknown[],
+    remove: vi.fn((icon: unknown) => {
+      const idx = icons.indexOf(icon as (typeof icons)[number]);
+      if (idx >= 0) icons.splice(idx, 1);
+    }),
+    destroy: vi.fn(),
+  };
+  // `ownerId` is presentation-only owner identity (added to both the phase
+  // breakdown and the animator slot by MS-0MW083KRZ009NJTA); read through
+  // `unknown` so this suite compiles while that child is still landing.
+  const pd = {
+    slotIndex: spec.slotIndex,
+    businessName: `Biz ${spec.slotIndex}`,
+    baseIncome: spec.gridCoins * 100,
+    synergyBonus: 0,
+    repBonus: 0,
+    eventDeltas: [],
+    upcomingDeltas: [],
+    ownerId: spec.ownerId,
+  } as unknown as SlotPhaseBreakdown;
+  return {
+    pd,
+    card: {} as never,
+    handle: {
+      addCoins: vi.fn(() => ({ placements: [], iconCount: 0 })),
+      clear: vi.fn(),
+      getLayout: vi.fn(() => null),
+      container,
+    } as never,
+    displayed: spec.gridCoins,
+    ownerId: spec.ownerId,
+  } as unknown as IncomePhaseSlot;
+}
+
+/** Runs the collection and completes every scheduled flight. */
+function runCollection(
+  animator: MainStreetAnimator,
+  slots: IncomePhaseSlot[],
+  scheduled: ScheduledCall[],
+): void {
+  animator.collectIncomeGrids(slots, {
+    reducedMotion: false,
+    creditedTotal: slots.reduce((sum, sl) => sum + sl.pd.baseIncome, 0),
+  });
+  completeAllFlights(scheduled);
+}
+
+/** A flight destination in the shape `moveGameObject` receives. */
+function dest(target: { x: number; y: number }): { destX: number; destY: number } {
+  return { destX: target.x, destY: target.y };
+}
+
+/** Flight destinations in launch order, one per collected grid coin. */
+function collectionDestinations(): Array<{ destX: number; destY: number }> {
+  return moveGameObject.mock.calls.map((c) => {
+    const opts = c[0] as { destX: number; destY: number };
+    return { destX: opts.destX, destY: opts.destY };
+  });
+}
+
+describe('MainStreetAnimator.collectIncomeGrids owner-aware routing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps a legacy slot without an ownerId on the HUD coin anchor (single-player unchanged)', () => {
+    const { scene, scheduled } = createMockScene({
+      hudCoinAnchor: COLLECTION_HUD_COIN,
+      hudRepAnchor: { x: 777, y: 50 },
+      // No per-seat anchors: single-player has no scoreboard.
+      hudSeatAnchors: null,
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    runCollection(animator, [makeCollectionSlot({ slotIndex: 0, gridCoins: 1 })], scheduled);
+
+    expect(collectionDestinations()).toEqual([dest(COLLECTION_HUD_COIN)]);
+  });
+
+  it.fails("routes an AI-owned slot's grid coins to that seat's anchor, not the human HUD (red-phase)", () => {
+    const { scene, scheduled } = createMockScene({
+      hudCoinAnchor: COLLECTION_HUD_COIN,
+      hudRepAnchor: { x: 777, y: 50 },
+      hudSeatAnchors: { 1: COLLECTION_SEAT_ANCHOR },
+    });
+    const animator = new MainStreetAnimator(scene);
+
+    const human = makeCollectionSlot({ slotIndex: 0, ownerId: 0, gridCoins: 1 });
+    const ai = makeCollectionSlot({ slotIndex: 1, ownerId: 1, gridCoins: 1 });
+
+    runCollection(animator, [human, ai], scheduled);
+
+    // Slot order is preserved: the human's coin lands on the HUD counter, the
+    // AI seat's coin lands on its own summary row.
+    expect(collectionDestinations()).toEqual([
+      dest(COLLECTION_HUD_COIN),
+      dest(COLLECTION_SEAT_ANCHOR),
+    ]);
+  });
+
+  it.fails('falls back to the deterministic seat cell for an AI slot before the scoreboard publishes anchors (red-phase)', () => {
+    const fallbackCoin = { destX: 1280 * 0.25 + 70, destY: 50 };
+    const destinations: Array<{ destX: number; destY: number }> = [];
+
+    // Two identical collections must resolve the same seat cell.
+    for (let run = 0; run < 2; run++) {
+      const { scene, scheduled } = createMockScene({
+        hudCoinAnchor: COLLECTION_HUD_COIN,
+        hudRepAnchor: { x: 777, y: 50 },
+        hudSeatAnchors: null,
+      });
+      const animator = new MainStreetAnimator(scene);
+      runCollection(
+        animator,
+        [makeCollectionSlot({ slotIndex: 1, ownerId: 1, gridCoins: 1 })],
+        scheduled,
+      );
+      destinations.push(...collectionDestinations());
+    }
+
+    expect(destinations).toHaveLength(2);
+    // Deterministic per seat, never the human HUD counter or its fallback.
+    expect(destinations[1]).toEqual(destinations[0]);
+    expect(destinations[0]).not.toEqual(dest(COLLECTION_HUD_COIN));
+    expect(destinations[0]).not.toEqual(fallbackCoin);
+    // ...and it stays on/above the HUD baseline like every other HUD flight.
+    expect(destinations[0].destY).toBeLessThanOrEqual(50);
   });
 });

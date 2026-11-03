@@ -111,6 +111,14 @@ interface MockScene {
   tweens: { add: ReturnType<typeof vi.fn> };
   streetContainer: { list: unknown[] };
   msRenderer: { animateUpcomingEffectLine: ReturnType<typeof vi.fn> };
+  /** Published HUD number anchors (MS-0MUYT57J80021CWW). */
+  hudCoinAnchor?: { x: number; y: number } | null;
+  hudRepAnchor?: { x: number; y: number } | null;
+  /**
+   * Per-seat scoreboard anchors keyed by `playerId`
+   * (MS-0MW083MAN004JSCH); published by the competitive scoreboard render.
+   */
+  hudSeatAnchors?: Record<number, { x: number; y: number }> | null;
 }
 
 function createMockScene(slotCount: number, overrides: Partial<MockScene> = {}): {
@@ -187,7 +195,12 @@ function createMockScene(slotCount: number, overrides: Partial<MockScene> = {}):
 }
 
 /** Phase data with `baseIncome`/`repBonus` in the ×100 economy (1 icon = 100). */
-function makePhaseData(bases: number[], reps: number[] = []): SlotPhaseBreakdown[] {
+function makePhaseData(
+  bases: number[],
+  reps: number[] = [],
+  /** Presentation-only seat owner per slot index (absent = owner 0). */
+  ownerIds: Record<number, number> = {},
+): SlotPhaseBreakdown[] {
   return bases.map((baseIncome, slotIndex) => ({
     slotIndex,
     businessName: `Biz ${slotIndex}`,
@@ -196,7 +209,10 @@ function makePhaseData(bases: number[], reps: number[] = []): SlotPhaseBreakdown
     repBonus: reps[slotIndex] ?? 0,
     eventDeltas: [],
     upcomingDeltas: [],
-  }));
+    // `ownerId` is added to `SlotPhaseBreakdown` by MS-0MW083KRZ009NJTA; the
+    // cast keeps this suite compiling while that child is still landing.
+    ...(ownerIds[slotIndex] === undefined ? {} : { ownerId: ownerIds[slotIndex] }),
+  }) as unknown as SlotPhaseBreakdown);
 }
 
 /**
@@ -490,5 +506,114 @@ describe('MainStreetAnimator.animateIncomePhases — sequential card processing'
     expect(scheduled).toEqual([]);
     expect(gridRegistry.handles).toEqual([]);
     expect(scene.incomeCollectionActive).toBe(false);
+  });
+});
+
+// ── Owner-aware reputation routing (MS-0MW083E5H009ACB4) ────────────────
+//
+// The reputation phase's card → rep-bank pips are one of the three HUD-bound
+// income routes (parent MS-0MVWNS9L7007CTK9 AC2). In competitive play each
+// producing slot's pips must land on the *owning* seat's bank: owner `0` (the
+// human) on the shared HUD reputation counter, an AI owner (`ownerId >= 1`) on
+// that seat's competitive-scoreboard summary anchor.
+//
+// Following the repo's test-first tracer-bullet convention, the owner-aware
+// cases are authored **red-phase** with `it.fails` (the phase still routes every
+// slot to the single HUD anchor today); the implementing child
+// MS-0MW083O38005B22F flips them to a plain `it`. The owner-0 guard stays a
+// plain `it` so it keeps protecting single-player behaviour through the change.
+
+/** Published HUD reputation anchor (the human seat's rep bank). */
+const REP_ROUTE_HUD_ANCHOR = { x: 777, y: 50 };
+/** Published AI seat anchor (the seat's scoreboard summary row). */
+const REP_ROUTE_SEAT_ANCHOR = { x: 900, y: 32 };
+
+/**
+ * Fires the reputation phase dispatch and every flight it schedules, returning
+ * the destinations of all coin/pip flights it launched (in launch order).
+ */
+function runReputationPhase(
+  scheduled: ScheduledCall[],
+  dispatchIndex: number,
+): Array<{ x: number; y: number }> {
+  const firstNew = scheduled.length;
+  scheduled[dispatchIndex].fn();
+  for (const call of scheduled.slice(firstNew)) call.fn();
+  return moveGameObject.mock.calls.map((c) => {
+    const opts = c[0] as unknown as { destX: number; destY: number };
+    return { x: opts.destX, y: opts.destY };
+  });
+}
+
+describe('MainStreetAnimator.animateIncomePhases — owner-aware reputation routing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    gridRegistry.handles.length = 0;
+    gridRegistry.addLog.length = 0;
+  });
+
+  it('keeps an owner-less (single-player / legacy) slot on the HUD reputation anchor', () => {
+    const { scene, scheduled } = createMockScene(1, {
+      hudRepAnchor: REP_ROUTE_HUD_ANCHOR,
+      hudSeatAnchors: null,
+    } as Partial<MockScene>);
+    const animator = new MainStreetAnimator(scene);
+
+    // Rep-only data: reputation is the first (index 0) scheduled phase.
+    animator.animateIncomePhases(makePhaseData([0], [100]), {
+      phaseGapMs: 100_000,
+      pendingDeltas: { pendingRepDelta: 100 },
+    });
+
+    const destinations = runReputationPhase(scheduled, 0);
+    expect(destinations).toContainEqual({ ...REP_ROUTE_HUD_ANCHOR });
+  });
+
+  it.fails("routes an AI-owned slot's reputation pips to that seat's anchor, not the human HUD (red-phase)", () => {
+    const { scene, scheduled } = createMockScene(2, {
+      hudRepAnchor: REP_ROUTE_HUD_ANCHOR,
+      hudSeatAnchors: { 1: REP_ROUTE_SEAT_ANCHOR },
+    } as Partial<MockScene>);
+    const animator = new MainStreetAnimator(scene);
+
+    // Slot 0 belongs to the human seat, slot 1 to AI seat 1. One reputation
+    // icon each (repBonus 100 in the ×100 economy), one pip flown per slot.
+    animator.animateIncomePhases(makePhaseData([0, 0], [100, 100], { 1: 1 }), {
+      phaseGapMs: 100_000,
+      pendingDeltas: { pendingRepDelta: 200 },
+    });
+
+    const destinations = runReputationPhase(scheduled, 0);
+
+    // The human slot keeps the HUD reputation counter...
+    expect(destinations).toContainEqual({ ...REP_ROUTE_HUD_ANCHOR });
+    // ...while the AI seat's pips land on its own summary row.
+    expect(destinations).toContainEqual({ ...REP_ROUTE_SEAT_ANCHOR });
+    // Exactly one pip per owning seat — the AI slot never also credits the HUD.
+    expect(destinations.filter((d) => d.x === REP_ROUTE_HUD_ANCHOR.x)).toHaveLength(1);
+    expect(destinations.filter((d) => d.x === REP_ROUTE_SEAT_ANCHOR.x)).toHaveLength(1);
+  });
+
+  it.fails('falls back to the deterministic seat cell for an AI slot with no published seat anchor (red-phase)', () => {
+    const { scene, scheduled } = createMockScene(1, {
+      hudRepAnchor: REP_ROUTE_HUD_ANCHOR,
+      hudSeatAnchors: null,
+    } as Partial<MockScene>);
+    const animator = new MainStreetAnimator(scene);
+
+    animator.animateIncomePhases(makePhaseData([0], [100], { 0: 1 }), {
+      phaseGapMs: 100_000,
+      pendingDeltas: { pendingRepDelta: 100 },
+    });
+
+    const destinations = runReputationPhase(scheduled, 0);
+    // The on-card grid flights (destined for the grid, one per rep icon) are
+    // separate from the HUD-bound pips — isolate the pips here.
+    const pipDestinations = destinations.filter((d) => d.y !== 140);
+    expect(pipDestinations).toHaveLength(1);
+    // Never the human HUD counter; deterministic per seat and on/above the
+    // HUD baseline like every other HUD flight.
+    expect(pipDestinations[0]).not.toEqual({ ...REP_ROUTE_HUD_ANCHOR });
+    expect(pipDestinations[0].y).toBeLessThanOrEqual(50);
   });
 });
