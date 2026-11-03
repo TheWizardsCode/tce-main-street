@@ -257,11 +257,19 @@ playing a phantom card transfer.
   `refreshStreetGrid()` re-creates the overlays at the tail of its street
   rebuild, so they survive the `refreshAll()` that follows a selection (and
   any later refresh) instead of being destroyed with the container.
-- Behavior: every occupied street slot is outlined — **green** (`0x44ff66`)
-  for a business the upgrade can legally target (matching `targetBusiness` at
-  `requiredLevel`, below `maxLevel`) and **red** (`0xff4444`) otherwise. Empty
-  slots are skipped entirely and are no longer rendered as selectable while an
-  upgrade is pending, so only real businesses appear as targets.
+- Behavior: every occupied street slot owned by the acting seat is outlined —
+  **green** (`0x44ff66`) for a business the upgrade can legally target
+  (matching `targetBusiness` at `requiredLevel`, below `maxLevel`) and **red**
+  (`0xff4444`) otherwise. Empty slots are skipped entirely and are no longer
+  rendered as selectable while an upgrade is pending, so only real businesses
+  appear as targets.
+- Ownership (MS-0MVZC5V6L001OOXN): in competitive mode only the acting seat's
+  own businesses are outlined. A slot whose `getSlotOwnerId()` differs from
+  `state.activePlayerId` — the gate is `canActiveSeatActOnSlot()`, the same
+  single source of truth used by upgrade placement — gets **no overlay at
+  all**, never green and never red, because an opponent-owned business is not
+  an upgrade target. Single-player states carry no `ownerTaggedGrid`, so every
+  business still highlights exactly as before.
 - Eligibility is business-level only, via the shared
   `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`. The
   click is then additionally gated by the non-mutating
@@ -335,6 +343,11 @@ targeting / selection is pending, when tutorial gating (`apply-upgrade` /
   so a hand-origin drag paints the shared `dragHighlightRects` correctly:
   upgrades → street businesses passing `canDropHandCard` (green `0x44ff66` /
   red `0xff4444`), businesses → empty slots; non-target slots are skipped.
+  Upgrade drags are ownership-aware in competitive mode
+  (MS-0MVZC5V6L001OOXN): a business owned by another seat
+  (`getSlotOwnerId()` ≠ `state.activePlayerId`, gate:
+  `canActiveSeatActOnSlot()`) is skipped entirely, so AI-owned businesses are
+  never painted green or red. Single-player states are unaffected.
 - **Replay / reduced motion.** Registration is skipped in replay mode; the
   drag manager's `setReducedMotion` governs snap-back, unchanged.
 

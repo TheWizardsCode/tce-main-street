@@ -166,6 +166,24 @@ function getScene(game: Phaser.Game): Scene {
   return game.scene.getScene('MainStreetScene') as Scene;
 }
 
+/**
+ * Switches the booted scene into a 2-seat competitive game (human + 1 AI) so
+ * ownership-aware behaviour can be asserted against the real
+ * `ownerTaggedGrid` model.
+ */
+async function startCompetitive(scene: Scene): Promise<void> {
+  scene.msLifecycleManager.applyNewGameSelection({
+    mode: 'competitive',
+    opponents: [{ strategy: 'Greedy', difficulty: 'Medium' }],
+  });
+  await waitForCondition(
+    () => (scene.state?.players?.length ?? 0) === 2,
+    'a 2-seat competitive game',
+    10_000,
+    scene,
+  );
+}
+
 /** Dispatch a native DOM MouseEvent at canvas (game-world) coordinates. */
 function dispatchMouse(type: string, worldX: number, worldY: number): void {
   const canvas = document.querySelector('#game-container canvas') as HTMLCanvasElement;
@@ -525,6 +543,39 @@ describe('Main Street upgrade drag-drop buy-and-play (browser)', () => {
     // Highlighting is cleared on drag end.
     scene.msRenderer.clearDragHighlights();
     expect(scene.msRenderer.getDragHighlights()).toHaveLength(0);
+  }, 60_000);
+
+  it('never highlights an AI-owned business while dragging an upgrade in competitive mode (MS-0MVZC5V6L001OOXN)', async () => {
+    game = await bootGame();
+    const scene = getScene(game);
+    await startCompetitive(scene);
+    const { upgrade } = setupUpgradeScene(scene);
+
+    // Slot 0: the human's level-0 business (eligible, green).
+    // Slot 1: an AI-owned level-0 business — eligible on its face, but not the
+    //         active player's to upgrade, so it must not be highlighted at all.
+    // Slot 2: the human's level-1 business (ineligible, red).
+    const humanBiz = scene.state.streetGrid[0]!;
+    const aiBiz = { ...humanBiz, id: 'drag-competitive-ai-owned' };
+    const humanIneligible = { ...humanBiz, id: 'drag-competitive-human-lvl1', level: 1 };
+    scene.state.streetGrid[1] = aiBiz;
+    scene.state.streetGrid[2] = humanIneligible;
+    scene.state.ownerTaggedGrid[0] = { card: humanBiz, ownerId: 0 };
+    scene.state.ownerTaggedGrid[1] = { card: aiBiz, ownerId: 1 };
+    scene.state.ownerTaggedGrid[2] = { card: humanIneligible, ownerId: 0 };
+    scene.refreshAll();
+
+    scene.msRenderer.showDragHighlights(upgrade.id);
+
+    const bySlot = new Map<number, string>(
+      (scene.msRenderer.getDragHighlights() as Array<{ slotIndex: number; validity: string }>)
+        .map((h) => [h.slotIndex, h.validity]),
+    );
+    expect(bySlot.get(0)).toBe('valid');
+    expect(bySlot.get(2)).toBe('invalid');
+    // The opponent-owned business is not a drop target, so it gets no overlay —
+    // neither green nor red.
+    expect(bySlot.has(1)).toBe(false);
   }, 60_000);
 
   it('dropping an upgrade on an eligible business buys and plays it at the premium', async () => {
