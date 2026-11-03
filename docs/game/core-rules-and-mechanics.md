@@ -231,6 +231,22 @@ stateDiagram-v2
    - `totalReputationPerTurn` is calculated from all placed cards (some Health-synergy cards like the Clinic provide `reputationPerTurn`). Upgrades may also contribute `reputationBonus`. Synergy reputation from adjacent neighbors is only earned from **different-type** businesses; same-type neighbors contribute 0 reputation synergy.
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
+
+   > **Per-seat credits and per-seat income presentation (competitive).** In
+   > human-vs-AI games the IncomePhase runs for **every** seat and credits that
+   > seat's own `PlayerRecord.coins` / `.reputation` (`applyCompetitiveIncome`),
+   > never the shared `resourceBank`; single-player's one wallet is unchanged
+   > (`applyIncome`). The end-of-turn animation mirrors that ownership: each
+   > slot carries its owning seat (`SlotPhaseBreakdown.ownerId`) and every
+   > HUD-bound income flight resolves its destination through
+   > `flightTargetFor` — the human seat's coins/reputation land on the shared
+   > HUD counters, an AI seat's land on its own competitive-scoreboard summary
+   > anchor (the documented stopgap until a real AI bank exists), and only the
+   > human seat moves or pops the shared HUD totals. This is presentation only:
+   > it never changes the economy, the closing order (Income → Incident →
+   > EndCheck) or the credited totals. See
+   > `docs/game/ux-visual-audio.md` → *HUD resource anchors — single source of
+   > truth for flight destinations* and *End-of-turn income presentation*.
 6. **IncidentPhase** – Reveal and resolve the top card of the face‑down incident deck. The player knows only how many incidents remain (card back + count); the revealed card's effect posts to the activity log. When the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (CG-0MSTOATDP000JNHH).
 7. **EndCheck** – Apply the scheduled repayment to every active loan (§5.1), offer a bailout loan to a seat at `coins < 0` with no active loan (the closing pauses on the offer), then evaluate win/loss conditions.
 8. Loop back to **WeekStart** for the next turn.
