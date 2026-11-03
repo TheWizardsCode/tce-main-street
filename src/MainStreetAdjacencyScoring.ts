@@ -325,14 +325,37 @@ export function applyDuplicateIncomeFactor(usualCoinIncome: number, factor: numb
 }
 
 /**
+ * The coin-income components of one occupied business slot, after the
+ * duplicate-business (market-saturation) factor (MS-0MW0UCMF9004H9NT).
+ *
+ * `baseIncome + synergyBonus === total` always holds exactly, so callers that
+ * split the income phase (the animator, the income breakdown) never drift from
+ * the amount the player is credited.
+ */
+export interface BusinessIncomeParts {
+  /** Base income after the adjacent same-type 60% penalty, scaled by `factor`. */
+  baseIncome: number;
+  /** Adjacency synergy, scaled by `factor`; absorbs the rounding remainder. */
+  synergyBonus: number;
+  /** Total coin income: `roundInt((base + synergy) × factor)`. */
+  total: number;
+  /** Duplicate-business factor (1 when the type is not saturated). */
+  factor: number;
+}
+
+/**
  * Computes the total income for a single business at a given slot.
  *
- * totalIncome = effectiveBase + synergyBonus
+ * totalIncome = roundInt((effectiveBase + synergyBonus) × duplicateFactor)
  *
- * Where effectiveBase = (baseIncome + incomeBonus) * sameTypePenalty
- * and synergyBonus uses the percentage-based formula from computeSynergyBonus.
+ * Where effectiveBase = (baseIncome + incomeBonus) * sameTypePenalty,
+ * synergyBonus uses the percentage-based formula from computeSynergyBonus,
+ * and the duplicate factor comes from `duplicateIncomeFactor` — the adjacent
+ * same-type penalty and the street-wide duplicate factor stack
+ * multiplicatively (MS-0MVYG50V1007W8BP).
  *
  * @see computeSynergyBonus for details on the percentage-based synergy formula.
+ * @see duplicateIncomeFactor for the street-wide duplicate count.
  *
  * @param grid               The street grid.
  * @param index              The slot index of the business.
@@ -346,10 +369,38 @@ export function computeBusinessIncome(
   soldSlots: boolean[] = [],
   gridDims?: GridDims,
 ): number {
+  return computeBusinessIncomeParts(grid, index, bonusPerNeighbor, soldSlots, gridDims).total;
+}
+
+/**
+ * Computes one business slot's income components, including the
+ * duplicate-business (market-saturation) factor (MS-0MV0UCMF9004H9NT).
+ *
+ * The factor multiplies the business's usual total coin income — base after
+ * the adjacent same-type 60% penalty, plus adjacency synergy — and the product
+ * is rounded with `roundInt`. The reduced total is split between base and
+ * synergy by scaling the base by the same factor; the synergy component takes
+ * the rounding remainder so the two always sum back to `total`.
+ *
+ * Sold and empty slots return all-zero parts with a factor of 1 (a sold card
+ * earns no income itself, though it still counts toward saturation elsewhere).
+ *
+ * @param grid               The street grid.
+ * @param index              The slot index of the business.
+ * @param bonusPerNeighbor   Global multiplier on per-card coin synergy (defaults to 1).
+ * @returns The reduced base/synergy split, total and applied factor.
+ */
+export function computeBusinessIncomeParts(
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  index: number,
+  bonusPerNeighbor: number = 1,
+  soldSlots: boolean[] = [],
+  gridDims?: GridDims,
+): BusinessIncomeParts {
   // Sold cards produce no income
-  if (soldSlots[index]) return 0;
+  if (soldSlots[index]) return { baseIncome: 0, synergyBonus: 0, total: 0, factor: 1 };
   const business = grid[index];
-  if (!business) return 0;
+  if (!business) return { baseIncome: 0, synergyBonus: 0, total: 0, factor: 1 };
 
   let base = business.baseIncome + business.incomeBonus;
   // Same-type penalty: reduce base income to 60% when adjacent to a same-type business
@@ -357,8 +408,14 @@ export function computeBusinessIncome(
     base = roundInt(base * 0.6);
   }
   const synergy = computeSynergyBonus(grid, index, bonusPerNeighbor, soldSlots, gridDims);
-  // base already integer, synergy rounded above; final sum stays integer
-  return base + synergy;
+  // Duplicate factor: street-wide market saturation, multiplicative with the
+  // adjacent same-type penalty above (MS-0MVYG50V1007W8BP).
+  const factor = duplicateIncomeFactor(grid, index, soldSlots, gridDims);
+  const total = applyDuplicateIncomeFactor(base + synergy, factor);
+  // Scale base by the same factor and let synergy absorb the rounding
+  // remainder, preserving the phase-sum invariant (base + synergy = total).
+  const baseIncome = roundInt(base * factor);
+  return { baseIncome, synergyBonus: total - baseIncome, total, factor };
 }
 
 /**
@@ -494,23 +551,20 @@ export function computeIncome(
     const business = grid[i];
     if (!business) continue;
 
-    let base = business.baseIncome + business.incomeBonus;
-    // Same-type penalty: reduce base income to 60% when adjacent to a same-type business
-    if (hasAdjacentSameType(grid, i, soldSlots, gridDims)) {
-      base = roundInt(base * 0.6);
-    }
-    const synergy = computeSynergyBonus(grid, i, bonusPerNeighbor, soldSlots, gridDims);
-    const slotTotal = base + synergy;
+    // Base, synergy and the duplicate-business (market-saturation) factor are
+    // resolved together so the breakdown reports the reduced split the player
+    // is actually credited (MS-0MV0UCMF9004H9NT).
+    const parts = computeBusinessIncomeParts(grid, i, bonusPerNeighbor, soldSlots, gridDims);
 
     breakdown.push({
       slotIndex: i,
       businessName: business.name,
-      baseIncome: base,
-      synergyBonus: synergy,
-      total: slotTotal,
+      baseIncome: parts.baseIncome,
+      synergyBonus: parts.synergyBonus,
+      total: parts.total,
     });
 
-    total += slotTotal;
+    total += parts.total;
   }
 
   // ── Per-phase breakdown (CG-0MT23O6W8003AXWJ) ──────────────
@@ -626,14 +680,17 @@ export function applyIncome(
     const slotIncome = card.currentIncome ?? 0;
     // Board adjacency synergy is reported separately from base income so the
     // phased animation can route it along the synergy lines (CG-0MTV6LZEA003YS3E).
-    // The cached `currentIncome` is base (with same-type penalty) + synergy.
-    const synergy = computeSynergyBonus(
+    // The cached `currentIncome` already folds base (with the same-type
+    // penalty) + synergy and the duplicate-business factor, so the synergy
+    // component is the factor-reduced share — the phase sum stays consistent
+    // with the credited total (MS-0MV0UCMF9004H9NT).
+    const synergy = computeBusinessIncomeParts(
       grid,
       i,
       state.config.synergyBonusPerNeighbor,
       soldSlots,
       gridDims,
-    );
+    ).synergyBonus;
     // Per-business income skill buffs: +pct of the business's cached income,
     // plus a flat coin bonus (chef/dj/sales-champion — I4). Fed by the staff
     // employed AT this slot only (CG-0MSTOATDU006UGAX).
