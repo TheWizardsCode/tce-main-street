@@ -21,6 +21,7 @@ import { computeReputationPerTurn } from '../../src/MainStreetAdjacencyScoring';
 import { createCommunitySpaceDeck, getCsvRows } from '../../src/MainStreetCards';
 import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
 import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
+import { generateBusinessCardSvg } from '../../src/scenes/MainStreetCardSvgGenerator';
 
 /** The Park row as parsed from `src/card-data.csv`. */
 function parkRow() {
@@ -67,5 +68,19 @@ describe('Park reputation bonus (MS-0MVRDGNFU001DDQW)', () => {
     // computeReputationPerTurn is the engine path that credits passive
     // reputation each turn; a lone Park contributes exactly its base value.
     expect(computeReputationPerTurn([parkCard()])).toBe(20);
+  });
+
+  it('AC6: the runtime card face renders the +20 reputation line', () => {
+    // AC6 covers regeneration of the CSV-derived artefacts. The pre-generated
+    // static faces (`public/assets/.../svg/cards/*.svg`) are name/cost/synergy
+    // only by design — they never bake the description or ongoing cost — so the
+    // description/reputation is reflected on the RUNTIME card face generated
+    // from the CSV by `generateBusinessCardSvg`. This pins that the new +20
+    // value actually reaches that face instead of only the tooltip/engine.
+    const svg = generateBusinessCardSvg(parkCard());
+
+    expect(svg).toContain('+20/turn');
+    // The runtime face still shows the unchanged cost badge.
+    expect(svg).toContain('150');
   });
 });
