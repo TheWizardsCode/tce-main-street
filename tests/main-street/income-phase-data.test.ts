@@ -10,10 +10,16 @@ import { describe, it, expect } from 'vitest';
 
 import {
   applyIncome,
+  applyCompetitiveIncome,
   attachUpcomingDeltas,
+  updateNeighborsOnPlacement,
   type IncomeResult,
 } from '../../src/MainStreetAdjacency';
-import { setupMainStreetGame } from '../../src/MainStreetState';
+import {
+  createCompetitiveState,
+  setupMainStreetGame,
+  type MainStreetState,
+} from '../../src/MainStreetState';
 import {
   createBusinessDeck,
   type BusinessCard,
@@ -369,6 +375,151 @@ describe('IncomeResult.phaseBreakdown (CG-0MT23O6W8003AXWJ)', () => {
       // total is the pre-multiplier sum of buffedIncomes (not the multiplied amount)
       expect(result.total).toBe(4); // no buffs at default difficulty
     });
+  });
+});
+
+// ── Owner identity on competitive phase data (MS-0MW083HFW008H1Q2) ──
+//
+// Test-first contract for parent AC1 / AC6(c)(d) (parent MS-0MVWNS9L7007CTK9):
+// `applyCompetitiveIncome` must tag every emitted `SlotPhaseBreakdown` with the
+// owning seat's `PlayerRecord.playerId`, so the closing presentation can tell
+// whose slot it is drawing. Owner identity is **presentation-only**: the
+// single-player `applyIncome` path (and the N=1 fallback) carries none, so
+// single-player behaviour and the economy are unchanged.
+//
+// ## Why `it.fails` was used (red phase — now green)
+//
+// Per the repo's test-first tracer-bullet convention (see
+// `competitive-per-seat-hand-capacity.test.ts`, `competitive-seat-anchors.test.ts`
+// and the sibling test item MS-0MW083E5H009ACB4), the owner-identity cases were
+// authored **red-phase** with `it.fails` because `SlotPhaseBreakdown` carried no
+// `ownerId`. The implementing child MS-0MW083KRZ009NJTA ("Carry ownerId on slot
+// phase breakdown") added the field and popped the trap: they are plain `it`
+// now, so a regression fails instead of passing silently. Guards that already
+// held (single-player unchanged) were plain `it` throughout, and keep
+// protecting the N=1 contract through the change.
+
+/**
+ * Reads the optional presentation-only owner identity.
+ *
+ * Kept as a structural read so the assertions stay independent of how the
+ * field is typed (it is optional by design: absent for single-player and
+ * legacy constructors).
+ */
+function ownerOfPhaseSlot(slot: unknown): number | undefined {
+  return (slot as { ownerId?: number }).ownerId;
+}
+
+/** A competitive business card fixture (mirrors the suite's `makeBiz`). */
+function competitiveBiz(
+  id: string,
+  baseIncome: number,
+  synergyTypes: BusinessCard['synergyTypes'],
+): BusinessCard {
+  return makeBiz({ id, name: id, baseIncome, synergyTypes });
+}
+
+/** Places a card, refreshes the adjacency caches and tags its owning seat. */
+function placeOwned(
+  state: MainStreetState,
+  card: BusinessCard,
+  slotIndex: number,
+  ownerId: number,
+): void {
+  state.streetGrid[slotIndex] = card;
+  updateNeighborsOnPlacement(state, slotIndex);
+  state.ownerTaggedGrid![slotIndex] = { card, ownerId };
+}
+
+/** Clean 2-seat competitive state (wallets pinned so income does not fail a seat). */
+function competitiveOwnerState(seed: string): MainStreetState {
+  const state = createCompetitiveState({ seed, playerCount: 2 });
+  state.resourceBank.coins = 100000;
+  state.resourceBank.reputation = 1000;
+  for (const player of state.players!) {
+    player.coins = 1000;
+    player.reputation = 0;
+  }
+  return state;
+}
+
+describe('owner identity on SlotPhaseBreakdown (MS-0MW083HFW008H1Q2)', () => {
+  it('AC1 — applyCompetitiveIncome tags every slot with the owning seat playerId', () => {
+    const state = competitiveOwnerState('phase-owner-single-slot');
+    placeOwned(state, competitiveBiz('seat-0-biz', 80, ['Food']), 0, 0);
+    placeOwned(state, competitiveBiz('seat-1-biz', 40, ['Culture']), 6, 1);
+
+    const results = applyCompetitiveIncome(state);
+    expect(results).toHaveLength(2);
+
+    for (const result of results) {
+      const slots = result.income.phaseBreakdown.perSlotBreakdown;
+      expect(slots.length).toBeGreaterThan(0);
+      for (const slot of slots) {
+        // Equal to the owning `PlayerRecord.playerId`, not merely the loop index.
+        expect(ownerOfPhaseSlot(slot)).toBe(state.players![result.ownerId].playerId);
+      }
+    }
+
+    // The two seats' slots carry distinct owners (no shared/blank owner).
+    const owners = results.flatMap((result) =>
+      result.income.phaseBreakdown.perSlotBreakdown.map(ownerOfPhaseSlot),
+    );
+    expect(owners).toEqual([0, 1]);
+  });
+
+  it('AC1 — every producing slot of a multi-slot seat keeps that seat as owner', () => {
+    const state = competitiveOwnerState('phase-owner-multi-slot');
+    // Seat 0 owns two slots, seat 1 owns one: tagging must follow ownership,
+    // not the order in which the slots were placed.
+    placeOwned(state, competitiveBiz('seat-0-food', 60, ['Food']), 0, 0);
+    placeOwned(state, competitiveBiz('seat-0-service', 50, ['Service']), 9, 0);
+    placeOwned(state, competitiveBiz('seat-1-culture', 40, ['Culture']), 6, 1);
+
+    const results = applyCompetitiveIncome(state);
+    const seat0 = results.find((result) => result.ownerId === 0)!;
+    const seat1 = results.find((result) => result.ownerId === 1)!;
+
+    expect(seat0.income.phaseBreakdown.perSlotBreakdown).toHaveLength(2);
+    expect(seat1.income.phaseBreakdown.perSlotBreakdown).toHaveLength(1);
+    expect(
+      seat0.income.phaseBreakdown.perSlotBreakdown.map(ownerOfPhaseSlot),
+    ).toEqual([0, 0]);
+    expect(
+      seat1.income.phaseBreakdown.perSlotBreakdown.map(ownerOfPhaseSlot),
+    ).toEqual([1]);
+  });
+
+  it('AC3 — the single-player applyIncome path emits no owner identity (unchanged)', () => {
+    const state = setupMainStreetGame({ seed: 'phase-owner-single-player' });
+    placeOnGrid(
+      state,
+      makeBiz({ baseIncome: 3, id: 'sp-a', synergyTypes: ['Food'] }),
+      makeBiz({ baseIncome: 5, id: 'sp-b', synergyTypes: ['Service'] }),
+    );
+
+    const result = applyIncome(state);
+    expect(result.phaseBreakdown.perSlotBreakdown.length).toBeGreaterThan(0);
+    for (const slot of result.phaseBreakdown.perSlotBreakdown) {
+      // Absent, or explicitly owner 0 — either is the unchanged N=1 contract.
+      expect(ownerOfPhaseSlot(slot) ?? 0).toBe(0);
+    }
+  });
+
+  it('AC3 — the N=1 competitive fallback keeps the single-player phase data unchanged', () => {
+    const state = setupMainStreetGame({ seed: 'phase-owner-n1-fallback' });
+    placeOnGrid(state, makeBiz({ baseIncome: 7, id: 'n1-biz' }));
+    const coinsBefore = state.resourceBank.coins;
+
+    // `applyCompetitiveIncome` delegates to `applyIncome` for N=1 and emits no
+    // per-owner results, so single-player is unchanged by construction.
+    expect(applyCompetitiveIncome(state)).toEqual([]);
+    expect(state.resourceBank.coins).toBeGreaterThan(coinsBefore);
+
+    const singlePlayer = applyIncome(state);
+    for (const slot of singlePlayer.phaseBreakdown.perSlotBreakdown) {
+      expect(ownerOfPhaseSlot(slot) ?? 0).toBe(0);
+    }
   });
 });
 

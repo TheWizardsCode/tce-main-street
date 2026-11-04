@@ -8,9 +8,11 @@
  * @module
  */
 import { describe, it, expect } from 'vitest';
-import { createBusinessDeck } from '../../src/MainStreetCards';
+import { createBusinessDeck, DUPLICATE_FACTOR_TABLE } from '../../src/MainStreetCards';
 import {
   buildCardTooltipInfo,
+  DUPLICATE_PENALTY_RULE_TEXT,
+  formatDuplicatePenaltyLine,
   type CardTooltipInfoOptions,
 } from '../../src/MainStreetFormatting';
 import { MEDIUM_PRESET } from '../../src/MainStreetDifficulty';
@@ -91,5 +93,43 @@ describe('buildCardTooltipInfo for business cards (AC1, AC2)', () => {
       const tooltip = buildTooltip(card);
       expect(tooltip).not.toContain('{SYNERGY_RATE}');
     }
+  });
+});
+
+// ── Duplicate-penalty copy (MS-0MW0UH143003PQAG) ────────────
+// The street tooltip calls `formatDuplicatePenaltyLine()` with the card's
+// live duplicate factor, so the copy is asserted through the same public
+// helper the renderer uses.
+
+describe('duplicate-penalty tooltip copy (MS-0MW0UH143003PQAG)', () => {
+  it('shows no penalty line on an unsaturated street', () => {
+    expect(formatDuplicatePenaltyLine(1)).toBeNull();
+  });
+
+  it('names the reduced share at every saturation step', () => {
+    expect(formatDuplicatePenaltyLine(DUPLICATE_FACTOR_TABLE[2])).toContain(
+      'Duplicate penalty: 2/3 income',
+    );
+    expect(formatDuplicatePenaltyLine(DUPLICATE_FACTOR_TABLE[3])).toContain(
+      'Duplicate penalty: 1/2 income',
+    );
+    // Four or more copies clamp to the same 1/3 row.
+    expect(formatDuplicatePenaltyLine(DUPLICATE_FACTOR_TABLE[4])).toContain(
+      'Duplicate penalty: 1/3 income',
+    );
+  });
+
+  it('explains the duplicate-penalty rule to players', () => {
+    const line = formatDuplicatePenaltyLine(DUPLICATE_FACTOR_TABLE[2]);
+    expect(line).not.toBeNull();
+    expect(line).toContain(DUPLICATE_PENALTY_RULE_TEXT);
+    expect(DUPLICATE_PENALTY_RULE_TEXT).toContain('2 copies = 2/3');
+    expect(DUPLICATE_PENALTY_RULE_TEXT).toContain('3 copies = 1/2');
+    expect(DUPLICATE_PENALTY_RULE_TEXT).toContain('4+ copies = 1/3');
+  });
+
+  it('returns null for a non-reducing factor (defensive)', () => {
+    expect(formatDuplicatePenaltyLine(0)).toBeNull();
+    expect(formatDuplicatePenaltyLine(Number.NaN)).toBeNull();
   });
 });

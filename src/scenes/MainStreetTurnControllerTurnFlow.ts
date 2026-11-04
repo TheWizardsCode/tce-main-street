@@ -23,9 +23,12 @@ import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
 import { BrowserLocalStorageAdapter, hasSeenBankingHint, loadTutorialState, markBankingHintShown, saveTutorialState, shouldTriggerBankingHint } from '../TutorialState';
 import type { MainStreetTurnControllerContext } from './MainStreetTurnControllerContext';
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
-import { INCOME_COLLECTION_CAP_MS } from './MainStreetAnimatorTiming';
-import { presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { deferUntilIncomeCollected, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
+import {
+  buildTurnSummaryLoanDescriptor,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
 import { buildLoanOfferModel } from './MainStreetLoanOverlayModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
@@ -433,20 +436,13 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         (s as any).pendingBankingHint = false;
       }
       if (s.incomeCollectionActive) {
-        // Bounded deferral: start the next week once the choreography
-        // completes (AC7 collect clears the flag); a safety cap forces
-        // the day start even if the flag is somehow never cleared, so
-        // end-of-turn can never hang the game (AC5).
-        const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-        const startAfterIncomeShow = (): void => {
-          if (s.incomeCollectionActive && s.time.now < startAt) {
-            s.time.delayedCall(250, startAfterIncomeShow);
-          } else {
-            s.incomeCollectionActive = false;
-            finalizeTurn();
-          }
-        };
-        startAfterIncomeShow();
+        // Bounded, wall-clock enforced deferral (MS-0MVMKEU2000639TG
+        // decision C): start the next week once the choreography completes
+        // (AC7 collect clears the flag). The cap is enforced on the wall
+        // clock, so it forces the day start even if the flag is somehow never
+        // cleared or the page is starved of frames — end-of-turn can never
+        // hang the game (AC5).
+        deferUntilIncomeCollected(s, finalizeTurn);
       } else {
         s.time.delayedCall(800, () => finalizeTurn());
       }
@@ -577,13 +573,20 @@ export function shouldGateTurnSummary(
  *     there, and `finalizeTurn`'s own guard covers the rest.
  *  2. Builds the dialog content through the Phaser-free
  *     {@link buildTurnSummary} model from the committed ledger.
- *  3. Delegates to `scene.showTurnSummaryDialog`, whose `onNextTurn` callback
- *     is `advanceTurn` — so the banking hint, the income-collection wait and
- *     `finalizeTurn` all run after the dialog is dismissed (AC2/AC5).
+ *  3. Builds the loans descriptor for the acting seat from the live
+ *     `s.state` (config + seat) and delegates to `scene.showTurnSummaryDialog`,
+ *     whose `onNextTurn` callback is `advanceTurn` — so the banking hint, the
+ *     income-collection wait and `finalizeTurn` all run after the dialog is
+ *     dismissed (AC2/AC5, MS-0MVXYCICT0051LU7). The descriptor is the one
+ *     small Phaser-free object the overlay needs, so it never reaches into
+ *     scene state. The committed `result` is handed over as well, so a
+ *     mid-game loan taken from the dialog can re-render the panel from the
+ *     **same** result against the post-take state
+ *     (MS-0MVXYCKFE000VF76).
  *
  * Never stalls: a result without a ledger (competitive / hand-built), a
- * failing model build or a scene without dialog support advances immediately,
- * matching the previous pacing.
+ * failing model build, an unbuildable loans descriptor or a scene without
+ * dialog support advances immediately, matching the previous pacing.
  */
 export function presentTurnSummaryGate(
   tcCtx: MainStreetTurnControllerContext,
@@ -613,7 +616,15 @@ export function presentTurnSummaryGate(
       return;
     }
 
-    s.showTurnSummaryDialog(summary, onNextTurn);
+    // Presentation-only: a state without the loans config (hand-built/legacy)
+    // must not strand the closing, so an unbuildable descriptor is simply
+    // omitted — the dialog then keeps its disabled affordance.
+    let loanDescriptor: TurnSummaryLoanDescriptor | undefined;
+    try {
+      loanDescriptor = buildTurnSummaryLoanDescriptor(s.state);
+    } catch { /* presentation-only — never strand the closing */ }
+
+    s.showTurnSummaryDialog(summary, onNextTurn, loanDescriptor, undefined, result);
   };
 
   // AC1: the dialog appears after ALL end-of-turn animations complete. The no-
@@ -621,18 +632,9 @@ export function presentTurnSummaryGate(
   // finished collecting, so wait for the choreography (bounded by the same
   // safety cap as `advanceTurn`) before rendering; the incident-reveal path
   // already waited for collection inside `presentTurnClosing`. A clock-less
-  // scene (headless) proceeds immediately.
-  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
-    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
-    const waitForIncome = (): void => {
-      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-        s.time.delayedCall(250, waitForIncome);
-      } else {
-        s.incomeCollectionActive = false;
-        show();
-      }
-    };
-    waitForIncome();
+  // scene (headless) proceeds immediately inside the helper.
+  if (s.incomeCollectionActive) {
+    deferUntilIncomeCollected(s, show);
   } else {
     show();
   }
@@ -764,19 +766,11 @@ export function presentLoanOfferDialog(
     }
   };
 
-  if (s.incomeCollectionActive && typeof s.time?.delayedCall === 'function') {
-    // Bounded deferral: present once the income choreography completes; a
-    // safety cap forces the dialog even if the flag is never cleared.
-    const startAt = (s.time?.now ?? 0) + INCOME_COLLECTION_CAP_MS;
-    const waitForIncome = (): void => {
-      if (s.incomeCollectionActive && (s.time?.now ?? 0) < startAt) {
-        s.time.delayedCall(250, waitForIncome);
-      } else {
-        s.incomeCollectionActive = false;
-        show();
-      }
-    };
-    waitForIncome();
+  if (s.incomeCollectionActive) {
+    // Bounded, wall-clock enforced deferral (decision C): present once the
+    // income choreography completes; the cap forces the dialog even if the
+    // flag is never cleared or the page stops painting.
+    deferUntilIncomeCollected(s, show);
   } else {
     show();
   }
@@ -933,19 +927,11 @@ export function presentEventChoiceDialog(tcCtx: MainStreetTurnControllerContext)
     };
 
     if (s.incomeCollectionActive) {
-      // Bounded deferral: present once the income choreography completes; a
-      // safety cap forces the dialog even if the flag is never cleared, so a
-      // pending choice can never hang the game (AC5).
-      const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-      const waitForIncome = (): void => {
-        if (s.incomeCollectionActive && s.time.now < startAt) {
-          s.time.delayedCall(250, waitForIncome);
-        } else {
-          s.incomeCollectionActive = false;
-          show();
-        }
-      };
-      waitForIncome();
+      // Bounded, wall-clock enforced deferral (decision C): present once the
+      // income choreography completes; the cap forces the dialog even if the
+      // flag is never cleared or the page stops painting, so a pending choice
+      // can never hang the game (AC5).
+      deferUntilIncomeCollected(s, show);
     } else {
       show();
     }
@@ -1099,19 +1085,11 @@ export function presentPiggybackDialog(tcCtx: MainStreetTurnControllerContext): 
     };
 
     if (s.incomeCollectionActive) {
-      // Bounded deferral: present once the income choreography completes; a
-      // safety cap forces the dialog even if the flag is never cleared, so a
-      // pending decision can never hang the game.
-      const startAt = s.time.now + INCOME_COLLECTION_CAP_MS;
-      const waitForIncome = (): void => {
-        if (s.incomeCollectionActive && s.time.now < startAt) {
-          s.time.delayedCall(250, waitForIncome);
-        } else {
-          s.incomeCollectionActive = false;
-          show();
-        }
-      };
-      waitForIncome();
+      // Bounded, wall-clock enforced deferral (decision C): present once the
+      // income choreography completes; the cap forces the dialog even if the
+      // flag is never cleared or the page stops painting, so a pending
+      // decision can never hang the game.
+      deferUntilIncomeCollected(s, show);
     } else {
       show();
     }

@@ -87,8 +87,8 @@ export const mainStreetStorylineEngineAdapter: StorylineEngineAdapter<
  * (guarded by the behaviour-preservation parity gate). A game that wants
  * different wording can spread this object and override individual methods.
  */
-export const mainStreetStorylineUiAdapter: StorylineUiAdapter<MainStreetState, EventCard> =
-  createDefaultStorylineUiAdapter<MainStreetState, EventCard>();
+export const mainStreetStorylineUiAdapter: StorylineUiAdapter<EventCard> =
+  createDefaultStorylineUiAdapter<EventCard>();
 
 let _system: StorylineSystem<MainStreetState, EventCard> | undefined;
 

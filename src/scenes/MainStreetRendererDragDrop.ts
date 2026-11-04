@@ -12,6 +12,7 @@ import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { isEligibleUpgradeTarget } from '../MainStreetMarketUtils';
+import { canActiveSeatActOnSlot } from '../MainStreetAdjacencyOwner';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec };
@@ -153,6 +154,12 @@ export function showDragHighlights(renderer: MainStreetRendererContext, cardId?:
       let validity: 'valid' | 'invalid';
       if (isUpgrade) {
         if (!occupied) continue; // an upgrade can only land on a business
+        // Competitive mode (MS-0MVZC5V6L001OOXN): only the acting seat's own
+        // businesses are targets, so an opponent-owned slot is skipped
+        // entirely — it is never painted green or red. `canActiveSeatActOnSlot`
+        // is a no-op in single-player, where every business belongs to the
+        // acting seat.
+        if (!canActiveSeatActOnSlot(s.state, i).legal) continue;
         validity = (handIndex >= 0
           ? s.msTurnController.canDropHandCard(card!.id, i)
           : s.msTurnController.canDropUpgradeCard(card!.id, i))
@@ -209,9 +216,11 @@ export function clearDragHighlights(renderer: MainStreetRendererContext): void {
  * Click-targeting highlights for a hand-held upgrade (CG-0MUDA70FK003J8YL).
  *
  * Mirrors {@link showDragHighlights} for the click-to-place flow: it draws a
- * transparent border rectangle on every occupied street slot — green for a
- * business the pending upgrade can legally target, red for one it cannot —
- * and skips empty slots entirely (an upgrade can only land on a business).
+ * transparent border rectangle on every occupied street slot owned by the
+ * acting seat — green for a business the pending upgrade can legally target,
+ * red for one it cannot — and skips empty slots entirely (an upgrade can only
+ * land on a business). In competitive play a business owned by another seat is
+ * skipped outright: it is not an upgrade target, so it is never highlighted.
  *
  * The eligibility check is business-level only (name + required level + below
  * max level), deliberately excluding affordability and the action budget:
@@ -235,6 +244,12 @@ export function showTargetHighlights(renderer: MainStreetRendererContext, cardId
       const i = node.gameplayIndex;
       const biz = s.state.streetGrid[i];
       if (!biz) continue; // an upgrade can only land on a business
+      // Competitive mode (MS-0MVZC5V6L001OOXN): only the acting seat's own
+      // businesses are outlined. An opponent-owned business gets no overlay at
+      // all — it is not a legal upgrade target, so neither green nor red would
+      // be truthful. Single-player states have no `ownerTaggedGrid`, so the
+      // gate is a no-op and every business still highlights.
+      if (!canActiveSeatActOnSlot(s.state, i).legal) continue;
 
       const validity: 'valid' | 'invalid' =
         isEligibleUpgradeTarget(biz, card) ? 'valid' : 'invalid';

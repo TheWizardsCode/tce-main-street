@@ -216,22 +216,16 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       // Parse optional week-window columns (CG-0MTT0K9RX0004QTE / F1)
       const ws = r.availableWeekStart ? Number(r.availableWeekStart) : undefined;
       const we = r.availableWeekEnd ? Number(r.availableWeekEnd) : undefined;
-      // Parse choice-event columns (CG-0MTSHG8RP008E128)
-      const hasChoices = r.hasChoices ? r.hasChoices.trim().toLowerCase() === 'true' : undefined;
       // Parse the arbitrary multi-outcome `options` encoding
       // (MS-0MV8KQJR30007JL5). Stored as the raw trimmed cell; compilation in
-      // MainStreetStoryline decodes it. A non-empty cell also derives
-      // `hasChoices: true` so the choice predicate stays the single source of
-      // truth for resolution/interception.
+      // MainStreetStoryline decodes it. A non-empty cell is what makes the
+      // card a choice node — it is the only choice encoding in the model.
       const options = r.options !== undefined ? r.options.trim() : '';
-      const derivesHasChoices = options !== '';
       // Parse the per-card piggyback-eligibility flag (MS-0MV8BFOVB000HM0W / F1).
       // Spread only when true so older templates / saves keep the field absent.
       const piggybackable = r.piggybackable
         ? r.piggybackable.trim().toLowerCase() === 'true'
         : undefined;
-      const acceptNextCardId = r.acceptNextCardId ? r.acceptNextCardId.trim() || null : undefined;
-      const rejectNextCardId = r.rejectNextCardId ? r.rejectNextCardId.trim() || null : undefined;
       // Parse storyline metadata (MS-0MUMP93DI0018OGV / AC1)
       const storylineId = r.storylineId ? r.storylineId.trim() || null : undefined;
       const storylineTitle = r.storylineTitle ? r.storylineTitle.trim() || null : undefined;
@@ -255,11 +249,8 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
         ...(ws !== undefined && we !== undefined
           ? { availableWeekStart: ws, availableWeekEnd: we }
           : {}),
-        ...(hasChoices === true || derivesHasChoices ? { hasChoices: true } : {}),
         ...(piggybackable === true ? { piggybackable: true } : {}),
-        ...(derivesHasChoices ? { options } : {}),
-        ...(acceptNextCardId !== undefined ? { acceptNextCardId } : {}),
-        ...(rejectNextCardId !== undefined ? { rejectNextCardId } : {}),
+        ...(options !== '' ? { options } : {}),
         ...(storylineId !== undefined ? { storylineId } : {}),
         ...(storylineTitle !== undefined ? { storylineTitle } : {}),
         ...(coinPercentDelta !== undefined && Number.isFinite(coinPercentDelta)

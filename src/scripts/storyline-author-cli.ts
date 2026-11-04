@@ -4,14 +4,14 @@
  *
  * Usage:
  *   npm run storylines:author -- add-card --id evt-x --name "X" --effect "..." \
- *     [--coin-delta -100] [--reputation-delta 0] [--has-choices] \
- *     [--accept-next evt-y] [--reject-next evt-z] \
+ *     [--coin-delta -100] [--reputation-delta 0] \
+ *     [--options "Accept|evt-y;Reject|evt-z"] \
  *     [--storyline-id storyline-x] [--storyline-title "X Arc"] \
  *     [--csv src/card-data.csv] [--dry-run]
  *
- *   npm run storylines:author -- link --id evt-x --accept-next evt-y \
- *     [--reject-next evt-z] [--has-choices] [--storyline-id ...] \
- *     [--csv src/card-data.csv] [--dry-run]
+ *   npm run storylines:author -- link --id evt-x \
+ *     --options "Accept|evt-y;Reject|evt-z" \
+ *     [--storyline-id ...] [--csv src/card-data.csv] [--dry-run]
  *
  * Every edit is validated before it is written; an invalid result leaves the
  * CSV untouched and exits non-zero.

@@ -82,8 +82,8 @@
     },
     "main-street-overlay-dialogs": {
       "commands": [
-        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts",
-        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts"
+        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts tests/main-street/turn-summary-bank-loan.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts"
       ],
       "paths": [
         "src/scenes/MainStreetOverlayContent.ts",
@@ -91,11 +91,15 @@
         "src/scenes/MainStreetTurnSummary.ts",
         "src/scenes/MainStreetLoanOverlay.ts",
         "src/scenes/MainStreetLoanOverlayModel.ts",
+        "src/scenes/MainStreetLoanRowModel.ts",
+        "src/scenes/MainStreetLoanSelectorModel.ts",
         "src/scenes/MainStreetGameOverSummary.ts",
         "src/scenes/MainStreetTurnControllerTurnFlow.ts",
         "tests/main-street/turn-summary-dialog.browser.test.ts",
+        "tests/main-street/turn-summary-bank-loan.browser.test.ts",
+        "tests/main-street/MainStreetLoanOverlay.browser.test.ts",
         "tests/main-street/MainStreetLoanOverlay.test.ts",
-        "tests/main-street/MainStreetLoanOverlay.browser.test.ts"
+        "tests/main-street/turn-summary-bank-loan.test.ts"
       ]
     },
     "hand-panel-browser": {
@@ -137,6 +141,31 @@
         "src/scenes/MainStreetCompetitiveScoreboard.ts",
         "tests/main-street/MainStreet-hud-week.browser.test.ts",
         "tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ]
+    },
+    "help-settings-panels-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/HelpSettingsButtons.browser.test.ts tests/main-street/HelpPanelLayering.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/HelpSettingsButtons.browser.test.ts",
+        "tests/main-street/HelpPanelLayering.browser.test.ts",
+        "tests/main-street/helpers/panelPixelProbe.ts",
+        "core/src/ui/HelpPanel.ts",
+        "core/src/ui/SettingsPanel.ts",
+        "core/src/ui/HelpButton.ts",
+        "core/src/ui/SettingsButton.ts"
+      ]
+    },
+    "event-choice-dialogs-browser": {
+      "commands": [
+        "npx vitest run --project browser tests/main-street/event-choice-dialog.browser.test.ts tests/main-street/event-choice-dialog-slice.browser.test.ts"
+      ],
+      "paths": [
+        "tests/main-street/event-choice-dialog.browser.test.ts",
+        "tests/main-street/event-choice-dialog-slice.browser.test.ts",
+        "src/MainStreetStoryline.ts",
+        "src/MainStreetStorylineContentAdapter.ts"
       ]
     },
     "webgl-clipping-browser": {

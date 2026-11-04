@@ -44,8 +44,8 @@ function targets(id: string, label: string): string[] {
 /** Asserts a choice card's option list matches the two-way Accept/Reject shape. */
 function expectTwoWay(id: string, accept: string | null, reject: string | null): void {
   const c = template(id);
-  expect(c.hasChoices).toBe(true);
   const options = getStorylineOptions(c);
+  expect(options.length, `${id} must compile to a choice`).toBeGreaterThan(0);
   expect(options.map((o) => o.label)).toEqual(['Accept', 'Reject']);
   expect(options.every((o) => o.effectPolicy === 'apply')).toBe(true);
   expect(targets(id, 'Accept')).toEqual(accept === null ? [] : [accept]);
@@ -89,7 +89,7 @@ describe('Chain 2: Labor Unrest (2-step, no reset)', () => {
 
   it('General Strike is a terminal plain incident (chain ends when drawn)', () => {
     const c = template('evt-general-strike');
-    expect(Boolean(c.hasChoices)).toBe(false);
+    expect(getStorylineOptions(c)).toHaveLength(0);
     expect(c.coinDelta).toBeLessThan(0);
   });
 });
@@ -102,7 +102,7 @@ describe('Chain 3: Restaurant Opportunity (2-step, no reset, positive)', () => {
 
   it('Farm-to-Table Feature is a terminal plain positive incident (better card)', () => {
     const c = template('evt-farm-table');
-    expect(Boolean(c.hasChoices)).toBe(false);
+    expect(getStorylineOptions(c)).toHaveLength(0);
     expect(c.coinDelta).toBeGreaterThan(0);
     expect(c.reputationDelta).toBeGreaterThan(0);
     // The rejected escalation is strictly better than the original.
@@ -116,7 +116,7 @@ describe('Chain 4: Economic Downturn (2-step, no reset, duration)', () => {
   it('Economic Recession (retrofitted duration): accept ends, reject -> Depression', () => {
     expect(isDurationEventCard(template('evt-recession'))).toBe(true);
     // The shipped fan-out: Reject leads to depression OR a general strike.
-    expect(template('evt-recession').hasChoices).toBe(true);
+    expect(getStorylineOptions(template('evt-recession')).length).toBeGreaterThan(0);
     expect(getStorylineOptions(template('evt-recession')).map((o) => o.label)).toEqual(['Accept', 'Reject']);
     const reject = getStorylineOptions(template('evt-recession')).find((o) => o.label === 'Reject')!;
     expect(reject.successorIds).toEqual(['evt-depression', 'evt-general-strike']);
@@ -125,7 +125,7 @@ describe('Chain 4: Economic Downturn (2-step, no reset, duration)', () => {
   it('Depression is a terminal duration card, strictly worse than the recession', () => {
     const c = template('evt-depression');
     expect(isDurationEventCard(c)).toBe(true);
-    expect(Boolean(c.hasChoices)).toBe(false);
+    expect(getStorylineOptions(c)).toHaveLength(0);
     const recession = template('evt-recession');
     // Lower income multiplier + longer duration = worse for the player.
     expect((c as unknown as { multiplier: number }).multiplier).toBeLessThan(
@@ -146,7 +146,7 @@ describe('Health escalation (AC5 example: Flu Outbreak -> Pandemic)', () => {
   it('Pandemic is a terminal duration card, worse than the flu', () => {
     const c = template('evt-pandemic');
     expect(isDurationEventCard(c)).toBe(true);
-    expect(Boolean(c.hasChoices)).toBe(false);
+    expect(getStorylineOptions(c)).toHaveLength(0);
     const flu = template('evt-flu-outbreak');
     expect((c as unknown as { multiplier: number }).multiplier).toBeLessThan(
       (flu as unknown as { multiplier: number }).multiplier,
@@ -174,13 +174,13 @@ describe('Cross-chain integrity (AC4 data model / AC6 non-chain unchanged)', () 
       'evt-viral-review', 'evt-vandalism', 'evt-strike', 'evt-heatwave', 'evt-protest',
     ]) {
       const c = template(id);
-      expect(Boolean(c.hasChoices), `${id} must stay a plain incident`).toBe(false);
+      expect(getStorylineOptions(c), `${id} must stay a plain incident`).toHaveLength(0);
     }
   });
 
   it('all newly shipped choice cards are exactly the designed set', () => {
     const choiceIds = getEventTemplates()
-      .filter((c) => c.family === 'event' && Boolean(c.hasChoices))
+      .filter((c) => c.family === 'event' && getStorylineOptions(c).length > 0)
       .map((c) => c.id)
       .sort();
     expect(choiceIds).toEqual(

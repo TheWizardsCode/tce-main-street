@@ -66,16 +66,15 @@ Event cards are split into two trigger types:
 
 ### 1.2a Storyline Choice Cards
 
-Some incidents are **storyline choice cards**: they pause resolution and ask the player to Accept or Reject, then queue a follow-up card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns (`hasChoices`, `acceptNextCardId`, `rejectNextCardId`). The full model, lifecycle, tooling and authoring walkthrough live in **[docs/game/storylines.md](./storylines.md)**.
+Some incidents are **storyline choice cards**: they pause resolution and present an ordered option list, then queue the chosen option's successor card. They are grouped into named storylines by the `storylineId`/`storylineTitle` CSV columns. The full model, lifecycle, tooling and authoring walkthrough live in **[docs/game/storylines.md](./storylines.md)**.
 
-New choice nodes author an **arbitrary option list** through a single `options`
-CSV column instead of the two-way `hasChoices`/`acceptNextCardId`/
-`rejectNextCardId` trio. The encoding is `label|cardA,cardB;label2|cardC`, where
+Choice cards author an **arbitrary option list** through a single `options`
+CSV column. The encoding is `label|cardA,cardB;label2|cardC`, where
 `;` separates options, `|` separates a label from its candidate successor ids
 and `,` separates candidates. A blank cell means the card is not a choice; an
 empty candidate list (`label|`) is a terminal option that ends the chain. CSV
-options always apply the incident's effect, and `hasChoices` is derived from a
-non-empty option list. See
+options always apply the incident's effect, and choice-ness is derived from a
+non-empty option list (the manifest's `isChoice` flag). See
 [the `options` column reference](./storylines.md#the-options-csv-column-arbitrary-multi-outcome-encoding)
 for the full grammar and worked example.
 
@@ -97,7 +96,7 @@ Community-space cards are placed on the street grid like businesses but generate
 
 | Name | Cost (coins) | Ongoing/turn | Synergy | Tier | Rep/turn | Description |
 |------|--------------|--------------|---------|------|----------|-------------|
-| Park | 150 | 40 | Entertainment | 1 | 0 | Offers leisure space. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK; re-priced 300→150 by MS-0MUR9IN7L0004TO5.)* |
+| Park | 150 | 40 | Entertainment | 1 | 20 | Offers leisure space. Provides +20 reputation per turn. Costs 40 coins per turn to run. Full Entertainment synergy participation. *(Culture→Entertainment retag, CG-0MT3IPFSF005KEFB; 40/turn running cost per CG-0MU9NW9EP003B1AK; re-priced 300→150 by MS-0MUR9IN7L0004TO5; +20 rep/turn added by MS-0MVRDGNFU001DDQW with pricing unchanged.)* |
 | Playground | 300 | 20 | Entertainment | 3 | 20 | A safe place for kids to play. Costs 20 coins per turn to run. *(Group B; 20/turn running cost per MS-0MUMC6IVF0098WRL.)* |
 | Community Garden | 350 | 10 | Entertainment | 4 | 40 | A shared community garden that hosts seasonal flower festivals. Costs 10 coins per turn to run. *(Group B; Food→Entertainment retag, CG-0MUNAQL870015WKF.)* |
 | Town Fountain | 350 | 25 | Culture | 5 | 40 | A gathering spot around the fountain. Costs 25 coins per turn to run. *(Group B; 25/turn running cost per MS-0MUMC6IVF0098WRL.)* |
@@ -106,7 +105,7 @@ Community-space cards are placed on the street grid like businesses but generate
 | Library | 400 | 25 | Culture | 1 | 40 | Quiet community space for reading and learning. Costs 25 coins per turn to run. |
 | Public Art | 600 | 25 | Culture, Entertainment | 12 | 80 | A vibrant public sculpture. Costs 25 coins per turn to run. Bridges Culture and Entertainment community spaces. *(Group B.)* |
 
-> Costs above reflect the MS-0MUR9IN7L0004TO5 community-space repricing; reputation values reflect the ×4 retune (MS-0MUR9IMN60093HIE). Playground, Town Fountain and Community Shelter gained their running costs in MS-0MUMC6IVF0098WRL so every shipped community space now carries a non-zero `ongoingCost`.
+> Costs above reflect the MS-0MUR9IN7L0004TO5 community-space repricing; reputation values reflect the ×4 retune (MS-0MUR9IMN60093HIE), except the Park which gained +20 rep/turn in MS-0MVRDGNFU001DDQW. Playground, Town Fountain and Community Shelter gained their running costs in MS-0MUMC6IVF0098WRL so every shipped community space now carries a non-zero `ongoingCost`.
 
 > 12-tier expansion (CG-0MT3C744B009DS84): community-space cards are spread across 6 of the 12 tiers (8 cards cannot cover every tier; the Community Shelter retiered T6→T3, CG-0MT5VZJLS000B8KI); Park and Library are Tier-1 because the tutorial requires them in the tier-1 card pool.
 

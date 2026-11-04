@@ -12,22 +12,40 @@
  *    `s.overlayObjects` for dismissal (AC1/AC2).
  * 3. `[ Next Turn ]` is the primary, interactive button and invokes
  *    `onNextTurn` when pressed (AC3).
- * 4. `[ Bank Loan ]` is always rendered disabled with an explanatory hint
- *    behind the `onBankLoanAction` seam, which is never invoked by this item
- *    (AC4).
+ * 4. `[ Bank Loan ]` follows the loans descriptor (MS-0MVXYCJCK006UE62):
+ *    interactive (normal colour, `UI_CLICK` SFX, one seam call per press)
+ *    exactly when enabled and then with **no** hint line; otherwise muted,
+ *    inert and explained by the descriptor's reason-specific hint (loans
+ *    disabled / no configured options / the seat's outstanding obligation)
+ *    (AC4). An enabled press opens the mid-game loan selector
+ *    (MS-0MVXYCJVU000QBK1), whose Cancel re-presents this dialog with no state
+ *    change; the selector's own rendering is covered by
+ *    `turn-summary-bank-loan.browser.test.ts`.
  * 5. The dialog appears instantly — no fade-in choreography, so it is
  *    reduced-motion safe (AC5).
  *
  * The model values themselves are unit-tested Phaser-free in
  * `turn-summary-model.test.ts`; this suite covers the overlay rendering path.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import type { EventCard } from '../../src/MainStreetCards';
 import type { TurnLedger } from '../../src/MainStreetEngineTypes';
+import type { ActiveLoan } from '../../src/MainStreetStateTypes';
 import { buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
+import {
+  LOAN_SELECTOR_CANCEL_LABEL,
+  LOAN_SELECTOR_TITLE,
+  LOANS_DISABLED_HINT,
+  NO_LOAN_OPTIONS_HINT,
+  buildTurnSummaryLoanDescriptor,
+} from '../../src/scenes/MainStreetLoanSelectorModel';
+import { formatLoanObligation, loanOwnerId } from '../../src/MainStreetLoans';
+
+/** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
+const MUTED_BUTTON_COLOUR = '#6b6459';
 
 // ── Boot helpers (mirrors event-choice-dialog.browser.test.ts) ──
 
@@ -105,8 +123,35 @@ function makeSummary(s: SceneWithHud) {
   return summary!;
 }
 
-const BANK_LOAN_HINT = 'Bank loans are not available yet — coming in a future update.';
+/**
+ * Every reason-specific `[ Bank Loan ]` hint currently rendered by the dialog:
+ * the two fixed copies plus the active-loan obligation line (which the model
+ * builds with `formatLoanObligation()`), so "no hint when enabled" can be
+ * asserted without knowing the seat's numbers.
+ */
+function bankLoanHints(s: SceneWithHud): Phaser.GameObjects.Text[] {
+  const objects = (s.overlayObjects ?? []) as Phaser.GameObjects.GameObject[];
+  return objects.filter(
+    (o): o is Phaser.GameObjects.Text =>
+      o instanceof Phaser.GameObjects.Text &&
+      (o.text === LOANS_DISABLED_HINT ||
+        o.text === NO_LOAN_OPTIONS_HINT ||
+        /^Loan: \d+ coins\/turn, \d+ turns? left$/.test(o.text)),
+  );
+}
 
+/** An active loan for the acting seat, as `takeLoan` would record it. */
+function actingSeatLoan(s: SceneWithHud): ActiveLoan {
+  return {
+    ownerId: loanOwnerId(s.state),
+    principal: 600,
+    totalRepayment: 660,
+    perTurnRepayment: 110,
+    turnsRemaining: 4,
+    termTurns: 6,
+    takenOnTurn: 1,
+  };
+}
 describe('Main Street turn-summary dialog overlay (browser)', () => {
   let game: Phaser.Game | null = null;
 
@@ -120,7 +165,11 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
 
     const summary = makeSummary(s);
-    s.showTurnSummaryDialog(summary, () => {});
+    // The live state's descriptor (loans on, no loan, configured menu) — the
+    // exact object the Turn Summary gate hands over.
+    const descriptor = buildTurnSummaryLoanDescriptor(s.state);
+    expect(descriptor.enabled).toBe(true);
+    s.showTurnSummaryDialog(summary, () => {}, descriptor);
 
     // AC5: appears instantly — the dialog is present synchronously after the
     // call (no fade-in tween to await).
@@ -168,7 +217,7 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
       ),
     ).toBeDefined();
 
-    // ── Buttons: primary Next Turn interactive; Bank Loan disabled ──
+    // ── Buttons: both interactive; enabled Bank Loan carries no hint ──
     const nextTurnBtn = overlayText(s, '[ Next Turn ]');
     const bankLoanBtn = overlayText(s, '[ Bank Loan ]');
     expect(nextTurnBtn).toBeDefined();
@@ -176,8 +225,9 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     expect(nextTurnBtn!.depth).toBe(201);
     expect(bankLoanBtn!.depth).toBe(201);
     expect(nextTurnBtn!.input?.enabled).toBe(true);
-    expect(bankLoanBtn!.input?.enabled).toBeFalsy();
-    expect(overlayText(s, BANK_LOAN_HINT)).toBeDefined();
+    expect(bankLoanBtn!.input?.enabled).toBe(true);
+    // AC5: no hint line at all while the button is enabled.
+    expect(bankLoanHints(s)).toHaveLength(0);
 
     // ── AC2: backdrop 199 / box 200 exist; all text lives in the HUD ──
     const overlayObjects = (s.overlayObjects ?? []) as Phaser.GameObjects.GameObject[];
@@ -196,31 +246,151 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     }
   }, 30_000);
 
-  it('invokes onNextTurn and dismisses, while the disabled Bank Loan seam is never invoked', async () => {
+  it('applies the loans descriptor matrix: enabled fires the seam once per press, every disabled reason stays muted and inert with its hint', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const summary = makeSummary(s);
+
+    let nextTurnCalls = 0;
+    let bankLoanCalls = 0;
+    const onNextTurn = () => { nextTurnCalls += 1; };
+    const onBankLoan = () => { bankLoanCalls += 1; };
+
+    /**
+     * Renders a fresh dialog, asserts its hint line (exactly one reason-specific
+     * copy, or none), then dismisses it through [ Next Turn ].
+     */
+    const renderAndDismiss = (
+      descriptor: ReturnType<typeof buildTurnSummaryLoanDescriptor> | undefined,
+      expectedHint: string | null,
+    ): Phaser.GameObjects.Text => {
+      s.showTurnSummaryDialog(summary, onNextTurn, descriptor, onBankLoan);
+      const btn = overlayText(s, '[ Bank Loan ]')!;
+      const hints = bankLoanHints(s);
+      if (expectedHint === null) {
+        expect(hints).toHaveLength(0);
+      } else {
+        expect(hints.map((t) => t.text)).toEqual([expectedHint]);
+        // Overlay-pattern compliance: a depth-201 element parented in the HUD.
+        expect(hints[0].depth).toBe(201);
+        expect(hudText(s, expectedHint)).toBe(hints[0]);
+      }
+      overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+      expect(overlayText(s, 'Turn Summary')).toBeUndefined();
+      return btn;
+    };
+
+    // ── Enabled: interactive, UI click SFX, exactly one call per press ──
+    const playSpy = vi.spyOn(s.sound, 'play');
+    s.showTurnSummaryDialog(summary, onNextTurn, buildTurnSummaryLoanDescriptor(s.state), onBankLoan);
+    const enabledBtn = overlayText(s, '[ Bank Loan ]')!;
+    expect(enabledBtn.input?.enabled).toBe(true);
+    expect(enabledBtn.style.color).not.toBe(MUTED_BUTTON_COLOUR);
+    // AC5: no hint line at all while the button is enabled.
+    expect(bankLoanHints(s)).toHaveLength(0);
+
+    enabledBtn.emit('pointerdown');
+    expect(bankLoanCalls).toBe(1);
+    expect(playSpy).toHaveBeenCalledWith('sfx-ui-click');
+    // The press swaps the panel for the mid-game loan selector
+    // (MS-0MVXYCJVU000QBK1): one modal at a time, so the summary's own actions
+    // are gone until the selector closes.
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeDefined();
+    expect(overlayText(s, '[ Next Turn ]')).toBeUndefined();
+    // AC3 still holds: the seam never resumes the closing by itself.
+    expect(nextTurnCalls).toBe(0);
+
+    // Cancelling re-presents the summary with no state change, so the button
+    // can be pressed again — the seam still fires exactly once per press.
+    overlayText(s, LOAN_SELECTOR_CANCEL_LABEL)!.emit('pointerdown');
+    expect(overlayText(s, '[ Next Turn ]')).toBeDefined();
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeUndefined();
+    overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2);
+    playSpy.mockRestore();
+    overlayText(s, LOAN_SELECTOR_CANCEL_LABEL)!.emit('pointerdown');
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect(nextTurnCalls).toBe(1);
+    expect(bankLoanCalls).toBe(2);
+    expect((s.overlayObjects ?? []).length).toBe(0);
+
+    // ── Loans disabled in the config: muted, inert, explains the config ──
+    (s.state.config as unknown as { loansEnabled: boolean }).loansEnabled = false;
+    let btn = renderAndDismiss(buildTurnSummaryLoanDescriptor(s.state), LOANS_DISABLED_HINT);
+    expect(btn.input?.enabled).toBeFalsy();
+    expect(btn.style.color).toBe(MUTED_BUTTON_COLOUR);
+    btn.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2); // inert: never fires the seam
+
+    // ── Loans on, but the seat already owes: the obligation is the hint ──
+    (s.state.config as unknown as { loansEnabled: boolean }).loansEnabled = true;
+    const loan = actingSeatLoan(s);
+    s.state.loans = [loan];
+    const obligation = formatLoanObligation(loan);
+    expect(obligation).toBe('Loan: 110 coins/turn, 4 turns left');
+    btn = renderAndDismiss(buildTurnSummaryLoanDescriptor(s.state), obligation);
+    expect(btn.input?.enabled).toBeFalsy();
+    expect(btn.style.color).toBe(MUTED_BUTTON_COLOUR);
+    btn.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2);
+
+    // ── No configured menu: nothing to offer ──
+    s.state.loans = [];
+    (s.state.config as unknown as { loanOptions: readonly never[] }).loanOptions = [];
+    btn = renderAndDismiss(buildTurnSummaryLoanDescriptor(s.state), NO_LOAN_OPTIONS_HINT);
+    expect(btn.input?.enabled).toBeFalsy();
+    expect(btn.style.color).toBe(MUTED_BUTTON_COLOUR);
+    btn.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2);
+
+    // ── No descriptor (legacy/hand-built state): disabled, no known reason ──
+    btn = renderAndDismiss(undefined, null);
+    expect(btn.input?.enabled).toBeFalsy();
+    expect(btn.style.color).toBe(MUTED_BUTTON_COLOUR);
+    btn.emit('pointerdown');
+    expect(bankLoanCalls).toBe(2);
+
+    // One dismissal per rendered dialog, never more.
+    expect(nextTurnCalls).toBe(5);
+  }, 30_000);
+
+  it('forwards the loans descriptor to the overlay manager unchanged, and the headless branch advances once with no UI', async () => {
     game = await bootGame();
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
 
     const summary = makeSummary(s);
+    // Built from the live scene state — exactly what the gate hands over.
+    const descriptor = buildTurnSummaryLoanDescriptor(s.state);
+    const manager = s.msOverlayManager;
     let nextTurnCalls = 0;
-    let bankLoanCalls = 0;
-    s.showTurnSummaryDialog(
-      summary,
-      () => { nextTurnCalls += 1; },
-      () => { bankLoanCalls += 1; },
-    );
 
-    // AC4: the sealed Bank Loan seam is never invoked, even on a press.
-    hudText(s, '[ Bank Loan ]')!.emit('pointerdown');
-    expect(bankLoanCalls).toBe(0);
+    // ── Delegation: the descriptor reaches the overlay manager by identity ──
+    // The spy stubs the render so the scene stays UI-free for the headless
+    // half of this case (no stale dialog to confuse the "creates no UI" check).
+    const spy = vi
+      .spyOn(manager, 'showTurnSummaryDialog')
+      .mockImplementation(() => {});
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, descriptor);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [forwardedSummary, , forwardedDescriptor] = spy.mock.calls[0];
+    expect(forwardedSummary).toBe(summary);
+    expect(forwardedDescriptor).toBe(descriptor);
+    // The dialog holds the day until [ Next Turn ] — the delegation itself
+    // never resumes the closing.
     expect(nextTurnCalls).toBe(0);
+    spy.mockRestore();
 
-    // AC3: the primary button resumes the closing flow exactly once.
-    hudText(s, '[ Next Turn ]')!.emit('pointerdown');
+    // ── Headless (no overlay manager): advance exactly once, create no UI ──
+    s.msOverlayManager = undefined;
+    const overlayObjectsBefore = (s.overlayObjects ?? []).length;
+    const hudChildrenBefore = s.hudContainer.list.length;
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, descriptor);
     expect(nextTurnCalls).toBe(1);
+    expect((s.overlayObjects ?? []).length).toBe(overlayObjectsBefore);
+    expect(s.hudContainer.list.length).toBe(hudChildrenBefore);
+    expect(overlayText(s, 'Turn Summary')).toBeUndefined();
 
-    // Dismissed for good: overlay released and buttons destroyed.
-    expect((s.overlayObjects ?? []).length).toBe(0);
-    expect(hudText(s, '[ Next Turn ]')).toBeUndefined();
-    expect(hudText(s, '[ Bank Loan ]')).toBeUndefined();
+    s.msOverlayManager = manager;
   }, 30_000);
 });

@@ -1026,4 +1026,87 @@ describe('MainStreetScene browser tests', () => {
     destroyGame(game);
     game = null;
   });
+
+  // ── Duplicate-penalty tooltip copy (MS-0MW0UH143003PQAG) ──
+  // Wires the pure `formatDuplicatePenaltyLine()` copy into the street
+  // tooltip: a duplicated base type names its reduced share and the counting
+  // rule, while a lone business shows no penalty line.
+
+  /** Places a business fixture at a street slot; ids sharing a prefix (e.g.
+   *  `biz-dup-0` / `biz-dup-1`) are the same base type. */
+  function placeTooltipBusiness(
+    scene: Phaser.Scene & Record<string, any>,
+    slot: number,
+    id: string,
+  ): void {
+    scene.state.streetGrid[slot] = {
+      family: 'business',
+      id,
+      name: `Fixture ${id}`,
+      cost: 3,
+      baseIncome: 12,
+      synergyTypes: ['Food'],
+      maxLevel: 0,
+      level: 0,
+      incomeBonus: 0,
+      synergyRangeBonus: 0,
+      reputationBonus: 0,
+      description: 'Tooltip fixture.',
+      ongoingCost: 0,
+      employedStaff: [],
+    };
+    scene.state.soldSlots[slot] = false;
+  }
+
+  /** Hovers a street business slot and returns the tooltip content shown. */
+  function hoverTooltipBusiness(
+    scene: Phaser.Scene & Record<string, any>,
+    slot: number,
+  ): string {
+    const zone = (scene.streetContainer as Phaser.GameObjects.Container).list.find(
+      (child) => child.name === `ms-business-slot-zone-${slot}`,
+    ) as Phaser.GameObjects.Zone | undefined;
+    expect(zone).toBeDefined();
+    const showSpy = vi.spyOn(scene.tooltipManager, 'show');
+    zone!.emit('pointerover');
+    expect(showSpy).toHaveBeenCalled();
+    return showSpy.mock.calls[0][0] as string;
+  }
+
+  it('explains the duplicate penalty on a saturated street tooltip', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
+
+    // Same base type at opposite ends of the default street: not adjacent (no
+    // 60% penalty), but duplicated (2 copies → 2/3 income).
+    placeTooltipBusiness(scene, 0, 'biz-dup-0');
+    placeTooltipBusiness(scene, 9, 'biz-dup-1');
+    scene.refreshAll();
+
+    const content = hoverTooltipBusiness(scene, 0);
+
+    expect(content).toContain('Duplicate penalty: 2/3 income');
+    expect(content).toContain('2 copies = 2/3');
+    expect(content).toContain('3 copies = 1/2');
+    expect(content).toContain('4+ copies = 1/3');
+
+    destroyGame(game);
+    game = null;
+  });
+
+  it('shows no duplicate penalty for a lone business tooltip', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
+
+    placeTooltipBusiness(scene, 0, 'biz-solo-0');
+    scene.refreshAll();
+
+    const content = hoverTooltipBusiness(scene, 0);
+
+    expect(content).toContain('Business: Fixture biz-solo-0');
+    expect(content).not.toContain('Duplicate penalty');
+
+    destroyGame(game);
+    game = null;
+  });
 });

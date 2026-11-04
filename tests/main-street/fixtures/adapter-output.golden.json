@@ -10,8 +10,6 @@
         "Accept",
         "Reject"
       ],
-      "acceptLabel": "Accept: apply “Lose 45% of your banked coins.”.",
-      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
       "acceptUpdate": "Story update — Tax Troubles: you accepted the consequence (-300 coins).",
       "rejectUpdate": "Story update — Tax Troubles: you refused the consequence; the thread continues."
     },
@@ -25,8 +23,6 @@
         "Accept",
         "Reject"
       ],
-      "acceptLabel": "Accept: apply “All businesses generate 80% income for 5 turns. Duration reduced by Clinic/Medical Center.”.",
-      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
       "acceptUpdate": "Story update — Public Health Crisis: you accepted the consequence.",
       "rejectUpdate": "Story update — Public Health Crisis: you refused the consequence; the thread continues."
     },
@@ -40,8 +36,6 @@
         "Accept",
         "Reject"
       ],
-      "acceptLabel": "Accept: apply “All businesses generate 70% income for 4 turns. Duration reduced by Clinic/Medical Center.”.",
-      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
       "acceptUpdate": "Story update — Economic Downturn: you accepted the consequence.",
       "rejectUpdate": "Story update — Economic Downturn: you refused the consequence; the thread continues."
     },
@@ -55,8 +49,6 @@
         "Accept",
         "Reject"
       ],
-      "acceptLabel": "Accept: apply “Service staff strike: -200 coins per Service business.”.",
-      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
       "acceptUpdate": "Story update — Labour Unrest: you accepted the consequence (-200 coins).",
       "rejectUpdate": "Story update — Labour Unrest: you refused the consequence; the thread continues."
     },
@@ -70,8 +62,6 @@
         "Accept",
         "Reject"
       ],
-      "acceptLabel": "Accept: apply “A popular menu item earns 300 coins.”.",
-      "rejectLabel": "Reject: this consequence is applied; a different incident will follow.",
       "acceptUpdate": "Story update — Restaurant Renaissance: you accepted the consequence (+300 coins).",
       "rejectUpdate": "Story update — Restaurant Renaissance: you refused the consequence; the thread continues."
     }

@@ -13,6 +13,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { getEventTemplates } from '../../src/MainStreetCards';
+import { getStorylineOptions } from '../../src/MainStreetStoryline';
 import { dismissTurnSummaryDialog } from './helpers/turn-summary-dialog';
 
 const TUTORIAL_STATE_KEY = 'tce-main-street-tutorial-state';
@@ -88,7 +89,7 @@ function forceSafeIncidents(scene: any): void {
  * (non-choice) incidents so only the first draw pauses for a dialog.
  */
 function forceChoiceFirstIncident(scene: any): void {
-  const choice = getEventTemplates().find((t: any) => (t as any).hasChoices === true);
+  const choice = getEventTemplates().find((t) => getStorylineOptions(t).length > 0);
   if (!choice) throw new Error('No choice event template found for the swallow regression');
   const safeTemplates = getEventTemplates().filter((t) =>
     ['evt-award', 'evt-good-press', 'evt-graffiti-art', 'evt-street-cleaning'].includes(t.id),

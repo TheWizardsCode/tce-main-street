@@ -19,7 +19,7 @@
  */
 
 import { FONT_FAMILY, markHudTransient } from '@ui';
-import { HUD_BAR_HEIGHT_PX } from './MainStreetConstants';
+import { HUD_BAR_HEIGHT_PX, HUD_SEAT_ROW_OFFSET_PX } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import {
   buildCompetitiveScoreboard,
@@ -41,6 +41,13 @@ export {
  * is additionally bold and prefixed with `▶`, so the indicator uses the active
  * seat's colour without relying on colour alone. Transient HUD objects, so they
  * are removed by `clearTransientHud` on the next refresh.
+ *
+ * Each row also publishes a live flight anchor (`scene.hudSeatAnchors`,
+ * MS-0MW083MAN004JSCH): the row's own centre x / baseline y, keyed by
+ * `playerId`, mirroring the `hudCoinAnchor` / `hudRepAnchor` contract. That is
+ * the documented, swappable destination for per-owner income flights — the
+ * seat's summary row stands in for the seat's bank until a real AI bank
+ * renderer exists.
  */
 
 /**
@@ -57,11 +64,18 @@ export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext)
   if (rows.length === 0) return;
 
   const { hudLeft, hudWidth, hudY } = s.layout;
-  const rowY = hudY - HUD_BAR_HEIGHT_PX / 2 - 4;
+  // Geometry shared with `hudSeatFallback` (MainStreetConstants): keep the two
+  // in step so a flight resolved before the first render lands exactly on the
+  // row this render draws.
+  const rowY = hudY - HUD_BAR_HEIGHT_PX / 2 - HUD_SEAT_ROW_OFFSET_PX;
   const colWidth = hudWidth / rows.length;
+  // Published per render as a fresh map — never merged into the previous one,
+  // so a shrunk roster (or a re-layout) cannot leave stale seat geometry.
+  const seatAnchors: Record<number, { x: number; y: number }> = {};
 
   rows.forEach((row, index) => {
     const x = hudLeft + colWidth * index + colWidth / 2;
+    seatAnchors[row.playerId] = { x, y: rowY };
     const colour = row.colour ?? NEUTRAL_ROW_COLOUR;
     const text = markHudTransient(
       s.add
@@ -84,4 +98,6 @@ export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext)
     text.setData('human', row.isHuman);
     s.hudContainer.add(text);
   });
+
+  s.hudSeatAnchors = seatAnchors;
 }

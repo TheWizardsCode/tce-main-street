@@ -40,6 +40,7 @@ import {
   resolveEvent,
   resolveEventChoice,
 } from '../../src/MainStreetEngine';
+import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 import {
   TAX_AUDIT_BASE_RATE,
   TAX_AUDIT_ACCOUNTANT_RATE,
@@ -73,9 +74,29 @@ function setCoins(state: MainStreetState, coins: number): void {
   state.resourceBank.coins = coins;
 }
 
-/** Stages the event as a pending Accept/Reject choice and accepts it. */
-function acceptPending(state: MainStreetState, event: EventCard) {
-  state.pendingEventChoice = { event, chosenOption: null, resolved: false };
+/**
+ * Stages the event as a pending choice and accepts it.
+ *
+ * `options` freezes the presented list explicitly for fixtures whose card
+ * carries no option source of its own (a shipped choice card recompiles from
+ * its `options` encoding instead).
+ */
+const TWO_WAY: StorylineOption[] = [
+  { label: 'Accept', effectPolicy: 'apply' },
+  { label: 'Reject', effectPolicy: 'skip' },
+];
+
+function acceptPending(
+  state: MainStreetState,
+  event: EventCard,
+  options: StorylineOption[] = TWO_WAY,
+) {
+  state.pendingEventChoice = {
+    event,
+    chosenOption: null,
+    resolved: false,
+    options,
+  };
   return resolveEventChoice(state, 'accept');
 }
 
@@ -155,7 +176,7 @@ describe('AC3 — the tax loss is clamped so coins never go below 0', () => {
   it('a rate that would exceed the balance leaves exactly 0 coins', () => {
     const state = makeState();
     setCoins(state, 100);
-    acceptPending(state, { ...flatIncident(), coinPercentDelta: -1.5 });
+    acceptPending(state, { ...flatIncident(), coinPercentDelta: -1.5 }, TWO_WAY);
     expect(state.resourceBank.coins).toBe(0);
   });
 

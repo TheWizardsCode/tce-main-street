@@ -69,9 +69,7 @@ function makeIncident(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All' as const,
     coinDelta: overrides.coinDelta ?? -20,
     reputationDelta: overrides.reputationDelta ?? 0,
-    hasChoices: overrides.hasChoices ?? false,
-    acceptNextCardId: overrides.acceptNextCardId ?? undefined,
-    rejectNextCardId: overrides.rejectNextCardId ?? undefined,
+    ...overrides,
   };
 }
 

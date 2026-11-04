@@ -588,11 +588,12 @@ export interface MainStreetState {
   /**
    * Pending dual-choice incident event (CG-0MTSHG8RP008E128).
    *
-   * Populated when `resolveIncident()` draws an incident whose card has
-   * `hasChoices: true`. The event's effect is DEFERRED — `resolveIncident`
+   * Populated when `resolveIncident()` draws an incident whose card compiles
+   * to a non-empty option list (a CSV `options` encoding or a registered
+   * option list). The event's effect is DEFERRED — `resolveIncident`
    * returns null and `processEndOfTurn` pauses before EndCheck with
-   * `TurnResult.choicePending === true`. The scene presents the Accept/Reject
-   * dialog and resolves via {@link resolveEventChoice} (typed field per
+   * `TurnResult.choicePending === true`. The scene presents the option dialog
+   * and resolves via {@link resolveEventChoice} (typed field per
    * producer decision 2026-09-08 Q3 — NOT the `(state as any)` precedent).
    *
    * Cleared when the choice is resolved and the deferred closing phases run.
@@ -721,6 +722,20 @@ export interface PendingLoanOffer {
   reason: 'bankruptcy';
   /** The options the seat may choose from (the configured loan menu). */
   options: LoanOption[];
+  /**
+   * Coins needed to reach zero at the closing that raised the offer
+   * (`max(0, -coins)` on the very balance the bankruptcy test used), so the
+   * dialog can state how far short the seat is (MS-0MVZC1DAS001C8LF).
+   *
+   * A **snapshot** taken when the offer is raised, never recomputed: on the
+   * deferred-mutation path the turn's deltas are still un-applied when the
+   * dialog renders, so a live re-read would show the wrong figure.
+   *
+   * Optional and additive (no save schema bump): a v2/v3 save whose offer
+   * predates this field restores without it and the dialog shows the figure as
+   * unknown rather than inventing one.
+   */
+  shortfall?: number | null;
 }
 
 /**

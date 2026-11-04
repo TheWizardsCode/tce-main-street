@@ -32,16 +32,44 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { getEventTemplates, resetTemplatesToDefault } from '../../src/MainStreetCards';
-import { compileStorylineFromEvent } from '../../src/MainStreetStoryline';
+import { compileStorylineFromEvent, getStorylineOptions } from '../../src/MainStreetStoryline';
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/storylines.md');
 const README_PATH = path.join(PROJECT_ROOT, 'src/README.md');
 const CONTENT_DOC_PATH = path.join(PROJECT_ROOT, 'docs/game/content-design-and-progression.md');
 const CSV_PATH = path.join(PROJECT_ROOT, 'src/card-data.csv');
+const SCHEMA_PATH = path.join(PROJECT_ROOT, 'schemas/main-street-storyline.schema.json');
+const MANIFEST_PATH = path.join(PROJECT_ROOT, 'docs/dev/assets/storyline-manifest.json');
 
 function read(file: string): string {
   return fs.readFileSync(file, 'utf-8');
+}
+
+/**
+ * The five retired choice identifiers, assembled at runtime.
+ *
+ * Spelled with concatenation on purpose: the legacy-identifier guard
+ * (`legacy-choice-identifiers.test.ts`) sweeps `tests/` for these literals and
+ * this file must assert their *absence* without re-introducing them. A single
+ * literal here would fail that guard.
+ */
+const RETIRED_CHOICE_TOKENS = [
+  'has' + 'Choices',
+  'acceptNext' + 'CardId',
+  'rejectNext' + 'CardId',
+  'choiceClarity' + 'Labels',
+  'ChoiceClarity' + 'Labels',
+];
+
+/** Fails when *text* re-introduces any retired choice identifier. */
+function expectNoRetiredTokens(text: string, label: string): void {
+  for (const token of RETIRED_CHOICE_TOKENS) {
+    expect(
+      text.includes(token),
+      `${label} re-introduces the retired choice identifier \`${token}\``,
+    ).toBe(false);
+  }
 }
 
 const DOC = () => read(DOC_PATH);
@@ -109,11 +137,14 @@ describe('AC1 — canonical doc exists and covers the required sections', () => 
     }
   });
 
-  it('documents the five storyline CSV columns', () => {
+  it('documents the options-only storyline CSV columns', () => {
     const doc = DOC();
-    for (const col of ['hasChoices', 'acceptNextCardId', 'rejectNextCardId', 'storylineId', 'storylineTitle']) {
-      expect(doc, `missing column ${col}`).toContain(col);
+    for (const col of ['options', 'storylineId', 'storylineTitle']) {
+      expect(doc, `missing column ${col}`).toContain(`\`${col}\``);
     }
+    expect(doc).toContain('isChoice');
+    // The three retired columns must stay gone (options-only contract).
+    expectNoRetiredTokens(doc, 'docs/game/storylines.md');
   });
 
   it('documents the cost-aware presented-list AI policy (§4)', () => {
@@ -167,7 +198,7 @@ describe('AC3 — documented chains match src/card-data.csv', () => {
   it('documents every shipped choice card', () => {
     const documentedIds = new Set(parseDocumentedChains(DOC()).map((r) => r.id));
     const shippedChoiceIds = getEventTemplates()
-      .filter((t) => t.id.startsWith('evt-') && Boolean(t.hasChoices))
+      .filter((t) => t.id.startsWith('evt-') && getStorylineOptions(t).length > 0)
       .map((t) => t.id);
     expect(shippedChoiceIds.length).toBe(7);
     for (const id of shippedChoiceIds) {
@@ -196,14 +227,13 @@ describe('AC2 — cross-references in README and content-design doc', () => {
   it('src/README.md references the doc, the CSV columns and the scripts', () => {
     const readme = read(README_PATH);
     expect(readme).toContain('docs/game/storylines.md');
-    expect(readme).toContain('hasChoices');
-    expect(readme).toContain('acceptNextCardId');
-    expect(readme).toContain('rejectNextCardId');
+    expect(readme).toContain('`options`');
     expect(readme).toContain('storylineId');
     expect(readme).toContain('storylineTitle');
     expect(readme).toContain('validate:storylines');
     expect(readme).toContain('storylines:graph');
     expect(readme).toContain('storylines:author');
+    expectNoRetiredTokens(readme, 'src/README.md');
   });
 
   it('content-design-and-progression.md references the doc and lists the storylines', () => {
@@ -214,6 +244,43 @@ describe('AC2 — cross-references in README and content-design doc', () => {
     expect(content).toContain('storyline-economy');
     expect(content).toContain('storyline-labor');
     expect(content).toContain('storyline-restaurant');
+    expect(content).toContain('`options`');
+    expectNoRetiredTokens(content, 'docs/game/content-design-and-progression.md');
+  });
+});
+
+describe('AC1b — schema and manifest carry the derived isChoice flag only', () => {
+  it('the schema requires the derived isChoice flag on every node', () => {
+    const schema = JSON.parse(read(SCHEMA_PATH)) as {
+      definitions: { node: { required: string[]; properties: Record<string, unknown> } };
+    };
+    expect(schema.definitions.node.required).toContain('isChoice');
+    expect(schema.definitions.node.properties.isChoice).toMatchObject({ type: 'boolean' });
+    for (const token of RETIRED_CHOICE_TOKENS) {
+      expect(
+        schema.definitions.node.required,
+        `schema still requires the retired field \`${token}\``,
+      ).not.toContain(token);
+      expect(
+        Object.keys(schema.definitions.node.properties),
+        `schema still declares the retired field \`${token}\``,
+      ).not.toContain(token);
+    }
+    expectNoRetiredTokens(read(SCHEMA_PATH), 'schemas/main-street-storyline.schema.json');
+  });
+
+  it('every committed manifest node derives isChoice from its option list', () => {
+    const manifest = JSON.parse(read(MANIFEST_PATH)) as {
+      nodes: Array<{ id: string; isChoice: boolean; options: unknown[] }>;
+    };
+    expect(manifest.nodes.length).toBeGreaterThan(0);
+    for (const node of manifest.nodes) {
+      expect(typeof node.isChoice, `node ${node.id} is missing isChoice`).toBe('boolean');
+      expect(node.isChoice, `node ${node.id} isChoice does not match its options`).toBe(
+        node.options.length > 0,
+      );
+    }
+    expectNoRetiredTokens(read(MANIFEST_PATH), 'docs/dev/assets/storyline-manifest.json');
   });
 
   it('every relative markdown link in the canonical doc resolves', () => {

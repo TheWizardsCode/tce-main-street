@@ -50,14 +50,21 @@ export function computeScore(state: MainStreetState): number {
  * effective threshold equals the base `winThreshold` (the division by 1 is
  * a no-op, and the base is already a multiple of 50).
  *
+ * A last-standing win continued solo (MS-0MVWNXEX5006E7AT) also races the
+ * undivided single-player target: the surviving human is the only seat still
+ * playing, so the original roster's competitive division must not keep
+ * inflating the win target after the continuation.
+ *
  * Worked values (Easy base 10 000 → effective):
  *   P=2 → 5 000, P=3 → 3 350, P=4 → 2 500
+ *   Last-standing continued solo → 10 000 (base)
  *
  * @param state  Current game state (read-only).
  * @returns The rounded effective win threshold.
  */
 export function effectiveWinThreshold(state: MainStreetState): number {
-  const playerCount = state.playerCount ?? 1;
+  const playerCount =
+    state.endReason === 'last_standing_continue' ? 1 : state.playerCount ?? 1;
   return Math.round(state.config.winThreshold / playerCount / 50) * 50;
 }
 

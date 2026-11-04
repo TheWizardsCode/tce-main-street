@@ -1,4 +1,4 @@
-import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
+import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand, takeLoanCommand } from '../MainStreetCommands';
 import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
 import { flashError, flashConfirmation } from './MainStreetFeedback';
@@ -31,8 +31,18 @@ import {
   buildGameOverPlayerRows,
   formatEndReason,
 } from './MainStreetGameOverSummary';
-import type { TurnSummary } from './MainStreetTurnSummary';
-import { showLoanOfferDialog as renderLoanOfferDialog } from './MainStreetLoanOverlay';
+import { buildTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
+import {
+  buildLoanSelectorModel,
+  buildTurnSummaryLoanDescriptor,
+  type LoanSelectorModel,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
+import {
+  showLoanOfferDialog as renderLoanOfferDialog,
+  showLoanSelectorDialog as renderLoanSelectorDialog,
+  type LoanSelectorDialogHandlers,
+} from './MainStreetLoanOverlay';
 import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
@@ -50,6 +60,13 @@ import {
 // Default English strings are registered at module-load time (merges with the
 // other Main Street 'en' bundles).
 registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
+
+/**
+ * Muted text colour for an unavailable overlay affordance — the Turn Summary
+ * dialog's `[ Bank Loan ]` button when the loans descriptor says the acting
+ * seat may not borrow (MS-0MVXYCJCK006UE62).
+ */
+const UNAVAILABLE_ACTION_COLOUR = '#6b6459';
 
 /**
  * Formats a signed integer for dialog rows as `+N` / `-N` / `0`. Coins are
@@ -1140,6 +1157,39 @@ export class MainStreetOverlayContent {
   }
 
   /**
+   * Shows the mid-game loan selector (MS-0MVXYCJVU000QBK1, parent
+   * MS-0MVPWSQMG004198C).
+   *
+   * The shipped bailout renderer in its `select` mode: one button per
+   * configured `config.loanOptions` entry — each labelled with its principal,
+   * per-turn repayment, total repayment and term, exactly as the bailout dialog
+   * prices the same menu — plus a Cancel action that only closes the dialog.
+   *
+   * Overlay conventions are the renderer's
+   * ({@link module:scenes/MainStreetLoanOverlay}): `createOverlayBackground` /
+   * `createOverlayButton` from `@ui`, every element parented into
+   * `s.hudContainer`, depths 199/200/201, every object tracked in
+   * `s.overlayObjects`, `safePlaySound` for the button SFX, instant appearance
+   * (reduced-motion safe) and never presented in replay/headless.
+   *
+   * @param model    The presentation model (built Phaser-free by
+   *                 `buildLoanSelectorModel`).
+   * @param handlers Confirm / cancel callbacks; the confirm dispatch
+   *                 (`takeLoan`) is wired by `showTurnSummaryDialog`.
+   * @param error    The engine's refusal reason from a rejected confirm, or
+   *                 absent — drawn as an extra red line so the dialog can stay
+   *                 open and say why the loan was not taken
+   *                 (MS-0MVXYCKFE000VF76).
+   */
+  public showLoanSelectorDialog(
+    model: LoanSelectorModel,
+    handlers: LoanSelectorDialogHandlers,
+    error?: string | null,
+  ): void {
+    renderLoanSelectorDialog(this.scene, model, handlers, error);
+  }
+
+  /**
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT).
    *
    * Presented after the end-of-turn animations complete (gated into the
@@ -1148,10 +1198,37 @@ export class MainStreetOverlayContent {
    * MS-0MVP45WBA001GAVY): businesses owned, per-phase income, per-category
    * ongoing expenses, incident and one-off deltas, the net change and the
    * closing balances. `[ Next Turn ]` is the primary action and resumes the
-   * closing flow via {@link onNextTurn}; `[ Bank Loan ]` is **always**
-   * rendered disabled with an explanatory hint, behind the
-   * `onBankLoanAction` seam that MS-0MVL6DZI0000F6CG (Bank Loans) will
-   * replace — it is never shown enabled by this item.
+   * closing flow via {@link onNextTurn}. `[ Bank Loan ]` follows the
+   * pre-computed {@link loanDescriptor} (MS-0MVXYCICT0051LU7, wired by
+   * MS-0MVXYCJCK006UE62): interactive — normal colour, `UI_CLICK` SFX, one
+   * {@link onBankLoanAction} call per press — exactly when the descriptor is
+   * enabled, otherwise muted and inert with the descriptor's reason-specific
+   * hint (loans disabled / no configured options / the seat's outstanding
+   * obligation) and **no** hint line at all when it is enabled. Because the
+   * availability answer arrives pre-computed, this overlay never reaches into
+   * scene state to decide it.
+   *
+   * Pressing the enabled `[ Bank Loan ]` swaps this panel for the mid-game loan
+   * selector (MS-0MVXYCJVU000QBK1, parent AC2): the shared bailout renderer in
+   * its `select` mode, driven by the configured `config.loanOptions` menu. One
+   * modal at a time — this panel is dismissed first, so no Turn Summary button
+   * can be pressed behind the selector's backdrop — and closing the selector
+   * (Cancel, or a refused option) re-presents this dialog with no state change.
+   *
+   * Confirming a selector option takes the loan (MS-0MVXYCKFE000VF76):
+   * `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` runs
+   * through the undo stack (AP-neutral and reversible — no action point is
+   * spent and the day never advances), then this dialog is re-rendered from the
+   * **same** {@link result} against the post-take state, so the newly recorded
+   * obligation shows up as the disabled `[ Bank Loan ]` hint. A refusal (for
+   * example a race into an active loan) re-draws the selector with the engine's
+   * own reason and leaves every resource untouched. `[ Next Turn ]` remains the
+   * only way to resume the deferred closing either way.
+   *
+   * The initial affordance answer still arrives pre-computed through
+   * {@link loanDescriptor}; the overlay re-derives it from the live state only
+   * when it re-renders itself after a take, because that take is what changed
+   * the answer.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
@@ -1162,21 +1239,36 @@ export class MainStreetOverlayContent {
    *
    * @param summary          The turn's rendered summary model.
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
-   * @param onBankLoanAction Wiring seam for MS-0MVL6DZI0000F6CG; never
-   *                          invoked while loans are unimplemented.
+   * @param loanDescriptor   Loans availability for the acting seat, built by
+   *                          the Turn Summary gate from the live state. Optional
+   *                          so existing call sites keep working; absent (a
+   *                          legacy/hand-built state) means disabled with no
+   *                          hint, because no reason is known.
+   * @param onBankLoanAction Invoked exactly once per press of the enabled
+   *                          `[ Bank Loan ]` button; the loans feature hangs
+   *                          its selector off this seam.
+   * @param result            The closed turn's result the summary was built
+   *                          from (`turnLedger` + `incident`). Supplied so a
+   *                          post-take refresh can rebuild the summary from the
+   *                          **same** result against the live state; absent (a
+   *                          hand-built dialog) the supplied summary is re-used
+   *                          unchanged and only the loans descriptor refreshes.
    */
   public showTurnSummaryDialog(
     summary: TurnSummary,
     onNextTurn: () => void,
+    loanDescriptor?: TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
+    result?: Pick<TurnResult, 'turnLedger' | 'incident'>,
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
 
-    // Wiring seam retained for MS-0MVL6DZI0000F6CG (Bank Loans). The button
-    // stays disabled in this item, so the callback is deliberately never
-    // invoked here.
-    void onBankLoanAction;
+    /** Dismisses everything this dialog owns and releases the tracked objects. */
+    const dismissDialog = (): void => {
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+    };
 
     const centerX = s.layout.gameW / 2;
     const panelW = 640;
@@ -1319,29 +1411,156 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
     nextTurnBtn.on('pointerdown', () => {
       safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
+      dismissDialog();
       onNextTurn();
     });
     s.overlayObjects.push(nextTurnBtn);
 
-    // [ Bank Loan ] is always rendered disabled (AC4): muted colour, no
-    // interactivity, and an explanatory hint. The onBankLoanAction seam above
-    // is what MS-0MVL6DZI0000F6CG (Bank Loans) replaces to enable it.
+    // ── [ Bank Loan ] (MS-0MVXYCJCK006UE62) ───────────────────────
+    // Interactive exactly when the descriptor says the acting seat may borrow:
+    // normal colour, `UI_CLICK` SFX and exactly one `onBankLoanAction` call per
+    // press. Every other case (loans off, no configured menu, an active loan,
+    // or no descriptor at all) is muted and inert.
+    const loanEnabled = loanDescriptor?.enabled === true;
     const bankLoanBtn = createOverlayButton(
       s, centerX + 120, btnY,
       '[ Bank Loan ]', 201,
-      { color: '#6b6459', hoverColor: '#6b6459' },
+      loanEnabled
+        ? undefined
+        : { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
     );
-    bankLoanBtn.disableInteractive();
+    if (loanEnabled) {
+      bankLoanBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        onBankLoanAction?.();
+
+        // Mid-game loan selector (MS-0MVXYCJVU000QBK1): the shipped bailout
+        // renderer in its `select` mode, driven by the configured menu rather
+        // than a pending offer. Built before the swap, so a menu that cannot be
+        // built (or is empty) leaves this dialog on screen instead of opening
+        // an empty modal.
+        let selector: LoanSelectorModel | null = null;
+        try {
+          selector = buildLoanSelectorModel(s.state);
+        } catch {
+          selector = null;
+        }
+        if (!selector || selector.rows.length === 0) return;
+
+        /**
+         * Re-presents this dialog from the **same** result against the live
+         * state (MS-0MVXYCKFE000VF76): the summary is rebuilt with
+         * `buildTurnSummary(state, result)` and the loans descriptor is
+         * re-derived, so a loan taken in the selector shows up immediately as
+         * the disabled `[ Bank Loan ]` with its outstanding-obligation hint.
+         * Presentation-only: a failed rebuild keeps the values we were given
+         * rather than stranding the closing.
+         */
+        const returnToSummary = (): void => {
+          let nextSummary = summary;
+          if (result) {
+            try {
+              nextSummary = buildTurnSummary(s.state, result) ?? summary;
+            } catch { /* presentation-only — keep the summary we were given */ }
+          }
+          let nextDescriptor = loanDescriptor;
+          try {
+            nextDescriptor = buildTurnSummaryLoanDescriptor(s.state);
+          } catch { /* presentation-only — keep the pre-take descriptor */ }
+          this.showTurnSummaryDialog(
+            nextSummary,
+            onNextTurn,
+            nextDescriptor,
+            onBankLoanAction,
+            result,
+          );
+        };
+
+        /**
+         * Draws the mid-game selector. `error` carries the engine's own refusal
+         * reason after a rejected confirm, so the dialog stays open and says
+         * why (MS-0MVXYCKFE000VF76).
+         */
+        const openSelector = (error?: string): void => {
+          this.showLoanSelectorDialog(
+            selector!,
+            {
+              // Confirming takes the loan through the command surface — never
+              // by mutating state inline — with the deferred-closing opt-in
+              // from MS-0MVXYCIU00053HL1 (the dialog lives in that window).
+              onAccept: (optionIndex) => confirmSelection(optionIndex),
+              // Cancel closes the selector and re-presents the Turn Summary
+              // dialog with no state change (parent AC2).
+              onCancel: returnToSummary,
+            },
+            error,
+          );
+        };
+
+        /**
+         * Dispatches `takeLoanCommand` for one menu row, then refreshes in place.
+         *
+         * AP-neutral and reversible, so no action point is spent and the day
+         * never advances; the take is undoable through the shared undo manager.
+         * On success the dialog is re-rendered from the same `result` against
+         * the post-take state. On refusal the engine's reason is shown in the
+         * still-open selector and nothing in `s.state` changes.
+         */
+        const confirmSelection = (optionIndex: number): void => {
+          let refusal: string | null = null;
+          try {
+            const cmd = takeLoanCommand(s.state, optionIndex, { allowDuringClosing: true });
+            if (s.undoManager) {
+              s.undoManager.execute(cmd);
+            } else {
+              cmd.execute();
+            }
+          } catch (e) {
+            console.error('[BankLoan] Failed:', e);
+            refusal = (e as Error).message;
+          }
+
+          if (refusal !== null) {
+            // Public API contract: the engine refuses before any mutation, so
+            // there is nothing to roll back — only the reason to surface.
+            openSelector(refusal);
+            return;
+          }
+
+          // The take changed the wallet and booked an obligation: re-render the
+          // street/HUD from the post-take state and enable Undo, since the take
+          // pushed a reversible command.
+          s.refreshAll();
+          if (s.undoManager) {
+            s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+          }
+
+          returnToSummary();
+        };
+
+        // One modal at a time: dismiss this panel before the selector appears,
+        // so no Turn Summary button can be pressed behind its backdrop.
+        dismissDialog();
+        openSelector();
+      });
+    } else {
+      // The muted colour above already signals unavailability; disabling input
+      // keeps the button inert (no hover, no press, no seam call).
+      bankLoanBtn.disableInteractive();
+    }
     if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
     s.overlayObjects.push(bankLoanBtn);
 
-    addText(centerX, panelY + panelH - 24,
-      'Bank loans are not available yet — coming in a future update.', {
+    // Reason-specific hint: the descriptor's own copy (loans disabled, no
+    // configured options, or the seat's outstanding obligation). Nothing is
+    // rendered when the button is enabled, and nothing when there is no
+    // descriptor to supply a reason.
+    if (!loanEnabled && loanDescriptor?.hint) {
+      addText(centerX, panelY + panelH - 24, loanDescriptor.hint, {
         fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
         wordWrap: { width: panelW - 60 },
       }, 0.5);
+    }
   }
 
   /**

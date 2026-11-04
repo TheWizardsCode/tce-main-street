@@ -347,6 +347,27 @@ export class MainStreetScene extends CardGameScene {
   public hudRepAnchor: { x: number; y: number } | null = null;
 
   /**
+   * Live per-seat flight anchors published by
+   * `renderCompetitiveScoreboard()` every time the competitive scoreboard
+   * re-renders (MS-0MW083MAN004JSCH, parent MS-0MVWNS9L7007CTK9 AC3/AC6(b)).
+   *
+   * One entry per rendered seat row, keyed by the row's `playerId`, valued with
+   * that row's own centre x / baseline y — the same anchor shape as
+   * `hudCoinAnchor` / `hudRepAnchor`, but per seat instead of shared. The AI
+   * "bank" is, for now, the seat's summary row position: this map is the
+   * deliberately swappable seam a real AI bank renderer replaces later, with no
+   * animator changes.
+   *
+   * `null` before the first competitive render (and after every transient HUD
+   * clear — see `refreshHud`), so consumers must fall back to
+   * `hudSeatFallback(layout, seatIndex, seatCount)` when it is null or the seat
+   * id is absent. Reassigned (never merged) on each render, so a shrunk roster
+   * or a re-layout never leaves stale seat geometry behind. Single-player runs
+   * never publish it.
+   */
+  public hudSeatAnchors: Record<number, { x: number; y: number }> | null = null;
+
+  /**
    * True while the end-of-turn income collection animation is running
    * (coins/pips flying to the HUD). Suppresses the immediate HUD delta pop
    * in `animateHudValueChanges` so the collection's final "+total" pop is
@@ -1354,10 +1375,11 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
-   * Shows the dual-choice incident dialog for a pending `hasChoices` event
-   * (CG-0MTSHG8RP008E128). Accept applies the event's stated consequence;
-   * Reject refuses it and an unknown escalation card replaces it in the deck.
-   * Delegates to the overlay manager's showEventChoiceDialog.
+   * Shows the dual-choice incident dialog for a pending choice event
+   * (CG-0MTSHG8RP008E128). The presented labels come from the compiled option
+   * list; for a two-option node the first option applies the event's stated
+   * consequence and the second refuses it and an escalation card may replace
+   * it in the deck. Delegates to the overlay manager's showEventChoiceDialog.
    *
    * @param event    The pending choice event (effect deferred).
    * @param onAccept Callback when the player accepts.
@@ -1430,21 +1452,39 @@ export class MainStreetScene extends CardGameScene {
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
    * per-phase income, per-category ongoing expenses, incident and one-off
    * deltas, the net change and the closing balances, with a primary
-   * [ Next Turn ] action and an always-disabled [ Bank Loan ] affordance.
+   * [ Next Turn ] action and a [ Bank Loan ] affordance whose availability
+   * comes from the loans descriptor (MS-0MVXYCICT0051LU7).
    * Delegates to the overlay manager's showTurnSummaryDialog.
    *
    * @param summary          The turn's rendered summary model.
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
-   * @param onBankLoanAction Seam for the future loans feature
-   *                          (MS-0MVL6DZI0000F6CG); unused today.
+   * @param loanDescriptor   Phaser-free loan availability for the acting seat,
+   *                          built by the gate from the live state; forwarded
+   *                          to the overlay manager unchanged. Optional so
+   *                          existing call sites (and a state that cannot
+   *                          produce a descriptor) still work.
+   * @param onBankLoanAction Invoked once per press of the enabled
+   *                          `[ Bank Loan ]` button (MS-0MVXYCJCK006UE62).
+   * @param result            The closed turn's result the summary was built
+   *                          from; forwarded so the dialog can re-render itself
+   *                          from the same result after a mid-game loan
+   *                          (MS-0MVXYCKFE000VF76).
    */
   public showTurnSummaryDialog(
     summary: import('./MainStreetTurnSummary').TurnSummary,
     onNextTurn: () => void,
+    loanDescriptor?: import('./MainStreetLoanSelectorModel').TurnSummaryLoanDescriptor,
     onBankLoanAction?: () => void,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'turnLedger' | 'incident'>,
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showTurnSummaryDialog === 'function') {
-      (this.msOverlayManager as any).showTurnSummaryDialog(summary, onNextTurn, onBankLoanAction);
+      (this.msOverlayManager as any).showTurnSummaryDialog(
+        summary,
+        onNextTurn,
+        loanDescriptor,
+        onBankLoanAction,
+        result,
+      );
     } else {
       // No overlay manager (headless/tests): continue the closing rather than
       // strand the turn.

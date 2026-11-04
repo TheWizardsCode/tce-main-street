@@ -1,8 +1,64 @@
+/**
+ * Main Street: Help/Settings panel layering (MS-0MVWMDMLE007I8E1).
+ *
+ * Visual regression tests proving each panel is actually PAINTED above the
+ * scene when opened — not merely logically open.
+ *
+ * Hardening (MS-0MVWMDMLE007I8E1) removed from this file:
+ *
+ * - the Settings-panel pixel checks downgraded to `console.warn()` (never an
+ *   assertion) when they were weak — now real `expect`s via
+ *   `renderer.snapshotPixel()`;
+ * - the `if (panelContainer.x <= canvas.width)` guard, true both when the
+ *   panel was open (`canvasWidth - panelWidth`) and closed (`canvasWidth`), so
+ *   the Settings test could never reach its assertion branch — removed;
+ * - the logical-only fallback used when the container had not moved — the
+ *   slide-in/out is waited for (headless tweens advance; the WebGL clipping
+ *   tests rely on the same behaviour) and a never-moving panel times out and
+ *   fails instead;
+ * - the hardcoded Settings colour `0x101020` (16,16,32), which did not match
+ *   `SettingsPanel.PANEL_BG_COLOR` (`0x1a1a2e`) — colours are now read from
+ *   each panel's own `fillColor` at runtime, never a literal;
+ * - the debug `console.info()` calls.
+ *
+ * Both probes are derived from each panel's own background geometry and
+ * validated against it (see `helpers/panelPixelProbe.ts`) — the same pattern
+ * as `webgl-renderer-clipping.browser.test.ts`.
+ */
 import { describe, it, expect, afterEach } from 'vitest';
 import Phaser from 'phaser';
+
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { TUTORIAL_STATE_STORAGE_KEY } from '../../src/TutorialState';
+import { dismissBootModals } from './helpers/bootModals';
+import {
+  closePanelAndWait,
+  expectPanelPainted,
+  waitPanelOpen,
+  panelPaint,
+  panelTargetRect,
+  pixelDistance,
+  snapshotPixel,
+  waitRenderedFrame,
+  PANEL_INSIDE_TOLERANCE,
+  type PanelProbe,
+} from './helpers/panelPixelProbe';
+
+/** Seed the tutorial as skipped so the boot flow never dims the pixel probes. */
+function seedTutorialSkipped(): void {
+  try {
+    localStorage.clear();
+    localStorage.setItem(
+      TUTORIAL_STATE_STORAGE_KEY,
+      JSON.stringify({ schemaVersion: 1, status: 'skipped', completedAt: null, lastStepId: null }),
+    );
+  } catch {
+    /* storage may be unavailable */
+  }
+}
 
 async function bootGame(): Promise<Phaser.Game> {
+  seedTutorialSkipped();
   let container = document.getElementById('game-container');
   if (container) container.remove();
   container = document.createElement('div');
@@ -19,71 +75,11 @@ function destroyGame(game: Phaser.Game | null): void {
   if (game) game.destroy(true, false);
   const container = document.getElementById('game-container');
   if (container) container.remove();
-}
-
-function waitFrames(n: number, fallbackMs = 2000): Promise<void> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let left = n;
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-
-    const fallback = setTimeout(finish, fallbackMs);
-
-    const tick = () => {
-      if (settled) return;
-      left -= 1;
-      if (left <= 0) {
-        clearTimeout(fallback);
-        finish();
-      } else {
-        requestAnimationFrame(tick);
-      }
-    };
-
-    requestAnimationFrame(tick);
-  });
-}
-
-async function readScenePixel(scene: any, canvas: HTMLCanvasElement, x: number, y: number): Promise<[number, number, number, number]> {
-  // Prefer Phaser renderer snapshot API when available.
   try {
-    const renderer: any = scene?.game?.renderer;
-    if (renderer && typeof renderer.snapshotPixel === 'function') {
-      const value = await new Promise<any>((resolve) => {
-        renderer.snapshotPixel(x, y, (pixel: any) => resolve(pixel));
-      });
-      if (value && typeof value.r === 'number') {
-        return [value.r, value.g, value.b, value.a ?? 255];
-      }
-    }
-  } catch (_) { /* fall back */ }
-
-  // Fallback path: read from 2D or WebGL context.
-  const ctx2d = canvas.getContext('2d');
-  if (ctx2d) {
-    const data = ctx2d.getImageData(x, y, 1, 1).data;
-    return [data[0], data[1], data[2], data[3]];
+    localStorage.removeItem(TUTORIAL_STATE_STORAGE_KEY);
+  } catch {
+    /* storage may be unavailable */
   }
-
-  const gl = (canvas.getContext('webgl') as WebGLRenderingContext | null)
-    || (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null)
-    || (canvas.getContext('webgl2') as WebGL2RenderingContext | null);
-
-  if (!gl) throw new Error('No 2D/WebGL context available for pixel read');
-
-  const pixels = new Uint8Array(4);
-  const flippedY = canvas.height - 1 - y;
-  gl.readPixels(x, flippedY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-  return [pixels[0], pixels[1], pixels[2], pixels[3]];
-}
-
-function colorDistance(a: [number, number, number, number], b: [number, number, number, number]): number {
-  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 }
 
 describe('MainStreet Help panel layering (visual)', () => {
@@ -94,130 +90,93 @@ describe('MainStreet Help panel layering (visual)', () => {
     game = null;
   });
 
-  it('renders help panel above market cards and HUD strip when opened', async () => {
+  it('paints the help panel above market cards and the HUD strip when opened', async () => {
     game = await bootGame();
-    const scene = game.scene.getScene('MainStreetScene') as any;
-    // Allow additional frames for HUD and overlay parenting to settle
-    await waitFrames(24);
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & {
+      helpPanel: PanelProbe;
+    };
+    await dismissBootModals(scene);
+    for (let i = 0; i < 24; i += 1) await waitRenderedFrame(game);
 
     const canvas = document.querySelector('#game-container canvas') as HTMLCanvasElement | null;
     expect(canvas).toBeTruthy();
     if (!canvas) throw new Error('Canvas not found');
 
-    const l = scene.layout;
+    const panel = scene.helpPanel;
+    // HelpPanel slides in to x = 0; the rect comes from the panel's own
+    // background geometry (final width/height even while it is off-screen).
+    const targetX = 0;
+    const rect = panelTargetRect(panel, targetX);
+    expect(rect.w).toBeGreaterThan(0);
+    expect(rect.h).toBeGreaterThan(0);
 
-    // Repro point requested by operator: first card in first market row.
-    const firstCardX = Math.floor((l.marketLabelW + 50) + l.marketCardW * 0.5);
-    const firstCardY = Math.floor((l.marketTop + 6) + l.marketCardH * 0.5);
-    const samplePoint: [number, number] = [
-      Math.max(2, Math.min(firstCardX, canvas.width - 3)),
-      Math.max(2, Math.min(firstCardY, canvas.height - 3)),
-    ];
+    const probe = {
+      surface: 'Help panel',
+      // Just left of the scrollbar track and right of the wrapped text column
+      // (both widths come from the panel's own PADDING / TRACK_BAR_WIDTH
+      // constants), at mid height where only the panel background is painted.
+      inside: { x: targetX + rect.w - 15, y: rect.y + rect.h / 2 },
+      // Beyond the panel's right edge the street shows instead.
+      outside: { x: targetX + rect.w + 30, y: rect.y + rect.h / 2 },
+    };
 
-    const beforePixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-    scene.helpPanel.open();
-    // Wait longer to allow slide animation to complete in headless env
-    await waitFrames(40);
+    // Scene-only pixel before the panel opens — a frame without the panel must
+    // not satisfy the inside match (proves paint, not just state).
+    const sceneOnlyPixel = await snapshotPixel(game, probe.inside.x, probe.inside.y);
 
-    // Ensure any pending tweens have completed
-    await new Promise((r) => setTimeout(r, 20));
+    panel.open();
+    await waitPanelOpen(game, panel, targetX, probe.surface);
+    await expectPanelPainted(game, panel, probe, sceneOnlyPixel);
 
-    expect(scene.helpPanel.isOpen).toBe(true);
-    const panelContainer = (scene.helpPanel as any).container as Phaser.GameObjects.Container;
-    expect(panelContainer.visible).toBe(true);
-    // Some headless environments may not advance tweens as expected; skip strict x-position check
-    // and rely on pixel sampling below to confirm visual overlay.
-    // expect(panelContainer.x).toBeGreaterThanOrEqual(-1);
+    // Closing must remove the paint from the same point.
+    await closePanelAndWait(game, panel, targetX - rect.w, probe.surface);
+    const afterClose = await snapshotPixel(game, probe.inside.x, probe.inside.y);
+    const closeDelta = pixelDistance(afterClose, panelPaint(panel));
+    expect(
+      closeDelta,
+      `closing must remove the panel paint from the inside point — distance ${closeDelta} <= inside tolerance ${PANEL_INSIDE_TOLERANCE}`,
+    ).toBeGreaterThan(PANEL_INSIDE_TOLERANCE);
+  }, 90_000);
 
-    const afterOpenPixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-
-    // Debug: log panel state and pixel values to help triage flakiness
-    // (these logs appear in test output)
-    console.info('DEBUG: panel.isOpen=', scene.helpPanel.isOpen, 'container.x=', panelContainer.x);
-    console.info('DEBUG: beforePixel=', beforePixel, 'afterOpenPixel=', afterOpenPixel);
-
-    // Help panel background is dark blue-ish: 0x1a1a2e => (26,26,46)
-    const panelColor: [number, number, number, number] = [26, 26, 46, 255];
-
-    // Open panel should visibly affect sampled pixel and match panel tint.
-    if (panelContainer.x >= -1) {
-      // If panel is visually in place, assert pixel change
-      // Retry pixel comparison in case rendering hasn't settled (flakiness in full suite)
-      let maxDist = colorDistance(beforePixel, afterOpenPixel);
-      let afterRetryPixel = afterOpenPixel;
-      for (let i = 0; i < 3 && maxDist < 16; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        afterRetryPixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-        maxDist = colorDistance(beforePixel, afterRetryPixel);
-      }
-      expect(maxDist).toBeGreaterThan(15);
-      expect(colorDistance(afterRetryPixel, panelColor)).toBeLessThan(220);
-
-      // Closing should restore underlying first-card pixel.
-      scene.helpPanel.close();
-      await waitFrames(24);
-      const afterClosePixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-
-      expect(colorDistance(afterRetryPixel, afterClosePixel)).toBeGreaterThan(15);
-    } else {
-      // In some headless environments tweens don't advance; assert logical open state
-      expect(scene.helpPanel.isOpen).toBe(true);
-      // Close to clean up state
-      scene.helpPanel.close();
-      await waitFrames(8);
-    }
-  }, 45_000);
-
-  it('renders settings panel above market cards when opened', async () => {
+  it('paints the settings panel above market cards when opened', async () => {
     game = await bootGame();
-    const scene = game.scene.getScene('MainStreetScene') as any;
-    await waitFrames(24);
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & {
+      settingsPanel: PanelProbe;
+    };
+    await dismissBootModals(scene);
+    for (let i = 0; i < 24; i += 1) await waitRenderedFrame(game);
 
     const canvas = document.querySelector('#game-container canvas') as HTMLCanvasElement | null;
     expect(canvas).toBeTruthy();
     if (!canvas) throw new Error('Canvas not found');
 
-    const panelWidth = (scene.settingsPanel as any).panelWidth ?? Math.round(canvas.width * 0.35);
-    // Sample where the settings panel body will occupy after opening.
-    const samplePoint: [number, number] = [
-      Math.max(2, Math.min(Math.floor(canvas.width - panelWidth * 0.5), canvas.width - 3)),
-      Math.max(2, Math.min(Math.floor(canvas.height * 0.35), canvas.height - 3)),
-    ];
+    const panel = scene.settingsPanel;
+    // SettingsPanel slides in to `canvas.width - panelWidth`; the rect (and so
+    // the panel width) comes from the panel's own background geometry.
+    const rect = panelTargetRect(panel, panel.container.x);
+    const targetX = canvas.width - rect.w;
 
-    const beforePixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-    scene.settingsPanel.open();
-    await waitFrames(40);
-    await new Promise((r) => setTimeout(r, 20));
+    const probe = {
+      surface: 'Settings panel',
+      // Left of every label/slider (they start at the panel's PADDING), at mid
+      // height where only the panel background is painted.
+      inside: { x: targetX + 8, y: rect.y + rect.h / 2 },
+      // Beyond the panel's left edge the scene shows instead.
+      outside: { x: targetX - 30, y: rect.y + rect.h / 2 },
+    };
 
-    expect(scene.settingsPanel.isOpen).toBe(true);
-    const panelContainer = (scene.settingsPanel as any).container as Phaser.GameObjects.Container;
-    expect(panelContainer.visible).toBe(true);
+    const sceneOnlyPixel = await snapshotPixel(game, probe.inside.x, probe.inside.y);
 
-    const afterOpenPixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
+    panel.open();
+    await waitPanelOpen(game, panel, targetX, probe.surface);
+    await expectPanelPainted(game, panel, probe, sceneOnlyPixel);
 
-    // Settings panel background is dark navy-ish: 0x101020 => (16,16,32)
-    const panelColor: [number, number, number, number] = [16, 16, 32, 255];
-
-    if (panelContainer.x <= canvas.width) {
-      // Soft pixel check: panel logical state (isOpen, visible) is already verified above.
-      // Pixel comparison can be flaky under full-suite load; log warning instead of failing.
-      const openDist = colorDistance(beforePixel, afterOpenPixel);
-      const panelMatch = colorDistance(afterOpenPixel, panelColor);
-      if (openDist <= 15 || panelMatch >= 240) {
-        console.warn('Settings panel pixel check weak:', JSON.stringify({ beforePixel, afterOpenPixel, openDist, panelMatch }));
-      }
-
-      scene.settingsPanel.close();
-      await waitFrames(24);
-      const afterClosePixel = await readScenePixel(scene, canvas, samplePoint[0], samplePoint[1]);
-      const closeDist = colorDistance(afterOpenPixel, afterClosePixel);
-      if (closeDist <= 15) {
-        console.warn('Settings panel close pixel check weak:', JSON.stringify({ afterOpenPixel, afterClosePixel, closeDist }));
-      }
-    } else {
-      expect(scene.settingsPanel.isOpen).toBe(true);
-      scene.settingsPanel.close();
-      await waitFrames(8);
-    }
-  }, 45_000);
+    await closePanelAndWait(game, panel, canvas.width, probe.surface);
+    const afterClose = await snapshotPixel(game, probe.inside.x, probe.inside.y);
+    const closeDelta = pixelDistance(afterClose, panelPaint(panel));
+    expect(
+      closeDelta,
+      `closing must remove the settings panel paint from the inside point — distance ${closeDelta} <= inside tolerance ${PANEL_INSIDE_TOLERANCE}`,
+    ).toBeGreaterThan(PANEL_INSIDE_TOLERANCE);
+  }, 90_000);
 });

@@ -12,6 +12,13 @@ after-state.
 > The ROI figures below reflect the pre-R2 reputation values; the re-pricing
 > decisions (costs) are unchanged by the re-tune.
 
+> **Note (MS-0MVRDGNFU001DDQW).** The Park later gained its producer-confirmed
+> **+20 reputation per turn** (up from 0) with its pricing kept at 150 cost / 40
+> ongoing. The "pure net drain with 0 rep" findings in §2 and §4 below are
+> therefore historical: the Park is now the cheapest reputation entry in the
+> community-space family (13.3 rep per 100 coins of cost) while still
+> net-negative in coin-equivalent (−10/turn at 1.5 coins/rep).
+
 ## 1. Methodology
 
 ### Assumptions

@@ -143,7 +143,7 @@ function createMockScene(): {
 
 function makeSlot(
   deltas: SlotEventDelta[],
-  opts: { withIcons?: boolean } = {},
+  opts: { withIcons?: boolean; ownerId?: number } = {},
 ): IncomePhaseSlot {
   const icons = opts.withIcons ? [makeIcon()] : [];
   const container = {
@@ -154,7 +154,10 @@ function makeSlot(
     destroy: vi.fn(),
     getWorldTransformMatrix: () => ({ getX: () => GRID_X, getY: () => GRID_Y }),
   };
-  const pd: SlotPhaseBreakdown = {
+  // `ownerId` is presentation-only seat identity, added to the phase breakdown
+  // and the animator slot by MS-0MW083KRZ009NJTA; spread only when supplied so
+  // legacy / single-player slots stay owner-less (owner 0 semantics).
+  const pd = {
     slotIndex: 0,
     businessName: 'Cafe',
     baseIncome: 0,
@@ -162,7 +165,8 @@ function makeSlot(
     repBonus: 0,
     eventDeltas: [],
     upcomingDeltas: deltas,
-  };
+    ...(opts.ownerId === undefined ? {} : { ownerId: opts.ownerId }),
+  } as unknown as SlotPhaseBreakdown;
   return {
     pd,
     card: {} as never,
@@ -173,7 +177,8 @@ function makeSlot(
       container,
     } as never,
     displayed: 0,
-  };
+    ...(opts.ownerId === undefined ? {} : { ownerId: opts.ownerId }),
+  } as unknown as IncomePhaseSlot;
 }
 
 /** Runs the `upcoming` phase and fires every scheduled flight. */
@@ -385,5 +390,89 @@ describe('runIncomePhase("upcoming") routing (CG-0MUA1UH3A008M4BS)', () => {
     const repGain = makeSlot([{ cardId: 'e', name: 'Award', delta: 100, kind: 'rep', attachedSlotIndex: null }]);
     runUpcoming(animator, scene, scheduled, repGain);
     expect(lastMove()).toEqual({ destX: HUD_REP.x + 300, destY: HUD_Y });
+  });
+});
+
+// ── Owner-aware upcoming routing (MS-0MW083E5H009ACB4) ──────────────────
+//
+// The `upcoming` coin/reputation flows are one of the three HUD-bound income
+// routes (parent MS-0MVWNS9L7007CTK9 AC2). In competitive play the HUD side of
+// each flow resolves per the *owning* seat: owner `0` (the human) keeps the
+// shared HUD coin/reputation counters, an AI owner (`ownerId >= 1`) uses that
+// seat's competitive-scoreboard summary anchor — as destination for a gain and
+// as origin for a loss.
+//
+// Following the repo's test-first tracer-bullet convention, the owner-aware
+// cases were authored **red-phase** with `it.fails` (the phase routed every
+// flow to the single HUD anchor) and flipped to plain `it` by the implementing
+// child MS-0MW083O38005B22F. The existing owner-less cases in this suite stay
+// plain `it`, so they keep protecting the owner-0 contract.
+
+/** Published AI seat anchor (the seat's scoreboard summary row). */
+const UPCOMING_SEAT_ANCHOR = { x: 900, y: 32 };
+
+/** A mock scene whose scoreboard has published one AI seat anchor. */
+function createOwnerAwareScene(): {
+  scene: Record<string, unknown>;
+  scheduled: ScheduledCall[];
+  circles: Array<{ x: number; y: number; radius: number; color: number }>;
+} {
+  const mock = createMockScene();
+  mock.scene.hudSeatAnchors = { 1: UPCOMING_SEAT_ANCHOR };
+  return mock;
+}
+
+describe('runIncomePhase("upcoming") owner-aware routing (MS-0MW083E5H009ACB4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("routes an AI-owned slot's coin gain to that seat's anchor, not the human HUD", () => {
+    // Attached gains originate at the business card, unattached at the panel;
+    // either way the HUD side of the flow is the AI seat's own bank.
+    for (const attachedSlotIndex of [0, null] as const) {
+      vi.clearAllMocks();
+      const { scene, scheduled } = createOwnerAwareScene();
+      const animator = new MainStreetAnimator(scene);
+      const slot = makeSlot(
+        [{ cardId: 'e', name: 'Festival', delta: 100, kind: 'coin', attachedSlotIndex }],
+        { ownerId: 1 },
+      );
+
+      runUpcoming(animator, scene, scheduled, slot);
+
+      expect(lastMove()).toEqual({ destX: UPCOMING_SEAT_ANCHOR.x, destY: UPCOMING_SEAT_ANCHOR.y });
+      expect(lastMove()).not.toEqual({ destX: HUD_COIN.x, destY: HUD_COIN.y });
+    }
+  });
+
+  it("routes an AI-owned slot's coin loss from that seat's anchor to the card", () => {
+    const { scene, scheduled, circles } = createOwnerAwareScene();
+    const animator = new MainStreetAnimator(scene);
+    const slot = makeSlot(
+      [{ cardId: 'e', name: 'Pipe Burst', delta: -100, kind: 'coin', attachedSlotIndex: 0 }],
+      { ownerId: 1 },
+    );
+
+    runUpcoming(animator, scene, scheduled, slot);
+
+    // A loss draws from the owning seat's bank, never the human HUD counter.
+    expect(circles[0]).toMatchObject({ x: UPCOMING_SEAT_ANCHOR.x, y: UPCOMING_SEAT_ANCHOR.y });
+    expect(lastMove()).toEqual({ destX: SLOT_CENTER.x, destY: SLOT_CENTER.y });
+  });
+
+  it("routes an AI-owned slot's reputation gain to that seat's anchor", () => {
+    const { scene, scheduled } = createOwnerAwareScene();
+    const animator = new MainStreetAnimator(scene);
+    const slot = makeSlot(
+      [{ cardId: 'e', name: 'Award', delta: 100, kind: 'rep', attachedSlotIndex: 0 }],
+      { ownerId: 1 },
+    );
+
+    runUpcoming(animator, scene, scheduled, slot);
+
+    // One seat, one bank: reputation pips land on the same seat anchor.
+    expect(lastMove()).toEqual({ destX: UPCOMING_SEAT_ANCHOR.x, destY: UPCOMING_SEAT_ANCHOR.y });
+    expect(lastMove()).not.toEqual({ destX: HUD_REP.x, destY: HUD_REP.y });
   });
 });

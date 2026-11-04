@@ -5,11 +5,11 @@
  * End-to-end browser verification of the event choice dialog overlay and its
  * end-of-turn integration:
  *
- * 1. Ending a turn when the drawn incident has `hasChoices` pauses the
- *    closing (choicePending) and presents the Accept/Reject dialog instead
- *    of starting the next week. The dialog shows the event name, an Accept
- *    button labelled "<event name> (Accept)", and a bare "Reject" button —
- *    all parented into the HUD container (overlay pattern compliance).
+ * 1. Ending a turn when the drawn incident compiles to an option list pauses
+ *    the closing (choicePending) and presents the option dialog instead of
+ *    starting the next week. The dialog shows the event name plus one button
+ *    per compiled option, labelled with the option label — all parented into
+ *    the HUD container (overlay pattern compliance).
  * 2. Accept applies the event's effect, clears the pending choice, and the
  *    deferred closing advances to the next week.
  * 3. Reject refuses the effect (resources unchanged), clears the pending
@@ -22,6 +22,7 @@ import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import type { EventCard } from '../../src/MainStreetCards';
+import { registerStorylineOptions } from '../../src/MainStreetStoryline';
 
 // ── Boot helpers (mirrors incident-reveal.browser.test.ts) ──
 
@@ -80,8 +81,18 @@ function makeChoiceIncident(): EventCard {
     target: 'All',
     coinDelta: -50,
     reputationDelta: 0,
-    hasChoices: true,
   };
+}
+
+/**
+ * Registers the two-option node for the fixture card. The second option
+ * refuses the consequence (`skip` is registry-only).
+ */
+function registerChoiceOptions(): void {
+  registerStorylineOptions('inc-browser-choice-test', [
+    { label: 'Accept', effectPolicy: 'apply' },
+    { label: 'Reject', effectPolicy: 'skip' },
+  ]);
 }
 
 interface HudTextFinder {
@@ -117,6 +128,7 @@ describe('Main Street dual-choice event dialog (UI slice)', () => {
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
 
     // Queue a choice incident for resolution at end of turn.
+    registerChoiceOptions();
     sceneState(scene).incidentDeck = [makeChoiceIncident()];
 
     const turnBefore = sceneState(scene).turn;
@@ -125,14 +137,14 @@ describe('Main Street dual-choice event dialog (UI slice)', () => {
     // The closing pauses (choicePending): the dialog appears instead of the
     // next week starting. Wait for the Accept label in the HUD container.
     await waitForCondition(
-      () => Boolean(findText(scene, 'Power Outage (Accept)') && findText(scene, 'Reject')),
+      () => Boolean(findText(scene, 'Accept') && findText(scene, 'Reject')),
       { timeoutMs: 12_000, label: 'event choice dialog buttons' },
     );
 
-    // Dialog content: event-name title + the two buttons, all parented into
-    // hudContainer (overlay pattern compliance, AC4).
+    // Dialog content: event-name title + one button per option label, all
+    // parented into hudContainer (overlay pattern compliance, AC4).
     expect(findText(scene, 'Power Outage')).toBeDefined();
-    const acceptBtn = findText(scene, 'Power Outage (Accept)')!;
+    const acceptBtn = findText(scene, 'Accept')!;
     const rejectBtn = findText(scene, 'Reject')!;
     expect(acceptBtn.input?.enabled).toBe(true);
     expect(rejectBtn.input?.enabled).toBe(true);
@@ -152,6 +164,7 @@ describe('Main Street dual-choice event dialog (UI slice)', () => {
 
     const coinsBefore = sceneState(scene).resourceBank.coins;
     const turnBefore = sceneState(scene).turn;
+    registerChoiceOptions();
     sceneState(scene).incidentDeck = [makeChoiceIncident()];
 
     (scene.msTurnController as unknown as { endTurn: () => void }).endTurn();
@@ -162,7 +175,7 @@ describe('Main Street dual-choice event dialog (UI slice)', () => {
     });
 
     // Accept: the dialog's accept handler resolves the choice via the engine.
-    const acceptBtn = findText(scene, 'Power Outage (Accept)')!;
+    const acceptBtn = findText(scene, 'Accept')!;
     acceptBtn.emit('pointerdown');
 
     // Accept applies the event's effect (-50 coins), clears the pending
@@ -181,6 +194,7 @@ describe('Main Street dual-choice event dialog (UI slice)', () => {
 
     const coinsBefore = sceneState(scene).resourceBank.coins;
     const turnBefore = sceneState(scene).turn;
+    registerChoiceOptions();
     sceneState(scene).incidentDeck = [makeChoiceIncident()];
 
     (scene.msTurnController as unknown as { endTurn: () => void }).endTurn();

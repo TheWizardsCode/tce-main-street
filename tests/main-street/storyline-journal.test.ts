@@ -1,10 +1,11 @@
 /**
- * Storyline journal & choice clarity (MS-0MUMP97LQ006PP1D)
+ * Storyline journal (MS-0MUMP97LQ006PP1D)
  *
  * AC1 — Journal data: past storyline choices and outcomes, most recent first.
  * AC2 — Empty state: journal is empty before any choice is made.
- * AC3 — Choice clarity: option labels explain apply vs skip semantics and do
- *       NOT reveal the escalation card id.
+ * AC3 — Choice clarity was removed with the core dev tip `4975f6ff`
+ *       (CG-0MVZFVZK1003F8HY): the labels were never rendered by the game,
+ *       so the seam and its cases left with the core contract.
  * AC4 — Depth/interaction is enforced by the overlay implementation (browser
  *       test); the pure helpers here keep the data layer honest.
  *
@@ -29,11 +30,10 @@ import {
   parseStoryUpdate,
   buildJournal,
   journalIsEmpty,
-  choiceClarityLabels,
   journalTitle,
   STORY_UPDATE_PREFIX,
 } from '../../src/MainStreetStorylineJournal';
-import { resetStorylineRegistry, getStorylineOptions } from '../../src/MainStreetStoryline';
+import { resetStorylineRegistry } from '../../src/MainStreetStoryline';
 
 function card(id: string): EventCard {
   const t = getEventTemplates().find((c) => c.id === id);
@@ -129,50 +129,6 @@ describe('AC2 — empty state', () => {
     pauseWithStoryline(state, 'evt-flu-outbreak');
     resolveEventChoice(state, 'reject');
     expect(journalIsEmpty(state)).toBe(false);
-  });
-});
-
-// ── AC3: choice clarity ─────────────────────────────────────
-
-describe('AC3 — choice clarity labels', () => {
-  it('explains apply semantics for Accept', () => {
-    const labels = choiceClarityLabels(card('evt-tax-error'));
-    expect(labels.accept).toContain('apply');
-    expect(labels.accept).toContain(card('evt-tax-error').effect);
-  });
-
-  it('explains the applied-but-branching semantics for Reject (F6, Q4=B)', () => {
-    const labels = choiceClarityLabels(card('evt-tax-error'));
-    // CSV options always apply the effect (Q4=B), so Reject no longer claims
-    // to waive it; it still leads to a different incident.
-    expect(labels.reject.toLowerCase()).toContain('different incident');
-    expect(labels.reject.toLowerCase()).toContain('applied');
-  });
-
-  it('does NOT reveal the escalation card id or name (both paths)', () => {
-    for (const id of ['evt-tax-error', 'evt-strike-service', 'evt-popular-menu', 'evt-flu-outbreak']) {
-      const c = card(id);
-      const labels = choiceClarityLabels(c);
-      const revealed = `${labels.accept} ${labels.reject}`;
-      const options = getStorylineOptions(c);
-      for (const option of options) {
-        for (const target of option.successorIds ?? []) {
-          expect(revealed, `${id} leaks successor id ${target}`).not.toContain(target);
-          const successor = getEventTemplates().find((t) => t.id === target);
-          if (successor) expect(revealed).not.toContain(successor.name);
-        }
-      }
-    }
-  });
-
-  it('falls back gracefully for a generalised multi-way card', () => {
-    const event: EventCard = {
-      family: 'event', id: 'evt-multi', name: 'Multi', trigger: 'Incident', cost: 0,
-      effect: 'x', target: 'All', coinDelta: -10, reputationDelta: 0, hasChoices: true,
-    } as EventCard;
-    const labels = choiceClarityLabels(event);
-    expect(labels.accept.length).toBeGreaterThan(0);
-    expect(labels.reject.length).toBeGreaterThan(0);
   });
 });
 

@@ -226,11 +226,42 @@ stateDiagram-v2
    - **Play Event (from hand)** → resolve an Investment event card from the hand immediately and remove it. In competitive mode (N ≥ 2) a piggyback-eligible organiser event additionally raises one pending piggyback decision per other active seat (see §6.1).
 4. **InvestmentResolution** – Reserved phase; Investment events are **not** auto‑resolved here. Unplayed events persist in the hand until the player plays them during a later MarketPhase.
 5. **IncomePhase** – For each placed Business, compute:
-   - `totalIncome = effectiveBase + synergyBonus`, where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` and `synergyBonus = effectiveBase × synergyCoinBonus × synergyBonusPerNeighbor × N`. Synergy uses a percentage-based formula: each matching neighbor (8‑way adjacent, including diagonal) contributes a percentage of the source business's effective base income, scaled by the difficulty preset multiplier. Synergy is only earned from adjacent neighbors of **different base types** (template IDs). Same-type adjacent businesses: synergy is nullified (0 contribution), and base income (including any income bonus from upgrades) is reduced to **60%**.
+   - `totalIncome = roundInt((effectiveBase + synergyBonus) × duplicateFactor)`, where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` and `synergyBonus = effectiveBase × synergyCoinBonus × synergyBonusPerNeighbor × N`. Synergy uses a percentage-based formula: each matching neighbor (8‑way adjacent, including diagonal) contributes a percentage of the source business's effective base income, scaled by the difficulty preset multiplier. Synergy is only earned from adjacent neighbors of **different base types** (template IDs). Same-type adjacent businesses: synergy is nullified (0 contribution), and base income (including any income bonus from upgrades) is reduced to **60%**; the street-wide duplicate factor (see *Market Saturation (Duplicate Businesses)* below) stacks multiplicatively on top.
    - `resourceBank.coins += totalIncome`.
    - `totalReputationPerTurn` is calculated from all placed cards (some Health-synergy cards like the Clinic provide `reputationPerTurn`). Upgrades may also contribute `reputationBonus`. Synergy reputation from adjacent neighbors is only earned from **different-type** businesses; same-type neighbors contribute 0 reputation synergy.
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
+
+### Market Saturation (Duplicate Businesses)
+
+When two or more businesses of the same base type occupy the **same street**, each earns a reduced share of its usual coin income:
+
+| Copies on Street | Income Factor |
+|-------------------|---------------|
+| 1                 | 1 (full)      |
+| 2                 | 2/3           |
+| 3                 | 1/2           |
+| 4+                | 1/3           |
+
+The factor applies to the business's **total coin income** — base after the adjacent same-type 60% penalty plus adjacency synergy — and the two penalties stack **multiplicatively**: `totalIncome = roundInt((effectiveBase + synergyBonus) × duplicateFactor)`. The factor is a coin-income rule only: **reputation is not affected**.
+
+**Street scoping.** "Same street" means the same 5×2 street cell: the default 1×1 board is a single street, so all ten plots saturate together. Duplicates on different streets do not interact. Community-space cards are excluded from both the count and the factor. **Sold businesses still count toward saturation** — a sold card earns no income itself (so it is excluded from the factor), but it keeps its type saturated on the street.
+
+   > **Per-seat credits and per-seat income presentation (competitive).** In
+   > human-vs-AI games the IncomePhase runs for **every** seat and credits that
+   > seat's own `PlayerRecord.coins` / `.reputation` (`applyCompetitiveIncome`),
+   > never the shared `resourceBank`; single-player's one wallet is unchanged
+   > (`applyIncome`). The end-of-turn animation mirrors that ownership: each
+   > slot carries its owning seat (`SlotPhaseBreakdown.ownerId`) and every
+   > HUD-bound income flight resolves its destination through
+   > `flightTargetFor` — the human seat's coins/reputation land on the shared
+   > HUD counters, an AI seat's land on its own competitive-scoreboard summary
+   > anchor (the documented stopgap until a real AI bank exists), and only the
+   > human seat moves or pops the shared HUD totals. This is presentation only:
+   > it never changes the economy, the closing order (Income → Incident →
+   > EndCheck) or the credited totals. See
+   > `docs/game/ux-visual-audio.md` → *HUD resource anchors — single source of
+   > truth for flight destinations* and *End-of-turn income presentation*.
 6. **IncidentPhase** – Reveal and resolve the top card of the face‑down incident deck. The player knows only how many incidents remain (card back + count); the revealed card's effect posts to the activity log. When the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (CG-0MSTOATDP000JNHH).
 7. **EndCheck** – Apply the scheduled repayment to every active loan (§5.1), offer a bailout loan to a seat at `coins < 0` with no active loan (the closing pauses on the offer), then evaluate win/loss conditions.
 8. Loop back to **WeekStart** for the next turn.
@@ -277,7 +308,17 @@ re-balancing is an edit rather than a code change).
 
 - **No action cost.** Taking a loan is not an action-type operation: it never decrements
   the weekly action budget or the banked reserve (§6.0). The `takeLoan` command is
-  legal in the **MarketPhase** only.
+  legal in the **MarketPhase**, and — through the explicit `allowDuringClosing` opt-in
+  only — during the acting seat's own deferred-closing pause (the End of Turn summary
+  window, MS-0MVXYCIU00053HL1). Every other rule in this section still applies there.
+- **Two entry points.** Mid-game, the **[ Bank Loan ]** button on the End of Turn
+  summary opens the loan selector: one row per `config.loanOptions` entry with its
+  per-turn and total repayment, plus Cancel. The button is enabled only when
+  `config.loansEnabled` is `true` and the seat holds no active loan; otherwise it is
+  disabled with a reason-specific hint (loans disabled, no configured options, or the
+  outstanding obligation). Taking a loan there costs no action point and does not
+  advance the day — **[ Next Turn ]** remains the only way to resume the closing. The
+  bailout dialog below is the second entry point.
 - **One active loan per player.** A seat that already holds an active loan cannot take
   or accept another; the attempt is rejected with a clear, user-facing reason and no
   resource change. Debt never stacks.
@@ -294,9 +335,21 @@ re-balancing is an edit rather than a code change).
   repayment, and while the loan is active the HUD shows what is still owed —
   `Loan: 110 coins/turn, 6 turns left` (compact `Loan: 110/turn, 6 left` on the
   competitive scoreboard) — so the debt burden is never hidden.
-- **First instalment timing.** A bailout loan accepted during a closing pays its first
-  instalment on the **next** turn, so accepting a bailout can never immediately
-  re-bankrupt the seat it just rescued.
+- **First instalment timing.** A loan accepted during a closing — the bailout offer,
+  or the End of Turn summary's mid-game selector — pays its first instalment on the
+  **next** turn, so accepting a loan can never immediately re-bankrupt the seat it
+  just rescued.
+- **The offer states the shortfall.** The bailout dialog names the exact amount the
+  seat is short of this turn's costs (`max(0, -coins)` on the balance the bankruptcy
+  test used — the projected closing balance on the deferred path), snapshotted on the
+  offer so a save taken mid-offer restores the same figure (MS-0MVZC1DAS001C8LF).
+  It excludes the first instalment, which is charged next turn.
+- **Each option states its coverage.** Every option row says whether its principal
+  closes the gap or how many coins the seat would still be short after taking it, and
+  when **no** presented option is large enough the dialog warns that any of these
+  loans still leaves the seat below zero and the run ends.
+- **The log row agrees.** The activity-log row written when the offer is raised states
+  the shortfall in coins, so the log and the dialog can never disagree.
 
 **Bankruptcy bailout.** In the closing sequence, *before* the bankruptcy / seat-failure
 declaration, a seat that would fail on `coins < 0` **and holds no active loan** is
@@ -423,7 +476,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 - Market research/refresh — costs coins (see the escalating cost note below).
 - **Investor free market re-roll** — while an Investor is employed and its once-per-turn free re-roll is unused, this re-roll is coin-free and action-free (MS-0MTISBYLS009936W). It advances the paid escalation counter and does not stack across multiple Investors.
-- Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
+- Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` (with `currentIncome` the card's cached income **after** the street-wide duplicate factor, MS-0MVYG50V1007W8BP), and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
   The sell dialog and activity log show the breakdown (base, synergy income, synergy rep).
 - Hint (still 1/week)
 - Ending the turn
@@ -594,7 +647,7 @@ The game is considered **won** when **any** of the following conditions are sati
    > value. The base difficulty presets themselves are never modified; the
    > effective value is derived at consumption time.
 2. **Turn Limit Victory** *(opt-in)* – Only when a config explicitly sets `maxTurns` (e.g. `maxTurns: 20`): the player reaches `turn >= maxTurns` with a **positive reputation** (`reputation > 0`) and **coins >= 0**; the final score is then evaluated against the threshold. If the threshold is not met, the game ends as a loss.
-3. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
+3. **Last Standing** *(competitive only, MS-0MUVBH589001L7NL)* – In a human-vs-AI game, when every AI seat has been eliminated (see Section 8), the human is declared the winner as *last standing* (`competitiveWinnerId` resolved via the seat whose `controller === 'human'`, `endReason = 'last_standing'`). The win is offered with an explicit **Continue solo** opt-in; accepting resumes play (`gameResult = 'playing'`, `endReason = 'last_standing_continue'`) with scoring continuing toward the threshold, mirroring endless-mode `score_threshold_continue`. Continuing solo **resets the win target to the base `config.winThreshold`** (MS-0MVWNXEX5006E7AT): the surviving human is the only seat still playing, so the competitive division by the original roster no longer applies and the resumed game must reach the undivided single-player target. Declining leaves the game at the win result. With multiple AI seats the win is declared only once the **last** AI is eliminated.
 
 > **Completing challenges is not a win (MS-0MVAZH5OD000Q6E4).** Clearing
 > every active challenge awards the per-challenge bonus (`challengeBonus`
@@ -738,7 +791,7 @@ flowchart TD
     Actions --> ResolveInvestment[Resolve Held Investment]
     ResolveInvestment --> Income[Collect Income & Synergy]
     Income[Collect Income & Synergy
-⚠ Same-type: base×0.6, no synergy] --> Incident[Reveal & Resolve Top of Incident Deck]
+⚠ Same-type: base×0.6, no synergy · duplicates: ×2/3, 1/2, 1/3] --> Incident[Reveal & Resolve Top of Incident Deck]
     Incident --> EndCheck{Win/Loss Check}
     EndCheck -->|Win| EndWin((Victory))
     EndCheck -->|Loss| EndLoss((Defeat))

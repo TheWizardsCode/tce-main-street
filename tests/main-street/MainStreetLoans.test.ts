@@ -18,6 +18,11 @@
  * after the loss of the loan-model slice's commit (see the work-item
  * comment on MS-0MVPWS5JB007YSHB).
  *
+ * Deferred-closing window (MS-0MVXYCIU00053HL1): the final block covers the
+ * explicit `allowDuringClosing` opt-in that lets the Turn Summary dialog take
+ * a loan while the seat's own closing is paused, and pins that every other
+ * refusal is unchanged without it.
+ *
  * @module
  */
 
@@ -38,6 +43,7 @@ import {
   applyLoanPayment,
   buildActiveLoan,
   canTakeLoan,
+  isDeferredClosingPause,
   loanPerTurnRepayment,
   loanTotalRepayment,
   optionsFor,
@@ -516,5 +522,203 @@ describe('applyLoanPayment (retirement after termTurns)', () => {
       termTurns: loan.termTurns,
     });
     expect(after.turnsRemaining).toBe(loan.turnsRemaining - 1);
+  });
+});
+
+// ── Deferred-closing window eligibility (MS-0MVXYCIU00053HL1) ──
+//
+// The Turn Summary gate runs *before* the day advances, so a `takeLoan`
+// dispatched from the dialog is refused by the `MarketPhase`-only precondition.
+// This slice adds an explicit opt-in that relaxes **only** that precondition
+// while the acting seat's own closing is paused; every other rule is unchanged.
+
+describe('takeLoan — deferred-closing window eligibility (MS-0MVXYCIU00053HL1)', () => {
+  /** State parked in the deferred-closing pause (closing paused, still playing). */
+  function closingPauseState(
+    phase: 'IncidentPhase' | 'EndCheck' = 'IncidentPhase',
+    seed = 'loans-closing-window',
+  ): MainStreetState {
+    const state = marketPhaseState(seed);
+    // `processEndOfTurn` leaves a deferred closing in `IncidentPhase`
+    // (`MainStreetEngineTurnClosing.ts`); other closings pause on `EndCheck`.
+    state.phase = phase;
+    return state;
+  }
+
+  it('AC1 — reports the closing pause only while the game is still playing', () => {
+    expect(isDeferredClosingPause(closingPauseState('IncidentPhase'))).toBe(true);
+    expect(isDeferredClosingPause(closingPauseState('EndCheck'))).toBe(true);
+    expect(isDeferredClosingPause(marketPhaseState())).toBe(false);
+    const income = closingPauseState('IncidentPhase');
+    income.phase = 'IncomePhase';
+    expect(isDeferredClosingPause(income)).toBe(false);
+    const over = closingPauseState('IncidentPhase');
+    over.gameResult = 'loss';
+    expect(isDeferredClosingPause(over)).toBe(false);
+  });
+
+  it('AC1 — permits the take during the paused closing when the caller opts in', () => {
+    const state = closingPauseState('IncidentPhase');
+    const coinsBefore = state.resourceBank.coins;
+    const turnBefore = state.turn;
+
+    const loan = takeLoan(state, 1, undefined, { allowDuringClosing: true });
+
+    expect(state.resourceBank.coins).toBe(coinsBefore + 600);
+    expect(state.loans).toHaveLength(1);
+    // AC4 — the repayment arithmetic is the same one the market phase uses.
+    expect(loan).toMatchObject({
+      ownerId: 0,
+      principal: 600,
+      totalRepayment: 660,
+      perTurnRepayment: 110,
+      turnsRemaining: 6,
+      termTurns: 6,
+    });
+    // Taking a loan at the dialog never advances the day.
+    expect(state.turn).toBe(turnBefore);
+  });
+
+  it('AC1 — permits the take while the closing has paused on EndCheck', () => {
+    const state = closingPauseState('EndCheck');
+    const coinsBefore = state.resourceBank.coins;
+
+    takeLoan(state, 0, undefined, { allowDuringClosing: true });
+
+    expect(state.resourceBank.coins).toBe(coinsBefore + 300);
+    expect(state.loans[0]).toMatchObject({ principal: 300, termTurns: 3 });
+  });
+
+  it('AC1 — threads the opt-in through the reversible command surface', () => {
+    const state = closingPauseState('IncidentPhase');
+    const coinsBefore = state.resourceBank.coins;
+    const actionsBefore = state.actionsRemaining;
+    const mgr = new UndoRedoManager();
+
+    mgr.execute(takeLoanCommand(state, 1, { allowDuringClosing: true }));
+
+    expect(state.resourceBank.coins).toBe(coinsBefore + 600);
+    expect(state.loans).toHaveLength(1);
+    expect(state.actionsRemaining).toBe(actionsBefore);
+
+    mgr.undo();
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.loans).toEqual([]);
+  });
+
+  it('AC2 — without the opt-in the MarketPhase-only refusal is unchanged', () => {
+    const state = closingPauseState('IncidentPhase');
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 0)).toThrow(/market phase/i);
+    expect(() => takeLoanCommand(state, 0).execute()).toThrow(/market phase/i);
+
+    expect(walletSnapshot(state)).toEqual(before);
+    const legality = canTakeLoan(state, 0);
+    expect(legality.legal).toBe(false);
+    expect(legality.legal === false && legality.reason).toBe(
+      'Loans can only be taken during the market phase, not IncidentPhase.',
+    );
+  });
+
+  it('AC3 — the opt-in does not widen the window to any other phase', () => {
+    const state = closingPauseState('IncidentPhase');
+    state.phase = 'IncomePhase';
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      'Loans can only be taken during the market phase, not IncomePhase.',
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+  });
+
+  it('AC3 — an ended game is still refused in the closing window', () => {
+    const state = closingPauseState('IncidentPhase');
+    state.gameResult = 'loss';
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      /game is over/i,
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+  });
+
+  it('AC3 — disabled loans are still refused in the closing window', () => {
+    const state = closingPauseState('IncidentPhase');
+    state.config = { ...state.config, loansEnabled: false };
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      /loans are disabled/i,
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+  });
+
+  it('AC3 — the one-active-loan rule still applies in the closing window', () => {
+    const state = closingPauseState('IncidentPhase');
+    takeLoan(state, 0, undefined, { allowDuringClosing: true });
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 1, undefined, { allowDuringClosing: true })).toThrow(
+      /one loan at a time/i,
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+    expect(state.loans).toHaveLength(1);
+  });
+
+  it('AC3 — a pending offer for the seat still blocks the closing-window take', () => {
+    const state = closingPauseState('IncidentPhase');
+    state.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: [...DEFAULT_LOAN_OPTIONS],
+    };
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      /offer is awaiting your decision/i,
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+  });
+
+  it('AC3 — an unknown option index is still refused in the closing window', () => {
+    const state = closingPauseState('IncidentPhase');
+    const before = walletSnapshot(state);
+
+    expect(() => takeLoan(state, 99, undefined, { allowDuringClosing: true })).toThrow(
+      /unknown loan option 99/i,
+    );
+
+    expect(walletSnapshot(state)).toEqual(before);
+  });
+
+  it('AC3 — an eliminated seat is still refused in the closing window', () => {
+    const state = createCompetitiveState({ seed: 'loans-closing-eliminated', playerCount: 2 });
+    executeWeekStart(state);
+    state.activePlayerId = 0;
+    state.phase = 'IncidentPhase';
+    state.players![0].eliminated = true;
+    const before = state.players![0].coins;
+
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      /eliminated seat/i,
+    );
+
+    expect(state.players![0].coins).toBe(before);
+    expect(state.loans).toEqual([]);
+  });
+
+  it('AC3 — an unknown seat is still refused in the closing window', () => {
+    const state = createCompetitiveState({ seed: 'loans-closing-unknown-seat', playerCount: 2 });
+    executeWeekStart(state);
+    state.phase = 'IncidentPhase';
+
+    expect(() => takeLoan(state, 0, 7, { allowDuringClosing: true })).toThrow(/unknown seat 7/i);
+    expect(state.loans).toEqual([]);
   });
 });

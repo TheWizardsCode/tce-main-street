@@ -103,6 +103,10 @@ import { createEconomyLedger } from '@rule-engine/EconomyLedger';
 import { CHALLENGE_TEMPLATES, selectChallenges } from './MainStreetChallenges';
 import { attachMainStreetAchievements } from './MainStreetAchievements';
 import { getBaseTypeId } from './MainStreetCards';
+import {
+  createPendingStorylineChoice,
+  getStorylineOptions,
+} from './MainStreetStoryline';
 import { UNIFIED_TUTORIAL_STEPS, type TutorialControllerState } from './TutorialFlow';
 
 // ── Scenario Interface ───────────────────────────────────────
@@ -315,15 +319,19 @@ export function createTutorialScenario(
     const card = findCardByTemplate(eventDeck, templateId);
     // Choice-event exclusion (CG-0MTT7FO7I009295E AC1, per producer decision
     // 2026-09-08 Q2 — no choice events in the tutorial; no teaching step). The
-    // tutorial's scripted deck must never surface a hasChoices event: the
-    // flow has no dialog handling and a pending choice would stall the step
-    // pacing. Fail fast at scenario build so a choice card can never slip in
-    // silently when content is later retrofitted.
-    if (card.hasChoices) {
+    // tutorial's scripted deck must never surface a card that compiles to a
+    // pending choice: the flow has no dialog handling and a pending choice
+    // would stall the step pacing. Choice-ness is read from the compiled
+    // option model (CSV `options` or a registered list) — never a legacy flag.
+    // Fail fast at scenario build so a choice card can never slip in silently
+    // when content is later retrofitted.
+    if (createPendingStorylineChoice(card) !== null) {
+      const labels = getStorylineOptions(card).map((option) => option.label);
       throw new Error(
-        `TutorialScenario: incident template "${templateId}" has hasChoices — ` +
-        'choice events are excluded from the tutorial deck (AC1 CG-0MTT7FO7I009295E). ' +
-        'Remove hasChoices from this template or pick a non-choice incident.',
+        `TutorialScenario: incident template "${templateId}" compiles to a choice ` +
+          `(options: ${labels.length > 0 ? labels.join(', ') : 'none'}) — ` +
+          'choice events are excluded from the tutorial deck (AC1 CG-0MTT7FO7I009295E). ' +
+          'Remove the options from this template or pick a non-choice incident.',
       );
     }
     incidentDeck.push(card);

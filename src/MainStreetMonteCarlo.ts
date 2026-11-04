@@ -6,6 +6,7 @@ import { GreedyStrategy, BankingGreedyStrategy, RandomStrategy, MainStreetAiPlay
 import { DIFFICULTY_NAMES } from './MainStreetDifficulty';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { getBaseTypeId, getEventTemplates } from './MainStreetCards';
+import { getStorylineOptions } from './MainStreetStoryline';
 import type { BusinessCard, CommunitySpaceCard, EventCard } from './MainStreetCardsTypes';
 import { computeSynergyBonus } from './MainStreetAdjacencyScoring';
 import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
@@ -309,11 +310,19 @@ function createAiPlayerForStrategy(strategy: MonteCarloStrategy, seed: string): 
  * Derives enriched `StorylineEventRecord`s from captured `event-choice`
  * transcript events.
  *
- * Chain depth is reconstructed from the successor links recorded on each
- * event: an event whose base ID matches the successor queued by the previous
- * event of the same storyline continues that chain (depth + 1); otherwise it
- * starts a new chain at depth 1. Storyline grouping is looked up from the
- * static event templates. Events are returned in resolution order.
+ * Chain depth is reconstructed from the successor links implied by the
+ * **compiled option model** (CSV `options` encoding or registry): an event
+ * whose base ID matches the successor queued by the previous event of the same
+ * storyline continues that chain (depth + 1); otherwise it starts a new chain
+ * at depth 1. Storyline grouping is looked up from the static event templates.
+ * Events are returned in resolution order.
+ *
+ * The transcript records only the chosen option's label, so the successor is
+ * resolved by matching that label against the card's compiled options. A
+ * single-candidate option names its successor directly; for a random
+ * multi-candidate option the drawn successor is recovered from the next
+ * resolved event of the same storyline (no new RNG draw, so a seeded run's
+ * transcript and depth statistics are unchanged).
  */
 function deriveStorylineEvents(
   events: readonly MainStreetTranscriptEvent[],
@@ -328,8 +337,36 @@ function deriveStorylineEvents(
   // depth it should receive when it resolves.
   const expected = new Map<string, { baseId: string; depth: number }>();
 
-  for (const event of events) {
-    if (event.type !== 'event-choice') continue;
+  const choiceEvents = events.filter(
+    (event): event is Extract<MainStreetTranscriptEvent, { type: 'event-choice' }> =>
+      event.type === 'event-choice',
+  );
+
+  /** Candidate successor base ids for the option a given label selects. */
+  const optionCandidates = (template: EventCard | undefined, choice: string): string[] => {
+    if (!template) return [];
+    let options;
+    try {
+      options = getStorylineOptions(template);
+    } catch {
+      return [];
+    }
+    const label = choice.trim().toLowerCase();
+    const option = options.find(
+      (candidate) => candidate.label.trim().toLowerCase() === label,
+    );
+    if (!option) return [];
+    const successors =
+      option.successorIds != null && option.successorIds.length > 0
+        ? option.successorIds
+        : option.successorId
+          ? [option.successorId]
+          : [];
+    return successors.map((id) => getBaseTypeId(id));
+  };
+
+  for (let index = 0; index < choiceEvents.length; index++) {
+    const event = choiceEvents[index];
 
     const baseEventId = getBaseTypeId(event.eventId);
     const template = templateByBaseId.get(baseEventId);
@@ -339,19 +376,22 @@ function deriveStorylineEvents(
     const pending = expected.get(key);
     const chainDepth = pending && pending.baseId === baseEventId ? pending.depth : 1;
 
-    const optionLower = event.option.toLowerCase();
-    // F3 (MS-0MV8KQL820077BOS): transcript option is the label token; the
-    // legacy 'accept'/'reject' values survive as lower-cased labels
-    // ('Accept' → 'accept'), so the accept/reject successor derivation is
-    // unchanged. Generalised labels yield no next-card id (the drawn
-    // candidate is not reconstructible from the label alone).
-    const successorRaw =
-      optionLower === 'accept'
-        ? event.acceptNextCardId
-        : optionLower === 'reject'
-          ? event.rejectNextCardId
-          : null;
-    const successorId = successorRaw ? getBaseTypeId(successorRaw) : null;
+    const candidates = optionCandidates(template, event.option);
+    let successorId: string | null = null;
+    if (candidates.length === 1) {
+      successorId = candidates[0];
+    } else if (candidates.length > 1) {
+      // Random candidate set: the drawn candidate is not recorded, so recover
+      // it from the next resolved event of this storyline.
+      for (let next = index + 1; next < choiceEvents.length; next++) {
+        const nextEvent = choiceEvents[next];
+        const nextBaseId = getBaseTypeId(nextEvent.eventId);
+        const nextTemplate = templateByBaseId.get(nextBaseId);
+        if ((nextTemplate?.storylineId ?? nextBaseId) !== key) continue;
+        if (candidates.includes(nextBaseId)) successorId = nextBaseId;
+        break;
+      }
+    }
 
     if (successorId) {
       expected.set(key, { baseId: successorId, depth: chainDepth + 1 });

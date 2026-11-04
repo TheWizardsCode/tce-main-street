@@ -207,6 +207,11 @@ describe('AC1/AC3 — human seat offer pauses the competitive closing', () => {
     expect(state.pendingLoanOffer).not.toBeNull();
     expect(state.pendingLoanOffer!.ownerId).toBe(0); // the failing human
     expect(state.pendingLoanOffer!.reason).toBe('bankruptcy');
+    // AC2 (MS-0MVZC1DAS001C8LF): the shortfall follows the seat's own
+    // `PlayerRecord.coins` — the balance the bankruptcy test used — not the
+    // shared bank mirroring the last actor.
+    expect(state.pendingLoanOffer!.shortfall).toBe(50);
+    expect(state.players![0].coins).toBe(-50);
     expect(state.gameResult).toBe('playing');
     expect(state.endReason).toBeNull();
     expect(state.players![0].eliminated ?? false).toBe(false);

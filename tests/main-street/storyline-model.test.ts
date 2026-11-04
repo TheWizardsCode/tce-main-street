@@ -8,9 +8,8 @@
  *       `storylineTitle`; the CSV parser populates them; cards without them
  *       behave exactly as before.
  * AC2 — Generalised options: an arbitrary ordered option list resolves
- *       correctly, and legacy `hasChoices`/accept/reject cards compile to an
- *       option list whose resolution is identical to the legacy behaviour
- *       (legacy-equivalence).
+ *       correctly, and CSV-authored `options` cards compile to an ordered
+ *       option list with terminal options and candidate successor sets.
  * AC3 — Extraction seam: definition/state/resolution sit behind a documented
  *       game-agnostic interface with pure functions; callers never reach into
  *       Main-Street-only resolution internals.
@@ -66,8 +65,8 @@ const CSV_COLUMNS = [
   'targetBusiness', 'incomeBonus', 'synergyRangeBonus', 'requiredLevel',
   'reputationBonus', 'newDisplayName', 'ongoingCost', 'handSlotsAdded',
   'refreshCostDiscount', 'actionsPerTurn', 'peekOncePerTurn',
-  'upgradeCostDiscount', 'art_notes', 'hasChoices', 'acceptNextCardId',
-  'rejectNextCardId', 'storylineId', 'storylineTitle',
+  'upgradeCostDiscount', 'art_notes', 'storylineId', 'storylineTitle',
+  'options',
 ];
 
 interface CsvEventSpec {
@@ -76,9 +75,8 @@ interface CsvEventSpec {
   effect: string;
   coinDelta?: number;
   reputationDelta?: number;
-  hasChoices?: boolean;
-  acceptNextCardId?: string;
-  rejectNextCardId?: string;
+  /** Raw `options` cell (`label|cardA,cardB;label2|cardC`). */
+  options?: string;
   storylineId?: string;
   storylineTitle?: string;
 }
@@ -103,12 +101,14 @@ function buildCsv(events: CsvEventSpec[]): string {
       coinDelta: String(e.coinDelta ?? 0),
       reputationDelta: String(e.reputationDelta ?? 0),
     };
-    if (e.hasChoices) row.hasChoices = 'true';
-    if (e.acceptNextCardId) row.acceptNextCardId = e.acceptNextCardId;
-    if (e.rejectNextCardId) row.rejectNextCardId = e.rejectNextCardId;
+    if (e.options) row.options = e.options;
     if (e.storylineId) row.storylineId = e.storylineId;
     if (e.storylineTitle) row.storylineTitle = e.storylineTitle;
-    lines.push(CSV_COLUMNS.map((c) => row[c] ?? '').join(','));
+    lines.push(
+      CSV_COLUMNS.map((c) =>
+        c === 'options' ? `"${(row[c] ?? '').replace(/"/g, '""')}"` : row[c] ?? '',
+      ).join(','),
+    );
   }
   return lines.join('\n');
 }
@@ -124,17 +124,15 @@ function makeChoiceEvent(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All',
     coinDelta: -100,
     reputationDelta: 0,
-    hasChoices: true,
-    acceptNextCardId: 'evt-model-next-a',
-    rejectNextCardId: 'evt-model-next-b',
+    options: 'Accept|evt-model-next-a;Reject|evt-model-next-b',
     ...overrides,
   };
 }
 
 const SYNTHETIC_CSV = buildCsv([
-  { id: 'evt-story-1', name: 'Story One', effect: 'Lose 100 coins', coinDelta: -100, hasChoices: true, acceptNextCardId: 'evt-story-next', storylineId: 'storyline-alpha', storylineTitle: 'Alpha Arc' },
+  { id: 'evt-story-1', name: 'Story One', effect: 'Lose 100 coins', coinDelta: -100, options: 'Accept|evt-story-next;Reject|', storylineId: 'storyline-alpha', storylineTitle: 'Alpha Arc' },
   { id: 'evt-story-next', name: 'Story Next', effect: 'Lose 50 coins', coinDelta: -50, storylineId: 'storyline-alpha', storylineTitle: 'Alpha Arc' },
-  { id: 'evt-story-2', name: 'Story Two', effect: 'Lose 100 coins', coinDelta: -100, hasChoices: true, storylineId: 'storyline-beta' },
+  { id: 'evt-story-2', name: 'Story Two', effect: 'Lose 100 coins', coinDelta: -100, options: 'Accept|;Reject|', storylineId: 'storyline-beta' },
   { id: 'evt-vanilla', name: 'Vanilla', effect: 'Lose 30 coins', coinDelta: -30 },
 ]);
 
@@ -193,7 +191,7 @@ describe('AC1 — CSV parser populates storyline metadata', () => {
     const t = getEventTemplates().find((c) => c.id === 'evt-vanilla') as EventCard;
     expect(t.storylineId).toBeUndefined();
     expect(t.storylineTitle).toBeUndefined();
-    expect(t.hasChoices).toBeUndefined();
+    expect(t.options).toBeUndefined();
   });
 
   it('the bundled CSV assigns storyline metadata to the shipped chains', () => {
@@ -220,28 +218,28 @@ describe('AC1 — CSV parser populates storyline metadata', () => {
 
 // ── AC2: Generalised option model ───────────────────────────
 
-describe('AC2 — legacy fields compile to the ordered option model', () => {
-  it('a non-choice card compiles to an empty option list', () => {
-    const card = makeChoiceEvent({ hasChoices: undefined, acceptNextCardId: undefined, rejectNextCardId: undefined });
+describe('AC2 — a card compiles to the ordered option model', () => {
+  it('a card without options compiles to an empty option list', () => {
+    const card = makeChoiceEvent({ options: undefined });
     const compiled = compileStorylineFromEvent(card);
     expect(compiled.compiledOptions).toEqual([]);
     expect(storylineOptionCount(card)).toBe(0);
   });
 
-  it('a legacy choice card compiles to [Accept(apply), Reject(skip)]', () => {
+  it('a CSV-authored choice compiles to its ordered option list (all apply)', () => {
     const card = makeChoiceEvent();
     const compiled = compileStorylineFromEvent(card);
     expect(compiled.compiledOptions).toEqual([
-      { label: 'Accept', successorId: 'evt-model-next-a', effectPolicy: 'apply' },
-      { label: 'Reject', successorId: 'evt-model-next-b', effectPolicy: 'skip' },
+      { label: 'Accept', successorIds: ['evt-model-next-a'], effectPolicy: 'apply' },
+      { label: 'Reject', successorIds: ['evt-model-next-b'], effectPolicy: 'apply' },
     ]);
   });
 
-  it('a choice card with null successors compiles to options with undefined successors', () => {
-    const card = makeChoiceEvent({ acceptNextCardId: null, rejectNextCardId: null });
+  it('a choice card with terminal options compiles to empty candidate sets', () => {
+    const card = makeChoiceEvent({ options: 'Accept|;Reject|' });
     const compiled = compileStorylineFromEvent(card);
-    expect(compiled.compiledOptions[0].successorId).toBeUndefined();
-    expect(compiled.compiledOptions[1].successorId).toBeUndefined();
+    expect(compiled.compiledOptions[0].successorIds).toEqual([]);
+    expect(compiled.compiledOptions[1].successorIds).toEqual([]);
   });
 
   it('compilation carries the storylineId through', () => {
@@ -250,16 +248,21 @@ describe('AC2 — legacy fields compile to the ordered option model', () => {
   });
 });
 
-describe('AC2 — legacy-equivalence: option resolution matches legacy behaviour', () => {
-  // A choice card plus its escalations registered in the template registry.
+describe('AC2 — option resolution over the presented list', () => {
+  // A choice card plus its escalations, with a skip-authored reject option
+  // (the registry seam is the only place `effectPolicy: 'skip'` can be set).
   function setupChoiceState(seed: string): MainStreetState {
     const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-eq-choice', name: 'Equiv Choice', effect: 'Lose 200 coins', coinDelta: -200, hasChoices: true, acceptNextCardId: 'evt-eq-accept', rejectNextCardId: 'evt-eq-reject', storylineId: 'arc-eq', storylineTitle: 'Equivalence' },
+      { id: 'evt-eq-choice', name: 'Equiv Choice', effect: 'Lose 200 coins', coinDelta: -200, options: 'Accept|evt-eq-accept;Reject|evt-eq-reject', storylineId: 'arc-eq', storylineTitle: 'Equivalence' },
       { id: 'evt-eq-accept', name: 'Accept Escalation', effect: 'Lose 400 coins', coinDelta: -400, storylineId: 'arc-eq', storylineTitle: 'Equivalence' },
       { id: 'evt-eq-reject', name: 'Reject Escalation', effect: 'Lose 500 coins', coinDelta: -500, storylineId: 'arc-eq', storylineTitle: 'Equivalence' },
     ]));
+    registerStorylineOptions('evt-eq-choice', [
+      { label: 'Accept', successorId: 'evt-eq-accept', effectPolicy: 'apply' },
+      { label: 'Reject', successorId: 'evt-eq-reject', effectPolicy: 'skip' },
+    ]);
     return state;
   }
 
@@ -299,23 +302,23 @@ describe('AC2 — legacy-equivalence: option resolution matches legacy behaviour
     expect(viaOption.pendingEventChoice!.chosenOption).toBe('Reject');
   });
 
-  it('legacy accept/reject and the compiled option list produce the same outcome', () => {
-    const legacy = setupChoiceState('equiv-legacy');
-    queueEvent(legacy, 'evt-eq-choice');
-    processEndOfTurn(legacy);
-    const legacyCoinsBefore = legacy.resourceBank.coins;
-    const legacyRes = resolveEventChoice(legacy, 'accept');
+  it('the accept/reject keys and the option indices agree on the outcome', () => {
+    const viaChoice = setupChoiceState('equiv-legacy');
+    queueEvent(viaChoice, 'evt-eq-choice');
+    processEndOfTurn(viaChoice);
+    const choiceCoinsBefore = viaChoice.resourceBank.coins;
+    const choiceRes = resolveEventChoice(viaChoice, 'reject');
 
-    const generalised = setupChoiceState('equiv-legacy');
-    queueEvent(generalised, 'evt-eq-choice');
-    processEndOfTurn(generalised);
-    const generalisedCoinsBefore = generalised.resourceBank.coins;
-    const generalisedRes = resolveEventOption(generalised, 0);
+    const viaOption = setupChoiceState('equiv-legacy');
+    queueEvent(viaOption, 'evt-eq-choice');
+    processEndOfTurn(viaOption);
+    const optionCoinsBefore = viaOption.resourceBank.coins;
+    const optionRes = resolveEventOption(viaOption, 1);
 
-    expect(generalisedCoinsBefore).toBe(legacyCoinsBefore);
-    expect(generalisedRes.coinChange).toBe(legacyRes.coinChange);
-    expect(generalisedRes.repChange).toBe(legacyRes.repChange);
-    expect(generalisedRes.pushedCard?.id).toBe(legacyRes.pushedCard?.id);
+    expect(optionCoinsBefore).toBe(choiceCoinsBefore);
+    expect(optionRes.coinChange).toBe(choiceRes.coinChange);
+    expect(optionRes.repChange).toBe(choiceRes.repChange);
+    expect(optionRes.pushedCard?.id).toBe(choiceRes.pushedCard?.id);
   });
 });
 
@@ -331,7 +334,7 @@ describe('AC2 — multi-option storylines', () => {
     const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-multi', name: 'Multi Choice', effect: 'Lose 150 coins', coinDelta: -150, hasChoices: true, storylineId: 'arc-multi', storylineTitle: 'Multi' },
+      { id: 'evt-multi', name: 'Multi Choice', effect: 'Lose 150 coins', coinDelta: -150, storylineId: 'arc-multi', storylineTitle: 'Multi' },
       { id: 'evt-multi-a', name: 'Branch A', effect: 'Lose 80 coins', coinDelta: -80 },
       { id: 'evt-multi-b', name: 'Branch B', effect: 'Gain 90 coins', coinDelta: 90 },
     ]));
@@ -369,12 +372,12 @@ describe('AC2 — multi-option storylines', () => {
     for (const id of ['evt-depression', 'evt-pandemic', 'evt-general-strike', 'evt-farm-table']) {
       const t = getEventTemplates().find((c) => c.id === id) as EventCard;
       expect(t, `${id} must exist`).toBeDefined();
-      expect(Boolean(t!.hasChoices), `${id} must not be a choice`).toBe(false);
+      expect(getStorylineOptions(t!), `${id} must not be a choice`).toHaveLength(0);
       expect(eventHasStoryline(t!), `${id} must not intercept resolution`).toBe(false);
     }
   });
 
-  it('treats a registered card as a storyline even without hasChoices', () => {
+  it('treats a registered card as a storyline without any CSV options', () => {
     registerStorylineOptions('evt-naked', OPTIONS);
     const event = { family: 'event', id: 'evt-naked', name: 'x', trigger: 'Incident', cost: 0, effect: 'x', target: 'All', coinDelta: 0, reputationDelta: 0 } as EventCard;
     expect(eventHasStoryline(event)).toBe(true);
@@ -455,7 +458,7 @@ describe('AC3 — extraction seam exposes pure, game-agnostic functions', () => 
   });
 
   it('createPendingStorylineChoice is null for non-storyline cards', () => {
-    const card = makeChoiceEvent({ hasChoices: undefined, acceptNextCardId: undefined, rejectNextCardId: undefined });
+    const card = makeChoiceEvent({ options: undefined });
     expect(createPendingStorylineChoice(card)).toBeNull();
   });
 
@@ -578,7 +581,7 @@ describe('MS-0MVNU5M7Z0095CEM — cost / extraEffect settlement', () => {
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(
       buildCsv([
-        { id: 'evt-cost', name: 'Cost Choice', effect: 'Lose 50 coins', coinDelta: -50, hasChoices: true, storylineId: 'arc-cost' },
+        { id: 'evt-cost', name: 'Cost Choice', effect: 'Lose 50 coins', coinDelta: -50, storylineId: 'arc-cost' },
         { id: 'evt-cost-next', name: 'Cost Next', effect: 'Lose 10 coins', coinDelta: -10, storylineId: 'arc-cost' },
       ]),
     );
@@ -770,7 +773,7 @@ describe('AC1 — callback condition registration + draw-time filtering', () => 
     const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-cond', name: 'Condition Choice', effect: 'Lose 60 coins', coinDelta: -60, hasChoices: true, storylineId: 'arc-cond', storylineTitle: 'Conditions' },
+      { id: 'evt-cond', name: 'Condition Choice', effect: 'Lose 60 coins', coinDelta: -60, storylineId: 'arc-cond', storylineTitle: 'Conditions' },
       { id: 'evt-cond-a', name: 'Branch A', effect: 'Lose 10 coins', coinDelta: -10 },
       { id: 'evt-cond-b', name: 'Branch B', effect: 'Gain 20 coins', coinDelta: 20 },
     ]));
@@ -1087,15 +1090,17 @@ describe('AC2 — callback successorResolver invoked at resolution time', () => 
 // ── AC4/AC6: Legacy equivalence + AI compatibility ──────────
 
 describe('AC4 — declarative path remains default with callbacks present', () => {
-  it('options without callbacks behave identically to legacy compilation', () => {
+  it('options without callbacks behave identically with or without state', () => {
     const card = makeChoiceEvent();
-    const legacyOptions = getStorylineOptions(card);
-    // No callbacks means no filtering — the full compiled list is returned
-    // whether or not state is supplied.
-    expect(legacyOptions).toEqual([
-      { label: 'Accept', successorId: 'evt-model-next-a', effectPolicy: 'apply' },
-      { label: 'Reject', successorId: 'evt-model-next-b', effectPolicy: 'skip' },
-    ]);
+    const state = setupMainStreetGame({ seed: 'declarative-default', difficulty: 'Medium' });
+    const expected = [
+      { label: 'Accept', successorIds: ['evt-model-next-a'], effectPolicy: 'apply' },
+      { label: 'Reject', successorIds: ['evt-model-next-b'], effectPolicy: 'apply' },
+    ];
+    // No callbacks and no declared costs means no draw-time filtering — the
+    // full compiled list is returned whether or not state is supplied.
+    expect(getStorylineOptions(card)).toEqual(expected);
+    expect(getStorylineOptions(card, state)).toEqual(expected);
   });
 
   it('a mixed option list keeps callback-free options regardless of state', () => {
@@ -1117,7 +1122,7 @@ describe('AC4 — declarative path remains default with callbacks present', () =
     const state = setupMainStreetGame({ seed: 'mixed-resolve', difficulty: 'Medium' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-mixed2', name: 'Mixed Resolve', effect: 'Lose 40 coins', coinDelta: -40, hasChoices: true, acceptNextCardId: 'evt-mixed2-next', storylineId: 'arc-mixed' },
+      { id: 'evt-mixed2', name: 'Mixed Resolve', effect: 'Lose 40 coins', coinDelta: -40, options: 'Accept|evt-mixed2-next;Reject|', storylineId: 'arc-mixed' },
       { id: 'evt-mixed2-next', name: 'Mixed Next', effect: 'Lose 10 coins', coinDelta: -10 },
     ]));
     const event = getEventTemplates().find((c) => c.id === 'evt-mixed2') as EventCard;
@@ -1136,7 +1141,7 @@ describe('AC6 — AI decision path selects only from presented options', () => {
     const state = setupMainStreetGame({ seed: 'ai-callback', difficulty: 'Easy' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-ai-cb', name: 'AI Callback', effect: 'Lose 50 coins', coinDelta: -50, hasChoices: true, storylineId: 'arc-ai' },
+      { id: 'evt-ai-cb', name: 'AI Callback', effect: 'Lose 50 coins', coinDelta: -50, storylineId: 'arc-ai' },
       { id: 'evt-ai-cb-a', name: 'AI Branch A', effect: 'Gain 100 coins', coinDelta: 100 },
       { id: 'evt-ai-cb-b', name: 'AI Branch B', effect: 'Lose 200 coins', coinDelta: -200 },
     ]));
@@ -1168,7 +1173,7 @@ describe('callback semantics survive save/load and undo', () => {
     const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
     state.phase = 'MarketPhase';
     loadTemplatesFromCsv(buildCsv([
-      { id: 'evt-persist', name: 'Persist Callback', effect: 'Lose 30 coins', coinDelta: -30, hasChoices: true, storylineId: 'arc-persist' },
+      { id: 'evt-persist', name: 'Persist Callback', effect: 'Lose 30 coins', coinDelta: -30, storylineId: 'arc-persist' },
       { id: 'evt-persist-low', name: 'Low Branch', effect: 'Lose 10 coins', coinDelta: -10 },
       { id: 'evt-persist-high', name: 'High Branch', effect: 'Lose 15 coins', coinDelta: -15 },
     ]));
@@ -1269,10 +1274,9 @@ describe('callback semantics survive save/load and undo', () => {
 //   * CSV-authored options always compile with `effectPolicy: 'apply'`,
 //     while the programmatic registry seam can still author `'skip'`.
 //
-// The `it.fails` cases are RED against the current two-way
-// `hasChoices`/`acceptNextCardId`/`rejectNextCardId` implementation — the
-// implementing items (F2/F3) flip each one to a normal `it` once the contract
-// lands. Guards that already hold today stay as normal `it` so they keep
+// The `it.fails` cases were RED against the earlier two-way implementation
+// — the implementing items (F2/F3) flipped each one to a normal `it` once the
+// contract landed. Guards that already hold today stay as normal `it` so they keep
 // protecting the contract through the migration.
 
 /**

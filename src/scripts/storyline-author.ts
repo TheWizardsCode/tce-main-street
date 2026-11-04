@@ -7,8 +7,8 @@
  *  - `add-card`   appends a new event card row (correct column count, no
  *                 duplicate id); `--options` authors an arbitrary multi-outcome
  *                 node (`label|a,b;label2|c`) directly.
- *  - `link`       sets the choice links (`hasChoices`, `acceptNextCardId`,
- *                 `rejectNextCardId`) or the `options` encoding on a card.
+ *  - `link`       sets the `options` encoding (and/or the storyline metadata)
+ *                 on an existing card.
  *  - `set-storyline` sets `storylineId`/`storylineTitle` on an existing card.
  *
  * Every mutation is **transactional**: the new CSV is built in memory, loaded
@@ -117,9 +117,6 @@ export interface AddCardSpec {
   readonly effect: string;
   readonly coinDelta?: number;
   readonly reputationDelta?: number;
-  readonly hasChoices?: boolean;
-  readonly acceptNextCardId?: string | null;
-  readonly rejectNextCardId?: string | null;
   /**
    * Arbitrary multi-outcome `options` encoding (F4 AC4):
    * `label|cardA,cardB;label2|cardC` — `;` separates options, `|` separates
@@ -135,14 +132,8 @@ export interface AddCardSpec {
 
 export interface LinkSpec {
   readonly id: string;
-  /** When provided, sets the accept-next link (null clears it). */
-  readonly acceptNextCardId?: string | null;
-  /** When provided, sets the reject-next link (null clears it). */
-  readonly rejectNextCardId?: string | null;
   /** When provided, (re)sets the arbitrary multi-outcome `options` encoding. */
   readonly options?: string | null;
-  /** When true, marks the card as a choice (hasChoices=true). */
-  readonly hasChoices?: boolean;
   /** When provided, sets the storyline id. */
   readonly storylineId?: string | null;
   /** When provided, sets the storyline title. */
@@ -160,9 +151,6 @@ const COL = {
   target: 'target',
   coinDelta: 'coinDelta',
   reputationDelta: 'reputationDelta',
-  hasChoices: 'hasChoices',
-  acceptNextCardId: 'acceptNextCardId',
-  rejectNextCardId: 'rejectNextCardId',
   options: 'options',
   storylineId: 'storylineId',
   storylineTitle: 'storylineTitle',
@@ -226,9 +214,6 @@ export function addCard(csvText: string, spec: AddCardSpec): AuthorResult {
   setField(parsed, row, COL.target, spec.target ?? 'All');
   setField(parsed, row, COL.coinDelta, String(spec.coinDelta ?? 0));
   setField(parsed, row, COL.reputationDelta, String(spec.reputationDelta ?? 0));
-  if (spec.hasChoices) setField(parsed, row, COL.hasChoices, 'true');
-  if (spec.acceptNextCardId) setField(parsed, row, COL.acceptNextCardId, spec.acceptNextCardId);
-  if (spec.rejectNextCardId) setField(parsed, row, COL.rejectNextCardId, spec.rejectNextCardId);
   if (spec.options !== undefined && spec.options !== null) {
     setField(parsed, row, COL.options, spec.options);
   }
@@ -240,8 +225,8 @@ export function addCard(csvText: string, spec: AddCardSpec): AuthorResult {
 }
 
 /**
- * Links an existing card (sets choice links and/or storyline metadata) and
- * validates the resulting CSV.
+ * Links an existing card: sets the `options` encoding and/or the storyline
+ * metadata, then validates the resulting CSV.
  */
 export function linkCard(csvText: string, spec: LinkSpec): AuthorResult {
   const parsed = parseCsv(csvText);
@@ -254,32 +239,9 @@ export function linkCard(csvText: string, spec: LinkSpec): AuthorResult {
     };
   }
 
-  // Validate link targets before mutating so the error names the bad link.
-  const idxId = parsed.header.indexOf(COL.id);
-  const ids = new Set(parsed.rows.map((r) => r[idxId]));
-  if (spec.acceptNextCardId) {
-    if (!ids.has(spec.acceptNextCardId)) {
-      return {
-        csv: csvText,
-        errors: [`link: accept-next target "${spec.acceptNextCardId}" does not exist`],
-        ok: false,
-      };
-    }
-    setField(parsed, row, COL.hasChoices, 'true');
-    setField(parsed, row, COL.acceptNextCardId, spec.acceptNextCardId);
-  }
-  if (spec.rejectNextCardId) {
-    if (!ids.has(spec.rejectNextCardId)) {
-      return {
-        csv: csvText,
-        errors: [`link: reject-next target "${spec.rejectNextCardId}" does not exist`],
-        ok: false,
-      };
-    }
-    setField(parsed, row, COL.hasChoices, 'true');
-    setField(parsed, row, COL.rejectNextCardId, spec.rejectNextCardId);
-  }
-  if (spec.hasChoices) setField(parsed, row, COL.hasChoices, 'true');
+  // The `options` encoding is the only choice link the CLI authors; the
+  // candidate successors it declares are validated by `validateAndReturn`
+  // (a dangling candidate is reported against the offending card id).
   if (spec.options !== undefined && spec.options !== null) {
     setField(parsed, row, COL.options, spec.options);
   }
@@ -386,9 +348,6 @@ export function parseAuthorArgs(argv: readonly string[]): AuthorCliOptions | { e
       effect: map.get('effect') ?? '',
       coinDelta: map.has('coin-delta') ? Number(map.get('coin-delta')) : undefined,
       reputationDelta: map.has('reputation-delta') ? Number(map.get('reputation-delta')) : undefined,
-      hasChoices: map.get('has-choices') === 'true',
-      acceptNextCardId: optional('accept-next') ?? null,
-      rejectNextCardId: optional('reject-next') ?? null,
       options: optional('options'),
       storylineId: optional('storyline-id') ?? null,
       storylineTitle: optional('storyline-title') ?? null,
@@ -400,10 +359,7 @@ export function parseAuthorArgs(argv: readonly string[]): AuthorCliOptions | { e
 
   const spec: LinkSpec = {
     id: map.get('id') ?? '',
-    acceptNextCardId: optional('accept-next') ?? null,
-    rejectNextCardId: optional('reject-next') ?? null,
     options: optional('options') ?? null,
-    hasChoices: map.get('has-choices') === 'true',
     storylineId: optional('storyline-id') ?? null,
     storylineTitle: optional('storyline-title') ?? null,
   };

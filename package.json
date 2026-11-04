@@ -5,11 +5,12 @@
   "description": "Single-game Tableau Card Engine launcher for \"main-street\". Composes the engine checkout at ./core and builds web + Electron renderer bundles.",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "npm run engine:dev-sync && vite --host",
     "build": "npm run engine:sync && tsc --noEmit && vite build",
     "build:electron": "npm run engine:sync && tsc --noEmit && vite build --mode electron",
     "build:release": "npm run engine:verify && tsc --noEmit && vite build",
     "engine:sync": "node ./core/scripts/engine-sync.mjs sync",
+    "engine:dev-sync": "node ./core/scripts/engine-sync.mjs sync --soft",
     "engine:verify": "node ./core/scripts/engine-sync.mjs verify",
     "engine:check": "tsx tests/tooling/engine-checkout-precheck.ts",
     "preview": "vite preview --host",
@@ -48,7 +49,7 @@
     "balance:drift-report": "vite-node src/scripts/balance/drift-report.ts",
     "balance:synergy-diversity-report": "vite-node src/scripts/balance/synergy-diversity-report.ts",
     "test:unit": "tsx scripts/run-tests.ts --timeout-ms 720000 --project unit --project unit-cli",
-    "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core"
+    "scaffold": "tsx ./core/scripts/game-repo-scaffold.ts --game main-street --game-repo-root . --core-root ./core --only main.ts --force"
   },
   "dependencies": {
     "phaser": "4.0.0-rc.7",
