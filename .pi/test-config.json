@@ -179,6 +179,18 @@
         "src/gym/GymCardIndexScene.ts",
         "src/scenes/MainStreetScene.ts"
       ]
+    },
+    "stats-chart": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/stats-chart.test.ts",
+        "npx vitest run --project browser tests/main-street/stats-chart.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetStatsChart.ts",
+        "src/scenes/MainStreetOverlayContent.ts",
+        "tests/main-street/stats-chart.test.ts",
+        "tests/main-street/stats-chart.browser.test.ts"
+      ]
     }
   }
 }

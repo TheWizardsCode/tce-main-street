@@ -33,6 +33,7 @@ import {
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import { buildTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
+import { createStatsChart, destroyStatsChart } from './MainStreetStatsChart';
 import {
   buildLoanSelectorModel,
   buildTurnSummaryLoanDescriptor,
@@ -513,6 +514,32 @@ export class MainStreetOverlayContent {
     });
     if (s.hudContainer) s.hudContainer.add(menuBtn);
     s.overlayObjects.push(menuBtn);
+
+    // ── Temporary single-chart wiring (spike MS-0MVSHZ131002ZF3O) ──
+    // Proves the external Chart.js integration end-to-end: one profit chart
+    // rendered into a dedicated DOM canvas layered above the overlay panel.
+    // The third-column child replaces this with the real five-graph column.
+    // The handle joins `overlayObjects`, so the existing `dismissOverlay`
+    // teardown removes the canvas with the rest of the overlay. If the overlay
+    // is dismissed before the lazy import resolves, the late handle is
+    // destroyed instead of leaking.
+    const objectsAtOpen = s.overlayObjects;
+    void createStatsChart(
+      s,
+      { x: panelLeft + 20, y: panelTop + panelH - 160, width: 260, height: 130 },
+      {
+        title: statSeries.profit.label,
+        labels: statSeries.profit.points.map((point) => String(point.turn)),
+        values: statSeries.profit.points.map((point) => point.value),
+      },
+    ).then((handle) => {
+      if (!handle) return;
+      if (s.overlayObjects === objectsAtOpen) objectsAtOpen.push(handle);
+      else destroyStatsChart(handle);
+    }).catch((error) => {
+      // A chart failure must never break the overlay's presentation.
+      console.warn('[stats-chart] failed to render chart', error);
+    });
   }
   /**
    * Shows the Manage Card overlay for a card on the street grid.
