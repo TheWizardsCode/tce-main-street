@@ -389,9 +389,10 @@ normal single-player play the deferred closing is gated on the **Turn Summary
 dialog** (MS-0MVP46Q8X003419R, parent MS-0MVL6HMDP004WI41): once every animation
 (phased income show + incident reveal) has completed the scene presents a
 dialog, and `finalizeTurn` (checkpoint + `startTurnPhase`) runs only when the
-player clicks **[ Next Turn ]**. Reduced-motion, tutorial, replay/headless and
-competitive closings are never gated — they keep the existing auto-advance
-pacing. See
+player clicks **[ Next Turn ]**. Tutorial, replay/headless and competitive
+closings are never gated — they keep the existing auto-advance pacing.
+Reduced-motion closings **are** gated (MS-0MW20KSEG001DH1X): the dialog is
+instant-appearance, so it is reduced-motion safe. See
 [`docs/game/ux-visual-audio.md`](../game/ux-visual-audio.md#turn-summary-dialog-and-the-closing-gate).
 
 So a browser test that drives a real single-player end-of-turn and then waits
@@ -416,9 +417,11 @@ await waitForCondition(() => scene.state.turn > beforeTurn, {
 
 A test whose subject *is* the gate asserts that the dialog is present and the
 day is still held before dismissing it (`tests/main-street/turn-summary-gate.test.ts`,
-`MainStreetScene.browser.test.ts`). `dismissTurnSummaryDialogIfPresent` is a
-`false` no-op when no dialog is up — the ungated modes (tutorial, reduced
-motion, replay/headless) — so calling it unconditionally is safe.
+`MainStreetScene.browser.test.ts`, `turn-summary-dialog.browser.test.ts`).
+`dismissTurnSummaryDialogIfPresent` is a `false` no-op when no dialog is up —
+the ungated modes (tutorial, replay/headless) — so calling it unconditionally
+is safe. Reduced motion **is** gated (MS-0MW20KSEG001DH1X), so a reduced-motion
+end-of-turn test must dismiss the dialog like any other single-player closing.
 
 ### The 60 s headroom rule
 

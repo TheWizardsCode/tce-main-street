@@ -45,7 +45,11 @@ vi.mock('../../src/MainStreetEngine', () => ({
   resolvePendingPiggyback: vi.fn(),
 }));
 
-import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
+import {
+  endTurn,
+  finishTurnPresentation,
+  shouldGateTurnSummary,
+} from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import type { TurnResult } from '../../src/MainStreetEngine';
 import * as Engine from '../../src/MainStreetEngine';
 import type { TurnLedger } from '../../src/MainStreetEngineTypes';
@@ -259,14 +263,20 @@ describe('Turn Summary gate in finishTurnPresentation (MS-0MVP46Q8X003419R)', ()
     expect(scene.incomeCollectionActive).toBe(false);
   });
 
-  it('AC1 — reduced motion keeps the existing auto-advance pacing (no dialog)', () => {
+  it('AC1 (MS-0MW20KSEG001DH1X) — reduced motion presents the dialog and holds the next day until [ Next Turn ]', () => {
     const { scene, tcCtx } = makeHarness({
       settingsPanel: { reducedMotion: true },
     });
 
     finishTurnPresentation(tcCtx, makeResult(), false);
 
-    expect(scene.showTurnSummaryDialog).not.toHaveBeenCalled();
+    // The dialog is instant-appearance, so reduced motion is no reason to
+    // suppress it: the player gets the summary instead of a silent advance.
+    expect(scene.showTurnSummaryDialog).toHaveBeenCalledTimes(1);
+    expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
+
+    const [, onNextTurn] = scene.showTurnSummaryDialog.mock.calls[0];
+    onNextTurn();
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
   });
 
@@ -417,5 +427,191 @@ describe('Turn Summary loans descriptor forwarding (MS-0MVXYCICT0051LU7)', () =>
     expect(descriptor).toBeUndefined();
     onNextTurn();
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The guard matrix itself (MS-0MW20KSEG001DH1X): reduced motion must NOT
+ * suppress the dialog, while replay, the tutorial and competitive closings
+ * still do — in every combination.
+ */
+describe('shouldGateTurnSummary guard matrix (MS-0MW20KSEG001DH1X)', () => {
+  const COMPETITIVE_STATE = {
+    turn: 7,
+    players: [
+      { playerId: 0, controller: 'human', coins: 100, reputation: 10, score: 5 },
+      { playerId: 1, controller: 'ai', coins: 90, reputation: 9, score: 4 },
+    ],
+  };
+
+  function gate(
+    sceneOverrides: Record<string, unknown>,
+    result: TurnResult = makeResult(),
+  ): boolean {
+    const { tcCtx } = makeHarness(sceneOverrides);
+    return shouldGateTurnSummary(tcCtx, result);
+  }
+
+  it('gates a deferred single-player closing with reduced motion ON or OFF', () => {
+    expect(gate({ settingsPanel: { reducedMotion: false } })).toBe(true);
+    // The regression this suite pins: the display gate used to return false
+    // here, so the dialog never appeared for reduced-motion players.
+    expect(gate({ settingsPanel: { reducedMotion: true } })).toBe(true);
+    // A scene with no settings panel (hand-built / headless) behaves as
+    // reduced motion off.
+    expect(gate({ settingsPanel: undefined })).toBe(true);
+  });
+
+  it('never gates replay, tutorial or competitive closings, with reduced motion ON or OFF', () => {
+    for (const reducedMotion of [false, true]) {
+      const settingsPanel = { reducedMotion };
+      expect(gate({ settingsPanel, replayMode: true })).toBe(false);
+      expect(gate({ settingsPanel, tutorialController: { isActive: true } })).toBe(false);
+      expect(gate({ settingsPanel, state: COMPETITIVE_STATE })).toBe(false);
+    }
+  });
+
+  it('never gates a closing that is not deferred (nothing to gate)', () => {
+    for (const reducedMotion of [false, true]) {
+      expect(
+        gate(
+          { settingsPanel: { reducedMotion } },
+          makeResult({ requiresDeferredClosing: false }),
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
+/**
+ * The other half of the fix (MS-0MW20KSEG001DH1X): removing the display gate
+ * alone would change nothing, because a reduced-motion closing never took the
+ * deferred path — `shouldGateTurnSummary`'s first guard (`requiresDeferredClosing`)
+ * short-circuited. These cases pin the `endTurn` closing-path selection.
+ */
+function makeEndTurnHarness(overrides: Record<string, unknown> = {}) {
+  const scene: any = {
+    state: {
+      turn: 7,
+      phase: 'MarketPhase',
+      players: [] as unknown[],
+      actionsRemaining: 0,
+      resourceBank: { coins: 990, reputation: 12 },
+      streetGrid: [] as unknown[],
+    },
+    uiPhase: 'market',
+    pendingApplicant: null,
+    incomeCollectionActive: false,
+    endOfTurnDeltasApplied: false,
+    previousCoins: null,
+    previousReputation: null,
+    displayedCoins: null,
+    displayedReputation: null,
+    displayedIncomeCounted: false,
+    incidentRevealActive: false,
+    logDeferredUntilPhaseComplete: false,
+    replayMode: false,
+    settingsPanel: { reducedMotion: false },
+    tutorialController: { isActive: false },
+    msLifecycleManager: { isTutorialActionAllowed: () => ({ allowed: true }) },
+    msAnimator: { animateIncomePhases: vi.fn() },
+    msPedestrians: { beginEndOfTurn: vi.fn() },
+    undoManager: { clear: vi.fn() },
+    refreshActionButtons: vi.fn(),
+    refreshUndoRedoButtons: vi.fn(),
+    ...overrides,
+  };
+  // `finishTurnPresentation` is stubbed: this suite is about which closing
+  // path `endTurn` selects, and the gate/presentation behaviour is covered
+  // above against the real implementation.
+  const tcCtx: any = {
+    scene,
+    finishTurnPresentation: vi.fn(),
+    onSaveCheckpoint: vi.fn(),
+  };
+  return { scene, tcCtx };
+}
+
+/**
+ * Faithful stand-in for the real engine: it only marks the closing deferred
+ * when the controller asked for it, exactly like `processEndOfTurn`.
+ */
+function mockEngineClosingPath(): void {
+  vi.mocked(Engine.processEndOfTurn).mockImplementation(
+    (_state: unknown, opts?: { deferResourceApplication?: boolean }) =>
+      makeResult({ requiresDeferredClosing: opts?.deferResourceApplication === true }),
+  );
+}
+
+describe('endTurn closing-path selection under reduced motion (MS-0MW20KSEG001DH1X)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEngineClosingPath();
+  });
+
+  it('AC1 — reduced motion requests the deferred closing (so the summary has something to gate)', () => {
+    const { scene, tcCtx } = makeEndTurnHarness({
+      settingsPanel: { reducedMotion: true },
+    });
+
+    endTurn(tcCtx);
+
+    // The engine only sets `requiresDeferredClosing` when the flag is passed.
+    expect(Engine.processEndOfTurn).toHaveBeenCalledWith(scene.state, {
+      deferResourceApplication: true,
+    });
+    // The deferred HUD window opens at the pre-turn values, so the HUD keeps
+    // showing them while the (instant) phases progress.
+    expect(scene.previousCoins).toBe(990);
+    expect(scene.displayedCoins).toBe(990);
+    expect(scene.displayedReputation).toBe(12);
+    // The checkpoint is written in the deferred closing tail, not at endTurn.
+    expect(tcCtx.onSaveCheckpoint).not.toHaveBeenCalled();
+    // The deferred result reaches the presentation, where the gate applies.
+    expect(tcCtx.finishTurnPresentation).toHaveBeenCalledWith(
+      expect.objectContaining({ requiresDeferredClosing: true }),
+      false,
+    );
+  });
+
+  it('reduced motion OFF keeps the deferred path (unchanged)', () => {
+    const { scene, tcCtx } = makeEndTurnHarness();
+
+    endTurn(tcCtx);
+
+    expect(Engine.processEndOfTurn).toHaveBeenCalledWith(scene.state, {
+      deferResourceApplication: true,
+    });
+    expect(tcCtx.onSaveCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('the tutorial and replay keep the immediate path — with reduced motion ON or OFF', () => {
+    for (const reducedMotion of [false, true]) {
+      vi.clearAllMocks();
+      mockEngineClosingPath();
+
+      const tutorial = makeEndTurnHarness({
+        settingsPanel: { reducedMotion },
+        tutorialController: { isActive: true },
+      });
+      endTurn(tutorial.tcCtx);
+      expect(Engine.processEndOfTurn).toHaveBeenCalledWith(tutorial.scene.state, undefined);
+      // The display-only counters stay closed on the legacy immediate path.
+      expect(tutorial.scene.displayedCoins).toBeNull();
+      // The immediate path saves the checkpoint at endTurn as it always did.
+      expect(tutorial.tcCtx.onSaveCheckpoint).toHaveBeenCalledTimes(1);
+
+      vi.clearAllMocks();
+      mockEngineClosingPath();
+
+      const replay = makeEndTurnHarness({
+        settingsPanel: { reducedMotion },
+        replayMode: true,
+      });
+      endTurn(replay.tcCtx);
+      expect(Engine.processEndOfTurn).toHaveBeenCalledWith(replay.scene.state, undefined);
+      expect(replay.scene.displayedCoins).toBeNull();
+      expect(replay.tcCtx.onSaveCheckpoint).toHaveBeenCalledTimes(1);
+    }
   });
 });

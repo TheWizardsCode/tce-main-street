@@ -797,9 +797,12 @@ street rebuild.
   at the final landing (collection finalize / incident-reveal cleanup), so the
   total is exact — per-icon rounding and unanimated ongoing costs are absorbed
   there. Presentation-only: nothing touches `state`, the transcript, or the
-  deferred-mutation guards; reduced-motion, tutorial and replay/headless paths
-  never initialise the counters, so they keep the existing instant-final
-  fallback. The incident's reputation share is flown once (the `upcoming`
+  deferred-mutation guards; the tutorial and replay/headless paths never
+  initialise the counters, so they keep the existing instant-final fallback.
+  Reduced motion **does** initialise them (MS-0MW20KSEG001DH1X): it takes the
+  deferred closing path, and its counters land on the authoritative values at
+  the instant collection, so the HUD still shows the exact post-delta totals.
+  The incident's reputation share is flown once (the `upcoming`
   phase) and re-enacted by the reveal bubbles, so it is counted once
   (`scene.displayedIncomeCounted` guards the replay); the reputation phase
   therefore excludes the incident share from its HUD pip flight.
@@ -836,8 +839,8 @@ street rebuild.
     order (Income → Incident → EndCheck), the shared-incident semantics, the
     transcript, RNG and the deferred-mutation window are untouched;
     `creditedIncomeTotal` and the `upcomingDeltas` exclusion are unchanged;
-    reduced motion, replay/headless and tutorial paths remain flight-free and
-    always advance the day.
+    reduced motion, replay/headless and tutorial paths remain flight-free
+    (reduced motion's closing is deferred but its phases finalize instantly).
 - Week-start deferral: the controller waits on `incomeCollectionActive`
   (via the shared wall-clock `deferUntilIncomeCollected` helper) before
   starting the next week, so the street refresh + HUD update never cut the
@@ -1321,10 +1324,18 @@ condensed text-only summary.
   click runs `advanceTurn`, which presents any pending banking hint first, then
   waits out any running income choreography (bounded) and runs `finalizeTurn`
   (checkpoint + `startTurnPhase`).
-- Scope: deferred single-player closings only. Reduced motion, the tutorial,
-  replay/headless and the resumed event-choice/piggyback tails keep the
-  existing auto-advance pacing, and competitive closings never present it
-  (per-seat `perSeatClosingSummary` text is unchanged; parent AC4).
+- Scope: deferred single-player closings. The tutorial, replay/headless and
+  the resumed event-choice/piggyback tails keep the existing auto-advance
+  pacing, and competitive closings never present it (per-seat
+  `perSeatClosingSummary` text is unchanged; parent AC4). **Reduced motion is
+  gated too** (MS-0MW20KSEG001DH1X): the dialog is instant-appearance, so
+  those players get the summary instead of a silently auto-advanced day. That
+  needs both halves of the fix — `shouldGateTurnSummary()` has no
+  reduced-motion guard, and `endTurn()` takes the deferred closing path under
+  reduced motion (so `requiresDeferredClosing` is set and the gate has
+  something to gate). The deferred closing completes at the same wall-clock
+  moment the day previously advanced on its own, so no new wait is added;
+  the existing phase-label pacing under reduced motion is unchanged.
 - Idempotence: the deferred deltas are applied under the scene's
   `endOfTurnDeltasApplied` exactly-once guard before the panel renders (the
   income/incident animation completions normally got there first), and the
@@ -1332,10 +1343,13 @@ condensed text-only summary.
   `INCOME_COLLECTION_CAP_MS`) so the panel never opens over live animation.
 - Never stalls: a result without a ledger, a failing model build or a missing
   dialog surface advances immediately, matching the pre-gate pacing.
-- Tests: `tests/main-street/turn-summary-gate.test.ts` (gate on/off per mode,
-  `onNextTurn` continuation, delta ordering/idempotence, banking-hint
-  ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
-  (overlay rendering in a real Phaser scene).
+- Tests: `tests/main-street/turn-summary-gate.test.ts` (gate on/off per mode
+  incl. the reduced-motion × replay × tutorial × competitive guard matrix,
+  `endTurn` closing-path selection, `onNextTurn` continuation, delta
+  ordering/idempotence, banking-hint ordering) and
+  `tests/main-street/turn-summary-dialog.browser.test.ts` (overlay rendering in
+  a real Phaser scene, plus the reduced-motion end-of-turn presenting the
+  dialog).
 
 ### Mid-game loan selector
 

@@ -23,6 +23,9 @@
  *    `turn-summary-bank-loan.browser.test.ts`.
  * 5. The dialog appears instantly — no fade-in choreography, so it is
  *    reduced-motion safe (AC5).
+ * 6. A reduced-motion end-of-turn really does present it
+ *    (MS-0MW20KSEG001DH1X): the closing is deferred and gated, the day holds
+ *    until `[ Next Turn ]`, and the HUD then shows the post-delta values.
  *
  * The model values themselves are unit-tested Phaser-free in
  * `turn-summary-model.test.ts`; this suite covers the overlay rendering path.
@@ -31,7 +34,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
-import type { EventCard } from '../../src/MainStreetCards';
+import { findTurnSummaryNextTurnButton } from './helpers/turn-summary-dialog';
+import {
+  getBusinessTemplates,
+  type BusinessCard,
+  type EventCard,
+} from '../../src/MainStreetCards';
 import type { TurnLedger } from '../../src/MainStreetEngineTypes';
 import type { ActiveLoan } from '../../src/MainStreetStateTypes';
 import { buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
@@ -152,6 +160,92 @@ function actingSeatLoan(s: SceneWithHud): ActiveLoan {
     takenOnTurn: 1,
   };
 }
+
+// ── End-of-turn harness (mirrors income-collection.browser.test.ts) ──
+
+/** A full business card built from the first template, placed on a slot. */
+function makeProducingBiz(id: string): BusinessCard {
+  const tpl = getBusinessTemplates()[0];
+  if (!tpl) throw new Error('No business templates loaded');
+  return {
+    ...tpl,
+    id,
+    family: 'business',
+    level: 0,
+    incomeBonus: 0,
+    synergyRangeBonus: 0,
+    reputationBonus: 0,
+    ongoingCost: 0,
+    appliedUpgrades: [],
+    // `applyIncome()` reads the cached per-turn income, which template cards
+    // only carry after `syncCardCurrentIncome()` runs.
+    currentIncome: 2,
+    currentReputationPerTurn: 0,
+  };
+}
+
+/** Blank the incident deck so no incident (and no reveal hold) resolves. */
+function makeIncidentsNone(game: Phaser.Game): void {
+  const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+  (s.state as { incidentDeck: unknown[] }).incidentDeck.length = 0;
+}
+
+/**
+ * Waits until the street container stops being re-rendered (boot-time SVG
+ * prewarm rebuilds it). A mid-show re-render would destroy the coin grids.
+ */
+async function waitForStableStreet(s: SceneWithHud): Promise<void> {
+  const street = s.streetContainer as Phaser.GameObjects.Container | undefined;
+  let prevRefs: readonly Phaser.GameObjects.GameObject[] = street?.list ?? [];
+  let stableSamples = 0;
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    const cur = street?.list ?? [];
+    let same = cur.length === prevRefs.length;
+    if (same) {
+      for (let j = 0; j < cur.length; j++) {
+        if (cur[j] !== prevRefs[j]) {
+          same = false;
+          break;
+        }
+      }
+    }
+    prevRefs = cur;
+    stableSamples = same ? stableSamples + 1 : 0;
+    if (stableSamples >= 2) return;
+  }
+}
+
+/** Polls `predicate` until it is true, or throws after `timeoutMs`. */
+async function waitForCondition(
+  predicate: () => boolean,
+  options: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const intervalMs = options.intervalMs ?? 50;
+  const label = options.label ?? 'condition';
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
+}
+
+/** Waits (bounded) for the Turn Summary dialog to be presented. */
+async function waitForTurnSummaryButton(
+  s: SceneWithHud,
+  timeoutMs = 30_000,
+): Promise<Phaser.GameObjects.Text> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const button = findTurnSummaryNextTurnButton(s);
+    if (button) return button;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`Timed out waiting for the Turn Summary dialog after ${timeoutMs}ms`);
+}
+
 describe('Main Street turn-summary dialog overlay (browser)', () => {
   let game: Phaser.Game | null = null;
 
@@ -393,4 +487,67 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
 
     s.msOverlayManager = manager;
   }, 30_000);
+
+  /**
+   * MS-0MW20KSEG001DH1X: reduced motion used to suppress the dialog twice over
+   * — the display gate returned early for it, and `endTurn` never took the
+   * deferred path it gates on. Both are fixed, so a reduced-motion end-of-turn
+   * now presents the summary and the day waits for `[ Next Turn ]`.
+   */
+  it('presents the dialog after a reduced-motion end-of-turn and advances once on [ Next Turn ]', async () => {
+    game = await bootGame();
+    makeIncidentsNone(game);
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    // The real preference (the panel's private backing field, as the other
+    // reduced-motion browser suites set it).
+    (s.settingsPanel as { _reducedMotion: boolean })._reducedMotion = true;
+
+    // Let the boot-time SVG prewarm's deferred refreshAll() settle — a
+    // mid-show re-render would destroy the coin grids.
+    await (s as unknown as { prewarmVisibleCardTextures: () => Promise<unknown> })
+      .prewarmVisibleCardTextures();
+    await waitForStableStreet(s);
+
+    const state = s.state as unknown as {
+      streetGrid: Array<BusinessCard | null>;
+      turn: number;
+      phase: string;
+      resourceBank: { coins: number };
+    };
+    state.streetGrid[0] = makeProducingBiz('biz-reduced-motion-summary');
+    s.refreshAll();
+
+    const turnBefore = state.turn;
+    const coinsBefore = state.resourceBank.coins;
+
+    (s.msTurnController as unknown as { endTurn: () => void }).endTurn();
+
+    // The closing is deferred (the phased show started and the resource
+    // deltas have NOT landed yet), which is what gives the gate something to
+    // gate — the bug was that reduced motion took the immediate path here.
+    expect(s.incomeCollectionActive).toBe(true);
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+
+    // The dialog is presented once the closing completes, and the day has
+    // not advanced while it is up.
+    const button = await waitForTurnSummaryButton(s);
+    expect(state.turn).toBe(turnBefore);
+
+    button.emit('pointerdown');
+    expect(findTurnSummaryNextTurnButton(s)).toBeNull();
+
+    // [ Next Turn ] resumes the deferred closing exactly once: the day
+    // advances and the HUD renders the post-delta values.
+    await waitForCondition(
+      () => state.turn === turnBefore + 1 && state.phase === 'MarketPhase',
+      { timeoutMs: 20_000, label: 'the day to start after [ Next Turn ]' },
+    );
+    expect(state.turn).toBe(turnBefore + 1);
+    expect(state.phase).toBe('MarketPhase');
+    expect(state.resourceBank.coins).toBeGreaterThan(coinsBefore);
+
+    const hudCoins = hudTexts(s).find((t) => t.text.startsWith('Coins: '));
+    expect(hudCoins?.text).toBe(`Coins: ${state.resourceBank.coins}`);
+  }, 60_000);
 });

@@ -687,7 +687,10 @@ describe('ambient reputation crowd — scene-level behaviour', () => {
     expect(dissolveSpy).not.toHaveBeenCalled();
     expect(scene.msPedestrians.getFigureCount()).toBe(0);
 
-    // The exemption never blocks play.
+    // The exemption never blocks play. Reduced motion now takes the deferred
+    // closing path (MS-0MW20KSEG001DH1X), so the Turn Summary dialog gates the
+    // day start and [ Next Turn ] advances it — the same as normal play.
+    expect(await dismissTurnSummaryDialog(scene)).toBe(true);
     await waitForCondition(
       () => scene.state.phase === 'MarketPhase' && scene.state.turn === turnBefore + 1,
       { timeoutMs: 15_000, label: 'Reduced Motion turn to advance' },
