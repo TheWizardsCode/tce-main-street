@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.24 (2026-11-04)
+> **Release focus:** This release focuses on strengthening the game's underlying engine and development workflow while refining core gameplay balance. It improves economy mechanics like duplicate business penalties, Park reputation, and bank loan clarity, and adds Steam achievement support for Main Street challenges.
+### Features
+- Story choices now use the streamlined options system, keeping all existing choice content working exactly as before. (MS-0MVZLKEU5000Q7SQ)
+- Updated the game engine to the latest version so future releases stay stable. (MS-0MW0K9YOR004INH0)
+- Help and Settings panels are now properly checked in tests, so visual glitches get caught before release. (MS-0MVWMDMLE007I8E1)
+- End-of-turn now always advances within the safety window, even on slow or overloaded machines. (MS-0MVMKEU2000639TG)
+- Starting the dev server now auto-updates the game engine, but never blocks or overwrites your local engine edits. (MS-0MVZJ3JLG0074ACP)
+- AI earnings now fly to their own scoreboard row, so you can see whose economy changed. (MS-0MVWNS9L7007CTK9)
+- Duplicate businesses on the same street now earn less, rewarding a varied high street. (MS-0MVYG50V1007W8BP)
+- The Park now earns +20 reputation per turn, making it a worthwhile addition instead of a money pit. (MS-0MVRDGNFU001DDQW)
+- The Bank Loan Offer now shows exactly how much you're short and whether each loan covers it. (MS-0MVZC1DAS001C8LF)
+- You can now take a bank loan right from the Turn Summary when you're short on cash. (MS-0MVPWSQMG004198C)
+- Main Street storylines can now be viewed and edited in the story-line editor. (MS-0MVXY1AVX005DP54)
+- Main Street challenges now unlock Steam achievements when completed. (MS-0MUNO0M2I004TK04)
+### Bug Fixes
+- Finishing a work item no longer drags in unrelated engine updates or times out on the full test suite. (MS-0MVSB1OVW00178W6)
+- Scaffold updates now only touch the launcher file, so your project setup stays safe. (MS-0MVWGI4CB0055IT0)
+- Git hooks now actually run on pushes, so branch and budget checks apply again. (MS-0MVTI7F5R009OQ14)
+- Continuing solo after a win now uses the normal single-player score target. (MS-0MVWNXEX5006E7AT)
+- Test checks now run the right test suite for shared files, so regressions are caught before release. (MS-0MVZJ3175002WZO2)
+- Upgrade highlights now only appear on your own businesses, not opponents'. (MS-0MVZC5V6L001OOXN)
+### Other
+- Engine updates now ship as one clean, verified release so gameplay stays in sync with the latest fixes. (MS-0MW20E07O00285RO)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.23 (2026-11-01)
 > **Release focus:** This release focuses on strengthening the game's engine and build reliability while improving core gameplay feedback, including a new end-of-turn summary, bank loans to avoid bankruptcy, and corrected story choice costs and bonuses. It also refines the interface with solid panels, readable error messages, restored reputation crowds, and smoother GPU rendering.
 ### Features
