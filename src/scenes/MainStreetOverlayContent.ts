@@ -29,6 +29,7 @@ import { getStorylineOptions } from '../MainStreetStoryline';
 import {
   buildGameOverChallengeSummary,
   buildGameOverPlayerRows,
+  buildGameOverStatSeries,
   formatEndReason,
 } from './MainStreetGameOverSummary';
 import { buildTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
@@ -151,9 +152,12 @@ export class MainStreetOverlayContent {
     const leftTotalH = leftPlayersH + leftChallengesH;
 
     const breakdownH = 108;
+    // Final "Cash at end of turn" line rendered directly after the score
+    // breakdown (MS-0MVAMU6OM008GJPV AC8).
+    const cashLineH = 26;
     const detailsH = challengeLineCount > 0 ? 24 + challengeLineCount * 20 : 0;
     const controlsH = 88; // difficulty row + buttons
-    const rightContentH = 26 + breakdownH + detailsH + tierUnlockH + campaignH;
+    const rightContentH = 26 + breakdownH + cashLineH + detailsH + tierUnlockH + campaignH;
     const rightTotalH = rightContentH + controlsH;
 
     const topBandH = 92;
@@ -309,6 +313,19 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(breakdown);
     s.overlayObjects.push(breakdown);
     cursorY += breakdownH;
+
+    // Cash at end of turn (MS-0MVAMU6OM008GJPV AC8): the run's final recorded
+    // cash, rendered directly after the score breakdown. `buildGameOverStatSeries`
+    // is pure and read-only, so the committed state is never mutated.
+    const statSeries = buildGameOverStatSeries(s.state);
+    const cashLine = s.add.text(
+      rightX, cursorY,
+      `Cash at end of turn: ${Math.round(statSeries.finalCash)}`,
+      { fontSize: '15px', color: '#ffcc44', fontFamily: FONT_FAMILY },
+    ).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(cashLine);
+    s.overlayObjects.push(cashLine);
+    cursorY += cashLineH;
 
     // Per-challenge details (retained).
     if (challengeLineCount > 0) {

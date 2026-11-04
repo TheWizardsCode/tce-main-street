@@ -209,6 +209,34 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
     expect(ui.buttons.every((b) => b.depth === 201)).toBe(true);
   });
 
+  it('renders the final cash-at-end-of-turn line in the Summary column', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'score_threshold',
+      resourceBank: { coins: 55, reputation: 6 },
+      turnStatsHistory: [
+        { turn: 1, coins: 20, reputation: 2, score: 0, profit: 5, businesses: 1, staff: 0 },
+        { turn: 2, coins: 55, reputation: 6, score: 10, profit: 35, businesses: 2, staff: 1 },
+      ],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const rendered = texts.map((t) => t.text);
+    expect(rendered).toContain('Cash at end of turn: 55');
+    // Existing Summary content is retained alongside the new line.
+    expect(rendered.some((t) => t.includes('Coins:') && t.includes('Final Score:'))).toBe(true);
+  });
+
+  it('falls back to the live wallet for the cash line when the history is empty', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'score_threshold',
+      resourceBank: { coins: 42, reputation: 3 },
+      turnStatsHistory: [],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    expect(texts.map((t) => t.text)).toContain('Cash at end of turn: 42');
+  });
+
   it('lists every competitive seat with failure/elimination badges and names the failing seat', () => {
     const { scene, texts } = makeScene({
       endReason: 'bankruptcy',

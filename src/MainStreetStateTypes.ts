@@ -340,6 +340,34 @@ export interface CompetitiveModeSelection extends GameModeSelectionBase {
 /** A start-of-game selection passed to `createStateFromModeSelection`. */
 export type GameModeSelection = SinglePlayerModeSelection | CompetitiveModeSelection;
 
+// ── Per-turn stat history (MS-0MVAMU6OM008GJPV) ─────────────
+
+/**
+ * One snapshot of the run's economy at the end of a completed turn.
+ *
+ * Recorded once per turn by the shared closing tail (see
+ * `recordTurnStats` in `MainStreetEngineTurnClosing.ts`) and rendered by the
+ * Game Over overlay's stats column. `profit` is the turn's net coin delta,
+ * measured against the `weekStartCoins` day-start snapshot using the same
+ * definition as the per-turn net summary row (`appendTurnNetRow`).
+ */
+export interface TurnStatSnapshot {
+  /** The 1-based turn number this snapshot summarises. */
+  turn: number;
+  /** Coins at the end of the turn (`resourceBank.coins`). */
+  coins: number;
+  /** Reputation at the end of the turn (`resourceBank.reputation`). */
+  reputation: number;
+  /** Score at the end of the turn (`finalScore`). */
+  score: number;
+  /** The turn's net coin delta (`coins − weekStartCoins`). */
+  profit: number;
+  /** Non-null entries in `streetGrid` at the end of the turn. */
+  businesses: number;
+  /** Active staff cards (`staffCards.length`) at the end of the turn. */
+  staff: number;
+}
+
 // ── Main Street State ───────────────────────────────────────
 
 /**
@@ -393,6 +421,14 @@ export interface MainStreetState {
   weekStartRep: number;
   /** Score at the start of the current turn (day-start snapshot). */
   weekStartScore: number;
+  /**
+   * Per-turn economy history, one {@link TurnStatSnapshot} per completed turn
+   * (MS-0MVAMU6OM008GJPV). Recorded from the shared end-of-turn closing tail,
+   * keyed by `turn` so a repeat call for the same turn appends nothing. Never
+   * mutated by the UI; persisted by `MainStreetStateSerialize` with a legacy
+   * `[]` fallback.
+   */
+  turnStatsHistory: TurnStatSnapshot[];
   /** Remaining cards in each deck (draw from end = top). */
   decks: {
     business: BusinessCard[];
@@ -845,6 +881,11 @@ export interface MainStreetSerializedState {
   weekStartRep: number;
   /** Day-start score snapshot for the per-turn net summary row. */
   weekStartScore: number;
+  /**
+   * Per-turn economy history (see `MainStreetState.turnStatsHistory`).
+   * Optional in the saved shape: absent on legacy saves, which load with `[]`.
+   */
+  turnStatsHistory?: TurnStatSnapshot[];
   decks: {
     business: BusinessCard[];
     communitySpace: CommunitySpaceCard[];

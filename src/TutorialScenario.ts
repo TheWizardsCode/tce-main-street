@@ -377,6 +377,9 @@ export function createTutorialScenario(
     weekStartCoins: initCoins,
     weekStartRep: initRep,
     weekStartScore: 0,
+    // Per-turn economy history (MS-0MVAMU6OM008GJPV): recorded by the shared
+    // end-of-turn closing tail, exactly like `setupMainStreetGame`.
+    turnStatsHistory: [],
     ledger: createEconomyLedger({
       coins: initCoins,
       reputation: initRep,

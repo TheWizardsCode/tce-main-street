@@ -134,6 +134,7 @@ export type {
 // ── TurnClosing ─────────────────────────────────────────────
 export {
   appendTurnNetRow,
+  recordTurnStats,
   applyEndOfTurnDeltas,
   applyFirstSharedDaySolvencyGrace,
   checkCompetitiveEndConditions,

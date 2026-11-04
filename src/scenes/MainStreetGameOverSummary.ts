@@ -19,7 +19,7 @@
  * @module src/scenes/MainStreetGameOverSummary
  */
 
-import type { EndReason, MainStreetState, PlayerRecord } from '../MainStreetState';
+import type { EndReason, MainStreetState, PlayerRecord, TurnStatSnapshot } from '../MainStreetState';
 import {
   buildCompetitiveScoreboard,
   type CompetitiveScoreboardBadge,
@@ -254,4 +254,99 @@ export function buildGameOverChallengeSummary(state: MainStreetState): GameOverC
   }
 
   return summary;
+}
+
+// ── End-of-game stat series ───────────────────────────────────
+
+/**
+ * One point in an end-of-game stat series: the turn number and the value at
+ * the end of that turn. Consumed by the stats column's charts
+ * (MS-0MVSHYY1900266X3 AC5).
+ */
+export interface StatSeriesPoint {
+  /** 1-based turn number the value was measured at the end of. */
+  turn: number;
+  /** The measured value. */
+  value: number;
+}
+
+/** The five end-of-game graph series exposed to the stats column. */
+export type StatSeriesKey =
+  | 'profit'
+  | 'cash'
+  | 'businesses'
+  | 'staff'
+  | 'reputation';
+
+/** A labelled, ordered series of per-turn points. */
+export interface StatSeries {
+  /** Stable machine key (`profit`, `cash`, ...). */
+  key: StatSeriesKey;
+  /** Human-readable chart title / axis label. */
+  label: string;
+  /** One point per recorded turn, in ascending turn order. */
+  points: StatSeriesPoint[];
+}
+
+/** The pure model the Game Over stats column renders. */
+export interface GameOverStatSeries {
+  /** Net coins per turn (`coins − weekStartCoins`). */
+  profit: StatSeries;
+  /** Coins at the end of each turn. */
+  cash: StatSeries;
+  /** Non-null street-grid businesses at the end of each turn. */
+  businesses: StatSeries;
+  /** Employed staff at the end of each turn. */
+  staff: StatSeries;
+  /** Reputation at the end of each turn. */
+  reputation: StatSeries;
+  /**
+   * Final cash figure for the Summary column: the last recorded turn's coins,
+   * falling back to the live `resourceBank.coins` for an empty history.
+   */
+  finalCash: number;
+}
+
+/** Chart titles for each series (also used as axis/legend labels). */
+const STAT_SERIES_LABELS: Record<StatSeriesKey, string> = {
+  profit: 'Profit per turn',
+  cash: 'Cash at end of turn',
+  businesses: 'Businesses at end of turn',
+  staff: 'Staff at end of turn',
+  reputation: 'Reputation at end of turn',
+};
+
+/** Builds one labelled series from the history and a value extractor. */
+function buildStatSeries(
+  history: readonly TurnStatSnapshot[],
+  key: StatSeriesKey,
+  select: (snapshot: TurnStatSnapshot) => number,
+): StatSeries {
+  return {
+    key,
+    label: STAT_SERIES_LABELS[key],
+    points: history.map((snapshot) => ({ turn: snapshot.turn, value: select(snapshot) })),
+  };
+}
+
+/**
+ * Builds the five end-of-game stat series plus the final cash figure from the
+ * run's committed `turnStatsHistory` (MS-0MVAMU6OM008GJPV AC4/AC5).
+ *
+ * Pure and Phaser-free: it never mutates `state`, and an empty history yields
+ * five empty series with `finalCash` derived from the live wallet, so the
+ * overlay renders gracefully for legacy saves and runs that ended before any
+ * turn was recorded.
+ */
+export function buildGameOverStatSeries(state: MainStreetState): GameOverStatSeries {
+  const history = state.turnStatsHistory ?? [];
+  const last = history.length > 0 ? history[history.length - 1] : null;
+  return {
+    profit: buildStatSeries(history, 'profit', (s) => s.profit),
+    cash: buildStatSeries(history, 'cash', (s) => s.coins),
+    businesses: buildStatSeries(history, 'businesses', (s) => s.businesses),
+    staff: buildStatSeries(history, 'staff', (s) => s.staff),
+    reputation: buildStatSeries(history, 'reputation', (s) => s.reputation),
+    finalCash: last ? last.coins : state.resourceBank.coins,
+  };
 }

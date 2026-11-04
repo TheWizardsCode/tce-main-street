@@ -20,6 +20,7 @@
 export type {
   LogEntryType,
   LogEntry,
+  TurnStatSnapshot,
   TurnPhase,
   MarketState,
   ResourceBank,

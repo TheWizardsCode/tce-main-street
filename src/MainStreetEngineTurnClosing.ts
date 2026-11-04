@@ -26,7 +26,7 @@ import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
 import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
-import type { MainStreetState } from './MainStreetState';
+import type { MainStreetState, TurnStatSnapshot } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import {
@@ -840,6 +840,59 @@ export function applyEndOfTurnDeltas(
 }
 
 /**
+ * Records one {@link TurnStatSnapshot} for the turn just completed
+ * (MS-0MVAMU6OM008GJPV AC1/AC2).
+ *
+ * Called from the shared end-of-turn closing tail ({@link appendTurnNetRow}),
+ * which every closing path funnels through — the legacy path
+ * (`runSinglePlayerTurnClosing`, including its immediate-loss early exit), the
+ * deferred path (`finishDeferredTurnClosing`, including its immediate-loss
+ * early exit) and the competitive closing path. The snapshot is keyed by
+ * `turn`, so a repeat call for the same turn appends nothing (no
+ * double-record).
+ *
+ * Values mirror {@link appendTurnNetRow}: `profit` is the net coin delta
+ * measured against the `weekStartCoins` day-start snapshot, `businesses`
+ * counts non-null `streetGrid` entries, and `staff` is `staffCards.length`.
+ *
+ * @param state     Current game state (mutated in-place — appends one entry).
+ * @param turnEnded The turn number the snapshot summarises.
+ * @returns The appended snapshot, or the existing one when the turn was
+ *          already recorded.
+ */
+export function recordTurnStats(
+  state: MainStreetState,
+  turnEnded: number,
+): TurnStatSnapshot {
+  // Defensive: legacy/partial states or test fixtures without the series.
+  if (!Array.isArray(state.turnStatsHistory)) {
+    state.turnStatsHistory = [];
+  }
+
+  // Keyed by `turn`: never record the same turn twice when two closing paths
+  // overlap (the deferred and legacy tails can both reach the shared tail on
+  // an early-exit path).
+  const existing = state.turnStatsHistory.find((entry) => entry.turn === turnEnded);
+  if (existing) return existing;
+
+  const startCoins = state.weekStartCoins ?? state.resourceBank.coins;
+  const snapshot: TurnStatSnapshot = {
+    turn: turnEnded,
+    coins: state.resourceBank.coins,
+    reputation: state.resourceBank.reputation,
+    score: state.finalScore,
+    profit: state.resourceBank.coins - startCoins,
+    businesses: state.streetGrid.reduce(
+      (count, slot) => (slot ? count + 1 : count),
+      0,
+    ),
+    staff: state.staffCards.length,
+  };
+  state.turnStatsHistory.push(snapshot);
+  return snapshot;
+}
+
+/**
  * Computes and appends the per-turn net summary row to the activity log:
  * the effective (post-mitigation) coin/reputation deltas for the turn just
  * played, measured against the day-start snapshot (CG-0MT5W7UJJ0065MEZ AC3).
@@ -848,6 +901,11 @@ export function applyEndOfTurnDeltas(
  * @param turnEnded The turn number the row summarises (the turn just played).
  */
 export function appendTurnNetRow(state: MainStreetState, turnEnded: number): void {
+  // Record the per-turn economy snapshot at the same point the net row is
+  // produced (MS-0MVAMU6OM008GJPV AC1): the shared closing tail every path
+  // funnels through. Keyed by `turn` so it is never recorded twice.
+  recordTurnStats(state, turnEnded);
+
   // Fall back to the current resources if no snapshot exists (defensive:
   // processEndOfTurn is only reachable from MarketPhase, i.e. after a
   // day start, so the snapshot is normally always present).

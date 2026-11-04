@@ -625,6 +625,9 @@ export function setupMainStreetGame(options: MainStreetSetupOptions = {}): MainS
     weekStartCoins: initCoins,
     weekStartRep: initRep,
     weekStartScore: 0,
+    // Per-turn economy history (MS-0MVAMU6OM008GJPV): one snapshot per
+    // completed turn, appended by the shared closing tail.
+    turnStatsHistory: [],
     ledger: createEconomyLedger({
       coins: initCoins,
       reputation: initRep,
