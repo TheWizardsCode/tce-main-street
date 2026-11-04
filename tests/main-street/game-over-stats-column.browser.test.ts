@@ -91,6 +91,53 @@ function overlayTexts(scene: Phaser.Scene & Record<string, unknown>): string[] {
     .filter((text): text is string => typeof text === 'string');
 }
 
+/** Minimal competitive roster for the overlay's per-seat presentation. */
+function competitivePlayers() {
+  return [
+    { playerId: 0, coins: 220, reputation: 13, score: 55, hand: [], staffCards: [], actionBudget: 1, controller: 'human', eliminated: false },
+    { playerId: 1, coins: 90, reputation: 4, score: 30, hand: [], staffCards: [], actionBudget: 1, controller: 'ai', eliminated: false },
+  ];
+}
+
+/**
+ * Asserts the three column headers, the five chart canvases, the cash line and
+ * that every canvas is visible inside the viewport — then dismisses the
+ * overlay and asserts the chart canvases are gone.
+ */
+async function assertThreeColumnOverlay(
+  scene: Phaser.Scene & Record<string, unknown>,
+): Promise<void> {
+  const s = scene as any;
+  await waitForCondition(
+    () => document.querySelectorAll(CHART_SELECTOR).length === 5,
+    { timeoutMs: 8_000, label: 'five chart canvases' },
+  );
+
+  const texts = overlayTexts(scene);
+  expect(texts).toContain('Game State');
+  expect(texts).toContain('Summary');
+  expect(texts).toContain('Stats');
+  expect(texts).toContain('[ View detailed stats ]');
+  expect(texts.some((t) => t.startsWith('Cash at end of turn:'))).toBe(true);
+
+  for (const canvas of Array.from(document.querySelectorAll(CHART_SELECTOR)) as HTMLCanvasElement[]) {
+    const rect = canvas.getBoundingClientRect();
+    expect(rect.width).toBeGreaterThan(0);
+    expect(rect.height).toBeGreaterThan(0);
+    expect(rect.left).toBeGreaterThanOrEqual(0);
+    expect(rect.top).toBeGreaterThanOrEqual(0);
+    expect(rect.right).toBeLessThanOrEqual(window.innerWidth + 1);
+    expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight + 1);
+  }
+
+  dismissOverlay(s.overlayObjects ?? []);
+  s.overlayObjects = [];
+  await waitForCondition(
+    () => document.querySelectorAll(CHART_SELECTOR).length === 0,
+    { timeoutMs: 5_000, label: 'chart teardown' },
+  );
+}
+
 describe('MainStreet three-column Game Over overlay', () => {
   let game: Phaser.Game | null = null;
 
@@ -100,41 +147,27 @@ describe('MainStreet three-column Game Over overlay', () => {
     for (const node of Array.from(document.querySelectorAll(CHART_SELECTOR))) node.remove();
   });
 
-  it('renders Game State, Summary and Stats columns with five chart canvases', async () => {
+  it('renders the three columns with five charts in single-player', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
     const s = scene as any;
     s.state.turnStatsHistory = richHistory();
 
     s.showGameOverOverlay(gameOverResult(true), []);
+    await assertThreeColumnOverlay(scene);
+  });
 
-    await waitForCondition(
-      () => document.querySelectorAll(CHART_SELECTOR).length === 5,
-      { timeoutMs: 8_000, label: 'five chart canvases' },
-    );
+  it('renders the three columns with five charts in competitive mode', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, unknown>;
+    const s = scene as any;
+    s.state.players = competitivePlayers();
+    s.state.playerCount = 2;
+    s.state.activePlayerId = 0;
+    s.state.turnStatsHistory = richHistory();
+    s.state.endReason = 'score_threshold';
 
-    const texts = overlayTexts(scene);
-    expect(texts).toContain('Game State');
-    expect(texts).toContain('Summary');
-    expect(texts).toContain('Stats');
-    expect(texts).toContain('[ View detailed stats ]');
-
-    // Every chart canvas is visible (non-zero size) inside the viewport.
-    for (const canvas of Array.from(document.querySelectorAll(CHART_SELECTOR)) as HTMLCanvasElement[]) {
-      const rect = canvas.getBoundingClientRect();
-      expect(rect.width).toBeGreaterThan(0);
-      expect(rect.height).toBeGreaterThan(0);
-      expect(rect.left).toBeGreaterThanOrEqual(0);
-      expect(rect.top).toBeGreaterThanOrEqual(0);
-      expect(rect.right).toBeLessThanOrEqual(window.innerWidth + 1);
-      expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight + 1);
-    }
-
-    dismissOverlay(s.overlayObjects ?? []);
-    s.overlayObjects = [];
-    await waitForCondition(
-      () => document.querySelectorAll(CHART_SELECTOR).length === 0,
-      { timeoutMs: 5_000, label: 'chart teardown' },
-    );
+    s.showGameOverOverlay(gameOverResult(true), []);
+    await assertThreeColumnOverlay(scene);
   });
 });

@@ -876,17 +876,33 @@ export function recordTurnStats(
   if (existing) return existing;
 
   const startCoins = state.weekStartCoins ?? state.resourceBank.coins;
+  // Competitive mode plots and records the **human seat's** trajectory (parent
+  // working assumption; MS-0MVSHZ20P001MK2J AC2). The shared `resourceBank`
+  // holds the last-bound seat's scratch wallet at closing time, so reading it
+  // would record an AI seat's closing balance. Resolve the human seat via
+  // `findHumanSeatId` and read its own record instead; single-player (no
+  // multi-seat roster) keeps the shared wallet.
+  const humanSeatId = (state.players?.length ?? 0) > 1 ? findHumanSeatId(state) : -1;
+  const humanSeat = humanSeatId >= 0 ? state.players?.[humanSeatId] ?? null : null;
+  const coins = humanSeat ? humanSeat.coins : state.resourceBank.coins;
+  const reputation = humanSeat ? humanSeat.reputation : state.resourceBank.reputation;
+  const staff = humanSeat
+    ? (humanSeat.staffCards?.length ?? 0)
+    : state.staffCards.length;
   const snapshot: TurnStatSnapshot = {
     turn: turnEnded,
-    coins: state.resourceBank.coins,
-    reputation: state.resourceBank.reputation,
+    coins,
+    reputation,
     score: state.finalScore,
-    profit: state.resourceBank.coins - startCoins,
+    // `profit` keeps the appendTurnNetRow definition (net coin delta against
+    // the day-start snapshot); the shared street grid is counted because the
+    // parent AC defines `businesses` as non-null streetGrid entries.
+    profit: coins - startCoins,
     businesses: state.streetGrid.reduce(
       (count, slot) => (slot ? count + 1 : count),
       0,
     ),
-    staff: state.staffCards.length,
+    staff,
   };
   state.turnStatsHistory.push(snapshot);
   return snapshot;
