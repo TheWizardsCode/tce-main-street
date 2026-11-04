@@ -7,10 +7,12 @@
  * state, processEndOfTurn pause/deferral, Accept/Reject paths, escalation
  * deck pushes, transcript recording, and the deferred-turn finish.
  *
- * The shipped card-data.csv has no `hasChoices` cards yet (that is content
- * child CG-0MTT7FC7A000AA58), so tests inject a synthetic choice template
- * via `loadTemplatesFromCsv` AFTER setup (decks are built from the bundled
- * data; only template lookups for chain escalation are synthetic).
+ * The shipped card-data.csv has no choice cards yet (that is content
+ * child CG-0MTT7FC7A000AA58), so tests inject synthetic choice templates via
+ * `loadTemplatesFromCsv` AFTER setup (decks are built from the bundled data;
+ * only template lookups for chain escalation are synthetic). Choice-ness is
+ * declared through the registered option list — the options-only model — not
+ * a per-card flag.
  *
  * @module
  */
@@ -48,14 +50,43 @@ import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 
 // ── Synthetic CSV (choice + escalation templates) ───────────
 
-const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-test,Test Choice Event,0,,,,,,,,,1,Incident,Lose 300 coins,All,,-300,-100,,,,,,,,,,,,,,,,,true,evt-esc-audit,evt-esc-worse
-event,evt-esc-audit,Audit Escalation,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,,
-event,evt-esc-worse,Worse Escalation,0,,,,,,,,,1,Incident,Lose 500 coins,All,,-500,0,,,,,,,,,,,,,,,,,,,
-event,evt-plain-test,Plain Incident,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,,,
-event,evt-dur-choice,Duration Choice,100,,,,,,,,,1,Incident,80% income for 5 turns,All,,0,0,5,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-esc-dur
-event,evt-esc-dur,Duration Escalation,100,,,,,,,,,1,Incident,60% income for 6 turns,All,,0,0,6,income-multiplier,0.6,,,,,,,,,,,,,,,,`;
+const SYNTHETIC_ROWS = [
+  'event,evt-choice-test,Test Choice Event,0,1,Incident,Lose 300 coins,All,-300,-100,,,',
+  'event,evt-esc-audit,Audit Escalation,0,1,Incident,Lose 400 coins,All,-400,0,,,',
+  'event,evt-esc-worse,Worse Escalation,0,1,Incident,Lose 500 coins,All,-500,0,,,',
+  'event,evt-plain-test,Plain Incident,0,1,Incident,Lose 100 coins,All,-100,0,,,',
+  'event,evt-dur-choice,Duration Choice,100,1,Incident,80% income for 5 turns,All,0,0,5,income-multiplier,0.8',
+  'event,evt-esc-dur,Duration Escalation,100,1,Incident,60% income for 6 turns,All,0,0,6,income-multiplier,0.6',
+].join('\n');
+
+const SYNTHETIC_CSV_HEADER =
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,duration,effectType,multiplier';
+
+const SYNTHETIC_CSV_FULL = `${SYNTHETIC_CSV_HEADER}\n${SYNTHETIC_ROWS}`;
+
+/**
+ * The two-way option list the old flag/next-id columns used to compile to:
+ * Accept applies the event effect and pushes its successor, Reject skips the
+ * effect and pushes its successor. Authored through the registry seam because
+ * `effectPolicy: 'skip'` is registry-only.
+ */
+function twoWayOptions(
+  accept: string | null,
+  reject: string | null,
+): StorylineOption[] {
+  return [
+    {
+      label: 'Accept',
+      effectPolicy: 'apply',
+      ...(accept !== null ? { successorId: accept } : {}),
+    },
+    {
+      label: 'Reject',
+      effectPolicy: 'skip',
+      ...(reject !== null ? { successorId: reject } : {}),
+    },
+  ];
+}
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -70,16 +101,16 @@ function makeIncident(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All' as const,
     coinDelta: overrides.coinDelta ?? -100,
     reputationDelta: overrides.reputationDelta ?? 0,
-    hasChoices: overrides.hasChoices ?? false,
-    acceptNextCardId: overrides.acceptNextCardId ?? undefined,
-    rejectNextCardId: overrides.rejectNextCardId ?? undefined,
+    ...overrides,
   };
 }
 
 /** Fresh game (bundled CSV) with the synthetic choice templates registered. */
 function createChoiceAwareState(seed = 'choice-engine-seed'): MainStreetState {
   const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
-  loadTemplatesFromCsv(SYNTHETIC_CSV);
+  loadTemplatesFromCsv(SYNTHETIC_CSV_FULL);
+  registerStorylineOptions('evt-choice-test', twoWayOptions('evt-esc-audit', 'evt-esc-worse'));
+  registerStorylineOptions('evt-dur-choice', twoWayOptions(null, 'evt-esc-dur'));
   state.phase = 'MarketPhase';
   return state;
 }
@@ -144,7 +175,7 @@ describe('resolveIncident intercepts choice events', () => {
   it('resolves a non-choice event immediately (unchanged behaviour)', () => {
     const state = createChoiceAwareState();
     state.incidentDeck.length = 0;
-    state.incidentDeck.push(makeIncident({ id: 'evt-plain-test', hasChoices: false, coinDelta: -100 }));
+    state.incidentDeck.push(makeIncident({ id: 'evt-plain-test', coinDelta: -100 }));
     const beforeCoins = coins(state);
 
     const drawn = resolveIncident(state);
@@ -154,12 +185,11 @@ describe('resolveIncident intercepts choice events', () => {
     expect(state.pendingEventChoice).toBeNull();
   });
 
-  it('handles missing hasChoices field as a non-choice (backward compat)', () => {
+  it('a card with no option source is a non-choice card', () => {
     const state = createChoiceAwareState();
     state.incidentDeck.length = 0;
-    const noFlag = makeIncident({ id: 'evt-no-flag', coinDelta: -50 });
-    delete (noFlag as { hasChoices?: boolean }).hasChoices;
-    state.incidentDeck.push(noFlag);
+    const noOptions = makeIncident({ id: 'evt-no-options', coinDelta: -50 });
+    state.incidentDeck.push(noOptions);
     const beforeCoins = coins(state);
 
     const drawn = resolveIncident(state);
@@ -202,7 +232,7 @@ describe('processEndOfTurn defers when a choice event is drawn', () => {
 // ── Accept path (AC4 engine) ────────────────────────────────
 
 describe('resolveEventChoice — Accept path', () => {
-  it('applies the event effect and pushes acceptNextCardId to the deck top', () => {
+  it('applies the event effect and pushes the accept successor to the deck top', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
     const coinsBefore = coins(state);
@@ -223,12 +253,12 @@ describe('resolveEventChoice — Accept path', () => {
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
-  it('ends the chain cleanly when acceptNextCardId is absent', () => {
+  it('ends the chain cleanly when the accept option has no successor', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
-    // Strip the accept path BEFORE the draw: the presented option list is
-    // frozen at draw time (AC3), so post-draw mutation would not be seen.
-    state.incidentDeck[0] = { ...state.incidentDeck[0], acceptNextCardId: undefined };
+    // Re-register BEFORE the draw: the presented option list is frozen at
+    // draw time (AC3), so post-draw mutation would not be seen.
+    registerStorylineOptions('evt-choice-test', twoWayOptions(null, 'evt-esc-worse'));
     processEndOfTurn(state); // pause — pendingEventChoice is now set
     const deckLen = state.incidentDeck.length;
 
@@ -242,7 +272,7 @@ describe('resolveEventChoice — Accept path', () => {
 // ── Reject path (AC5 engine) ────────────────────────────────
 
 describe('resolveEventChoice — Reject path', () => {
-  it('skips the event effect entirely and pushes rejectNextCardId', () => {
+  it('skips the event effect entirely and pushes the reject successor', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
     const coinsBefore = coins(state);
@@ -263,12 +293,12 @@ describe('resolveEventChoice — Reject path', () => {
     expect(state.pendingEventChoice!.resolved).toBe(true);
   });
 
-  it('rejecting an event with no rejectNextCardId adds nothing to the deck', () => {
+  it('rejecting an event whose reject option has no successor adds nothing to the deck', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-choice-test');
-    // Strip the reject path BEFORE the draw (the option list is frozen at
-    // draw time — see AC3 / createPendingStorylineChoice).
-    state.incidentDeck[0] = { ...state.incidentDeck[0], rejectNextCardId: undefined };
+    // Re-register BEFORE the draw (the option list is frozen at draw time —
+    // see AC3 / createPendingStorylineChoice).
+    registerStorylineOptions('evt-choice-test', twoWayOptions('evt-esc-audit', null));
     processEndOfTurn(state); // pause — pendingEventChoice is now set
     const deckLen = state.incidentDeck.length;
     const coinsBefore = coins(state);
@@ -284,7 +314,7 @@ describe('resolveEventChoice — Reject path', () => {
 // ── Duration events (AC2 parent — DurationEventCard inherits) ─
 
 describe('Duration choice events', () => {
-  it('accept pushes a duration active effect and chains via acceptNextCardId', () => {
+  it('accept pushes a duration active effect and chains via the accept successor', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-dur-choice');
     const effectsBefore = state.activeEffects.length;
@@ -295,11 +325,11 @@ describe('Duration choice events', () => {
     // Accept applied the duration effect (board-wide active effect).
     expect(state.activeEffects.length).toBe(effectsBefore + 1);
     expect(state.activeEffects[state.activeEffects.length - 1].effectType).toBe('income-multiplier');
-    // acceptNextCardId absent → chain ends.
+    // No accept successor registered → chain ends.
     expect(res.pushedCard).toBeNull();
   });
 
-  it('reject skips the duration effect but adds the rejectNextCardId escalation', () => {
+  it('reject skips the duration effect but adds the reject successor escalation', () => {
     const state = createChoiceAwareState();
     forceNextIncident(state, 'evt-dur-choice');
     const effectsBefore = state.activeEffects.length;
@@ -369,21 +399,14 @@ describe('finishDeferredEndOfTurn completes the paused turn', () => {
 // how the option was authored.
 //
 // These suites were RED against the two-way
-// `hasChoices`/`acceptNextCardId`/`rejectNextCardId` implementation (which
-// never drew — it resolved the single `successorId`); F3 landed the draw and
-// flipped them to passing `it`s. Guards that hold regardless stay plain `it`.
+// flag/next-id implementation (which never drew — it resolved the single
+// `successorId`); F3 landed the draw and flipped them to passing `it`s. Guards
+// that hold regardless stay plain `it`.
 
 /** Column header for the multi-outcome engine fixtures (all rows aligned). */
 const ENGINE_CSV_COLUMNS = [
-  'family', 'id', 'name', 'cost', 'baseIncome', 'synergyTypes', 'upgradePath',
-  'maxLevel', 'reputationPerTurn', 'synergyCoinBonus', 'synergyRepBonus',
-  'description', 'tier', 'trigger', 'effect', 'target', 'targetSynergy',
-  'coinDelta', 'reputationDelta', 'duration', 'effectType', 'multiplier',
-  'targetBusiness', 'incomeBonus', 'synergyRangeBonus', 'requiredLevel',
-  'reputationBonus', 'newDisplayName', 'ongoingCost', 'handSlotsAdded',
-  'refreshCostDiscount', 'actionsPerTurn', 'peekOncePerTurn',
-  'upgradeCostDiscount', 'art_notes', 'hasChoices', 'acceptNextCardId',
-  'rejectNextCardId',
+  'family', 'id', 'name', 'cost', 'tier', 'trigger', 'effect', 'target',
+  'coinDelta', 'reputationDelta', 'options',
 ];
 
 interface EngineChoiceSpec {
@@ -391,12 +414,11 @@ interface EngineChoiceSpec {
   name: string;
   effect: string;
   coinDelta?: number;
-  hasChoices?: boolean;
-  acceptNextCardId?: string;
-  rejectNextCardId?: string;
+  /** Raw `options` cell (`label|cardA,cardB;label2|cardC`), when authored. */
+  options?: string;
 }
 
-/** Builds an aligned event CSV (same two-way header used across the file). */
+/** Builds an aligned event CSV using the options column. */
 function buildEngineCsv(events: EngineChoiceSpec[]): string {
   const lines = [ENGINE_CSV_COLUMNS.join(',')];
   for (const e of events) {
@@ -411,17 +433,19 @@ function buildEngineCsv(events: EngineChoiceSpec[]): string {
       target: 'All',
       coinDelta: String(e.coinDelta ?? 0),
       reputationDelta: '0',
+      options: e.options ?? '',
     };
-    if (e.hasChoices) row.hasChoices = 'true';
-    if (e.acceptNextCardId) row.acceptNextCardId = e.acceptNextCardId;
-    if (e.rejectNextCardId) row.rejectNextCardId = e.rejectNextCardId;
-    lines.push(ENGINE_CSV_COLUMNS.map((c) => row[c] ?? '').join(','));
+    lines.push(
+      ENGINE_CSV_COLUMNS.map((c) =>
+        c === 'options' ? `"${(row[c] ?? '').replace(/"/g, '""')}"` : row[c] ?? '',
+      ).join(','),
+    );
   }
   return lines.join('\n');
 }
 
 const MULTI_OUTCOME_CSV = buildEngineCsv([
-  { id: 'evt-mo-choice', name: 'Multi Choice', effect: 'Lose 100 coins', coinDelta: -100, hasChoices: true },
+  { id: 'evt-mo-choice', name: 'Multi Choice', effect: 'Lose 100 coins', coinDelta: -100 },
   { id: 'evt-mo-a', name: 'Branch A', effect: 'Lose 10 coins', coinDelta: -10 },
   { id: 'evt-mo-b', name: 'Branch B', effect: 'Lose 20 coins', coinDelta: -20 },
   { id: 'evt-mo-c', name: 'Branch C', effect: 'Lose 30 coins', coinDelta: -30 },
@@ -569,7 +593,7 @@ describe('F1 — successorResolver precedence at resolution time', () => {
 // ── Transcript recording (AC6/AC12) ─────────────────────────
 
 describe('transcript recording for event choices', () => {
-  it('records an event-choice event with option + both next-card ids', () => {
+  it('records an event-choice event with the chosen option label', () => {
     const recorder = new MainStreetTranscriptRecorder({ seed: 'x' });
     setMainStreetRecorder(recorder);
     const state = createChoiceAwareState();
@@ -584,11 +608,42 @@ describe('transcript recording for event choices', () => {
     if (!choiceEvent || choiceEvent.type !== 'event-choice') return;
     expect(choiceEvent.eventId).toContain('evt-choice-test'); // instance id carries the base template id
     expect(choiceEvent.cardName).toBe('Test Choice Event');
-    // F3 AC3: the transcript token is the option label, not the legacy
+    // F3 AC3: the transcript token is the option label, not a legacy
     // lowercase 'reject' value.
     expect(choiceEvent.option).toBe('Reject');
-    expect(choiceEvent.acceptNextCardId).toBe('evt-esc-audit');
-    expect(choiceEvent.rejectNextCardId).toBe('evt-esc-worse');
+  });
+
+  it('records the options-only event-choice schema (no resolved-successor ids)', () => {
+    // AC4: the recorded event is the schema of record for a resolved choice,
+    // so its key set is pinned. The chosen option label is the only
+    // resolution token the options-only model records; re-introducing a
+    // successor-id field widens this key set and fails here (a JSON-level
+    // assertion, not a source scan).
+    const recorder = new MainStreetTranscriptRecorder({ seed: 'x' });
+    setMainStreetRecorder(recorder);
+    const state = createChoiceAwareState();
+    forceNextIncident(state, 'evt-choice-test');
+    processEndOfTurn(state);
+
+    resolveEventChoice(state, 'accept');
+
+    const choiceEvent = recorder
+      .getTranscript()
+      .events.find((e) => e.type === 'event-choice');
+    expect(choiceEvent).toBeDefined();
+    if (!choiceEvent) return;
+
+    // `week`/`year` are the calendar stamp the recorder attaches to every
+    // event (CG-0MTT0K9RX0004QTE).
+    expect(Object.keys(choiceEvent).sort()).toEqual([
+      'cardName',
+      'eventId',
+      'option',
+      'turn',
+      'type',
+      'week',
+      'year',
+    ]);
   });
 });
 

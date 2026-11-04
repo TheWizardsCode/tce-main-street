@@ -257,11 +257,19 @@ playing a phantom card transfer.
   `refreshStreetGrid()` re-creates the overlays at the tail of its street
   rebuild, so they survive the `refreshAll()` that follows a selection (and
   any later refresh) instead of being destroyed with the container.
-- Behavior: every occupied street slot is outlined — **green** (`0x44ff66`)
-  for a business the upgrade can legally target (matching `targetBusiness` at
-  `requiredLevel`, below `maxLevel`) and **red** (`0xff4444`) otherwise. Empty
-  slots are skipped entirely and are no longer rendered as selectable while an
-  upgrade is pending, so only real businesses appear as targets.
+- Behavior: every occupied street slot owned by the acting seat is outlined —
+  **green** (`0x44ff66`) for a business the upgrade can legally target
+  (matching `targetBusiness` at `requiredLevel`, below `maxLevel`) and **red**
+  (`0xff4444`) otherwise. Empty slots are skipped entirely and are no longer
+  rendered as selectable while an upgrade is pending, so only real businesses
+  appear as targets.
+- Ownership (MS-0MVZC5V6L001OOXN): in competitive mode only the acting seat's
+  own businesses are outlined. A slot whose `getSlotOwnerId()` differs from
+  `state.activePlayerId` — the gate is `canActiveSeatActOnSlot()`, the same
+  single source of truth used by upgrade placement — gets **no overlay at
+  all**, never green and never red, because an opponent-owned business is not
+  an upgrade target. Single-player states carry no `ownerTaggedGrid`, so every
+  business still highlights exactly as before.
 - Eligibility is business-level only, via the shared
   `isEligibleUpgradeTarget()` predicate in `MainStreetMarketUtils.ts`. The
   click is then additionally gated by the non-mutating
@@ -335,6 +343,11 @@ targeting / selection is pending, when tutorial gating (`apply-upgrade` /
   so a hand-origin drag paints the shared `dragHighlightRects` correctly:
   upgrades → street businesses passing `canDropHandCard` (green `0x44ff66` /
   red `0xff4444`), businesses → empty slots; non-target slots are skipped.
+  Upgrade drags are ownership-aware in competitive mode
+  (MS-0MVZC5V6L001OOXN): a business owned by another seat
+  (`getSlotOwnerId()` ≠ `state.activePlayerId`, gate:
+  `canActiveSeatActOnSlot()`) is skipped entirely, so AI-owned businesses are
+  never painted green or red. Single-player states are unaffected.
 - **Replay / reduced motion.** Registration is skipped in replay mode; the
   drag manager's `setReducedMotion` governs snap-back, unchanged.
 
@@ -390,7 +403,13 @@ void popTextOrIcon({
   the `upcoming` phase (`runIncomePhase`), the incident-reveal delta bubbles
   (`animateIncidentReveal` → `animateIncidentDeltaBubbles`) and the sell
   refund (`animateSell`). The HUD delta pop (`animateHudValueChanges`) is
-  passed the same anchor `x` from `refreshHud`.
+  passed the same anchor `x` from `refreshHud`. In competitive play the three
+  **income** routes among these delegate to `flightTargetFor` instead, which
+  keeps the human seat on `hudFlightTarget` and retargets AI-owned slots to
+  their own seat anchor (see *Per-seat anchors and per-owner destination
+  resolution* below); the incident-reveal bubbles and the sell refund (which
+  concern the acting / human seat) keep the shared HUD anchor as documented
+  here.
 - **Fallback.** Before the first HUD render (`hudCoinAnchor` /
   `hudRepAnchor` still `null`) `hudFlightTarget` falls back to the legacy
   approximate coordinates, now centralised in `hudCoinFallback` /
@@ -403,6 +422,87 @@ void popTextOrIcon({
   and replay/headless modes remain flight-free exactly as before. The anchor
   is captured at flight launch; a number that grows during the display-only
   count-up is handled by MS-0MUYAESVU007X2U8, not here.
+
+#### Per-seat anchors and per-owner destination resolution
+
+(MS-0MW083MAN004JSCH, MS-0MW083O38005B22F; parent MS-0MVWNS9L7007CTK9 AC2/AC3)
+
+In competitive (N ≥ 2) play the shared HUD counters belong to the **human**
+seat only, so every income flight that used to land on them resolves its HUD
+side by the **owning seat** instead:
+
+| Slot owner | Coin flight destination | Reputation flight destination |
+|---|---|---|
+| `0` (human) / no owner | `hudFlightTarget(s, 'coin', layout)` → `scene.hudCoinAnchor`, else `hudCoinFallback` | `hudFlightTarget(s, 'rep', layout)` → `scene.hudRepAnchor`, else `hudRepFallback` |
+| `≥ 1` (AI seat) | `scene.hudSeatAnchors[ownerId]`, else `hudSeatFallback(layout, ownerId, seatCount)` | the same seat cell (one summary row = one bank) |
+
+- **Published per-seat anchors.** `renderCompetitiveScoreboard`
+  (`MainStreetRendererCompetitiveHud.ts`) publishes
+  `scene.hudSeatAnchors: Record<playerId, { x, y }> | null` on every render —
+  one live anchor per drawn row, keyed by `playerId`: the row's own centre `x`
+  (`hudLeft + colWidth * index + colWidth / 2`) and row baseline `y`
+  (`hudY - HUD_BAR_HEIGHT_PX / 2 - HUD_SEAT_ROW_OFFSET_PX`). That is the same
+  anchor shape and lifecycle as `hudCoinAnchor` / `hudRepAnchor`, but per seat
+  instead of shared.
+- **Cleared with the transient HUD.** The map is **reassigned** (never merged)
+  on each render, so a shrunk roster or a re-layout cannot leave stale seat
+  geometry, and `refreshHud()` sets it back to `null` before re-rendering. It
+  is `null` before the first competitive render, and single-player runs never
+  publish it. Consumers must therefore treat it (and the roster hint) as
+  optional.
+- **Fallback.** While no anchor has been published (first frame, or the
+  scoreboard was cleared mid-window) the deterministic, total
+  `hudSeatFallback(layout, seatIndex, seatCount)` (`MainStreetConstants.ts`)
+  resolves the same cell the renderer will draw: the evenly-divided HUD strip
+  band centre at the shared row baseline, with `seatIndex` clamped inside the
+  band. `seatCount` comes from `state.playerCount` / `state.players.length`
+  when known, else `HUD_FALLBACK_SEAT_COUNT` (`4` = human + `MAX_AI_OPPONENTS`),
+  always widened to at least `ownerId + 1` so an out-of-range owner still
+  resolves its own cell. A partial layout degrades to the viewport width rather
+  than a non-finite coordinate. `HUD_SEAT_ROW_OFFSET_PX` is shared by the
+  renderer and the fallback so the two cannot drift.
+- **Resolver.** `flightTargetFor(host, kind, layout, ownerId)`
+  (`MainStreetAnimatorContext.ts`) sits next to `hudFlightTarget`:
+  owner `0` (and every owner-less / legacy slot) delegates to
+  `hudFlightTarget` unchanged, so **single-player behaviour is identical**; an
+  AI owner reads the published seat anchor and falls back to
+  `hudSeatFallback`. `hudFlightTarget` itself remains the only way to reach the
+  shared counters — the anchor-source guard
+  (`tests/main-street/hud-anchor-source-contract.test.ts`) still keeps every
+  HUD-flight destination literal out of `src/scenes/MainStreetAnimator*`.
+- **Consumers.** The three income routes that were HUD-bound — the grid → bank
+  **collection** (`collectIncomeGrids`), the reputation phase's card → rep-bank
+  pips (`flyRepPips`) and the `upcoming` coin/reputation flows
+  (`flyCoinsToPoint` / `flyRepPips`) — all resolve through `flightTargetFor`.
+  Owner identity travels as `SlotPhaseBreakdown.ownerId` (populated by
+  `applyCompetitiveIncome`, absent for the single-player `applyIncome` path and
+  for legacy constructors) and becomes `IncomePhaseSlot.ownerId` inside
+  `animateIncomePhases`. Non-HUD flights (base/synergy/event landings on each
+  seat's own card grid, and the non-HUD `gameW * 0.5` uses — the
+  `upcomingSource` queue origin and the centred phase label) are unaffected.
+- **Swappable anchor seam — not the animator.** The AI "bank" is, for now, the
+  seat's own competitive-scoreboard summary row: a documented **stopgap**
+  until a real AI bank exists. A future real AI bank replaces **only the anchor
+  source** — the `hudSeatAnchors` publication (and, if it changes geometry, the
+  `flightTargetFor` AI branch) — and never the animator, which keeps resolving
+  every destination through `flightTargetFor`. Both coin and reputation share
+  the seat cell because a row is one text object today; distinct per-seat
+  coin/rep sub-anchors are an anchor-source change, not an animator change.
+- **Related work (linked).** The per-seat closing choreography that produced
+  this destination gap is `MS-0MUYFXA36009EMH0` (parent
+  `MS-0MUXAQQON006XA6I`); the scoreboard rows the AI flights now target are
+  `MS-0MUTU8J9T0034OT7`; the single shared HUD anchor contract this seam
+  extends per seat is `MS-0MUYT57J80021CWW`; the owner identity is carried by
+  `MS-0MW083KRZ009NJTA` and the per-owner resolver by `MS-0MW083O38005B22F`.
+  The fuller per-seat **Turn Summary dialog** is separate work and is **not**
+  absorbed here: `MS-0MVRNV9Y8008IKGK` (competitive summary rows
+  end-to-end), parent `MS-0MVO1SFCM000ZLBI` (End of Turn summary dialog for
+  competitive mode).
+- **Tests.** `tests/main-street/income-owner-flight-routing.test.ts`
+  (owner-aware destination resolution: human → HUD anchor, AI → seat anchor)
+  and `tests/main-street/competitive-seat-anchors.test.ts` (per-seat anchor
+  publication, clearing, fallback) pin the contract; the collection /
+  reputation / `upcoming` animator suites cover the routing per route.
 
 ### Ambient street pedestrians (reputation crowd, MS-0MTV9AS15004AC1E)
 
@@ -703,10 +803,50 @@ street rebuild.
   phase) and re-enacted by the reveal bubbles, so it is counted once
   (`scene.displayedIncomeCounted` guards the replay); the reputation phase
   therefore excludes the incident share from its HUD pip flight.
-- Week-start deferral: the controller polls `incomeCollectionActive` on a
-  250ms cadence (with a 16s safety cap) before starting the next week, so
-  the street refresh + HUD update never cut the show short; the street
-  render itself is deferred via `refreshAllExceptStreet` while the show runs.
+- **Per-owner destinations and human-only feedback (competitive,
+  MS-0MW083O38005B22F / MS-0MW083PZ8001QEHS).** In competitive play the three
+  HUD-bound income routes resolve their HUD side by the slot's owning seat
+  through `flightTargetFor` (see *Per-seat anchors and per-owner destination
+  resolution* above): the grid → bank **collection**
+  (`collectIncomeGrids`), the reputation phase's card → rep-bank pips
+  (`flyRepPips`) and the `upcoming` coin/reputation flows (`flyCoinsToPoint` /
+  `flyRepPips`, routed per owner only when deltas are present).
+  - **Owner identity.** `SlotPhaseBreakdown.ownerId` (populated by
+    `applyCompetitiveIncome`) survives the competitive closing's combined
+    phase-major sweep and becomes `IncomePhaseSlot.ownerId` in
+    `animateIncomePhases`. An absent owner means owner `0`, so single-player
+    and legacy phase data are unchanged.
+  - **Human-only feedback.** The shared HUD's display-only running totals
+    (`displayedCoins` / `displayedReputation`), its `+/-` delta pop and its
+    `+total` landing pop are human-only: `ownsSharedHudFeedback(ownerId)`
+    (`MainStreetAnimatorContext.ts`) gates the per-icon display stepping, so an
+    AI flight carries **no display delta** and can never tick the human
+    counters or pop a human-counter delta. The immediate HUD delta pop is also
+    suppressed while the show runs (`incomeCollectionActive`), so the human
+    never sees a combined multi-seat total at their own counter.
+  - **Per-owner `+total`.** The collection's landing pop is emitted **per
+    owning seat** at that seat's own target, from that seat's own credited
+    amount instead of one combined multi-seat total. A human-only collection
+    (single-player, or every slot owned by the human) keeps the unchanged
+    legacy pop: one `+total` with the authoritative combined credited total at
+    the HUD coin anchor. A net-zero / net-loss seat has no positive total to
+    report and is suppressed. The `sfx-income-positive` landing sound is
+    unchanged.
+  - **Bounds unchanged.** Presentation-only: the engine economy, the closing
+    order (Income → Incident → EndCheck), the shared-incident semantics, the
+    transcript, RNG and the deferred-mutation window are untouched;
+    `creditedIncomeTotal` and the `upcomingDeltas` exclusion are unchanged;
+    reduced motion, replay/headless and tutorial paths remain flight-free and
+    always advance the day.
+- Week-start deferral: the controller waits on `incomeCollectionActive`
+  (via the shared wall-clock `deferUntilIncomeCollected` helper) before
+  starting the next week, so the street refresh + HUD update never cut the
+  show short; the street render itself is deferred via
+  `refreshAllExceptStreet` while the show runs. The helper re-checks the flag
+  on a 250ms scene-clock cadence and bounds the wait with a 16s **wall-clock**
+  cap (MS-0MVMKEU2000639TG): under CPU starvation, or in a hidden/backgrounded
+  document, the day start is forced once 16s of wall time have elapsed instead
+  of waiting for the frame clock to catch up. Pacing itself is unchanged.
 - Accessibility (reduced motion): the coin grids and flights are skipped;
   the phase labels still progress and the single final pop + income sound
   still play.
@@ -760,6 +900,15 @@ condensed text-only summary.
 - Accessibility (reduced motion), replay and headless: the per-seat
   animations are skipped, the per-seat text is still shown and the day always
   advances.
+- Per-owner destinations: each seat's `SlotPhaseBreakdown.ownerId` survives the
+  `flatMap` into the combined slot list, so the combined sweep keeps drawing
+  each slot at its **own** seat's bank — the human's coins/pips land on the HUD
+  counters, an AI seat's land on its own competitive-scoreboard summary anchor
+  (see [HUD resource anchors](#hud-resource-anchors--single-source-of-truth-for-flight-destinations)
+  → *Per-seat anchors and per-owner destination resolution*, and
+  [End-of-turn income presentation](#end-of-turn-income-presentation-phased-coin-grid-animation-cg-0mt23o6w8003axwj)
+  → *Per-owner destinations and human-only feedback*). Only the human seat's
+  flights move or pop the shared HUD totals.
 - Presentation-only: reads resolved state, consumes no RNG and mutates no
   engine state, so seeded replay determinism and the shared closing order
   (Income → Incident → EndCheck) are unchanged.
@@ -1003,7 +1152,7 @@ condensed text-only summary.
      `hudY`) with `SFX_KEYS.COIN_POP` via `moveGameObject`.
   3. A "+€refund" pop lands at the HUD counter (`popTextOrIcon`) and the
      coin SFX pops on landing.
-- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
+- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
 - Accessibility (reduced motion): demolition + coin flight are skipped; a
   single "+€refund" pop + coin SFX remain (spec AC2).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — the
@@ -1143,15 +1292,22 @@ condensed text-only summary.
   **businesses owned** for the human seat; **right** the resolved incident
   (name + coin/reputation delta), the one-off changes, the net coin /
   reputation / score change and the closing coin / reputation / score
-  balances. The actions are **[ Next Turn ]** (primary) and an
-  always-disabled **[ Bank Loan ]** carrying the hint *“Bank loans are not
-  available yet — coming in a future update.”* — the seam reserved for
-  MS-0MVL6DZI0000F6CG (Bank Loans), which replaces only the
-  `onBankLoanAction` wiring; this item never enables it. The loan engine,
-  bailout flow and HUD readout have since shipped (MS-0MVL6DZI0000F6CG
-  children), so the button's enabling hint is now the only outstanding piece:
-  wiring is tracked by MS-0MVPWSQMG004198C, and until it lands the button
-  stays disabled with that copy.
+  balances. The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
+  whose availability comes from the Phaser-free loans descriptor
+  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7). The
+  **enabled/disabled matrix** is strictly two-way:
+  - **Enabled** — normal colour, clickable, `UI_CLICK` SFX and no hint line —
+    only when `config.loansEnabled` is `true` **and** the acting seat holds no
+    active loan.
+  - **Disabled** — muted, `input` disabled and inert — in every other case,
+    with a reason-specific hint naming the cause: loans disabled in this game,
+    no configured `config.loanOptions`, or the seat's outstanding obligation
+    (`Loan: 110 coins/turn, 4 turns left`) (MS-0MVXYCJCK006UE62).
+
+  Pressing the enabled button opens the mid-game loan selector below.
+  **[ Next Turn ]** remains the only way to resume the deferred closing, so
+  the day still advances only on that click. No descriptor (a hand-built /
+  legacy state) means disabled with no hint, because no reason is known.
   `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
   overlay manager (headless), continues the closing instead of stranding the
   turn.
@@ -1181,12 +1337,68 @@ condensed text-only summary.
   ordering) and `tests/main-street/turn-summary-dialog.browser.test.ts`
   (overlay rendering in a real Phaser scene).
 
+### Mid-game loan selector
+
+- Renderer: the bailout dialog's `MainStreetLoanOverlay` renderer in its
+  `'select'` mode — `showLoanSelectorDialog()` — exposed as
+  `MainStreetOverlayContent.showLoanSelectorDialog()`
+  (MS-0MVXYCJVU000QBK1, parent MS-0MVPWSQMG004198C). One renderer serves both
+  modes: the row loop (button construction, label text, depths 199/200/201,
+  HUD parenting, `UI_CLICK` SFX) exists once, so the two dialogs can never
+  drift apart (parent AC4). Modes differ only in their model content, the
+  alternative action's label and the handler it calls — `[ Decline — end the
+  run ]` (red, bailout) versus the neutral `[ Cancel ]` (select).
+- Model: `src/scenes/MainStreetLoanSelectorModel.ts` (pure, no Phaser import) —
+  `buildLoanSelectorModel(state)` builds **one row per `config.loanOptions`
+  entry**, each showing the principal and term with its **per-turn repayment
+  and total repayment**, through the **same** `buildLoanRows()` builder as the
+  bailout dialog, so those figures and labels are identical for the same menu.
+  The selector is driven by the configured menu only; `state.pendingLoanOffer`
+  never leaks into it.
+- Entry point and back-out: pressing the Turn Summary dialog's enabled
+  **[ Bank Loan ]** dismisses that panel and presents the selector — one modal
+  at a time, so no Turn Summary button can be pressed behind it. `[ Cancel ]`
+  dismisses the selector and re-presents the Turn Summary dialog from the same
+  summary model with **no** state change (no loan, no action point, no day
+  advance).
+- Confirming a row (MS-0MVXYCKFE000VF76): dispatches
+  `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` for the
+  acting seat — the deferred-closing opt-in is required because the selector is
+  presented while the closing is paused outside `MarketPhase`. Taking a loan
+  **costs no action point** and **does not advance the day**: the command is
+  AP-neutral and reversible (it goes through the undo manager), so
+  `actionsRemaining`/`bankedActions` are untouched, `state.turn` does not move
+  and the closing is **not** resumed — the day advances only on
+  **[ Next Turn ]**, exactly once. On success the Turn Summary dialog is re-rendered in place
+  from the **same** `TurnResult` (`buildTurnSummary(state, result)`) against the
+  post-take state, and its loans descriptor is re-derived from the live state,
+  so the freshly booked obligation appears as the disabled **[ Bank Loan ]**
+  with its `Loan: <n> coins/turn, <n> turns left` hint. A refused confirm
+  (e.g. a race into an active loan) re-draws the selector with the engine's own
+  reason in an extra red line and leaves every resource untouched, because the
+  engine validates before it mutates.
+- `MainStreetTurnControllerTurnFlow.presentTurnSummaryGate()` forwards the
+  committed `TurnResult` as the dialog's fifth argument — the seam the in-place
+  refresh rebuilds from.
+- Overlay pattern: instant (no fade-in, reduced-motion safe), every element
+  parented into `s.hudContainer` and tracked in `s.overlayObjects`, and never
+  presented in `replayMode`.
+- Tests: `tests/main-street/turn-summary-bank-loan.browser.test.ts` (selector
+  content, cancel with no state change, shared row rendering with the bailout
+  dialog, configured-menu-only content, replay/headless suppression, the
+  `takeLoan` dispatch with its AP-neutral / no-day-advance rule, the in-place
+  refresh and its leak check, and the refusal path) and the
+  rewritten `[ Bank Loan ]` case in
+  `tests/main-street/turn-summary-dialog.browser.test.ts`; the gate's
+  `TurnResult` forwarding is pinned in `tests/main-street/turn-summary-gate.test.ts`.
+
 ### Bailout loan offer dialog
 
 - Renderer: `MainStreetLoanOverlay.showLoanOfferDialog()`, exposed as
   `MainStreetOverlayContent.showLoanOfferDialog()` and delegated by
   `MainStreetScene.showLoanOfferDialog()` (MS-0MVPWSBLG006YMBA, parent
-  MS-0MVL6DZI0000F6CG).
+  MS-0MVL6DZI0000F6CG). Shares its row rendering with the mid-game loan
+  selector (`mode: 'bailout' | 'select'`).
 - Model: `src/scenes/MainStreetLoanOverlayModel.ts` (pure, no Phaser import) —
   `buildLoanOfferModel(state)` turns the outstanding
   `state.pendingLoanOffer` into a title, intro, one **row per presented loan

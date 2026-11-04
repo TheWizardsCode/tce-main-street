@@ -221,6 +221,16 @@ describe('Help/Rules panel content (PRD milestone 5)', () => {
     expect(winLoss).toContain('bailout');
   });
 
+  it('documents that the bailout offer states the shortfall and each option\'s coverage', () => {
+    const loans = normalise(
+      bodyOf(helpContent.find((s) => s.heading === 'Bank Loans')!),
+    );
+    // MS-0MVZC1DAS001C8LF: the dialog states the closing deficit and marks
+    // which options close it, so the help copy must say so too.
+    expect(loans).toContain('short');
+    expect(loans).toContain('gap');
+  });
+
   it('"Turn Flow" mentions loan repayment in the end-of-turn sequence', () => {
     const body = normalise(bodyOf(helpContent.find((s) => s.heading === 'Turn Flow')!));
     expect(body).toContain('loan repayment');

@@ -13,7 +13,7 @@
  *  2. The difficulty ladder agrees on the rule (Easy/Medium/Hard).
  *  3. Multi-option nodes (≥3, incl. random candidate sets) resolve
  *     deterministically and RNG-free.
- *  4. Edge cases — null/missing next ids and unknown templates never crash.
+ *  4. Edge cases — terminal options and unknown templates never crash.
  *  5. Transcript consistency — AI choices are recorded identically to player
  *     choices (engine `event-choice` event shape, label token).
  *  6. The sim never stalls on a pending choice.
@@ -43,12 +43,17 @@ import {
 
 // ── Synthetic chain templates (registry for severity lookups) ──
 
-const CHAIN_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId,options,storylineId,storylineTitle
-event,evt-esc-bad,Bad Escalation,0,,,,,,,,,1,Incident,Lose 1000 coins,All,,-1000,0,,,,,,,,,,,,,,,,,,,,,
-event,evt-esc-mid,Mid Escalation,0,,,,,,,,,1,Incident,Lose 200 coins,All,,-200,0,,,,,,,,,,,,,,,,,,,,,
-event,evt-esc-small,Small Escalation,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,,,,
-event,evt-esc-pos,Positive Escalation,0,,,,,,,,,1,Incident,Gain 300 coins,All,,300,0,,,,,,,,,,,,,,,,,,,,,`;
+const CHAIN_ROWS = [
+  'event,evt-esc-bad,Bad Escalation,0,1,Incident,Lose 1000 coins,All,-1000,0',
+  'event,evt-esc-mid,Mid Escalation,0,1,Incident,Lose 200 coins,All,-200,0',
+  'event,evt-esc-small,Small Escalation,0,1,Incident,Lose 50 coins,All,-50,0',
+  'event,evt-esc-pos,Positive Escalation,0,1,Incident,Gain 300 coins,All,300,0',
+];
+
+const CHAIN_CSV_TEXT = [
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta',
+  ...CHAIN_ROWS,
+].join('\n');
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -63,9 +68,7 @@ function negative(overrides: Partial<EventCard> = {}): EventCard {
     target: 'All',
     coinDelta: -300,
     reputationDelta: 0,
-    hasChoices: true,
-    acceptNextCardId: null,
-    rejectNextCardId: null,
+    options: 'Accept|;Reject|',
     ...overrides,
   };
 }
@@ -76,7 +79,7 @@ function positive(overrides: Partial<EventCard> = {}): EventCard {
 
 function stateFor(difficulty: 'Easy' | 'Medium' | 'Hard', coins = 600): MainStreetState {
   const state = setupMainStreetGame({ seed: `ai-suite-${difficulty}`, difficulty });
-  loadTemplatesFromCsv(CHAIN_CSV);
+  loadTemplatesFromCsv(CHAIN_CSV_TEXT);
   state.resourceBank.coins = coins;
   return state;
 }
@@ -103,29 +106,29 @@ describe('F7 — the AI picks the least-harmful option chain', () => {
   it('prefers the terminal option over any escalation', () => {
     const s = stateFor('Hard', 600);
     // Accept terminal, Reject→bad: accept (index 0).
-    expect(decideEventChoice(s, negative({ acceptNextCardId: null, rejectNextCardId: 'evt-esc-bad' }), 'Hard')).toBe(0);
+    expect(decideEventChoice(s, negative({ options: 'Accept|;Reject|evt-esc-bad' }), 'Hard')).toBe(0);
     // Reject terminal, Accept→bad: reject (index 1).
-    expect(decideEventChoice(s, negative({ acceptNextCardId: 'evt-esc-bad', rejectNextCardId: null }), 'Hard')).toBe(1);
+    expect(decideEventChoice(s, negative({ options: 'Accept|evt-esc-bad;Reject|' }), 'Hard')).toBe(1);
   });
 
   it('compares chain severities across options by worst candidate', () => {
     const s = stateFor('Hard', 600);
     // accept: mid(-200); reject: small(-50) → reject (1).
-    expect(decideEventChoice(s, negative({ acceptNextCardId: 'evt-esc-mid', rejectNextCardId: 'evt-esc-small' }), 'Hard')).toBe(1);
+    expect(decideEventChoice(s, negative({ options: 'Accept|evt-esc-mid;Reject|evt-esc-small' }), 'Hard')).toBe(1);
     // accept: small(-50); reject: mid(-200) → accept (0).
-    expect(decideEventChoice(s, negative({ acceptNextCardId: 'evt-esc-small', rejectNextCardId: 'evt-esc-mid' }), 'Hard')).toBe(0);
+    expect(decideEventChoice(s, negative({ options: 'Accept|evt-esc-small;Reject|evt-esc-mid' }), 'Hard')).toBe(0);
   });
 
   it('positive events follow the same least-harmful rule', () => {
     const s = stateFor('Hard');
     expect(decideEventChoice(s, positive(), 'Hard')).toBe(0);
     // Accept chains a small card; Reject stays terminal → Reject (1).
-    expect(decideEventChoice(s, positive({ acceptNextCardId: 'evt-esc-small' }), 'Hard')).toBe(1);
+    expect(decideEventChoice(s, positive({ options: 'Accept|evt-esc-small;Reject|' }), 'Hard')).toBe(1);
   });
 
   it('unknown chain template ids behave as terminal (severity 0, no crash)', () => {
     const s = stateFor('Hard');
-    const evt = negative({ acceptNextCardId: 'evt-ghost', rejectNextCardId: 'evt-missing' });
+    const evt = negative({ options: 'Accept|evt-ghost;Reject|evt-missing' });
     // Both candidates unknown → both severity 0 → tie → index 0.
     expect(decideEventChoice(s, evt, 'Hard')).toBe(0);
   });
@@ -135,7 +138,7 @@ describe('F7 — the AI picks the least-harmful option chain', () => {
 
 describe('F7 — the difficulty ladder agrees on the shared rule', () => {
   it('Easy/Medium/Hard return the same index for equivalent states', () => {
-    const evt = negative({ acceptNextCardId: 'evt-esc-bad', rejectNextCardId: 'evt-esc-small' });
+    const evt = negative({ options: 'Accept|evt-esc-bad;Reject|evt-esc-small' });
     const easy = decideEventChoice(stateFor('Easy'), evt, 'Easy');
     const medium = decideEventChoice(stateFor('Medium'), evt, 'Medium');
     const hard = decideEventChoice(stateFor('Hard'), evt, 'Hard');
@@ -165,13 +168,10 @@ describe('F7 — arbitrary multi-option nodes', () => {
 // ── AC5: Edge cases ─────────────────────────────────────────
 
 describe('AC5 — edge cases never crash', () => {
-  it('null next ids and missing fields are handled', () => {
+  it('a card with no option source is handled (non-choice)', () => {
     const s = stateFor('Hard');
-    const legacy = negative();
-    delete (legacy as { hasChoices?: boolean }).hasChoices;
-    (legacy as { acceptNextCardId?: string | null }).acceptNextCardId = null;
-    (legacy as { rejectNextCardId?: string | null }).rejectNextCardId = null;
-    expect(Number.isInteger(decideEventChoice(s, legacy, 'Hard'))).toBe(true);
+    const plain = negative({ options: undefined });
+    expect(decideEventChoice(s, plain, 'Hard')).toBe(0);
   });
 });
 
@@ -183,7 +183,7 @@ describe('AC6 — AI choices are recorded identically to player choices', () => 
     setMainStreetRecorder(recorder);
 
     const state = stateFor('Hard', 600);
-    const evt = negative({ coinDelta: -100, rejectNextCardId: 'evt-esc-mid' });
+    const evt = negative({ coinDelta: -100, options: 'Accept|;Reject|evt-esc-mid' });
     state.incidentDeck.length = 0;
     state.incidentDeck.push({ ...evt, id: 'evt-cur-0' });
     state.phase = 'MarketPhase';

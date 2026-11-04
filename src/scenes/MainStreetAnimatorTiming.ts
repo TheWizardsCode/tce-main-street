@@ -106,13 +106,18 @@ export const COMPETITIVE_CLOSING_MAX_TOTAL_MS = 180_000;
 // ── End-of-turn income-collection wait cap (CG-0MTR72P14000VO6Q, AC5/AC7) ──
 /**
  * Bounded safety cap (ms) for the end-of-turn income-collection deferral:
- * the day start (AC5), the forced event-choice dialog (AC7) and the forced
- * piggyback decision show each wait on `incomeCollectionActive` before
- * advancing. If the choreography never clears the flag, this cap forces the
- * day start / forced dialog regardless, so end-of-turn can never hang the
- * game. Single-player parity value; the closing primitive's default
- * (`MainStreetTurnControllerAnimation`) and the three turn-flow deferral
- * sites must stay in sync with it (MS-0MVLINWHE004W4CP).
+ * the day start (AC5), the turn-summary gate, the bankruptcy bailout loan
+ * offer, the forced event-choice dialog and the forced piggyback decision
+ * show each wait on `incomeCollectionActive` before advancing, as do the
+ * closing presentation and the incident-reveal gating. If the choreography
+ * never clears the flag, this cap forces the day start / forced dialog
+ * regardless, so end-of-turn can never hang the game. Single-player parity
+ * value; the closing primitive's default (`MainStreetTurnControllerAnimation`)
+ * and **all seven** deferral sites (five in
+ * `MainStreetTurnControllerTurnFlow`, two in
+ * `MainStreetTurnControllerAnimation`) must stay in sync with it
+ * (MS-0MVLINWHE004W4CP; six were planned, `presentLoanOfferDialog` joined
+ * after the plan — MS-0MVMKEU2000639TG).
  *
  * **Enforcement contract (MS-0MVMKEU2000639TG, decision C):** the cap is
  * enforced on the **wall clock**, not the scene clock. Phaser's `TimeStep`

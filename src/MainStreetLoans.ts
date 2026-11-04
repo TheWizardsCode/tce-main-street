@@ -177,6 +177,49 @@ export function buildActiveLoan(
 }
 
 /**
+ * Opt-in flags for a loan-taking attempt (`canTakeLoan` / `takeLoan` / the
+ * reversible `takeLoanCommand`).
+ *
+ * The only flag is the deferred-closing window opt-in: the `MarketPhase`-only
+ * precondition is the *default* for every caller, so a loan can never be taken
+ * mid-closing by accident — the Turn Summary dialog passes the flag
+ * explicitly because it is the surface that owns the pause.
+ */
+export interface TakeLoanOptions {
+  /**
+   * Permit the take while the acting seat's own closing is paused awaiting the
+   * Turn Summary gate ({@link isDeferredClosingPause}), instead of requiring
+   * `MarketPhase`.
+   *
+   * Every other rule still applies unchanged (loans enabled, one active loan,
+   * a resolvable seat, an existing option and no unresolved offer for that
+   * seat), so the flag relaxes the phase precondition and nothing else.
+   */
+  allowDuringClosing?: boolean;
+}
+
+/**
+ * Whether the state is parked in the deferred-closing pause — the window
+ * between `processEndOfTurn`'s closing and the day advancing.
+ *
+ * The Turn Summary gate (`presentTurnSummaryGate`) runs in that window, before
+ * `advanceTurn` resumes `finishDeferredTurnClosing()`, so `state.phase` has
+ * already left `MarketPhase` (a deferred closing rests in `IncidentPhase`;
+ * other closings pause on `EndCheck`). This predicate names the window once so
+ * the loan eligibility rule and the dialog share a single definition
+ * (MS-0MVXYCIU00053HL1).
+ *
+ * A finished game is never in the window: the day cannot be resumed, so no
+ * loan can be booked against it.
+ *
+ * @param state Current game state (never mutated).
+ */
+export function isDeferredClosingPause(state: MainStreetState): boolean {
+  if (state.gameResult !== 'playing') return false;
+  return state.phase === 'IncidentPhase' || state.phase === 'EndCheck';
+}
+
+/**
  * Validates a loan-taking attempt against every rule without mutating state.
  *
  * Returns `{ legal: true }` when the seat may take a loan by choosing the
@@ -185,22 +228,32 @@ export function buildActiveLoan(
  * change (the caller refuses before any mutation).
  *
  * Rules enforced (parent Q1 = A; this slice's ACs):
- * - the game is still playing and the phase is MarketPhase;
+ * - the game is still playing and the phase is MarketPhase — or, when the
+ *   caller opts in via `allowDuringClosing`, the deferred-closing pause
+ *   ({@link isDeferredClosingPause});
  * - loans are enabled in the config;
  * - the seat does not already hold an active loan;
  * - the chosen option exists in `config.loanOptions`;
  * - the seat has no unresolved pending loan offer (bailout must decide
  *   first, so a pending offer is never stacked or queued — Q1/A).
+ *
+ * @param state       Current game state (never mutated).
+ * @param optionIndex Index into `config.loanOptions`.
+ * @param ownerId     Borrowing seat (defaults to the active seat).
+ * @param opts        Optional {@link TakeLoanOptions} — the explicit
+ *                    closing-window opt-in.
  */
 export function canTakeLoan(
   state: MainStreetState,
   optionIndex: number,
   ownerId?: number,
+  opts?: TakeLoanOptions,
 ): import('@rule-engine').LegalityResult {
   if (state.gameResult !== 'playing') {
     return { legal: false, reason: 'The game is over; no more loans can be taken.' };
   }
-  if (state.phase !== 'MarketPhase') {
+  const closingWindowOpen = opts?.allowDuringClosing === true && isDeferredClosingPause(state);
+  if (state.phase !== 'MarketPhase' && !closingWindowOpen) {
     return { legal: false, reason: `Loans can only be taken during the market phase, not ${state.phase}.` };
   }
   if (!state.config.loansEnabled) {
@@ -302,8 +355,9 @@ function recordBailoutOffered(state: MainStreetState, ownerId: number): void {
  * mutates only the transitional decision fields:
  *
  * - `state.pendingLoanOffer` is set to the presented menu (a snapshot of
- *   `config.loanOptions`) with `reason: 'bankruptcy'` and the failing seat's
- *   `ownerId`;
+ *   `config.loanOptions`) with `reason: 'bankruptcy'`, the failing seat's
+ *   `ownerId` and the **shortfall** (`max(0, -coins)` on the same balance the
+ *   bankruptcy test used) so the dialog can state how far short the seat is;
  * - `state._bailoutOffered` records `{ ownerId, turn }` so a second
  *   evaluation in the same turn (after a decline) cannot re-offer that seat;
  * - one `neutral` activity-log row announces the decision, attributed to the
@@ -365,12 +419,18 @@ export function maybeOfferBailoutForSeat(
   const options = optionsFor(state).map((option) => ({ ...option }));
   if (options.length === 0) return false;
 
-  state.pendingLoanOffer = { ownerId: seatId, reason: 'bankruptcy', options };
+  // Snapshot the shortfall from the very balance the bankruptcy test used, so
+  // the dialog, the log row and the decision can never disagree — and so the
+  // deferred-mutation path (where the deltas are still un-applied at render
+  // time) still shows the projected closing figure (MS-0MVZC1DAS001C8LF).
+  const shortfall = Math.max(0, -coins);
+
+  state.pendingLoanOffer = { ownerId: seatId, reason: 'bankruptcy', options, shortfall };
   recordBailoutOffered(state, seatId);
   addLog(
     state,
     seatId,
-    `Bankruptcy bailout: coins are ${coins}; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
+    `Bankruptcy bailout: ${shortfall} coins short of covering this turn's costs; a bank loan is available — accept an option to keep playing, or decline to end the run.`,
     'neutral',
   );
   return true;
@@ -686,7 +746,11 @@ export function restoreActiveLoans(raw: unknown): ActiveLoan[] {
  * - `options` must be an array with at least one usable option (positive
  *   `principal`, integral `termTurns >= 1`); unusable options are dropped, and
  *   an offer with no option left is dropped entirely — `largestBailoutOption`
- *   throws on an empty menu, and a human could never resolve one.
+ *   throws on an empty menu, and a human could never resolve one;
+ * - `shortfall` is optional (MS-0MVZC1DAS001C8LF): a finite, non-negative
+ *   integer is kept; a missing or malformed value restores as **unknown**
+ *   (`undefined`) rather than dropping the offer — a save taken mid-offer must
+ *   stay resolvable, and the dialog omits the figure instead of inventing one.
  *
  * @param raw The untrusted `pendingLoanOffer` value from the serialized state.
  * @returns The offer to resume, or `null` when there is nothing to resume.
@@ -695,7 +759,7 @@ export function restorePendingLoanOffer(raw: unknown): PendingLoanOffer | null {
   if (!raw || typeof raw !== 'object') return null;
   const offer = raw as Record<string, unknown>;
 
-  const { ownerId, reason, options: rawOptions } = offer;
+  const { ownerId, reason, options: rawOptions, shortfall: rawShortfall } = offer;
   if (!isFiniteNumber(ownerId) || !Number.isInteger(ownerId) || ownerId < 0) return null;
   if (reason !== 'bankruptcy') return null;
   if (!Array.isArray(rawOptions)) return null;
@@ -710,5 +774,14 @@ export function restorePendingLoanOffer(raw: unknown): PendingLoanOffer | null {
   }
   if (options.length === 0) return null;
 
-  return { ownerId, reason: 'bankruptcy', options };
+  // Additive, optional field: keep only a whole, non-negative coin amount and
+  // otherwise leave the figure unknown (never drop the offer for it).
+  const shortfall =
+    isFiniteNumber(rawShortfall) && Number.isInteger(rawShortfall) && rawShortfall >= 0
+      ? rawShortfall
+      : undefined;
+
+  return shortfall === undefined
+    ? { ownerId, reason: 'bankruptcy', options }
+    : { ownerId, reason: 'bankruptcy', options, shortfall };
 }

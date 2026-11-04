@@ -78,21 +78,28 @@ full-frame snapshots.
 moment the committed file drifts from that output — that guard is the repo's
 check for this contract, not a raw scaffold run.
 
-**Never run `npm run scaffold` on this existing repo** (MS-0MVU03V1V0096L4O).
-It invokes `scaffoldGameRepo()` for the whole repository, not just
-`renderMainTs()`: it rewrites the core template's boilerplate — `package.json`,
-`index.html`, `tsconfig.json`, `vite.config.ts` and several tooling tests — over
-this repo's deliberate divergence and rewrites legacy `example-games` game
-paths to `src/` paths. The launcher itself comes out byte-identical (the later
-`git status --porcelain main.ts` is empty), so a full scaffold proves nothing
-about `main.ts` that the drift guard does not already prove, while discarding
-unrelated work. Regenerate `main.ts` only as part of an intentional fresh-repo
-scaffold; here, change the generator (or the engine pin) and let the guard
-verify the committed output. **Never hand-edit** `./main.ts`: a hand edit is
-silently erased by the next scaffold, together with any comment explaining it,
-which is exactly how the `type: Phaser.AUTO` launcher switch was reverted once
-(MS-0MVU03TR0006KZDH). Launcher commentary belongs in the generator or in
-`docs/`. Full contract: [build-and-release.md](build-and-release.md).
+**`npm run scaffold` is safe on this repo — it is scoped to `main.ts`**
+(MS-0MVU03V1V0096L4O, MS-0MVWGI4CB0055IT0). The script passes
+`--only main.ts --force`, so the engine-owned generator classifies every other
+generated file (`package.json`, `index.html`, `tsconfig.json`, `vite.config.ts`,
+`configs/game.json`) as `skip-local` or `unchanged`, writes none of them,
+performs no `example-games` → `src/` path rewrite, and creates no `core`
+symlink. The launcher comes out byte-identical when it already matches
+`renderMainTs()`, so a run is a no-op for the committed tree and the drift guard
+below still holds the contract. `tests/tooling/scaffold-non-destructive.test.ts`
+pins this: it runs the repo's own `scaffold` arguments against a temporary copy
+of the wiring files and fails if anything but `main.ts` changes, if a diverged
+`main.ts` is *not* regenerated, or if `--dry-run` writes at all. Use
+`npm run scaffold` (or the same command with `--dry-run` to preview the
+classification) when a generator or pin change should be re-emitted into
+`./main.ts`. **Never** invoke the generator without `--only` here: a full run
+still rewrites every generated file — the template behaviour fresh and
+extracted game repos rely on (MS-0MVU03V1V0096L4O). **Never hand-edit**
+`./main.ts`: a hand edit is silently erased by the next scaffold, together with
+any comment explaining it, which is exactly how the `type: Phaser.AUTO` launcher
+switch was reverted once (MS-0MVU03TR0006KZDH). Launcher commentary belongs in
+the generator or in `docs/`. Full contract:
+[build-and-release.md](build-and-release.md).
 
 The `unit-cli` project is serialized by design (`fileParallelism: false` with
 its own `sequence.groupOrder`): its tests cold-start a CLI through `vite-node`,
@@ -301,6 +308,80 @@ timeout message keeps the greppable shape
   `MainStreetScene.browser.test.ts` passes a per-class `floorMs`:
   24 000 ms for the end-of-turn wait and 12 000 ms for the transfer waits.
 
+### Sampling *during* a choreography: observe the production step, not a wall-clock window
+
+A test that observes an animation-driven value (the live HUD totals, a count-up)
+must tie the observation to the **choreography's own progress**, never to a fixed
+wall-clock window. Two clocks are in play: the show is scene-clock paced (Phaser
+clamps each frame's delta), and the deferred HUD window is closed by the
+wall-clock deferral cap (`INCOME_COLLECTION_CAP_MS`, 16 000 ms). On a CPU-starved
+host the show's phases land several times later in wall time than their nominal
+schedule, the cap closes the window while the scene-clock-paced show is still
+flying, and any windowed observation of the rendered total ends before the very
+arrivals under test. That is exactly the MS-0MW08THR2000YXEO failure: at ≈1.3×
+CPU oversubscription the reputation phase started at 11.7 s of wall time against
+a 2.2 s nominal phase gap, the grid-to-HUD collection landed after a fixed 14 s
+window, and the scene — which was correct — was reported as a regression.
+
+So observe the **production step** the HUD re-render hangs off. The
+reconciliation publishes every coin/pip arrival (and the final snap) through
+`scene.syncHudTotals`, the same call the HUD uses to re-render its totals, so a
+recording wrapper captures the tick sequence at the arrivals themselves:
+
+```ts
+const coinSteps: number[] = [];
+const original = scene.syncHudTotals.bind(scene);
+scene.syncHudTotals = () => {
+  original();
+  if (typeof scene.displayedCoins === 'number') coinSteps.push(scene.displayedCoins);
+};
+
+await waitForCondition(() => coinSteps.some((v) => v !== pre), {
+  capMs: INCOME_COLLECTION_CAP_MS,
+  floorMs: CHOREOGRAPHY_STARVATION_MARGIN_MS, // races the scene clock
+  intervalMs: 100,
+  label: 'coin total to tick at a HUD arrival',
+});
+```
+
+The wrapper preserves behaviour (the original call still runs), and the recording
+is unaffected by frame scheduling — a tick that landed after a wall-clock window
+would have closed is still recorded.
+
+**Budget the two waits separately, from the clock each one actually races.**
+This is the part that is easy to get wrong. A single conjunction such as
+`endOfTurnDeltasApplied === true && coinSteps.some(…)` looks tidier but makes the
+budget span the **entire** scene-clock-paced show, because
+`endOfTurnDeltasApplied` is only set once the closing continuation runs. Under
+starvation that exceeds any cap-derived budget and a correct scene fails again:
+
+| Wait | Clock it races | Budget |
+|---|---|---|
+| the **first arrival** ticks the total | scene clock (the flights) — *not* bounded by the wall-clock cap, which abandons the *wait*, not the flights | `INCOME_COLLECTION_CAP_MS` + a deliberately larger choreography margin (`CHOREOGRAPHY_STARVATION_MARGIN_MS`) |
+| `endOfTurnDeltasApplied === true` (authoritative final value) | wall clock — the closing continuation is capped at `INCOME_COLLECTION_CAP_MS` | `INCOME_COLLECTION_CAP_MS` + `END_OF_TURN_STARVATION_MARGIN_MS` |
+
+Because the arrival wait can legitimately take much longer than a 60 s test
+timeout, the per-test timeout is raised to 180 s for these two cases. The
+budgets are ceilings, not costs: a green run returns as soon as the condition
+holds.
+
+**Make "ticked at arrivals" distinguishable from "jumped at the snap".** The
+recorded sequence also contains the final snap, so `some((v) => v !== pre)` alone
+cannot tell a per-arrival count-up from a single jump — a regression that froze
+the counter until the snap would still satisfy it. Assert a value **strictly
+between** the pre and post totals, and choose a scenario that publishes several
+arrivals (for reputation, one pip per `iconsForAmount` icon, i.e. one per 100
+reputation — a single-pip amount makes the only published value the final one).
+
+Keep the rendered-text assertions in a deterministic renderer test
+(`main-street-renderer-deferred.browser.test.ts`, `hud-total-counting.test.ts`)
+rather than racing the choreography for them; the live test owns the end-to-end
+wiring (a real end-of-turn drives the real flights that step the totals).
+
+A sampled value that persists once it changes (a count-up total) needs no
+frame-accurate sampling either — the **window**, not the interval, is what has to
+be progress-driven.
+
 ### Interaction gates between the animation and the advance
 
 The day no longer always advances straight off the end-of-turn animations. In
@@ -347,7 +428,21 @@ guard). A wait that breaks this rule dies in the hook with an unattributed
 timeout instead of failing with its own label — so the largest legal
 end-of-turn budget is 40 000 ms. Above ~2× CPU oversubscription the scene's own
 choreography can outlive the hook; that ceiling is measured and recorded in the
-soak envelope below rather than papered over with a longer poll.
+soak envelope below rather than papered over with a longer poll, and it is
+**accepted as the design limit** (producer decision, 2026-11-02 — see the
+measured envelope below).
+
+**The deferral cap is enforced on wall clock (MS-0MVMKEU2000639TG, decision C).**
+The end-of-turn safety cap (`INCOME_COLLECTION_CAP_MS`, 16 000 ms) is applied by
+the shared `deferUntilIncomeCollected` helper through a `Date.now` deadline and a
+`setTimeout` watchdog, not through the scene clock's `delayedCall` re-polls. The
+consequence is a documented semantic: a hidden or backgrounded document forces
+the day start after the cap instead of stalling until the tab paints again
+(producer Q2 = 1) — the cap exists to bound a stall, and nothing is visible
+while hidden. The 40 000 ms end-of-turn budget and the headroom rule are
+unchanged, and the choreography pacing is untouched; the wall-clock enforcement
+removes the *deferral* leg from the starvation race, which is what the measured
+envelope below reflects (and where it still ends).
 
 ### The guard
 
@@ -402,11 +497,10 @@ scripts/soak-browser-waits.sh --runs 20            # quiet-host soak
 scripts/soak-browser-waits.sh --runs 20 --load     # soak under imposed load
 ```
 
-Each run invokes the **canonical gate runner**
+Each run invokes the **canonical retry/hang-bound runner**
 (`npx tsx core/scripts/vitest-run-with-retry.ts --project browser
- tests/main-street/MainStreetScene.browser.test.ts`), so retry and hang-bound
-semantics match the dev-push gate exactly — the soak measures the gate, not a
-look-alike.
+ tests/main-street/MainStreetScene.browser.test.ts`), so the soak measures the
+real gate runner, not a look-alike.
 
 Behaviour:
 
@@ -455,6 +549,81 @@ When you re-run the soak, record the burner count next to the result — an
 under-load pass at 8 burners on a host already at load 20 is a stronger
 statement than one at 16 burners on an idle host.
 
+#### Re-measured after the wall-clock deferral cap (2026-11-02, 16-core host)
+
+The wall-clock cap (`deferUntilIncomeCollected`, MS-0MVMKEU2000639TG decision C)
+changed *which* wait fails first and how the day start behaves in a hidden tab,
+but it did not lift the ≈2× ceiling. Nine 16-burner soak attempts
+(`--runs 5`, fail-fast) on a host shared with sibling agent suites, so peaks
+swung 28.60-58.04 from start loads of 6.71-47.95:
+
+| Attempt peak load | Runs pass/fail | Result |
+|---|---|---|
+| 47.46 / 56.76 / 56.73 / 49.01 / 51.20 | 0 / 1 | dialog wait failed; the two most oversubscribed attempts also broke 1-3 transfer waits |
+| 49.32 | 1 / 1 | run 1 **passed** at 28.98 |
+| 58.04 | 1 / 1 | run 1 **passed** at 36.03 |
+| **30.77** | **2 / 1** | runs 1-2 **passed** (29.98 / 30.77), run 3 failed at 29.37 |
+| **28.60** | 0 / 1 | failed on the first run — the dialog wait **only**; the other 19 tests passed in 2-19 s |
+
+Every failure is the same wait — `Turn Summary dialog after end-of-turn
+presentation` at its cap-derived 40 000 ms budget — and it now trips at peaks
+*below* the pre-change failure point (28.60 and 29.37 versus 34.86). The cause is
+structural, not a regression: the Turn Summary gate (MS-0MVP46Q8X003419R)
+presents the dialog *before* the day advance, behind the income choreography and
+the incident reveal, and both remain scene-clock paced (pacing is a shipped
+feature and deliberately unchanged). The wall-clock cap bounds the deferral leg
+— and unit contract tests prove it forces the continuation within one poll
+interval of the cap on a frozen scene clock — but it cannot bound the animation
+chain in front of the dialog.
+
+So the ≈2× ceiling still applies to the *Turn Summary dialog* wait, and the
+16-burner gate can still go red on a loaded shared host.
+
+**Decision (producer, 2026-11-02): this envelope is the documented design
+limit.** The measured ≈2× ceiling is accepted as the behaviour of the
+full-motion end-to-end path: a 16-burner soak failure on a host that is already
+running sibling suites is treated as host weather — recorded, retried, and
+reported as the envelope — **not** chased as a behavioural regression. The
+wall-clock cap stays: it is what makes the player-facing guarantee true (the day
+start is forced at 16 000 ms of wall time even in a hidden or backgrounded
+document), and it bounds the deferral leg only — it deliberately does not bound
+the scene-clock-paced income choreography and incident reveal that sit in front
+of the Turn Summary dialog, because that pacing is a shipped feature
+(MS-0MVMKEU2000639TG AC5).
+
+The test-side alternative — drive the Enter test on the reduced-motion path and
+keep the deferred-income property in a separate contract test — was **considered
+and not pursued** (filed, then closed un-implemented, as MS-0MVZI4OXL0050RPP).
+It would remove the race instead of widening the budget, at the cost of
+end-to-end coverage of the deferred closing behind a real choreography. If a
+future item needs the gate green under sustained ≈2× oversubscription, that is
+the recorded starting point; re-opening it is a design decision, not a tweak to
+any wait budget here.
+
+### Triaging a red browser wait against the envelope
+
+Every wait in `tests/main-street/MainStreetScene.browser.test.ts` fails with its
+own label and derived budget (`Timed out waiting for <label> after <budget>ms
+(cap <cap>ms)`), and the suite summary records the host load the run saw
+(`host load average N`). Those two facts decide a `test-failure` item:
+
+1. **At or above ≈2× `nproc`** (≈31 on the documented 16-core host) a
+   wait-budget timeout is *inside* the measured envelope. Record the load with
+   the failure, re-run on a quieter host, and close as flaky / not a regression
+   when the re-run is green — that is the disposition already taken for
+   MS-0MVZESMNI004EQII (green `--force` full-suite re-run at the same commit).
+   The transfer waits (`first`/`second business`, `event materialized`) are the
+   ones recorded to break first at the most oversubscribed peaks
+   (47.46-58.04 in the re-measure above); the Turn Summary dialog wait breaks
+   first from ≈28.6 upwards.
+2. **Below the envelope** the same timeout is *not* excused by load: the scene
+   failed to reach a gated state its derived budget demonstrably covers, so it
+   is treated as a behavioural regression and fixed in code, not re-run away.
+
+Soak before suspecting the envelope: `/skill:test --type soak` on the quiet host
+is the cheap disproof of flakiness, and a single labelled timeout below ≈2×
+oversubscription is a real red gate.
+
 ## Prerequisites: Playwright Chromium
 
 Some **unit** tests also launch Chromium (`storyline-graph-svg.test.ts` renders
@@ -492,7 +661,7 @@ silently predate the engine pin in `configs/engine-pin.json`. So the root
 `vite.config.ts` registers a `test.globalSetup`
 (`tests/tooling/engine-checkout-precheck.ts`, MS-0MVO26G5H0054SNV) that every
 invocation inherits — `npm test`, the changed-scope gate's direct
-`npx vitest run <files>` calls and the dev-push browser gate — and fails the
+`npx vitest run <files>` calls and the browser-project runs — and fails the
 run loudly when `./core` is not the pinned engine or a descendant of it,
 naming the composed SHA, the pin SHA and the `npm run engine:sync`
 remediation. On a pass it logs the composed engine identity (short SHA plus
@@ -560,6 +729,42 @@ failed gate is read correctly.
    engine SHA plus whether the suite ran or was cache-served, so a green
    verdict is traceable to the engine it actually exercised.
 
+#### Limitation: a lagging pin can fail the build before the gate
+
+`npm run build` is `npm run engine:sync && tsc --noEmit && vite build`, so
+`engine:sync` runs **first** and advances the engine **before** the type-check
+and the bundle. On a worktree whose committed pin lags the engine tracked
+tip, that means a source written against the older engine API
+is compiled against the new one, and `tsc --noEmit` or `vite build` can fail
+even though the item changed nothing. The composition exclusion above
+(`SA-0MVZE164P0048306`) cannot help here: it restores the pre-build
+composition only **after** a successful build, so a build that fails at `tsc`
+never reaches it. This is a pre-existing property of syncing at build time —
+and the reason an engine-induced compile error looks exactly like a genuine
+source break.
+
+The diagnostic is in the build's **stdout**. A lagging pin produces a
+`engine:sync: core updated <from> → <to>` line (the engine checkout moved),
+normally followed by the pin-rewrite line
+`engine:sync: engine pin <from> → <to> (staged with the core gitlink)`. The
+check is whether the engine that was actually compiled — the `core` checkout
+`HEAD` — differs from the composition the commit records: the `core` gitlink
+in `HEAD` and the `sha` in `configs/engine-pin.json`. When they differ, the
+failure is engine-induced rather than caused by the item's source, and the
+advance is **not** part of the item's commit: the gate's restore puts the
+pre-build composition back, so build-originated pin/gitlink churn never
+travels in a commit the item did not originate. `SA-0MW06FLFR009F0P4` is the
+item that makes this condition explicit in the finish report and the
+build-failure comment; until it lands, the check is made by hand from the
+stdout and the composition comparison above.
+
+What to do next: either make the re-pin the item's own deliberate change —
+commit the pin and the `core` gitlink together — or, when the pin must stay,
+rebase the source onto the current engine API so it builds against the tip.
+Neither changes what the gate composes: it never edits build composition on
+the item's behalf (Option B — having the gate choose the build's composition —
+remains unadopted and needs producer sign-off).
+
 ### The timeout is per command, and shared with `git push`
 
 `timeoutPerCommand` from `.pi/test-config.json` bounds **each** entry of
@@ -572,7 +777,16 @@ suite took **2846.6 s** under load while the config declared 1800 s, and a
 rounded up to a whole minute) and is enforced by
 `tests/tooling/test-config-timeout-guard.test.ts` — lowering the config below
 the floor fails the suite, so the config, the guard and this paragraph cannot
-drift apart.
+drift apart. The same guard pins the **shape** of the config: the
+three-command full suite and every named `groups` entry in
+`EXPECTED_GROUP_NAMES`. Adding a group is therefore a two-file change — the
+config **and** the pin — and forgetting the pin fails the guard rather than
+silently shrinking the targeted-scope mechanism (`MS-0MVZGAEF6004Q8XD`).
+`event-choice-dialogs-browser` (added with its pin by
+`MS-0MVZNRBDJ001L19R`) covers the two event-choice dialog browser suites
+(`event-choice-dialog.browser.test.ts`, `event-choice-dialog-slice.browser.test.ts`);
+before that group existed they were in no group at all, so neither the pinned
+full suite nor changed scope ever selected them.
 
 ### Queue wait is separate from test time
 
@@ -586,22 +800,73 @@ kills without `reason: unknown`, is `SA-0MVTET8KQ0031R6Z` (slot fairness is
 code failure, a timeout/kill and a slot wait are three different problems with
 three different fixes.
 
-### Changed scope is currently the full suite in this repo
+### Changed scope: groups and vitest files are selectable
 
-`implement.py finish` first tries a named group from `.pi/test-config.json`,
-then a file-level selector, and falls back to the **full suite** with a logged
-warning when no subset can be selected — with `suiteCommands` declared, that
-fallback is what normally fires today. Restoring a targeted selection for this
-stack (vitest/TypeScript-aware mapping; `groups` honoured even when
-`suiteCommands` is present, which continues to define only the full suite) is
-`SA-0MVL7YOMJ006UMDO`; when it lands, the finish log reports
-`scope: changed` with the selected commands instead of the full fallback.
+`implement.py finish` first maps the changed paths to a declared `groups`
+entry in `.pi/test-config.json`, then to the affected vitest `.test.ts` files,
+and falls back to the **full suite** with a logged, specific reason when no
+subset can be selected. Declaring `suiteCommands` no longer disables that
+selection — it defines the **full** suite only (`SA-0MVL7YOMJ006UMDO`, shipped
+in v0.1.25).
+
+Verified against this tree on 2026-11-03 (the installed test skill's
+`changed_scope_selection`):
+
+| Changed file | Selection | Reported reason |
+|---|---|---|
+| `tests/tooling/test-config-timeout-guard.test.ts` | `node_modules/.bin/vitest run tests/tooling/test-config-timeout-guard.test.ts` | selected 1 affected test file(s) |
+| `src/scenes/MainStreetScene.ts` | `npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts` | matched group `webgl-clipping-browser` |
+| `docs/dev/testing.md` | full suite | no changed source or test files |
+
+The fallback states why it fell back ("no changed files", "no changed source
+or test files", "no matching group") rather than giving a generic list, so a
+finish log that ran the full suite says which case applied.
 
 The engine-composition preflight above is the complementary guard: this
 section is about what the gate *does*, the preflight is about which engine a
 run *composed* (`npm run engine:check`,
 `tests/tooling/engine-checkout-precheck.ts`; the release pin contract lives in
 `tests/main-street/engine-submodule-sync.test.ts`).
+
+## Dev-push gate activation
+
+`implement.py finish` defers the full suite to the "dev-push gate", so whether a
+`dev` push is gated at all depends on which hook git actually runs. In this
+checkout the active gate set is the **v2** hook — branch policy, context budget
+and worklog sync, with **no full-suite step**; the game-repo full-suite variant
+is tracked in `CG-0MW0KURL8002XOV9`. The current-state note, including the
+accepted risk that a red tree can reach `dev` meanwhile, lives in
+[Build & release](build-and-release.md#dev-push-gate-current-state).
+
+Activation is per-clone local git config and is **not** cloned, so verify it
+before relying on any gate:
+
+```bash
+git config --get core.hooksPath   # expect: .githooks
+git rev-parse --git-path hooks    # expect: .githooks (relative to the worktree root)
+```
+
+Check both from the checkout **or linked worktree** that will push: with
+`core.hooksPath` set, a worktree resolves `.githooks` to its own committed copy
+of the hook. Repair a fresh clone with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The context-budget gate only enforces when
+`docs/dev/context-budget.thresholds.json` exists and matches the measured
+surface; regenerate and commit it with the change that moved the surface:
+
+```bash
+python3 ~/.pi/agent/skills/context-audit/scripts/measure_context.py \
+  --repo-root . --include-hidden \
+  --write-thresholds docs/dev/context-budget.thresholds.json
+```
+
+Because no hook step runs the suite here, run `/skill:test --scope full`
+yourself before a `dev` push, and treat a missing full-suite cache entry as the
+expected state rather than as evidence that a gate ran.
 
 ## Import shared helpers through the core aliases
 
@@ -651,9 +916,12 @@ copy: this repo's root `node_modules`. `vite.config.ts` enforces that with
 `resolve.dedupe: ['phaser', 'tone']` (the same guard `core/vite.config.ts`
 carries). That config is **auto-generated by the scaffold template**
 (`core/scripts/game-repo-scaffold.ts` → `renderViteConfig`), and the template
-emits the dedupe itself (CG-0MVPWPWLA008FTDJ), so `npm run scaffold`
-regenerates the guard instead of silently dropping a hand-applied copy
-(MS-0MVK4TS31000YNFL).
+emits the dedupe itself (CG-0MVPWPWLA008FTDJ). It therefore arrives here by a
+deliberate engine pin bump — an `npm run scaffold` run is scoped to `main.ts`
+(`--only main.ts --force`, MS-0MVWGI4CB0055IT0) and does **not** re-emit
+`vite.config.ts` (MS-0MVK4TS31000YNFL); use
+`--only vite.config.ts --force` deliberately if that file ever has to be
+re-rendered.
 
 Why it matters: this repo composes the engine from the `./core` submodule,
 which normally has **no `node_modules` of its own**, so core-owned modules (for
@@ -702,8 +970,10 @@ POST /api/transcripts  ->  data/transcripts/<gameType>/<gameType>-<ISO>.json
 `process.env.VITEST` is set (the plugin writes to disk, so a test run must not
 have that side effect). The scaffold template emits the identical registration
 (`core/scripts/game-repo-scaffold.ts` → `renderViteConfig`, core item
-CG-0MVSIB5LH0069LB3), so `npm run scaffold` regenerates the wiring instead of
-dropping it — the same drift pattern as `resolve.dedupe` above.
+CG-0MVSIB5LH0069LB3). An `npm run scaffold` run is scoped to `main.ts`
+(`--only main.ts --force`, MS-0MVWGI4CB0055IT0), so it does not re-emit this
+wiring: the registration arrives by a deliberate engine pin bump, and a change
+to it must be pulled in explicitly with `--only vite.config.ts --force`.
 
 Two arms guard it:
 
@@ -837,8 +1107,11 @@ scripts/hygiene_check.sh --json     # stable JSON (see the script header)
 It reports three things and never prunes, deletes or kills: the worktree
 inventory (registered git worktrees vs orphaned directories under
 `.worklog/worktrees/`), swap/memory pressure, and dev-server processes with
-their cwd ownership. Its classification logic is covered by
-`tests/tooling/hygiene-check.test.ts`.
+their cwd ownership — plus whether the dev (`:3000`) and preview (`:4173`)
+ports have a listener (`dev_servers.port_listeners`). The socket table is read
+once per run and matched without a pipe, so a busy host's large `ss -ltn`
+listing cannot be truncated into a false "not listening". Its classification
+logic is covered by `tests/tooling/hygiene-check.test.ts`.
 
 ### Findings: what killed the server
 
@@ -990,9 +1263,12 @@ A full-suite run that fails with `ENOSPC: System limit for number of file
 watchers reached` from vite-node CLI subprocesses (spawned by the `unit-cli`
 tests) is an **environmental** failure, not a test-code or product-code defect.
 
-The commit under test typically passes the full suite via independent gates
-(implement finish + pre-push hook); all individual tests pass when run in
-isolation. The trigger is host inotify-watch exhaustion: orphaned long-running
+The commit under test typically passes the full suite via independent runs
+(`implement.py finish`'s changed-scope gate plus an explicit `/skill:test` full
+run — this repo's pre-push hook has no suite step, see
+[Dev-push gate activation](#dev-push-gate-activation)); all individual tests
+pass when run in isolation. The trigger is host inotify-watch exhaustion:
+orphaned long-running
 processes (e.g. a hung `npx vitest run --project browser` from a dead session)
 plus several long-lived `vite --host` dev servers can consume most of
 `fs.inotify.max_user_watches` (default 65536). Each additional worktree adds

@@ -34,7 +34,6 @@ import {
   isDurationEventCard,
   type AnyCard,
   type CardFamily,
-  type EventCard,
   type StaffCard,
   type SynergyType,
   type UpgradeCard,
@@ -42,6 +41,7 @@ import {
 import { buildCardTooltipInfo, resolveDescription, type SynergyRateCard } from '../MainStreetFormatting';
 import { EASY_PRESET } from '../MainStreetDifficulty';
 import { formatCurrency } from '@core-engine/I18n';
+import { getStorylineOptions } from '../MainStreetStoryline';
 
 // ── Canonical group orders ──────────────────────────────────
 
@@ -357,9 +357,13 @@ export function formatCardDetailLines(entry: CardIndexEntry): string[] {
       );
 
       const durationEvent = isDurationEventCard(card) ? card : null;
-      field(lines, 'Has choices', orAbsent((e as EventCard).hasChoices));
-      field(lines, 'Accept next card', orAbsent((e as EventCard).acceptNextCardId));
-      field(lines, 'Reject next card', orAbsent((e as EventCard).rejectNextCardId));
+      const options = getStorylineOptions(e);
+      field(lines, 'Choice', options.length > 0 ? 'yes' : 'no');
+      field(
+        lines,
+        'Options',
+        options.length > 0 ? options.map((o) => o.label).join(', ') : ABSENT_FIELD,
+      );
       field(lines, 'Duration', orAbsent(durationEvent?.duration));
       field(lines, 'Effect type', orAbsent(durationEvent?.effectType));
       field(lines, 'Multiplier', orAbsent(durationEvent?.multiplier));

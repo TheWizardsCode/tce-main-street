@@ -30,6 +30,8 @@ export {
   worldWidth,
   worldHeight,
   worldSlotCount,
+  DUPLICATE_FACTOR_TABLE,
+  DUPLICATE_FACTOR_MAX_COUNT,
   MAX_TURNS,
   WIN_THRESHOLD,
   STARTING_COINS,

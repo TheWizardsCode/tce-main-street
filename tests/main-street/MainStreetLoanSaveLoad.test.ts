@@ -219,12 +219,13 @@ describe('pending loan offer round-trip (AC1)', () => {
 
     const restored = deserializeMainStreetState(serializeMainStreetState(state));
 
-    // Owner, reason and menu round-trip verbatim.
+    // Owner, reason, menu and shortfall round-trip verbatim.
     expect(restored.pendingLoanOffer).toEqual(offer);
     expect(restored.pendingLoanOffer).toEqual({
       ownerId: 0,
       reason: 'bankruptcy',
       options: DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option })),
+      shortfall: 25,
     });
     expect(restored.loans).toEqual([]);
 
@@ -236,6 +237,45 @@ describe('pending loan offer round-trip (AC1)', () => {
     expect(loan.principal).toBe(Math.max(...DEFAULT_LOAN_OPTIONS.map((o) => o.principal)));
     expect(restored.resourceBank.coins).toBe(coinsBefore + loan.principal);
     expect(activeLoanFor(restored, 0)).toEqual(loan);
+  });
+
+  it('round-trips the shortfall the offer was raised with (MS-0MVZC1DAS001C8LF AC5)', () => {
+    const state = marketPhaseState('loan-save-shortfall');
+    state.resourceBank.coins = -80;
+    expect(maybeOfferBailout(state)).toBe(true);
+
+    const payload = serializeMainStreetState(state);
+    expect(payload.pendingLoanOffer).toMatchObject({ shortfall: 80 });
+
+    const restored = deserializeMainStreetState(payload);
+
+    // The figure survives a save taken mid-offer, so the dialog cannot show a
+    // re-derived (possibly different) number after a reload.
+    expect(restored.pendingLoanOffer!.shortfall).toBe(80);
+    expect(acceptLoanOffer(restored).principal).toBe(1000);
+  });
+
+  it('loads a v3 save whose pending offer predates the shortfall field', () => {
+    const state = marketPhaseState('loan-save-shortfall-legacy');
+    const raw = asRawPayload(state);
+    // Exactly what a save written before this change carries: no shortfall.
+    raw.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: [{ principal: 300, termTurns: 3 }],
+    };
+
+    const restored = deserializeMainStreetState(raw as unknown as MainStreetSerializedState);
+
+    // Additive and optional: the offer is still resolvable and the figure is
+    // unknown rather than invented.
+    expect(restored.pendingLoanOffer).toEqual({
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: [{ principal: 300, termTurns: 3 }],
+    });
+    expect(restored.pendingLoanOffer!.shortfall).toBeUndefined();
+    expect(acceptLoanOffer(restored).principal).toBe(300);
   });
 
   it('round-trips an offer alongside an active loan held by another seat', () => {
@@ -344,6 +384,29 @@ describe('defensive restore', () => {
 
     expect(restored.pendingLoanOffer?.options).toEqual([{ principal: 600, termTurns: 6 }]);
     expect(acceptLoanOffer(restored).principal).toBe(600);
+  });
+
+  it('keeps a saveable offer but treats a malformed shortfall as unknown', () => {
+    const state = marketPhaseState('loan-save-bad-shortfall');
+    const raw = asRawPayload(state);
+
+    for (const shortfall of ['eighty', -80, 12.5, null, Number.NaN]) {
+      raw.pendingLoanOffer = {
+        ownerId: 0,
+        reason: 'bankruptcy',
+        options: [{ principal: 300, termTurns: 3 }],
+        shortfall,
+      };
+
+      const restored = deserializeMainStreetState(
+        raw as unknown as MainStreetSerializedState,
+      );
+
+      // Default-don't-drop: the offer survives (the closing must not strand)
+      // and the malformed figure is discarded rather than shown.
+      expect(restored.pendingLoanOffer).not.toBeNull();
+      expect(restored.pendingLoanOffer!.shortfall).toBeUndefined();
+    }
   });
 
   it('restores nothing from a missing or non-array loans value', () => {

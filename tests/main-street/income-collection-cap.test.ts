@@ -1,26 +1,26 @@
 /**
  * Main Street: End-of-turn income-collection cap — single source of truth
  *
- * MS-0MVLINWHE004W4CP. The safety cap that bounds the end-of-turn
- * income-collection deferral is consumed in four places:
+ * MS-0MVLINWHE004W4CP / MS-0MVMKEU2000639TG. The safety cap that bounds the
+ * end-of-turn income-collection deferral is consumed in exactly two places:
  *
- *   1. the day-start deferral in `MainStreetTurnControllerTurnFlow`,
- *   2. the forced event-choice dialog deferral there,
- *   3. the forced piggyback-decision show deferral there, and
- *   4. the closing primitive's `incomeCollectionCapMs` default in
- *      `MainStreetTurnControllerAnimation`.
+ *   1. the shared wall-clock bounded-deferral helper
+ *      (`deferUntilIncomeCollected`, `MainStreetTurnControllerAnimation`),
+ *      which every deferral site now delegates to, and
+ *   2. the closing primitive's `incomeCollectionCapMs` default in that same
+ *      module, which feeds the helper's per-site `capMs` override.
  *
- * These tests pin all four consumers to the single exported
- * `INCOME_COLLECTION_CAP_MS`, so a hand-guessed literal drifting away from
- * the exported cap (the historical wait-race defect) becomes structurally
- * impossible. The literal is never restated here: the source-scan pattern is
- * derived from the imported constant, and the consumers are located via the
- * named constant rather than a value.
+ * This replaces the pre-adoption pin, which counted the three duplicated
+ * inline `startAt = <scene clock> + INCOME_COLLECTION_CAP_MS` polls in the turn
+ * flow. Those polls are gone (they observed the cap only at scene-clock poll
+ * boundaries, which is the starvation defect), so the pin now asserts the
+ * structural inverse: no inline cap deadline and no inline 250 ms scene-clock
+ * poll survives in either module, and every deferral site routes through the
+ * helper. The literal is never restated here: the source-scan pattern is
+ * derived from the imported constant.
  *
- * The three turn-flow deferrals are private closures, so their agreement with
- * the cap is pinned structurally (a source scan scoped to this repo's own
- * module) while the closing default is pinned behaviourally through its
- * exported accessor.
+ * The helper's cap is pinned behaviourally while its consumers are pinned
+ * structurally (a source scan scoped to this repo's own modules).
  *
  * @module tests/main-street/income-collection-cap
  */
@@ -71,18 +71,35 @@ describe('INCOME_COLLECTION_CAP_MS', () => {
   });
 });
 
-describe('MainStreetTurnControllerTurnFlow deferral sites (consumers 1-3)', () => {
-  it('consumes INCOME_COLLECTION_CAP_MS at exactly three income deferrals', () => {
-    const sites = TURN_FLOW_SOURCE.match(
-      /startAt\s*=\s*s\.time\.now\s*\+\s*INCOME_COLLECTION_CAP_MS/g,
-    );
-    expect(sites).toHaveLength(3);
+describe('deferral sites route through the shared helper (decision C adoption)', () => {
+  it('leaves no inline income-collection poll in either module', () => {
+    // Every deferral site delegates to `deferUntilIncomeCollected`. A new
+    // inline scene-clock deadline/poll would re-introduce the starvation
+    // defect the helper removes: the cap was observed only at clamped
+    // scene-clock poll boundaries, so a starved rAF detected it late.
+    const modules: Array<[string, string]> = [
+      ['MainStreetTurnControllerTurnFlow.ts', TURN_FLOW_SOURCE],
+      ['MainStreetTurnControllerAnimation.ts', ANIMATION_SOURCE],
+    ];
+    for (const [name, source] of modules) {
+      expect(source, `${name} still declares a scene-clock cap deadline`)
+        .not.toMatch(/startAt/);
+      expect(source, `${name} still schedules its own 250 ms poll`)
+        .not.toMatch(/delayedCall\(\s*250/);
+      expect(source, `${name} still schedules its own 250 ms poll via scheduleOrRun`)
+        .not.toMatch(/scheduleOrRun\(\s*s,\s*250/);
+    }
   });
 
-  it('carries no restated cap literal once the constant references are removed', () => {
-    const withoutConstant = TURN_FLOW_SOURCE.replace(/INCOME_COLLECTION_CAP_MS/g, '');
-    const literals = withoutConstant.match(capLiteralPattern()) ?? [];
-    expect(literals).toHaveLength(0);
+  it('routes every deferral site through deferUntilIncomeCollected', () => {
+    const callSites = (source: string): number =>
+      source.match(/deferUntilIncomeCollected\(\s*s,/g)?.length ?? 0;
+    // Five in the turn flow (`advanceTurn`, the turn-summary gate, the loan
+    // offer, the event choice and the piggyback decision) and two in the
+    // animation module (the closing presentation and the incident-reveal
+    // gating). A site that stops using the helper must fail this pin.
+    expect(callSites(TURN_FLOW_SOURCE)).toBe(5);
+    expect(callSites(ANIMATION_SOURCE)).toBe(2);
   });
 });
 
@@ -91,6 +108,13 @@ describe('MainStreetTurnControllerAnimation default (consumer 4)', () => {
     expect(ANIMATION_SOURCE).toMatch(
       /incomeCollectionCapMs\s*\?\?\s*INCOME_COLLECTION_CAP_MS/,
     );
+  });
+
+  it('leaves no restated cap literal in the turn flow', () => {
+    // After adoption the turn flow holds no cap value of its own: it delegates
+    // to the helper, so the cap cannot drift per site.
+    expect(TURN_FLOW_SOURCE.replace(/INCOME_COLLECTION_CAP_MS/g, ''))
+      .not.toMatch(capLiteralPattern());
   });
 
   it('carries no restated cap literal once the constant references are removed', () => {

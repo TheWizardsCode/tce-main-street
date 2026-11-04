@@ -236,6 +236,43 @@ export function streetSlotToWorldIndex(
 }
 
 /**
+ * The street cell (5×2 block) that owns a world slot, as a flat index.
+ *
+ * `dims` defaults to the legacy 1×1 board, whose single street owns every slot.
+ */
+function streetCellOf(slot: number, dims: GridDims): number {
+  const width = worldWidth(dims.cols);
+  const streetX = Math.floor((slot % width) / STREET_COLS);
+  const streetY = Math.floor(Math.floor(slot / width) / STREET_ROWS);
+  return streetY * dims.cols + streetX;
+}
+
+/**
+ * Returns true when two world slots belong to the same 5×2 street cell.
+ *
+ * Street cells are tiled at a stride of exactly (STREET_COLS, STREET_ROWS) and
+ * never share plots (the city-block model), so a slot's street is a pure
+ * coordinate decode. With no `gridDims` (or a 1×1 lattice) the whole board is
+ * one street and every in-range slot pair shares it.
+ *
+ * Used by the duplicate-business income factor: businesses on different
+ * streets do not compete for the same customers, so their counts never
+ * interact (MS-0MVYG50V1007W8BP).
+ *
+ * @param a        World slot index of the first card.
+ * @param b        World slot index of the second card.
+ * @param gridDims Optional grid dimensions for expanded lattices.
+ * @returns True when both slots are in range and on the same street cell.
+ */
+export function sameStreetCell(a: number, b: number, gridDims?: GridDims): boolean {
+  const dims: GridDims = gridDims ?? { cols: 1, rows: 1 };
+  const total = worldSlotCount(dims.cols, dims.rows);
+  if (!Number.isInteger(a) || !Number.isInteger(b)) return false;
+  if (a < 0 || b < 0 || a >= total || b >= total) return false;
+  return streetCellOf(a, dims) === streetCellOf(b, dims);
+}
+
+/**
  * Resolve neighbors for a given grid slot index.
  *
  * World slots form a solid rectangle, so adjacency is plain 8-way (Chebyshev)

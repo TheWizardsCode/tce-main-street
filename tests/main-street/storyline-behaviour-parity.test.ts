@@ -12,9 +12,10 @@
  *   Street compiler.
  * - **Resolution parity** — for every option of every choice card, core and
  *   Main Street resolve to the same effect deltas and the same successor.
- * - **Adapter-output golden** — dialog titles, choice-clarity labels and
- *   story-update lines for the five shipped storylines, pinned in
- *   `fixtures/adapter-output.golden.json`.
+ * - **Adapter-output golden** — dialog titles and story-update lines for the
+ *   five shipped storylines, pinned in `fixtures/adapter-output.golden.json`.
+ *   (The choice-clarity labels were removed with the core dev tip `4975f6ff`,
+ *   CG-0MVZFVZK1003F8HY, which deleted the seam from `StorylineUiAdapter`.)
  * - **Seeded replay golden** — a scripted, seeded storyline sequence pinned in
  *   `fixtures/storyline-replay.golden.json` (one seeded rng draw per candidate
  *   selection).
@@ -47,7 +48,6 @@ import {
 } from '../../src/MainStreetStoryline';
 import {
   buildJournal,
-  choiceClarityLabels,
 } from '../../src/MainStreetStorylineJournal';
 import {
   choiceDialogTitle,
@@ -225,8 +225,6 @@ interface AdapterGolden {
     dialogTitle: string;
     dialogSubtitle: string;
     optionLabels: string[];
-    acceptLabel: string;
-    rejectLabel: string;
     acceptUpdate: string | null;
     rejectUpdate: string | null;
   }>;
@@ -245,7 +243,7 @@ describe('adapter-output golden — five shipped storylines', () => {
     ]);
   });
 
-  it('reproduces the dialog, clarity and story-update text byte-for-byte', () => {
+  it('reproduces the dialog and story-update text byte-for-byte', () => {
     for (const entry of golden.storylines) {
       const card = getEventTemplates().find((c) => c.id === entry.entryCardId);
       expect(card, entry.entryCardId).toBeDefined();
@@ -258,9 +256,6 @@ describe('adapter-output golden — five shipped storylines', () => {
         entry.optionLabels,
       );
 
-      const labels = choiceClarityLabels(event);
-      expect(labels.accept).toBe(entry.acceptLabel);
-      expect(labels.reject).toBe(entry.rejectLabel);
       expect(
         storyUpdateLine(event, 'accept', event.coinDelta ?? 0, event.reputationDelta ?? 0),
       ).toBe(entry.acceptUpdate);

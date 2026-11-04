@@ -174,6 +174,8 @@ describe('buildLoanOfferModel', () => {
         termTurns: 3,
         totalRepayment: 330,
         perTurnRepayment: 110,
+        coversShortfall: null,
+        stillShort: null,
         label: '[ Borrow €300 — €110/turn, €330 total over 3 turns ]',
       },
       {
@@ -182,6 +184,8 @@ describe('buildLoanOfferModel', () => {
         termTurns: 6,
         totalRepayment: 660,
         perTurnRepayment: 110,
+        coversShortfall: null,
+        stillShort: null,
         label: '[ Borrow €600 — €110/turn, €660 total over 6 turns ]',
       },
       {
@@ -190,9 +194,15 @@ describe('buildLoanOfferModel', () => {
         termTurns: 10,
         totalRepayment: 1100,
         perTurnRepayment: 110,
+        coversShortfall: null,
+        stillShort: null,
         label: '[ Borrow €1000 — €110/turn, €1100 total over 10 turns ]',
       },
     ]);
+    // A legacy offer carries no figure: the dialog shows the amount-free copy.
+    expect(model!.shortfall).toBeNull();
+    expect(model!.intro).toContain("You cannot cover this turn's costs");
+    expect(model!.warning).toBeNull();
   });
 
   it('reads the configured menu and interest rate the offer was raised with', () => {
@@ -240,6 +250,107 @@ describe('buildLoanOfferModel', () => {
     const state = quietMarketState('loan-overlay-model-none');
     expect(buildLoanOfferModel(state)).toBeNull();
   });
+
+  // ── Shortfall (MS-0MVZC1DAS001C8LF) ─────────────────────────
+
+  it('states the exact shortfall in the intro and marks each row\'s coverage', () => {
+    const state = quietMarketState('loan-overlay-model-shortfall');
+    state.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option })),
+      shortfall: 320,
+    };
+
+    const model = buildLoanOfferModel(state)!;
+
+    // AC1: the amount replaces the amount-free sentence.
+    expect(model.shortfall).toBe(320);
+    expect(model.intro).toContain('You are €320 short of covering this turn\'s costs.');
+    expect(model.intro).not.toContain('You cannot cover');
+    expect(model.intro).toContain('decline to end the run');
+
+    // AC3: every row states whether it closes the gap, or by how much it misses.
+    expect(model.rows.map((row) => [row.coversShortfall, row.stillShort])).toEqual([
+      [false, 20],
+      [true, 0],
+      [true, 0],
+    ]);
+    expect(model.rows[0].label).toBe(
+      '[ Borrow €300 — €110/turn, €330 total over 3 turns ] — €20 short',
+    );
+    expect(model.rows[1].label).toContain('covers the gap');
+    expect(model.rows[2].label).toContain('covers the gap');
+
+    // At least one option rescues the seat, so no warning is shown.
+    expect(model.warning).toBeNull();
+  });
+
+  it('treats an option whose principal exactly matches the shortfall as covering it', () => {
+    const state = quietMarketState('loan-overlay-model-exact');
+    state.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: [{ principal: 300, termTurns: 3 }],
+      shortfall: 300,
+    };
+
+    const model = buildLoanOfferModel(state)!;
+
+    expect(model.rows[0].coversShortfall).toBe(true);
+    expect(model.rows[0].stillShort).toBe(0);
+    expect(model.warning).toBeNull();
+  });
+
+  it('warns that no option closes the gap when the shortfall exceeds the largest loan', () => {
+    const state = quietMarketState('loan-overlay-model-uncovered');
+    state.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option })),
+      shortfall: 1500,
+    };
+
+    const model = buildLoanOfferModel(state)!;
+
+    // AC3: the run ends whichever option is taken — say so before the choice.
+    expect(model.rows.every((row) => row.coversShortfall === false)).toBe(true);
+    expect(model.rows[2].stillShort).toBe(500);
+    expect(model.warning).toBeTruthy();
+    expect(model.warning).toContain('below zero');
+    expect(model.warning).toContain('the run ends');
+  });
+
+  it('shows the figure as unknown rather than inventing one for a pre-field offer', () => {
+    const state = quietMarketState('loan-overlay-model-unknown');
+    state.pendingLoanOffer = {
+      ownerId: 0,
+      reason: 'bankruptcy',
+      options: DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option })),
+    };
+
+    const model = buildLoanOfferModel(state)!;
+
+    // AC5: a v2/v3 save restores and behaves exactly as today.
+    expect(model.shortfall).toBeNull();
+    expect(model.intro).toContain("You cannot cover this turn's costs");
+    expect(model.warning).toBeNull();
+    expect(model.rows.every((row) => row.coversShortfall === null)).toBe(true);
+    expect(model.rows.every((row) => row.stillShort === null)).toBe(true);
+    expect(model.rows[0].label).toBe('[ Borrow €300 — €110/turn, €330 total over 3 turns ]');
+  });
+
+  it('ignores a malformed shortfall instead of rendering a wrong figure', () => {
+    const state = quietMarketState('loan-overlay-model-malformed');
+    const options = DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option }));
+
+    for (const shortfall of [Number.NaN, Number.POSITIVE_INFINITY, -80]) {
+      state.pendingLoanOffer = { ownerId: 0, reason: 'bankruptcy', options, shortfall };
+      const model = buildLoanOfferModel(state)!;
+      expect(model.shortfall).toBeNull();
+      expect(model.intro).toContain('You cannot cover');
+    }
+  });
 });
 
 describe('hasOpenBailoutOffer', () => {
@@ -269,6 +380,9 @@ describe('bailout overlay in the deferred closing (turn flow)', () => {
     expect(dialog.shown).toBe(1);
     expect(state.pendingLoanOffer).not.toBeNull();
     expect(dialog.model!.rows).toHaveLength(DEFAULT_LOAN_OPTIONS.length);
+    // The engine snapshotted the closing deficit the offer was raised with.
+    expect(dialog.model!.shortfall).toBe(50);
+    expect(dialog.model!.intro).toContain('You are €50 short');
 
     // AC2: the run is not declared over — no game-over summary, no next day.
     expect(tcCtx.handleGameOver).not.toHaveBeenCalled();

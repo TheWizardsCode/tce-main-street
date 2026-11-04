@@ -342,11 +342,9 @@ describe('AC3c — transcript event-choice shape for shipped cards', () => {
     expect(typeof choiceEvent.turn).toBe('number');
     expect(typeof choiceEvent.eventId).toBe('string');
     expect(typeof choiceEvent.cardName).toBe('string');
-    // F3 AC3: the transcript token is the option label.
+    // F3 AC3: the transcript token is the option label — the only choice
+    // token the options-only model records.
     expect(choiceEvent.option).toBe('Accept');
-    // Both next-card IDs present (even if undefined, the shape includes them).
-    expect('acceptNextCardId' in choiceEvent).toBe(true);
-    expect('rejectNextCardId' in choiceEvent).toBe(true);
   });
 });
 
@@ -455,7 +453,7 @@ describe('AC4 — choice incidents excluded from tutorial play', () => {
     for (const templateId of STANDARD_TUTORIAL_SCENARIO.incidentDeck) {
       const t = getEventTemplates().find((c) => c.id === templateId);
       expect(t, `template ${templateId} must exist`).toBeDefined();
-      expect(Boolean(t!.hasChoices)).toBe(false);
+      expect(getStorylineOptions(t!), `tutorial incident ${templateId} must be non-choice`).toHaveLength(0);
     }
   });
 
@@ -468,13 +466,14 @@ describe('AC4 — choice incidents excluded from tutorial play', () => {
   });
 
   it('building a tutorial scenario with a choice incident throws', () => {
-    // Flip a tutorial-pinned card to a choice event.
+    // Retrofit an options encoding onto the tutorial-pinned card: it now
+    // compiles to a pending choice, so the scenario builder must fail fast.
     const award = getEventTemplates().find((t) => t.id === 'evt-award')!;
-    (award as { hasChoices?: boolean }).hasChoices = true;
+    (award as { options?: string }).options = 'Accept|;Reject|';
     expect(() => createTutorialScenario({
       ...STANDARD_TUTORIAL_SCENARIO,
       incidentDeck: ['evt-award'],
-    })).toThrow(/hasChoices/);
+    })).toThrow(/compiles to a choice/);
   });
 });
 
@@ -530,7 +529,7 @@ describe('AC4 — cost-gated and extra-effect options in the transcript harness'
 describe('AC5 — regression harness smoke', () => {
   it('the full shipped-choice set is intact', () => {
     const shippedChoiceIds = getEventTemplates()
-      .filter((c) => c.family === 'event' && Boolean(c.hasChoices))
+      .filter((c) => c.family === 'event' && getStorylineOptions(c).length > 0)
       .map((c) => c.id)
       .sort();
     expect(shippedChoiceIds).toEqual(CHOICE_CARDS);
@@ -547,10 +546,10 @@ describe('AC5 — regression harness smoke', () => {
 // F3, which flipped them to passing `it`s.
 
 const MO_HARNESS_CSV = [
-  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,hasChoices',
-  'event,evt-mo-h,Multi Harness,0,1,Incident,Lose 100 coins,All,-100,0,true',
-  'event,evt-mo-h-a,Branch A,0,1,Incident,Lose 10 coins,All,-10,0,',
-  'event,evt-mo-h-b,Branch B,0,1,Incident,Lose 20 coins,All,-20,0,',
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta',
+  'event,evt-mo-h,Multi Harness,0,1,Incident,Lose 100 coins,All,-100,0',
+  'event,evt-mo-h-a,Branch A,0,1,Incident,Lose 10 coins,All,-10,0',
+  'event,evt-mo-h-b,Branch B,0,1,Incident,Lose 20 coins,All,-20,0',
 ].join('\n');
 
 /** Queues the synthetic multi-outcome node as the next incident. */

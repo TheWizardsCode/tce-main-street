@@ -200,8 +200,14 @@ suite and the shared-helper import convention (`@core-tests/*` aliases).
 Run the game locally in watch mode:
 
 ```bash
-npm run dev     # Vite dev server on http://localhost:3000
+npm run dev     # soft engine sync (never blocks on a dirty ./core), then Vite on http://localhost:3000
 ```
+
+`npm run dev` runs `engine:dev-sync` first: a **clean** `./core` is advanced to
+the engine `dev` tip (and the pin re-staged with the gitlink), while a **dirty**
+`./core` is skipped with a warning so your engine working tree is served as-is.
+Builds use the strict `engine:sync`; see
+[docs/dev/build-and-release.md](docs/dev/build-and-release.md#dev-start-engine-dev-sync--soft-sync-never-blocks).
 
 The dev server shares the host with sibling repos, agent worktrees and test
 suites, so it can be killed by host memory/swap pressure mid-session (the

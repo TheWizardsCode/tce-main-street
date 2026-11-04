@@ -9,7 +9,7 @@
  *       with an ordered candidate successor list (empty list = chain ends).
  * AC3 — the compiled options expose candidate successor ids as `successorIds`;
  *       CSV compilation always emits `effectPolicy: 'apply'` and derives
- *       `hasChoices` from a non-empty option list.
+ *       choice-ness from a non-empty option list.
  * AC4 — parsing is deterministic with whitespace trimmed; a non-empty
  *       encoding that decodes to no valid option is rejected, not ignored.
  * AC5 — a tracer storyline row resolves through the new compiled model
@@ -177,9 +177,9 @@ describe('AC1 — CSV `options` column compiles to the candidate-set model', () 
   });
 });
 
-// ── AC3: effectPolicy 'apply' + derived hasChoices ──────────
+// ── AC3: effectPolicy 'apply' + choice-ness ────────────────
 
-describe('AC3 — CSV options always compile as "apply" and derive hasChoices', () => {
+describe('AC3 — CSV options always compile as "apply"', () => {
   it('every CSV-authored option carries effectPolicy "apply"', () => {
     const csv = buildCsv([
       { id: 'evt-apply', name: 'Apply All', effect: 'Lose 50 coins', coinDelta: -50, options: 'One|evt-a;Two|;Three|evt-b' },
@@ -194,24 +194,23 @@ describe('AC3 — CSV options always compile as "apply" and derive hasChoices', 
     expect(policies).toEqual(['apply', 'apply', 'apply']);
   });
 
-  it('hasChoices is derived from a non-empty option list at parse time', () => {
+  it('a non-empty option list makes the card a choice at parse time', () => {
     loadTemplatesFromCsv(buildCsv([
       { id: 'evt-derived', name: 'Derived', effect: 'Lose 20 coins', coinDelta: -20, options: 'Go|' },
     ]));
 
     const card = eventTemplate('evt-derived');
-    expect(card.hasChoices).toBe(true);
     expect(eventHasStoryline(card)).toBe(true);
+    expect(compileStorylineFromEvent(card).compiledOptions.map((o) => o.label)).toEqual(['Go']);
   });
 
-  it('a blank options cell is a non-choice node (no options, no hasChoices)', () => {
+  it('a blank options cell is a non-choice node', () => {
     loadTemplatesFromCsv(buildCsv([
       { id: 'evt-plain', name: 'Plain', effect: 'Lose 20 coins', coinDelta: -20 },
     ]));
 
     const card = eventTemplate('evt-plain');
     expect(card.options).toBeUndefined();
-    expect(Boolean(card.hasChoices)).toBe(false);
     expect(compileStorylineFromEvent(card).compiledOptions).toEqual([]);
     expect(eventHasStoryline(card)).toBe(false);
     expect(createPendingStorylineChoice(card)).toBeNull();
@@ -292,7 +291,6 @@ describe('AC5 — tracer storyline row (evt-recession) resolves through the comp
     loadTemplatesFromCsv(TRACER_CSV);
     const card = eventTemplate('evt-recession');
 
-    expect(card.hasChoices).toBe(true);
     expect(card.options).toContain('Grind through|evt-depression');
     expect(compileStorylineFromEvent(card).compiledOptions[0].successorIds).toEqual([
       'evt-depression',

@@ -229,12 +229,6 @@ export interface EventCard {
   readonly availableWeekStart?: number;
   readonly availableWeekEnd?: number;
   /**
-   * When true, the event presents a choice dialog (Accept / Reject) at
-   * resolution time (AC2 CG-0MTSHG8RP008E128). Defaults to falsy / false
-   * for backward compatibility — cards without this field are non-choice.
-   */
-  readonly hasChoices?: boolean;
-  /**
    * When true, this Investment event is an "organiser" card eligible for the
    * piggyback mechanic (epic MS-0MUYC47EL005Z69H / F1): in competitive mode
    * (N≥2) every other active player automatically receives a 50% free-ride
@@ -243,21 +237,6 @@ export interface EventCard {
    * and older saves, are not piggyback-eligible.
    */
   readonly piggybackable?: boolean;
-  /**
-   * When the player chooses Accept, this card ID is added to the incident
-   * deck after the event's effect is applied. Null / absent ends the chain.
-   */
-  readonly acceptNextCardId?: string | null;
-  /**
-   * When the player chooses Reject, this card ID is added to the incident
-   * deck (the event's effect is NOT applied). Null / absent ends the chain.
-   *
-   * @deprecated Legacy two-way choice field (MS-0MV8KQJR30007JL5). Retained
-   * transitionally while the shipped rows migrate to {@link EventCard.options};
-   * the new model is the arbitrary `options` encoding. No new content should
-   * use this field.
-   */
-  readonly rejectNextCardId?: string | null;
   /**
    * Raw CSV options encoding for an arbitrary multi-outcome choice node
    * (MS-0MV8KQJR30007JL5). Format:
@@ -276,8 +255,10 @@ export interface EventCard {
    * `registerStorylineOptions` seam. A non-empty value that decodes to no
    * valid option is rejected at compilation rather than silently ignored.
    *
-   * The legacy `hasChoices` predicate is derived from a non-empty option
-   * list, so CSV-authored choice nodes set `hasChoices: true` on load.
+   * This column is the only way a card declares itself a choice: a non-empty
+   * encoding (or a registered option list) is what makes it a choice node at
+   * resolution time. A bare {@link EventCard.storylineId} is descriptive
+   * metadata and never makes a card a choice.
    */
   readonly options?: string;
   /**

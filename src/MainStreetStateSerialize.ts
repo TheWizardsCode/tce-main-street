@@ -161,6 +161,14 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
             ownerId: state.pendingLoanOffer.ownerId,
             reason: state.pendingLoanOffer.reason,
             options: state.pendingLoanOffer.options.map((option) => ({ ...option })),
+            // Additive, optional (MS-0MVZC1DAS001C8LF): the shortfall the
+            // offer was raised with, omitted while unknown so a save cannot
+            // invent a figure it never had (no schema bump — an offer
+            // without it restores exactly as today).
+            ...(typeof state.pendingLoanOffer.shortfall === 'number' &&
+              Number.isFinite(state.pendingLoanOffer.shortfall)
+              ? { shortfall: state.pendingLoanOffer.shortfall }
+              : {}),
           },
         }
       : {}),

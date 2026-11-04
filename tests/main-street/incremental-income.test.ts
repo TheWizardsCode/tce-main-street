@@ -400,10 +400,12 @@ describe('Per-card incremental income/reputation tracking', () => {
       updateNeighborsOnPlacement(state, 0);
       updateNeighborsOnPlacement(state, 1);
 
-      // Same-type penalty: base * 0.6, synergy = 0
+      // Same-type penalty: base * 0.6 = 120, synergy = 0. The street-wide
+      // duplicate factor (2 bakeries → 2/3) then stacks multiplicatively:
+      // round(120 × 2/3) = 80 (MS-0MVYG50V1007W8BP).
       const expected = computeBusinessIncome(state.streetGrid, 0, state.config.synergyBonusPerNeighbor, state.soldSlots);
       expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(expected);
-      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(120); // 2 * 0.6
+      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(80);
     });
 
     it('keeps same-type penalty on remaining card when same-type neighbor is sold', () => {
@@ -413,17 +415,19 @@ describe('Per-card incremental income/reputation tracking', () => {
       updateNeighborsOnPlacement(state, 0);
       updateNeighborsOnPlacement(state, 1);
 
-      // Both have the penalty initially
-      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(120);
-      expect(state.streetGrid[1]!.currentIncome).toBeCloseTo(120);
+      // Both have the penalty and the 2-copy duplicate factor initially:
+      // round(200 × 0.6 × 2/3) = 80.
+      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(80);
+      expect(state.streetGrid[1]!.currentIncome).toBeCloseTo(80);
 
       // Sell slot 1
       state.soldSlots[1] = true;
       updateNeighborsOnSale(state, 1);
 
       // Same-type penalty persists: sold same-type neighbour still counts
-      // (CG-0MT5XUE2200047IJ Q1 = Remains)
-      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(120);
+      // (CG-0MT5XUE2200047IJ Q1 = Remains) and still saturates the type, so
+      // the survivor keeps its 2-copy factor: round(120 × 2/3) = 80.
+      expect(state.streetGrid[0]!.currentIncome).toBeCloseTo(80);
     });
   });
 

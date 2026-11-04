@@ -3,8 +3,24 @@
  * (MS-0MUYAESVU007X2U8)
  *
  * Drives a REAL end-of-turn through the full controller wiring (endTurn →
- * animateIncomePhases → collect) and samples the on-screen HUD text at
- * intervals DURING the choreography.
+ * animateIncomePhases → collect) and records the HUD's display-only running
+ * totals (the pair the HUD renders, MS-0MUYAESVU007X2U8) at every production
+ * re-render the reconciliation performs, so the tick sequence is observed at
+ * the arrivals themselves rather than by sampling the on-screen text on a
+ * wall-clock timer.
+ *
+ * The show is **scene-clock paced**: Phaser clamps each frame's delta, so on a
+ * CPU-starved host its phases land several times later in wall time than their
+ * nominal schedule (MS-0MW08THR2000YXEO — a fixed 14 s sampling window truncated
+ * ahead of the very arrivals under test and reported a correct scene as a
+ * regression). Recording at the production step keeps the end-to-end wiring
+ * while removing the race, and the two waits are budgeted separately from the
+ * clock each one races: the first-arrival wait from the scene clock (with a
+ * deliberately larger choreography margin — the wall-clock cap abandons the
+ * *wait*, not the flights), and the authoritative-deltas wait from the
+ * wall-clock collection cap. The rendered text itself is covered
+ * deterministically by `main-street-renderer-deferred.browser.test.ts` and
+ * `hud-total-counting.test.ts`.
  *
  * The producer's manual reviews (2026-10-16) define the contract precisely:
  *
@@ -31,8 +47,32 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import Phaser from 'phaser';
 
+import { waitForCondition } from '@core-tests/helpers/waitForCondition';
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { getBusinessTemplates, type BusinessCard } from '../../src/MainStreetCards';
+import { INCOME_COLLECTION_CAP_MS } from '../../src/scenes/MainStreetAnimatorTiming';
+
+/**
+ * Fixed starvation margin for the **wall-clock capped** end-of-turn waits
+ * (docs/dev/testing.md § "Load-tolerant wait budgets"). `endOfTurnDeltasApplied`
+ * is applied by the closing continuation, which the collection cap bounds on the
+ * wall clock (`INCOME_COLLECTION_CAP_MS`), so a cap + margin budget is honest.
+ */
+const END_OF_TURN_STARVATION_MARGIN_MS = 24_000;
+
+/**
+ * Fixed starvation margin for the **scene-clock paced** arrival wait.
+ *
+ * The income show's phases are advanced by `scene.time` (Phaser clamps each
+ * frame's delta), so under CPU contention an arrival lands several times later
+ * in *wall* time than its nominal schedule — and, unlike the deltas, the
+ * choreography is **not** bounded by the wall-clock collection cap (the cap
+ * abandons the wait, not the flights). The arrival wait therefore races the
+ * scene clock, so its floor is deliberately larger than the cap-derived one:
+ * at ≈7× starvation observed on this host a nominal ~6 s show reached past
+ * 40 s of wall time (MS-0MW08THR2000YXEO).
+ */
+const CHOREOGRAPHY_STARVATION_MARGIN_MS = 60_000;
 
 let game: Phaser.Game | null = null;
 
@@ -52,20 +92,6 @@ function destroyGame(g: Phaser.Game | null): void {
   if (g) g.destroy(true, false);
   const container = document.getElementById('game-container');
   if (container) container.remove();
-}
-
-async function waitForCondition(
-  predicate: () => boolean,
-  options: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
-): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? 5000;
-  const intervalMs = options.intervalMs ?? 25;
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  throw new Error(`Timed out waiting for ${options.label ?? 'condition'} after ${timeoutMs}ms`);
 }
 
 /** Full business card built from the first template, placed on a street slot. */
@@ -109,6 +135,31 @@ async function makeIncidentsNone(game: Phaser.Game): Promise<void> {
   state.incidentDeck.length = 0;
 }
 
+/**
+ * Record every value the reconciliation publishes to the HUD through
+ * `syncHudTotals` — the production call each coin/pip arrival (and the final
+ * snap) uses to re-render the display-only running total. The original call is
+ * still made, so the rendered HUD behaviour is unchanged; only the sequence is
+ * captured.
+ *
+ * Recording at the production step, instead of polling the rendered text on a
+ * wall-clock timer, is what makes the assertion independent of host load: the
+ * flights are scene-clock paced and can land well after a wall-clock sampling
+ * window would have closed (MS-0MW08THR2000YXEO). The wrapper records the
+ * displayed total *after* calling the original, so it captures the sequence even
+ * once the deferred window has closed (the renderer then no-ops).
+ */
+function recordHudTotalSteps(scene: any, kind: 'coin' | 'rep'): number[] {
+  const steps: number[] = [];
+  const original = scene.syncHudTotals.bind(scene);
+  scene.syncHudTotals = () => {
+    original();
+    const value = kind === 'coin' ? scene.displayedCoins : scene.displayedReputation;
+    if (typeof value === 'number') steps.push(value);
+  };
+  return steps;
+}
+
 afterEach(() => {
   destroyGame(game);
   game = null;
@@ -130,6 +181,9 @@ describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
       { timeoutMs: 10_000, label: 'slot 0 card container' },
     );
 
+    // Record every HUD total step the reconciliation publishes.
+    const coinSteps = recordHudTotalSteps(scene, 'coin');
+
     // End the turn through the real controller (deferred-mutation path).
     const pre = hudCoins(scene);
     (scene.msTurnController as { endTurn: () => void }).endTurn();
@@ -137,43 +191,56 @@ describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
       timeoutMs: 3000,
       label: 'income choreography starts',
     });
-    await new Promise((r) => setTimeout(r, 300));
 
-    // Sample the visible HUD total while the choreography plays.
-    const samples: Array<{ t: number; v: number | null }> = [];
-    const t0 = Date.now();
-    const endOfSamples = t0 + 14_000;
-    while (Date.now() < endOfSamples && scene.incomeCollectionActive === true) {
-      samples.push({ t: Date.now() - t0, v: hudCoins(scene) });
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    // Wait for the first grid-coin arrival to tick the running total. This wait
+    // races the **scene clock** (the flights), so it gets the choreography
+    // margin; waiting on `endOfTurnDeltasApplied` here instead would make the
+    // budget span the entire starved show and time out on a correct scene.
+    await waitForCondition(() => coinSteps.some((v) => v !== pre), {
+      capMs: INCOME_COLLECTION_CAP_MS,
+      floorMs: CHOREOGRAPHY_STARVATION_MARGIN_MS,
+      intervalMs: 100,
+      label: 'coin total to tick at a HUD arrival',
+    });
 
-    await waitForCondition(() => scene.incomeCollectionActive === false, {
-      timeoutMs: 30_000,
-      label: 'choreography completes',
+    // The authoritative final value lands when the deferred deltas are applied;
+    // that continuation is bounded on the **wall clock** by the collection cap,
+    // so a cap + margin budget is the right one here.
+    await waitForCondition(() => scene.endOfTurnDeltasApplied === true, {
+      capMs: INCOME_COLLECTION_CAP_MS,
+      floorMs: END_OF_TURN_STARVATION_MARGIN_MS,
+      intervalMs: 100,
+      label: 'end-of-turn deltas applied',
     });
     const post = state.resourceBank.coins;
 
-    const sampleVals = samples.map((s) => s.v).filter((v): v is number => v !== null);
     // The coin total must pass through an intermediate value strictly between
     // pre and post (each grid coin landing at the HUD ticks the count up).
-    const hasIntermediate = sampleVals.some((v) => v > Math.min(pre, post) && v < Math.max(pre, post));
+    const hasIntermediate = coinSteps.some((v) => v > Math.min(pre, post) && v < Math.max(pre, post));
     expect(post).not.toBe(pre);
     expect(hasIntermediate).toBe(true);
-  }, 60_000);
+  }, 180_000);
 
   it('ticks the reputation total at the HUD bar when its pips arrive in the reputation phase', async () => {
     game = await bootGame();
     await makeIncidentsNone(game);
     const scene = game.scene.getScene('MainStreetScene') as any;
     const state = scene.state;
-    // One business carrying reputation income (Bakery-style 50 rep/turn).
-    state.streetGrid[0] = makeProducingBiz('probe-rep-biz', 50);
+    // One business carrying reputation income. The amount is chosen so the
+    // phase flies **several** pips (one per `iconsForAmount` icon, i.e. one per
+    // 100 reputation), which is what makes "ticks at arrivals" distinguishable
+    // from "frozen until the final snap": with a single pip the only published
+    // value *is* the final one, so a regression that froze the counter until the
+    // snap would pass. 250 → 3 pips → two strictly-intermediate values.
+    state.streetGrid[0] = makeProducingBiz('probe-rep-biz', 250);
     (scene as { refreshAll: () => void }).refreshAll();
     await waitForCondition(
       () => (scene.msAnimator as any)?.findStreetCardContainer?.(0) != null,
       { timeoutMs: 10_000, label: 'slot 0 card container' },
     );
+
+    // Record every HUD reputation step the reconciliation publishes.
+    const repSteps = recordHudTotalSteps(scene, 'rep');
 
     const preRep = hudRep(scene);
     (scene.msTurnController as { endTurn: () => void }).endTurn();
@@ -181,27 +248,35 @@ describe('live HUD reconciliation counting (MS-0MUYAESVU007X2U8)', () => {
       timeoutMs: 3000,
       label: 'income choreography starts',
     });
-    await new Promise((r) => setTimeout(r, 300));
 
-    // Sample the Reputation HUD total during the show.
-    const repSamples: number[] = [];
-    const t0 = Date.now();
-    const endOfSamples = t0 + 14_000;
-    while (Date.now() < endOfSamples && scene.incomeCollectionActive === true) {
-      const v = hudRep(scene);
-      if (v !== null) repSamples.push(v);
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    // Wait for the first reputation-pip arrival to tick the running total. As in
+    // the coin test this wait races the scene-clock paced flights, so it gets
+    // the choreography margin rather than the cap-derived one.
+    await waitForCondition(() => repSteps.some((v) => v !== preRep), {
+      capMs: INCOME_COLLECTION_CAP_MS,
+      floorMs: CHOREOGRAPHY_STARVATION_MARGIN_MS,
+      intervalMs: 100,
+      label: 'reputation total to tick at a HUD arrival',
+    });
 
-    await waitForCondition(() => scene.incomeCollectionActive === false, {
-      timeoutMs: 30_000,
-      label: 'choreography completes',
+    // The authoritative final value lands when the deferred deltas are applied
+    // (wall-clock capped by the collection cap).
+    await waitForCondition(() => scene.endOfTurnDeltasApplied === true, {
+      capMs: INCOME_COLLECTION_CAP_MS,
+      floorMs: END_OF_TURN_STARVATION_MARGIN_MS,
+      intervalMs: 100,
+      label: 'end-of-turn deltas applied',
     });
     const postRep = state.resourceBank.reputation;
 
     // The Reputation counter ticks when its pips arrive at the HUD bar during
-    // the show (previously it stayed frozen until the final snap/refresh).
+    // the show (previously it stayed frozen until the final snap/refresh). A
+    // value strictly between pre and post proves a mid-flight tick rather than
+    // a single jump at the snap, and every tick is upward — income is a gain.
     expect(postRep).not.toBe(preRep);
-    expect(repSamples.some((v) => v !== preRep)).toBe(true);
-  }, 60_000);
+    expect(
+      repSteps.some((v) => v > Math.min(preRep, postRep) && v < Math.max(preRep, postRep)),
+    ).toBe(true);
+    expect(repSteps.every((v) => v >= preRep)).toBe(true);
+  }, 180_000);
 });

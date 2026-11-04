@@ -47,18 +47,40 @@ import type { StorylineOption } from '../../src/MainStreetCardsTypes';
 
 // ── Synthetic CSV (choice + escalation templates) ──────────
 
-const SYNTHETIC_CSV =
-  `family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId
-event,evt-choice-a,Choice A,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,true,evt-next-b,evt-worse
-event,evt-next-b,Next B,0,,,,,,,,,1,Incident,Lose 50 coins,All,,-50,0,,,,,,,,,,,,,,,,,,,
-event,evt-worse,Worse Card,0,,,,,,,,,1,Incident,Lose 400 coins,All,,-400,0,,,,,,,,,,,,,,,,,,,
-event,evt-dur-choice,Duration Choice,0,,,,,,,,,1,Incident,80% income 4 turns,All,,0,0,4,income-multiplier,0.8,,,,,,,,,,,,,,true,,evt-next-b`;
+const SYNTHETIC_CSV = [
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta,duration,effectType,multiplier',
+  'event,evt-choice-a,Choice A,0,1,Incident,Lose 100 coins,All,-100,0,,,',
+  'event,evt-next-b,Next B,0,1,Incident,Lose 50 coins,All,-50,0,,,',
+  'event,evt-worse,Worse Card,0,1,Incident,Lose 400 coins,All,-400,0,,,',
+  'event,evt-dur-choice,Duration Choice,0,1,Incident,80% income 4 turns,All,0,0,4,income-multiplier,0.8',
+].join('\n');
+
+/** The two-way option list the fixtures present (reject skips the effect). */
+function twoWayOptions(
+  accept: string | null,
+  reject: string | null,
+): StorylineOption[] {
+  return [
+    {
+      label: 'Accept',
+      effectPolicy: 'apply',
+      ...(accept !== null ? { successorId: accept } : {}),
+    },
+    {
+      label: 'Reject',
+      effectPolicy: 'skip',
+      ...(reject !== null ? { successorId: reject } : {}),
+    },
+  ];
+}
 
 // ── Helpers ─────────────────────────────────────────────────
 
 function makeState(seed = 'choice-undo-suite'): MainStreetState {
   const state = setupMainStreetGame({ seed, difficulty: 'Medium' });
   loadTemplatesFromCsv(SYNTHETIC_CSV);
+  registerStorylineOptions('evt-choice-a', twoWayOptions('evt-next-b', 'evt-worse'));
+  registerStorylineOptions('evt-dur-choice', twoWayOptions(null, 'evt-next-b'));
   state.phase = 'MarketPhase';
   return state;
 }
@@ -217,10 +239,10 @@ describe('save/load compatibility for pendingEventChoice', () => {
     expect(restored.gameResult).toBe('playing');
   });
 
-  it('events without the new fields behave as non-choice after a legacy load', () => {
+  it('events without an option source behave as non-choice after a legacy load', () => {
     const state = makeState('legacy-events');
-    // Remove the choice fields from the pending event (as a legacy card would
-    // have them absent) and confirm non-choice behaviour on resolution.
+    // A card with no compiled options and no registry entry (as a legacy
+    // save's cards would be) resolves as a plain incident.
     const legacyEvent: EventCard = {
       family: 'event',
       id: 'evt-legacy-0',
@@ -232,7 +254,6 @@ describe('save/load compatibility for pendingEventChoice', () => {
       coinDelta: -30,
       reputationDelta: 0,
     };
-    delete (legacyEvent as { hasChoices?: boolean }).hasChoices;
     state.incidentDeck.length = 0;
     state.incidentDeck.push(legacyEvent);
     const coinsBefore = state.resourceBank.coins;
@@ -269,11 +290,11 @@ describe('save/load compatibility for pendingEventChoice', () => {
 // and that the accept/reject decision keys index 0/1 over any option count.
 
 const MULTI_UNDO_CSV = [
-  'family,id,name,cost,baseIncome,synergyTypes,upgradePath,maxLevel,reputationPerTurn,synergyCoinBonus,synergyRepBonus,description,tier,trigger,effect,target,targetSynergy,coinDelta,reputationDelta,duration,effectType,multiplier,targetBusiness,incomeBonus,synergyRangeBonus,requiredLevel,reputationBonus,newDisplayName,ongoingCost,handSlotsAdded,refreshCostDiscount,actionsPerTurn,peekOncePerTurn,upgradeCostDiscount,art_notes,hasChoices,acceptNextCardId,rejectNextCardId',
-  'event,evt-multi-choice,Multi Choice,0,,,,,,,,,1,Incident,Lose 100 coins,All,,-100,0,,,,,,,,,,,,,,,,,true,,',
-  'event,evt-mo-a,Branch A,0,,,,,,,,,1,Incident,Lose 10 coins,All,,-10,0,,,,,,,,,,,,,,,,,,,',
-  'event,evt-mo-b,Branch B,0,,,,,,,,,1,Incident,Lose 20 coins,All,,-20,0,,,,,,,,,,,,,,,,,,,',
-  'event,evt-mo-c,Branch C,0,,,,,,,,,1,Incident,Lose 30 coins,All,,-30,0,,,,,,,,,,,,,,,,,,,',
+  'family,id,name,cost,tier,trigger,effect,target,coinDelta,reputationDelta',
+  'event,evt-multi-choice,Multi Choice,0,1,Incident,Lose 100 coins,All,-100,0',
+  'event,evt-mo-a,Branch A,0,1,Incident,Lose 10 coins,All,-10,0',
+  'event,evt-mo-b,Branch B,0,1,Incident,Lose 20 coins,All,-20,0',
+  'event,evt-mo-c,Branch C,0,1,Incident,Lose 30 coins,All,-30,0',
 ].join('\n');
 
 /** A 3-option registry choice with single-candidate sets (deterministic draws). */

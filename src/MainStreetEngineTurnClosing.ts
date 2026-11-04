@@ -94,13 +94,13 @@ export function resolveIncident(
   recordIncidentDraw(state.incidentBalance, event);
 
   // Storyline/choice event interception (CG-0MTSHG8RP008E128 AC5 /
-  // MS-0MUMP93DI0018OGV): when the drawn incident presents a choice (legacy
-  // `hasChoices`, or an explicit registered option list), its effect is
-  // DEFERRED — stash the drawn event as `pendingEventChoice` (unresolved) and
-  // return null (no effect applied, no escalation yet). The caller
-  // (processEndOfTurn) pauses with TurnResult.choicePending so the UI can
-  // present the option dialog; resolveEventChoice/resolveEventOption applies
-  // the chosen path later. The pending choice is created through the
+  // MS-0MUMP93DI0018OGV): when the drawn incident presents a choice (a
+  // compiled CSV `options` list, or an explicit registered option list), its
+  // effect is DEFERRED — stash the drawn event as `pendingEventChoice`
+  // (unresolved) and return null (no effect applied, no escalation yet). The
+  // caller (processEndOfTurn) pauses with TurnResult.choicePending so the UI
+  // can present the option dialog; resolveEventChoice/resolveEventOption
+  // applies the chosen path later. The pending choice is created through the
   // game-agnostic extraction seam. A bare `storylineId` is descriptive
   // metadata only and does NOT intercept resolution.
   if (eventHasStoryline(event)) {
@@ -178,77 +178,30 @@ export function resolveEventOption(
     throw new Error(`Event choice for ${pending.event.name} is already resolved.`);
   }
   const event = pending.event;
-  // Use the draw-time frozen option snapshot when present so callback
-  // conditions are never re-evaluated at resolution time (AC3); fall back
-  // to recompiling for legacy pending choices without a snapshot.
+  // The presented list is the draw-time frozen snapshot when present so
+  // callback conditions are never re-evaluated at resolution time (AC3).
+  // An options-only pending choice always has at least one option (that is
+  // what made the card a choice), so an empty list can only be a corrupt or
+  // hand-crafted state — index validation below reports it.
   const options = getPendingStorylineOptions(pending, state);
-  if (options.length > 0) {
-    const option = options[optionIndex];
-    if (!option) {
-      throw new Error(
-        `No storyline option at index ${optionIndex} for ${event.name} (has ${options.length}).`,
-      );
-    }
-    const appliesEffect = option.effectPolicy === 'apply';
-    if (!appliesEffect) {
-      addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
-    }
-
-    const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, option);
-
-    if (appliesEffect) {
-      // Show the ACTUAL applied delta (CG-0MTQ7W0ZX0059R3J AC6): for the
-      // proportional Tax Audit this is the real percentage amount, e.g.
-      // "Chose to accept: Tax Audit (-450 coins).", using the same
-      // describeEventEffects formatting as the Incident: log lines.
-      addLog(
-        state,
-        `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
-        classifyEffect(coinChange, repChange),
-      );
-    }
-    syncResourceBankToLedger(state);
-
-    // Transcript / chosen token (F3 AC3): the chosen option's label IS the
-    // stable token — recorded identically for player and AI. The legacy
-    // 'accept'/'reject' tokens are removed; the legacy accept/reject
-    // successor ids are still carried on the event-choice entry for
-    // backward-compatible chain reconstruction (Monte Carlo metrics).
-    const transcriptOption = option.label;
-    recordStorylineResolution(
-      state,
-      event,
-      transcriptOption,
-      event.acceptNextCardId ?? null,
-      event.rejectNextCardId ?? null,
+  const option = options[optionIndex];
+  if (!option) {
+    throw new Error(
+      `No storyline option at index ${optionIndex} for ${event.name} (has ${options.length}).`,
     );
-    // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): a concise narrative
-    // "story update" tied to the storyline, when the card belongs to one.
-    const update = storyUpdateLine(event, transcriptOption, coinChange, repChange);
-    if (update) {
-      addLog(state, update, classifyEffect(coinChange, repChange));
-    }
-
-    markChoiceResolved(pending, transcriptOption);
-    return { event, option: transcriptOption, coinChange, repChange, pushedCard };
   }
-
-  // Legacy fallback: an event staged as a pending choice without any compiled
-  // option list (e.g. a synthetic non-choice card in an existing test, or a
-  // legacy save hand-crafted into the pending state). Preserve the original
-  // accept/reject semantics exactly: index 0 applies the effect, index 1
-  // skips it, and the legacy successor ids drive the deck push. The token is
-  // the option label ('Accept' / 'Reject') — the label IS the token (F3 AC3).
-  const appliesEffect = optionIndex === 0;
+  const appliesEffect = option.effectPolicy === 'apply';
   if (!appliesEffect) {
     addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
   }
-  const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, {
-    label: appliesEffect ? 'Accept' : 'Reject',
-    successorId: appliesEffect ? event.acceptNextCardId : event.rejectNextCardId,
-    effectPolicy: appliesEffect ? 'apply' : 'skip',
-  });
+
+  const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, option);
+
   if (appliesEffect) {
+    // Show the ACTUAL applied delta (CG-0MTQ7W0ZX0059R3J AC6): for the
+    // proportional Tax Audit this is the real percentage amount, e.g.
+    // "Chose to accept: Tax Audit (-450 coins).", using the same
+    // describeEventEffects formatting as the Incident: log lines.
     addLog(
       state,
       `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
@@ -256,44 +209,36 @@ export function resolveEventOption(
     );
   }
   syncResourceBankToLedger(state);
-  recordStorylineResolution(
-    state,
-    event,
-    appliesEffect ? 'Accept' : 'Reject',
-    event.acceptNextCardId ?? null,
-    event.rejectNextCardId ?? null,
-  );
-  // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): story update when applicable.
-  const fallbackUpdate = storyUpdateLine(
-    event,
-    appliesEffect ? 'Accept' : 'Reject',
-    coinChange,
-    repChange,
-  );
-  if (fallbackUpdate) {
-    addLog(state, fallbackUpdate, classifyEffect(coinChange, repChange));
+
+  // Transcript / chosen token (F3 AC3): the chosen option's label IS the
+  // stable token — recorded identically for player and AI.
+  const transcriptOption = option.label;
+  recordStorylineResolution(state, event, transcriptOption);
+  // Outcome feedback (MS-0MUMP96XH002SJ89 AC2): a concise narrative
+  // "story update" tied to the storyline, when the card belongs to one.
+  const update = storyUpdateLine(event, transcriptOption, coinChange, repChange);
+  if (update) {
+    addLog(state, update, classifyEffect(coinChange, repChange));
   }
-  markChoiceResolved(pending, appliesEffect ? 'Accept' : 'Reject');
-  return { event, option: appliesEffect ? 'Accept' : 'Reject', coinChange, repChange, pushedCard };
+
+  markChoiceResolved(pending, transcriptOption);
+  return { event, option: transcriptOption, coinChange, repChange, pushedCard };
 }
 
 /**
  * Resolves a pending dual-choice incident (CG-0MTSHG8RP008E128 AC8/AC9).
  *
- * Accept applies the event's effect (via resolveEvent) then pushes the
- * `acceptNextCardId` escalation onto the incident deck. Reject skips the
- * effect entirely and pushes the `rejectNextCardId` escalation instead.
+ * Accept maps to index 0 of the presented option list, Reject to index 1; the
+ * chosen option's `effectPolicy` decides whether the event's effect applies
+ * (CSV-authored options always apply) and its successor candidates (if any)
+ * drive the deck push.
  *
  * This is a thin backward-compatible wrapper over {@link resolveEventOption}:
- * legacy choice cards compile to the ordered list [Accept, Reject] — index 0
- * applies the effect, index 1 skips it — so behaviour is byte-for-byte
- * equivalent to the previous inline handling. Indexing works over any option
- * count (AC4): 'accept' always maps to index 0, 'reject' to index 1 of
- * whatever list is presented.
+ * indexing works over any option count (AC4): 'accept' always maps to index 0,
+ * 'reject' to index 1 of whatever list is presented.
  *
  * The chosen-option token returned (and stored on the pending state) is the
- * option label ('Accept' / 'Reject' for the legacy two-way list) — the label
- * IS the token (F3 AC3).
+ * option label — the label IS the token (F3 AC3).
  *
  * @param state  Current game state (mutated). Must have a pending unresolved choice.
  * @param option The player's / AI's decision key.
@@ -1247,6 +1192,12 @@ export function checkLastStanding(state: MainStreetState): boolean {
  * Idempotent — a no-op unless the offer is open (`endReason ===
  * 'last_standing'`).
  *
+ * Returning to play also reverts the win target to the undivided
+ * single-player threshold (MS-0MVWNXEX5006E7AT): `effectiveWinThreshold`
+ * sees `endReason === 'last_standing_continue'` and stops dividing by the
+ * original roster, so the resumed solo game must reach the base
+ * `config.winThreshold` to win again.
+ *
  * @returns `true` when play resumed, `false` when no offer was open.
  */
 export function continueAfterLastStanding(state: MainStreetState): boolean {
@@ -1483,7 +1434,9 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
   // value divided by the seat count (human + AI) and rounded to the nearest
   // 50, so a larger roster still reaches the win in a comparable run length
   // (MS-0MUZH6V7C0091SGE). Single-player (`playerCount` undefined) resolves
-  // to the unchanged base value, which is already a multiple of 50.
+  // to the unchanged base value, which is already a multiple of 50. A
+  // last-standing win continued solo also resolves to the base value
+  // (MS-0MVWNXEX5006E7AT): only the human remains in play.
   const effectiveThreshold = effectiveWinThreshold(state);
   for (let i = 0; i < state.players.length; i++) {
     if (state.players[i].score >= effectiveThreshold) {

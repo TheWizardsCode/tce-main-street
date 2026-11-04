@@ -71,12 +71,13 @@ function overlayTextContaining(s: SceneWithHud, fragment: string): Phaser.GameOb
 }
 
 /** The default bailout offer (300/3, 600/6, 1000/10 at 10% flat interest). */
-function makeModel() {
+function makeModel(shortfall?: number) {
   const model = buildLoanOfferModel({
     pendingLoanOffer: {
       ownerId: 0,
       reason: 'bankruptcy',
       options: DEFAULT_LOAN_OPTIONS.map((option) => ({ ...option })),
+      ...(shortfall === undefined ? {} : { shortfall }),
     },
     config: { loanInterestRate: 0.1 },
   } as any);
@@ -96,14 +97,17 @@ describe('Main Street bailout loan offer dialog overlay (browser)', () => {
     game = await bootGame();
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
 
-    const model = makeModel();
+    const model = makeModel(320);
     s.showLoanOfferDialog(model, () => {}, () => {});
 
     // Appears instantly (no fade-in): the dialog is present synchronously.
     const title = overlayText(s, 'Bank Loan Offer');
     expect(title).toBeDefined();
     expect(title!.depth).toBe(201);
-    expect(overlayTextContaining(s, "You cannot cover this turn's costs").length).toBeGreaterThan(0);
+    // AC1: the dialog states the exact shortfall instead of the old,
+    // amount-free sentence (MS-0MVZC1DAS001C8LF).
+    expect(overlayTextContaining(s, 'You are €320 short').length).toBeGreaterThan(0);
+    expect(overlayTextContaining(s, "You cannot cover this turn's costs").length).toBe(0);
     expect(overlayTextContaining(s, 'deducted at the end of each turn').length).toBeGreaterThan(0);
 
     // Every option row is rendered with its per-turn and total repayment.
@@ -113,6 +117,9 @@ describe('Main Street bailout loan offer dialog overlay (browser)', () => {
     expect(model.rows[0].label).toContain('€110/turn');
     expect(model.rows[0].label).toContain('€330 total');
     expect(model.rows[0].label).toContain('3 turns');
+    // AC3: the row states it leaves the seat €20 short; the others cover it.
+    expect(model.rows[0].label).toContain('€20 short');
+    expect(model.rows[1].label).toContain('covers the gap');
 
     // A Decline choice is always offered.
     expect(overlayText(s, model.declineLabel)).toBeDefined();
@@ -136,6 +143,27 @@ describe('Main Street bailout loan offer dialog overlay (browser)', () => {
     // per option and a Decline choice).
     const interactiveTexts = overlayTexts.filter((t) => t.input?.enabled === true);
     expect(interactiveTexts).toHaveLength(model.rows.length + 1);
+  }, 30_000);
+
+  it('renders the no-option-covers warning without colliding with the option rows', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    // A shortfall deeper than the largest option (€1000): no loan rescues it.
+    const model = makeModel(1500);
+    expect(model.warning).not.toBeNull();
+    s.showLoanOfferDialog(model, () => {}, () => {});
+
+    const warning = overlayText(s, model.warning!);
+    expect(warning).toBeDefined();
+    expect(warning!.depth).toBe(201);
+
+    // The warning sits above the first option row and below the intro, so the
+    // extra line never overlaps a button.
+    const intro = overlayTextContaining(s, 'You are €1500 short')[0];
+    const firstRow = overlayText(s, model.rows[0].label)!;
+    expect(warning!.y).toBeGreaterThan(intro.y);
+    expect(firstRow.y).toBeGreaterThan(warning!.y);
   }, 30_000);
 
   it('pressing an option accepts that row once and dismisses the dialog', async () => {

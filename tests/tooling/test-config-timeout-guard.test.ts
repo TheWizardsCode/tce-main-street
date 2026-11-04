@@ -68,7 +68,7 @@ describe('the repository config', () => {
     );
   });
 
-  it('keeps the three-command full suite and all eleven named groups', () => {
+  it('keeps the three-command full suite and all thirteen named groups', () => {
     const config = readConfig();
 
     expect(structuralProblems(config)).toEqual([]);
@@ -76,6 +76,16 @@ describe('the repository config', () => {
     expect(Object.keys(config.groups as Record<string, unknown>)).toHaveLength(
       EXPECTED_GROUP_NAMES.length,
     );
+  });
+
+  it('pins exactly the groups the config declares, with no duplicates', () => {
+    // A duplicate name inflates the pinned count and reports the config as
+    // one group short — the shape that landed on dev twice
+    // (MS-0MVZGAEF6004Q8XD). Compare as sets so order stays free.
+    const declared = Object.keys(readConfig().groups as Record<string, unknown>);
+
+    expect([...new Set(EXPECTED_GROUP_NAMES)]).toEqual([...EXPECTED_GROUP_NAMES]);
+    expect([...declared].sort()).toEqual([...EXPECTED_GROUP_NAMES].sort());
   });
 });
 
@@ -191,6 +201,25 @@ describe('structuralProblems', () => {
     const problems = structuralProblems({ ...config, groups });
 
     expect(problems.some((problem) => problem.includes('loan-hud-browser'))).toBe(true);
+  });
+
+  it('reports an extra group added to the config but not to the pin', () => {
+    // The regression this guard caught on dev (MS-0MVZGAEF6004Q8XD): a config
+    // edit added a group without adding it to EXPECTED_GROUP_NAMES, so the
+    // count check — not only the missing-name check — has to fire.
+    const config = baseConfig();
+    const groups = {
+      ...(config.groups as Record<string, unknown>),
+      'unpinned-new-browser': { commands: ['true'], paths: [] },
+    };
+
+    const problems = structuralProblems({ ...config, groups });
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain(
+      `got ${EXPECTED_GROUP_NAMES.length + 1}`,
+    );
+    expect(problems[0]).toContain('unpinned-new-browser');
   });
 
   it('reports a missing groups object', () => {

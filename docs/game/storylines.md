@@ -1,7 +1,7 @@
 # Main Street: Storylines
 
-> **Canonical reference for the Main Street storyline (dual-choice incident
-> chain) mechanic.** If this document and the code disagree, the code wins —
+> **Canonical reference for the Main Street storyline (incident option-chain)
+> mechanic.** If this document and the code disagree, the code wins —
 > and the discrepancy should be fixed by updating this document and the
 > [doc-drift test](../../tests/main-street/storylines-doc-drift.test.ts).
 
@@ -20,7 +20,7 @@ Key terms:
 | Term | Meaning |
 |------|---------|
 | **Storyline id / title** | A stable grouping key (`storyline-tax`) and a display name (`Tax Troubles`). Descriptive metadata — it groups cards into an arc and drives the journal, but does **not** by itself make a card a choice. |
-| **Choice card** | An incident that pauses resolution and asks the player to pick an option. Marked by `hasChoices=true`, or by a registered option list. |
+| **Choice card** | An incident that pauses resolution and asks the player to pick an option. **Derived**: a card is a choice exactly when its compiled option list is non-empty — authored in the CSV `options` column or registered at runtime. |
 | **Option** | `{ label, successorIds, effectPolicy }` plus optional runtime callbacks `condition` / `successorResolver` (see §2.1). `effectPolicy` is `apply` (run the incident's effect) or `skip` (ignore it — CSV content always `apply`). `successorIds` is the ordered candidate set of cards queued next; empty means the chain ends. When an option is chosen, one candidate is drawn uniformly at random at resolution time. |
 | **Successor / chain card** | The card pushed onto the incident deck when an option is chosen. |
 | **Cycle** | A chain that returns to an earlier card. Cycles are a **first-class shape** (see §6). |
@@ -52,9 +52,8 @@ without a browser):
   listing past storyline choices and outcomes, most recent first, with an empty
   state before any choice (`buildJournal`/`journalIsEmpty` in
   [`src/MainStreetStorylineJournal.ts`](../../src/MainStreetStorylineJournal.ts)).
-  The choice dialog also shows explanatory option labels describing the
-  apply-vs-skip semantics without revealing the escalation card
-  (`choiceClarityLabels`).
+  The choice dialog renders the option labels authored in the `options` column
+  directly — there are no separate explanatory clarity labels.
 
 ---
 
@@ -62,48 +61,45 @@ without a browser):
 
 Choice/storyline data lives on `EventCard`
 (`src/MainStreetCardsTypes.ts`) and is authored in
-[`src/card-data.csv`](../../src/card-data.csv). Five optional columns drive the
-mechanic (all default to empty = legacy behaviour):
+[`src/card-data.csv`](../../src/card-data.csv). Three optional columns drive
+the mechanic (all default to empty = an ordinary, non-choice incident):
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `hasChoices` | boolean (`true`/empty) | When `true`, the incident pauses and asks for an option. Only the literal string `true` (case-insensitive) is accepted. |
-| `acceptNextCardId` | string | Card pushed when the **Accept** option (option 0, effect policy `apply`) is chosen. Empty ends the chain. |
-| `rejectNextCardId` | string | Card pushed when the **Reject** option (option 1, effect policy `skip`) is chosen. Empty ends the chain. |
-| `storylineId` | string | Storyline grouping key. Descriptive (journal). |
+| `options` | string | The **only** choice encoding: `label|cardA,cardB;label2|cardC`. Blank = not a choice; `label|` = a terminal option. See §2.2. |
+| `storylineId` | string | Storyline grouping key. Descriptive (journal); a bare storyline id never makes a card a choice. |
 | `storylineTitle` | string | Storyline display name; falls back to the card name when empty. |
 
 These are appended to the shared header, so `src/README.md`'s
 [CSV column reference](../../src/README.md#csv-column-reference) lists them too.
 
-### The generalised option model
+### The option model
 
-Internally the legacy fields compile to an ordered option list
-(`StorylineOption`):
+An `options` cell compiles to an ordered option list (`StorylineOption`), the
+only representation of choice-ness in the runtime:
 
 ```ts
-// hasChoices=true + accept/reject links compile to exactly:
-[
-  { label: 'Accept', successorId: acceptNextCardId, effectPolicy: 'apply' },
-  { label: 'Reject', successorId: rejectNextCardId, effectPolicy: 'skip' },
-]
+// options cell: "Accept|evt-next;Reject|"
+compileStorylineFromEvent(card).compiledOptions;
+// → [
+//   { label: 'Accept', successorIds: ['evt-next'], effectPolicy: 'apply' },
+//   { label: 'Reject', successorIds: [], effectPolicy: 'apply' },
+// ]
 ```
 
-Plain (non-choice) cards compile to an empty list. The compilation is
-**byte-for-byte behaviour-preserving**: a legacy card resolves exactly as it did
-before the option model existed (pinned by the C1 regression harness and the
-legacy-equivalence tests).
+Plain (non-choice) cards compile to an empty list, and the derived manifest
+flag `isChoice` is `true` exactly when that list is non-empty — choice-ness is
+**derived**, never authored as a separate boolean.
 
-Multi-way storylines (>2 options) can be declared programmatically via
-`registerStorylineOptions(eventId, options)` in
-[`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts); explicit
-options take precedence over the legacy compilation. Authoring new options via
-CSV keeps to the two-way Accept/Reject shape today.
+Multi-way storylines (>2 options) are authored directly in the `options` cell.
+For narrative logic a CSV cell cannot express, options can also be declared
+programmatically via `registerStorylineOptions(eventId, options)` in
+[`src/MainStreetStoryline.ts`](../../src/MainStreetStoryline.ts); a registered
+list takes precedence over a CSV `options` cell for the same event id.
 
 ### The `options` CSV column (arbitrary multi-outcome encoding)
 
-New CSV-authored choice nodes use a single `options` column instead of the
-legacy `hasChoices`/`acceptNextCardId`/`rejectNextCardId` trio. The encoding is:
+CSV-authored choice nodes use a single `options` column. The encoding is:
 
 ```text
 label|cardA,cardB;label2|cardC
@@ -118,8 +114,8 @@ label|cardA,cardB;label2|cardC
 The value is parsed deterministically with surrounding whitespace trimmed at
 every level (labels, separators and candidate ids):
 
-- **Blank / absent** — the card is **not** a choice node (equivalent to
-  `hasChoices` empty).
+- **Blank / absent** — the card is **not** a choice node (it compiles to an
+  empty option list, so the derived `isChoice` manifest flag is `false`).
 - **`label|`** (an empty candidate list) — a **terminal** option: choosing it
   ends the chain. This is a valid encoding, not an error.
 - **`label|cardA,cardB`** — the option carries an ordered candidate set of
@@ -131,9 +127,8 @@ every level (labels, separators and candidate ids):
 CSV-authored options always compile with `effectPolicy: 'apply'` (producer
 Q4=B): the incident's own effect applies whichever option the player picks.
 `skip` remains available only through the programmatic
-`registerStorylineOptions` seam. `hasChoices` is **derived** from a non-empty
-option list, so an `options`-authored row intercepts resolution exactly like a
-legacy choice card.
+`registerStorylineOptions` seam. Choice-ness is **derived** from a non-empty
+option list, so an `options`-authored row always intercepts resolution.
 
 ```ts
 // `options` cell: "Negotiate|evt-nat-a,evt-nat-b;Walk away|;Escalate|evt-nat-c"
@@ -185,8 +180,7 @@ signature.
 **Not serialisable.** Callbacks are registered programmatically via
 `registerStorylineOptions`; they are never authored in CSV or the
 manifest/schema, and are invisible to the validator and graph export. A
-callback-equipped option with no `condition` behaves exactly like a legacy
-option (backward compatible).
+callback-equipped option with no `condition` is always offered.
 
 ```ts
 import { registerStorylineOptions } from './MainStreetStoryline';
@@ -218,8 +212,9 @@ options' `cost` / `extraEffect` deltas into its value (§4).
 
 1. **Draw** — `resolveIncident` (`src/MainStreetEngineTurnClosing.ts`) draws
    the next incident. If the card presents a choice
-   (`eventHasStoryline(event)` — `hasChoices` or registered options), the effect
-   is **deferred**: the card becomes `state.pendingEventChoice`
+   (`eventHasStoryline(event)` — a compiled `options` list or a registered
+   option list), the effect is **deferred**: the card becomes
+   `state.pendingEventChoice`
    (`{ event, chosenOption: null, resolved: false }`), nothing is applied, and
    `resolveIncident` returns `null`.
 2. **Pause** — `processEndOfTurn` sees an unresolved pending choice and returns
@@ -229,8 +224,9 @@ options' `cost` / `extraEffect` deltas into its value (§4).
    applies or skips the incident's effect per `effectPolicy`, pushes the
    successor card (if any) onto the incident deck, records an `event-choice`
    transcript entry, and marks the pending choice resolved.
-   `resolveEventChoice(state, 'accept' | 'reject')` is the backward-compatible
-   wrapper over option index 0/1.
+   `resolveEventChoice(state, 'accept' | 'reject')` remains a thin index
+   alias (index 0 / 1 of the presented list) for callers that still use the
+   two-way keys; it compiles nothing.
 4. **Finish** — `finishDeferredEndOfTurn` consumes the resolved pending choice
    (clears it) and runs the remaining closing phases (EndCheck → next week).
 
@@ -263,8 +259,9 @@ generalised label; the legacy lowercase `'accept'`/`'reject'` tokens were
 removed in `MS-0MV8KQL820077BOS`).
 
 **Transcript.** Each resolution records
-`{ type: 'event-choice', turn, eventId, cardName, option, acceptNextCardId,
-rejectNextCardId }`. The shape is identical for player and AI.
+`{ type: 'event-choice', turn, eventId, cardName, option }` — the chosen
+option's label is the only recorded resolution token. The shape is identical
+for player and AI.
 
 ---
 
@@ -297,10 +294,9 @@ the automatically-chosen option **in the presented option list**:
 
 `REPUTATION_SEVERITY_SCALE` (100) is the same weight the severity model uses, so
 coins and reputation stay comparable in both terms. Ties resolve to the **lowest
-index** (index 0 is the presentation-default / legacy Accept slot). Options with
-neither `cost` nor `extraEffect` project a delta of 0, so legacy binary choice
-cards keep their pre-existing selection exactly (pinned by the storyline
-regression harness).
+index** (index 0 is the presentation default). Options with neither `cost` nor
+`extraEffect` project a delta of 0, so two-option choice cards keep their
+pre-existing selection exactly (pinned by the storyline regression harness).
 
 The policy is a pure function of state and option and consumes no RNG (no
 `state.rng`, `Math.random` or clock), so repeated calls on identical input
@@ -350,7 +346,7 @@ the core worklog (`CG-0MVNE47TC0048WZ9`).
 | `npm run storylines:graph:svg` | Render one SVG per storyline into `docs/game/assets/`, one document per storyline in `docs/game/storylines/`, the standalone-incident index, and the storyline index in `storylines.md` §7.2 — portable, viewable without a Mermaid renderer. |
 | `npm run storylines:graph:svg -- --check` | Drift guard: exit `1` when any committed diagram, per-storyline document, index, or generated doc section differs from a re-render of the committed model. |
 | `npm run storylines:author -- add-card …` | Safely append a card (validated before writing). |
-| `npm run storylines:author -- link …` | Set choice links / storyline metadata on an existing card (validated before writing). |
+| `npm run storylines:author -- link …` | Set the `options` list / storyline metadata on an existing card (validated before writing). |
 | `npm run docs:diagrams` | Regenerate the card relationship diagrams (synergies, staff, upgrade chains, community spaces) into `docs/dev/assets/`; `--check` is the drift guard. See [card-diagrams.md](./card-diagrams.md). |
 
 **Cycle policy.** The validator reports cycles as **informational** findings
@@ -472,10 +468,10 @@ are **plain incidents** — they resolve normally when drawn.
 Before committing a storyline change:
 
 - [ ] **Ids are unique** and use the `evt-` prefix (`validate:storylines` fails on duplicates).
-- [ ] **Links resolve** — every `acceptNextCardId`/`rejectNextCardId` names an existing card.
-- [ ] **Choice cards set `hasChoices`** (the author helper does this automatically when you set a link).
+- [ ] **Links resolve** — every candidate id in every `options` entry names an existing card.
+- [ ] **Choice cards are authored through `options`** — a non-empty `options` cell is what makes a card a choice (choice-ness is derived; there is no separate boolean column).
 - [ ] **Storyline metadata** — choice cards and their escalations share a `storylineId`; the first card sets a `storylineTitle`.
-- [ ] **Effects are intentional** — `apply` (`acceptNextCardId`) applies the incident effect; `skip` (`rejectNextCardId`) does not.
+- [ ] **Effects are intentional** — CSV-authored options always `apply` the incident effect; `skip` is only reachable through `registerStorylineOptions`.
 - [ ] **Cycles are intentional** — a cycle is allowed, but confirm it is a designed recurring thread.
 - [ ] **`npm run validate:storylines` exits 0.**
 - [ ] **`npm run storylines:graph -- --format mermaid` and `--format json` are regenerated and committed** (the drift test fails otherwise).
@@ -525,9 +521,9 @@ remains the generalised entry point.
 
 **Migration notes:**
 
-- Core owns the semantics: legacy/CSV compilation, registry precedence,
+- Core owns the semantics: `options`/CSV compilation, registry precedence,
   draw-time condition filtering, `apply` / `skip`, successor precedence
-  (`successorResolver` → one seeded candidate draw → legacy id) and
+  (`successorResolver` → one seeded candidate draw → declared successor) and
   deterministic `${base}-${maxSerial+1}` chain naming.
 - A candidate selection consumes exactly **one** `state.rng()` draw at
   resolution time; terminal options consume no draw. Replay with the same seed

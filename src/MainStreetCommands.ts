@@ -13,6 +13,7 @@ import { toCommand, type ReversibleAction } from '@core-engine/ActionCommands';
 import { evaluateChallengesAfterAction } from './MainStreetChallenges';
 import type { SynergyType } from './MainStreetCards';
 import type { MainStreetState } from './MainStreetState';
+import type { TakeLoanOptions } from './MainStreetLoans';
 import {
   purchaseBusiness,
   moveToHand,
@@ -788,12 +789,21 @@ export function hireApplicantCommand(state: MainStreetState) {
  *
  * @param state       Current game state.
  * @param optionIndex Index into `config.loanOptions`.
+ * @param opts        Optional {@link TakeLoanOptions}. The Turn Summary dialog
+ *                    passes `{ allowDuringClosing: true }` because it presents
+ *                    the loan entry point while the deferred closing is paused
+ *                    outside `MarketPhase` (MS-0MVXYCIU00053HL1); every other
+ *                    caller keeps the `MarketPhase`-only rule by omitting it.
  */
-export function takeLoanCommand(state: MainStreetState, optionIndex: number) {
+export function takeLoanCommand(
+  state: MainStreetState,
+  optionIndex: number,
+  opts?: TakeLoanOptions,
+) {
   return toCommand(
     state,
     snapshotAction(
-      (s) => takeLoan(s, optionIndex),
+      (s) => takeLoan(s, optionIndex, undefined, opts),
       `TakeLoan option ${optionIndex}`,
     ),
   );

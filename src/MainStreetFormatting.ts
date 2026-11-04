@@ -42,6 +42,17 @@ export interface SynergyRateCard {
   readonly synergyCoinBonus?: number;
 }
 
+/**
+ * Player-facing explanation of the duplicate-business (market-saturation)
+ * income rule (MS-0MW0UH143003PQAG).
+ *
+ * Duplicated types compete for the same customers, so every copy earns a
+ * reduced share of its usual income; the copy is shown alongside the card's
+ * own reduced share so the penalty is never unexplained.
+ */
+export const DUPLICATE_PENALTY_RULE_TEXT =
+  'Duplicate businesses on the same street earn reduced income: 2 copies = 2/3, 3 copies = 1/2, 4+ copies = 1/3 of usual income.';
+
 /** Difficulty subset needed by the formatters. */
 export type SynergyFormatConfig = Pick<GameConfig, 'synergyBonusPerNeighbor'>;
 
@@ -128,6 +139,50 @@ export interface CardTooltipInfoOptions {
 export function formatTooltipDelta(value: number): string {
   const rounded = Math.round(value);
   return `${rounded >= 0 ? '+' : ''}${rounded}`;
+}
+
+/**
+ * Builds the duplicate-penalty explanation for a street business tooltip
+ * (MS-0MW0UH143003PQAG).
+ *
+ * Returns `null` when the card's type is not saturated (factor 1) or the
+ * factor is not a genuine reduction (zero, negative or not a number), so a
+ * caller can append the text unconditionally. A saturated card gets its
+ * reduced share plus the counting rule, e.g.:
+ *
+ * ```
+ * Duplicate penalty: 2/3 income
+ * Duplicate businesses on the same street earn reduced income: 2 copies = 2/3, …
+ * ```
+ *
+ * The factor comes from `duplicateIncomeFactor()` (MainStreetAdjacencyScoring),
+ * so the copy can never disagree with the income the player is credited.
+ *
+ * @param factor The card's duplicate-income factor on its street.
+ * @returns The multi-line explanation, or null when no income is reduced.
+ */
+export function formatDuplicatePenaltyLine(factor: number): string | null {
+  if (!Number.isFinite(factor) || factor <= 0 || factor >= 1) return null;
+  return `Duplicate penalty: ${formatDuplicateShare(factor)} income\n${DUPLICATE_PENALTY_RULE_TEXT}`;
+}
+
+/**
+ * Formats a duplicate factor as its simple-fraction share (`2/3`, `1/2`,
+ * `1/3`), falling back to a percentage for a factor outside the canonical
+ * table so an unexpected value still reads sensibly.
+ */
+function formatDuplicateShare(factor: number): string {
+  for (const denominator of [3, 2]) {
+    const numerator = Math.round(factor * denominator);
+    if (
+      numerator > 0 &&
+      numerator < denominator &&
+      Math.abs(numerator / denominator - factor) < 1e-9
+    ) {
+      return `${numerator}/${denominator}`;
+    }
+  }
+  return `${Math.round(factor * 100)}%`;
 }
 
 /**

@@ -56,7 +56,15 @@ export const EXPECTED_SUITE_COMMANDS = [
  * an edit to `timeoutPerCommand` must not drop any of them.
  *
  * Adding a group deliberately means adding it here too — the list is a
- * deliberate pin, not a mirror that updates itself.
+ * deliberate pin, not a mirror that updates itself. `help-settings-panels-browser`
+ * is the worked example: MS-0MVWMDMLE007I8E1 added it to the config without
+ * updating this pin, which failed the guard and was triaged as
+ * MS-0MVZGAEF6004Q8XD. A concurrent fix then appended it a second time, so
+ * duplicate names are rejected too (`Set` comparison in the test).
+ * `event-choice-dialogs-browser` was added the other way round — pin and config
+ * together (MS-0MVZNRBDJ001L19R) — so the two touched event-choice dialog
+ * browser suites are selectable at last: they sat in no group, so neither the
+ * pinned full suite nor changed scope ever ran them.
  */
 export const EXPECTED_GROUP_NAMES = [
   'hand-bottom-anchor-browser',
@@ -69,6 +77,8 @@ export const EXPECTED_GROUP_NAMES = [
   'hand-panel-browser',
   'pedestrians-scene-visibility-browser',
   'loan-hud-browser',
+  'help-settings-panels-browser',
+  'event-choice-dialogs-browser',
   'webgl-clipping-browser',
 ] as const;
 
@@ -132,7 +142,7 @@ export function evaluateTimeoutPerCommand(config: TestConfigLike): Verdict {
 
 /**
  * Assert the config's structural invariants survive an edit to
- * `timeoutPerCommand`: the three-command full suite and all eleven named groups.
+ * `timeoutPerCommand`: the three-command full suite and all thirteen named groups.
  *
  * Returns an empty list when everything is present, otherwise one message per
  * problem found.

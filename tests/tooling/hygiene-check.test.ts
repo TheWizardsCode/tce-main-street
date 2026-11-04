@@ -399,6 +399,27 @@ describe('dev-server inventory', () => {
     ]);
   });
 
+  it('keeps a listening port when the socket table is larger than a pipe buffer', () => {
+    const fx = fixture([]);
+    // A busy host lists thousands of sockets, and the listener rows come
+    // first in `ss -ltn` output. A `grep -q` consumer exits at that first
+    // match and the producer is then killed by SIGPIPE, which `pipefail`
+    // turns into "not listening" — so the port check must not depend on the
+    // producer finishing. The table here is deliberately far larger than any
+    // OS pipe buffer (~64 KiB) to make that regression deterministic.
+    const bulk = Array.from({ length: 4_000 }, (_, index) =>
+      ssRow(20_000 + index),
+    );
+    const report = runScript(fx, {
+      worktreeList: worktreeList(fx.root, []),
+      ss: [ssRow(3000), ssRow(4173), ...bulk].join('\n'),
+    });
+    expect(report.dev_servers.port_listeners).toEqual([
+      { port: 3000, listening: true },
+      { port: 4173, listening: true },
+    ]);
+  });
+
   it('reports a closed dev port when nothing listens', () => {
     const fx = fixture([]);
     const report = runScript(fx, {

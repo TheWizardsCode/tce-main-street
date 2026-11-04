@@ -21,10 +21,15 @@ export type MainStreetTranscriptEvent = (
        * The chosen option's label token (F3 AC3) — the label IS the token
        * (e.g. 'Accept', 'Reject', 'Grind through'). The legacy lowercase
        * 'accept'/'reject' tokens were removed.
+       *
+       * This is the only resolution token the transcript records: the
+       * options-only model derives every successor from the card's compiled
+       * option list, so no resolved-successor id is stored on the event. The
+       * recorded shape is pinned by
+       * `MainStreetEngineEventChoice.test.ts` ("records the options-only
+       * event-choice schema") — re-introducing a successor id fails there.
        */
       option: string;
-      acceptNextCardId: string | null;
-      rejectNextCardId: string | null;
     }
 ) & { week?: number; year?: number };
 

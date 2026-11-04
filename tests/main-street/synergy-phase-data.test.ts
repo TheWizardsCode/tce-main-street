@@ -212,9 +212,11 @@ describe('synergy/base phase-data separation (CG-0MTV6LZEA003YS3E)', () => {
       { index: 1, card: makeBiz({ id: 'biz-bakery-9', baseIncome: 200 }) },
     ]);
 
-    // 200 × 0.6 = 120, no synergy (same base type).
+    // 200 × 0.6 = 120, no synergy (same base type). The street-wide
+    // duplicate factor (2 bakeries → 2/3) then applies: round(120 × 2/3) = 80
+    // (MS-0MVYG50V1007W8BP), split with zero synergy.
     const s0 = phase(state, 0);
-    expect(s0.pd.baseIncome).toBe(120);
+    expect(s0.pd.baseIncome).toBe(80);
     expect(s0.pd.synergyBonus).toBe(0);
   });
 });

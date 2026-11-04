@@ -58,7 +58,7 @@ When a card's cost changes, its reward fields (baseIncome, coinDelta, synergy bo
 | **Pawn Shop** | No synergy bonuses (contributes/receives none); negative reputation per turn (−10) trades reputation for a below-tier price (200) |
 | **Clinic** | reputationPerTurn = +160 factored into cost calculation (weight × 30) |
 | **Library (`cs-library`)** | Community-space curve formula **excludes `ongoingCost`**. The Library's 25 coins/turn running cost is not part of the cost formula; its cost was hand-set to the tier-1 formula result (400 base + 10 rep × 30 = 700, Standard band) per planning Q6. The Library participates in Culture synergy with default rates (empty `synergyCoinBonus` → 0.5 coin rate, `synergyRepBonus` → 0, Park model) — it contributes to adjacent Culture businesses' synergy and can receive rep synergy from rep-bonus neighbours (reversed from synergy-neutral by CG-0MSKS963N000ZSTU). Community spaces with a running cost may need manual review. **Re-priced to 400 by MS-0MUR9IN7L0004TO5**: the curve result was materially over-priced relative to the ~4.87-turn business payback (net drain of 10/turn even at the rep-converted value); see [analysis/community-space-event-repricing.md](analysis/community-space-event-repricing.md). |
-| **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam. The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. **Re-priced 300 → 150 by MS-0MUR9IN7L0004TO5**: Park provides zero reputation, so at 300 it was a pure net drain and over-priced even as a Tier-1 synergy anchor. |
+| **Park (`cs-park`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library). Park gained a 40 coins/turn running cost (CG-0MU9NW9EP003B1AK) so the cheapest Tier-1 synergy anchor is no longer free to spam. The running cost is data-driven (`card-data.csv` → `ongoingCost`) and surfaced on the tooltip and card-face cash line, so the producer can re-tune it without engine changes. **Re-priced 300 → 150 by MS-0MUR9IN7L0004TO5** (it provided zero reputation at the time, so at 300 it was a pure net drain and over-priced even as a Tier-1 synergy anchor). **Gained +20 rep/turn in MS-0MVRDGNFU001DDQW**, pricing unchanged (150 / 40): it is now the cheapest reputation entry in the family (13.3 rep per 100 coins of cost, inside the community-space band) while remaining net-negative in coin-equivalent (−10/turn at 1.5 coins/rep) — a deliberate reputation-first card whose 40/turn upkeep is its anti-spam lever. |
 | **Playground (`cs-playground`) / Town Fountain (`cs-fountain`) / Community Shelter (`cs-shelter`)** | Community-space curve formula **excludes `ongoingCost`** (same treatment as the Library and Park). Each gained a per-turn running cost — Playground 20, Town Fountain 25, Community Shelter 30 coins/turn (MS-0MUMC6IVF0098WRL) — so no shipped community space is free to run. The cost is data-driven (`card-data.csv` → `ongoingCost`), surfaced on the tooltip and card-face cash line, and charged by `applyCommunitySpaceOngoingCosts()` (placed, unsold cards only, clamped at 0). Values sit below Park's 40 and within the Library/Public Art (25) band. |
 | **Charity Shop (`biz-charity-shop`)** | Producer-specified cost override (MS-0MUAYBAHW007RMSL): the balance curve (`tier*2 + 2 + baseIncome*4 + …`) would price this reputation-leaning Culture card above 300, but the producer's explicit design cost of 3 (300) takes precedence. Recorded as a deliberate manual override, **not** a curve result; `reputationPerTurn = 60` is still factored into the curve for reference. |
 
@@ -241,6 +241,32 @@ required): `tests/main-street/difficulty-presets.test.ts` asserts each preset's
 `tests/main-street/monte-carlo-greedy-guardrail.test.ts` asserts the
 per-difficulty win-rate bands and the ladder. Any future difficulty tune must be
 raised as a **new** balance work item, not by editing these pins.
+
+## Park +20 Reputation Drift Check (MS-0MVRDGNFU001DDQW)
+
+The Park (`cs-park`) gained its producer-confirmed **+20 reputation per turn**
+(pricing unchanged at 150 cost / 40 ongoing). Per the drift-report-then-ask
+workflow (CG-0MTD0F66A0005BEX) the change was **measured**, not assumed:
+`npm run balance:drift-report` on the canonical profile (200 seeds
+`mc-balance-0…199`, 60-turn cap, `greedy`) compares the current tree against
+the committed baseline `docs/dev/assets/monte-carlo-baseline.json`
+(`commitSha 4001972c`, generated 2026-10-15).
+
+| Difficulty | winRate (Δ vs baseline) | coins/turn (Δ) | medianScore (Δ) |
+|---|---:|---:|---:|
+| Easy   | 0.730 (+0.0150) | 405.75 (+37.79) | 10,882.0 (+438.0) |
+| Medium | 0.605 (+0.0000) | 349.53 (+3.38)  | 12,563.5 (+86.5)  |
+| Hard   | 0.275 (+0.0050) | 126.83 (+8.62)  | 210.0 (+0.0)      |
+
+**Result: 0 of 3 difficulties exceed tolerance** (winRate ±0.25; coins ±30 %
+of baseline). The primary ladder `Easy 0.730 ≥ Medium 0.605 ≥ Hard 0.275` is
+intact and **no guardrail band was widened**. The committed baseline was
+deliberately **not** regenerated: the drift is the intended, small,
+directional effect of the +20 reputation, and the catch-breakage guardrail
+`tests/main-street/monte-carlo-guardrails.test.ts` (drift vs the committed
+baseline) plus `tests/main-street/monte-carlo-greedy-guardrail.test.ts`
+(design-intent bands and ladder) both stay green. Any future re-tune must go
+through its own work item, not a silent baseline edit.
 
 ## 8-Way Adjacency Re-Tune (CG-0MSP1HCAS00785MP / CG-0MSP26Q5N002EH8P)
 
