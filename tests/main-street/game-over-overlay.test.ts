@@ -61,6 +61,15 @@ vi.mock('@ui', () => ({
   dismissOverlay: vi.fn(),
 }));
 
+const chartMock = vi.hoisted(() => ({ calls: [] as Array<{ geometry: unknown; spec: unknown }> }));
+vi.mock('../../src/scenes/MainStreetStatsChart', () => ({
+  createStatsChart: vi.fn((_scene: unknown, geometry: unknown, spec: unknown) => {
+    chartMock.calls.push({ geometry, spec });
+    return Promise.resolve({ canvas: {}, destroy: vi.fn() });
+  }),
+  destroyStatsChart: vi.fn(),
+}));
+
 import { createOverlayBackground, createOverlayButton } from '@ui';
 import { MainStreetOverlayContent } from '../../src/scenes/MainStreetOverlayContent';
 import type { TurnResult } from '../../src/MainStreetEngine';
@@ -70,24 +79,50 @@ interface TextMock {
   x: number;
   y: number;
   depth: number | null;
+  handlers: Record<string, Array<() => void>>;
   setOrigin: () => TextMock;
   setDepth: (d: number) => TextMock;
   setInteractive: () => TextMock;
   setText: (s: string) => TextMock;
   on: (event: string, cb: () => void) => TextMock;
+  emit: (event: string) => void;
 }
 
 function makeText(text: string, x: number, y: number): TextMock {
+  const handlers: Record<string, Array<() => void>> = {};
   const obj: TextMock = {
     text,
     x,
     y,
     depth: null,
+    handlers,
     setOrigin: () => obj,
     setDepth: (d: number) => { obj.depth = d; return obj; },
     setInteractive: () => obj,
     setText: (s: string) => { obj.text = s; return obj; },
-    on: () => obj,
+    on: (event: string, cb: () => void) => { (handlers[event] ??= []).push(cb); return obj; },
+    emit: (event: string) => handlers[event]?.forEach((cb) => cb()),
+  };
+  return obj;
+}
+
+interface RectMock {
+  width: number;
+  height: number;
+  depth: number | null;
+  setStrokeStyle: () => RectMock;
+  setOrigin: () => RectMock;
+  setDepth: (d: number) => RectMock;
+}
+
+function makeRect(width: number, height: number): RectMock {
+  const obj: RectMock = {
+    width,
+    height,
+    depth: null,
+    setStrokeStyle: () => obj,
+    setOrigin: () => obj,
+    setDepth: (d: number) => { obj.depth = d; return obj; },
   };
   return obj;
 }
@@ -95,6 +130,7 @@ function makeText(text: string, x: number, y: number): TextMock {
 /** Minimal scene mock backed by a real overlay-content instance. */
 function makeScene(state: Record<string, unknown>) {
   const texts: TextMock[] = [];
+  const rectangles: RectMock[] = [];
   const hudAdded: unknown[] = [];
   const scene: Record<string, unknown> = {
     layout: { gameW: 1280, gameH: 720 },
@@ -112,6 +148,11 @@ function makeScene(state: Record<string, unknown>) {
         texts.push(obj);
         return obj;
       }),
+      rectangle: vi.fn((_x: number, _y: number, width: number, height: number) => {
+        const obj = makeRect(width, height);
+        rectangles.push(obj);
+        return obj;
+      }),
     },
     state: {
       config: { challengeBonusPoints: 10 },
@@ -123,7 +164,7 @@ function makeScene(state: Record<string, unknown>) {
       ...state,
     },
   };
-  return { scene, texts, hudAdded };
+  return { scene, texts, rectangles, hudAdded };
 }
 
 function winResult(finalScore = 100): TurnResult {
@@ -160,11 +201,12 @@ function player(overrides: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
+describe('MainStreetOverlayContent.showGameOverOverlay (three-column)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ui.buttons.length = 0;
     ui.backgrounds.length = 0;
+    chartMock.calls.length = 0;
   });
 
   it('renders the two labelled columns, title and headline in single-player', () => {
@@ -235,6 +277,111 @@ describe('MainStreetOverlayContent.showGameOverOverlay (two-column)', () => {
     new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
 
     expect(texts.map((t) => t.text)).toContain('Cash at end of turn: 42');
+  });
+
+  it('renders a third Stats column of five labelled graphs', () => {
+    const { scene, texts } = makeScene({
+      endReason: 'score_threshold',
+      resourceBank: { coins: 55, reputation: 6 },
+      turnStatsHistory: [
+        { turn: 1, coins: 20, reputation: 2, score: 0, profit: 5, businesses: 1, staff: 0 },
+        { turn: 2, coins: 55, reputation: 6, score: 10, profit: 35, businesses: 2, staff: 1 },
+      ],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const rendered = texts.map((t) => t.text);
+    // Three column headers.
+    expect(rendered).toContain('Game State');
+    expect(rendered).toContain('Summary');
+    expect(rendered).toContain('Stats');
+
+    // Five charts, in the requested order, each fed from the series model.
+    expect(chartMock.calls).toHaveLength(5);
+    const titles = chartMock.calls.map((c) => (c.spec as { title: string }).title);
+    expect(titles).toEqual([
+      'Profit per turn',
+      'Cash at end of turn',
+      'Businesses at end of turn',
+      'Staff at end of turn',
+      'Reputation at end of turn',
+    ]);
+    const cashSpec = chartMock.calls[1]!.spec as { labels: string[]; values: number[] };
+    expect(cashSpec.labels).toEqual(['1', '2']);
+    expect(cashSpec.values).toEqual([20, 55]);
+  });
+
+  it('links the Summary to the Stats column without mutating state', () => {
+    const history = [
+      { turn: 1, coins: 30, reputation: 3, score: 0, profit: 10, businesses: 1, staff: 0 },
+    ];
+    const { scene, texts, rectangles } = makeScene({
+      endReason: 'score_threshold',
+      turnStatsHistory: history,
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const link = texts.find((t) => t.text === '[ View detailed stats ]');
+    expect(link).toBeDefined();
+    const stateBefore = JSON.parse(JSON.stringify((scene as { state: unknown }).state));
+
+    link!.emit('pointerdown');
+
+    // A static focus frame is added (no animation), state is untouched.
+    expect(rectangles).toHaveLength(1);
+    expect(rectangles[0]!.depth).toBe(201);
+    expect(JSON.parse(JSON.stringify((scene as { state: unknown }).state))).toEqual(stateBefore);
+  });
+
+  it('fits three columns inside 1280×720 for a rich 12-turn history', () => {
+    const history = Array.from({ length: 12 }, (_, i) => ({
+      turn: i + 1,
+      coins: 100 + i * 10,
+      reputation: 2 + i,
+      score: i * 5,
+      profit: 10,
+      businesses: 1 + (i % 3),
+      staff: i % 2,
+    }));
+    const { scene } = makeScene({
+      endReason: 'score_threshold',
+      resourceBank: { coins: 220, reputation: 13 },
+      turnStatsHistory: history,
+      activeChallenges: [
+        { challenge: { id: 'c1', title: 'One' }, completed: true },
+        { challenge: { id: 'c2', title: 'Two' }, completed: false },
+        { challenge: { id: 'c3', title: 'Three' }, completed: false },
+      ],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const box = ui.backgrounds[0].box as { width: number; height: number };
+    expect(box.width).toBeLessThanOrEqual(1280);
+    expect(box.height).toBeLessThanOrEqual(720);
+    const panelTop = 720 / 2 - box.height / 2;
+    expect(panelTop).toBeGreaterThanOrEqual(0);
+    expect(panelTop + box.height).toBeLessThanOrEqual(720);
+
+    // Every chart sits inside the viewport.
+    for (const call of chartMock.calls) {
+      const g = call.geometry as { x: number; width: number };
+      expect(g.x).toBeGreaterThan(0);
+      expect(g.x + g.width).toBeLessThanOrEqual(1280);
+    }
+  });
+
+  it('fits three columns inside 1280×720 for an empty history', () => {
+    const { scene } = makeScene({
+      endReason: 'score_threshold',
+      resourceBank: { coins: 0, reputation: 0 },
+      turnStatsHistory: [],
+    });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const box = ui.backgrounds[0].box as { width: number; height: number };
+    expect(box.width).toBeLessThanOrEqual(1280);
+    expect(box.height).toBeLessThanOrEqual(720);
+    expect(chartMock.calls).toHaveLength(5);
   });
 
   it('lists every competitive seat with failure/elimination badges and names the failing seat', () => {

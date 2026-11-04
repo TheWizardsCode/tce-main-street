@@ -83,29 +83,35 @@ export class MainStreetOverlayContent {
   constructor(private readonly scene: any) {}
 
   /**
-   * Shows the Game Over overlay as a two-column panel (epic MS-0MUWDL0V40041USM).
+   * Shows the Game Over overlay as a three-column panel
+   * (epic MS-0MUWDL0V40041USM; Stats column MS-0MVSHZ1JU0083ASL).
    *
    * Layout:
    * - Top band: the title (`You Win!` / `Game Over`) and the plain-language
-   *   end-reason headline, spanning both columns.
+   *   end-reason headline, spanning all columns.
    * - Left **Game State** column: one row per player (label, coins,
    *   reputation, score and any failure/elimination badge) followed by the
    *   run's challenges met — a per-seat breakdown in competitive mode (each
    *   seat credited only with its own completions) or the historic single
    *   list in single-player.
-   * - Right **Summary** column: the retained score breakdown, challenge
+   * - Middle **Summary** column: the retained score breakdown, the final
+   *   `Cash at end of turn` figure, a `[ View detailed stats ]` link, challenge
    *   details, tier-unlock notifications, tier + campaign stats, the
    *   difficulty selector and the Play Again / Menu buttons anchored at the
    *   panel bottom.
+   * - Right **Stats** column: five end-of-game line charts (profit per turn,
+   *   cash, businesses, staff and reputation at end of turn) fed from the pure
+   *   {@link buildGameOverStatSeries} model.
    *
    * The body is read-only (never mutates committed `state`) and reuses the
    * pure summary model ({@link buildGameOverPlayerRows},
-   * {@link buildGameOverChallengeSummary}, {@link formatEndReason}). Overlay
-   * conventions follow AGENTS.md UI best practices: `createOverlayBackground` /
-   * `createOverlayButton` from `@ui`, all elements parented into
-   * `s.hudContainer`, depths 199 (backdrop) / 200 (box) / 201 (interactive),
-   * everything pushed into `s.overlayObjects`. No animation is added here, so
-   * the overlay is reduced-motion safe, and headless/replay mode returns early.
+   * {@link buildGameOverChallengeSummary}, {@link formatEndReason},
+   * {@link buildGameOverStatSeries}). Overlay conventions follow AGENTS.md UI
+   * best practices: `createOverlayBackground` / `createOverlayButton` from
+   * `@ui`, all elements parented into `s.hudContainer`, depths 199 (backdrop) /
+   * 200 (box) / 201 (interactive), everything pushed into `s.overlayObjects`.
+   * No animation is added here, so the overlay is reduced-motion safe, and
+   * headless/replay mode returns early.
    */
   public showGameOverOverlay(
     result: TurnResult,
@@ -156,22 +162,37 @@ export class MainStreetOverlayContent {
     // Final "Cash at end of turn" line rendered directly after the score
     // breakdown (MS-0MVAMU6OM008GJPV AC8).
     const cashLineH = 26;
+    // "[ View detailed stats ]" affordance linking the Summary to the Stats
+    // column (MS-0MVSHZ1JU0083ASL AC3/AC4).
+    const viewStatsH = 22;
     const detailsH = challengeLineCount > 0 ? 24 + challengeLineCount * 20 : 0;
     const controlsH = 88; // difficulty row + buttons
-    const rightContentH = 26 + breakdownH + cashLineH + detailsH + tierUnlockH + campaignH;
+    const rightContentH =
+      26 + breakdownH + cashLineH + viewStatsH + detailsH + tierUnlockH + campaignH;
     const rightTotalH = rightContentH + controlsH;
+
+    // ── Third “Stats” column geometry (five stacked charts) ─────
+    const statsHeaderH = 26;
+    const statsChartH = 84;
+    const statsChartGap = 10;
+    const statsColumnH =
+      statsHeaderH + 5 * statsChartH + 4 * statsChartGap;
 
     const topBandH = 92;
     const panelPad = 24;
-    const colGap = 24;
-    const panelW = 900;
-    const colW = (panelW - panelPad * 2 - colGap) / 2;
-    const bodyH = Math.max(leftTotalH, rightTotalH);
-    const panelH = topBandH + bodyH + panelPad;
+    const colGap = 20;
+    // Widen to three columns while staying inside the 1280×720 viewport.
+    const panelW = Math.min(1200, s.layout.gameW - 40);
+    const colW = (panelW - panelPad * 2 - colGap * 2) / 3;
+    const bodyH = Math.max(leftTotalH, rightTotalH, statsColumnH);
+    const margin = 16;
+    const maxPanelH = s.layout.gameH - 2 * margin;
+    const panelH = Math.min(topBandH + bodyH + panelPad, maxPanelH);
     const panelTop = s.layout.gameH / 2 - panelH / 2;
     const panelLeft = s.layout.gameW / 2 - panelW / 2;
     const leftX = panelLeft + panelPad;
     const rightX = leftX + colW + colGap;
+    const statsX = rightX + colW + colGap;
     const bodyTop = panelTop + topBandH;
 
     // Overlay background & box (backdrop 199 / box 200).
@@ -327,6 +348,35 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(cashLine);
     s.overlayObjects.push(cashLine);
     cursorY += cashLineH;
+
+    // Link to the detailed Stats column (AC3/AC4): a keyboard-activatable
+    // affordance that adds a static focus frame around the Stats column —
+    // no tween/rAF and no mutation of committed `state`.
+    let statsFocused = false;
+    const viewStatsLink = s.add.text(
+      rightX, cursorY, '[ View detailed stats ]',
+      { fontSize: '13px', color: '#88ccff', fontFamily: FONT_FAMILY },
+    ).setOrigin(0, 0).setDepth(201).setInteractive();
+    if (s.hudContainer) s.hudContainer.add(viewStatsLink);
+    s.overlayObjects.push(viewStatsLink);
+    viewStatsLink.on('pointerdown', () => {
+      if (statsFocused) return;
+      statsFocused = true;
+      const frame = s.add.rectangle(
+        statsX + colW / 2,
+        bodyTop + statsColumnH / 2,
+        colW + 16,
+        statsColumnH + 8,
+        0xffcc44,
+        0,
+      )
+        .setStrokeStyle(2, 0xffcc44, 1)
+        .setOrigin(0.5)
+        .setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(frame);
+      s.overlayObjects.push(frame);
+    });
+    cursorY += viewStatsH;
 
     // Per-challenge details (retained).
     if (challengeLineCount > 0) {
@@ -515,31 +565,47 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(menuBtn);
     s.overlayObjects.push(menuBtn);
 
-    // ── Temporary single-chart wiring (spike MS-0MVSHZ131002ZF3O) ──
-    // Proves the external Chart.js integration end-to-end: one profit chart
-    // rendered into a dedicated DOM canvas layered above the overlay panel.
-    // The third-column child replaces this with the real five-graph column.
-    // The handle joins `overlayObjects`, so the existing `dismissOverlay`
-    // teardown removes the canvas with the rest of the overlay. If the overlay
-    // is dismissed before the lazy import resolves, the late handle is
-    // destroyed instead of leaking.
-    const objectsAtOpen = s.overlayObjects;
-    void createStatsChart(
-      s,
-      { x: panelLeft + 20, y: panelTop + panelH - 160, width: 260, height: 130 },
-      {
-        title: statSeries.profit.label,
-        labels: statSeries.profit.points.map((point) => String(point.turn)),
-        values: statSeries.profit.points.map((point) => point.value),
-      },
-    ).then((handle) => {
-      if (!handle) return;
-      if (s.overlayObjects === objectsAtOpen) objectsAtOpen.push(handle);
-      else destroyStatsChart(handle);
-    }).catch((error) => {
-      // A chart failure must never break the overlay's presentation.
-      console.warn('[stats-chart] failed to render chart', error);
-    });
+    // ── Third “Stats” column: five end-of-game graphs (AC1/AC2) ──
+    // Headed `Stats`, to the right of `Summary`. Each chart is fed from the
+    // pure `buildGameOverStatSeries` model; the DOM chart layer is created by
+    // `createStatsChart`, which returns null in replay/headless mode. Chart
+    // handles join `overlayObjects` so the existing `dismissOverlay` teardown
+    // removes every canvas. If the overlay is dismissed before a lazy chart
+    // import resolves, the late handle is destroyed instead of leaking.
+    const statsHeader = s.add.text(statsX, bodyTop, 'Stats', {
+      fontSize: '16px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }).setOrigin(0, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(statsHeader);
+    s.overlayObjects.push(statsHeader);
+
+    const statsObjectsAtOpen = s.overlayObjects;
+    const statSeriesList = [
+      statSeries.profit,
+      statSeries.cash,
+      statSeries.businesses,
+      statSeries.staff,
+      statSeries.reputation,
+    ];
+    let chartY = bodyTop + statsHeaderH;
+    for (const series of statSeriesList) {
+      void createStatsChart(
+        s,
+        { x: statsX, y: chartY, width: colW, height: statsChartH },
+        {
+          title: series.label,
+          labels: series.points.map((point) => String(point.turn)),
+          values: series.points.map((point) => point.value),
+        },
+      ).then((handle) => {
+        if (!handle) return;
+        if (s.overlayObjects === statsObjectsAtOpen) statsObjectsAtOpen.push(handle);
+        else destroyStatsChart(handle);
+      }).catch((error) => {
+        // A chart failure must never break the overlay's presentation.
+        console.warn('[stats-chart] failed to render chart', error);
+      });
+      chartY += statsChartH + statsChartGap;
+    }
   }
   /**
    * Shows the Manage Card overlay for a card on the street grid.

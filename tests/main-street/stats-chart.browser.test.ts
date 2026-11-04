@@ -96,7 +96,7 @@ describe('MainStreet stats chart DOM layer', () => {
     s.showGameOverOverlay(gameOverResult(true), []);
 
     await waitForCondition(
-      () => document.querySelectorAll(CHART_SELECTOR).length === 1,
+      () => document.querySelectorAll(CHART_SELECTOR).length >= 1,
       { timeoutMs: 5_000, label: 'chart canvas' },
     );
 
@@ -131,7 +131,7 @@ describe('MainStreet stats chart DOM layer', () => {
       s.showGameOverOverlay(gameOverResult(true), []);
       // Let the lazy import resolve and the chart mount.
       await waitForCondition(
-        () => document.querySelectorAll(CHART_SELECTOR).length === 1,
+        () => document.querySelectorAll(CHART_SELECTOR).length >= 1,
         { timeoutMs: 5_000, label: `chart canvas (cycle ${cycle})` },
       );
       closeOverlay(scene);
