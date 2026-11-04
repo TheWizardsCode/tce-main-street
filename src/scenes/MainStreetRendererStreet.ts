@@ -15,7 +15,8 @@ import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { getSlotOwnerId, resolveSeatColour } from '../MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
-import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
+import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatDuplicatePenaltyLine, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
+import { duplicateIncomeFactor } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
@@ -957,13 +958,24 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         const repInfo = repSuffix !== '' ? `\nReputation: ${repSuffix}` : '';
         const synergyRate = formatSynergyRate(biz, s.state.config);
         const synergyInfo = synergyRate !== null ? `\nSynergy bonus: ${synergyRate} of base income per adjacent matching business` : '';
+        // Duplicate-business (market-saturation) penalty (MS-0MW0UH143003PQAG):
+        // when the same base type stands more than once on this street, the
+        // card earns a reduced share — show the share and the counting rule so
+        // the reduced income never reads as a bug. Null (no line) on a lone card.
+        const gridDims = s.state.streetGridCols && s.state.streetGridRows
+          ? { cols: s.state.streetGridCols, rows: s.state.streetGridRows }
+          : undefined;
+        const duplicateLine = formatDuplicatePenaltyLine(
+          duplicateIncomeFactor(s.state.streetGrid, _index, s.state.soldSlots ?? [], gridDims),
+        );
+        const duplicateInfo = duplicateLine !== null ? `\n${duplicateLine}` : '';
         // Employed-staff enumeration appended to the business's own info
         // (CG-0MU3BTTCH001E7ZD AC2/AC3); null when none employed (AC5).
         const staffSummary = formatEmployedStaffSummary(
           (biz as { employedStaff?: StaffCard[] }).employedStaff ?? [],
           { freeRerollUsedThisTurn: s.state.investorFreeRerollUsedThisTurn },
         ) ?? '';
-        const info = `${label}: ${biz.name}\nIncome: +${biz.baseIncome + biz.incomeBonus}/turn${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
+        const info = `${label}: ${biz.name}\nIncome: +${biz.baseIncome + biz.incomeBonus}/turn${duplicateInfo}${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
         s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
       });
       tooltipZone.on('pointerout', () => {

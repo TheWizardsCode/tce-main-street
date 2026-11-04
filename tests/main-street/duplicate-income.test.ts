@@ -45,7 +45,8 @@ import {
   getSlotOwnerId,
   updateNeighborsOnPlacement,
 } from '../../src/MainStreetAdjacency';
-import { sameStreetCell, streetSlotToWorldIndex } from '../../src/MainStreetAdjacencyGeometry';
+import { sameStreetCell, streetSlotToWorldIndex, type GridDims } from '../../src/MainStreetAdjacencyGeometry';
+import { computeSellRefund } from '../../src/MainStreetMarket';
 import {
   DUPLICATE_FACTOR_TABLE,
   GRID_SIZE,
@@ -686,5 +687,119 @@ describe('duplicate income factor — competitive parity (MS-0MW0UG07W009PO4E)',
     // N=1 keeps returning no per-owner results and credits the legacy path.
     expect(applyCompetitiveIncome(state)).toEqual([]);
     expect(state.resourceBank.coins).toBe(16); // 8 + 8
+  });
+});
+
+// ── Sell-refund parity (MS-0MW0UH143003PQAG) ────────────────
+// `computeSellRefund` reads the card's cached `currentIncome`, which the
+// income phase already reduces by the duplicate factor (F3), so a duplicated
+// business refunds less of its synergy income than the same template placed
+// alone. The base refund (purchase + upgrades) is untouched.
+
+/** The state's grid dimensions in the shape the adjacency helpers take. */
+function stateGridDims(state: MainStreetState): GridDims | undefined {
+  return state.streetGridCols && state.streetGridRows
+    ? { cols: state.streetGridCols, rows: state.streetGridRows }
+    : undefined;
+}
+
+/**
+ * A deterministic refund fixture. Slot 0 holds a high-synergy bakery with
+ * three adjacent diners (8-way adjacency on the default board), so its usual
+ * income is far enough above its base that the 2/3 duplicate factor still
+ * leaves a positive synergy component in the refund.
+ *
+ * With `duplicate`, a second unattached bakery of the same template sits at
+ * the far end of the street: not adjacent (so no 60% penalty) but on the same
+ * street, which makes it compete for customers (2 copies → 2/3).
+ */
+function refundState(seed: string, duplicate: boolean): MainStreetState {
+  const state = setupMainStreetGame({ seed });
+  const bakery = (id: string) => makeBiz(id, { baseIncome: 12, synergyCoinBonus: 1 });
+
+  state.streetGrid[0] = bakery('biz-bakery-0');
+  state.streetGrid[1] = makeBiz('biz-diner-0', { baseIncome: 12 });
+  state.streetGrid[5] = makeBiz('biz-diner-1', { baseIncome: 12 });
+  state.streetGrid[6] = makeBiz('biz-diner-2', { baseIncome: 12 });
+  if (duplicate) state.streetGrid[GRID_SIZE - 1] = bakery('biz-bakery-1');
+
+  for (const slot of [0, 1, 5, 6, GRID_SIZE - 1]) {
+    if (state.streetGrid[slot]) recalculateCard(state, slot);
+  }
+  return state;
+}
+
+describe('duplicate income factor — sell-refund parity (MS-0MW0UH143003PQAG)', () => {
+  it('reduces the synergy-income refund component when the type is duplicated', () => {
+    const lone = refundState('refund-lone', false);
+    const duplicated = refundState('refund-duplicate', true);
+    const loneCard = lone.streetGrid[0] as BusinessCard;
+    const dupCard = duplicated.streetGrid[0] as BusinessCard;
+
+    // Sanity: only the duplicated street carries the 2/3 factor.
+    expect(duplicateIncomeFactor(lone.streetGrid, 0, lone.soldSlots, stateGridDims(lone))).toBe(1);
+    expect(
+      duplicateIncomeFactor(duplicated.streetGrid, 0, duplicated.soldSlots, stateGridDims(duplicated)),
+    ).toBe(DUPLICATE_FACTOR_TABLE[2]);
+
+    const loneRefund = computeSellRefund(lone, loneCard, 0);
+    const dupRefund = computeSellRefund(duplicated, dupCard, 0);
+
+    // AC1/AC2: the cached income is reduced, so the income component and the
+    // total refund shrink while the cost-based base refund is unchanged.
+    expect(dupCard.currentIncome!).toBeLessThan(loneCard.currentIncome!);
+    expect(dupRefund.synergyIncomeComponent).toBeGreaterThan(0);
+    expect(dupRefund.synergyIncomeComponent).toBeLessThan(loneRefund.synergyIncomeComponent);
+    expect(dupRefund.totalRefund).toBeLessThan(loneRefund.totalRefund);
+    expect(dupRefund.baseRefund).toBe(loneRefund.baseRefund);
+  });
+
+  it('keeps the refund consistent with the income-phase credit', () => {
+    const state = refundState('refund-income-parity', true);
+    const card = state.streetGrid[0] as BusinessCard;
+
+    // The income phase credits exactly the cached `currentIncome` the refund
+    // reads, so a refund can never pay out synergy the player was not given.
+    const income = computeIncome(
+      state.streetGrid,
+      state.config.synergyBonusPerNeighbor,
+      undefined,
+      state.soldSlots,
+      stateGridDims(state),
+    );
+    const credited = income.breakdown.find((slot) => slot.slotIndex === 0)!.total;
+    expect(card.currentIncome).toBe(credited);
+
+    const refund = computeSellRefund(state, card, 0);
+    // Slot 0 has no adjacent same-type neighbour, so its penalty-adjusted base
+    // is the plain base income; everything above it is the (reduced) synergy.
+    const effectiveBase = card.baseIncome + card.incomeBonus;
+    expect(refund.synergyIncomeComponent).toBe(credited - effectiveBase);
+  });
+
+  it('leaves community-space refunds unaffected by a shared base type', () => {
+    const duplicated = setupMainStreetGame({ seed: 'refund-community-duplicate' });
+    duplicated.streetGrid[0] = makeCommunitySpace('biz-park-0');
+    duplicated.streetGrid[GRID_SIZE - 1] = makeCommunitySpace('biz-park-1');
+    recalculateCard(duplicated, 0);
+    recalculateCard(duplicated, GRID_SIZE - 1);
+
+    const lone = setupMainStreetGame({ seed: 'refund-community-lone' });
+    lone.streetGrid[0] = makeCommunitySpace('biz-park-0');
+    recalculateCard(lone, 0);
+
+    // AC5: community spaces never earned the duplicate reduction, so two of
+    // them refund exactly what a single one does.
+    expect(
+      duplicateIncomeFactor(
+        duplicated.streetGrid,
+        0,
+        duplicated.soldSlots,
+        stateGridDims(duplicated),
+      ),
+    ).toBe(1);
+    expect(computeSellRefund(duplicated, duplicated.streetGrid[0]!, 0)).toEqual(
+      computeSellRefund(lone, lone.streetGrid[0]!, 0),
+    );
   });
 });
