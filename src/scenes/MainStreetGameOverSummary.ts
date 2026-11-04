@@ -2,8 +2,8 @@
  * Main Street: Game-Over Summary Model (pure)
  *
  * Phaser-free model that turns committed game state into the content the
- * two-column Game Over overlay renders (epic MS-0MUWDL0V40041USM, child
- * MS-0MUWE6MSQ006DEZ4):
+ * three-column Game Over overlay renders (epic MS-0MUWDL0V40041USM, children
+ * MS-0MUWE6MSQ006DEZ4 and MS-0MVSHZ1JU0083ASL):
  *
  * - {@link formatEndReason} — a plain-language end-reason headline derived
  *   from `state.endReason`, naming the failing seat in competitive mode.
@@ -12,6 +12,9 @@
  *   competitive scoreboard model and adding failure/elimination badges.
  * - {@link buildGameOverChallengeSummary} — the run's completed / active
  *   challenges.
+ * - {@link buildGameOverStatSeries} — the five end-of-game graph series
+ *   (profit, cash, businesses, staff, reputation at end of turn) plus the
+ *   final cash figure, derived from the persisted `turnStatsHistory`.
  *
  * Read-only contract: nothing here mutates `state`, and there is no Phaser
  * import, so the model is unit-testable in a plain Node environment.

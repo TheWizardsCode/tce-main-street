@@ -54,8 +54,13 @@ eliminated the human wins by **last standing**, with an explicit option to
 continue solo. A human seat's own collapse still ends the game as a loss. The
 Game Over screen states the reason the run ended in plain language and shows
 every seat's final coins, reputation and score side by side, flagging bankrupt,
-collapsed and eliminated seats. See
-[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
+collapsed and eliminated seats. A **third Stats column** graphs the run turn by
+turn — profit per turn, and cash, businesses, staff and reputation at end of
+turn — alongside the final `Cash at end of turn` figure and a
+`[ View detailed stats ]` link on the Summary column, so players can see what
+worked and learn from a failed run. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+and [docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
 
 Competitive challenges are credited **per seat**: the shared challenge pool is
 kept, but each completion is attributed to the seat that satisfied it

@@ -1481,14 +1481,18 @@ condensed text-only summary.
   repayment) to the activity log, and every instalment logs its own `loss` row
   (see the rules documentation, §5.1).
 
-### Game-over panel (two-column summary)
+### Game-over panel (three-column summary with stats graphs)
 
 - Renderer: `MainStreetOverlayContent.showGameOverOverlay()`.
 - Model: `src/scenes/MainStreetGameOverSummary.ts` (pure, no Phaser import) —
-  `formatEndReason`, `buildGameOverPlayerRows` and
-  `buildGameOverChallengeSummary`, reusing
+  `formatEndReason`, `buildGameOverPlayerRows`,
+  `buildGameOverChallengeSummary` and `buildGameOverStatSeries`, reusing
   `buildCompetitiveScoreboard` for the per-seat rows.
-- Layout:
+- Chart layer: `src/scenes/MainStreetStatsChart.ts` — a thin wrapper around
+  Chart.js (`chart.js/auto`, dynamically imported) that renders one line chart
+  into a dedicated DOM `<canvas>` positioned over the Phaser canvas. It has no
+  game-state import and never mutates the scene.
+- Layout (three columns, 1200 px panel inside the 1280×720 game layout):
   - **Top band:** the title (`You Win!` / `Game Over`) plus a plain-language
     end-reason headline derived from `state.endReason` (e.g. *Bankruptcy*,
     *Reputation collapse*, *Score threshold reached*, *Last standing*,
@@ -1506,23 +1510,40 @@ condensed text-only summary.
     completions credited to it via `ActiveChallenge.completedBySeatId`), while
     single-player retains the historic run-global list shown once per run
     (MS-0MUWNTJIK009O6BZ).
-  - **Right "Summary" column:** the retained score breakdown (coins,
-    reputation, challenges, final score), per-challenge details, tier-unlock
+  - **Middle "Summary" column:** the retained score breakdown (coins,
+    reputation, challenges, final score), the **`Cash at end of turn: <n>`**
+    line drawn directly after the breakdown, a keyboard-activatable
+    `[ View detailed stats ]` affordance that adds a static focus frame around
+    the stats column (no animation), per-challenge details, tier-unlock
     notifications, current tier + campaign stats and the difficulty selector,
     with the `[ Play Again ]` / `[ Menu ]` buttons anchored at the panel
     bottom.
+  - **Right "Stats" column:** five stacked line charts fed from
+    `buildGameOverStatSeries(state)`, in order — **profit per turn**, **cash at
+    end of turn**, **businesses at end of turn**, **staff at end of turn** and
+    **reputation at end of turn**. Each chart carries a visible title/legend
+    label and axis ticks. An empty history (legacy save, or a run that ended
+    before a turn closed) renders five empty series and still shows the cash
+    line from the live wallet.
 - Presentation contract: reads committed state only (never mutates it); uses
   `createOverlayBackground` / `createOverlayButton` from `@ui`; all elements
   are parented into `s.hudContainer`; depths follow the shared overlay
-  convention (199 backdrop / 200 box / 201 interactive); everything is pushed
-  into `s.overlayObjects` for dismissal.
-- Reduced motion: the panel itself adds no animation; the game-over feedback
-  below is unchanged.
+  convention (199 backdrop / 200 box / 201 interactive); everything (including
+  each chart handle) is pushed into `s.overlayObjects` for dismissal, so
+  closing the overlay removes every chart canvas.
+- Reduced motion: the panel adds no tweens/rAF of its own; charts use
+  `animation: false`, so reduced-motion users see the same static content. The
+  game-over feedback below is unchanged.
 - Headless/replay exemption (AGENTS.md rule 8): the panel returns immediately
-  in replay/headless mode (`scene.replayMode`).
-- The panel widens to 900 px and computes its height from the taller of the
-  two columns so both fit the 1280×720 game layout without clipping or
-  vertical overflow.
+  in replay/headless mode (`scene.replayMode`), and `createStatsChart` returns
+  `null` (creating no DOM node and never resolving Chart.js) whenever
+  `scene.replayMode` is set or `document` is unavailable.
+- The panel widens to 1200 px and computes its height from the tallest of the
+  three columns (capped to the 1280×720 layout with a 16 px margin) so all
+  three fit without clipping or vertical overflow.
+- **Competitive scope (working assumption):** the graphs plot the **human
+  seat's** trajectory only. Per-seat series are a separate producer-confirmed
+  decision (Open Question on MS-0MVAMU6OM008GJPV).
 
 ### Game-over celebration / loss sting
 

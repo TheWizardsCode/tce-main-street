@@ -777,6 +777,18 @@ Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: 
 
 The log **render** is deferred during the end-of-turn closing so entries appear only after the upcoming/phase UI, and the deferral flag (`logDeferredUntilPhaseComplete`) is reset on every scene creation — an interrupted closing must never leave the Activity Log blank across a scene restart (MS-0MURBOD2E009SOM2, MS-0MV14JDUG000E1V6).
 
+### Per-Turn Stat History (`turnStatsHistory`)
+
+The Game Over overlay's stats graphs are fed by a persisted per-turn series, kept separate from the free-text activity log (MS-0MVAMU6OM008GJPV):
+
+- **Shape.** `TurnStatSnapshot { turn, coins, reputation, score, profit, businesses, staff }`, stored in `MainStreetState.turnStatsHistory` — one entry per closed turn, in ascending turn order.
+- **When recorded.** The shared closing tail (`appendTurnNetRow` → `recordTurnStats`) records exactly one snapshot per completed turn on **every** closing path: the legacy single-player tail (`runSinglePlayerTurnClosing`, including its immediate-loss early exit), the deferred-mutation tail (`finishDeferredTurnClosing`, including its immediate-loss early exit) and the competitive shared-day closing. Recording is keyed by `turn`, so a repeated call for the same turn appends nothing.
+- **Field definitions.** `coins` / `reputation` are the closing wallet values (in competitive mode, the **human seat's** `PlayerRecord`, resolved via `findHumanSeatId`, never an AI seat's); `profit` is the turn's net coin delta measured against the `weekStartCoins` day-start snapshot (the same definition as the `Turn <n> net:` log row above); `businesses` counts non-null `streetGrid` entries; `staff` is the active staff count; `score` is the shared `finalScore`.
+- **Persistence.** `turnStatsHistory` is serialised in `MainStreetSerializedState` and restored by `deserializeMainStreetState`. Legacy saves that predate the field load with an empty history (`[]`) — no crash and no fabricated data — and malformed entries are dropped defensively.
+- **UI.** The pure overlay model (`buildGameOverStatSeries`) turns the series into the five end-of-game graphs and the final cash-at-end-of-turn figure (see the UX notes, *Game-over panel*).
+
+**Competitive scope (working assumption):** the recorded series describes the **human seat's** trajectory only. Per-seat multi-series graphs, or a strictly human-owned `businesses` / per-seat `profit` figure, are a separate producer-confirmed decision tracked as an Open Question on MS-0MVAMU6OM008GJPV.
+
 ---
 
 ## Flowchart Summary
