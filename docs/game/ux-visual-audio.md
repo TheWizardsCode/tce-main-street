@@ -1297,7 +1297,9 @@ condensed text-only summary.
   reputation / score change and the closing coin / reputation / score
   balances. The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
   whose availability comes from the Phaser-free loans descriptor
-  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7). The
+  (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7). Every button
+  plays its `UI_CLICK` SFX through `safePlaySound`, so the Settings mute /
+  volume controls are respected and no reduced-motion variant is needed. The
   **enabled/disabled matrix** is strictly two-way:
   - **Enabled** — normal colour, clickable, `UI_CLICK` SFX and no hint line —
     only when `config.loansEnabled` is `true` **and** the acting seat holds no
@@ -1792,6 +1794,12 @@ A `Reduced Motion` toggle is available in the Settings panel.
 - Behavior:
   - resource pop animations are skipped
   - scene transitions are skipped
+- **Dialogs are never suppressed.** Reduced motion removes *animation*, not
+  *information*: the end-of-turn **Turn Summary** dialog still appears — it is
+  instant-appearance, so it is reduced-motion safe — and the day still advances
+  only when the player clicks **[ Next Turn ]** (MS-0MW20KSEG001DH1X). The
+  incident reveal follows the same rule (the card appears instantly, its
+  reading hold is preserved).
 - Helpers also respect OS `prefers-reduced-motion` when no explicit override is provided.
 
 ## Asset pipeline notes
