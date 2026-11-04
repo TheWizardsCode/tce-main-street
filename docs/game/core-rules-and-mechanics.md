@@ -226,11 +226,26 @@ stateDiagram-v2
    - **Play Event (from hand)** → resolve an Investment event card from the hand immediately and remove it. In competitive mode (N ≥ 2) a piggyback-eligible organiser event additionally raises one pending piggyback decision per other active seat (see §6.1).
 4. **InvestmentResolution** – Reserved phase; Investment events are **not** auto‑resolved here. Unplayed events persist in the hand until the player plays them during a later MarketPhase.
 5. **IncomePhase** – For each placed Business, compute:
-   - `totalIncome = effectiveBase + synergyBonus`, where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` and `synergyBonus = effectiveBase × synergyCoinBonus × synergyBonusPerNeighbor × N`. Synergy uses a percentage-based formula: each matching neighbor (8‑way adjacent, including diagonal) contributes a percentage of the source business's effective base income, scaled by the difficulty preset multiplier. Synergy is only earned from adjacent neighbors of **different base types** (template IDs). Same-type adjacent businesses: synergy is nullified (0 contribution), and base income (including any income bonus from upgrades) is reduced to **60%**.
+   - `totalIncome = roundInt((effectiveBase + synergyBonus) × duplicateFactor)`, where `effectiveBase = (baseIncome + incomeBonus) × sameTypePenalty` and `synergyBonus = effectiveBase × synergyCoinBonus × synergyBonusPerNeighbor × N`. Synergy uses a percentage-based formula: each matching neighbor (8‑way adjacent, including diagonal) contributes a percentage of the source business's effective base income, scaled by the difficulty preset multiplier. Synergy is only earned from adjacent neighbors of **different base types** (template IDs). Same-type adjacent businesses: synergy is nullified (0 contribution), and base income (including any income bonus from upgrades) is reduced to **60%**; the street-wide duplicate factor (see *Market Saturation (Duplicate Businesses)* below) stacks multiplicatively on top.
    - `resourceBank.coins += totalIncome`.
    - `totalReputationPerTurn` is calculated from all placed cards (some Health-synergy cards like the Clinic provide `reputationPerTurn`). Upgrades may also contribute `reputationBonus`. Synergy reputation from adjacent neighbors is only earned from **different-type** businesses; same-type neighbors contribute 0 reputation synergy.
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
+
+### Market Saturation (Duplicate Businesses)
+
+When two or more businesses of the same base type occupy the **same street**, each earns a reduced share of its usual coin income:
+
+| Copies on Street | Income Factor |
+|-------------------|---------------|
+| 1                 | 1 (full)      |
+| 2                 | 2/3           |
+| 3                 | 1/2           |
+| 4+                | 1/3           |
+
+The factor applies to the business's **total coin income** — base after the adjacent same-type 60% penalty plus adjacency synergy — and the two penalties stack **multiplicatively**: `totalIncome = roundInt((effectiveBase + synergyBonus) × duplicateFactor)`. The factor is a coin-income rule only: **reputation is not affected**.
+
+**Street scoping.** "Same street" means the same 5×2 street cell: the default 1×1 board is a single street, so all ten plots saturate together. Duplicates on different streets do not interact. Community-space cards are excluded from both the count and the factor. **Sold businesses still count toward saturation** — a sold card earns no income itself (so it is excluded from the factor), but it keeps its type saturated on the street.
 
    > **Per-seat credits and per-seat income presentation (competitive).** In
    > human-vs-AI games the IncomePhase runs for **every** seat and credits that
@@ -461,7 +476,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 - Market research/refresh — costs coins (see the escalating cost note below).
 - **Investor free market re-roll** — while an Investor is employed and its once-per-turn free re-roll is unused, this re-roll is coin-free and action-free (MS-0MTISBYLS009936W). It advances the paid escalation counter and does not stack across multiple Investors.
-- Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
+- Selling a business — **free**, and the card **stays on the grid** as an inert *sold* marker (no income/reputation for itself, **no ongoing/running cost** — sold cards are excluded from the IncomePhase ongoing-cost deduction (CG-0MU3VH7QW006A2XA) — but still a synergy anchor for its neighbours; the slot stays occupied). Refund formula (CG-0MT5XO7DI0066QCT): `Math.ceil((card.cost + totalUpgradeCost) * 1.5) + Math.max(0, currentIncome − effectiveBase) + Math.max(0, currentReputationPerTurn − (repPerTurn + reputationBonus))` where `effectiveBase = (baseIncome + incomeBonus) × (hasAdjacentSameType ? 0.6 : 1)` (with `currentIncome` the card's cached income **after** the street-wide duplicate factor, MS-0MVYG50V1007W8BP), and the 1.5× is the same +50% buy-and-place premium; applies to business **and** community-space cards; synergy comps are 0 when undefined and never negative.
   The sell dialog and activity log show the breakdown (base, synergy income, synergy rep).
 - Hint (still 1/week)
 - Ending the turn
@@ -776,7 +791,7 @@ flowchart TD
     Actions --> ResolveInvestment[Resolve Held Investment]
     ResolveInvestment --> Income[Collect Income & Synergy]
     Income[Collect Income & Synergy
-⚠ Same-type: base×0.6, no synergy] --> Incident[Reveal & Resolve Top of Incident Deck]
+⚠ Same-type: base×0.6, no synergy · duplicates: ×2/3, 1/2, 1/3] --> Incident[Reveal & Resolve Top of Incident Deck]
     Incident --> EndCheck{Win/Loss Check}
     EndCheck -->|Win| EndWin((Victory))
     EndCheck -->|Loss| EndLoss((Defeat))
