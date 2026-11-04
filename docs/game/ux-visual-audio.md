@@ -1152,7 +1152,7 @@ condensed text-only summary.
      `hudY`) with `SFX_KEYS.COIN_POP` via `moveGameObject`.
   3. A "+€refund" pop lands at the HUD counter (`popTextOrIcon`) and the
      coin SFX pops on landing.
-- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
+- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
 - Accessibility (reduced motion): demolition + coin flight are skipped; a
   single "+€refund" pop + coin SFX remain (spec AC2).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — the
