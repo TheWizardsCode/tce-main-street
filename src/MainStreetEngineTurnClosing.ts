@@ -25,6 +25,7 @@ import { evaluateChallenges } from './MainStreetChallenges';
 import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
 import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
+import type { LoanPayoff } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { MainStreetState, TurnStatSnapshot } from './MainStreetState';
 import { addLog, addLogShared, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
@@ -654,9 +655,21 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   // no-op, keeping loans-off headless baselines byte-identical (parent AC8).
   // Deferred mode books the term/log row and reports the debit through
   // `pendingCoinDelta`; the scene applies it with the turn's other deltas.
+  // Retirements are reported on the `retiredOut` channel (MS-0MW3SMTRO006M86W)
+  // and attached to every result returned below, so presentation congratulates
+  // on the engine's own decision. Reporting only: the arithmetic, wallet debit
+  // and log rows are unchanged, and the array stays empty (field absent) on a
+  // turn that retires nothing.
+  const loanPayoffs: LoanPayoff[] = [];
   const loanRepayment = opts?.skipLoanRepayments
     ? 0
-    : applyLoanRepayments(state, applyOpts);
+    : applyLoanRepayments(state, {
+        ...(applyOpts ?? {}),
+        retiredOut: loanPayoffs,
+      });
+  /** Attaches the closing's retirements, omitting the field entirely when none. */
+  const withLoanPayoffs = (result: TurnResult): TurnResult =>
+    loanPayoffs.length > 0 ? { ...result, loanPayoffs } : result;
 
   if (deferred) {
     pendingCoinDelta =
@@ -673,7 +686,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     // Deferred mode: the income deltas are NOT yet in state — the scene
     // applies them (applyEndOfTurnDeltas) when presenting the dialog so the
     // paused turn's income matches the legacy UX (income lands at pause).
-    return {
+    return withLoanPayoffs({
       income,
       incident: null,
       incidentCoinChange: 0,
@@ -700,7 +713,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         reputation: state.resourceBank.reputation + pendingRepDelta,
         score: state.finalScore,
       }),
-    };
+    });
   }
 
   // Bankruptcy bailout (MS-0MVPWS9L9001PVXG): once the turn's economy is
@@ -714,7 +727,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     ? state.resourceBank.coins + pendingCoinDelta
     : state.resourceBank.coins;
   if (maybeOfferBailout(state, { projectedCoins })) {
-    return pausedLoanOfferResult(state, {
+    return withLoanPayoffs(pausedLoanOfferResult(state, {
       income,
       incident,
       incidentCoinChange,
@@ -730,7 +743,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         reputation: state.resourceBank.reputation + pendingRepDelta,
         score: state.finalScore,
       }),
-    });
+    }));
   }
 
   // Deferred mode (CG-0MTR72P14000VO6Q): the turn's resource deltas are
@@ -739,7 +752,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
   // gameResult / finalScore stay at their pre-turn values (the closing
   // recomputes them post-application).
   if (deferred) {
-    return {
+    return withLoanPayoffs({
       income,
       incident,
       incidentCoinChange,
@@ -764,7 +777,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         reputation: state.resourceBank.reputation + pendingRepDelta,
         score: state.finalScore,
       }),
-    };
+    });
   }
 
   // EndCheck + decay + challenges + advance (shared with the deferred path).
@@ -790,7 +803,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     reputation: state.resourceBank.reputation,
     score: state.finalScore,
   });
-  return closed;
+  return withLoanPayoffs(closed);
 }
 
 /**

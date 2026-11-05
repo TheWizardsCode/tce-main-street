@@ -21,6 +21,7 @@ import { countBusinessesOwnedByOwner } from './MainStreetAdjacencyOwner';
 import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
+import type { LoanPayoff } from './MainStreetLoans';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLogShared, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -489,30 +490,39 @@ function finishCompetitiveClosingTail(
   // failures are evaluated, so a shortfall feeds the ordinary bankruptcy path
   // and other seats' wallets are untouched. `loansEnabled: false` is a hard
   // no-op (parent AC8).
+  // Retirement reporting (MS-0MW3SMTRO006M86W): the `retiredOut` channel
+  // collects one seat-tagged payoff per loan this closing retires; every
+  // result returned below carries them, and the field stays absent when
+  // nothing retired. Reporting only — the debit, term bookkeeping and log
+  // rows are unchanged.
+  const loanPayoffs: LoanPayoff[] = [];
   if (opts?.skipLoanRepayments !== true) {
     const excluded = opts?.skipLoanRepaymentForOwners;
-    applyLoanRepayments(
-      state,
-      excluded && excluded.length > 0 ? { excludeOwnerIds: excluded } : undefined,
-    );
+    applyLoanRepayments(state, {
+      ...(excluded && excluded.length > 0 ? { excludeOwnerIds: excluded } : {}),
+      retiredOut: loanPayoffs,
+    });
   }
+  /** Attaches this closing's retirements, omitting the field when none. */
+  const withLoanPayoffs = (result: TurnResult): TurnResult =>
+    loanPayoffs.length > 0 ? { ...result, loanPayoffs } : result;
 
   // Seat failures (and the per-seat bailout intercept, MS-0MVPWSAMH005LV9R):
   // AI offers resolve inline; a human offer pauses the closing here.
   const ended = resolveCompetitiveSeatFailures(state);
   if (state.pendingLoanOffer) {
-    return pausedCompetitiveLoanOfferResult(state, {
+    return withLoanPayoffs(pausedCompetitiveLoanOfferResult(state, {
       income,
       incident,
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
       playerRoundLedger: pausedRoundLedger(),
-    });
+    }));
   }
   if (ended) {
     appendTurnNetRow(state, turnEnded);
-    return {
+    return withLoanPayoffs({
       income,
       incident,
       incidentCoinChange,
@@ -523,7 +533,7 @@ function finishCompetitiveClosingTail(
       choicePending: false,
       playerIncome,
       playerRoundLedger: takeRoundLedger(state),
-    };
+    });
   }
   state.phase = 'EndCheck';
   const decayResult = decayActiveEffects(state.activeEffects);
@@ -545,14 +555,14 @@ function finishCompetitiveClosingTail(
   // Defensive bailout pause (MS-0MVPWSAMH005LV9R): never advance the day while
   // a seat still has a bailout decision to make.
   if (state.pendingLoanOffer) {
-    return pausedCompetitiveLoanOfferResult(state, {
+    return withLoanPayoffs(pausedCompetitiveLoanOfferResult(state, {
       income,
       incident,
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
       playerRoundLedger: pausedRoundLedger(),
-    });
+    }));
   }
   if (state.gameResult === 'playing') {
     state.turn += 1;
@@ -579,7 +589,7 @@ function finishCompetitiveClosingTail(
   appendTurnNetRow(state, turnEnded);
   // Keep per-player scores fresh for callers that read them after resolution.
   updateCompetitiveScores(state);
-  return {
+  return withLoanPayoffs({
     income,
     incident,
     incidentCoinChange,
@@ -590,7 +600,7 @@ function finishCompetitiveClosingTail(
     choicePending: false,
     playerIncome,
     playerRoundLedger: takeRoundLedger(state),
-  };
+  });
 }
 
 export function resolveCompetitiveClosingPhases(

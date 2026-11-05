@@ -27,15 +27,14 @@
  * Red-by-design note (parent AC 9 test-first chain): this file is the repo's
  * **red-phase** convention (`it.fails`), exactly as
  * `tests/main-street/hud-total-counting.test.ts` and
- * `tests/main-street/panel-opacity.browser.test.ts` document. Against the
- * current tree the payoff-reporting cases fail because `TurnResult.loanPayoffs`
- * and the `retiredOut` channel do not exist yet, and the copy-model cases fail
- * because `MainStreetLoanPayoffModel` does not exist yet — the intended
- * missing-field / missing-model reasons (this slice AC 1), never a syntax error
- * in this file. The engine sibling (MS-0MW3SMTRO006M86W) and the model sibling
- * (MS-0MW3SMVVP006ZD4V) flip each `it.fails` to a plain `it` once their code
- * lands; leaving one as `it.fails` afterwards is itself a failure, so the pin
- * cannot go stale.
+ * `tests/main-street/panel-opacity.browser.test.ts` document. The
+ * payoff-reporting cases were red because `TurnResult.loanPayoffs` and the
+ * `retiredOut` channel did not exist yet; the engine sibling
+ * (MS-0MW3SMTRO006M86W) landed that contract and flipped its cases to plain
+ * `it`. The copy-model and gating cases stay `it.fails` until the model sibling
+ * (MS-0MW3SMVVP006ZD4V) lands `MainStreetLoanPayoffModel`, which flips the
+ * rest. Leaving a case as `it.fails` after its code has landed is itself a
+ * failure, so the pin cannot go stale.
  *
  * Cases whose contract already holds on the current tree ("nothing retired",
  * loans-disabled / no-loan no-ops, and the `isHumanSeatCredit` seam) are plain
@@ -64,7 +63,7 @@ import {
   type TurnResult,
 } from '../../src/MainStreetEngine';
 import { isHumanSeatCredit } from '../../src/MainStreetChallenges';
-import { applyLoanRepayments } from '../../src/MainStreetLoans';
+import { applyLoanRepayments, declineLoanOffer } from '../../src/MainStreetLoans';
 import type { ActiveLoan } from '../../src/MainStreetStateTypes';
 import { syncResourceBankToLedger } from '../../src/MainStreetStateLog';
 
@@ -234,25 +233,19 @@ function freshRetiredOut(): RepaymentOptionsWithOut['retiredOut'] {
 }
 
 /**
- * Runs the repayment pass with the not-yet-widened out-channel option.
- *
- * Red phase only: `applyLoanRepayments`'s option type gains `retiredOut` with
- * the engine sibling (MS-0MW3SMTRO006M86W), at which point this helper's cast
- * becomes a plain call. Keeping the single cast here means the test bodies read
- * exactly like the shipping API.
+ * Runs the repayment pass with the retirement out-channel (engine slice AC 1).
  */
 function repayWithRetiredOut(
   state: MainStreetState,
   opts: RepaymentOptionsWithOut,
 ): number {
-  return applyLoanRepayments(state, opts as Parameters<typeof applyLoanRepayments>[1]);
+  return applyLoanRepayments(state, opts);
 }
 
 // ── applyLoanRepayments: the retire-report out-channel (AC 2) ─
 
 describe('applyLoanRepayments — retired-loan reporting (AC 2)', () => {
-  // Red phase: the `retiredOut` out-channel lands with MS-0MW3SMTRO006M86W.
-  it.fails('reports the retired loan with owner id, per-turn, total and term, and keeps the numeric return', () => {
+  it('reports the retired loan with owner id, per-turn, total and term, and keeps the numeric return', () => {
     const state = quietMarketState('payoff-retire-report');
     takeLoan(state, 0); // 300 / 3 → 110 per turn, 330 total
     applyLoanRepayments(state);
@@ -287,7 +280,7 @@ describe('applyLoanRepayments — retired-loan reporting (AC 2)', () => {
     expect(retiredOut).toEqual([]);
   });
 
-  it.fails('reports a retirement on the apply:false path but still leaves the wallet untouched', () => {
+  it('reports a retirement on the apply:false path but still leaves the wallet untouched', () => {
     const state = quietMarketState('payoff-deferred-out');
     takeLoan(state, 1);
     applyLoanRepayments(state);
@@ -312,7 +305,7 @@ describe('applyLoanRepayments — retired-loan reporting (AC 2)', () => {
     expect(state.resourceBank.coins).toBe(coinsBefore);
   });
 
-  it.fails('withholds an excluded owner and reports only the other seats retirements', () => {
+  it('withholds an excluded owner and reports only the other seats retirements', () => {
     const state = quietMarketState('payoff-exclude-owner');
     // Two loans: seat 0 retiring this pass, seat 1 with one payment left.
     state.loans = [existingLoan(0, 1), existingLoan(1, 1)];
@@ -358,9 +351,7 @@ describe('applyLoanRepayments — retired-loan reporting (AC 2)', () => {
 // ── TurnResult.loanPayoffs: closing population (AC 4) ────────
 
 describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
-  // Red phase: the `TurnResult.loanPayoffs` field lands with
-  // MS-0MW3SMTRO006M86W (threaded through both closings).
-  it.fails('reports the retired loan from the single-player closing', () => {
+  it('reports the retired loan from the single-player closing', () => {
     const state = quietMarketState('payoff-single-close');
     takeLoan(state, 0); // 300 / 3
     state.loans[0].turnsRemaining = 1; // this closing's payment retires it
@@ -391,7 +382,7 @@ describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
     expect(((resultNoLoan as TurnResultWithPayoffs).loanPayoffs ?? [])).toEqual([]);
   });
 
-  it.fails('never duplicates a payoff across the deferred closing resume', () => {
+  it('never duplicates a payoff across the deferred closing resume', () => {
     const state = quietMarketState('payoff-deferred-close');
     takeLoan(state, 1); // 600 / 6
     state.loans[0].turnsRemaining = 1;
@@ -418,7 +409,7 @@ describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
     );
   });
 
-  it.fails('reports the seat-tagged payoff from the competitive closing', () => {
+  it('reports the seat-tagged payoff from the competitive closing', () => {
     const state = buildCompetitiveClosingState('payoff-competitive', [
       [500, 5],
       [500, 5],
@@ -437,7 +428,7 @@ describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
     expect(state.players![0].coins).toBe(500);
   });
 
-  it.fails('reports the payoff even when the same closing ends the run', () => {
+  it('reports the payoff even when the same closing ends the run', () => {
     const state = quietMarketState('payoff-game-over');
     takeLoan(state, 1); // 110 per turn
     state.loans[0].turnsRemaining = 1;
@@ -446,7 +437,20 @@ describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
     state.weekStartCoins = 50;
     armTurn(state);
 
-    const result = processEndOfTurn(state);
+    // The post-repayment bailout intercept pauses first: the seat is short and
+    // has just been freed of its loan, so it is offered a bailout instead of
+    // an immediate loss. The retirement is already reported on the paused
+    // result and survives the pause.
+    const paused = processEndOfTurn(state);
+    expect((paused as TurnResultWithPayoffs).loanPayoffs).toEqual([
+      { ownerId: 0, perTurnRepayment: 110, totalRepayment: 660, termTurns: 6 },
+    ]);
+    expect(paused.pendingLoanOffer).toBe(true);
+
+    // Declining converges to game over (the per-turn guard documents this), so
+    // the run ends in the very closing that retired the loan.
+    declineLoanOffer(state);
+    const result = finishDeferredTurnClosing(state, paused);
 
     // The structured data still tells presentation a loan was retired…
     expect((result as TurnResultWithPayoffs).loanPayoffs).toEqual([
@@ -584,7 +588,11 @@ async function runEndingClosing(): Promise<TurnResult> {
   syncResourceBankToLedger(state);
   state.weekStartCoins = 50;
   armTurn(state);
-  return processEndOfTurn(state);
+  // The post-repayment bailout intercept pauses first; declining it converges
+  // to the loss, so the run ends with the retirement already reported.
+  const paused = processEndOfTurn(state);
+  declineLoanOffer(state);
+  return finishDeferredTurnClosing(state, paused);
 }
 
 /** Re-bases the day-start snapshots onto the current wallet. */

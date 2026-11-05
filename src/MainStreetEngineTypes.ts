@@ -10,6 +10,7 @@
 import { finishDeferredTurnClosing, processEndOfTurn } from './MainStreetEngineTurnClosing';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
+import type { LoanPayoff } from './MainStreetLoans';
 
 export interface BuyBusinessAction {
   type: 'buy-business';
@@ -430,6 +431,29 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
   finalScore: number;
   /** Challenge IDs that were newly completed during this turn's evaluation. */
   newlyCompletedChallenges: string[];
+  /**
+   * Loans retired by their final scheduled repayment during this closing
+   * (loan payoff notification, MS-0MW3SMTRO006M86W). One seat-tagged entry per
+   * retired loan, carrying the owner id, per-turn repayment, total repayment
+   * and term — exactly the figures the HUD loan row showed before the debt
+   * disappeared, so presentation congratulates on the engine's own decision
+   * instead of diffing `state.loans` before and after the turn.
+   *
+   * Populated by `processEndOfTurn` (the shared/single-player closing,
+   * including its choice-pending, bailout-paused and deferred-closing results)
+   * and by `resolveCompetitiveClosingPhases` (the shared competitive closing);
+   * absent when nothing retired. The deferred closing spreads the paused
+   * result, so a resumed turn carries the same entries without re-running the
+   * repayment pass — a payoff is never reported twice. The dual-choice resume
+   * (`finishDeferredEndOfTurn`) likewise does not re-run the repayment pass: a
+   * retirement reported on the paused result is not repeated there.
+   *
+   * Presentation-only and transient: never written to or read from a save, no
+   * new state field, no state mutation and no RNG consumption. `loansEnabled:
+   * false` and no-loan turns leave it absent, so their behaviour stays
+   * byte-identical (parent AC 8).
+   */
+  loanPayoffs?: LoanPayoff[];
   /**
    * True when the closing sequence paused because a dual-choice incident was
    * drawn (CG-0MTSHG8RP008E128). When set, `state.pendingEventChoice` holds
