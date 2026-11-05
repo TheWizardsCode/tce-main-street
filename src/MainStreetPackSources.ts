@@ -536,8 +536,18 @@ export function createRemotePackSource(
     logger.warn(`[main-street] remote packs: ${message}`);
   };
 
+  /**
+   * The catalogue base URL with any trailing slash removed.
+   *
+   * {@link RemotePackConfig.baseUrl} is documented as already normalised, but a
+   * caller may hand-build a config (tests, a future runtime override), so the
+   * join tolerates a trailing slash rather than emitting `…//packs/…`. The
+   * configured path prefix is preserved verbatim, so a catalogue hosted under a
+   * prefix resolves to `<prefix>/packs/<path>` — never to the origin root.
+   */
+  const baseUrl = config.baseUrl.replace(/\/+$/, '');
   const remoteUrl = (path: string): string =>
-    `${config.baseUrl}/${REMOTE_PACKS_DIRNAME}/${path}`;
+    `${baseUrl}/${REMOTE_PACKS_DIRNAME}/${path}`;
 
   let verifiedPromise: Promise<VerifiedRemoteManifest | null> | null = null;
 
