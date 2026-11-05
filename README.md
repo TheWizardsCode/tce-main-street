@@ -14,6 +14,18 @@ A playable web build is published automatically to:
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how the Pages site is built, released and
 verified.
 
+## Auto advance turn
+
+When the player spends their last action point, a persisted **Auto advance
+turn** setting (Settings panel toggle, default **off**) decides what happens:
+with it **on**, the turn ends automatically once the spending action's
+animations finish (the same flow as clicking **End Turn**); with it **off**
+(the default), a dialog explains the out-of-actions state and offers to turn
+the setting on. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+§6.0 and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
 ## Closing a business
 
 Closing a non-sold street card (Manage Card → **Close**) costs **1 action and

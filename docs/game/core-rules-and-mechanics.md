@@ -386,6 +386,33 @@ offer deterministically with the same policy, so simulations never stall.
 
 Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting management-company staff member** employed — the **Manager**, **Director**, **Executive** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
 
+> **Out of actions — the Auto advance turn setting (MS-0MW1ZDI8Z006GPFY).**
+> When the player spends their last action point and the spending action's
+> animations and audio have completed, the game reacts **at most once per
+> turn** (a once-per-turn latch reset at WeekStart):
+>
+> - With the **Auto advance turn** setting **on** (Settings panel toggle,
+>   persisted in `localStorage` under `tce-main-street-auto-advance-turn`,
+>   default **off**), the turn ends automatically — the identical code path
+>   as clicking **End Turn** (same phase flow, income/incident/event-choice
+>   resolution, turn-summary presentation and save/checkpoint behaviour).
+> - With the setting **off** (the default), the same moment presents a *No
+>   Actions Left* dialog that explains the player is out of actions, that
+>   some kinds of employed staff grant extra action points, and that they
+>   must press **End Turn** to break for the weekend. The dialog offers
+>   **[ End Turn ]** (the same `endTurn()` path), a **[ Dismiss ]**
+>   affordance that returns the player to the market phase (the action-free
+>   operations that remain — selling, researching, discarding from hand,
+>   opening the journal — stay reachable), and an unchecked
+>   `[ ] Automatically end my turn when I run out of actions` checkbox that
+>   turns the setting on immediately.
+>
+> Guards: the trigger never fires mid-animation/audio, never during the
+> tutorial unless the current tutorial step allows `end-turn`, never while it
+> is not the human seat's turn in competitive play, and never in `uiPhase`
+> values where End Turn is not offered (`placing-from-hand`,
+> `event-selected`, `applicant`).
+
 > **Staff effects follow the two-type model (GDD Appendix D.4).** Every staff
 > member is exactly one of two types, and the type decides what it may affect.
 > **Business staff** are employed at a single business (recorded as

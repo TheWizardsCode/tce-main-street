@@ -1926,6 +1926,50 @@ the header bar, art backing and icons carried the synergy colour.
 - Main Street scene-level fade transitions are currently disabled.
 - The reusable helper `runSceneTransition()` remains available in `src/ui/sceneTransition.ts` for future use once the fade issue is addressed.
 
+## Settings toggles
+
+The in-game Settings panel exposes the player-facing toggles: the engine's
+**Tooltips** and **Reduced Motion** toggles (see
+[Accessibility](#accessibility) for Reduced Motion) plus Main Street's own
+**Auto advance turn** toggle.
+
+### Auto advance turn
+
+- **Default: off (`false`).** A missing preference, an unavailable storage
+  backend or any stored value other than `'true'` means the setting is off,
+  which surfaces the out-of-actions explainer dialog instead
+  (MS-0MW1ZDI8Z006GPFY AC1).
+- **Persistence:** browser `localStorage` under the key
+  `tce-main-street-auto-advance-turn` (`AUTO_ADVANCE_TURN_KEY` in
+  `src/MainStreetPrefs.ts`). The value is always written explicitly
+  (`'true'` / `'false'`), so opting out is a stored preference rather than an
+  absent one. Toggling it in the Settings panel or from the out-of-actions
+  dialog checkbox updates the same stored preference.
+- **Behaviour:** when a player action spends the last action point and that
+  action's animations and audio have completed, the game reacts **at most
+  once per turn**:
+  - **On** — the turn ends automatically, dispatching through the identical
+    code path as the **End Turn** button (same phase flow,
+    income/incident/event-choice resolution, turn-summary presentation and
+    save/checkpoint behaviour).
+  - **Off (default)** — a *No Actions Left* dialog explains the zero-action
+    state (that some employed staff grant extra action points and that the
+    player must press **End Turn** to break for the weekend) and offers
+    **[ End Turn ]**, **[ Dismiss ]** and an unchecked
+    `[ ] Automatically end my turn when I run out of actions` checkbox that
+    turns the setting on immediately.
+  - **Guards** — the trigger never fires mid-animation/audio, during the
+    tutorial (unless the current tutorial step allows `end-turn`), for a
+    non-human seat in competitive play, or in `uiPhase` values where End
+    Turn is not offered (`placing-from-hand`, `event-selected`, `applicant`).
+- **Wiring:** the toggle is supplied through the engine's generic
+  `extraToggles` hook (`MainStreetScene.initSettingsPanel`), so the engine
+  stays game-agnostic; Main Street owns the label and the persisted
+  preference backing it.
+
+See [core-rules-and-mechanics.md](core-rules-and-mechanics.md) §6.0 for the
+action-economy context.
+
 ## Accessibility
 
 ### Reduced motion
