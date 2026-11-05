@@ -16,6 +16,7 @@
     "preview": "vite preview --host",
     "balance-cards": "tsx src/scripts/run-balance-cards.ts",
     "validate:storylines": "vite-node src/scripts/validate-storylines-cli.ts",
+    "validate:gdd": "vite-node src/scripts/gdd-staff-consistency-cli.ts",
     "storylines:graph": "vite-node src/scripts/storyline-graph-cli.ts",
     "storylines:graph:svg": "vite-node src/scripts/render-storyline-graph-cli.ts",
     "docs:diagrams": "vite-node src/scripts/card-diagrams-cli.ts",
