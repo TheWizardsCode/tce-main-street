@@ -658,6 +658,8 @@ The section is deliberately precise enough to drive implementation and audit. Th
 6. **Removal is complete.** Selling a business or laying off a member removes the effect and the salary from the same IncomePhase; no buff survives its employment.
 7. **Determinism.** Every staff effect is deterministic given the seeded RNG; the Investor's re-roll bias, the Lookout's peek and the Health & Safety Inspector's incident avert all consume the documented RNG stream only.
 
+**Specialization skills (supporting system).** The locked 1–3 specialization skills a staff card can carry are scoped by the same two types: per-business skills (income boosts, per-business reputation and salary effects) are **business-staff** effects, and street-wide or player-scope skills (incident mitigation, ongoing-cost reduction, the market-refresh discount, event-source reputation multipliers and the incident peek) are **management-company staff** effects. A skill is inert when its scope does not match its holder's type; the 16-skill classification and the shipped cross-type follow-ups are documented in [specialization-skills.md](specialization-skills.md).
+
 Existing fields this contract relies on (see `src/MainStreetCardsTypes.ts`): `handSlotsAdded`, `employedAtSlot`, `allowedBusinessTypes`, `reputationPerTurn`, `refreshCostDiscount`, `upgradeCostDiscount`, `purchaseCostDiscount`, `taxAuditRate`, `actionsPerTurn`, `peekOncePerTurn`, `freeMarketRerollPerTurn` and `marketRelevanceBias`.
 
 ### D.5 Removed Mechanics

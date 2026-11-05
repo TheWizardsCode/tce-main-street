@@ -4,64 +4,213 @@
 > Companion to the skill implementation in `src/MainStreetStaffSkills.ts`
 > (catalog + assignment), `MainStreetStaffBuffs.ts` (pure buff math), and the wiring in
 > `MainStreetAdjacency.ts` / `MainStreetEngine.ts` / `MainStreetMarket.ts`.
+>
+> The staff types that skill scope refers to are defined once in
+> [the-build-gdd.md](the-build-gdd.md) (Appendix D.4, *Staff System*), and the
+> per-card roster is in [card-catalog.md](card-catalog.md) § *Staff Cards*.
+> This document does not re-define the types; it classifies the 16
+> specialization skills against them.
 
 ## Overview
 
-Every staff applicant card carries **1–3 specialization skills**, randomized **once per game at
-start** and **locked for the full game** (established by CG-0MSTOATDU006UGAX). Skills are drawn
-from a global 16-skill pool, **disconnected from the staff member's nominal job** (a *Chef* can
-hold the *Security* skill). The Town Gossip peek ability (CG-0MSXOW6GN008ZSMN) is included as a
-fixed **baseline skill on every applicant**.
+Every staff card in the applicant pool carries **1–3 specialization skills**, randomized **once
+per game at start** and **locked for the full game** (established by CG-0MSTOATDU006UGAX). Skills
+are drawn from a global 16-skill pool, **disconnected from the staff member's nominal job** (a
+*Chef* can hold the *Security* skill). The Town Gossip peek ability (CG-0MSXOW6GN008ZSMN) is
+included as a fixed **baseline skill on every card**.
 
-## Skill catalog & impact ranges (per category)
+Skills sit on top of the two staff types rather than beside them. A skill's **scope** decides
+which type can realise it, because the two staff types have different scopes of effect
+(GDD D.4.1):
 
-| Category | Skills | Impact range | Balance notes |
-|---|---|---|---|
-| **Income Boost** | Networker, Chef de Cuisine, DJ, Sales Champion, Tech Guru | **+20–50 coins/turn, or +20% of a business's income** (Food / Entertainment per-type) | Percent bonuses apply to the business's cached income at income phase; flat bonuses add coins. Adjacency-scoped (Networker +20/adjacent synergy, Tech Guru +1 synergy range for Entertainment) are kept out of the per-business income fold. |
-| **Reputation Boost** | Town Gossip (baseline), Community Builder, Brand Ambassador, PR Strategist | **+10–15 rep/turn, or +50% rep gains** from incidents/investments | Community Builder is street-wide (all businesses); PR Strategist is Service-only; Brand Ambassador multi-*plies event-source rep gains* (incidents + investments), not per-turn rep. |
-| **Cost Reduction** | Cost Cutter, Negotiator, Operations Manager, Accountant, IT Specialist, Delivery Driver | **−50–100 cost, −15% street-wide ongoing** | See the "street-wide flag" below for Cost Cutter. |
-| **Incident Mitigation** | Quality Inspector, Risk Manager, Security Consultant, Compliance Officer | **−15% incident probability, −30% coin damage, −50 rep damage, theft immunity** | Probability and immunity are engine-modeled (see wiring notes). |
+- **Business staff** — employed at one business (`employedAtSlot`); effects resolve per business,
+  on the employing business and (where the role says so) its 8-way neighbours. Never street-wide.
+- **Management-company staff** — employed by the player (the management company); effects resolve
+  against the player and the turn: hand, actions, market, incident insight and street-wide
+  economy. They never touch an individual business's income or reputation.
 
-**Stacking constraint (AC3/AC4):** no single staff member may hold **more than 1 income-boost
-skill AND more than 1 reputation-boost skill** simultaneously (beyond the fixed Town Gossip
-baseline, which is exempt — it is an informational peek, not a stacking boost). This prevents
-runaway compounding: a member can still stack e.g. one income buff + one cost reduction + one
-incident mitigation. Cost-reduction and incident-mitigation skills stack freely.
+So **per-business skills are business-staff specialization effects**, and **street-wide or
+player-scope skills are management-company staff effects**. The runtime determinant is
+**assignment**, not a skill flag: a member carrying an `employedAtSlot` is business staff, and a
+member with no `employedAtSlot` is management-company staff (GDD D.4.2 and D.4.8).
 
-## Street-wide effects — flagged for additional testing ⚠️
+## The 16 skills by staff type
+
+The catalog keeps its original four categories — 5 income-boost, 4 reputation-boost, 3
+cost-reduction and 4 incident-mitigation skills — and splits **8 business-staff skills** and
+**8 management-company skills** by scope:
+
+| Skill | Name | Category | Effect (magnitude and direction) | Scope | Staff type |
+|---|---|---|---|---|---|
+| `skill-networker` | Networker | Income Boost | **+20 coins/turn** from each adjacent matching-synergy business | Its own business's 8-way neighbours | Business |
+| `skill-chef` | Chef de Cuisine | Income Boost | **+20% coin income** | Its own business, when it is Food | Business |
+| `skill-dj` | DJ | Income Boost | **+20% coin income** | Its own business, when it is Entertainment | Business |
+| `skill-sales-champion` | Sales Champion | Income Boost | **+50 coins/turn** | Its own business, when it is Commerce | Business |
+| `skill-tech-guru` | Tech Guru | Income Boost | **+1 synergy range** (links with businesses up to 2 slots away) | Its own business, when it is Entertainment | Business |
+| `skill-community-builder` | Community Builder | Reputation Boost | **+10 reputation/turn** | Its own business | Business |
+| `skill-pr-strategist` | PR Strategist | Reputation Boost | **+15 reputation/turn** | Its own business, when it is Service | Business |
+| `skill-operations-manager` | Operations Manager | Cost Reduction | **−50 coins** on the employing member's salary (floored at 0) | Its own business's staffing cost | Business |
+| `skill-town-gossip` | Town Gossip | Reputation Boost | **Reveals the top incident-deck card** (peek) once per turn (baseline skill on every card) | Player (incident insight) | Management-company |
+| `skill-brand-ambassador` | Brand Ambassador | Reputation Boost | **+50% reputation gain** from incidents and investments | Player (event-source gains) | Management-company |
+| `skill-cost-cutter` | Cost Cutter | Cost Reduction | **−15% ongoing costs** for staff, community-space and business costs (flagged for extra balance testing) | Street-wide economy | Management-company |
+| `skill-negotiator` | Negotiator | Cost Reduction | **−100 coins** on a market refresh | Player (market) | Management-company |
+| `skill-quality-inspector` | Quality Inspector | Incident Mitigation | **−30% coin damage** from incidents | Street-wide incident | Management-company |
+| `skill-risk-manager` | Risk Manager | Incident Mitigation | **−15% incident probability** (deterministic per-turn avert) | Street-wide incident | Management-company |
+| `skill-security-consultant` | Security Consultant | Incident Mitigation | **Immunity to theft/loss incidents** | Street-wide incident | Management-company |
+| `skill-compliance` | Compliance Officer | Incident Mitigation | **−50 incident reputation damage** (floored at 0) | Street-wide incident | Management-company |
+
+**Reading the table.** "Its own business" means the business recorded in the employing member's
+`employedAtSlot`; "adjacent" means its 8-way neighbours. "Street-wide" means the effect resolves
+once against the player's turn (incident draw, ongoing-cost deduction) and cannot be attributed to
+a single business. Magnitudes are the reference values the balance pass is run against; the
+per-skill capability (which effect each skill applies) is unchanged by this reconciliation.
+
+### Per-business skills — business-staff specialization effects
+
+The eight business-staff skills are exactly the skills whose effect can be attributed to one
+business: **Networker**, **Chef de Cuisine**, **DJ**, **Sales Champion**, **Tech Guru**,
+**Community Builder**, **PR Strategist** and **Operations Manager**. All five income-boost skills
+are in this group, because an income boost is inherently an effect on a business's own income —
+three of them (Chef/DJ/Sales Champion) applying only when the employing business is of the matching
+type, and the other two (Networker/Tech Guru) acting through the employing business's adjacency and
+synergy range. Community Builder and PR Strategist add reputation per turn to the employing
+business (PR Strategist only when it is Service), and Operations Manager reduces the employing
+member's salary, i.e. the part of the business's operating cost that its staff represents.
+
+A business-staff skill therefore **never** resolves against another business, the player's hand,
+the action budget, the market or a street-wide incident, which is the GDD D.4.8 invariant that
+business-staff effects resolve only against the employing business or its 8-way neighbours.
+
+### Player- and street-scope skills — management-company staff effects
+
+The eight management-company skills are exactly the skills whose effect cannot be attributed to
+one business: **Town Gossip**, **Brand Ambassador**, **Cost Cutter**, **Negotiator**,
+**Quality Inspector**, **Risk Manager**, **Security Consultant** and **Compliance Officer**. All
+four incident-mitigation skills are in this group — the incident is drawn and resolved once for the
+player's turn, so its coin damage, reputation damage, probability and theft immunity are
+player-scoped mitigations, not per-business buffs. Cost Cutter reduces all three ongoing-cost
+families (staff, community space and business hand/grid costs) once, street-wide; Negotiator
+reduces the player's market-refresh price; Brand Ambassador multiplies reputation gained from
+incidents and investments; and the baseline Town Gossip is a player information effect (a peek at
+the incident deck).
+
+A management-company skill therefore **never** changes an individual business's income or
+reputation, which is the GDD D.4.8 invariant that a management-company buff resolves against the
+player. The Lookout's peek (GDD D.4.4) and the Town Gossip baseline are the same player-scope
+effect delivered by a staff ability and by a baseline skill respectively.
+
+## Stacking constraints (AC3/AC4)
+
+Stacking is **per staff member** and **type-neutral**: the caps apply identically to a business
+staff member and to a management-company staff member, and they never aggregate across a business
+or across the street. No single staff member may hold **more than 1 income-boost skill AND more
+than 1 reputation-boost skill** simultaneously (beyond the fixed Town Gossip baseline, which is
+exempt — it is an informational peek, not a stacking boost). Cost-reduction and incident-mitigation
+skills stack freely within the scope their staff type allows.
+
+- **Income cap — at most 1 income-boost skill per member.** All income-boost skills are
+  business-scope, so this cap only ever binds a business-staff member, and it caps that member's
+  contribution to its own business. A business employs at most `max(1, level + 1)` members
+  (GDD D.4.2), and the per-business cap is therefore bounded by employment capacity times one
+  income skill each — never by "one income skill per business".
+- **Reputation cap — at most 1 reputation-boost skill per member.** The baseline Town Gossip is
+  **exempt** from this cap: it is a fixed informational peek, not a stacking reputation boost, and
+  exempting it keeps the reputation pool reachable. Under the two-type model the cap is also
+  scope-consistent: a business-staff member can hold at most one of Community Builder / PR
+  Strategist (both business-scope), while Brand Ambassador is a management-company skill and so is
+  never counted against a business member's cap — it is a player-level multiplier held by a
+  management-company member.
+- **Cost-reduction and incident-mitigation skills stack freely.** Cost Cutter / Negotiator
+  (management-company) and Operations Manager (business) are different scopes and add
+  independently. The incident-mitigation skills stack freely **across the company roster**:
+  each management-company member's mitigation adds to the street-wide incident resolution, and no
+  business-staff member contributes one under the two-type model.
+- **Scope does not change the cap.** Assigning a skill is unchanged: 1–3 locked skills per staff
+  card at game start, drawn from the global pool. What the two-type model adds is that a skill can
+  only take effect from a member whose type matches the skill's scope.
+
+This keeps the original anti-compounding intent (a member can still stack one income buff + one
+cost reduction + one incident mitigation, but never two income boosts or two reputation boosts)
+while making it explainable in the GDD's two-type vocabulary.
+
+## Shipped cross-type assignments — reconciliation follow-up
+
+The catalog is reconciled, but the shipped *assignment* is not yet type-consistent, and this is
+recorded here as a follow-up in the same way the GDD records per-card "Redesign delta" rows
+(App D.4.7):
+
+- `assignStaffApplicantSkills` gives every staff card in the applicant pool 1–3 skills from the
+  **global** pool, regardless of the member's type. Business staff can therefore draw
+  management-company-scope skills (Cost Cutter, Negotiator, Brand Ambassador, the four
+  incident-mitigation skills and the Town Gossip baseline), and management-company staff can draw
+  business-scope skills (Chef, DJ, Networker, …) that can never resolve for them because they have
+  no `employedAtSlot`.
+- The street-wide folds (`getEmployedSpecializationSkills`) aggregate the skills of **every**
+  employed member, so a business-staff member holding a management-company skill currently leaks a
+  player/street-scope effect. The reverse leak does not occur: per-business folds key on the
+  employing slot, so a management-company member (no `employedAtSlot`) contributes no per-business
+  buff.
+
+Two follow-ups close the gap; neither is part of this documentation work item:
+
+1. **Scope gate (behavioural).** Apply player/street-scope effects only from management-company
+   members and per-business effects only from the employing business's members, so a skill is
+   inert when its scope does not match its holder's type.
+2. **Type-consistent assignment (deterministic).** Draw business-scope skills for business staff
+   and player-scope skills for management-company staff, keeping the Town Gossip baseline on
+   management-company cards. This changes the seeded assignment stream, so it needs its own work
+   item with determinism tests.
+
+Until they land, the shipped behaviour keeps street-wide effects from any employed member; this
+document describes the intended two-type model, not the interim behaviour.
+
+## Street-wide and player-scope effects — flagged for additional testing ⚠️
 
 - **Cost Cutter (−15% street-wide ongoing costs)** is the only skill that scales with *every*
   earned card (staff salaries, community-space costs, and business hand/grid costs all deduct
-  less). It is **flagged for extra balance testing**; the income/reputation per-business buffs are
-  naturally bounded by the street's business count.
-- **Risk Manager (−15% incident probability)** is modeled as a per-turn incident draw aversion
-  (see wiring notes); its effect compounding with other mitigation skills should be exercise-tested
-  via `staff-skill-buff-wiring.test.ts` (I4).
+  less). It is a **management-company** effect, so under the two-type model only management-company
+  staff can deliver it, and it is **flagged for extra balance testing**; the income/reputation
+  per-business buffs are naturally bounded by the street's business count.
+- **Risk Manager (−15% incident probability)** is modelled as a per-turn incident draw aversion
+  (see wiring notes); its effect compounding with other management-company mitigation skills
+  should be exercise-tested via `staff-skill-buff-wiring.test.ts` (I4).
 
 ## Wiring notes (how buffs reach the engine)
 
-- **Read-only buff folding** (I4, CG-0MT4WXV2J000M35M): `applyIncome` folds per-business income
-  and reputation buffs over the **cached** `currentIncome` / `currentReputationPerTurn` values
-  without mutating them — the adjacency caching contract (CG-0MSVYPEZ90085SHE) is preserved and
-  hiring/editing staff never leaves stale caches.
-- **Per-business formula:** `buffed = cachedIncome × (1 + percent) + flat`; per-turn
-  reputation adds `flat` per placed business. Percent applies to the business's income including
-  synergy; no interaction terms between skills (purely additive — T3 tests enforce no runaway
-  compounding).
+- **Per-business folding (business staff).** `applyIncome` folds per-business income and
+  reputation buffs over the **cached** `currentIncome` / `currentReputationPerTurn` values without
+  mutating them — the adjacency caching contract (CG-0MSVYPEZ90085SHE) is preserved and
+  hiring/editing staff never leaves stale caches. The fold is fed by the skills of the members
+  employed **at that slot** (`getEmployedSpecializationSkillsForBusiness`), so a Chef employed at
+  one Food business never buffs another Food business elsewhere on the street, and
+  management-company members (no `employedAtSlot`) contribute nothing to it.
+- **Per-business formula:** `buffed = cachedIncome × (1 + percent) + flat`; per-turn reputation
+  adds `flat` per placed business. Percent applies to the business's income including synergy; no
+  interaction terms between skills (purely additive — T3 tests enforce no runaway compounding).
+- **Street-wide / player folds (management-company staff).** Ongoing-cost reduction, incident
+  mitigation, the reputation-gain multiplier and the refresh discount are computed from the
+  street-wide skill aggregate (`getEmployedSpecializationSkills`). The Operations Manager's salary
+  discount is read from the same aggregate in the shipped code; under the two-type model it is a
+  business-staff effect applied to the employing business's staffing cost (see the scope-gate
+  follow-up above).
 - **Cost reductions:** Cost Cutter applies to **all three** ongoing-cost families
   (staff/community-space/business) at end of turn; Operations Manager discounts **only its own
-  member's** salary; Negotiator reduces `refreshMarketCost` in addition to legacy
-  `refreshCostDiscount` staff abilities (Group F); the Financial Advisor's
+  member's** salary (a business-staff cost effect); Negotiator reduces `refreshMarketCost` in
+  addition to legacy `refreshCostDiscount` staff abilities (Group F); the Financial Advisor's
   `upgradeCostDiscount` reduces the upgrade cost of its employing business only
   (CG-0MTKMGL66004I0PC); the Accountant's and IT Specialist's `refreshCostDiscount` reduce
-  `refreshMarketCost` street-wide (CG-0MULWEEE8007J2TB / CG-0MUMCVH3N007KT1M); the Delivery
-  Driver's `purchaseCostDiscount` reduces business/community-space purchase cost street-wide
-  across every acquisition path (click, drag, deferred play-from-hand), discount applied to the
-  base cost before any premium, floored at 0 (CG-0MUMCVH3N007KT1M).
-- **Incidents:** damage reductions and theft immunity apply to Incident-trigger events only;
-  Brand Ambassador multiplies *positive* reputation deltas from both incidents and investments.
-  Risk Manager averts a turn's incident draw with 15% probability (deterministic — consumes one
-  main-RNG draw while employed; averted incidents stay in the deck).
+  `refreshMarketCost` street-wide (CG-0MULWEEE8007J2TB / CG-0MUMCVH3N007KT1M) — a player-scope
+  field, so under the two-type model it belongs to management-company staff and the IT
+  Specialist's shipped discount is a business-scope follow-up recorded in GDD D.4.3/D.4.8 and
+  card-catalog § *Staff Cards*; the Delivery Driver's `purchaseCostDiscount` reduces
+  business/community-space purchase cost street-wide across every acquisition path (click, drag,
+  deferred play-from-hand), discount applied to the base cost before any premium, floored at 0
+  (CG-0MUMCVH3N007KT1M).
+- **Incidents:** damage reductions and theft immunity apply to Incident-trigger events only (the
+  incident is player-scope, so these are management-company effects); Brand Ambassador multiplies
+  *positive* reputation deltas from both incidents and investments. Risk Manager averts a turn's
+  incident draw with 15% probability (deterministic — consumes one main-RNG draw while employed;
+  averted incidents stay in the deck).
 - **Determinism (I3):** skill assignment uses a dedicated `createSeededRng(numericSeed ^ 0x5eed)`
   stream, leaving the main RNG stream (deck shuffles, market draws, challenges) untouched —
   same seed ⇒ same skills ⇒ same game.
@@ -74,12 +223,9 @@ save → restore through `structuredClone`. `deserializeSkillIds` fails loudly o
 skips members with stale ids so a future save never breaks the income phase. Legacy saves
 (members without the field) simply carry no skills.
 
-## Related docs
-
-- `card-catalog.md` — the 12 new staff applicant templates (I1) and full staff table.
-- `balancing-methodology.md` — the general balance pass methodology.
-- Town Gossip peek: CG-0MSXOW6GN008ZSMN; Group F staff abilities: CG-0MSQJ7VL9009JHF4;
-  ongoing per-turn costs: CG-0MSVYPEZ90085SHE.
+The two-type model changes **no** persistence: the staff type is derived from the member's
+`employedAtSlot`, so it never needs a stored field, and a skill id resolves to the same effect
+regardless of who holds it (the holder's type decides whether that effect applies).
 
 ## Job-applicant flow & employment slots (CG-0MSTOATDU006UGAX)
 
@@ -122,6 +268,18 @@ modes (`state.suppressApplicant`).
   `letGoStaffCommand` through the undo stack
   (CG-0MTXLTIPF000KFUA).
 
+### Where the applicant's type changes the flow
+
+Per GDD D.4.1/D.4.2, the applicant's type decides the hire flow: a business-staff
+applicant **chooses a destination business** (matching `allowedBusinessTypes`,
+with a free employment slot) and may later be relocated for **1 action**; a
+management-company applicant joins the company with no placement step and is
+never placed or relocated. The walk-on flow above is the shipped business-staff
+flow; the management-company branch is part of GDD D.4.2 and the
+core-rules hire/relocate rules — see [the-build-gdd.md](the-build-gdd.md)
+Appendix D.4 and [core-rules-and-mechanics.md](core-rules-and-mechanics.md) §
+*Action Economy*.
+
 ### Scene & presentation contract (rule 8 compliant)
 
 - The applicant is rendered face-up (staff SVG + skill chips) at the SLL
@@ -133,3 +291,15 @@ modes (`state.suppressApplicant`).
 - All sounds route through `SoundManager` with shared `SFX_KEYS`
   (deal/place/discard) so settings mute/volume and reduced-motion are
   respected.
+
+## Related docs
+
+- [the-build-gdd.md](the-build-gdd.md) — Appendix D.4 *Staff System*: the two
+  staff types, their roles and impacts, the gameplay outcomes and the
+  implementation contract (D.4.8) this catalogue classifies against.
+- [card-catalog.md](card-catalog.md) — the 26 shipped staff templates (with the
+  two-type `Type` column), including the 12 role-themed specialization
+  applicants and the Investor.
+- `balancing-methodology.md` — the general balance pass methodology.
+- Town Gossip peek: CG-0MSXOW6GN008ZSMN; Group F staff abilities: CG-0MSQJ7VL9009JHF4;
+  ongoing per-turn costs: CG-0MSVYPEZ90085SHE.
