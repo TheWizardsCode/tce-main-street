@@ -14,6 +14,12 @@
  *  - the panel content flows through the real Phaser-free model (seat labels
  *    and colours from the competitive scoreboard conventions).
  *
+ * Invariants (MS-0MVRNW5JT0046QI3): only seats still playing get rows; N=1 /
+ * single-player never gate; a headless competitive day advances with no
+ * overlay surface; the gate adds no checkpoint save, mutates no engine state
+ * and consumes no RNG; and a throwing model build or panel presentation
+ * advances immediately (never stalls, never advances twice).
+ *
  * The per-seat closing presentation itself is covered by
  * `competitive-closing-presentation.test.ts`; this suite covers the gate.
  *
@@ -21,11 +27,33 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+/**
+ * Failure injection for the model build (MS-0MVRNW5JT0046QI3 AC5): the real
+ * model runs unless a test asks the wrapper to throw.
+ */
+const modelControl = vi.hoisted(() => ({ throwOnBuild: false }));
+
+vi.mock('../../src/scenes/MainStreetTurnSummary', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('../../src/scenes/MainStreetTurnSummary')
+  >();
+  return {
+    ...actual,
+    buildCompetitiveTurnSummary: (
+      ...args: Parameters<typeof actual.buildCompetitiveTurnSummary>
+    ) => {
+      if (modelControl.throwOnBuild) throw new Error('competitive model build failed');
+      return actual.buildCompetitiveTurnSummary(...args);
+    },
+  };
+});
+
 import {
   presentCompetitiveDayTail,
   presentCompetitiveTurnSummaryGate,
   shouldGateCompetitiveTurnSummary,
 } from '../../src/scenes/MainStreetTurnControllerCompetitive';
+import { executeCompetitiveTurn } from '../../src/MainStreetEngineCompetitiveTurn';
 import type { TurnResult } from '../../src/MainStreetEngine';
 import type { OwnerIncomeResult } from '../../src/MainStreetAdjacency';
 import type { CompetitiveRoundLedger } from '../../src/MainStreetEngineTypes';
@@ -177,6 +205,12 @@ describe('shouldGateCompetitiveTurnSummary (MS-0MVRNV9Y8008IKGK)', () => {
     state.players = [];
     expect(shouldGateCompetitiveTurnSummary(tcCtx, makeClosing())).toBe(false);
   });
+
+  it('does not gate an N=1 closing (single-player panel owns that path)', () => {
+    const { tcCtx, state } = makeHarness();
+    state.players = state.players!.slice(0, 1);
+    expect(shouldGateCompetitiveTurnSummary(tcCtx, makeClosing())).toBe(false);
+  });
 });
 
 // ── Panel presentation ───────────────────────────────────────
@@ -184,6 +218,7 @@ describe('shouldGateCompetitiveTurnSummary (MS-0MVRNV9Y8008IKGK)', () => {
 describe('presentCompetitiveTurnSummaryGate (MS-0MVRNV9Y8008IKGK)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modelControl.throwOnBuild = false;
   });
 
   it('presents the per-seat panel built by the real model and holds the day until [ Next Turn ]', () => {
@@ -231,6 +266,59 @@ describe('presentCompetitiveTurnSummaryGate (MS-0MVRNV9Y8008IKGK)', () => {
     expect(tcCtx.scene.showCompetitiveTurnSummaryDialog).not.toHaveBeenCalled();
     expect(onNextTurn).toHaveBeenCalledTimes(1);
   });
+
+  it('renders no row for an eliminated seat (only the seats still playing)', () => {
+    const { scene, tcCtx, state } = makeHarness();
+    state.players![1].eliminated = true;
+
+    presentCompetitiveTurnSummaryGate(tcCtx, makeClosing(), vi.fn());
+
+    const [summary] = scene.showCompetitiveTurnSummaryDialog.mock.calls[0];
+    expect(summary.rows.map((row: { ownerId: number }) => row.ownerId)).toEqual([0]);
+    expect(summary.rows).toHaveLength(1);
+  });
+
+  it('advances immediately when the model build throws (never strands the day)', () => {
+    modelControl.throwOnBuild = true;
+    const { tcCtx } = makeHarness();
+    const onNextTurn = vi.fn();
+
+    try {
+      presentCompetitiveTurnSummaryGate(tcCtx, makeClosing(), onNextTurn);
+    } finally {
+      modelControl.throwOnBuild = false;
+    }
+
+    expect(tcCtx.scene.showCompetitiveTurnSummaryDialog).not.toHaveBeenCalled();
+    expect(onNextTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('advances exactly once when the panel presentation throws (no overlay manager)', () => {
+    const { scene, tcCtx } = makeHarness({
+      showCompetitiveTurnSummaryDialog: vi.fn(() => {
+        throw new Error('scene has no overlay manager');
+      }),
+    });
+    const onNextTurn = vi.fn();
+
+    presentCompetitiveTurnSummaryGate(tcCtx, makeClosing(), onNextTurn);
+
+    expect(scene.showCompetitiveTurnSummaryDialog).toHaveBeenCalledTimes(1);
+    expect(onNextTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds no checkpoint save, mutates no engine state and consumes no RNG', () => {
+    const { scene, tcCtx, state } = makeHarness();
+    const before = JSON.stringify(state);
+    const rngCallsBefore = state.rngCalls;
+
+    presentCompetitiveTurnSummaryGate(tcCtx, makeClosing(), vi.fn());
+
+    expect(scene.showCompetitiveTurnSummaryDialog).toHaveBeenCalledTimes(1);
+    expect(tcCtx.onSaveCheckpoint).not.toHaveBeenCalled();
+    expect(JSON.stringify(state)).toBe(before);
+    expect(state.rngCalls).toBe(rngCallsBefore);
+  });
 });
 
 // ── The competitive day tail ─────────────────────────────────
@@ -240,22 +328,26 @@ describe('presentCompetitiveDayTail gate (AC4/AC5)', () => {
     vi.clearAllMocks();
   });
 
-  it('presents the panel after the closing presentation and gate the next day on [ Next Turn ]', () => {
+  it('saves the checkpoint before the closing and panels only after it completes', () => {
     const { scene, tcCtx } = makeHarness();
     const order: string[] = [];
+    tcCtx.onSaveCheckpoint = vi.fn(() => order.push('save'));
     scene.msAnimator.animateIncomePhases = vi.fn(() => order.push('closing'));
     scene.showCompetitiveTurnSummaryDialog = vi.fn(() => order.push('panel'));
 
     presentCompetitiveDayTail(tcCtx, makeClosing());
 
-    // The closing presentation completed first, then the panel appeared.
-    expect(order).toEqual(['closing', 'panel']);
+    // Exactly one save, before the closing presentation completes, and the
+    // panel is the closing's completion callback — the gate adds no save.
+    expect(order).toEqual(['save', 'closing', 'panel']);
     expect(tcCtx.onSaveCheckpoint).toHaveBeenCalledTimes(1);
     expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
 
     const [, onNextTurn] = scene.showCompetitiveTurnSummaryDialog.mock.calls[0];
     onNextTurn();
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    // The click adds no further save either.
+    expect(tcCtx.onSaveCheckpoint).toHaveBeenCalledTimes(1);
   });
 
   it('keeps reduced-motion auto-advance pacing', () => {
@@ -282,6 +374,37 @@ describe('presentCompetitiveDayTail gate (AC4/AC5)', () => {
     presentCompetitiveDayTail(tcCtx, makeClosing());
 
     // No dialog surface exists at all, and the day advanced anyway.
+    expect(scene.showCompetitiveTurnSummaryDialog).toBeUndefined();
+    expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+  });
+
+  it('drives a real headless competitive day to the next day with no overlay surface', () => {
+    // The engine runs a whole shared day with no scene at all (Monte-Carlo /
+    // AI-driven parity): it advances and surfaces the round ledger.
+    const state = createCompetitiveState({
+      seed: 'competitive-summary-headless-day',
+      playerCount: 3,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    state.resourceBank.coins = 1000;
+    state.resourceBank.reputation = 1000;
+    state.incidentDeck = [];
+    const dayBefore = state.turn;
+
+    const result = executeCompetitiveTurn(state, [[], [], []]);
+
+    expect(result.gameResult).toBe('playing');
+    expect(result.playerRoundLedger).toBeDefined();
+    expect(state.turn).toBe(dayBefore + 1);
+
+    // The same result in a headless scene: no dialog surface, so the panel is
+    // never presented and the next day starts immediately.
+    const { scene, tcCtx } = makeHarness({ showCompetitiveTurnSummaryDialog: undefined });
+    scene.state = state;
+
+    presentCompetitiveDayTail(tcCtx, result);
+
     expect(scene.showCompetitiveTurnSummaryDialog).toBeUndefined();
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
   });

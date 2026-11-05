@@ -459,6 +459,13 @@ function competitiveClosing(
  * results carry no `playerRoundLedger`, so the caller presents nothing and the
  * day advances exactly as before.
  *
+ * Eliminated seats never become rows (MS-0MVRNW5JT0046QI3): a seat the closing
+ * knocked out — bankruptcy / reputation collapse resolved after the income
+ * phase — is filtered here as well as at ledger emission, so the panel shows
+ * exactly the seats still playing (no ghost rows) even for a hand-built or
+ * legacy ledger that still carries one. `null` when nothing remains to show,
+ * which the gate treats as "advance immediately".
+ *
  * @param state  Committed state after the closing (read-only).
  * @param result The closed shared day's result (round ledger).
  */
@@ -469,13 +476,17 @@ export function buildCompetitiveTurnSummary(
   const ledger = result.playerRoundLedger;
   if (!ledger || ledger.seats.length === 0) return null;
 
+  const roster = state.players ?? [];
+  const seats = ledger.seats.filter((seat) => roster[seat.ownerId]?.eliminated !== true);
+  if (seats.length === 0) return null;
+
   const seatsById = new Map(
     buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
   );
 
   return {
     turn: ledger.turn,
-    rows: ledger.seats.map((seat) => {
+    rows: seats.map((seat) => {
       const ownerId = seat.ownerId;
       const rosterSeat = seatsById.get(String(ownerId));
       const expenses = buildExpenseRows(seat.ongoingCosts);

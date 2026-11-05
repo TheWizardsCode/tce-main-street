@@ -49,6 +49,7 @@ import type {
   StaffCard,
 } from '../../src/MainStreetCards';
 import type { TurnResult } from '../../src/MainStreetEngineTypes';
+import { buildCompetitiveTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
 
 // ── Fixtures ─────────────────────────────────────────────────
 
@@ -236,6 +237,28 @@ describe('competitive round ledger (MS-0MVRNV9Y8008IKGK)', () => {
     expect(result.playerRoundLedger!.seats.map((seat) => seat.ownerId)).toEqual([0, 2]);
     // The closing itself already omits the eliminated seat from its income.
     expect((result.playerIncome ?? []).map((entry) => entry.ownerId)).toEqual([0, 2]);
+    // The panel derives from the same filtered set: row count and identity are
+    // asserted against this real engine run, so an eliminated seat can never
+    // become a ghost row (MS-0MVRNW5JT0046QI3 AC1).
+    const summary = buildCompetitiveTurnSummary(state, result)!;
+    expect(summary.rows).toHaveLength(2);
+    expect(summary.rows.map((row) => row.ownerId)).toEqual([0, 2]);
+  });
+
+  it('omits a seat eliminated by the closing itself (no ghost row for a seat it knocked out)', () => {
+    // Three seats so an elimination cannot trigger last-standing. Turn 3 is
+    // past the opening-day solvency/reputation grace, so seat 1's reputation
+    // collapse resolves in the closing's seat-failure pass — after the income
+    // phase captured it in the transient accumulator.
+    const state = closingState('competitive-round-ledger-mid-elimination', 3);
+    state.turn = 3;
+    state.players![1].reputation = 0;
+    const { result } = runClosing(state);
+
+    expect(state.players![1].eliminated).toBe(true);
+    expect(result.playerRoundLedger!.seats.map((seat) => seat.ownerId)).toEqual([0, 2]);
+    expect(buildCompetitiveTurnSummary(state, result)!.rows.map((row) => row.ownerId))
+      .toEqual([0, 2]);
   });
 
   it('is deterministic: an identical seeded run yields identical ledgers and wallets', () => {

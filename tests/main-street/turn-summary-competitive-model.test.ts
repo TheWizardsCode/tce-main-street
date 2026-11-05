@@ -194,12 +194,53 @@ describe('buildCompetitiveTurnSummary — owner rows', () => {
   it('is read-only: building the summary mutates no state and consumes no RNG', () => {
     const state = twoSeatState();
     const before = JSON.stringify(state.players);
+    const rngCallsBefore = state.rngCalls;
     buildCompetitiveTurnSummary(state, summaryInput(makeLedger()));
     expect(JSON.stringify(state.players)).toBe(before);
+    expect(state.rngCalls).toBe(rngCallsBefore);
   });
 });
 
-// ── Per-seat expenses ────────────────────────────────────────
+// ── Eliminated seats ────
+
+/**
+ * Eliminated seats never render a row (MS-0MVRNW5JT0046QI3 AC1).
+ *
+ * The closing already omits seats eliminated before its income phase; the
+ * model additionally filters a seat knocked out by the closing itself (or a
+ * legacy / hand-built ledger that still carries one), so the panel shows
+ * exactly the seats still playing — no ghost rows.
+ */
+describe('buildCompetitiveTurnSummary — eliminated seats', () => {
+  it('drops the row for a seat eliminated at closing time (no ghost rows)', () => {
+    const state = twoSeatState();
+    state.players![1].eliminated = true;
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.rows).toHaveLength(1);
+    expect(summary.rows.map((row) => row.ownerId)).toEqual([0]);
+    expect(summary.rows[0].label).toBe('You');
+  });
+
+  it('returns null when every surfaced seat is eliminated (advance, never an empty panel)', () => {
+    const state = twoSeatState();
+    state.players!.forEach((seat) => { seat.eliminated = true; });
+
+    expect(buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))).toBeNull();
+  });
+
+  it('keeps a row for an owner the roster does not know (elimination is explicit)', () => {
+    const state = twoSeatState();
+    state.players = state.players!.slice(0, 1);
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.rows.map((row) => row.ownerId)).toEqual([0, 1]);
+  });
+});
+
+// ── Per-seat expenses ─────────────────────────────────────────
 
 /**
  * Per-seat ongoing-expense rows (MS-0MVRNVHJ50095N9Y).

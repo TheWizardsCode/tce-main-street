@@ -389,10 +389,19 @@ function captureRoundLedger(
 function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | undefined {
   const pending = state._competitiveRoundLedger;
   if (!pending || pending.seats.length === 0) return undefined;
+  // Turn Summary invariant (MS-0MVRNW5JT0046QI3): a seat eliminated by this
+  // closing (bankruptcy / reputation collapse resolved after the income phase)
+  // no longer plays the round, so it never reaches `playerRoundLedger` and can
+  // never become a ghost row. Seats eliminated before the income phase are
+  // already absent (`playerIncome` filters them).
+  const seats = pending.seats.filter(
+    (seat) => state.players?.[seat.ownerId]?.eliminated !== true,
+  );
+  if (seats.length === 0) return undefined;
   const owned = countBusinessesOwnedByOwner(state);
   return {
     turn: pending.turn,
-    seats: pending.seats.map((seat) => {
+    seats: seats.map((seat) => {
       const closing: OwnerRoundBalance = {
         coins: Math.round(state.players?.[seat.ownerId]?.coins ?? 0),
         reputation: Math.round(state.players?.[seat.ownerId]?.reputation ?? 0),

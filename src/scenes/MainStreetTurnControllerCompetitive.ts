@@ -668,8 +668,11 @@ export function shouldGateCompetitiveTurnSummary(
  * `presentCompetitiveClosing` has finished (its income choreography has
  * collected and the incident has been revealed).
  *
- * Never stalls: a failing model build or a scene without dialog support
- * advances immediately, matching the previous pacing.
+ * Never stalls (MS-0MVRNW5JT0046QI3): a failing model build, an empty row set,
+ * a scene without dialog support, or a presentation that throws (e.g. no
+ * overlay manager on the scene) advances immediately, matching the previous
+ * pacing. The advance is single-shot: a dialog that calls **[ Next Turn ]** and
+ * then throws can never start the day twice.
  *
  * @param tcCtx      Scene context.
  * @param closing    The finished shared-day closing.
@@ -683,20 +686,37 @@ export function presentCompetitiveTurnSummaryGate(
 ): void {
   const s = tcCtx.scene;
 
+  let advanced = false;
+  const advanceOnce = (): void => {
+    if (advanced) return;
+    advanced = true;
+    onNextTurn();
+  };
+
   let summary: ReturnType<typeof buildCompetitiveTurnSummary> = null;
   try {
     summary = buildCompetitiveTurnSummary(s.state, closing);
   } catch { /* presentation-only — never strand the day */ }
 
-  if (!summary || typeof s.showCompetitiveTurnSummaryDialog !== 'function') {
-    onNextTurn();
+  if (
+    !summary
+    || summary.rows.length === 0
+    || typeof s.showCompetitiveTurnSummaryDialog !== 'function'
+  ) {
+    advanceOnce();
     return;
   }
 
   // The loans seam stays a single hook shaped `(seatId?: number) => void`, so
   // MS-0MVL6DZI0000F6CG can enable a per-seat loan from the panel later. It is
   // deliberately not wired here: this slice never enables [ Bank Loan ].
-  s.showCompetitiveTurnSummaryDialog(summary, onNextTurn);
+  try {
+    s.showCompetitiveTurnSummaryDialog(summary, advanceOnce);
+  } catch {
+    // A scene without an overlay surface (or any presentation failure) must
+    // never strand the shared day: advance exactly as before the gate.
+    advanceOnce();
+  }
 }
 
 /**
