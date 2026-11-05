@@ -1683,7 +1683,9 @@ export class MainStreetOverlayContent {
    * Phaser-free {@link CompetitiveTurnSummary} model: one row per non-eliminated
    * seat, in seat order, with the seat's own label (`You` / `AI n`) in its own
    * `resolveSeatColour` colour, businesses owned, the per-phase income
-   * breakdown with its total, and the net coin change for the round.
+   * breakdown with its total, the per-category ongoing expenses with their
+   * total (MS-0MVRNVHJ50095N9Y — the same labels and signed formatting as the
+   * single-player panel) and the net coin change for the round.
    *
    * **[ Next Turn ]** is the primary action and resumes the shared day via
    * {@link onNextTurn}. **[ Bank Loan ]** is **always disabled** here: loans are
@@ -1722,7 +1724,9 @@ export class MainStreetOverlayContent {
 
     const centerX = s.layout.gameW / 2;
     const panelW = 760;
-    const rowH = 96;
+    // Each seat row is three text lines: income, expenses, and the bold
+    // totals line (MS-0MVRNVHJ50095N9Y added the expense line).
+    const rowH = 104;
     const headerH = 116;
     const footerH = 96;
     const panelH = headerH + summary.rows.length * rowH + footerH;
@@ -1779,7 +1783,14 @@ export class MainStreetOverlayContent {
         fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
         wordWrap: { width: panelW - 64 },
       });
-      addText(leftX, rowY + 64, `Income total: ${formatSigned(row.incomeTotal)} · Net change: ${formatSigned(row.netCoinChange)} coins`, {
+      // Per-category ongoing expenses (staff / community / business) with their
+      // total — the single-player panel's labels, order and signed formatting.
+      // Ongoing costs are signed (zero or negative) — render them as-is.
+      addText(leftX, rowY + 50, `Expenses: ${row.expenses.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')} · Total ${formatSigned(row.expensesTotal)}`, {
+        fontSize: '13px', color: '#ff8888', fontFamily: FONT_FAMILY,
+        wordWrap: { width: panelW - 64 },
+      });
+      addText(leftX, rowY + 76, `Income total: ${formatSigned(row.incomeTotal)} · Net change: ${formatSigned(row.netCoinChange)} coins`, {
         fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
       });
     });

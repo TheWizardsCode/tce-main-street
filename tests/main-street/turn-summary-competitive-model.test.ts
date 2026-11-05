@@ -26,7 +26,7 @@ import {
 } from '../../src/MainStreetState';
 import type { CompetitiveRoundLedger, TurnResult } from '../../src/MainStreetEngineTypes';
 import type { EventCard } from '../../src/MainStreetCards';
-import { buildCompetitiveTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
+import { buildCompetitiveTurnSummary, buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
 
 // ── Fixtures ─────────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ function makeLedger(overrides: Partial<CompetitiveRoundLedger> = {}): Competitiv
         businessesOwned: 3,
         incomeByPhase: { base: 12, synergy: 4, reputation: 2, events: -1 },
         incomeTotal: 17,
+        ongoingCosts: { staff: -3, community: -1, business: -2 },
         netCoinChange: 9,
       },
       {
@@ -57,6 +58,7 @@ function makeLedger(overrides: Partial<CompetitiveRoundLedger> = {}): Competitiv
         businessesOwned: 2,
         incomeByPhase: { base: 8, synergy: 0, reputation: 1, events: 0 },
         incomeTotal: 9,
+        ongoingCosts: { staff: 0, community: 0, business: 0 },
         netCoinChange: 5,
       },
     ],
@@ -180,5 +182,83 @@ describe('buildCompetitiveTurnSummary — owner rows', () => {
     const before = JSON.stringify(state.players);
     buildCompetitiveTurnSummary(state, summaryInput(makeLedger()));
     expect(JSON.stringify(state.players)).toBe(before);
+  });
+});
+
+// ── Per-seat expenses ────────────────────────────────────────
+
+/**
+ * Per-seat ongoing-expense rows (MS-0MVRNVHJ50095N9Y).
+ *
+ * The competitive panel shows what each seat actually spent in the round, per
+ * category, so the engine's per-owner breakdown must reach the row model with
+ * the single-player panel's labels, order and signed convention.
+ */
+describe('buildCompetitiveTurnSummary — per-seat expenses', () => {
+  it('exposes the per-category expense rows and their total for each seat', () => {
+    const summary = buildCompetitiveTurnSummary(
+      twoSeatState(),
+      summaryInput(makeLedger()),
+    )!;
+    const [human, ai] = summary.rows;
+
+    expect(human.expenses).toEqual([
+      { category: 'staff', label: 'Staff wages', coins: -3 },
+      { category: 'community', label: 'Community spaces', coins: -1 },
+      { category: 'business', label: 'Business costs', coins: -2 },
+    ]);
+    expect(human.expensesTotal).toBe(-6);
+
+    // A seat that spent nothing keeps all three rows at 0 (never dropped).
+    expect(ai.expenses.map((row) => row.coins)).toEqual([0, 0, 0]);
+    expect(ai.expensesTotal).toBe(0);
+  });
+
+  it('renders three zero rows when the ledger carries no breakdown (absent-safe)', () => {
+    const summary = buildCompetitiveTurnSummary(
+      twoSeatState(),
+      summaryInput(
+        makeLedger({
+          seats: [
+            {
+              ownerId: 0,
+              businessesOwned: 1,
+              incomeByPhase: { base: 2, synergy: 0, reputation: 0, events: 0 },
+              incomeTotal: 2,
+              netCoinChange: 2,
+            },
+          ],
+        }),
+      ),
+    )!;
+    expect(summary.rows[0].expenses.map((row) => [row.category, row.coins])).toEqual([
+      ['staff', 0],
+      ['community', 0],
+      ['business', 0],
+    ]);
+    expect(summary.rows[0].expensesTotal).toBe(0);
+  });
+
+  it('uses the single-player panel’s expense labels, order and sign convention', () => {
+    const state = twoSeatState();
+    const competitive = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+    const single = buildTurnSummary(state, {
+      turnLedger: {
+        incomeByPhase: { base: 0, synergy: 0, reputation: 0, events: 0 },
+        ongoingCosts: { staff: -3, community: -1, business: -2 },
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+        oneOffDeltas: { coins: 0, reputation: 0 },
+        netCoinChange: -6,
+        netRepChange: 0,
+        netScoreChange: 0,
+        businessesOwned: { '0': 3 },
+      },
+      incident: null,
+    })!;
+
+    expect(competitive.rows[0].expenses.map((row) => [row.category, row.label, row.coins]))
+      .toEqual(single.expenses.map((row) => [row.category, row.label, row.coins]));
+    expect(competitive.rows[0].expensesTotal).toBe(single.expensesTotal);
   });
 });

@@ -32,9 +32,9 @@ import {
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
 } from '../../src/MainStreetEngineCompetitiveTurn';
-import { processEndOfTurn, executeWeekStart } from '../../src/MainStreetEngine';
+import { processEndOfTurn, executeWeekStart, applyCompetitiveOngoingCosts } from '../../src/MainStreetEngine';
 import { recalculateCard } from '../../src/MainStreetAdjacency';
-import type { BusinessCard } from '../../src/MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../../src/MainStreetCards';
 import type { TurnResult } from '../../src/MainStreetEngineTypes';
 
 // ── Fixtures ─────────────────────────────────────────────────
@@ -58,11 +58,45 @@ function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
   } as BusinessCard;
 }
 
+/** A community-space card with an exact ongoing cost (per-owner charging). */
+function makeSpace(overrides: Partial<CommunitySpaceCard> = {}): CommunitySpaceCard {
+  return {
+    family: 'community-space',
+    id: overrides.id ?? 'test-space',
+    name: overrides.name ?? 'Test Space',
+    cost: overrides.cost ?? 5,
+    baseIncome: overrides.baseIncome ?? 0,
+    synergyTypes: overrides.synergyTypes ?? [],
+    description: overrides.description ?? 'A test community space',
+    level: overrides.level ?? 0,
+    incomeBonus: overrides.incomeBonus ?? 0,
+    synergyRangeBonus: overrides.synergyRangeBonus ?? 0,
+    reputationBonus: overrides.reputationBonus ?? 0,
+    ongoingCost: overrides.ongoingCost ?? 0,
+  } as CommunitySpaceCard;
+}
+
+/** A staff card with an exact salary and optional specialization skills. */
+function makeStaff(overrides: Partial<StaffCard> = {}): StaffCard {
+  return {
+    family: 'staff',
+    id: overrides.id ?? 'test-staff',
+    name: overrides.name ?? 'Test Staff',
+    cost: overrides.cost ?? 10,
+    ongoingCost: overrides.ongoingCost ?? 0,
+    actionsPerTurn: overrides.actionsPerTurn ?? 0,
+    handSlotsAdded: overrides.handSlotsAdded ?? 0,
+    reputationPerTurn: overrides.reputationPerTurn ?? 0,
+    specializationSkillIds: overrides.specializationSkillIds ?? [],
+    description: overrides.description ?? 'A test staff member',
+  } as unknown as StaffCard;
+}
+
 /** Places a card on a slot and tags its owner (the competitive placement). */
 function place(
   state: MainStreetState,
   slotIndex: number,
-  card: BusinessCard,
+  card: BusinessCard | CommunitySpaceCard,
   ownerId: number,
 ): void {
   state.streetGrid[slotIndex] = card;
@@ -263,5 +297,130 @@ describe('competitive round ledger (MS-0MVRNV9Y8008IKGK)', () => {
 
     expect(result.turnLedger).toBeDefined();
     expect(result.playerRoundLedger).toBeUndefined();
+  });
+});
+
+// ── Per-seat ongoing-expense breakdown ───────────────────────
+
+/**
+ * Per-seat ongoing-expense breakdown (MS-0MVRNVHJ50095N9Y).
+ *
+ * `applyCompetitiveOngoingCosts` charges each seat's own wallet but used to
+ * discard the split; it now returns it, so the panel can show what each seat
+ * actually spent per category. These tests pin the values **and** the
+ * unchanged economy: the wallets move exactly as before, and the breakdown
+ * always reconciles with the coins actually deducted.
+ */
+describe('per-seat ongoing expense breakdown (MS-0MVRNVHJ50095N9Y)', () => {
+  /** Two clean-wallet seats with no incident deck — the breakdown fixture. */
+  function costState(seed: string): MainStreetState {
+    const state = createCompetitiveState({
+      seed,
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    state.incidentDeck = [];
+    for (const seat of state.players!) seat.coins = 1000;
+    return state;
+  }
+
+  it('splits each seat’s ongoing costs into staff / community / business', () => {
+    const state = costState('ongoing-breakdown-mixed');
+    // Seat 0: business 10 + community space 4 + staff salary 20.
+    place(state, 0, makeBiz({ id: 'b0', ongoingCost: 10 }), 0);
+    place(state, 1, makeSpace({ id: 'c0', ongoingCost: 4 }), 0);
+    state.players![0].staffCards = [makeStaff({ id: 's0', ongoingCost: 20 })];
+    // Seat 1: one business, no staff, no community spaces.
+    place(state, 10, makeBiz({ id: 'b1', ongoingCost: 6 }), 1);
+
+    const coinsBefore = state.players!.map((seat) => seat.coins);
+    const breakdown = applyCompetitiveOngoingCosts(state);
+
+    expect(breakdown.get(0)).toEqual({ staff: -20, community: -4, business: -10 });
+    // A seat with no staff or community spaces still records zero rows.
+    expect(breakdown.get(1)).toEqual({ staff: 0, community: 0, business: -6 });
+
+    // Reporting-only: each seat's wallet moves exactly as it did before this
+    // value was surfaced, and the breakdown sums to that movement.
+    for (const seat of state.players!) {
+      const charged = breakdown.get(seat.playerId)!;
+      expect(seat.coins).toBe(coinsBefore[seat.playerId] + charged.staff + charged.community + charged.business);
+    }
+    expect(state.players![0].coins).toBe(1000 - 34);
+    expect(state.players![1].coins).toBe(1000 - 6);
+  });
+
+  it('applies the Cost Cutter reduction to every category', () => {
+    const state = costState('ongoing-breakdown-cutter');
+    // The host staff set carries the street-wide Cost Cutter for the slot
+    // families (the shared reduction source, unchanged by this slice).
+    state.staffCards = [
+      makeStaff({ id: 'host-cutter', ongoingCost: 0, specializationSkillIds: ['skill-cost-cutter'] }),
+    ];
+    place(state, 0, makeBiz({ id: 'b0', ongoingCost: 100 }), 0);
+    place(state, 1, makeSpace({ id: 'c0', ongoingCost: 100 }), 0);
+    // The seat's own Cost Cutter reduces its staff salaries.
+    state.players![0].staffCards = [
+      makeStaff({ id: 's0', ongoingCost: 100, specializationSkillIds: ['skill-cost-cutter'] }),
+    ];
+
+    const breakdown = applyCompetitiveOngoingCosts(state);
+
+    // -15% of 100 → 85 charged in each category.
+    expect(breakdown.get(0)).toEqual({ staff: -85, community: -85, business: -85 });
+    expect(state.players![0].coins).toBe(1000 - 255);
+  });
+
+  it('excludes sold slots from the breakdown (and charges nothing for them)', () => {
+    const state = costState('ongoing-breakdown-sold');
+    place(state, 0, makeBiz({ id: 'sold', ongoingCost: 100 }), 0);
+    state.soldSlots[0] = true;
+    place(state, 10, makeBiz({ id: 'live', ongoingCost: 7 }), 1);
+
+    const breakdown = applyCompetitiveOngoingCosts(state);
+
+    // The sold card's owner has no entry at all — nothing was charged.
+    expect(breakdown.get(0)).toBeUndefined();
+    expect(breakdown.get(1)).toEqual({ staff: 0, community: 0, business: -7 });
+    expect(state.players![0].coins).toBe(1000);
+  });
+
+  it('clamps the breakdown to the coins actually deducted when a seat runs short', () => {
+    const state = costState('ongoing-breakdown-clamp');
+    // 20 business + 20 community owed; only 30 coins available.
+    place(state, 0, makeBiz({ id: 'b0', ongoingCost: 20 }), 0);
+    place(state, 1, makeSpace({ id: 'c0', ongoingCost: 20 }), 0);
+    state.players![0].coins = 30;
+
+    const breakdown = applyCompetitiveOngoingCosts(state);
+
+    // Insufficiency handling is unchanged: the single combined charge still
+    // clamps at the wallet, and the reporting split sums to exactly that 30
+    // (allocated by the two families' equal raw shares).
+    expect(state.players![0].coins).toBe(0);
+    expect(breakdown.get(0)).toEqual({ staff: 0, community: -15, business: -15 });
+  });
+
+  it('threads each seat’s breakdown onto the round ledger of the closing', () => {
+    const state = closingState('competitive-round-ledger-costs', 2);
+    // Seat 0 also pays a staff salary on top of its two businesses' costs.
+    state.players![0].staffCards = [makeStaff({ id: 's0', ongoingCost: 5 })];
+
+    const { result } = runClosing(state);
+
+    const [human, ai] = result.playerRoundLedger!.seats;
+    // closingState: seat 0 owns b0 (cost 2) + b1 (cost 0); seat 1 owns b2 (cost 1).
+    expect(human.ongoingCosts).toEqual({ staff: -5, community: 0, business: -2 });
+    expect(ai.ongoingCosts).toEqual({ staff: 0, community: 0, business: -1 });
+
+    // The ledger reconciles: with no incident drawn and no loans, a seat's net
+    // change is its income plus the expenses reported in the breakdown.
+    for (const seat of result.playerRoundLedger!.seats) {
+      const costs = seat.ongoingCosts!;
+      expect(seat.netCoinChange).toBe(
+        seat.incomeTotal + costs.staff + costs.community + costs.business,
+      );
+    }
   });
 });

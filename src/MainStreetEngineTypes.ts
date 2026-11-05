@@ -216,11 +216,41 @@ export interface OwnerRoundLedger {
   /** Sum of {@link incomeByPhase} — coins the income phase credited to this seat. */
   incomeTotal: number;
   /**
+   * Ongoing expenses charged to this seat in the closing, split by category
+   * (MS-0MVRNVHJ50095N9Y). Same categories, sign convention and semantics as
+   * `TurnLedger.ongoingCosts`, so the per-seat panel reuses the single-player
+   * expense labels and signed formatting.
+   *
+   * Optional and absent-safe: a hand-built ledger (or one produced before this
+   * field existed) carries no breakdown, which consumers render as three zero
+   * rows rather than dropping the seat.
+   */
+  ongoingCosts?: OwnerOngoingCosts;
+  /**
    * Net coin change for this seat across the shared closing (income + ongoing
    * costs + incident routing + loan repayments), measured against the seat's
    * wallet before the closing's economy ran.
    */
   netCoinChange: number;
+}
+
+/**
+ * One seat's ongoing (recurring) expense breakdown for a shared closing
+ * (MS-0MVRNVHJ50095N9Y, parent MS-0MVO1SFCM000ZLBI).
+ *
+ * Values are **signed** coin deltas — zero or negative — mirroring
+ * `TurnLedger.ongoingCosts` for the single-player ledger, so both Turn Summary
+ * panels format the same categories the same way. Each value is the amount
+ * actually charged to that seat's own wallet (clamped when the wallet ran
+ * short), matching the single-player attribution convention.
+ */
+export interface OwnerOngoingCosts {
+  /** Staff salaries charged to this seat (zero or negative). */
+  staff: number;
+  /** Community-space running costs charged to this seat (zero or negative). */
+  community: number;
+  /** Business running costs charged to this seat (zero or negative). */
+  business: number;
 }
 
 /**

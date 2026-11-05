@@ -16,6 +16,11 @@
  * ledger itself is presentation-only data already committed by the engine, so
  * building the summary never changes the turn.
  *
+ * Competitive parity (MS-0MVRNVHJ50095N9Y):
+ * {@link buildCompetitiveTurnSummary} reuses the same income/expense labels,
+ * order and signed formatting as the single-player builder, so a competitive
+ * seat row reads exactly like the single-player panel's rows.
+ *
  * Owner-keyed by design: `TurnLedger.businessesOwned` is keyed by owner id, so
  * every {@link TurnSummaryOwnerRow} keeps its `ownerId` (the ledger key) and
  * per-seat wallet. The dialog currently renders the single human seat
@@ -33,7 +38,7 @@
  */
 
 import type { MainStreetState } from '../MainStreetState';
-import type { TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { OwnerOngoingCosts, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 
@@ -337,6 +342,16 @@ export interface CompetitiveTurnSummaryRow {
   income: TurnSummaryIncomeRow[];
   /** Sum of {@link income} — coins the income phase credited to this seat. */
   incomeTotal: number;
+  /**
+   * Per-category ongoing expenses for this seat, in `staff` / `community` /
+   * `business` order (MS-0MVRNVHJ50095N9Y). Same labels, order and signed
+   * (zero-or-negative) convention as the single-player panel's rows; a seat
+   * whose ledger carries no breakdown gets three zero rows rather than
+   * dropping the section.
+   */
+  expenses: TurnSummaryExpenseRow[];
+  /** Sum of {@link expenses} — ongoing coins this seat was charged. */
+  expensesTotal: number;
   /** Net coin change for this seat across the shared closing. */
   netCoinChange: number;
 }
@@ -347,6 +362,27 @@ export interface CompetitiveTurnSummary {
   turn: number;
   /** One row per non-eliminated seat, in seat order. */
   rows: CompetitiveTurnSummaryRow[];
+}
+
+/**
+ * Builds the per-category expense rows a seat's row renders
+ * (MS-0MVRNVHJ50095N9Y).
+ *
+ * Reuses the single-player row builder's labels and fixed `staff` /
+ * `community` / `business` order, so both panels read identically. An absent
+ * breakdown (a hand-built or older ledger) is rendered as three zero rows: the
+ * seat is still shown, with "nothing spent" rather than a missing section.
+ *
+ * @param costs The seat's ongoing-cost breakdown, if the ledger carries one.
+ */
+function buildExpenseRows(
+  costs: OwnerOngoingCosts | undefined,
+): TurnSummaryExpenseRow[] {
+  return EXPENSE_CATEGORIES.map((category) => ({
+    category,
+    label: EXPENSE_LABELS[category],
+    coins: costs?.[category] ?? 0,
+  }));
 }
 
 /**
@@ -383,6 +419,7 @@ export function buildCompetitiveTurnSummary(
     rows: ledger.seats.map((seat) => {
       const ownerId = seat.ownerId;
       const rosterSeat = seatsById.get(String(ownerId));
+      const expenses = buildExpenseRows(seat.ongoingCosts);
       return {
         ownerId,
         label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
@@ -395,6 +432,8 @@ export function buildCompetitiveTurnSummary(
           coins: seat.incomeByPhase[phase],
         })),
         incomeTotal: seat.incomeTotal,
+        expenses,
+        expensesTotal: sum(expenses.map((row) => row.coins)),
         netCoinChange: seat.netCoinChange,
       };
     }),

@@ -28,6 +28,7 @@ import type {
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
+import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
 
@@ -709,6 +710,12 @@ export interface MainStreetState {
       incomeByPhase: { base: number; synergy: number; reputation: number; events: number };
       incomeTotal: number;
       coinsBefore: number;
+      /**
+       * Ongoing expenses actually charged to the seat, split by category
+       * (MS-0MVRNVHJ50095N9Y) — the value `applyCompetitiveOngoingCosts`
+       * returned for this owner. Reporting data only.
+       */
+      ongoingCosts: OwnerOngoingCosts;
     }>;
   } | null;
   /**

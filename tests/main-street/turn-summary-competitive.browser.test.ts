@@ -87,6 +87,7 @@ function makeLedger(): CompetitiveRoundLedger {
         businessesOwned: 3,
         incomeByPhase: { base: 12, synergy: 4, reputation: 2, events: -1 },
         incomeTotal: 17,
+        ongoingCosts: { staff: -3, community: -1, business: -2 },
         netCoinChange: 9,
       },
       {
@@ -94,6 +95,8 @@ function makeLedger(): CompetitiveRoundLedger {
         businessesOwned: 2,
         incomeByPhase: { base: 8, synergy: 0, reputation: 1, events: 0 },
         incomeTotal: 9,
+        // A seat that spent nothing still shows all three expense rows at 0.
+        ongoingCosts: { staff: 0, community: 0, business: 0 },
         netCoinChange: 5,
       },
     ],
@@ -170,6 +173,22 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     ).toBeDefined();
     expect(overlayText(s, 'Income total: +17 · Net change: +9 coins')).toBeDefined();
     expect(overlayText(s, 'Income total: +9 · Net change: +5 coins')).toBeDefined();
+
+    // ── Per-seat expense rows and totals (MS-0MVRNVHJ50095N9Y) ──
+    // Same category labels and signed formatting as the single-player panel;
+    // a seat that spent nothing still renders all three rows at 0.
+    expect(
+      overlayText(
+        s,
+        'Expenses: Staff wages -3 · Community spaces -1 · Business costs -2 · Total -6',
+      ),
+    ).toBeDefined();
+    expect(
+      overlayText(
+        s,
+        'Expenses: Staff wages 0 · Community spaces 0 · Business costs 0 · Total 0',
+      ),
+    ).toBeDefined();
 
     // ── Buttons ───────────────────────────────────────────────
     const nextTurnBtn = overlayText(s, '[ Next Turn ]');

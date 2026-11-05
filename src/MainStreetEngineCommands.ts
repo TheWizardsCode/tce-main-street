@@ -22,6 +22,7 @@ import {
   type TakeLoanOptions,
 } from './MainStreetLoans';
 import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
+import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
@@ -560,10 +561,18 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
  * applyCommunitySpaceOngoingCosts} / {@link applyBusinessOngoingCosts}.
  * Consumes no RNG (deterministic replay, AC3).
  *
+ * Returns the per-owner expense breakdown the closing deducted
+ * (MS-0MVRNVHJ50095N9Y): a `Map` keyed by owner id whose values are the signed
+ * (zero-or-negative) amounts actually charged per category. It is reporting
+ * data only — the wallets, the log lines, the iteration order and the
+ * insufficiency handling are unchanged for every existing caller.
+ *
  * @param state  Competitive game state (players[] wallets mutated in-place).
+ * @returns Per-owner ongoing-cost breakdown (empty for N < 2).
  */
-export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
-  if (!state.players || state.players.length < 2) return;
+export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number, OwnerOngoingCosts> {
+  const breakdown = new Map<number, OwnerOngoingCosts>();
+  if (!state.players || state.players.length < 2) return breakdown;
   const hostReduction = computeStreetOngoingCostReductionPct(getEmployedSpecializationSkills(state));
 
   // Staff salary: charge each owner their own staff's salaries.
@@ -582,6 +591,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     if (totalCost <= 0) continue;
     const actualDeduction = Math.min(totalCost, player.coins);
     player.coins -= actualDeduction;
+    recordOngoingCost(breakdown, player.playerId, 'staff', actualDeduction);
     if (actualDeduction > 0) {
       addLog(
         state,
@@ -603,6 +613,11 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
   const grid = state.streetGrid;
   const ownerCosts = new Map<number, number>();
   const ownerCounts = new Map<number, { businesses: number; spaces: number }>();
+  // Raw (pre-reduction) cost per family, per owner — reporting only
+  // (MS-0MVRNVHJ50095N9Y). The combined pass below keeps the deduction and its
+  // single log line byte-identical; the per-family split is derived from these
+  // shares when the breakdown is recorded.
+  const ownerFamilyCosts = new Map<number, { community: number; business: number }>();
   for (let i = 0; i < grid.length; i++) {
     const slot = grid[i];
     if (!slot) continue;
@@ -613,9 +628,16 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     const ownerId = getSlotOwnerId(state, i);
     ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + cost);
     const counts = ownerCounts.get(ownerId) ?? { businesses: 0, spaces: 0 };
-    if (slot.family === 'community-space') counts.spaces += 1;
-    else counts.businesses += 1;
+    const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
+    if (slot.family === 'community-space') {
+      counts.spaces += 1;
+      familyCosts.community += cost;
+    } else {
+      counts.businesses += 1;
+      familyCosts.business += cost;
+    }
     ownerCounts.set(ownerId, counts);
+    ownerFamilyCosts.set(ownerId, familyCosts);
   }
   for (const [ownerId, rawCost] of ownerCosts) {
     const player = state.players[ownerId];
@@ -628,6 +650,18 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     const actualDeduction = Math.min(totalCost, player.coins);
     player.coins -= actualDeduction;
     const counts = ownerCounts.get(ownerId)!;
+    // Split the seat's single deduction across the two families by their raw
+    // cost shares (MS-0MVRNVHJ50095N9Y). The aggregate charge, its clamp and
+    // its log line are unchanged; only the reporting attribution is derived,
+    // with the rounding residual left on the business share so the two parts
+    // always sum to the coins actually deducted.
+    const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
+    const rawTotal = familyCosts.community + familyCosts.business;
+    const communityShare = familyCosts.community > 0 && rawTotal > 0
+      ? Math.min(actualDeduction, roundInt((actualDeduction * familyCosts.community) / rawTotal))
+      : 0;
+    recordOngoingCost(breakdown, ownerId, 'community', communityShare);
+    recordOngoingCost(breakdown, ownerId, 'business', actualDeduction - communityShare);
     const label =
       counts.businesses > 0 && counts.spaces > 0
         ? `${counts.businesses} businesses, ${counts.spaces} spaces`
@@ -649,6 +683,32 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
       );
     }
   }
+  return breakdown;
+}
+
+/**
+ * Adds one signed ongoing-cost amount to an owner's breakdown entry
+ * (MS-0MVRNVHJ50095N9Y).
+ *
+ * Amounts arrive as the positive coins deducted; the stored value is negated
+ * to match the single-player ledger's signed (zero-or-negative) convention.
+ * `-0` is normalised to `0` so the recorded value compares and serialises
+ * like the single-player rows.
+ *
+ * @param breakdown Per-owner accumulator (mutated).
+ * @param ownerId   Owner / seat the cost was charged to.
+ * @param category  Expense category being recorded.
+ * @param deducted  Coins actually deducted for this category (>= 0).
+ */
+function recordOngoingCost(
+  breakdown: Map<number, OwnerOngoingCosts>,
+  ownerId: number,
+  category: keyof OwnerOngoingCosts,
+  deducted: number,
+): void {
+  const entry = breakdown.get(ownerId) ?? { staff: 0, community: 0, business: 0 };
+  entry[category] += deducted === 0 ? 0 : -deducted;
+  breakdown.set(ownerId, entry);
 }
 
 /**

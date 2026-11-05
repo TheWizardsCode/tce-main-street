@@ -1374,7 +1374,8 @@ Competitive play gets the same review-and-advance moment single-player has
 a **Turn Summary** panel shows one owner-keyed row per non-eliminated seat, and
 the next shared day starts only on **[ Next Turn ]**. This slice is the tracer
 bullet — businesses owned, per-phase income and net coin change; the ongoing
-expense columns and closing balances land in the dependent slices.
+expense rows landed in MS-0MVRNVHJ50095N9Y (below) and the closing balances
+land in the dependent slices.
 
 - **Engine ledger (reporting-only).** `resolveCompetitiveClosingPhases`
   (`src/MainStreetEngineCompetitiveTurn.ts`) captures, per non-eliminated seat
@@ -1410,6 +1411,21 @@ expense columns and closing balances land in the dependent slices.
   **always disabled** in competitive play — muted and inert with
   `COMPETITIVE_BANK_LOAN_HINT` — behind the `(seatId?: number) => void`
   `onBankLoanAction` seam that `MS-0MVL6DZI0000F6CG` will enable per seat.
+- **Per-seat expenses (MS-0MVRNVHJ50095N9Y).** `applyCompetitiveOngoingCosts`
+  (`src/MainStreetEngineCommands.ts`) now **returns** the per-owner breakdown it
+  charges — `{ staff, community, business }`, signed zero-or-negative — instead
+  of discarding it. It is reporting data only: the coins deducted, the log
+  lines, the iteration order and the insufficiency (clamp) handling are
+  byte-identical for every existing caller, and the combined community +
+  business charge is split across the two categories by their raw cost shares
+  (the rounding residual stays on the business share, so the parts always sum
+  to the coins actually deducted). The closing threads it onto
+  `OwnerRoundLedger.ongoingCosts` (optional and absent-safe — a ledger without
+  it renders three zero rows), `buildCompetitiveTurnSummary` exposes
+  `expenses` / `expensesTotal` per seat using the **single-player** labels
+  (`Staff wages` / `Community spaces` / `Business costs`), order and signed
+  formatting, and the panel renders one `Expenses: … · Total …` line per seat
+  in the single-player expense colour.
 - **Gate.** `shouldGateCompetitiveTurnSummary()` /
   `presentCompetitiveTurnSummaryGate()` in
   `src/scenes/MainStreetTurnControllerCompetitive.ts` slot into
@@ -1424,15 +1440,20 @@ expense columns and closing balances land in the dependent slices.
   early exit, a resumed-from-save closing — advances exactly as before.
 - **Tests.** `tests/main-street/competitive-turn-ledger.test.ts` (per-seat
   ledger for 2- and 3-seat closings, eliminated-seat omission, reconciliation
-  with each seat's committed wallet, determinism, the dual-choice resume and
-  the N=1 / single-player absent cases),
+  with each seat's committed wallet, determinism, the dual-choice resume, the
+  N=1 / single-player absent cases, and the per-seat ongoing-expense breakdown
+  — mixed street split, Cost Cutter reduction, sold-slot exclusion, clamp
+  allocation and its reconciliation with the wallet movement),
   `tests/main-street/turn-summary-competitive-model.test.ts` (row per seat,
-  seat order, labels/colours, per-row values, `null` without a ledger),
+  seat order, labels/colours, per-row values, the per-category expense rows and
+  total including a zero-expense seat and an absent breakdown, label parity
+  with the single-player panel, `null` without a ledger),
   `tests/main-street/competitive-turn-summary-gate.test.ts` (panel after the
   closing, `startTurnPhase` only on the click, reduced-motion / replay /
   headless auto-advance) and
   `tests/main-street/turn-summary-competitive.browser.test.ts` (real Phaser
-  overlay: rows, colours, depths/parenting, always-disabled **[ Bank Loan ]**).
+  overlay: rows, colours, depths/parenting, always-disabled **[ Bank Loan ]**,
+  and the per-seat expense line).
 
 ### Mid-game loan selector
 

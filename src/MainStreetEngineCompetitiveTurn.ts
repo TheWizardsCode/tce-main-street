@@ -13,7 +13,7 @@ import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPig
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
 import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
-import type { CompetitiveRoundLedger } from './MainStreetEngineTypes';
+import type { CompetitiveRoundLedger, OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
@@ -265,6 +265,9 @@ function captureSeatCoins(state: MainStreetState): Map<number, number> {
   return new Map((state.players ?? []).map((seat) => [seat.playerId, seat.coins]));
 }
 
+/** An all-zero ongoing-cost breakdown, reused for seats with no expenses. */
+const EMPTY_ONGOING_COSTS: OwnerOngoingCosts = { staff: 0, community: 0, business: 0 };
+
 /**
  * Captures the competitive round ledger's per-seat values (MS-0MVRNV9Y8008IKGK)
  * on the transient `state._competitiveRoundLedger` accumulator.
@@ -278,11 +281,14 @@ function captureSeatCoins(state: MainStreetState): Map<number, number> {
  * @param state        Competitive state being closed (mutated: accumulator).
  * @param playerIncome Per-owner income the closing surfaced, in seat order.
  * @param coinsBefore  Seat coin balances captured before the economy ran.
+ * @param ongoingCosts Per-owner ongoing-expense breakdown the closing charged
+ *                     (MS-0MVRNVHJ50095N9Y); absent categories record as zero.
  */
 function captureRoundLedger(
   state: MainStreetState,
   playerIncome: readonly OwnerIncomeResult[],
   coinsBefore: Map<number, number>,
+  ongoingCosts: ReadonlyMap<number, OwnerOngoingCosts>,
 ): void {
   state._competitiveRoundLedger = {
     turn: state.turn,
@@ -309,6 +315,11 @@ function captureRoundLedger(
         incomeTotal: incomeByPhase.base + incomeByPhase.synergy
           + incomeByPhase.reputation + incomeByPhase.events,
         coinsBefore: coinsBefore.get(entry.ownerId) ?? 0,
+        // Per-seat expense breakdown (MS-0MVRNVHJ50095N9Y): the amounts the
+        // closing actually charged this seat, split by category. A seat with
+        // no ongoing costs records three zeroes, so the panel always renders
+        // the full row set.
+        ongoingCosts: { ...(ongoingCosts.get(entry.ownerId) ?? EMPTY_ONGOING_COSTS) },
       };
     }),
   };
@@ -337,6 +348,7 @@ function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | un
       businessesOwned: owned[String(seat.ownerId)] ?? 0,
       incomeByPhase: { ...seat.incomeByPhase },
       incomeTotal: seat.incomeTotal,
+      ongoingCosts: { ...seat.ongoingCosts },
       netCoinChange: Math.round((state.players?.[seat.ownerId]?.coins ?? 0) - seat.coinsBefore),
     })),
   };
@@ -589,11 +601,12 @@ export function resolveCompetitiveClosingPhases(
     // only captures the values already applied to each `PlayerRecord`.
     playerIncome = applyCompetitiveIncome(state)
       .filter(r => !state.players![r.ownerId]?.eliminated);
-    applyCompetitiveOngoingCosts(state);
+    const ongoingCosts = applyCompetitiveOngoingCosts(state);
     // Round ledger (MS-0MVRNV9Y8008IKGK): capture the same per-seat values for
-    // the Turn Summary panel. Reporting-only — the accumulator is never read
-    // by the economy below.
-    captureRoundLedger(state, playerIncome, seatCoinsBefore);
+    // the Turn Summary panel, including the per-category ongoing-cost
+    // breakdown the call above just charged (MS-0MVRNVHJ50095N9Y).
+    // Reporting-only — the accumulator is never read by the economy below.
+    captureRoundLedger(state, playerIncome, seatCoinsBefore, ongoingCosts);
   }
   state.phase = 'IncidentPhase';
   const coinsBefore = state.resourceBank.coins;
