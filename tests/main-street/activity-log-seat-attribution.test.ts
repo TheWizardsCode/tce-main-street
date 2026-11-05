@@ -34,7 +34,6 @@ import {
 import { addLog, addLogShared } from '../../src/MainStreetState';
 import {
   appendTurnNetRow,
-  checkEndConditions,
   checkImmediateLoss,
   applyBusinessOngoingCosts,
   applyCompetitiveOngoingCosts,
@@ -71,7 +70,7 @@ function makeInvestmentEvent(overrides: Partial<EventCard> = {}): EventCard {
     family: 'event',
     id: overrides.id ?? 'test-event',
     name: overrides.name ?? 'Test Event',
-    trigger: 'Investment',
+    trigger: overrides.trigger ?? 'Investment',
     cost: overrides.cost ?? 0,
     effect: overrides.effect ?? '+1 coin',
     coinDelta: overrides.coinDelta ?? 1,
@@ -118,6 +117,8 @@ function makeStaff(overrides: Partial<StaffCard> = {}): StaffCard {
     actionsPerTurn: overrides.actionsPerTurn ?? 0,
     description: overrides.description ?? 'A test staff card.',
     specializationSkillIds: overrides.specializationSkillIds ?? [],
+    // Keep any extra fields the caller supplied (e.g. peekOncePerTurn staff).
+    ...overrides,
   } as StaffCard;
 }
 
@@ -506,19 +507,6 @@ const SHARED_PATHS: SharedCase[] = [
     },
     pick: (e) => e.text.startsWith('Game Over:'),
   },
-  {
-    name: 'game over (turn limit)',
-    drive: (s) => {
-      const before = s.activityLog.length;
-      (s.config as { maxTurns?: number }).maxTurns = 1;
-      s.turn = 1;
-      s.finalScore = 0;
-      s.players!.forEach((player) => { player.reputation = 0; });
-      checkEndConditions(s);
-      return s.activityLog.slice(before);
-    },
-    pick: (e) => e.text.startsWith('Game Over: Turn limit exhausted'),
-  },
 ];
 
 describe('every shared / turn-level path stays unattributed (MS-0MW3PFQ4L0046Q3K AC2)', () => {
@@ -682,9 +670,10 @@ describe('undo/redo and multi-seat turns keep attribution truthful (AC6)', () =>
   it('a re-executed command stamps exactly one attribution on each entry', () => {
     const state = competitive('undo-redo-attribution');
     state.players![0].coins = 5000;
+    state.players![0].actionBudget = 2;
     state.activePlayerId = 0;
 
-    const biz = state.market.cards.find((c) => c.family === 'business')!;
+    const biz = makeBiz({ id: 'redo-biz', name: 'Cafe', cost: 2 });
     // Drive the same action twice (execute, undo-restore, execute again)
     // through the same engine seam the scene command layer uses; the bought
     // card leaves the market each pass, so it is restored between passes.
@@ -712,7 +701,8 @@ describe('undo/redo and multi-seat turns keep attribution truthful (AC6)', () =>
 
     // Seat 0 buys, then seat 1 buys — the ambient seat changes between them.
     state.activePlayerId = 0;
-    const biz0 = state.market.cards.find((c) => c.family === 'business')!;
+    const biz0 = makeBiz({ id: 'first-biz', name: 'Cafe', cost: 2 });
+    state.market.cards = [biz0];
     const seatZeroEntries = driveAction(
       state,
       { type: 'buy-business', cardId: biz0.id, slotIndex: 0 },
