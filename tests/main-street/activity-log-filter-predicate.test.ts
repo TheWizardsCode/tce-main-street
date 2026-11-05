@@ -144,10 +144,10 @@ describe('filterLogEntries', () => {
   const entries = [ai2, shared, human, turnHeader, ai1];
 
   it.each<[LogFilter, number[]]>([
-    // Indices into `entries` that must survive the filter, in order.
+    // Indices into `entries` that must survive the filter, in ORIGINAL order.
     ['all', [0, 1, 2, 3, 4]],
-    ['human', [2, 1, 3]], // human + shared + turn header
-    ['ai', [0, 4, 1, 3]], // both AI seats + shared + turn header
+    ['human', [1, 2, 3]], // shared + human + turn header
+    ['ai', [0, 1, 3, 4]], // AI 2 + shared + turn header + AI 1
   ])('filter=%s keeps exactly the expected entries in original order', (filter, kept) => {
     const out = filterLogEntries(entries, filter, 0);
     expect(out.map((e) => e.text)).toEqual(kept.map((i) => entries[i].text));
