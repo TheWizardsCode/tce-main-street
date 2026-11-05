@@ -24,21 +24,22 @@
  *     `buildLoanPayoffContent(payoff, ctx)` returning the dialog copy
  *     (headline, body lines, dismiss label) or `null` when not presentable.
  *
- * Red-by-design note (parent AC 9 test-first chain): this file is the repo's
- * **red-phase** convention (`it.fails`), exactly as
+ * Red-by-design history (parent AC 9 test-first chain): this file was written
+ * in the repo's **red-phase** convention (`it.fails`), exactly as
  * `tests/main-street/hud-total-counting.test.ts` and
  * `tests/main-street/panel-opacity.browser.test.ts` document. The
  * payoff-reporting cases were red because `TurnResult.loanPayoffs` and the
  * `retiredOut` channel did not exist yet; the engine sibling
  * (MS-0MW3SMTRO006M86W) landed that contract and flipped its cases to plain
- * `it`. The copy-model and gating cases stay `it.fails` until the model sibling
- * (MS-0MW3SMVVP006ZD4V) lands `MainStreetLoanPayoffModel`, which flips the
- * rest. Leaving a case as `it.fails` after its code has landed is itself a
- * failure, so the pin cannot go stale.
+ * `it`. The copy-model and gating cases were flipped when the model sibling
+ * (MS-0MW3SMVVP006ZD4V) landed `MainStreetLoanPayoffModel`. Every case is now
+ * a plain `it` — leaving a case as `it.fails` after its code has landed is
+ * itself a failure, so the pin cannot go stale.
  *
- * Cases whose contract already holds on the current tree ("nothing retired",
- * loans-disabled / no-loan no-ops, and the `isHumanSeatCredit` seam) are plain
- * `it` so the unchanged behaviour keeps being protected through the red phase.
+ * Cases whose contract already held on the pre-model tree ("nothing retired",
+ * loans-disabled / no-loan no-ops, and the `isHumanSeatCredit` seam) were plain
+ * `it` throughout, so the unchanged behaviour kept being protected through the
+ * red phase.
  *
  * @module tests/main-street/loan-payoff-notification
  */
@@ -466,9 +467,7 @@ describe('TurnResult.loanPayoffs — closing population (AC 4)', () => {
 // ── The copy model (AC 5) ────────────────────────────────────
 
 describe('loan payoff copy model (AC 5)', () => {
-  // Red phase: `src/scenes/MainStreetLoanPayoffModel.ts` lands with
-  // MS-0MW3SMVVP006ZD4V.
-  it.fails('produces the debt-free headline, the weekly amount no longer deducted and the total repaid over the term', async () => {
+  it('produces the debt-free headline, the weekly amount no longer deducted and the total repaid over the term', async () => {
     const model = await loadLoanPayoffModel();
 
     const content = model.buildLoanPayoffContent(
@@ -484,7 +483,7 @@ describe('loan payoff copy model (AC 5)', () => {
     expect(content?.dismissLabel).toBe('Continue');
   });
 
-  it.fails('derives the copy from the payoff entry figures, not hard-coded amounts', async () => {
+  it('derives the copy from the payoff entry figures, not hard-coded amounts', async () => {
     const model = await loadLoanPayoffModel();
 
     const content = model.buildLoanPayoffContent(
@@ -498,7 +497,7 @@ describe('loan payoff copy model (AC 5)', () => {
     ]);
   });
 
-  it.fails('returns no content when the payoff is not presentable', async () => {
+  it('returns no content when the payoff is not presentable', async () => {
     const model = await loadLoanPayoffModel();
 
     const suppressed = model.buildLoanPayoffContent(
@@ -532,7 +531,7 @@ describe('loan payoff gating (AC 6)', () => {
     expect(isHumanSeatCredit(single, null)).toBe(true);
   });
 
-  it.fails('suppresses in replayMode, suppresses AI seats, allows the human seat and suppresses a run-ended closing', async () => {
+  it('suppresses in replayMode, suppresses AI seats, allows the human seat and suppresses a run-ended closing', async () => {
     const model = await loadLoanPayoffModel();
 
     // Headless/replay runs never present UI (parent AC 5).
@@ -562,7 +561,7 @@ describe('loan payoff gating (AC 6)', () => {
 
   // Pins the same game-over precedence through the closing's own result, so
   // the data channel and the gate agree on the same turn (parent AC 7).
-  it.fails('the closing data and the game-over gate agree on a run-ending retirement', () => {
+  it('the closing data and the game-over gate agree on a run-ending retirement', () => {
     const gate = async () => {
       const model = await loadLoanPayoffModel();
       const result = await runEndingClosing();
