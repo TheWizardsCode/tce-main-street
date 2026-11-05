@@ -91,6 +91,26 @@ is not reachable. Mermaid fences are rendered in the browser via
 `vitepress-plugin-mermaid`; the committed storyline SVGs under
 `game/assets/` remain the canonical rendered artefacts.
 
+### Opening the site from another machine or host (WSL)
+
+`npm run docs` binds the dev server to `localhost` only. When the browser does
+not run in the same network namespace as the server — the common WSL setup,
+where the server runs inside WSL and the browser runs on Windows —
+`http://localhost:5174/` refuses the connection even though the server is
+running. Bind the server to all interfaces and open the network address it
+prints instead:
+
+```bash
+npm run docs -- --host
+#   ➜  Local:   http://localhost:5174/
+#   ➜  Network: http://172.20.160.1:5174/
+```
+
+Open the **Network** address in the browser, not `localhost` (the port and IP
+vary per run). This is an environment limitation rather than a site defect, so
+there is nothing to configure in this repository — the note exists purely to
+save the next reader the hunt (MS-0MUYK064P0032374 AC10).
+
 ## Related
 
 - [`src/README.md`](../src/README.md) — source layout, CSV column reference and
