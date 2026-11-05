@@ -66,10 +66,12 @@ import {
   findContentUnlockGatedPack,
 } from './MainStreetContentUnlockGate';
 import {
-  createDefaultPackSourceRegistry,
+  createConfiguredPackSourceRegistry,
   createPackSourceTransports,
   type PackSourceRegistry,
 } from './MainStreetPackSources';
+import type { RemotePackEnvLike } from './MainStreetRemotePackConfig';
+import type { RemotePackFetchImpl } from './MainStreetRemotePackFetch';
 import {
   getEnabledCardPackIds,
   setEnabledCardPackIds,
@@ -543,6 +545,17 @@ export interface BootstrapMainStreetCardPacksOptions {
    * Supplied to {@link loadMainStreetCardPacks} as its default transports.
    */
   readonly packSources?: PackSourceRegistry;
+  /**
+   * Build-time remote-pack env override (tests). Defaults to
+   * `import.meta.env`; the configured remote source is composed on the browser
+   * path only (no launcher content directory).
+   */
+  readonly remotePackEnv?: RemotePackEnvLike;
+  /**
+   * Remote raw-fetch override (tests). It is still composed through the
+   * allow-listed, timeout-bounded text fetcher, so the security gates hold.
+   */
+  readonly remotePackFetch?: RemotePackFetchImpl;
   /** Warning sink; defaults to `console`. */
   readonly logger?: MainStreetCardPackLogger;
   /** Storage backend for the enabled-pack preference (tests). */
@@ -579,7 +592,10 @@ export function resolveBundledContentDir(
  *     through the existing transports, unchanged;
  *   - no content directory (browser distribution) falls back to the bundled
  *     build-time pack source through the pack-source registry, so the
- *     residential pack is discovered without an Electron bridge;
+ *     residential pack is discovered without an Electron bridge, and composes
+ *     the **configured remote source** after it when the build declares
+ *     `VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY` (a signed remote
+ *     catalogue then appears alongside the bundled packs);
  *   - any discovery failure → {@link loadMainStreetCardPacks} already degrades
  *     to base content;
  *   - a missing/malformed manifest or an empty bundled source → base content.
@@ -607,7 +623,14 @@ export async function bootstrapMainStreetCardPacks(
     : launcherContentDir;
 
   const packSources =
-    options.packSources ?? (useBundledSource ? createDefaultPackSourceRegistry() : undefined);
+    options.packSources ??
+    (useBundledSource
+      ? createConfiguredPackSourceRegistry({
+          env: options.remotePackEnv,
+          logger: options.logger,
+          fetchImpl: options.remotePackFetch,
+        })
+      : undefined);
 
   const enabledPackIds = getEnabledCardPackIds(options.storage) ?? undefined;
   const result = await loadMainStreetCardPacks({

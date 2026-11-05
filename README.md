@@ -139,6 +139,15 @@ registering it after the bundled one — see
 [packs/README.md](packs/README.md#bundled-source-web-build) and the core
 [Card Packs](core/docs/DEVELOPER.md#pack-sources-additive-game-side) section.
 
+A **signed remote catalogue** is the shipped second source: build with
+`VITE_REMOTE_PACK_URL` + `VITE_REMOTE_PACK_PUBLIC_KEY` and boot discovers the
+remote packs alongside the bundled ones, verifying an Ed25519 signature against
+the pinned key first. It is inert when unconfigured, host allow-listed and
+timeout-bounded; any failure rejects that source whole with one warning and the
+game keeps playing the bundled packs. The hosting/signing contract and its
+failure modes are documented in
+[docs/dev/card-packs-runbook.md](docs/dev/card-packs-runbook.md#3a-serve-a-catalogue-remotely-signed).
+
 A plain browser has no Electron `window.tce.contentUnlocks` bridge, so the
 content-unlock read is backed by
 [`src/MainStreetBrowserContentUnlockClient.ts`](src/MainStreetBrowserContentUnlockClient.ts),

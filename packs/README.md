@@ -31,6 +31,11 @@ the residential pack with **no manual `<contentDir>/packs/` copy step**.
   `PackSource` and registering it after the bundled one — the core loader is
   unchanged. See the core repo's [Card
   Packs](../core/docs/DEVELOPER.md#pack-sources-additive-game-side) section.
+- **A signed remote catalogue** (`createRemotePackSource`) is configured at
+  build time with `VITE_REMOTE_PACK_URL` + `VITE_REMOTE_PACK_PUBLIC_KEY`; the
+  operator signs the manifest's canonical payload with Ed25519 and hosts it as
+  a signed envelope. See [Serve a catalogue remotely
+  (signed)](../docs/dev/card-packs-runbook.md#3a-serve-a-catalogue-remotely-signed).
 
 ## Pack Layout
 

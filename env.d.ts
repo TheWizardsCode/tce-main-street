@@ -1,6 +1,25 @@
 /// <reference types="vite/client" />
 /// <reference types="vitest/globals" />
 
+/**
+ * Build-time environment variables consumed by the game.
+ *
+ * `VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY` declare the optional
+ * remote card-pack catalogue (see `src/MainStreetRemotePackConfig.ts`). Both are
+ * build-time only: an unset build performs no remote request, and the pinned
+ * public key is the only trust anchor for a remote manifest's Ed25519 signature.
+ */
+interface ImportMetaEnv {
+  /** Base URL the remote `packs/` tree is served from (e.g. `https://cdn/packs-base`). */
+  readonly VITE_REMOTE_PACK_URL?: string;
+  /** Pinned Ed25519 public key (raw 32-byte key, base64) for remote manifests. */
+  readonly VITE_REMOTE_PACK_PUBLIC_KEY?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
 /** Build-time injected version string from package.json (e.g. "0.1.7"). */
 declare const __APP_VERSION__: string;
 

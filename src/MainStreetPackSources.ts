@@ -22,6 +22,17 @@
  * serve bundled content with no core change. Explicit transports always win,
  * which keeps the Electron content-directory path untouched.
  *
+ * The second source — {@link createRemotePackSource} — serves a **signed**
+ * remote catalogue from the build-time configured base URL
+ * (`VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY`). It fetches and
+ * refuses only: the catalogue is trusted solely when its Ed25519 signature
+ * verifies against the pinned key, every fetch is host allow-listed and
+ * timeout-bounded, and any failure rejects the whole source with one warning.
+ * Composing it with {@link createConfiguredPackSourceRegistry} registers the
+ * bundled source **first**, so a registry configured with `mergeManifests`
+ * lists both catalogues while the bundled entry wins any pack-id conflict
+ * (`MS-0MVSFWBE6004SPDI`).
+ *
  * **Totality.** The registry never throws: an unknown pack ref, a missing
  * bundled file, a source that rejects, or an empty registry all resolve to
  * `null`, and the core loader degrades to base content.
@@ -49,9 +60,49 @@ import type {
   CardPackCsvFetcher,
   CardPackManifestFetcher,
 } from '@ui/CardPackLoader';
+import {
+  parseCardPackManifest,
+  type CardPackManifest,
+  type CardPackManifestEntry,
+} from '@core-engine';
+import {
+  parseRemotePackConfig,
+  type RemotePackConfig,
+  type RemotePackEnvLike,
+} from './MainStreetRemotePackConfig';
+import {
+  createRemotePackTextFetcher,
+  type RemotePackFetchImpl,
+  type RemotePackTextFetcher,
+} from './MainStreetRemotePackFetch';
+import {
+  verifyPackManifestSignature,
+  type PackManifestSubtleCrypto,
+} from './MainStreetRemotePackManifest';
 
 /** A path relative to the `packs/` root, e.g. `manifest.json`. */
 export type PackFilePath = string;
+
+/** A warning sink; structurally compatible with the game's logger seam. */
+export interface PackSourceLogger {
+  warn(message: string): void;
+}
+
+/** The packs-relative path of the catalogue manifest. */
+const MANIFEST_PACK_PATH = 'manifest.json';
+
+/** Options for {@link PackSourceRegistry}. */
+export interface PackSourceRegistryOptions {
+  /**
+   * Merge every source's `manifest.json` into one catalogue document instead of
+   * returning the first source's text.
+   *
+   * Used by {@link createConfiguredPackSourceRegistry} so a bundled and a
+   * remote catalogue are listed together. Default `false` keeps the historic
+   * first-wins text read for callers that expect one document verbatim.
+   */
+  readonly mergeManifests?: boolean;
+}
 
 /**
  * One interchangeable provider of card-pack content.
@@ -109,11 +160,24 @@ async function safely<T>(operation: () => Promise<T>): Promise<T | null> {
  * wins. Registration is idempotent by source id so re-adding the same source
  * is a no-op, and adding a source never removes or reorders the existing ones
  * (the "additive" contract).
+ *
+ * With {@link PackSourceRegistryOptions.mergeManifests} enabled the
+ * `manifest.json` read is special: every source's catalogue document is parsed
+ * and merged into one manifest (source order preserved, first pack id wins), so
+ * a bundled and a remote catalogue are listed together while a source whose
+ * manifest is malformed contributes nothing. Pack files (`cards.csv`, assets)
+ * keep first-wins consultation, so the bundled source always beats a remote
+ * source for a duplicate pack.
  */
 export class PackSourceRegistry {
   private readonly registered: PackSource[] = [];
+  private readonly mergeManifests: boolean;
 
-  constructor(sources: readonly PackSource[] = []) {
+  constructor(
+    sources: readonly PackSource[] = [],
+    options: PackSourceRegistryOptions = {},
+  ) {
+    this.mergeManifests = options.mergeManifests === true;
     for (const source of sources) this.add(source);
   }
 
@@ -138,13 +202,52 @@ export class PackSourceRegistry {
   /**
    * Read *path* from the first source that carries it, or `null` when no
    * source does. Never throws.
+   *
+   * When manifest merging is enabled, the `manifest.json` read merges every
+   * source's catalogue instead of returning the first one.
    */
   async readPackFile(path: PackFilePath): Promise<string | null> {
+    if (this.mergeManifests && path === MANIFEST_PACK_PATH) {
+      return this.readMergedManifest();
+    }
     for (const source of this.registered) {
       const text = await safely(() => source.readPackFile(path));
       if (typeof text === 'string') return text;
     }
     return null;
+  }
+
+  /**
+   * Merge every source's catalogue document into one manifest.
+   *
+   * Packs keep source order and the **first** pack id wins, which is exactly
+   * the registry's first-wins consultation order: a bundled pack can never be
+   * overridden by a remote pack with the same id. A source whose manifest is
+   * missing or not a valid pack catalogue contributes nothing (its whole
+   * catalogue is rejected). Never throws.
+   */
+  private async readMergedManifest(): Promise<string | null> {
+    const documents: CardPackManifest[] = [];
+    for (const source of this.registered) {
+      const text = await safely(() => source.readPackFile(MANIFEST_PACK_PATH));
+      if (typeof text !== 'string') continue;
+      const parsed = parseCardPackManifest(text);
+      if (!parsed.ok) continue;
+      documents.push(parsed.manifest);
+    }
+    if (documents.length === 0) return null;
+    if (documents.length === 1) return JSON.stringify(documents[0]);
+
+    const seenPackIds = new Set<string>();
+    const packs: CardPackManifestEntry[] = [];
+    for (const document of documents) {
+      for (const pack of document.packs) {
+        if (seenPackIds.has(pack.id)) continue;
+        seenPackIds.add(pack.id);
+        packs.push(pack);
+      }
+    }
+    return JSON.stringify({ version: documents[0].version, packs });
   }
 
   /**
@@ -293,6 +396,246 @@ export function createBundledPackSource(
  */
 export function createDefaultPackSourceRegistry(): PackSourceRegistry {
   return new PackSourceRegistry([createBundledPackSource()]);
+}
+
+// ── Remote (signed) source ──────────────────────────────────
+
+/** The id of the remote (signed catalogue) source. */
+export const REMOTE_PACK_SOURCE_ID = 'remote';
+
+/** Directory under the configured base URL that holds the catalogue. */
+const REMOTE_PACKS_DIRNAME = 'packs';
+
+/** Options for {@link createRemotePackSource}. */
+export interface RemotePackSourceOptions {
+  /** The validated build-time configuration (see `MainStreetRemotePackConfig`). */
+  readonly config: RemotePackConfig;
+  /**
+   * Raw transport override (tests); defaults to the global `fetch`.
+   *
+   * It is always composed through {@link createRemotePackTextFetcher}, so the
+   * host allow-list and the hard timeout apply to every injected transport too.
+   */
+  readonly fetchImpl?: RemotePackFetchImpl;
+  /** Warning sink; defaults to `console`. */
+  readonly logger?: PackSourceLogger;
+  /** Hard per-read timeout in milliseconds; defaults to ≈3 s. */
+  readonly timeoutMs?: number;
+  /** WebCrypto implementation override (tests); defaults to `globalThis.crypto.subtle`. */
+  readonly subtle?: PackManifestSubtleCrypto | null;
+}
+
+/** A verified remote catalogue: the manifest text plus its declared pack roots. */
+interface VerifiedRemoteManifest {
+  /** The verified catalogue document, re-serialised for the loader. */
+  readonly text: string;
+  /** Lower-cased `<gameId>/<packId>/` roots this source may serve files from. */
+  readonly packRoots: readonly string[];
+}
+
+/** A source that never contributes anything (invalid configuration). */
+function inertRemotePackSource(): PackSource {
+  return {
+    id: REMOTE_PACK_SOURCE_ID,
+    async readPackFile(): Promise<string | null> {
+      return null;
+    },
+    async resolvePackFileUrl(): Promise<string | null> {
+      return null;
+    },
+  };
+}
+
+/**
+ * Build the remote {@link PackSource}: a signed catalogue served over HTTPS.
+ *
+ * The source **fetches and refuses only**. On the first read it fetches
+ * `<base>/packs/manifest.json`, verifies the Ed25519 signature against the
+ * pinned key, validates the enveloped document with the core manifest parser,
+ * and memoises the verdict for the lifetime of the instance — so one boot
+ * performs one manifest fetch and one verification, not one per CSV. Any
+ * failure (host refusal, timeout, non-2xx, missing/invalid signature, malformed
+ * catalogue) rejects the **whole source** with exactly one warning and every
+ * path from it resolves `null`.
+ *
+ * Once verified, `manifest.json` is served from memory and only files under a
+ * pack root the catalogue declares (`<gameId>/<packId>/…`) are fetched. The
+ * source never throws, whatever the configuration or transport does.
+ *
+ * @param options Configuration plus injectable transport/logger/crypto seams.
+ */
+export function createRemotePackSource(
+  options: RemotePackSourceOptions,
+): PackSource {
+  const logger = options?.logger ?? console;
+  const config = options?.config;
+  if (
+    !config ||
+    typeof config.baseUrl !== 'string' ||
+    config.baseUrl === '' ||
+    typeof config.publicKeyBase64 !== 'string' ||
+    config.publicKeyBase64 === ''
+  ) {
+    logger.warn(
+      '[main-street] remote packs: invalid configuration; the remote pack source is disabled.',
+    );
+    return inertRemotePackSource();
+  }
+
+  const fetchText: RemotePackTextFetcher = createRemotePackTextFetcher({
+    config,
+    logger,
+    timeoutMs: options.timeoutMs,
+    fetchText: options.fetchImpl,
+  });
+
+  const warn = (message: string): void => {
+    logger.warn(`[main-street] remote packs: ${message}`);
+  };
+
+  const remoteUrl = (path: string): string =>
+    `${config.baseUrl}/${REMOTE_PACKS_DIRNAME}/${path}`;
+
+  let verifiedPromise: Promise<VerifiedRemoteManifest | null> | null = null;
+
+  const ensureVerifiedManifest = (): Promise<VerifiedRemoteManifest | null> => {
+    verifiedPromise ??= safely(verifyRemoteManifest);
+    return verifiedPromise;
+  };
+
+  async function verifyRemoteManifest(): Promise<VerifiedRemoteManifest | null> {
+    const manifestUrl = remoteUrl(MANIFEST_PACK_PATH);
+    const envelopeText = await safely(() => fetchText(manifestUrl));
+    // The transport already logged exactly one warning for its own failure.
+    if (typeof envelopeText !== 'string') return null;
+
+    const verification = await verifyPackManifestSignature({
+      envelopeText,
+      publicKeyBase64: config.publicKeyBase64,
+      subtle: options.subtle,
+    });
+    if (verification.status !== 'ok' || verification.manifest === null) {
+      warn(
+        `rejected the catalogue at "${manifestUrl}" ` +
+          `(${verification.status}: ${verification.reason ?? 'verification failed'}); ` +
+          'no packs from this source are loaded.',
+      );
+      return null;
+    }
+
+    const parsed = parseCardPackManifest(verification.manifest);
+    if (!parsed.ok) {
+      warn(
+        `rejected the catalogue at "${manifestUrl}" (malformed manifest: ` +
+          `${parsed.errors.join('; ')}); no packs from this source are loaded.`,
+      );
+      return null;
+    }
+
+    const packRoots: string[] = [];
+    for (const pack of parsed.manifest.packs) {
+      const root = normalisePackPath(`${pack.gameId}/${pack.id}/`);
+      if (root !== null) packRoots.push(`${root}/`.toLowerCase());
+    }
+    return { text: JSON.stringify(parsed.manifest), packRoots };
+  }
+
+  const isDeclaredFile = (
+    manifest: VerifiedRemoteManifest,
+    path: string,
+  ): boolean => {
+    const lower = path.toLowerCase();
+    return manifest.packRoots.some((root) => lower.startsWith(root));
+  };
+
+  return {
+    id: REMOTE_PACK_SOURCE_ID,
+    async readPackFile(path: PackFilePath): Promise<string | null> {
+      const normalised = normalisePackPath(path);
+      if (normalised === null) return null;
+
+      const manifest = await ensureVerifiedManifest();
+      if (manifest === null) return null;
+      if (normalised === MANIFEST_PACK_PATH) return manifest.text;
+      if (!isDeclaredFile(manifest, normalised)) return null;
+
+      const text = await safely(() => fetchText(remoteUrl(normalised)));
+      return typeof text === 'string' ? text : null;
+    },
+    async resolvePackFileUrl(path: PackFilePath): Promise<string | null> {
+      const normalised = normalisePackPath(path);
+      if (normalised === null) return null;
+
+      const manifest = await ensureVerifiedManifest();
+      if (manifest === null) return null;
+      if (!isDeclaredFile(manifest, normalised)) return null;
+      return remoteUrl(normalised);
+    },
+  };
+}
+
+/** Options for {@link createConfiguredPackSourceRegistry}. */
+export interface ConfiguredPackSourceRegistryOptions {
+  /** Build-time env bag; defaults to `import.meta.env`. */
+  readonly env?: RemotePackEnvLike | null;
+  /** Warning sink; defaults to `console`. */
+  readonly logger?: PackSourceLogger;
+  /** Raw transport override (tests); defaults to the global `fetch`. */
+  readonly fetchImpl?: RemotePackFetchImpl;
+  /** Hard per-read timeout in milliseconds; defaults to ≈3 s. */
+  readonly timeoutMs?: number;
+  /** WebCrypto implementation override (tests). */
+  readonly subtle?: PackManifestSubtleCrypto | null;
+  /** Bundled module maps (tests); defaults to the compiled-in globs. */
+  readonly bundledModules?: BundledPackModules;
+}
+
+/** The build-time env bag, read defensively (a bundler may not provide one). */
+function defaultRemotePackEnv(): RemotePackEnvLike {
+  try {
+    return (import.meta.env ?? {}) as RemotePackEnvLike;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Compose the registry the browser boot path uses: the bundled source **first**,
+ * then the configured remote source when the build declares one.
+ *
+ * The registry merges both catalogues (bundled first, so a bundled pack always
+ * wins a pack-id conflict) and keeps first-wins file consultation, which makes
+ * remote packs appear in the Card Packs listing alongside bundled packs with no
+ * UI change. An unset, blank or invalid configuration composes **no** remote
+ * source, performs no remote request, and logs one warning — never throws.
+ *
+ * @param options Injectable env/transport/logger/crypto seams (tests).
+ */
+export function createConfiguredPackSourceRegistry(
+  options: ConfiguredPackSourceRegistryOptions = {},
+): PackSourceRegistry {
+  const logger = options.logger ?? console;
+  const parsed = parseRemotePackConfig(options.env ?? defaultRemotePackEnv());
+  const sources: PackSource[] = [createBundledPackSource(options.bundledModules)];
+
+  if (parsed.ok) {
+    sources.push(
+      createRemotePackSource({
+        config: parsed.config,
+        logger,
+        fetchImpl: options.fetchImpl,
+        timeoutMs: options.timeoutMs,
+        subtle: options.subtle,
+      }),
+    );
+  } else {
+    logger.warn(
+      `[main-street] remote packs: remote pack discovery inactive — ` +
+        `${parsed.reason}; using bundled packs only.`,
+    );
+  }
+
+  return new PackSourceRegistry(sources, { mergeManifests: true });
 }
 
 // ── Loader transport adapters ────────────────────────────────
