@@ -51,6 +51,7 @@ import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
+  setAutoAdvanceTurnEnabled,
   setBuyAndPlacePremiumDialogDismissed,
 } from '../MainStreetPrefs';
 import { t, registerLocale } from '@core-engine/I18n';
@@ -1028,6 +1029,124 @@ export class MainStreetOverlayContent {
       onCancel();
     });
     s.overlayObjects.push(cancelBtn);
+  }
+
+  /**
+   * Shows the out-of-actions explainer dialog (MS-0MW3O2O0V00042E5).
+   *
+   * Reached through the scene's post-action out-of-actions trigger
+   * (`MainStreetScene.maybeRunOutOfActionsTrigger`, MS-0MW3O2NBM001CLKW)
+   * when the player spends their last action point and the **Auto advance
+   * turn** setting is off (the default). Explains the zero-action state,
+   * offers `[ End Turn ]` (the identical `s.endTurn()` code path the HUD End
+   * Turn button uses), a `[ Dismiss ]` affordance that returns the player to
+   * the market phase with End Turn still available, and an unchecked
+   * checkbox (`[ ] Automatically end my turn when I run out of actions`)
+   * that persists the Auto advance turn preference immediately when ticked
+   * — so the next out-of-actions moment auto-advances instead.
+   *
+   * Overlay pattern compliance (AGENTS.md UI Best Practices): backdrop
+   * depth 199 / box 200 / elements 201, all parented into `s.hudContainer`
+   * and registered in `s.overlayObjects` so they dismiss as a unit. No
+   * animations — reduced-motion safe by construction. Never stacks on top
+   * of an already-open modal overlay (the trigger also fires at most once
+   * per turn via the shared latch).
+   */
+  public showOutOfActionsDialog(): void {
+    const s = this.scene;
+    // Non-intrusive: never open on top of another modal overlay.
+    if (s.overlayObjects && s.overlayObjects.length > 0) return;
+
+    const panelW = 440;
+    const panelH = 250;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = {
+      width: panelW,
+      height: panelH,
+      color: 0x000000,
+      alpha: 1.0,
+      depth: 200,
+    };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    // Title
+    const titleText = s.add.text(
+      s.layout.gameW / 2, panelY + 25,
+      'No Actions Left',
+      { fontSize: '20px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY },
+    ).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    // Explanation body: no action points left, employed staff grant extra
+    // action points, break for the weekend with End Turn.
+    const bodyText = s.add.text(
+      s.layout.gameW / 2, panelY + 70,
+      'You have no action points left.\n' +
+        'Some kinds of employed staff grant extra action points, and you can ' +
+        'still buy and place a card this turn at a premium price.\n' +
+        'Press End Turn to break for the weekend.',
+      {
+        fontSize: '14px',
+        color: '#ddccbb',
+        fontFamily: FONT_FAMILY,
+        align: 'center',
+        lineSpacing: 4,
+        wordWrap: { width: panelW - 60 },
+      },
+    ).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(bodyText);
+    s.overlayObjects.push(bodyText);
+
+    // Auto-advance checkbox (unchecked by default — the dialog only shows
+    // while the setting is off). Ticking it persists the preference
+    // immediately so the next out-of-actions moment auto-advances.
+    let autoAdvanceOn = false;
+    const checkLabel = s.add.text(
+      s.layout.gameW / 2, panelY + 162,
+      '[ ] Automatically end my turn when I run out of actions',
+      { fontSize: '14px', color: '#ccbbaa', fontFamily: FONT_FAMILY },
+    ).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+    if (s.hudContainer) s.hudContainer.add(checkLabel);
+    checkLabel.on('pointerdown', () => {
+      autoAdvanceOn = !autoAdvanceOn;
+      checkLabel.setText(
+        autoAdvanceOn
+          ? '[x] Automatically end my turn when I run out of actions'
+          : '[ ] Automatically end my turn when I run out of actions',
+      );
+      setAutoAdvanceTurnEnabled(autoAdvanceOn);
+    });
+    s.overlayObjects.push(checkLabel);
+
+    // End Turn button — the identical `s.endTurn()` code path the HUD End
+    // Turn button uses.
+    const endTurnBtn = createOverlayButton(
+      s, s.layout.gameW / 2 - 110, panelY + 212,
+      '[ End Turn ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(endTurnBtn);
+    endTurnBtn.on('pointerdown', () => {
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+      s.endTurn();
+    });
+    s.overlayObjects.push(endTurnBtn);
+
+    // Dismiss affordance — leaves the player in the market phase with the
+    // HUD End Turn button still available.
+    const dismissBtn = createOverlayButton(
+      s, s.layout.gameW / 2 + 40, panelY + 212,
+      '[ Dismiss ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(dismissBtn);
+    dismissBtn.on('pointerdown', () => {
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+    });
+    s.overlayObjects.push(dismissBtn);
   }
 
   /**

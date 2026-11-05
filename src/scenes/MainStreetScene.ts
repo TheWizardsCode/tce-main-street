@@ -12,7 +12,7 @@ import type { DragDropManager } from '@ui';
 import type { MainStreetSerializedState, PendingApplicant } from '../MainStreetState';
 import { setStreetGridLattice } from '../MainStreetState';
 import { hireStaffApplicant, declineStaffApplicant } from '../MainStreetEngine';
-import { isAutoAdvanceTurnEnabled } from '../MainStreetPrefs';
+import { isAutoAdvanceTurnEnabled, setAutoAdvanceTurnEnabled } from '../MainStreetPrefs';
 import { MainStreetRenderer } from './MainStreetRenderer';
 import { MainStreetAnimator } from './MainStreetAnimator';
 import { MainStreetTurnController } from './MainStreetTurnController';
@@ -74,15 +74,24 @@ export class MainStreetScene extends CardGameScene {
     // Escape cancels an in-progress hand-card targeting phase before it opens
     // the settings panel (CG-0MT3IYSRL001VVUP).
     const vetoToggle = () => this.settingsToggleAllowed();
+    // Game-supplied Auto advance turn toggle (MS-0MW3O2OR2005QGPH): the
+    // engine stays game-agnostic and renders the entry through the generic
+    // `extraToggles` hook; Main Street owns the label and the persisted
+    // preference backing it.
+    const autoAdvanceToggle: import('@ui/SettingsPanel').ExtraToggleConfig = {
+      label: 'Auto advance turn',
+      get: () => isAutoAdvanceTurnEnabled(),
+      set: (value: boolean) => setAutoAdvanceTurnEnabled(value),
+    };
     if (debugTools !== undefined) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle, [autoAdvanceToggle]);
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle, [autoAdvanceToggle]);
       return;
     }
-    super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
+    super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle, [autoAdvanceToggle]);
   }
 
   /**
