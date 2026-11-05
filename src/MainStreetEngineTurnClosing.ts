@@ -18,7 +18,7 @@ import { roundInt } from './MainStreetDifficulty';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
 import type { IncomeResult } from './MainStreetAdjacency';
-import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
+import { countBusinessesOwnedByOwner } from './MainStreetAdjacencyOwner';
 import type { BusinessCard, EventCard } from './MainStreetCards';
 import { isDurationEventCard, recordIncidentDraw, findConstrainedIncidentIndex } from './MainStreetCards';
 import { evaluateChallenges } from './MainStreetChallenges';
@@ -315,28 +315,6 @@ interface TurnLedgerInputs {
   reputation: number;
   /** Score to measure the net change against (closing or projected). */
   score: number;
-}
-
-/**
- * Counts the businesses standing on the street per owner
- * (MS-0MVP45KZV006TMUK).
- *
- * Keys are owner ids as strings (`String(playerId)`; `'0'` in single-player) so
- * the map is owner-keyed and JSON-serialisable, ready for the deferred
- * competitive per-player panel. Sold slots are excluded: a sold business no
- * longer runs as a business on the street.
- */
-function countBusinessesOwnedByOwner(state: MainStreetState): Record<string, number> {
-  const owned: Record<string, number> = {};
-  const soldSlots = state.soldSlots ?? [];
-  for (let slotIndex = 0; slotIndex < state.streetGrid.length; slotIndex++) {
-    const card = state.streetGrid[slotIndex];
-    if (!card || card.family !== 'business') continue;
-    if (soldSlots[slotIndex]) continue;
-    const ownerKey = String(getSlotOwnerId(state, slotIndex));
-    owned[ownerKey] = (owned[ownerKey] ?? 0) + 1;
-  }
-  return owned;
 }
 
 /**

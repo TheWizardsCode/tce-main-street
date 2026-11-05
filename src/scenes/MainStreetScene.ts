@@ -1493,6 +1493,38 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the competitive (per-seat) Turn Summary panel
+   * (MS-0MVRNV9Y8008IKGK): one owner-keyed row per non-eliminated seat with
+   * businesses owned, per-phase income, the income total and the net coin
+   * change, plus a primary [ Next Turn ] action and an always-disabled
+   * [ Bank Loan ] affordance. Delegates to the overlay manager's
+   * showCompetitiveTurnSummaryDialog.
+   *
+   * @param summary          The per-seat model built from the round ledger.
+   * @param onNextTurn       Called when the player clicks [ Next Turn ] — the
+   *                          shared day advances only then.
+   * @param onBankLoanAction Per-seat loans seam; unused by this slice (the
+   *                          button is always disabled in competitive play).
+   */
+  public showCompetitiveTurnSummaryDialog(
+    summary: import('./MainStreetTurnSummary').CompetitiveTurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: (seatId?: number) => void,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog === 'function') {
+      (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog(
+        summary,
+        onNextTurn,
+        onBankLoanAction,
+      );
+    } else {
+      // No overlay manager (headless/tests): continue the shared day rather
+      // than strand it.
+      onNextTurn();
+    }
+  }
+
+  /**
    * Shows the storyline journal overlay (MS-0MUMP97LQ006PP1D): past storyline
    * choices and outcomes, or a sensible empty state. Delegates to the overlay
    * manager's showStorylineJournalDialog.

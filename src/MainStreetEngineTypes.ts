@@ -189,6 +189,55 @@ export type PlayerAction =
 
 // ── Turn Result ─────────────────────────────────────────────
 
+/**
+ * One seat's round ledger for a competitive shared closing
+ * (MS-0MVRNV9Y8008IKGK).
+ *
+ * Reporting-only: every value mirrors deltas already applied to the seat's
+ * `PlayerRecord` during the shared closing, so reading it consumes no RNG and
+ * mutates no state. It exists so a per-seat Turn Summary panel is testable
+ * without a browser.
+ */
+export interface OwnerRoundLedger {
+  /** Owner / seat index (index into `state.players`). */
+  ownerId: number;
+  /**
+   * Businesses standing on the street at closing for this owner. Sold slots
+   * are excluded (they no longer run as businesses), matching
+   * `TurnLedger.businessesOwned`.
+   */
+  businessesOwned: number;
+  /**
+   * Per-phase income subtotals, mirroring `IncomeResult.phaseBreakdown` for
+   * this seat's own slots: the four values sum to the coins the income phase
+   * credited to this seat.
+   */
+  incomeByPhase: TurnLedger['incomeByPhase'];
+  /** Sum of {@link incomeByPhase} — coins the income phase credited to this seat. */
+  incomeTotal: number;
+  /**
+   * Net coin change for this seat across the shared closing (income + ongoing
+   * costs + incident routing + loan repayments), measured against the seat's
+   * wallet before the closing's economy ran.
+   */
+  netCoinChange: number;
+}
+
+/**
+ * Owner-keyed competitive round ledger surfaced by a competitive shared
+ * closing (MS-0MVRNV9Y8008IKGK, parent MS-0MVO1SFCM000ZLBI).
+ *
+ * Optional and absent-safe: single-player closings (`TurnResult.turnLedger`),
+ * N=1 and hand-built results carry no ledger, so every consumer must treat
+ * absence as "nothing to present".
+ */
+export interface CompetitiveRoundLedger {
+  /** The shared day the round closed (the day that just finished). */
+  turn: number;
+  /** One entry per non-eliminated seat the closing surfaced, in seat order. */
+  seats: OwnerRoundLedger[];
+}
+
 /** Result returned after processing a full turn cycle. */
 
 /**
@@ -340,6 +389,18 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * day-start snapshot, but the closing phases have not run yet.
    */
   turnLedger?: TurnLedger;
+  /**
+   * Competitive round ledger (MS-0MVRNV9Y8008IKGK): per-seat businesses owned,
+   * per-phase income subtotals and net coin change for the shared day just
+   * closed. Populated by `resolveCompetitiveClosingPhases` for N >= 2
+   * (threaded through `finishCompetitiveClosingTail`, including the deferred
+   * dual-choice resume); absent for single-player, N=1, headless short-cuts and
+   * hand-built results, so consumers must treat it as optional.
+   *
+   * Presentation-only data: it mirrors deltas already applied to each
+   * `PlayerRecord`, so reading it consumes no RNG and mutates no state.
+   */
+  playerRoundLedger?: CompetitiveRoundLedger;
 }
 
 /**

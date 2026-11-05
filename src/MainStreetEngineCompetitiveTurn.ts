@@ -13,9 +13,11 @@ import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPig
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
 import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
+import type { CompetitiveRoundLedger } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
+import { countBusinessesOwnedByOwner } from './MainStreetAdjacencyOwner';
 import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
@@ -229,9 +231,9 @@ function mergeMidTurnChallenges(
  * (MS-0MVPWSAMH005LV9R).
  *
  * No failure has been declared yet: the caller presents the offer and resumes
- * through {@link resolveCompetitiveLoanOffer}. `playerIncome` is carried so a
- * resumed closing still presents the per-seat income captured before the
- * pause.
+ * through {@link resolveCompetitiveLoanOffer}. `playerIncome` (and the round
+ * ledger, MS-0MVRNV9Y8008IKGK) are carried so a resumed closing still presents
+ * the per-seat values captured before the pause.
  */
 function pausedCompetitiveLoanOfferResult(
   state: MainStreetState,
@@ -248,7 +250,106 @@ function pausedCompetitiveLoanOfferResult(
     choicePending: false,
     pendingLoanOffer: true,
     playerIncome: base?.playerIncome,
+    playerRoundLedger: base?.playerRoundLedger,
   };
+}
+
+/**
+ * Snapshot of each seat's wallet before a shared closing's economy runs
+ * (MS-0MVRNV9Y8008IKGK). Used as the baseline for the round ledger's
+ * `netCoinChange`; taken at the top of `resolveCompetitiveClosingPhases` so the
+ * net is measured across the whole closing, matching the single-player
+ * ledger's day-start identity.
+ */
+function captureSeatCoins(state: MainStreetState): Map<number, number> {
+  return new Map((state.players ?? []).map((seat) => [seat.playerId, seat.coins]));
+}
+
+/**
+ * Captures the competitive round ledger's per-seat values (MS-0MVRNV9Y8008IKGK)
+ * on the transient `state._competitiveRoundLedger` accumulator.
+ *
+ * Called immediately after the per-owner income phase, where each seat's
+ * per-phase income and the pre-closing coin balances are both still available.
+ * The accumulator holds reporting data only — it never feeds the economy — and
+ * is finalised into `TurnResult.playerRoundLedger` at the end of the closing
+ * tail (which also covers the deferred dual-choice resume).
+ *
+ * @param state        Competitive state being closed (mutated: accumulator).
+ * @param playerIncome Per-owner income the closing surfaced, in seat order.
+ * @param coinsBefore  Seat coin balances captured before the economy ran.
+ */
+function captureRoundLedger(
+  state: MainStreetState,
+  playerIncome: readonly OwnerIncomeResult[],
+  coinsBefore: Map<number, number>,
+): void {
+  state._competitiveRoundLedger = {
+    turn: state.turn,
+    seats: playerIncome.map((entry) => {
+      let base = 0;
+      let synergy = 0;
+      let reputation = 0;
+      let events = 0;
+      for (const slot of entry.income?.phaseBreakdown?.perSlotBreakdown ?? []) {
+        base += slot.baseIncome;
+        synergy += slot.synergyBonus;
+        reputation += slot.repBonus;
+        for (const delta of slot.eventDeltas) events += delta.delta;
+      }
+      const incomeByPhase = {
+        base: Math.round(base),
+        synergy: Math.round(synergy),
+        reputation: Math.round(reputation),
+        events: Math.round(events),
+      };
+      return {
+        ownerId: entry.ownerId,
+        incomeByPhase,
+        incomeTotal: incomeByPhase.base + incomeByPhase.synergy
+          + incomeByPhase.reputation + incomeByPhase.events,
+        coinsBefore: coinsBefore.get(entry.ownerId) ?? 0,
+      };
+    }),
+  };
+}
+
+/**
+ * Builds the public round ledger from the transient accumulator, leaving it in
+ * place (MS-0MVRNV9Y8008IKGK).
+ *
+ * Used by the paused returns: the deferred resume re-enters the closing tail
+ * and must still find the pre-closing baseline, so the accumulator is only
+ * dropped by a terminal return ({@link takeRoundLedger}).
+ *
+ * @param state Competitive state whose closing is in flight.
+ * @returns The ledger, or `undefined` when no per-seat data was captured
+ *          (single-player / N=1 / a closing that never reached income).
+ */
+function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | undefined {
+  const pending = state._competitiveRoundLedger;
+  if (!pending || pending.seats.length === 0) return undefined;
+  const owned = countBusinessesOwnedByOwner(state);
+  return {
+    turn: pending.turn,
+    seats: pending.seats.map((seat) => ({
+      ownerId: seat.ownerId,
+      businessesOwned: owned[String(seat.ownerId)] ?? 0,
+      incomeByPhase: { ...seat.incomeByPhase },
+      incomeTotal: seat.incomeTotal,
+      netCoinChange: Math.round((state.players?.[seat.ownerId]?.coins ?? 0) - seat.coinsBefore),
+    })),
+  };
+}
+
+/**
+ * Builds the public round ledger and clears the accumulator — the terminal
+ * closing path (MS-0MVRNV9Y8008IKGK).
+ */
+function takeRoundLedger(state: MainStreetState): CompetitiveRoundLedger | undefined {
+  const ledger = currentRoundLedger(state);
+  state._competitiveRoundLedger = null;
+  return ledger;
 }
 
 /**
@@ -277,6 +378,10 @@ function finishCompetitiveClosingTail(
   playerIncome?: OwnerIncomeResult[],
   opts?: { skipLoanRepayments?: boolean; skipLoanRepaymentForOwners?: readonly number[] },
 ): TurnResult {
+  // Round ledger (MS-0MVRNV9Y8008IKGK): reporting-only per-seat data captured
+  // when the income phase ran. Paused returns keep the accumulator for the
+  // resume; terminal returns take (and clear) it.
+  const pausedRoundLedger = (): CompetitiveRoundLedger | undefined => currentRoundLedger(state);
   // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
   // MS-0MVPWS885006O5QR): each borrowing seat pays its fixed per-turn amount
   // from its own `PlayerRecord` wallet after the incident and before seat
@@ -301,6 +406,7 @@ function finishCompetitiveClosingTail(
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
+      playerRoundLedger: pausedRoundLedger(),
     });
   }
   if (ended) {
@@ -315,6 +421,7 @@ function finishCompetitiveClosingTail(
       newlyCompletedChallenges: [],
       choicePending: false,
       playerIncome,
+      playerRoundLedger: takeRoundLedger(state),
     };
   }
   state.phase = 'EndCheck';
@@ -343,6 +450,7 @@ function finishCompetitiveClosingTail(
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
+      playerRoundLedger: pausedRoundLedger(),
     });
   }
   if (state.gameResult === 'playing') {
@@ -380,6 +488,7 @@ function finishCompetitiveClosingTail(
     newlyCompletedChallenges,
     choicePending: false,
     playerIncome,
+    playerRoundLedger: takeRoundLedger(state),
   };
 }
 
@@ -429,6 +538,10 @@ export function resolveCompetitiveClosingPhases(
   // Loans taken by the pre-income bailout intercept below must not pay their
   // first instalment in this same closing (mirrors the single-player resume).
   const loansBeforeFailureCheck = new Set((state.loans ?? []).map((loan) => loan.ownerId));
+  // Baseline for the round ledger's per-seat net change (MS-0MVRNV9Y8008IKGK):
+  // captured before any closing phase touches a seat wallet, so the net spans
+  // income → ongoing costs → incident routing → loan repayments.
+  const seatCoinsBefore = captureSeatCoins(state);
   const ended = resolveCompetitiveSeatFailures(state);
   const skipLoanRepaymentForOwners = [
     ...(state.loans ?? [])
@@ -477,6 +590,10 @@ export function resolveCompetitiveClosingPhases(
     playerIncome = applyCompetitiveIncome(state)
       .filter(r => !state.players![r.ownerId]?.eliminated);
     applyCompetitiveOngoingCosts(state);
+    // Round ledger (MS-0MVRNV9Y8008IKGK): capture the same per-seat values for
+    // the Turn Summary panel. Reporting-only — the accumulator is never read
+    // by the economy below.
+    captureRoundLedger(state, playerIncome, seatCoinsBefore);
   }
   state.phase = 'IncidentPhase';
   const coinsBefore = state.resourceBank.coins;
@@ -502,6 +619,9 @@ export function resolveCompetitiveClosingPhases(
       newlyCompletedChallenges: [],
       choicePending: true,
       playerIncome,
+      // Paused, not finished: keep the accumulator so the resume can measure
+      // the final net change from the pre-closing baseline.
+      playerRoundLedger: currentRoundLedger(state),
     };
   }
   return finishCompetitiveClosingTail(

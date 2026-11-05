@@ -32,7 +32,7 @@ import {
   buildGameOverStatSeries,
   formatEndReason,
 } from './MainStreetGameOverSummary';
-import { buildTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
+import { buildTurnSummary, COMPETITIVE_BANK_LOAN_HINT, type CompetitiveTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
 import { createStatsChart, destroyStatsChart } from './MainStreetStatsChart';
 import {
   buildLoanSelectorModel,
@@ -1671,6 +1671,151 @@ export class MainStreetOverlayContent {
         wordWrap: { width: panelW - 60 },
       }, 0.5);
     }
+  }
+
+  /**
+   * Shows the competitive (per-seat) Turn Summary panel (MS-0MVRNV9Y8008IKGK,
+   * parent MS-0MVO1SFCM000ZLBI).
+   *
+   * Presented after `presentCompetitiveClosing` has finished (gated into the
+   * competitive day tail by `shouldGateCompetitiveTurnSummary`), so the shared
+   * day advances only when the player clicks **[ Next Turn ]**. Renders the
+   * Phaser-free {@link CompetitiveTurnSummary} model: one row per non-eliminated
+   * seat, in seat order, with the seat's own label (`You` / `AI n`) in its own
+   * `resolveSeatColour` colour, businesses owned, the per-phase income
+   * breakdown with its total, and the net coin change for the round.
+   *
+   * **[ Next Turn ]** is the primary action and resumes the shared day via
+   * {@link onNextTurn}. **[ Bank Loan ]** is **always disabled** here: loans are
+   * a per-seat affordance that does not exist in competitive play yet
+   * (MS-0MVL6DZI0000F6CG), so the button is muted and inert with
+   * {@link COMPETITIVE_BANK_LOAN_HINT}. The {@link onBankLoanAction} seam is
+   * accepted — and typed `(seatId?: number) => void` — so the loan item can
+   * enable it per seat later without re-plumbing this panel; it is deliberately
+   * never wired while the button is disabled.
+   *
+   * Overlay pattern compliance (AGENTS.md UI Best Practices):
+   * `createOverlayBackground` + `createOverlayButton`; ALL elements are parented
+   * into `s.hudContainer`; depths 199 (backdrop) / 200 (box) / 201 (elements);
+   * everything pushed into `s.overlayObjects` for dismissal; instant appearance
+   * (no fade-in — reduced-motion safe); the `[ Next Turn ]` SFX plays through
+   * `safePlaySound`, so mute/volume are respected.
+   *
+   * @param summary          The per-seat model built from the round ledger.
+   * @param onNextTurn       Called when the player clicks [ Next Turn ].
+   * @param onBankLoanAction Per-seat loans seam (`seatId` omitted = the acting
+   *                          seat). Unused by this slice — see above.
+   */
+  public showCompetitiveTurnSummaryDialog(
+    summary: CompetitiveTurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: (seatId?: number) => void,
+  ): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    /** Dismisses everything this panel owns and releases the tracked objects. */
+    const dismissDialog = (): void => {
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+    };
+
+    const centerX = s.layout.gameW / 2;
+    const panelW = 760;
+    const rowH = 96;
+    const headerH = 116;
+    const footerH = 96;
+    const panelH = headerH + summary.rows.length * rowH + footerH;
+    const panelX = centerX - panelW / 2;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+    const leftX = panelX + 32;
+    const rightX = panelX + panelW - 32;
+
+    // Backdrop 199 / box 200 (createOverlayBackground), elements 201 below.
+    const overlay = createOverlayBackground(
+      s,
+      { depth: 199, alpha: 0.6 },
+      { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 },
+    );
+    s.overlayObjects.push(...overlay.objects);
+
+    /** Adds a depth-201 element, parenting it into the HUD container. */
+    const addText = (
+      x: number,
+      y: number,
+      text: string,
+      style: Record<string, unknown>,
+      originX = 0,
+      originY = 0,
+    ): void => {
+      const obj = s.add.text(x, y, text, style)
+        .setOrigin(originX, originY)
+        .setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(obj);
+      s.overlayObjects.push(obj);
+    };
+
+    // ── Title band ────────────────────────────────────────────────
+    addText(centerX, panelY + 30, 'Turn Summary', {
+      fontSize: '24px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+    }, 0.5);
+    addText(centerX, panelY + 60, `Day ${summary.turn}`, {
+      fontSize: '15px', color: '#bbaa88', fontFamily: FONT_FAMILY,
+    }, 0.5);
+
+    // ── One row per seat, in seat order ───────────────────────────
+    summary.rows.forEach((row, index) => {
+      const rowY = panelY + headerH + index * rowH;
+      // Seat identity: the label in the seat's own scoreboard colour, so the
+      // panel reads like the HUD/street/game-over surfaces.
+      addText(leftX, rowY, row.label, {
+        fontSize: '17px', fontStyle: 'bold', color: row.colour ?? '#ddccbb', fontFamily: FONT_FAMILY,
+      });
+      addText(rightX, rowY + 2, `Businesses owned: ${row.businessesOwned}`, {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      }, 1);
+      // Per-phase income subtotals, then the total and the round's net change.
+      addText(leftX, rowY + 28, `Income: ${row.income.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')}`, {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+        wordWrap: { width: panelW - 64 },
+      });
+      addText(leftX, rowY + 64, `Income total: ${formatSigned(row.incomeTotal)} · Net change: ${formatSigned(row.netCoinChange)} coins`, {
+        fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
+      });
+    });
+
+    // ── Actions ───────────────────────────────────────────────────
+    const btnY = panelY + panelH - 62;
+
+    // Primary action: resumes the shared day via onNextTurn.
+    const nextTurnBtn = createOverlayButton(s, centerX - 120, btnY, '[ Next Turn ]', 201);
+    if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
+    nextTurnBtn.on('pointerdown', () => {
+      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+      dismissDialog();
+      onNextTurn();
+    });
+    s.overlayObjects.push(nextTurnBtn);
+
+    // [ Bank Loan ]: always disabled in competitive play (per-seat loans are
+    // MS-0MVL6DZI0000F6CG's job), muted and inert with its explanatory hint.
+    const bankLoanBtn = createOverlayButton(
+      s, centerX + 120, btnY,
+      '[ Bank Loan ]', 201,
+      { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
+    );
+    bankLoanBtn.disableInteractive();
+    if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
+    s.overlayObjects.push(bankLoanBtn);
+
+    addText(centerX, panelY + panelH - 26, COMPETITIVE_BANK_LOAN_HINT, {
+      fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
+      wordWrap: { width: panelW - 60 },
+    }, 0.5);
+
+    // The seam is accepted but intentionally unwired: the button cannot be
+    // pressed, and this slice never enables a loan in competitive play.
+    void onBankLoanAction;
   }
 
   /**

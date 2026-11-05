@@ -34,6 +34,7 @@
 
 import type { MainStreetState } from '../MainStreetState';
 import type { TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 
 // ── Row shapes ────────────────────────────────────────────────
@@ -176,7 +177,9 @@ const EXPENSE_CATEGORIES: readonly TurnSummaryExpenseCategory[] = [
  *
  * `null` is the competitive / hand-built signal: `TurnResult.turnLedger` is
  * optional and competitive closings do not populate it (parent AC4 keeps the
- * dialog out of competitive play), so the caller renders nothing.
+ * single-player dialog out of competitive play — the competitive panel reads
+ * `TurnResult.playerRoundLedger` through
+ * {@link buildCompetitiveTurnSummary}), so the caller renders nothing.
  *
  * @param state  Committed game state after the closing deltas landed.
  * @param result The closed turn's result (ledger plus resolved incident).
@@ -299,4 +302,101 @@ function buildOwnerRows(
         ...wallet,
       };
     });
+}
+
+// ── Competitive (per-seat) builder ────────────────────────────
+
+/**
+ * The `[ Bank Loan ]` hint the competitive panel always shows
+ * (MS-0MVRNV9Y8008IKGK).
+ *
+ * Loans are a per-seat affordance that does not exist in competitive play yet;
+ * the button is therefore always disabled with this explanation, and the
+ * `onBankLoanAction` seam is shaped `(seatId?: number) => void` so
+ * MS-0MVL6DZI0000F6CG can enable it per seat without re-plumbing the panel.
+ */
+export const COMPETITIVE_BANK_LOAN_HINT =
+  'Bank loans are not available in competitive play yet.';
+
+/** One seat's row in the competitive Turn Summary panel. */
+export interface CompetitiveTurnSummaryRow {
+  /** Owner / seat index (index into `state.players`). */
+  ownerId: number;
+  /** Display label: `You` for the human seat, `AI <n>` for AI seats. */
+  label: string;
+  /** True when this seat is controlled by the human. */
+  isHuman: boolean;
+  /**
+   * The seat's colour-blind-safe hex colour (the competitive scoreboard's
+   * `resolveSeatColour` value); `undefined` when the roster has no assignment.
+   */
+  colour?: string;
+  /** Businesses standing on the street at closing for this seat. */
+  businessesOwned: number;
+  /** Per-phase income subtotals, in `base` / `synergy` / `reputation` / `events` order. */
+  income: TurnSummaryIncomeRow[];
+  /** Sum of {@link income} — coins the income phase credited to this seat. */
+  incomeTotal: number;
+  /** Net coin change for this seat across the shared closing. */
+  netCoinChange: number;
+}
+
+/** Everything the competitive Turn Summary panel surfaces for the round closed. */
+export interface CompetitiveTurnSummary {
+  /** Shared day the round closed. */
+  turn: number;
+  /** One row per non-eliminated seat, in seat order. */
+  rows: CompetitiveTurnSummaryRow[];
+}
+
+/**
+ * Builds the competitive (per-seat) Turn Summary model, or `null` when the
+ * result carries no competitive round ledger (MS-0MVRNV9Y8008IKGK).
+ *
+ * Reuses the single-player presentation conventions rather than forking them:
+ * seat labels come from the same `buildCompetitiveScoreboard` rows (`You` /
+ * `AI n`) and colours from the shared `resolveSeatColour` lookup, so a seat
+ * reads the same colour here as on the HUD, the street and the game-over
+ * summary.
+ *
+ * `null` is the absent-safe signal: single-player closings
+ * (`TurnResult.turnLedger`), N=1 closings, headless results and hand-built
+ * results carry no `playerRoundLedger`, so the caller presents nothing and the
+ * day advances exactly as before.
+ *
+ * @param state  Committed state after the closing (read-only).
+ * @param result The closed shared day's result (round ledger).
+ */
+export function buildCompetitiveTurnSummary(
+  state: MainStreetState,
+  result: Pick<TurnResult, 'playerRoundLedger'>,
+): CompetitiveTurnSummary | null {
+  const ledger = result.playerRoundLedger;
+  if (!ledger || ledger.seats.length === 0) return null;
+
+  const seatsById = new Map(
+    buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
+  );
+
+  return {
+    turn: ledger.turn,
+    rows: ledger.seats.map((seat) => {
+      const ownerId = seat.ownerId;
+      const rosterSeat = seatsById.get(String(ownerId));
+      return {
+        ownerId,
+        label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
+        isHuman: rosterSeat ? rosterSeat.isHuman : ownerId === 0,
+        colour: rosterSeat?.colour,
+        businessesOwned: seat.businessesOwned,
+        income: INCOME_PHASES.map((phase) => ({
+          phase,
+          label: INCOME_LABELS[phase],
+          coins: seat.incomeByPhase[phase],
+        })),
+        incomeTotal: seat.incomeTotal,
+        netCoinChange: seat.netCoinChange,
+      };
+    }),
+  };
 }

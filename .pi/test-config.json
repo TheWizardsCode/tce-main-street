@@ -187,6 +187,28 @@
         "src/gym/GymCardIndexScene.ts",
         "src/scenes/MainStreetScene.ts"
       ]
+    },
+    "competitive-turn-summary": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/competitive-turn-ledger.test.ts tests/main-street/turn-summary-competitive-model.test.ts tests/main-street/competitive-turn-summary-gate.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/turn-summary-model.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/turn-summary-gate-docs.test.ts tests/main-street/turn-summary-bank-loan-docs.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-competitive.browser.test.ts tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts"
+      ],
+      "paths": [
+        "src/MainStreetEngineCompetitiveTurn.ts",
+        "src/MainStreetEngineTypes.ts",
+        "src/MainStreetEngineTurnClosing.ts",
+        "src/MainStreetAdjacencyOwner.ts",
+        "src/MainStreetAdjacency.ts",
+        "src/MainStreetStateTypes.ts",
+        "src/scenes/MainStreetTurnSummary.ts",
+        "src/scenes/MainStreetTurnControllerCompetitive.ts",
+        "src/scenes/MainStreetOverlayContent.ts",
+        "src/scenes/MainStreetScene.ts",
+        "tests/main-street/competitive-turn-ledger.test.ts",
+        "tests/main-street/turn-summary-competitive-model.test.ts",
+        "tests/main-street/competitive-turn-summary-gate.test.ts",
+        "tests/main-street/turn-summary-competitive.browser.test.ts"
+      ]
     }
   }
 }

@@ -688,6 +688,30 @@ export interface MainStreetState {
    */
   _newlyCompletedThisAction?: string[];
   /**
+   * Transient accumulator for the competitive round ledger
+   * (MS-0MVRNV9Y8008IKGK).
+   *
+   * Set by `resolveCompetitiveClosingPhases` when the shared closing's income
+   * phase captures each seat's per-phase income, and consumed by
+   * `finishCompetitiveClosingTail` to surface `TurnResult.playerRoundLedger`.
+   * Keeping it on the state is what lets the **deferred dual-choice resume**
+   * finish the ledger: the resume re-enters the closing tail without the
+   * original result, but still needs each seat's pre-closing coin balance to
+   * measure the final net change. Never serialized and never read by the
+   * economy — it holds reporting data only.
+   */
+  _competitiveRoundLedger?: {
+    /** Shared day being closed. */
+    turn: number;
+    /** Per-seat values captured before the closing's economy ran. */
+    seats: Array<{
+      ownerId: number;
+      incomeByPhase: { base: number; synergy: number; reputation: number; events: number };
+      incomeTotal: number;
+      coinsBefore: number;
+    }>;
+  } | null;
+  /**
    * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
    * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
    * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
