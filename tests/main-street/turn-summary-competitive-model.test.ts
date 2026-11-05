@@ -51,7 +51,14 @@ function makeLedger(overrides: Partial<CompetitiveRoundLedger> = {}): Competitiv
         incomeByPhase: { base: 12, synergy: 4, reputation: 2, events: -1 },
         incomeTotal: 17,
         ongoingCosts: { staff: -3, community: -1, business: -2 },
+        dayStart: { coins: 40, reputation: 2, score: 10 },
+        closing: { coins: 49, reputation: 3, score: 13 },
         netCoinChange: 9,
+        netRepChange: 1,
+        netScoreChange: 3,
+        incidentCoinChange: -2,
+        incidentRepChange: -1,
+        oneOffDeltas: { coins: 0, reputation: 1 },
       },
       {
         ownerId: 1,
@@ -59,7 +66,14 @@ function makeLedger(overrides: Partial<CompetitiveRoundLedger> = {}): Competitiv
         incomeByPhase: { base: 8, synergy: 0, reputation: 1, events: 0 },
         incomeTotal: 9,
         ongoingCosts: { staff: 0, community: 0, business: 0 },
+        dayStart: { coins: 18, reputation: 0, score: 0 },
+        closing: { coins: 23, reputation: 0, score: 5 },
         netCoinChange: 5,
+        netRepChange: 0,
+        netScoreChange: 5,
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+        oneOffDeltas: { coins: -4, reputation: 0 },
       },
     ],
     ...overrides,
@@ -260,5 +274,103 @@ describe('buildCompetitiveTurnSummary — per-seat expenses', () => {
     expect(competitive.rows[0].expenses.map((row) => [row.category, row.label, row.coins]))
       .toEqual(single.expenses.map((row) => [row.category, row.label, row.coins]));
     expect(competitive.rows[0].expensesTotal).toBe(single.expensesTotal);
+  });
+});
+
+// ── Per-seat net change, closing balances, incident / one-off ────
+
+/**
+ * Per-seat net change, closing balances and incident / one-off deltas
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * The panel row carries the same figures as the single-player row: the day's
+ * net coin / reputation / score change, the closing balances, and the seat's
+ * share of the incident and one-off deltas. Every value is surfaced on the
+ * Phaser-free row so the panel is testable without a browser, and absent
+ * ledger data degrades to the existing row shape instead of throwing.
+ */
+describe('buildCompetitiveTurnSummary — net change, closing balances and incident/one-off', () => {
+  it('exposes the net change, closing balances, incident and one-off deltas per row', () => {
+    const summary = buildCompetitiveTurnSummary(
+      twoSeatState(),
+      summaryInput(makeLedger()),
+    )!;
+    const [human, ai] = summary.rows;
+
+    expect(human.netCoinChange).toBe(9);
+    expect(human.netRepChange).toBe(1);
+    expect(human.netScoreChange).toBe(3);
+    expect(human.closing).toEqual({ coins: 49, reputation: 3, score: 13 });
+    expect(human.incident).toEqual({ coins: -2, reputation: -1 });
+    expect(human.oneOff).toEqual({ coins: 0, reputation: 1 });
+
+    expect(ai.netCoinChange).toBe(5);
+    expect(ai.netRepChange).toBe(0);
+    expect(ai.netScoreChange).toBe(5);
+    expect(ai.closing).toEqual({ coins: 23, reputation: 0, score: 5 });
+    expect(ai.incident).toEqual({ coins: 0, reputation: 0 });
+    expect(ai.oneOff).toEqual({ coins: -4, reputation: 0 });
+  });
+
+  it('derives the closing balances from day-start + net when the closing snapshot is absent', () => {
+    const summary = buildCompetitiveTurnSummary(
+      twoSeatState(),
+      summaryInput(
+        makeLedger({
+          seats: [
+            {
+              ownerId: 0,
+              businessesOwned: 1,
+              incomeByPhase: { base: 4, synergy: 0, reputation: 0, events: 0 },
+              incomeTotal: 4,
+              dayStart: { coins: 10, reputation: 2, score: 5 },
+              netCoinChange: 3,
+              netRepChange: 1,
+              netScoreChange: 2,
+            },
+          ],
+        }),
+      ),
+    )!;
+
+    expect(summary.rows[0].closing).toEqual({ coins: 13, reputation: 3, score: 7 });
+  });
+
+  it('degrades to the existing row shape for a hand-built ledger without the new fields', () => {
+    const state = twoSeatState();
+    const legacySeat = {
+      ownerId: 1,
+      businessesOwned: 2,
+      incomeByPhase: { base: 8, synergy: 0, reputation: 1, events: 0 },
+      incomeTotal: 9,
+      ongoingCosts: { staff: 0, community: 0, business: 0 },
+      netCoinChange: 5,
+    };
+
+    const summary = buildCompetitiveTurnSummary(
+      state,
+      summaryInput(makeLedger({ seats: [legacySeat] })),
+    )!;
+    const [row] = summary.rows;
+
+    // Net reputation / score and the incident / one-off rows default to zero.
+    expect(row.netCoinChange).toBe(5);
+    expect(row.netRepChange).toBe(0);
+    expect(row.netScoreChange).toBe(0);
+    expect(row.incident).toEqual({ coins: 0, reputation: 0 });
+    expect(row.oneOff).toEqual({ coins: 0, reputation: 0 });
+    // Closing balances fall back to the committed seat wallet, not zeros.
+    const seat = state.players![1];
+    expect(row.closing).toEqual({
+      coins: seat.coins,
+      reputation: seat.reputation,
+      score: seat.score,
+    });
+  });
+
+  it('does not throw when no ledger is present at all', () => {
+    expect(() => buildCompetitiveTurnSummary(twoSeatState(), summaryInput(undefined)))
+      .not.toThrow();
+    expect(buildCompetitiveTurnSummary(twoSeatState(), summaryInput(undefined))).toBeNull();
   });
 });

@@ -514,6 +514,23 @@ function computeOwnerEventDeltas(
 }
 
 /**
+ * One owner's routed deltas from a shared event
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * Reporting-only: it mirrors the wallet movement `applyCompetitiveEventEffects`
+ * just applied to that owner's `PlayerRecord`, so the competitive round ledger
+ * can report each seat's share of the resolved incident without re-deriving
+ * the per-owner staff mitigation / reputation-multiplier maths.
+ */
+export interface OwnerEventEffectChange {
+  ownerId: number;
+  /** Coins routed to this owner (negative = loss). */
+  coins: number;
+  /** Reputation routed to this owner (negative = loss). */
+  reputation: number;
+}
+
+/**
  * Routes a shared Investment/Incident event's effects per-owner for
  * competitive states (N >= 2, CG-0MTIIL6J200291ZQ).
  *
@@ -550,19 +567,22 @@ function computeOwnerEventDeltas(
  * @param event           The already-resolved shared event card to route.
  * @param actingPlayerId  Owner index of the player who played the event
  *                        (Investment trigger). Omit for shared incidents.
+ * @returns The per-owner deltas actually routed (one entry per owner whose
+ *          wallet moved; `[]` when nothing was routed). Reporting data for the
+ *          competitive round ledger — callers may ignore it.
  */
 export function applyCompetitiveEventEffects(
   state: MainStreetState,
   event: EventCard,
   actingPlayerId?: number,
-): void {
-  if (!state.players || state.players.length < 2) return;
-  if (isDurationEventCard(event)) return; // board-wide effect, host-applied only
+): OwnerEventEffectChange[] {
+  if (!state.players || state.players.length < 2) return [];
+  if (isDurationEventCard(event)) return []; // board-wide effect, host-applied only
 
   const target = event.target;
   const actingId = event.trigger === 'Investment' ? actingPlayerId ?? 0 : undefined;
 
-  const changed: { ownerId: number; coins: number; rep: number }[] = [];
+  const changed: OwnerEventEffectChange[] = [];
   for (const player of state.players) {
     // Investment `All`/`RandomBusiness` benefits the acting player only;
     // incidents and per-owner `SpecificSynergy` events route to every owner.
@@ -572,7 +592,7 @@ export function applyCompetitiveEventEffects(
     if (delta.coins !== 0 || delta.reputation !== 0) {
       player.coins += delta.coins;
       player.reputation += delta.reputation;
-      changed.push({ ownerId: player.playerId, coins: delta.coins, rep: delta.reputation });
+      changed.push({ ownerId: player.playerId, coins: delta.coins, reputation: delta.reputation });
     }
   }
 
@@ -580,10 +600,11 @@ export function applyCompetitiveEventEffects(
     addLog(
       state,
       c.ownerId,
-      `${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.rep)})`,
-      classifyEffect(c.coins, c.rep),
+      `${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.reputation)})`,
+      classifyEffect(c.coins, c.reputation),
     );
   }
+  return changed;
 }
 
 // ── Piggyback rewards (epic MS-0MUYC47EL005Z69H, F2 engine helpers) ──

@@ -1036,6 +1036,13 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
           perSlotBreakdown: phaseSlotData,
           handSynergyTotal,
         },
+        // Effective deltas this seat's income phase applied to its own wallet
+        // (MS-0MVRNW26W0070CP0): mirrors `applyIncome`'s `coinDelta` /
+        // `repDelta` so the competitive round ledger can attribute the
+        // reputation residual to its one-off row instead of folding the
+        // income's reputation into it.
+        coinDelta: multiplied,
+        repDelta: modifiedRepPerTurn,
       },
     });
   }

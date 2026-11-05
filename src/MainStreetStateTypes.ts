@@ -28,7 +28,7 @@ import type {
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
-import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
+import type { OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
 
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
 
@@ -689,6 +689,18 @@ export interface MainStreetState {
    */
   _newlyCompletedThisAction?: string[];
   /**
+   * Transient day-start wallet snapshot per seat (MS-0MVRNW26W0070CP0).
+   *
+   * Captured by `executeCompetitiveWeekStart` before any seat's MarketPhase
+   * runs, so the competitive round ledger can measure each seat's net change
+   * against the same day-start baseline the single-player ledger uses
+   * (`weekStartCoins` / Rep / Score) — including that seat's own MarketPhase
+   * spending. Keyed by `PlayerRecord.playerId`. Never serialized and never
+   * read by the economy: a closing reached without a day start falls back to
+   * the pre-closing wallet snapshot.
+   */
+  _competitiveSeatDayStart?: Map<number, OwnerRoundBalance> | null;
+  /**
    * Transient accumulator for the competitive round ledger
    * (MS-0MVRNV9Y8008IKGK).
    *
@@ -697,9 +709,9 @@ export interface MainStreetState {
    * `finishCompetitiveClosingTail` to surface `TurnResult.playerRoundLedger`.
    * Keeping it on the state is what lets the **deferred dual-choice resume**
    * finish the ledger: the resume re-enters the closing tail without the
-   * original result, but still needs each seat's pre-closing coin balance to
-   * measure the final net change. Never serialized and never read by the
-   * economy — it holds reporting data only.
+   * original result, but still needs each seat's day-start balance and the
+   * incident deltas routed before the pause. Never serialized and never read
+   * by the economy — it holds reporting data only.
    */
   _competitiveRoundLedger?: {
     /** Shared day being closed. */
@@ -709,13 +721,29 @@ export interface MainStreetState {
       ownerId: number;
       incomeByPhase: { base: number; synergy: number; reputation: number; events: number };
       incomeTotal: number;
-      coinsBefore: number;
+      /**
+       * Day-start wallet baseline for the net rows: the `_competitiveSeatDayStart`
+       * entry when the day started through `executeCompetitiveWeekStart`,
+       * otherwise the seat wallet captured at the top of the closing
+       * (MS-0MVRNW26W0070CP0).
+       */
+      dayStart: OwnerRoundBalance;
+      /**
+       * Reputation the income phase credited to this seat
+       * (`OwnerIncomeResult.income.repDelta`), so the ledger can attribute the
+       * reputation residual to the one-off row (MS-0MVRNW26W0070CP0).
+       */
+      incomeRepDelta: number;
       /**
        * Ongoing expenses actually charged to the seat, split by category
        * (MS-0MVRNVHJ50095N9Y) — the value `applyCompetitiveOngoingCosts`
        * returned for this owner. Reporting data only.
        */
       ongoingCosts: OwnerOngoingCosts;
+      /** The seat's share of the resolved incident's coin delta. */
+      incidentCoinChange: number;
+      /** The seat's share of the resolved incident's reputation delta. */
+      incidentRepChange: number;
     }>;
   } | null;
   /**

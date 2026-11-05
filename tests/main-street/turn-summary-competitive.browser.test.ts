@@ -6,7 +6,8 @@
  * 1. One row per seat, in seat order, rendering the panel model's own labels
  *    and seat colours (the competitive scoreboard's `You` / `AI n` +
  *    `resolveSeatColour` values) with businesses owned, the per-phase income
- *    breakdown and the net coin change.
+ *    breakdown, the incident / one-off deltas, the net coin / reputation /
+ *    score change and the closing coin / reputation / score balances.
  * 2. Overlay pattern compliance — backdrop 199 / box 200 / elements 201, every
  *    element parented into `hudContainer` and pushed into `s.overlayObjects`
  *    for dismissal.
@@ -88,7 +89,14 @@ function makeLedger(): CompetitiveRoundLedger {
         incomeByPhase: { base: 12, synergy: 4, reputation: 2, events: -1 },
         incomeTotal: 17,
         ongoingCosts: { staff: -3, community: -1, business: -2 },
+        dayStart: { coins: 40, reputation: 2, score: 10 },
+        closing: { coins: 49, reputation: 3, score: 13 },
         netCoinChange: 9,
+        netRepChange: 1,
+        netScoreChange: 3,
+        incidentCoinChange: -2,
+        incidentRepChange: -1,
+        oneOffDeltas: { coins: 0, reputation: 1 },
       },
       {
         ownerId: 1,
@@ -97,7 +105,14 @@ function makeLedger(): CompetitiveRoundLedger {
         incomeTotal: 9,
         // A seat that spent nothing still shows all three expense rows at 0.
         ongoingCosts: { staff: 0, community: 0, business: 0 },
+        dayStart: { coins: 18, reputation: 0, score: 0 },
+        closing: { coins: 23, reputation: 0, score: 5 },
         netCoinChange: 5,
+        netRepChange: 0,
+        netScoreChange: 5,
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+        oneOffDeltas: { coins: -4, reputation: 0 },
       },
     ],
   };
@@ -171,8 +186,26 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
         'Income: Base income +8 · Synergy income 0 · Reputation income +1 · Event income 0',
       ),
     ).toBeDefined();
-    expect(overlayText(s, 'Income total: +17 · Net change: +9 coins')).toBeDefined();
-    expect(overlayText(s, 'Income total: +9 · Net change: +5 coins')).toBeDefined();
+    // ── Incident / one-off and net change + closing balances per seat ──
+    // (MS-0MVRNW26W0070CP0 — the single-player panel's order and formatting.)
+    expect(
+      overlayText(s, 'Incident: Coins -2, Rep -1 · One-off: Coins 0, Rep +1'),
+    ).toBeDefined();
+    expect(
+      overlayText(s, 'Incident: Coins 0, Rep 0 · One-off: Coins -4, Rep 0'),
+    ).toBeDefined();
+    expect(
+      overlayText(
+        s,
+        'Income total: +17 · Net change: Coins +9, Rep +1, Score +3 · Closing: Coins 49, Rep 3, Score 13',
+      ),
+    ).toBeDefined();
+    expect(
+      overlayText(
+        s,
+        'Income total: +9 · Net change: Coins +5, Rep 0, Score +5 · Closing: Coins 23, Rep 0, Score 5',
+      ),
+    ).toBeDefined();
 
     // ── Per-seat expense rows and totals (MS-0MVRNVHJ50095N9Y) ──
     // Same category labels and signed formatting as the single-player panel;

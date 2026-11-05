@@ -190,6 +190,20 @@ export type PlayerAction =
 // ── Turn Result ─────────────────────────────────────────────
 
 /**
+ * One seat's wallet snapshot used by the competitive round ledger
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * `coins` / `reputation` / `score` are the seat's `PlayerRecord` values at one
+ * moment in time — the day-start snapshot or the closing balance — so the
+ * ledger can reconcile `dayStart + net == closing` per seat.
+ */
+export interface OwnerRoundBalance {
+  coins: number;
+  reputation: number;
+  score: number;
+}
+
+/**
  * One seat's round ledger for a competitive shared closing
  * (MS-0MVRNV9Y8008IKGK).
  *
@@ -197,6 +211,12 @@ export type PlayerAction =
  * `PlayerRecord` during the shared closing, so reading it consumes no RNG and
  * mutates no state. It exists so a per-seat Turn Summary panel is testable
  * without a browser.
+ *
+ * Extended with the day's net change, closing balances and the seat's share of
+ * the resolved incident and one-off deltas (MS-0MVRNW26W0070CP0), so a
+ * competitive row carries the same figures the single-player panel shows.
+ * Every addition is optional and absent-safe: consumers fall back to the
+ * pre-extension row shape when a hand-built or older ledger omits them.
  */
 export interface OwnerRoundLedger {
   /** Owner / seat index (index into `state.players`). */
@@ -227,11 +247,61 @@ export interface OwnerRoundLedger {
    */
   ongoingCosts?: OwnerOngoingCosts;
   /**
-   * Net coin change for this seat across the shared closing (income + ongoing
-   * costs + incident routing + loan repayments), measured against the seat's
-   * wallet before the closing's economy ran.
+   * Day-start wallet snapshot for this seat: coins / reputation / score as they
+   * stood when the shared day opened, before any seat's MarketPhase ran
+   * (MS-0MVRNW26W0070CP0). The baseline for the three net rows, so the net
+   * covers the seat's own MarketPhase spending and matches the single-player
+   * ledger's day-start identity.
+   *
+   * Optional and absent-safe: a hand-built ledger (or a closing reached without
+   * a day start) omits it, and consumers treat the closing balance minus the
+   * net change as the baseline instead.
+   */
+  dayStart?: OwnerRoundBalance;
+  /**
+   * Closing wallet balances for this seat (its committed `PlayerRecord` after
+   * the shared closing) (MS-0MVRNW26W0070CP0). Satisfies the reconciliation
+   * identity `dayStart + net == closing` per seat. Optional and absent-safe;
+   * consumers fall back to the committed wallet in `state.players`.
+   */
+  closing?: OwnerRoundBalance;
+  /**
+   * Net coin change for this seat for the day (income + ongoing costs +
+   * incident routing + one-off deltas), measured against {@link dayStart}.
    */
   netCoinChange: number;
+  /**
+   * Net reputation change for this seat for the day, measured against
+   * {@link dayStart}. Optional and absent-safe (consumers render zero).
+   */
+  netRepChange?: number;
+  /**
+   * Net score change for this seat for the day, measured against
+   * {@link dayStart}. Optional and absent-safe (consumers render zero).
+   */
+  netScoreChange?: number;
+  /**
+   * The seat's share of the resolved incident's coin delta (negative = loss),
+   * routed per owner by `applyCompetitiveEventEffects`. Optional and
+   * absent-safe (consumers render zero).
+   */
+  incidentCoinChange?: number;
+  /**
+   * The seat's share of the resolved incident's reputation delta (negative =
+   * loss). Optional and absent-safe (consumers render zero).
+   */
+  incidentRepChange?: number;
+  /**
+   * Non-recurring signed coin/reputation deltas for this seat: pre-closing
+   * MarketPhase spending/earning plus any closing effect outside income,
+   * ongoing costs and the incident — the same residual convention as
+   * `TurnLedger.oneOffDeltas`, so the row reconciles exactly. Optional and
+   * absent-safe (consumers render zero).
+   */
+  oneOffDeltas?: {
+    coins: number;
+    reputation: number;
+  };
 }
 
 /**
@@ -421,8 +491,11 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
   turnLedger?: TurnLedger;
   /**
    * Competitive round ledger (MS-0MVRNV9Y8008IKGK): per-seat businesses owned,
-   * per-phase income subtotals and net coin change for the shared day just
-   * closed. Populated by `resolveCompetitiveClosingPhases` for N >= 2
+   * per-phase income subtotals, ongoing expenses, the day's net coin /
+   * reputation / score change, the day-start and closing balances and the
+   * seat's share of the incident / one-off deltas
+   * (MS-0MVRNW26W0070CP0) for the shared day just closed. Populated by
+   * `resolveCompetitiveClosingPhases` for N >= 2
    * (threaded through `finishCompetitiveClosingTail`, including the deferred
    * dual-choice resume); absent for single-player, N=1, headless short-cuts and
    * hand-built results, so consumers must treat it as optional.

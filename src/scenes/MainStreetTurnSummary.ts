@@ -21,6 +21,14 @@
  * order and signed formatting as the single-player builder, so a competitive
  * seat row reads exactly like the single-player panel's rows.
  *
+ * Per-seat standing (MS-0MVRNW26W0070CP0): each competitive row also carries
+ * the day's net coin/reputation/score change, the closing coin / reputation /
+ * score balances and the seat's share of the resolved incident and one-off
+ * deltas — the same figures, order and signed formatting the single-player
+ * panel shows. Every addition degrades to zero (or the committed wallet) when
+ * the ledger omits it, so older/hand-built ledgers keep the previous row
+ * shape instead of throwing.
+ *
  * Owner-keyed by design: `TurnLedger.businessesOwned` is keyed by owner id, so
  * every {@link TurnSummaryOwnerRow} keeps its `ownerId` (the ledger key) and
  * per-seat wallet. The dialog currently renders the single human seat
@@ -38,7 +46,7 @@
  */
 
 import type { MainStreetState } from '../MainStreetState';
-import type { OwnerOngoingCosts, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 
@@ -354,6 +362,27 @@ export interface CompetitiveTurnSummaryRow {
   expensesTotal: number;
   /** Net coin change for this seat across the shared closing. */
   netCoinChange: number;
+  /**
+   * Net reputation change for this seat for the day (0 when the ledger carries
+   * no reputation row — absent-safe, MS-0MVRNW26W0070CP0).
+   */
+  netRepChange: number;
+  /**
+   * Net score change for this seat for the day (0 when absent — absent-safe,
+   * MS-0MVRNW26W0070CP0).
+   */
+  netScoreChange: number;
+  /**
+   * Closing coin / reputation / score balances for this seat
+   * (MS-0MVRNW26W0070CP0). Derived from the ledger's closing snapshot, else
+   * `day-start + net`, else the committed `PlayerRecord` wallet, so an older
+   * ledger still renders the seat's standing.
+   */
+  closing: TurnSummaryClosing;
+  /** The seat's share of the resolved incident's coin/reputation delta. */
+  incident: TurnSummaryDeltas;
+  /** Non-recurring (market, event-play, other) coin/reputation delta. */
+  oneOff: TurnSummaryDeltas;
 }
 
 /** Everything the competitive Turn Summary panel surfaces for the round closed. */
@@ -383,6 +412,36 @@ function buildExpenseRows(
     label: EXPENSE_LABELS[category],
     coins: costs?.[category] ?? 0,
   }));
+}
+
+/**
+ * Derives one competitive row's closing balances
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * Preference order: the ledger's own closing snapshot (the committed wallet
+ * after the closing), then the day-start snapshot plus the net rows (the
+ * ledger's reconciliation identity), then the committed `PlayerRecord` wallet
+ * from the roster. Hand-built or older ledgers carry none of the first two, so
+ * the seat still shows its standing instead of zeros.
+ */
+function competitiveClosing(
+  seat: OwnerRoundLedger,
+  rosterSeat: { coins: number; reputation: number; score: number } | undefined,
+  net: { coins: number; reputation: number; score: number },
+): TurnSummaryClosing {
+  if (seat.closing) return { ...seat.closing };
+  if (seat.dayStart) {
+    return {
+      coins: seat.dayStart.coins + net.coins,
+      reputation: seat.dayStart.reputation + net.reputation,
+      score: seat.dayStart.score + net.score,
+    };
+  }
+  return {
+    coins: rosterSeat?.coins ?? 0,
+    reputation: rosterSeat?.reputation ?? 0,
+    score: rosterSeat?.score ?? 0,
+  };
 }
 
 /**
@@ -420,6 +479,11 @@ export function buildCompetitiveTurnSummary(
       const ownerId = seat.ownerId;
       const rosterSeat = seatsById.get(String(ownerId));
       const expenses = buildExpenseRows(seat.ongoingCosts);
+      const net = {
+        coins: seat.netCoinChange,
+        reputation: seat.netRepChange ?? 0,
+        score: seat.netScoreChange ?? 0,
+      };
       return {
         ownerId,
         label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
@@ -434,7 +498,18 @@ export function buildCompetitiveTurnSummary(
         incomeTotal: seat.incomeTotal,
         expenses,
         expensesTotal: sum(expenses.map((row) => row.coins)),
-        netCoinChange: seat.netCoinChange,
+        netCoinChange: net.coins,
+        netRepChange: net.reputation,
+        netScoreChange: net.score,
+        closing: competitiveClosing(seat, rosterSeat, net),
+        incident: {
+          coins: seat.incidentCoinChange ?? 0,
+          reputation: seat.incidentRepChange ?? 0,
+        },
+        oneOff: {
+          coins: seat.oneOffDeltas?.coins ?? 0,
+          reputation: seat.oneOffDeltas?.reputation ?? 0,
+        },
       };
     }),
   };

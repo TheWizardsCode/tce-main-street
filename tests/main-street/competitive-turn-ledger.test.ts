@@ -29,12 +29,25 @@ import {
   type MainStreetState,
 } from '../../src/MainStreetState';
 import {
+  executeCompetitiveTurn,
   resolveCompetitiveClosingPhases,
   resolveCompetitivePendingChoice,
 } from '../../src/MainStreetEngineCompetitiveTurn';
-import { processEndOfTurn, executeWeekStart, applyCompetitiveOngoingCosts } from '../../src/MainStreetEngine';
+import {
+  applyCompetitiveOngoingCosts,
+  executeAction,
+  executeCompetitiveWeekStart,
+  executeWeekStart,
+  processEndOfTurn,
+} from '../../src/MainStreetEngine';
+import { bindCompetitiveSeat, restoreCompetitiveSeat } from '../../src/MainStreetAiStrategy';
 import { recalculateCard } from '../../src/MainStreetAdjacency';
-import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../../src/MainStreetCards';
+import type {
+  BusinessCard,
+  CommunitySpaceCard,
+  EventCard,
+  StaffCard,
+} from '../../src/MainStreetCards';
 import type { TurnResult } from '../../src/MainStreetEngineTypes';
 
 // ── Fixtures ─────────────────────────────────────────────────
@@ -420,6 +433,225 @@ describe('per-seat ongoing expense breakdown (MS-0MVRNVHJ50095N9Y)', () => {
       const costs = seat.ongoingCosts!;
       expect(seat.netCoinChange).toBe(
         seat.incomeTotal + costs.staff + costs.community + costs.business,
+      );
+    }
+  });
+});
+
+// ── Per-seat net, closing balances and incident/one-off parity ───
+
+/**
+ * Per-seat net change, closing balances and incident/one-off parity
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * The competitive round ledger already reported income, ongoing costs and a
+ * closing-baseline net coin change. This slice rounds each seat row out with
+ * the figures the single-player ledger reports: the day's net coin /
+ * reputation / score change against a **day-start** snapshot, the closing
+ * coin / reputation / score balances (the seat's committed `PlayerRecord`),
+ * and the seat's own share of the resolved incident and one-off deltas.
+ *
+ * The values are engine-computed and reporting-only: they mirror wallet
+ * movements the closing already applied, so a real engine run must reconcile
+ * exactly (`day-start + net == closing`) without the ledger moving a wallet.
+ */
+describe('per-seat net, closing balances and incident/one-off deltas (MS-0MVRNW26W0070CP0)', () => {
+  /** A deterministic shared incident routed to every seat (target `All`). */
+  function makeIncident(overrides: Partial<EventCard> = {}): EventCard {
+    return {
+      family: 'event',
+      id: overrides.id ?? 'incident-test',
+      name: overrides.name ?? 'Test Incident',
+      trigger: overrides.trigger ?? 'Incident',
+      cost: overrides.cost ?? 0,
+      effect: overrides.effect ?? 'A test incident',
+      target: overrides.target ?? 'All',
+      coinDelta: overrides.coinDelta ?? -5,
+      reputationDelta: overrides.reputationDelta ?? -2,
+      ...overrides,
+    } as EventCard;
+  }
+
+  it('reconciles day-start + net to each seat’s committed wallet across two seeds', () => {
+    for (const seed of ['seat-net-closing-a', 'seat-net-closing-b']) {
+      const state = closingState(seed, 2);
+      // A real day start: the per-seat day-start snapshot is taken at WeekStart.
+      executeCompetitiveWeekStart(state, true);
+      const dayStart = state.players!.map((seat) => ({
+        coins: seat.coins,
+        reputation: seat.reputation,
+        score: seat.score,
+      }));
+
+      const { result } = runClosing(state);
+      const seats = result.playerRoundLedger!.seats;
+      expect(seats.map((seat) => seat.ownerId)).toEqual([0, 1]);
+
+      for (const seat of seats) {
+        const player = state.players![seat.ownerId];
+        // The ledger reports the day-start snapshot it measured against…
+        expect(seat.dayStart).toEqual(dayStart[seat.ownerId]);
+        // …and the closing balances are the committed wallet, not a projection.
+        expect(seat.closing).toEqual({
+          coins: player.coins,
+          reputation: player.reputation,
+          score: player.score,
+        });
+        // The reconciliation identity holds per seat, for all three resources.
+        expect(seat.dayStart!.coins + seat.netCoinChange).toBe(seat.closing!.coins);
+        expect(seat.dayStart!.reputation + seat.netRepChange!).toBe(seat.closing!.reputation);
+        expect(seat.dayStart!.score + seat.netScoreChange!).toBe(seat.closing!.score);
+        // Every reported row reconciles with the net coin change.
+        const costs = seat.ongoingCosts ?? { staff: 0, community: 0, business: 0 };
+        expect(seat.netCoinChange).toBe(
+          seat.incomeTotal
+            + costs.staff + costs.community + costs.business
+            + (seat.incidentCoinChange ?? 0)
+            + (seat.oneOffDeltas?.coins ?? 0),
+        );
+      }
+    }
+  });
+
+  it('is exercised end-to-end through the real full-day engine run', () => {
+    const state = closingState('seat-net-full-day', 2);
+    // `executeCompetitiveTurn` starts the shared day itself (so the day-start
+    // snapshot is the engine's own) and runs the whole closing.
+    const startWallets = state.players!.map((seat) => ({
+      coins: seat.coins,
+      reputation: seat.reputation,
+      score: seat.score,
+    }));
+    const result = executeCompetitiveTurn(state, [[], []]);
+
+    const seats = result.playerRoundLedger!.seats;
+    expect(seats.map((seat) => seat.ownerId)).toEqual([0, 1]);
+    for (const seat of seats) {
+      const player = state.players![seat.ownerId];
+      expect(seat.closing).toEqual({
+        coins: player.coins,
+        reputation: player.reputation,
+        score: player.score,
+      });
+      // No MarketPhase actions were taken, so the day-start snapshot equals
+      // the pre-day wallets and the identity still reconciles.
+      expect(seat.dayStart!.coins + seat.netCoinChange).toBe(seat.closing!.coins);
+      expect(seat.dayStart!.reputation + seat.netRepChange!).toBe(seat.closing!.reputation);
+      expect(seat.dayStart!.score + seat.netScoreChange!).toBe(seat.closing!.score);
+      // A seat that did nothing reports no incident / one-off movement.
+      expect(seat.incidentCoinChange).toBe(0);
+      expect(seat.incidentRepChange).toBe(0);
+      expect(seat.oneOffDeltas).toEqual({ coins: 0, reputation: 0 });
+      expect(seat.dayStart!.coins).toBe(startWallets[seat.ownerId].coins);
+    }
+  });
+
+  it('includes the seat’s own MarketPhase spending in the net and the one-off row', () => {
+    const state = closingState('seat-net-oneoff', 2);
+    executeCompetitiveWeekStart(state, true);
+
+    // A real MarketPhase action, bound to the seat exactly as the engine and
+    // Monte-Carlo day loops do (the shared wallet *is* the acting seat).
+    state.phase = 'MarketPhase';
+    state.activePlayerId = 0;
+    bindCompetitiveSeat(state, 0);
+    const beforeCoins = state.players![0].coins;
+    const beforeRep = state.players![0].reputation;
+    executeAction(state, { type: 'community-favour', direction: 'coins-to-rep' });
+    restoreCompetitiveSeat(state, 0);
+
+    const spentCoins = state.players![0].coins - beforeCoins;
+    const gainedRep = state.players![0].reputation - beforeRep;
+    expect(spentCoins).toBeLessThan(0);
+    expect(gainedRep).toBeGreaterThan(0);
+
+    const { result } = runClosing(state);
+    const human = result.playerRoundLedger!.seats.find((seat) => seat.ownerId === 0)!;
+    const ai = result.playerRoundLedger!.seats.find((seat) => seat.ownerId === 1)!;
+
+    // The day-start baseline predates the MarketPhase spend, so the net change
+    // covers the whole day (matching the single-player ledger)…
+    expect(human.dayStart!.coins).toBe(beforeCoins);
+    expect(human.dayStart!.coins + human.netCoinChange).toBe(human.closing!.coins);
+    // …and the spend is attributed to the one-off row, not to income or costs.
+    expect(human.incidentCoinChange).toBe(0);
+    expect(human.oneOffDeltas!.coins).toBe(spentCoins);
+    expect(human.oneOffDeltas!.reputation).toBe(gainedRep);
+    expect(human.dayStart!.reputation + human.netRepChange!).toBe(human.closing!.reputation);
+
+    // The idle seat keeps a zero one-off row.
+    expect(ai.oneOffDeltas).toEqual({ coins: 0, reputation: 0 });
+  });
+
+  it('reports each seat’s share of the resolved incident', () => {
+    const state = closingState('seat-incident-share', 2);
+    state.incidentDeck = [
+      makeIncident({ id: 'incident-flat', name: 'Flat Incident', coinDelta: -5, reputationDelta: -2 }),
+    ];
+    executeCompetitiveWeekStart(state, true);
+
+    const { result } = runClosing(state);
+    const seats = result.playerRoundLedger!.seats;
+    expect(seats.map((seat) => seat.ownerId)).toEqual([0, 1]);
+
+    for (const seat of seats) {
+      // Every seat is routed the same flat incident (no staff mitigation).
+      expect(seat.incidentCoinChange).toBe(-5);
+      expect(seat.incidentRepChange).toBe(-2);
+      // The reported share is part of the net and reconciles with it.
+      const costs = seat.ongoingCosts ?? { staff: 0, community: 0, business: 0 };
+      expect(seat.netCoinChange).toBe(
+        seat.incomeTotal + costs.staff + costs.community + costs.business - 5
+          + (seat.oneOffDeltas?.coins ?? 0),
+      );
+      expect(seat.dayStart!.reputation + seat.netRepChange!).toBe(seat.closing!.reputation);
+      // The seats have no reputation income and no MarketPhase reputation
+      // movement, so the whole reputation change is the incident share.
+      expect(seat.netRepChange).toBe(-2);
+      expect(seat.oneOffDeltas!.reputation).toBe(0);
+    }
+  });
+
+  it('keeps the day-start and incident values through the deferred dual-choice resume', () => {
+    const state = createCompetitiveState({
+      seed: 'pause-4',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    place(state, 0, makeBiz({ id: 'b0', baseIncome: 4, ongoingCost: 0 }), 0);
+    place(state, 10, makeBiz({ id: 'b1', baseIncome: 6, ongoingCost: 0 }), 1);
+
+    // No day start here: the ledger falls back to the pre-closing snapshot,
+    // which must survive the pause exactly as the accumulator does.
+    const walletsBefore = state.players!.map((seat) => ({
+      coins: seat.coins,
+      reputation: seat.reputation,
+      score: seat.score,
+    }));
+    const { result } = runClosing(state);
+    expect(result.choicePending).toBe(true);
+    expect(result.playerRoundLedger!.seats.map((seat) => seat.ownerId)).toEqual([0, 1]);
+
+    const resumed = resolveCompetitivePendingChoice(state);
+    expect(resumed).not.toBeNull();
+    const seats = resumed!.playerRoundLedger!.seats;
+    for (const seat of seats) {
+      const player = state.players![seat.ownerId];
+      expect(seat.dayStart).toEqual(walletsBefore[seat.ownerId]);
+      expect(seat.closing).toEqual({
+        coins: player.coins,
+        reputation: player.reputation,
+        score: player.score,
+      });
+      expect(seat.dayStart!.coins + seat.netCoinChange).toBe(seat.closing!.coins);
+      expect(seat.dayStart!.reputation + seat.netRepChange!).toBe(seat.closing!.reputation);
+      expect(seat.dayStart!.score + seat.netScoreChange!).toBe(seat.closing!.score);
+      const costs = seat.ongoingCosts ?? { staff: 0, community: 0, business: 0 };
+      expect(seat.netCoinChange).toBe(
+        seat.incomeTotal + costs.staff + costs.community + costs.business
+          + (seat.incidentCoinChange ?? 0)
+          + (seat.oneOffDeltas?.coins ?? 0),
       );
     }
   });

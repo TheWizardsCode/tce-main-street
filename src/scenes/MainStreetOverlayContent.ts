@@ -1685,7 +1685,10 @@ export class MainStreetOverlayContent {
    * `resolveSeatColour` colour, businesses owned, the per-phase income
    * breakdown with its total, the per-category ongoing expenses with their
    * total (MS-0MVRNVHJ50095N9Y — the same labels and signed formatting as the
-   * single-player panel) and the net coin change for the round.
+   * single-player panel), the seat's share of the resolved incident and
+   * one-off deltas, the net coin / reputation / score change and the closing
+   * coin / reputation / score balances (MS-0MVRNW26W0070CP0 — the
+   * single-player panel's own order and signed formatting).
    *
    * **[ Next Turn ]** is the primary action and resumes the shared day via
    * {@link onNextTurn}. **[ Bank Loan ]** is **always disabled** here: loans are
@@ -1724,9 +1727,11 @@ export class MainStreetOverlayContent {
 
     const centerX = s.layout.gameW / 2;
     const panelW = 760;
-    // Each seat row is three text lines: income, expenses, and the bold
-    // totals line (MS-0MVRNVHJ50095N9Y added the expense line).
-    const rowH = 104;
+    // Each seat row is five text lines: identity, income, expenses, incident /
+    // one-off, and the bold totals line (net change + closing balances)
+    // (MS-0MVRNVHJ50095N9Y added the expense line; MS-0MVRNW26W0070CP0 added
+    // the incident/one-off and net/closing lines).
+    const rowH = 110;
     const headerH = 116;
     const footerH = 96;
     const panelH = headerH + summary.rows.length * rowH + footerH;
@@ -1779,19 +1784,28 @@ export class MainStreetOverlayContent {
         fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
       }, 1);
       // Per-phase income subtotals, then the total and the round's net change.
-      addText(leftX, rowY + 28, `Income: ${row.income.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')}`, {
+      addText(leftX, rowY + 26, `Income: ${row.income.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')}`, {
         fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
         wordWrap: { width: panelW - 64 },
       });
       // Per-category ongoing expenses (staff / community / business) with their
       // total — the single-player panel's labels, order and signed formatting.
       // Ongoing costs are signed (zero or negative) — render them as-is.
-      addText(leftX, rowY + 50, `Expenses: ${row.expenses.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')} · Total ${formatSigned(row.expensesTotal)}`, {
+      addText(leftX, rowY + 46, `Expenses: ${row.expenses.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')} · Total ${formatSigned(row.expensesTotal)}`, {
         fontSize: '13px', color: '#ff8888', fontFamily: FONT_FAMILY,
         wordWrap: { width: panelW - 64 },
       });
-      addText(leftX, rowY + 76, `Income total: ${formatSigned(row.incomeTotal)} · Net change: ${formatSigned(row.netCoinChange)} coins`, {
+      // The seat's share of the resolved incident and its non-recurring
+      // (MarketPhase / other) deltas (MS-0MVRNW26W0070CP0).
+      addText(leftX, rowY + 66, `Incident: Coins ${formatSigned(row.incident.coins)}, Rep ${formatSigned(row.incident.reputation)} · One-off: Coins ${formatSigned(row.oneOff.coins)}, Rep ${formatSigned(row.oneOff.reputation)}`, {
+        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+        wordWrap: { width: panelW - 64 },
+      });
+      // Net change and closing balances — the single-player panel's own
+      // ordering (net change before closing balances) and signed formatting.
+      addText(leftX, rowY + 88, `Income total: ${formatSigned(row.incomeTotal)} · Net change: Coins ${formatSigned(row.netCoinChange)}, Rep ${formatSigned(row.netRepChange)}, Score ${formatSigned(row.netScoreChange)} · Closing: Coins ${row.closing.coins}, Rep ${row.closing.reputation}, Score ${row.closing.score}`, {
         fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
+        wordWrap: { width: panelW - 64 },
       });
     });
 
