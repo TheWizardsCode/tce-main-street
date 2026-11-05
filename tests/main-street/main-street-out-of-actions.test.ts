@@ -24,6 +24,7 @@ import type { MainStreetTurnControllerContext } from '../../src/scenes/MainStree
 import {
   OUT_OF_ACTIONS_SILENT_PHASES,
   runOutOfActionsTrigger,
+  runPostActionOutOfActionsHook,
   shouldFireOutOfActionsTrigger,
   type OutOfActionsTriggerState,
 } from '../../src/scenes/MainStreetOutOfActions';
@@ -198,5 +199,67 @@ describe('runOutOfActionsTrigger dialog path', () => {
     expect(runOutOfActionsTrigger(tcCtx, state, { showDialog })).toBe(true);
     expect(runOutOfActionsTrigger(tcCtx, createTriggerState({ autoAdvanceEnabled: false, latchFired: true }), { showDialog })).toBe(false);
     expect(showDialog).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Wiring hook: post-action scene seam ────────────────────
+
+/** Builds a fully-passing wiring input; override one value per test. */
+function createWiring(overrides: Partial<Parameters<typeof runPostActionOutOfActionsHook>[0]> = {}) {
+  return {
+    latchFired: false,
+    actionsRemaining: 0,
+    uiPhase: 'market',
+    autoAdvanceEnabled: true,
+    endTurnAllowed: null,
+    humanSeatTurn: true,
+    endTurn: vi.fn(),
+    showDialog: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe('runPostActionOutOfActionsHook (scene wiring)', () => {
+  it('fires endTurn() when the last action was spent at an action-completion site', () => {
+    const wiring = createWiring();
+
+    const fired = runPostActionOutOfActionsHook(wiring);
+
+    // The hook is the wiring every action-completion site calls after the
+    // animation/audio gate; it derives zeroActions from the live budget and
+    // treats the call site itself as presentation-complete.
+    expect(fired).toBe(true);
+    expect(wiring.endTurn).toHaveBeenCalledTimes(1);
+    expect(wiring.showDialog).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when the last action has not been spent', () => {
+    const wiring = createWiring({ actionsRemaining: 1 });
+
+    expect(runPostActionOutOfActionsHook(wiring)).toBe(false);
+    expect(wiring.endTurn).not.toHaveBeenCalled();
+  });
+
+  it('returns false and does not dispatch when the once-per-turn latch is set', () => {
+    const wiring = createWiring({ latchFired: true });
+
+    expect(runPostActionOutOfActionsHook(wiring)).toBe(false);
+    expect(wiring.endTurn).not.toHaveBeenCalled();
+  });
+
+  it('dispatches the dialog seam instead of endTurn() when auto-advance is off', () => {
+    const wiring = createWiring({ autoAdvanceEnabled: false });
+
+    expect(runPostActionOutOfActionsHook(wiring)).toBe(true);
+    expect(wiring.endTurn).not.toHaveBeenCalled();
+    expect(wiring.showDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('honours the mode guards through the wiring (tutorial / uiPhase / seat)', () => {
+    const wiring = createWiring({ endTurnAllowed: { allowed: false } });
+    expect(runPostActionOutOfActionsHook(wiring)).toBe(false);
+    expect(runPostActionOutOfActionsHook(createWiring({ uiPhase: 'placing-from-hand' }))).toBe(false);
+    expect(runPostActionOutOfActionsHook(createWiring({ humanSeatTurn: false }))).toBe(false);
+    expect(wiring.endTurn).not.toHaveBeenCalled();
   });
 });

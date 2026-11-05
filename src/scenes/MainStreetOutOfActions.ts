@@ -115,3 +115,60 @@ export function runOutOfActionsTrigger(
   }
   return true;
 }
+
+/**
+ * Everything the scene's post-action wiring needs to resolve the trigger
+ * state and dispatch it. Each value is injected so the hook stays testable
+ * in Node; the scene (or a driven-session stub) resolves the live values at
+ * the action-completion sites.
+ */
+export interface PostActionOutOfActionsWiring {
+  /** Whether the trigger already fired this turn (scene-owned latch). */
+  latchFired: boolean;
+  /** The player's remaining action budget (0 means the last one was spent). */
+  actionsRemaining: number;
+  /** The scene's current `uiPhase` (see `MainStreetScene.UIPhase`). */
+  uiPhase: string;
+  /** The persisted Auto advance turn preference. */
+  autoAdvanceEnabled: boolean;
+  /**
+   * The tutorial gate for `end-turn`
+   * (`msLifecycleManager.isTutorialActionAllowed('end-turn')`); `null` or
+   * `undefined` when the tutorial is inactive.
+   */
+  endTurnAllowed: { allowed: boolean; reason?: string } | null | undefined;
+  /** Whether it is the human seat's turn (competitive seat binding). */
+  humanSeatTurn: boolean;
+  /** Dispatches the End Turn code path (auto-advance path). */
+  endTurn: () => void;
+  /** Presents the out-of-actions explainer dialog (setting-off path). */
+  showDialog: () => void;
+}
+
+/**
+ * The post-action wiring hook every action-completion site calls.
+ *
+ * Built on top of {@link runOutOfActionsTrigger} and called ONLY after the
+ * triggering action's animations and audio have completed — the call sites
+ * sit at the end of the animation-completion callbacks (`animateTransferFromMarket`'s
+ * resolved promise, etc.) — so `presentationComplete` is
+ * always `true` here and `zeroActions` is derived from the live budget.
+ *
+ * @returns `true` when the trigger fired (the caller records the
+ *          once-per-turn latch), `false` when a guard suppressed it.
+ */
+export function runPostActionOutOfActionsHook(wiring: PostActionOutOfActionsWiring): boolean {
+  return runOutOfActionsTrigger(
+    { endTurn: wiring.endTurn } as unknown as MainStreetTurnControllerContext,
+    {
+      latchFired: wiring.latchFired,
+      zeroActions: wiring.actionsRemaining <= 0,
+      presentationComplete: true,
+      autoAdvanceEnabled: wiring.autoAdvanceEnabled,
+      endTurnAllowed: wiring.endTurnAllowed ?? null,
+      humanSeatTurn: wiring.humanSeatTurn,
+      uiPhase: wiring.uiPhase,
+    },
+    { showDialog: wiring.showDialog },
+  );
+}

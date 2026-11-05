@@ -12,9 +12,12 @@ import type { DragDropManager } from '@ui';
 import type { MainStreetSerializedState, PendingApplicant } from '../MainStreetState';
 import { setStreetGridLattice } from '../MainStreetState';
 import { hireStaffApplicant, declineStaffApplicant } from '../MainStreetEngine';
+import { isAutoAdvanceTurnEnabled } from '../MainStreetPrefs';
 import { MainStreetRenderer } from './MainStreetRenderer';
 import { MainStreetAnimator } from './MainStreetAnimator';
 import { MainStreetTurnController } from './MainStreetTurnController';
+import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { runPostActionOutOfActionsHook } from './MainStreetOutOfActions';
 import { MainStreetOverlayContent } from './MainStreetOverlayContent';
 import { MainStreetInputManager } from './MainStreetInputManager';
 import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
@@ -106,6 +109,14 @@ export class MainStreetScene extends CardGameScene {
   // Game state
   public state!: MainStreetState;
   public uiPhase: UIPhase = 'idle';
+
+  /**
+   * Once-per-turn latch for the post-action out-of-actions trigger
+   * (MS-0MW3O2NBM001CLKW): set the first time the trigger fires in a turn,
+   * reset at turn start (`startTurnPhase`). Guarantees the trigger fires at
+   * most once per turn — no double advance, no re-entrant end-turn.
+   */
+  public outOfActionsLatchFired = false;
 
   // Campaign / meta-progression
   public campaign: MainStreetCampaignProgress | null = null;
@@ -538,6 +549,38 @@ export class MainStreetScene extends CardGameScene {
   }
   public endTurn(...args: any[]): any {
     return (this.msTurnController as any).endTurn.apply(this.msTurnController, args);
+  }
+
+  /**
+   * Post-action out-of-actions trigger (MS-0MW3O2NBM001CLKW).
+   *
+   * Called by every action-completion site — the market / drag-drop /
+   * placement / event-play handlers — once the triggering action's
+   * animations and audio have completed. Resolves the live trigger state
+   * from the scene and dispatches through the shared trigger: auto-advance
+   * via `this.endTurn()` (the identical code path the **End Turn** button
+   * handler uses) or, when the setting is off, the out-of-actions explainer
+   * dialog seam. Sets the once-per-turn latch when the trigger fires.
+   *
+   * Presentation-only: it never throws into an action completion and never
+   * blocks the market phase.
+   */
+  public maybeRunOutOfActionsTrigger(): void {
+    try {
+      const fired = runPostActionOutOfActionsHook({
+        latchFired: this.outOfActionsLatchFired,
+        actionsRemaining: this.state?.actionsRemaining ?? 0,
+        uiPhase: this.uiPhase,
+        autoAdvanceEnabled: isAutoAdvanceTurnEnabled(),
+        endTurnAllowed: (this.msLifecycleManager as any)?.isTutorialActionAllowed?.('end-turn') ?? null,
+        humanSeatTurn: canHumanSeatAct(this.state),
+        endTurn: () => this.endTurn(),
+        showDialog: () => this.showOutOfActionsDialog(),
+      });
+      if (fired) this.outOfActionsLatchFired = true;
+    } catch {
+      // presentation-only — the trigger must never stall an action completion.
+    }
   }
 
   // ── Refresh display ─────────────────────────────────────
@@ -1350,6 +1393,22 @@ export class MainStreetScene extends CardGameScene {
   public showBuyAndPlacePremiumDialog(cardName: string, onProceed: () => void, onCancel: () => void): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showBuyAndPlacePremiumDialog === 'function') {
       (this.msOverlayManager as any).showBuyAndPlacePremiumDialog(cardName, onProceed, onCancel);
+    }
+  }
+
+  /**
+   * Presents the out-of-actions explainer dialog (setting off,
+   * MS-0MW3O2O0V00042E5).
+   *
+   * The trigger's dialog seam (`hooks.showDialog`): the explainer overlay
+   * content — copy, End Turn / Dismiss buttons and the auto-advance
+   * checkbox — is delivered by the dialog work item on the overlay manager;
+   * until it lands, this delegation is a safe no-op that leaves the player
+   * in the market phase with End Turn still available.
+   */
+  public showOutOfActionsDialog(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showOutOfActionsDialog === 'function') {
+      (this.msOverlayManager as any).showOutOfActionsDialog();
     }
   }
 

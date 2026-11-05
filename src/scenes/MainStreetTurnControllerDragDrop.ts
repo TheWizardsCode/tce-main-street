@@ -213,6 +213,10 @@ export function onDragDropBusiness(tcCtx: MainStreetTurnControllerContext, paylo
         try {
           (s.msLifecycleManager as any).onTutorialActionComplete?.('place-business' as TutorialActionType);
         } catch (_) { /* ignore */ }
+
+        // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the
+        // buy-and-place transfer animation and audio have completed.
+        tcCtx.scene.maybeRunOutOfActionsTrigger?.();
       };
 
       if (sourceIndex >= 0) {
@@ -502,6 +506,10 @@ export function onDragDropUpgrade(tcCtx: MainStreetTurnControllerContext, payloa
         try {
           (s.msLifecycleManager as any).onTutorialActionComplete?.('apply-upgrade' as TutorialActionType);
         } catch (_) { /* ignore */ }
+
+        // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the
+        // buy-and-place-upgrade transfer animation and audio have completed.
+        tcCtx.scene.maybeRunOutOfActionsTrigger?.();
       };
 
       const destination = s.getStreetSlotCenter(slotIndex);

@@ -78,6 +78,11 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     // leak into the next playthrough (MS-0MV79JQ4H003E6BH).
     (s as any).pendingBankingHint = false;
 
+    // A new day begins: release the once-per-turn out-of-actions latch so
+    // the post-action trigger can fire again this turn
+    // (MS-0MW3O2NBM001CLKW). Each day is a fresh zero/one opportunity.
+    s.outOfActionsLatchFired = false;
+
     s.refreshAll();
 
     // A new turn begins: clear the previous crowd and let a fresh set wander
@@ -1230,6 +1235,11 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
         s.msAnimator.animateEventPlayed({ x: playedPos.x, y: playedPos.y, eventName: card.name });
       } catch (_) { /* presentation-only — ignore */ }
     }
+
+    // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the play-event
+    // resolved (no blocking transfer) — if it spent the last action point,
+    // fire the auto-advance / dialog trigger.
+    tcCtx.scene.maybeRunOutOfActionsTrigger?.();
   
 }
 

@@ -814,6 +814,12 @@ export class MainStreetOverlayContent {
             slotIndex,
             cardId: closedCardId,
             family: closedFamily,
+          }).then(() => {
+            // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the
+            // close demolition animation and audio have completed — if it
+            // spent the last action point, fire the auto-advance / dialog
+            // trigger (the Manage-Card overlay is already dismissed).
+            s.maybeRunOutOfActionsTrigger?.();
           });
         } catch (_) {
           // presentation-only — ignore
