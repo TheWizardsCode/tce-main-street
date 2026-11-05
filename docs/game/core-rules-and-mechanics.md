@@ -402,6 +402,14 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 > with no `employedAtSlot` is management-company staff. The full model, the role
 > roster and the expected gameplay outcomes are in `the-build-gdd.md`
 > Appendix D.4; the per-card types are in `card-catalog.md` § *Staff Cards*.
+>
+> **Shipped value vs. the two-type target.** All four action-granting cards ship
+> `actionsPerTurn: 1`, which is what the engine charges today. The two-type model
+> re-values the **Executive** to **+2 actions/turn** and drops its shipped hand
+> slot, while the Manager, Director and General Manager keep +1 action/turn; that
+> re-valuation is an implementation follow-up recorded in `the-build-gdd.md`
+> D.4.4/D.4.7 and `card-catalog.md` § *Staff Cards*, not a change to the shipped
+> rules described here.
 
 **Week-start composition.** At WeekStart the weekly budget is:
 

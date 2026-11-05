@@ -214,7 +214,8 @@ npx vitest run tests/e2e/replay-main-street.e2e.test.ts --project unit
 The player hand is rendered by a **single merged `HandView`** configured in
 `MainStreetRenderer.createContainers`. One horizontal row holds any mix of
 business and event cards up to `maxHandSize` total (base 3 per
-`BASE_HAND_CAPACITY`, growable via staff upgrade cards' `handSlotsAdded`).
+`BASE_HAND_CAPACITY`, growable by **management-company** staff `handSlotsAdded`
+only — business staff never grant hand slots, see the GDD Appendix D.4).
 Event cards are no longer held in a
 separate slot — a purchased Investment event simply joins the shared hand and
 is played by clicking it during the Market phase.

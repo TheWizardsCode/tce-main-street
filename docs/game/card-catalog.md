@@ -595,8 +595,10 @@ This writes per-run and aggregate metrics to:
 
 Staff cards are a separate card family (`family: 'staff'`). Every staff member belongs to exactly one of **two types**, and the type decides what the member may affect, where it is assigned and how the player interacts with it — the full model, its example roles and its gameplay outcomes are in [the-build-gdd.md](the-build-gdd.md) (Appendix D.4):
 
-- **Business staff** — employed at a **single business**; the effect is scoped to that business and, where the card says so, to the businesses 8-way adjacent to it. Never street-wide. Card-data marker: `handSlotsAdded = 0` plus a per-business buff.
-- **Management-company staff** — employed by the **management company** (the player); the effect is player/turn-scoped: hand slots, action points, per-turn reputation, market prices and incident insight. Card-data marker: at least one player-scope field (`handSlotsAdded > 0`, `actionsPerTurn`, `peekOncePerTurn`, `refreshCostDiscount`, `taxAuditRate`).
+- **Business staff** — employed at a **single business**; the effect is scoped to that business and, where the card says so, to the businesses 8-way adjacent to it. Never street-wide. Card-data marker: `handSlotsAdded = 0` and no `actionsPerTurn`.
+- **Management-company staff** — employed by the **management company** (the player); the effect is player/turn-scoped: hand slots, action points, per-turn reputation, market prices and incident insight. Card-data marker: `handSlotsAdded > 0` or `actionsPerTurn > 0`.
+
+> **The two markers classify the shipped roster; other player-scope fields do not.** The marker pair above is what separates the 9 management-company cards from the 17 business-staff cards in the table below (it is also the rule the consistency check applies). It is deliberately narrower than "any player-scope field": two business-staff cards still ship *street-wide* player-scope values — the IT Specialist's `refreshCostDiscount = 100` and the Delivery Driver's `purchaseCostDiscount = 50` — and the two-type target moves both into business scope, where they are recorded as implementation follow-ups (GDD D.4.3 deltas, D.4.7, D.4.8 rule 4). Reading those shipped fields as type markers would misclassify both cards.
 
 The runtime determinant is **assignment**, not a separate flag: a staff member is business staff if and only if it carries an `employedAtSlot` — the grid slot of the business that employs it — and a member with no `employedAtSlot` is management-company staff (GDD D.4.2 and D.4.8).
 

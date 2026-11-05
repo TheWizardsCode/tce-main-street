@@ -351,9 +351,20 @@ export interface UpgradeCard {
 }
 
 /**
- * A Staff card that increases hand capacity.
- * Staff cards are a new card family distinct from business/event/upgrade.
- * They do NOT occupy hand slots and have an ongoing per-turn coin cost.
+ * A Staff card. Every staff member belongs to exactly one of the two staff
+ * types defined in the GDD (Appendix D.4), and the type decides what it may
+ * affect:
+ *
+ *  - **business staff** — employed at a single business (see
+ *    {@link StaffCard.employedAtSlot}); its buffs resolve only against that
+ *    business and, where the card says so, its 8-way neighbours;
+ *  - **management-company staff** — employed by the player and carrying no
+ *    `employedAtSlot`; its effects are player/turn-scoped (hand slots, action
+ *    points, per-turn reputation, market prices, incident insight).
+ *
+ * Only management-company staff grant hand capacity ({@link StaffCard.handSlotsAdded};
+ * business staff always ship `0`). Staff cards do NOT occupy hand slots and
+ * have an ongoing per-turn coin cost.
  */
 export interface StaffCard {
   readonly family: 'staff';
