@@ -311,6 +311,19 @@ export class MainStreetScene extends CardGameScene {
    */
   public logFilter: LogFilter = 'all';
   /**
+   * The filter-controls row container (All / You / AI), built in
+   * `createContainers` beneath the title bar (MS-0MW3PFSMB002EIY6). Always
+   * present after containers exist; `refreshLogFilterRow` hides it when
+   * `shouldShowLogFilterControls` is false (single-player / tutorial).
+   */
+  public logFilterRow?: Phaser.GameObjects.Container | undefined;
+  /**
+   * The three filter buttons with the filter value each selects, used by
+   * `refreshLogFilterRow` to repaint the active/inactive treatment. Built
+   * alongside {@link logFilterRow}.
+   */
+  public logFilterControls?: ReadonlyArray<{ filter: LogFilter; button: Phaser.GameObjects.Container }> | undefined;
+  /**
    * The filter the log was last rendered with. A change to `logFilter` is a
    * re-render trigger even when the entry count is unchanged (tracked
    * alongside `logPrevEntryCount`), so selecting a filter re-renders a

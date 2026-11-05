@@ -289,8 +289,11 @@ export interface ActivityLogSceneHandle {
    */
   logFilter(): unknown;
   /**
-   * Whether a filter-control row container is present. `false` until the
-   * filter-controls child lands (the row reads as absent by design).
+   * Whether a filter-control row container is present **and visible**.
+   * `false` until the filter-controls child lands (the row reads as absent
+   * by design); `false` in single-player / tutorial even after it lands,
+   * because the row container is always built but hidden when
+   * `shouldShowLogFilterControls` is false (MS-0MW3PFSMB002EIY6).
    */
   hasFilterControlRow(): boolean;
   /** Clean teardown: `game.destroy(true, false)` + container removal. */
@@ -363,7 +366,10 @@ export async function bootActivityLogScene(
         .filter((child) => child instanceof phaser.GameObjects.Text)
         .map((child) => (child as Phaser.GameObjects.Text).text),
     logFilter: () => scene.logFilter,
-    hasFilterControlRow: () => Boolean(scene.logFilterRow ?? scene.filterControlRow),
+    hasFilterControlRow: () => {
+      const row = scene.logFilterRow ?? scene.filterControlRow;
+      return Boolean(row) && row.visible !== false;
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;

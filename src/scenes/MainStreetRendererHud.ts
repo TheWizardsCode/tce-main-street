@@ -23,6 +23,7 @@ import type { PendingApplicant } from '../MainStreetState';
 import { filterLogEntries, shouldShowLogFilterControls } from '../MainStreetLogFilter';
 import { resolveLogSeatColour } from '../MainStreetStateLog';
 import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_EMPTY_FILTER_MESSAGE, LOG_FILTER_ROW_H, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
+import { refreshLogFilterRow } from './MainStreetRendererStreet';
 import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -728,6 +729,15 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     const s = renderer.scene;
     const entries = s.state.activityLog;
     const newCount = entries.length;
+
+    // ── Filter-controls row sync (MS-0MW3PFSMB002EIY6) ────────────
+    // Repaint the All / You / AI row for the current mode and selection on
+    // every log refresh, so mode changes that flow through `refreshAll` (new
+    // game selection, tutorial start, turn end) keep the row visible/active
+    // treatment correct. Runs before the deferral gate so a filter click
+    // during the end-of-turn window highlights the clicked control
+    // immediately while the log content itself stays deferred.
+    refreshLogFilterRow(renderer);
 
     // ── Filter projection (MS-0MW3PFRV6003LJLD) ──────────────────
     // Presentation-only: derive the visible subset BEFORE the render loop and

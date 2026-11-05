@@ -252,6 +252,20 @@ export const LOG_SCROLL_SPEED = 24;
 export const LOG_FILTER_ROW_H = 26;
 
 /**
+ * Height of each Activity Log filter-control button (MS-0MW3PFSMB002EIY6).
+ * Smaller than the row so the buttons sit centred inside it with a small
+ * breathing margin; never a hard-coded panel coordinate — the row's vertical
+ * placement is derived from `LOG_FILTER_ROW_H` + `LOG_TITLE_H`.
+ */
+export const LOG_FILTER_BTN_H = 18;
+
+/** Horizontal padding (px) between the Activity Log panel edge and the filter buttons. */
+export const LOG_FILTER_ROW_PAD_X = 6;
+
+/** Gap (px) between adjacent filter buttons. */
+export const LOG_FILTER_BTN_GAP = 4;
+
+/**
  * Empty-state message rendered when a log filter matches no entries (even
  * shared/turn-level ones), so a filtered log is never blank.
  */

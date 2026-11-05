@@ -10,11 +10,13 @@
  * Later filter children extend this file through the same helper — no
  * copy-pasted boot or teardown code.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type Phaser from 'phaser';
 
 import {
   bootActivityLogScene,
   waitFrames,
+  waitForCondition,
   type ActivityLogSceneHandle,
 } from './helpers/activity-log-harness';
 
@@ -41,11 +43,11 @@ describe('Activity Log filter baseline — browser harness (MS-0MW3PFLDP000CF2X)
     expect(handle.renderedTexts()).toContain('Turn 1');
 
     // The filter seam is now live: the scene carries `logFilter` defaulting to
-    // `'all'` and reset on scene creation (MS-0MW3PFRV6003LJLD), while the
-    // filter-control row itself is still the separate controls child
-    // (MS-0MW3PFSMB002EIY6), so the row reads as absent.
+    // `'all'` and reset on scene creation (MS-0MW3PFRV6003LJLD), and the
+    // filter-control row renders beneath the title bar in competitive mode
+    // (MS-0MW3PFSMB002EIY6).
     expect(handle.logFilter()).toBe('all');
-    expect(handle.hasFilterControlRow()).toBe(false);
+    expect(handle.hasFilterControlRow()).toBe(true);
   }, 60_000);
 
   it('renders a seat prefix only for the attributed entry, never the shared one', async () => {
@@ -299,5 +301,287 @@ describe('Filtered Activity Log rendering (MS-0MW3PFRV6003LJLD)', () => {
     expect((restored as Record<string, unknown>).logFilter).toBeUndefined();
     // The round trip preserves the log entries themselves.
     expect(restored.activityLog.length).toBe(scene.state.activityLog.length);
+  }, 60_000);
+});
+
+/**
+ * Activity Log filter controls (MS-0MW3PFSMB002EIY6): the compact All / You / AI
+ * control row rendered beneath the 22 px title bar in competitive mode, built
+ * with the shared `createActionButton` helper. Covers the acceptance criteria:
+ * present in competitive / hidden in single-player + tutorial, mutually
+ * exclusive with the active control visually distinguishable beyond colour,
+ * click wiring through `renderer.refreshLog()` (active click is a no-op),
+ * layout inside the panel, and clean destroy/rebuild across scene restart.
+ */
+describe('Activity Log filter controls (MS-0MW3PFSMB002EIY6)', () => {
+  let handle: ActivityLogSceneHandle | null = null;
+
+  afterEach(() => {
+    handle?.destroy();
+    handle = null;
+  });
+
+  /** Resolves the rendered button (container + Rectangle bg + Text label) for `label`. */
+  function filterControl(scene: any, label: 'All' | 'You' | 'AI'): {
+    button: Phaser.GameObjects.Container;
+    bg: any;
+    text: any;
+  } {
+    const row = scene.logFilterRow as Phaser.GameObjects.Container | undefined;
+    expect(row, 'logFilterRow container').toBeTruthy();
+    const button = row!.list.find(
+      (c: any) =>
+        c.type === 'Container' &&
+        Array.isArray(c.list) &&
+        c.list.some((k: any) => k.type === 'Text' && k.text === label),
+    ) as Phaser.GameObjects.Container | undefined;
+    expect(button, `filter button "${label}"`).toBeTruthy();
+    const bg = button!.list.find((c: any) => c.type === 'Rectangle');
+    const text = button!.list.find((c: any) => c.type === 'Text');
+    expect(bg, `filter button "${label}" background`).toBeTruthy();
+    expect(text, `filter button "${label}" label`).toBeTruthy();
+    return { button: button!, bg, text };
+  }
+
+  /** Seeds a deterministic three-class log (shared header, shared, human, AI). */
+  async function seedThreeClassLog() {
+    handle = await bootActivityLogScene({ mode: 'competitive' });
+    const scene = handle.scene;
+    const { addLog, addLogShared } = await import('../../src/MainStreetState');
+    scene.state.activityLog.length = 0;
+    addLogShared(scene.state, 'Turn 1', 'turn-header');
+    addLogShared(scene.state, 'Shared world event', 'neutral');
+    addLog(scene.state, 0, 'Human move', 'gain');
+    addLog(scene.state, 1, 'AI move', 'neutral');
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+    return scene;
+  }
+
+  it('renders three mutually exclusive controls in competitive mode with All active by default', async () => {
+    handle = await bootActivityLogScene({ mode: 'competitive' });
+    const scene = handle.scene;
+
+    expect(handle.hasFilterControlRow()).toBe(true);
+    const row = scene.logFilterRow as Phaser.GameObjects.Container;
+    const buttons = row.list.filter((c: any) => c.type === 'Container');
+    expect(buttons).toHaveLength(3);
+    for (const label of ['All', 'You', 'AI'] as const) {
+      expect(filterControl(scene, label).text.text).toBe(label);
+    }
+
+    // Default active = All; treatment differs beyond colour alone (fill
+    // alpha, stroke weight and label weight/brightness are all distinct).
+    const active = filterControl(scene, 'All');
+    const inactive = filterControl(scene, 'You');
+    expect(active.bg.fillAlpha).toBe(1);
+    expect(active.bg.lineWidth).toBe(2);
+    expect(String(active.text.style.fontStyle)).toBe('bold');
+    expect(String(inactive.bg.fillAlpha)).not.toBe(String(active.bg.fillAlpha));
+    expect(inactive.bg.fillAlpha).toBeLessThan(active.bg.fillAlpha);
+    expect(inactive.bg.lineWidth).toBe(1);
+    expect(inactive.bg.lineWidth).toBeLessThan(active.bg.lineWidth);
+    expect(String(inactive.text.style.fontStyle)).not.toBe('bold');
+    expect(String(inactive.text.style.color)).not.toBe(String(active.text.style.color));
+
+    // You and AI share the inactive treatment.
+    const ai = filterControl(scene, 'AI');
+    expect(ai.bg.fillAlpha).toBeLessThan(active.bg.fillAlpha);
+    expect(ai.bg.lineWidth).toBe(1);
+  }, 60_000);
+
+  it('keeps the row inside the ~300 x 218 panel bounds, beneath the title bar', async () => {
+    handle = await bootActivityLogScene({ mode: 'competitive' });
+    const scene = handle.scene;
+    const { LOG_FILTER_ROW_H, LOG_TITLE_H } = await import('../../src/scenes/MainStreetConstants');
+    const layout = scene.layout;
+
+    const row = scene.logFilterRow as Phaser.GameObjects.Container;
+    for (const button of row.list.filter((c: any) => c.type === 'Container')) {
+      const bg = button.list.find((k: any) => k.type === 'Rectangle');
+      const left = button.x - bg.displayWidth / 2;
+      const right = button.x + bg.displayWidth / 2;
+      const top = button.y - bg.displayHeight / 2;
+      const bottom = button.y + bg.displayHeight / 2;
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(right).toBeLessThanOrEqual(layout.logW);
+      expect(top).toBeGreaterThanOrEqual(LOG_TITLE_H);
+      expect(bottom).toBeLessThanOrEqual(LOG_TITLE_H + LOG_FILTER_ROW_H);
+    }
+  }, 60_000);
+
+  it('keeps the newest entry visible below the filter row (auto-scrolled to the reserved area)', async () => {
+    handle = await bootActivityLogScene({ mode: 'competitive' });
+    const scene = handle.scene;
+    const { LOG_FILTER_ROW_H, LOG_TITLE_H } = await import('../../src/scenes/MainStreetConstants');
+    const { addLog } = await import('../../src/MainStreetState');
+
+    for (let i = 0; i < 40; i++) addLog(scene.state, 1, `AI filler ${i}`, 'neutral');
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+
+    const visibleH = Math.max(1, scene.layout.logH - LOG_TITLE_H - LOG_FILTER_ROW_H - 4);
+    expect(scene.logTotalContentH).toBeGreaterThan(visibleH); // log overflows
+    expect(scene.logMaxScroll).toBe(scene.logTotalContentH - visibleH);
+    expect(scene.logScrollOffset).toBe(scene.logMaxScroll); // auto-scrolled to bottom
+
+    // The newest (bottom-most) rendered entry sits inside the visible window,
+    // which is fully below the filter row band — never hidden or clipped by it.
+    const content = scene.logContentContainer.list as any[];
+    const lastLocalY = Math.max(...content.map((c) => c.y));
+    expect(lastLocalY).toBeGreaterThanOrEqual(scene.logScrollOffset);
+    expect(lastLocalY).toBeLessThan(scene.logScrollOffset + visibleH);
+    expect(scene.logContentContainer.y + lastLocalY).toBeGreaterThanOrEqual(
+      LOG_TITLE_H + LOG_FILTER_ROW_H,
+    );
+  }, 60_000);
+
+  it('clicking You / AI / All sets logFilter, re-renders the log and repaints the active control', async () => {
+    const scene = await seedThreeClassLog();
+
+    // Click [ You ]: human + shared entries stay, the AI entry disappears.
+    filterControl(scene, 'You').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('human');
+    let texts = handle!.renderedTexts();
+    expect(texts).toContain('Turn 1');
+    expect(texts).toContain('Shared world event');
+    expect(texts).toContain('You ');
+    expect(texts).toContain('Human move');
+    expect(texts).not.toContain('AI 1 ');
+    expect(texts).not.toContain('AI move');
+    expect(filterControl(scene, 'You').bg.lineWidth).toBe(2); // now active
+    expect(filterControl(scene, 'All').bg.lineWidth).toBe(1); // demoted
+
+    // Click [ AI ]: the AI entry + shared stay, the human entry disappears.
+    filterControl(scene, 'AI').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('ai');
+    texts = handle!.renderedTexts();
+    expect(texts).toContain('AI 1 ');
+    expect(texts).toContain('AI move');
+    expect(texts).not.toContain('You ');
+    expect(texts).not.toContain('Human move');
+    expect(filterControl(scene, 'AI').bg.lineWidth).toBe(2);
+    expect(filterControl(scene, 'You').bg.lineWidth).toBe(1);
+
+    // Click [ All ]: the full set is restored, no entry lost or duplicated.
+    filterControl(scene, 'All').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('all');
+    texts = handle!.renderedTexts();
+    for (const body of ['Shared world event', 'Human move', 'AI move']) {
+      expect(texts.filter((t) => t === body)).toHaveLength(1);
+    }
+    expect(filterControl(scene, 'All').bg.lineWidth).toBe(2);
+  }, 60_000);
+
+  it('clicking the active control is a no-op: no state mutation, no re-render', async () => {
+    const scene = await seedThreeClassLog();
+    const spy = vi.spyOn(scene.msRenderer, 'refreshLog');
+    const before = JSON.stringify(scene.state.activityLog);
+    const renderedBefore = handle!.renderedTexts();
+
+    // All is the default active filter — clicking it must do nothing.
+    filterControl(scene, 'All').bg.emit('pointerdown');
+    expect(scene.logFilter).toBe('all');
+    expect(spy).not.toHaveBeenCalled();
+    expect(JSON.stringify(scene.state.activityLog)).toBe(before);
+    expect(handle!.renderedTexts()).toEqual(renderedBefore);
+
+    // Switch to You, then click You again — the second click is a no-op.
+    filterControl(scene, 'You').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('human');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    filterControl(scene, 'You').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('human');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(scene.state.activityLog)).toBe(before);
+  }, 60_000);
+
+  it('hides the row in single-player and reacts to a tutorial-like no-roster state', async () => {
+    handle = await bootActivityLogScene({ mode: 'single-player' });
+    const scene = handle.scene;
+
+    // Single-player: the row container exists (built in createContainers) but
+    // is hidden — no filter distinction exists without a roster.
+    expect(handle.hasFilterControlRow()).toBe(false);
+    expect((scene.logFilterRow as Phaser.GameObjects.Container).visible).toBe(false);
+
+    // The hidden row consumes no vertical log space: nine short shared entries
+    // fit the full (row-less) visible window. If the row wrongly reserved
+    // LOG_FILTER_ROW_H here, the same nine entries would overflow and
+    // auto-scroll (maxScroll > 0).
+    const { addLogShared } = await import('../../src/MainStreetState');
+    scene.state.activityLog.length = 0;
+    for (let i = 0; i < 9; i++) addLogShared(scene.state, `Shared line ${i}`, 'neutral');
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+    expect(scene.logMaxScroll).toBe(0);
+
+    // Tutorial runs through the same no-roster state path: swap in a fresh
+    // single-player state (as createTutorialScenario does) and refresh — the
+    // row stays hidden and the log renders unchanged.
+    const { setupMainStreetGame } = await import('../../src/MainStreetState');
+    scene.state = setupMainStreetGame({ seed: 'tutorial-like-filter-controls' });
+    scene.msRenderer.refreshLog();
+    await waitFrames(3);
+    expect((scene.logFilterRow as Phaser.GameObjects.Container).visible).toBe(false);
+    expect(handle.hasFilterControlRow()).toBe(false);
+  }, 60_000);
+
+  it('keeps the selection across a UI refresh and resets to All on scene restart without leaking rows', async () => {
+    // Skip the tutorial-offer boot modal so the restart path is deterministic
+    // (the reference New-Game selector restart test uses the same seed).
+    try {
+      (window as any).localStorage?.setItem(
+        'tce-main-street-tutorial-state',
+        JSON.stringify({
+          schemaVersion: 1,
+          status: 'skipped',
+          completedAt: null,
+          lastStepId: null,
+          bankingHintShownAt: null,
+        }),
+      );
+    } catch (_) { /* ignore in constrained environments */ }
+
+    const scene = await seedThreeClassLog();
+
+    // Select AI…
+    filterControl(scene, 'AI').bg.emit('pointerdown');
+    await waitFrames(3);
+    expect(scene.logFilter).toBe('ai');
+
+    // …and verify it survives a turn-end / UI refresh within the session.
+    scene.msRenderer.refreshAll();
+    await waitFrames(5);
+    expect(scene.logFilter).toBe('ai');
+    expect(filterControl(scene, 'AI').bg.lineWidth).toBe(2);
+
+    // Scene restart (the game-over "Play Again" path): the row is rebuilt
+    // fresh (no duplicates, no orphaned buttons) and the filter resets to All.
+    scene.scene.restart();
+    await waitForCondition(() => (scene as any).newGameSelectionMade === false, 20_000);
+    scene.msLifecycleManager.applyNewGameSelection({
+      mode: 'competitive',
+      opponents: [{ strategy: 'Greedy', difficulty: 'Medium' }],
+    });
+    await waitForCondition(() => (scene.state?.players?.length ?? 0) === 2, 20_000);
+    await waitFrames(10);
+
+    expect(scene.logFilter).toBe('all');
+    const rows = (scene.logContainer.list as Phaser.GameObjects.GameObject[]).filter(
+      (c: any) => c.name === 'logFilterRow',
+    );
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as Phaser.GameObjects.Container;
+    expect(row.list.filter((c: any) => c.type === 'Container')).toHaveLength(3);
+    expect(handle.hasFilterControlRow()).toBe(true);
+    // The newly rebuilt row is a live, interactive object (not a stale ref).
+    expect(filterControl(scene, 'All').bg.fillAlpha).toBe(1);
   }, 60_000);
 });
