@@ -141,6 +141,22 @@ export async function createRemotePackSigningKey(): Promise<RemotePackSigningKey
   };
 }
 
+/**
+ * Re-wrap *manifest* in the signature carried by *envelopeText*.
+ *
+ * The signature is genuine, so the result is a **tampered** envelope whose body
+ * no longer matches the signed canonical payload: verification fails on the
+ * integrity check, not on the envelope shape. Lets a test pin "a signed body
+ * that was altered after signing" without re-implementing the signing flow.
+ */
+export function tamperSignedEnvelope(
+  envelopeText: string,
+  manifest: unknown,
+): string {
+  const parsed = JSON.parse(envelopeText) as { signature?: unknown };
+  return JSON.stringify({ manifest, signature: parsed.signature });
+}
+
 /** Build a valid build-time env bag for the fixture catalogue. */
 export function remotePackEnv(
   publicKeyBase64: string,

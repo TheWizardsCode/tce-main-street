@@ -62,6 +62,7 @@ import {
   remotePackFiles,
   remotePackManifest,
   remotePackManifestEntry,
+  tamperSignedEnvelope,
   type RemotePackSigningKey,
 } from './fixtures/remotePackFixtures';
 
@@ -573,6 +574,82 @@ describe('remote pack source', () => {
     expect(warnings[0]).toContain('invalid-signature');
   });
 
+  it('rejects the whole source for every signature failure mode with exactly one warning', async () => {
+    const pinned = await createRemotePackSigningKey();
+    const attacker = await createRemotePackSigningKey();
+    const validEnvelope = await pinned.signEnvelope(remotePackManifest());
+
+    const modes: Array<{
+      readonly name: string;
+      readonly files: Record<string, string>;
+      readonly status: string;
+    }> = [
+      {
+        name: 'a missing signature',
+        files: {
+          'manifest.json': JSON.stringify({ manifest: remotePackManifest() }),
+          [REMOTE_CSV_PATH]: REMOTE_PACK_CSV,
+        },
+        status: 'missing-signature',
+      },
+      {
+        name: 'a body altered after signing',
+        files: {
+          'manifest.json': tamperSignedEnvelope(
+            validEnvelope,
+            remotePackManifest({
+              packs: [
+                remotePackManifestEntry({ title: 'Tampered remote pack' }),
+              ],
+            }),
+          ),
+          [REMOTE_CSV_PATH]: REMOTE_PACK_CSV,
+        },
+        status: 'invalid-signature',
+      },
+      {
+        name: 'a signature produced by a non-pinned key',
+        files: {
+          'manifest.json': await attacker.signEnvelope(remotePackManifest()),
+          [REMOTE_CSV_PATH]: REMOTE_PACK_CSV,
+        },
+        status: 'invalid-signature',
+      },
+      {
+        name: 'a malformed envelope',
+        files: {
+          'manifest.json': '{not json',
+          [REMOTE_CSV_PATH]: REMOTE_PACK_CSV,
+        },
+        status: 'malformed-envelope',
+      },
+    ];
+
+    for (const mode of modes) {
+      const { source, transport, warnings } = await buildSource({
+        key: pinned,
+        files: mode.files,
+      });
+
+      // Every path from the source resolves null: the rejection is whole.
+      await expect(source.readPackFile('manifest.json')).resolves.toBeNull();
+      await expect(source.readPackFile(REMOTE_CSV_PATH)).resolves.toBeNull();
+      await expect(
+        source.resolvePackFileUrl!(REMOTE_CSV_PATH),
+      ).resolves.toBeNull();
+
+      // Exactly one warning, naming the verification status.
+      expect(warnings, mode.name).toHaveLength(1);
+      expect(warnings[0], mode.name).toContain(mode.status);
+
+      // Nothing from the untrusted catalogue was read beyond its manifest.
+      expect(
+        transport.calls.filter((url) => url.endsWith('/cards.csv')),
+        mode.name,
+      ).toHaveLength(0);
+    }
+  });
+
   it('rejects the whole source on a missing manifest with exactly one warning', async () => {
     const key = await createRemotePackSigningKey();
     const { source, warnings } = await buildSource({ key, files: {} });
@@ -674,6 +751,47 @@ describe('configured registry composition', () => {
 
     expect(registry.sources.map((source) => source.id)).toEqual([BUNDLED_PACK_SOURCE_ID]);
     expect(warnings).toHaveLength(1);
+  });
+
+  it('keeps the bundled catalogue intact when the remote catalogue is rejected', async () => {
+    const pinned = await createRemotePackSigningKey();
+    const attacker = await createRemotePackSigningKey();
+    const bundledPackId = 'main-street-bundled-only-pack';
+    const transport = createFakeRemoteTransport(
+      await remotePackFiles(pinned, { signer: attacker }),
+    );
+    const { logger, warnings } = warningSink();
+
+    const registry = createConfiguredPackSourceRegistry({
+      env: remotePackEnv(pinned.publicKeyBase64),
+      fetchImpl: transport.fetch,
+      logger,
+      bundledModules: {
+        text: {
+          'manifest.json': async () =>
+            JSON.stringify(
+              remotePackManifest({
+                packs: [
+                  remotePackManifestEntry({
+                    id: bundledPackId,
+                    title: 'Bundled only',
+                  }),
+                ],
+              }),
+            ),
+        },
+        urls: {},
+      },
+    });
+
+    const merged = JSON.parse((await registry.readPackFile('manifest.json'))!);
+    // A rejected remote source contributes nothing: only the bundled pack is
+    // listed, and the rejection was warned about exactly once.
+    expect(merged.packs.map((pack: { id: string }) => pack.id)).toEqual([
+      bundledPackId,
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('invalid-signature');
   });
 
   it('merges both catalogues with the bundled pack winning a duplicate id', async () => {

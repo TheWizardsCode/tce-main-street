@@ -528,6 +528,52 @@ describe('rejection of bad remote data', () => {
     );
   });
 
+  it('rejects a wrong-header pack whole without affecting a sibling remote pack', async () => {
+    const key = await createRemotePackSigningKey();
+    const brokenPackId = 'main-street-remote-header-pack';
+    const manifest = remotePackManifest({
+      packs: [
+        remotePackManifestEntry({ assets: [] }),
+        remotePackManifestEntry({
+          id: brokenPackId,
+          title: 'Wrong header pack',
+          assets: [],
+        }),
+      ],
+    });
+    const files = {
+      'manifest.json': await key.signEnvelope(manifest),
+      [REMOTE_CSV_PATH]: REMOTE_PACK_CSV,
+      [`main-street/${brokenPackId}/cards.csv`]: ['wrong,header', 'a,b'].join(
+        '\n',
+      ),
+    };
+
+    const { result } = await bootRemote({ key, files });
+
+    // Only the healthy sibling pack merged; the wrong-header pack is rejected
+    // whole and its rows never reach the pool.
+    expect(result.pool.activePacks).toEqual([
+      { id: REMOTE_PACK_ID, version: '1.0.0' },
+    ]);
+    expect(result.pool.csv).toContain(REMOTE_CARD_ID);
+    expect(result.pool.csv).not.toContain('wrong,header');
+    expect(result.pool.errors.some((error) => error.includes('header'))).toBe(
+      true,
+    );
+
+    const warning = result.warnings.find(
+      (entry) => entry.includes(brokenPackId) && entry.includes('rejected'),
+    );
+    expect(warning).toBeDefined();
+    expect(warning).toContain('header');
+
+    // The bundled source is unaffected too.
+    expect(result.locked.map((pack) => pack.manifest.id)).toContain(
+      RESIDENTIAL_PACK_ID,
+    );
+  });
+
   it('rejects a pack that duplicates an accepted card id, leaving a sibling pack active', async () => {
     const key = await createRemotePackSigningKey();
     const duplicatePackId = 'main-street-remote-duplicate-pack';

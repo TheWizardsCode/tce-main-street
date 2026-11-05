@@ -30,6 +30,7 @@ import { createConfiguredPackSourceRegistry } from '../../src/MainStreetPackSour
 import type { CardPackLoaderOptions } from '@ui/CardPackLoader';
 import type { RemotePackFetchImpl } from '../../src/MainStreetRemotePackFetch';
 import {
+  REMOTE_ALLOWED_HOST,
   REMOTE_BASE_URL,
   REMOTE_CARD_ID,
   REMOTE_PACK_ID,
@@ -53,6 +54,7 @@ const NOTHING_UNLOCKED = {
 
 afterEach(() => {
   resetMainStreetCardPacks();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -143,6 +145,40 @@ describe('browser boot wiring', () => {
     expect(result!.locked.map((pack) => pack.manifest.id)).toContain(RESIDENTIAL_PACK_ID);
     expect(getAvailableTemplateIds()).toContain(REMOTE_CARD_ID);
     expect(transport.calls.some((url) => url.endsWith('/packs/manifest.json'))).toBe(true);
+  });
+
+  it('performs no real network I/O: every remote request goes through the injected transport', async () => {
+    const key = await createRemotePackSigningKey();
+    const transport = createFakeRemoteTransport(await remotePackFiles(key));
+    const realFetch = vi.fn(async () => {
+      throw new Error('a real network request was issued');
+    });
+    vi.stubGlobal('fetch', realFetch);
+
+    const result = await bootstrapMainStreetCardPacks({
+      contentDir: null,
+      remotePackEnv: remotePackEnv(key.publicKeyBase64),
+      remotePackFetch: transport.fetch,
+      fetchAsset: async () => new Uint8Array([0]),
+      contentUnlocks: NOTHING_UNLOCKED,
+      storage: null,
+      logger: SILENT_LOGGER,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.loaded.map((pack) => pack.manifest.id)).toContain(
+      REMOTE_PACK_ID,
+    );
+
+    // Every request went to the injected transport, and only to the
+    // allow-listed host; the global network was never touched.
+    expect(transport.calls.length).toBeGreaterThan(0);
+    expect(
+      transport.calls.every(
+        (url) => new URL(url).host === REMOTE_ALLOWED_HOST,
+      ),
+    ).toBe(true);
+    expect(realFetch).not.toHaveBeenCalled();
   });
 
   it('composes no remote source and fetches nothing for an explicit launcher contentDir', async () => {
