@@ -1,4 +1,5 @@
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
+import type { LogFilter } from '../MainStreetStateTypes';
 import type { DifficultyName } from '../MainStreetDifficulty';
 import type { BusinessCard } from '../MainStreetCards';
 import {
@@ -300,6 +301,24 @@ export class MainStreetScene extends CardGameScene {
    * `MainStreetRenderer.refreshLog` and `MainStreetInputManager.handleLogWheel`). */
   public logAutoScroll = true;
   public logPrevEntryCount = 0;
+  /**
+   * Active Activity Log view filter (`'all' | 'human' | 'ai'`), presentation-
+   * only (epic MS-0MW1ZGM1F0010DQW). Defaults to `'all'`; reset to `'all'` on
+   * scene creation / new game (never persisted to save data — see the
+   * lifecycle reset block). The controls-row child mutates it via the shared
+   * `createActionButton` controls; the renderer reads it through the pure
+   * predicate (`filterLogEntries`).
+   */
+  public logFilter: LogFilter = 'all';
+  /**
+   * The filter the log was last rendered with. A change to `logFilter` is a
+   * re-render trigger even when the entry count is unchanged (tracked
+   * alongside `logPrevEntryCount`), so selecting a filter re-renders a
+   * same-length log. Not updated while the deferral gate is set, so a filter
+   * change made during end-of-turn deferral applies on the next render
+   * (MS-0MW3PFRV6003LJLD).
+   */
+  public logPrevFilter: LogFilter = 'all';
   /** When true, `refreshLog` suppresses rendering of new entries so they
    * only appear after the upcoming/phase UI has been displayed to the player.
    * Cleared in `finalizeTurn` after `startTurnPhase` completes.

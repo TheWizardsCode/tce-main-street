@@ -34,6 +34,7 @@ import {
   startDay,
 } from './helpers/activity-log-harness';
 import type { LogEntry, MainStreetState } from '../../src/MainStreetState';
+import { deserializeMainStreetState, serializeMainStreetState } from '../../src/MainStreetState';
 import type { BusinessCard, EventCard, StaffCard, UpgradeCard } from '../../src/MainStreetCards';
 
 // ── Card factories (fabricated, like the rest of the unit suite) ──
@@ -388,5 +389,30 @@ describe('Activity Log filter baseline — headless harness (MS-0MW3PFLDP000CF2X
       expect(entries.length).toBeGreaterThan(0);
       assert?.(entries, state);
     });
+  });
+});
+
+// ── Save round-trip (MS-0MW3PFRV6003LJLD) ──────────────────
+
+describe('Activity Log filter — scene state is never persisted (MS-0MW3PFRV6003LJLD)', () => {
+  it('the serialised save data contains no logFilter key, and the round trip restores the log', () => {
+    // `logFilter` lives on the scene (presentation-only, reset on scene
+    // creation); the state serialiser must never write it into save data —
+    // filtering is presentation-only and the view choice is never persisted.
+    const state = createActivityLogState({ seed: 'save-roundtrip-filter' });
+    startDay(state);
+    state.players![0].coins = 5000;
+    const biz = state.market.cards.find((c) => c.family === 'business')!;
+    driveAction(state, { type: 'buy-business', cardId: biz.id, slotIndex: 0 }, { seatId: 0 });
+
+    const serialised = serializeMainStreetState(state);
+    expect(JSON.stringify(serialised)).not.toContain('logFilter');
+
+    const restored = deserializeMainStreetState(serialised);
+    expect((restored as unknown as Record<string, unknown>).logFilter).toBeUndefined();
+    // The entries themselves survive the round trip (a filter test must not
+    // lose data while the filter state is dropped).
+    expect(restored.activityLog.length).toBe(state.activityLog.length);
+    expect(restored.activityLog).toEqual(state.activityLog);
   });
 });

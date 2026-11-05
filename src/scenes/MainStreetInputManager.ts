@@ -1,5 +1,6 @@
 import { FONT_FAMILY } from '@ui';
-import { LOG_SCROLL_SPEED, LOG_TITLE_H } from './MainStreetConstants';
+import { LOG_FILTER_ROW_H, LOG_SCROLL_SPEED, LOG_TITLE_H } from './MainStreetConstants';
+import { shouldShowLogFilterControls } from '../MainStreetLogFilter';
 import { streetViewportRect } from '../MainStreetMapView';
 
 /** Screen-pixel pan applied per arrow-key press (CG-0MTH9OVMC001V44E). */
@@ -281,8 +282,12 @@ export class MainStreetInputManager {
     // Apply the scroll offset by shifting the content container upward.
     s.logContentContainer.setY(LOG_TITLE_H + 2 - s.logScrollOffset);
 
-    // Per-entry visibility safety net (see refreshLog for details)
-    const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - 4);
+    // Per-entry visibility safety net (see refreshLog for details). The visible
+    // window mirrors refreshLog: the filter-controls row reserves
+    // `LOG_FILTER_ROW_H` in competitive play (see MS-0MW3PFRV6003LJLD), so the
+    // same visible height is used here to keep the passes consistent.
+    const filterRowH = shouldShowLogFilterControls(s.state) ? LOG_FILTER_ROW_H : 0;
+    const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - filterRowH - 4);
     const visibleStart = s.logScrollOffset;
     const visibleEnd = s.logScrollOffset + visibleH;
     for (const child of s.logContentContainer.list) {

@@ -262,6 +262,12 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.logAutoScroll = true;
     s.logPrevEntryCount = 0;
     s.logDeferredUntilPhaseComplete = false;
+    // The view filter is session-only state: reset to All on every scene
+    // creation / new game and never persisted to save data (epic
+    // MS-0MW1ZGM1F0010DQW). `logPrevFilter` follows so the first refresh
+    // after a restart does not see a spurious filter change.
+    s.logFilter = 'all';
+    s.logPrevFilter = 'all';
 
     s.detectReplayMode();
     s.initEventSystem();

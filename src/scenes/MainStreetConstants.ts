@@ -239,6 +239,24 @@ export const LOG_FONT_SIZE = 13;
 export const LOG_LINE_H = 18;
 export const LOG_SCROLL_SPEED = 24;
 
+/**
+ * Height of the Activity Log filter-controls row (epic MS-0MW1ZGM1F0010DQW).
+ *
+ * A compact row beneath the title bar, only present in competitive play
+ * (2+ seats). `refreshLog` reserves this strip in `visibleH` when the row is
+ * shown (`shouldShowLogFilterControls`), so scroll bounds stay correct once
+ * the controls child renders it; single-player / tutorial hide the row and
+ * consume no vertical space. The controls child derives its layout from this
+ * constant rather than hard-coded panel coordinates.
+ */
+export const LOG_FILTER_ROW_H = 26;
+
+/**
+ * Empty-state message rendered when a log filter matches no entries (even
+ * shared/turn-level ones), so a filtered log is never blank.
+ */
+export const LOG_EMPTY_FILTER_MESSAGE = 'No activity for this filter';
+
 // Log entry colors by type
 export const LOG_COLORS: Record<string, string> = {
   gain: '#44ff44',
