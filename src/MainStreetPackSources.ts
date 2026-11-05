@@ -24,14 +24,18 @@
  *
  * The second source — {@link createRemotePackSource} — serves a **signed**
  * remote catalogue from the build-time configured base URL
- * (`VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY`). It fetches and
+ * (`VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY`, or the ordered
+ * `VITE_REMOTE_PACK_SOURCES` list for several catalogues). It fetches and
  * refuses only: the catalogue is trusted solely when its Ed25519 signature
  * verifies against the pinned key, every fetch is host allow-listed and
  * timeout-bounded, and any failure rejects the whole source with one warning.
- * Composing it with {@link createConfiguredPackSourceRegistry} registers the
- * bundled source **first**, so a registry configured with `mergeManifests`
- * lists both catalogues while the bundled entry wins any pack-id conflict
- * (`MS-0MVSFWBE6004SPDI`).
+ *
+ * {@link composePackSourceRegistry} is the single place multi-source order is
+ * decided: the bundled source **first**, then every configured remote
+ * catalogue in configured URL order. A registry composed with
+ * `mergeManifests` therefore lists all catalogues while the bundled entry wins
+ * any pack-id conflict and, between remote sources, the first registered wins
+ * (`MS-0MVSFWBE6004SPDI`, `MS-0MVSFWDFW002C1MD`).
  *
  * **Totality.** The registry never throws: an unknown pack ref, a missing
  * bundled file, a source that rejects, or an empty registry all resolve to
@@ -66,7 +70,7 @@ import {
   type CardPackManifestEntry,
 } from '@core-engine';
 import {
-  parseRemotePackConfig,
+  parseRemotePackSourceConfigs,
   type RemotePackConfig,
   type RemotePackEnvLike,
 } from './MainStreetRemotePackConfig';
@@ -403,6 +407,28 @@ export function createDefaultPackSourceRegistry(): PackSourceRegistry {
 /** The id of the remote (signed catalogue) source. */
 export const REMOTE_PACK_SOURCE_ID = 'remote';
 
+/** The id a configured remote source at *index* registers under. */
+export function remotePackSourceIdForIndex(index: number): string {
+  return index === 0
+    ? REMOTE_PACK_SOURCE_ID
+    : `${REMOTE_PACK_SOURCE_ID}-${index + 1}`;
+}
+
+/** Coerce a source id to a trimmed non-empty string, or `null`. */
+function normaliseSourceId(id: unknown): string | null {
+  if (typeof id !== 'string') return null;
+  const trimmed = id.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/** Describe an unknown thrown value for a warning message. */
+function errorText(error: unknown): string {
+  if (error instanceof Error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return String(error);
+}
+
 /**
  * The remote catalogue schema version this build understands.
  *
@@ -418,6 +444,14 @@ const REMOTE_PACKS_DIRNAME = 'packs';
 export interface RemotePackSourceOptions {
   /** The validated build-time configuration (see `MainStreetRemotePackConfig`). */
   readonly config: RemotePackConfig;
+  /**
+   * Registry id for this source; defaults to {@link REMOTE_PACK_SOURCE_ID}.
+   *
+   * Composition assigns a distinct id per configured catalogue (`remote`,
+   * `remote-2`, …) so several remote sources can coexist on one registry
+   * without the id-based duplicate guard collapsing them into one.
+   */
+  readonly id?: string;
   /**
    * Raw transport override (tests); defaults to the global `fetch`.
    *
@@ -442,9 +476,9 @@ interface VerifiedRemoteManifest {
 }
 
 /** A source that never contributes anything (invalid configuration). */
-function inertRemotePackSource(): PackSource {
+function inertRemotePackSource(id: string): PackSource {
   return {
-    id: REMOTE_PACK_SOURCE_ID,
+    id,
     async readPackFile(): Promise<string | null> {
       return null;
     },
@@ -477,6 +511,7 @@ export function createRemotePackSource(
 ): PackSource {
   const logger = options?.logger ?? console;
   const config = options?.config;
+  const sourceId = normaliseSourceId(options?.id) ?? REMOTE_PACK_SOURCE_ID;
   if (
     !config ||
     typeof config.baseUrl !== 'string' ||
@@ -487,7 +522,7 @@ export function createRemotePackSource(
     logger.warn(
       '[main-street] remote packs: invalid configuration; the remote pack source is disabled.',
     );
-    return inertRemotePackSource();
+    return inertRemotePackSource(sourceId);
   }
 
   const fetchText: RemotePackTextFetcher = createRemotePackTextFetcher({
@@ -567,7 +602,7 @@ export function createRemotePackSource(
   };
 
   return {
-    id: REMOTE_PACK_SOURCE_ID,
+    id: sourceId,
     async readPackFile(path: PackFilePath): Promise<string | null> {
       const normalised = normalisePackPath(path);
       if (normalised === null) return null;
@@ -592,9 +627,108 @@ export function createRemotePackSource(
   };
 }
 
+/** One remote catalogue to compose, with the registry id it registers under. */
+export interface RemotePackSourceSpec {
+  /** Stable registry id (`remote`, `remote-2`, …). */
+  readonly id: string;
+  /** The validated catalogue coordinates. */
+  readonly config: RemotePackConfig;
+}
+
+/**
+ * Builds one remote source. Injectable so the composition's construction-failure
+ * path is testable; production always uses {@link createRemotePackSource}.
+ */
+export type RemotePackSourceFactory = (
+  options: RemotePackSourceOptions,
+) => PackSource;
+
+/** Options for {@link composePackSourceRegistry}. */
+export interface ComposePackSourceRegistryOptions {
+  /** Bundled module maps (tests); defaults to the compiled-in globs. */
+  readonly bundledModules?: BundledPackModules;
+  /**
+   * Remote catalogues to register, in precedence order. They are always added
+   * **after** the bundled source, so bundled content wins any pack-id conflict.
+   */
+  readonly remotes?: readonly RemotePackSourceSpec[];
+  /** Warning sink; defaults to `console`. */
+  readonly logger?: PackSourceLogger;
+  /** Raw transport override (tests); defaults to the global `fetch`. */
+  readonly fetchImpl?: RemotePackFetchImpl;
+  /** Hard per-read timeout in milliseconds; defaults to ≈3 s. */
+  readonly timeoutMs?: number;
+  /** WebCrypto implementation override (tests). */
+  readonly subtle?: PackManifestSubtleCrypto | null;
+  /** Remote-source constructor seam; defaults to {@link createRemotePackSource}. */
+  readonly remoteSourceFactory?: RemotePackSourceFactory;
+}
+
+/**
+ * Compose the ordered pack-source registry: bundled **first**, then every
+ * remote catalogue in the order it was configured.
+ *
+ * This is the single place multi-source order is decided. Registration is
+ * additive and idempotent — the registry ignores a duplicate source id and
+ * never reorders existing sources — so composing the same set twice yields the
+ * same order and no duplicates. A remote catalogue that cannot be constructed
+ * is **skipped with a warning**: it contributes no source, bundled content
+ * still serves, and its siblings are unaffected.
+ *
+ * @param options Bundled modules, remote specs and injectable seams.
+ */
+export function composePackSourceRegistry(
+  options: ComposePackSourceRegistryOptions = {},
+): PackSourceRegistry {
+  const logger = options.logger ?? console;
+  const factory = options.remoteSourceFactory ?? createRemotePackSource;
+  const registry = new PackSourceRegistry(
+    [createBundledPackSource(options.bundledModules)],
+    { mergeManifests: true },
+  );
+
+  for (const spec of options.remotes ?? []) {
+    const id = normaliseSourceId(spec?.id);
+    if (id === null) {
+      logger.warn(
+        '[main-street] remote packs: skipped a remote source with no id; ' +
+          'bundled packs are unaffected.',
+      );
+      continue;
+    }
+
+    let source: PackSource;
+    try {
+      source = factory({
+        id,
+        config: spec.config,
+        logger,
+        fetchImpl: options.fetchImpl,
+        timeoutMs: options.timeoutMs,
+        subtle: options.subtle,
+      });
+    } catch (error) {
+      logger.warn(
+        `[main-street] remote packs: skipped remote source "${id}" — it ` +
+          `could not be constructed (${errorText(error)}); ` +
+          'bundled packs are unaffected.',
+      );
+      continue;
+    }
+    registry.add(source);
+  }
+
+  return registry;
+}
+
 /** Options for {@link createConfiguredPackSourceRegistry}. */
 export interface ConfiguredPackSourceRegistryOptions {
-  /** Build-time env bag; defaults to `import.meta.env`. */
+  /**
+   * Build-time env bag; defaults to `import.meta.env`. Reads
+   * `VITE_REMOTE_PACK_SOURCES` (an ordered JSON array) or, when that is unset,
+   * the single-catalogue `VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY`
+   * pair.
+   */
   readonly env?: RemotePackEnvLike | null;
   /** Warning sink; defaults to `console`. */
   readonly logger?: PackSourceLogger;
@@ -619,13 +753,15 @@ function defaultRemotePackEnv(): RemotePackEnvLike {
 
 /**
  * Compose the registry the browser boot path uses: the bundled source **first**,
- * then the configured remote source when the build declares one.
+ * then every configured remote source in configured URL order.
  *
- * The registry merges both catalogues (bundled first, so a bundled pack always
- * wins a pack-id conflict) and keeps first-wins file consultation, which makes
- * remote packs appear in the Card Packs listing alongside bundled packs with no
- * UI change. An unset, blank or invalid configuration composes **no** remote
- * source, performs no remote request, and logs one warning — never throws.
+ * The registry merges all catalogues (bundled first, so a bundled pack always
+ * wins a pack-id conflict; between remote sources the first configured wins)
+ * and keeps first-wins file consultation, which makes remote packs appear in
+ * the Card Packs listing alongside bundled packs with no UI change. An unset,
+ * blank or invalid configuration composes **no** remote source, performs no
+ * remote request, and logs one warning — never throws. A malformed individual
+ * list entry is skipped with a warning while its valid siblings still compose.
  *
  * @param options Injectable env/transport/logger/crypto seams (tests).
  */
@@ -633,19 +769,22 @@ export function createConfiguredPackSourceRegistry(
   options: ConfiguredPackSourceRegistryOptions = {},
 ): PackSourceRegistry {
   const logger = options.logger ?? console;
-  const parsed = parseRemotePackConfig(options.env ?? defaultRemotePackEnv());
-  const sources: PackSource[] = [createBundledPackSource(options.bundledModules)];
+  const parsed = parseRemotePackSourceConfigs(
+    options.env ?? defaultRemotePackEnv(),
+  );
+  const remotes: RemotePackSourceSpec[] = [];
 
   if (parsed.ok) {
-    sources.push(
-      createRemotePackSource({
-        config: parsed.config,
-        logger,
-        fetchImpl: options.fetchImpl,
-        timeoutMs: options.timeoutMs,
-        subtle: options.subtle,
-      }),
-    );
+    for (const skip of parsed.skipped) {
+      logger.warn(
+        `[main-street] remote packs: skipped configured remote source ` +
+          `#${skip.index + 1} — ${skip.reason}; the remaining sources are ` +
+          'unaffected.',
+      );
+    }
+    parsed.configs.forEach((config, index) => {
+      remotes.push({ id: remotePackSourceIdForIndex(index), config });
+    });
   } else {
     logger.warn(
       `[main-street] remote packs: remote pack discovery inactive — ` +
@@ -653,7 +792,14 @@ export function createConfiguredPackSourceRegistry(
     );
   }
 
-  return new PackSourceRegistry(sources, { mergeManifests: true });
+  return composePackSourceRegistry({
+    bundledModules: options.bundledModules,
+    remotes,
+    logger,
+    fetchImpl: options.fetchImpl,
+    timeoutMs: options.timeoutMs,
+    subtle: options.subtle,
+  });
 }
 
 // ── Loader transport adapters ────────────────────────────────

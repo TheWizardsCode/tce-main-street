@@ -14,11 +14,20 @@
  *     against. The private signing key is held by the distribution operator and
  *     never ships in the game.
  *
+ * Several remote catalogues compose additively through
+ * `VITE_REMOTE_PACK_SOURCES`, a JSON array of `{ "url", "publicKey" }`
+ * entries. Its entries keep the order they are declared in, so the first
+ * catalogue listed wins a pack-id conflict between remote sources
+ * ({@link parseRemotePackSourceConfigs}). The single-source variables remain
+ * supported as a one-entry fallback when the list is unset.
+ *
  * **Inert when unset.** An unconfigured build composes no remote source and
  * performs no remote request. A blank or invalid configuration likewise yields
  * no remote source: {@link parseRemotePackConfig} never throws, it returns a
  * discriminated failure the caller turns into one warning (see
- * `createConfiguredPackSourceRegistry` in `./MainStreetPackSources.ts`).
+ * `createConfiguredPackSourceRegistry` in `./MainStreetPackSources.ts`). A
+ * malformed **individual** list entry is skipped (and reported) without
+ * discarding its valid siblings.
  *
  * The allow-list is derived from the configured base URL: only that
  * origin/host may ever be requested, so a compromised or buggy caller cannot
@@ -36,6 +45,13 @@ export const REMOTE_PACK_URL_ENV_VAR = 'VITE_REMOTE_PACK_URL';
 /** Environment variable holding the pinned Ed25519 public key (base64). */
 export const REMOTE_PACK_PUBLIC_KEY_ENV_VAR = 'VITE_REMOTE_PACK_PUBLIC_KEY';
 
+/**
+ * Environment variable holding several remote catalogues as a JSON array of
+ * `{ "url": "https://…", "publicKey": "<base64>" }` entries, in precedence
+ * order. When set it replaces the single-source variables.
+ */
+export const REMOTE_PACK_SOURCES_ENV_VAR = 'VITE_REMOTE_PACK_SOURCES';
+
 /** Length of a raw Ed25519 public key, in bytes. */
 export const ED25519_PUBLIC_KEY_BYTES = 32;
 
@@ -45,6 +61,11 @@ export interface RemotePackEnvLike {
   readonly VITE_REMOTE_PACK_URL?: unknown;
   /** Pinned Ed25519 public key, raw base64. */
   readonly VITE_REMOTE_PACK_PUBLIC_KEY?: unknown;
+  /**
+   * Several remote catalogues as a JSON array of `{ url, publicKey }` entries,
+   * in precedence order. Takes precedence over the single-source variables.
+   */
+  readonly VITE_REMOTE_PACK_SOURCES?: unknown;
 }
 
 /** A validated remote pack configuration. */
@@ -198,6 +219,105 @@ export function parseRemotePackConfig(
       allowedHost: url.host,
     },
   };
+}
+
+/** One configured remote catalogue that could not be used. */
+export interface RemotePackConfigSkip {
+  /** Zero-based position of the entry in `VITE_REMOTE_PACK_SOURCES`. */
+  readonly index: number;
+  /** Actionable reason the entry was skipped. */
+  readonly reason: string;
+}
+
+/** A successful parse of the ordered remote-catalogue list. */
+export interface RemotePackConfigsSuccess {
+  readonly ok: true;
+  /**
+   * The usable catalogues, in declared order. An entry that cannot be used is
+   * omitted (and reported in {@link skipped}) without discarding its siblings.
+   */
+  readonly configs: readonly RemotePackConfig[];
+  /** Configured entries that were skipped, with their reasons. */
+  readonly skipped: readonly RemotePackConfigSkip[];
+}
+
+/** Discriminated result of {@link parseRemotePackSourceConfigs}. */
+export type RemotePackConfigsResult =
+  | RemotePackConfigsSuccess
+  | RemotePackConfigFailure;
+
+/**
+ * Parse the ordered list of remote catalogues a build declares.
+ *
+ * When `VITE_REMOTE_PACK_SOURCES` is set it must be a non-empty JSON array of
+ * `{ "url", "publicKey" }` objects. Each entry is validated with
+ * {@link parseRemotePackConfig}, and an unusable entry is **skipped and
+ * reported** rather than rejecting the whole build: one bad catalogue never
+ * disables the others. The declared order is preserved so precedence between
+ * remote sources is the order the operator wrote them in.
+ *
+ * When the list variable is unset (or blank) the single-source
+ * `VITE_REMOTE_PACK_URL` / `VITE_REMOTE_PACK_PUBLIC_KEY` pair is used as a
+ * one-entry list, which keeps an existing single-catalogue build byte-for-byte
+ * compatible. With neither configured the result is the `unconfigured`
+ * failure.
+ *
+ * Never throws: malformed JSON, a non-array value or an empty array is an
+ * `invalid` failure with an actionable `reason`.
+ *
+ * @param env The build-time environment; typically `import.meta.env`.
+ */
+export function parseRemotePackSourceConfigs(
+  env: RemotePackEnvLike | null | undefined,
+): RemotePackConfigsResult {
+  const rawSources = nonBlankString(env?.VITE_REMOTE_PACK_SOURCES);
+  if (rawSources === null) {
+    const single = parseRemotePackConfig(env);
+    return single.ok
+      ? { ok: true, configs: [single.config], skipped: [] }
+      : single;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawSources);
+  } catch {
+    return {
+      ok: false,
+      status: 'invalid',
+      reason: `${REMOTE_PACK_SOURCES_ENV_VAR} is not valid JSON`,
+    };
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return {
+      ok: false,
+      status: 'invalid',
+      reason:
+        `${REMOTE_PACK_SOURCES_ENV_VAR} must be a non-empty JSON array of ` +
+        '{ "url", "publicKey" } entries',
+    };
+  }
+
+  const configs: RemotePackConfig[] = [];
+  const skipped: RemotePackConfigSkip[] = [];
+  parsed.forEach((entry, index) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      skipped.push({ index, reason: 'entry is not an object' });
+      return;
+    }
+    const candidate = entry as Record<string, unknown>;
+    const result = parseRemotePackConfig({
+      VITE_REMOTE_PACK_URL: candidate.url,
+      VITE_REMOTE_PACK_PUBLIC_KEY: candidate.publicKey,
+    });
+    if (result.ok) {
+      configs.push(result.config);
+    } else {
+      skipped.push({ index, reason: result.reason });
+    }
+  });
+
+  return { ok: true, configs, skipped };
 }
 
 /**
