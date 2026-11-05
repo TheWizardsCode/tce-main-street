@@ -31,9 +31,14 @@ import type {
   RemotePackFetchResponse,
 } from '../../../src/MainStreetRemotePackFetch';
 import { canonicalPackManifestPayload } from '../../../src/MainStreetRemotePackManifest';
+import type { BundledPackModules } from '../../../src/MainStreetPackSources';
 
 /** The base URL every fixture catalogue is served from. */
 export const REMOTE_BASE_URL = 'https://packs.example.com/main-street-dist';
+
+/** A second, distinct remote catalogue on the same allow-listed host. */
+export const SECOND_REMOTE_BASE_URL =
+  'https://packs.example.com/second-catalogue';
 
 /** The host the allow-list derives from {@link REMOTE_BASE_URL}. */
 export const REMOTE_ALLOWED_HOST = 'packs.example.com';
@@ -242,6 +247,120 @@ export function createFakeRemoteTransport(
   };
 
   return { fetch: fetchImpl, calls };
+}
+
+/**
+ * Build the ordered multi-catalogue env bag (`VITE_REMOTE_PACK_SOURCES`).
+ *
+ * Registration order is precedence order: every remote source is composed
+ * after the bundled source, and the first remote entry wins a pack-id conflict
+ * between catalogues.
+ */
+export function multiSourceEnv(
+  entries: readonly { url: string; publicKey: string }[],
+): RemotePackEnvLike {
+  return { VITE_REMOTE_PACK_SOURCES: JSON.stringify(entries) };
+}
+
+/**
+ * A one-row pack CSV fragment in the base column order.
+ *
+ * The `overrides` are merged over the defaults, so a test can vary one field
+ * without restating the row.
+ */
+export function remotePackCsv(
+  cardId: string,
+  name: string,
+  overrides: Readonly<Record<string, string>> = {},
+): string {
+  return [
+    BASE_HEADER,
+    remotePackRow({
+      family: 'business',
+      id: cardId,
+      name,
+      cost: '100',
+      baseIncome: '50',
+      synergyTypes: 'Residential',
+      description: `A card from the ${name} remote catalogue.`,
+      ...overrides,
+    }),
+  ].join('\n');
+}
+
+/**
+ * The files a remote host serves for a one-pack catalogue.
+ *
+ * Two catalogues can carry the same `packId`; their CSV bytes are what tells
+ * them apart in the precedence tests.
+ */
+export async function remoteCatalogueFiles(
+  key: RemotePackSigningKey,
+  packId: string,
+  csv: string,
+  version = '1.0.0',
+): Promise<Record<string, string>> {
+  return {
+    'manifest.json': await key.signEnvelope(
+      remotePackManifest({
+        packs: [
+          remotePackManifestEntry({
+            id: packId,
+            version,
+            title: `${packId} catalogue`,
+            assets: [],
+          }),
+        ],
+      }),
+    ),
+    [`${REMOTE_GAME_ID}/${packId}/cards.csv`]: csv,
+  };
+}
+
+/**
+ * Route each request to the fixture transport that owns its base URL.
+ *
+ * Composing several remote catalogues needs one transport per catalogue; a URL
+ * outside every configured base is a 404, as a static host would answer.
+ */
+export function combineRemoteTransports(
+  entries: readonly { baseUrl: string; transport: FakeRemoteTransport }[],
+): RemotePackFetchImpl {
+  return async (url, init) => {
+    const match = entries.find((entry) =>
+      url.startsWith(`${entry.baseUrl.replace(/\/+$/, '')}/packs/`),
+    );
+    if (!match) return notFound();
+    return match.transport.fetch(url, init);
+  };
+}
+
+/**
+ * Bundled modules that carry the fixture pack path, for the bundled/remote
+ * conflict scenario: a remote source offers the same pack id (and therefore the
+ * same packs-relative path) and bundled content must win byte-for-byte.
+ */
+export function bundledRemoteConflictModules(
+  bundledCsv: string,
+  bundledVersion = '0.0.1',
+): BundledPackModules {
+  return {
+    text: {
+      'manifest.json': async () =>
+        JSON.stringify(
+          remotePackManifest({
+            packs: [
+              remotePackManifestEntry({
+                version: bundledVersion,
+                title: 'Bundled variant',
+              }),
+            ],
+          }),
+        ),
+      [REMOTE_CSV_PATH]: async () => bundledCsv,
+    },
+    urls: {},
+  };
 }
 
 /** A 200 response carrying *body*. */

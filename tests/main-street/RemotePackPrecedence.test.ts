@@ -42,8 +42,6 @@ import {
   type PackSource,
 } from '../../src/MainStreetPackSources';
 import { parseRemotePackSourceConfigs } from '../../src/MainStreetRemotePackConfig';
-import type { RemotePackEnvLike } from '../../src/MainStreetRemotePackConfig';
-import type { RemotePackFetchImpl } from '../../src/MainStreetRemotePackFetch';
 import type {
   CardPackClient,
   CardPackStatusRef,
@@ -51,26 +49,25 @@ import type {
 } from '@ui/card-pack-client';
 import type { CardPackLoaderOptions } from '@ui/CardPackLoader';
 import {
-  BASE_HEADER,
   REMOTE_ALLOWED_HOST,
   REMOTE_BASE_URL,
   REMOTE_CARD_ID,
   REMOTE_CSV_PATH,
   REMOTE_PACK_CSV,
   REMOTE_PACK_ID,
+  SECOND_REMOTE_BASE_URL,
+  bundledRemoteConflictModules,
+  combineRemoteTransports,
   createFakeRemoteTransport,
   createRemotePackSigningKey,
+  multiSourceEnv,
   notFound,
+  remoteCatalogueFiles,
   remotePackConfig,
+  remotePackCsv,
   remotePackEnv,
   remotePackManifest,
-  remotePackManifestEntry,
-  remotePackRow,
-  type FakeRemoteTransport,
 } from './fixtures/remotePackFixtures';
-
-/** A second, distinct remote catalogue on the same allow-listed host. */
-const SECOND_BASE_URL = 'https://packs.example.com/second-catalogue';
 
 const SILENT_LOGGER = { warn: () => {} };
 
@@ -79,66 +76,6 @@ const NOTHING_UNLOCKED = {
   getUnlocks: async () => [],
   refresh: async () => [],
 };
-
-/** Build an ordered multi-catalogue env bag. */
-function multiSourceEnv(
-  entries: readonly { url: string; publicKey: string }[],
-): RemotePackEnvLike {
-  return { VITE_REMOTE_PACK_SOURCES: JSON.stringify(entries) };
-}
-
-/** Send each request to the fixture transport that owns its base URL. */
-function combineTransports(
-  entries: readonly { baseUrl: string; transport: FakeRemoteTransport }[],
-): RemotePackFetchImpl {
-  return async (url, init) => {
-    const match = entries.find((entry) =>
-      url.startsWith(`${entry.baseUrl.replace(/\/+$/, '')}/packs/`),
-    );
-    if (!match) return notFound();
-    return match.transport.fetch(url, init);
-  };
-}
-
-/** A one-pack CSV fragment with the base column order. */
-function packCsv(cardId: string, name: string): string {
-  return [
-    BASE_HEADER,
-    remotePackRow({
-      family: 'business',
-      id: cardId,
-      name,
-      cost: '100',
-      baseIncome: '50',
-      synergyTypes: 'Residential',
-      description: `A card from the ${name} remote catalogue.`,
-    }),
-  ].join('\n');
-}
-
-/** Files a remote host serves for one catalogue containing *packId*. */
-async function catalogueFiles(
-  key: Awaited<ReturnType<typeof createRemotePackSigningKey>>,
-  packId: string,
-  csv: string,
-  version = '1.0.0',
-): Promise<Record<string, string>> {
-  return {
-    'manifest.json': await key.signEnvelope(
-      remotePackManifest({
-        packs: [
-          remotePackManifestEntry({
-            id: packId,
-            version,
-            title: `${packId} catalogue`,
-            assets: [],
-          }),
-        ],
-      }),
-    ),
-    [`main-street/${packId}/cards.csv`]: csv,
-  };
-}
 
 /** A client that reports every pack as locked (no ungating shortcut). */
 const LOCKING_CLIENT: CardPackClient = {
@@ -173,7 +110,7 @@ describe('configured multi-source composition', () => {
     const registry = createConfiguredPackSourceRegistry({
       env: multiSourceEnv([
         { url: REMOTE_BASE_URL, publicKey: first.publicKeyBase64 },
-        { url: SECOND_BASE_URL, publicKey: second.publicKeyBase64 },
+        { url: SECOND_REMOTE_BASE_URL, publicKey: second.publicKeyBase64 },
       ]),
       logger: SILENT_LOGGER,
     });
@@ -253,27 +190,14 @@ describe('deterministic precedence', () => {
   it('serves bundled content byte-for-byte when a remote source carries the same pack path', async () => {
     const key = await createRemotePackSigningKey();
     const transport = createFakeRemoteTransport(
-      await catalogueFiles(key, REMOTE_PACK_ID, REMOTE_PACK_CSV, '9.9.9'),
+      await remoteCatalogueFiles(key, REMOTE_PACK_ID, REMOTE_PACK_CSV, '9.9.9'),
     );
     const bundledCsv = `${REMOTE_PACK_CSV}\n`;
     const registry = createConfiguredPackSourceRegistry({
       env: remotePackEnv(key.publicKeyBase64),
       fetchImpl: transport.fetch,
       logger: SILENT_LOGGER,
-      bundledModules: {
-        text: {
-          'manifest.json': async () =>
-            JSON.stringify(
-              remotePackManifest({
-                packs: [
-                  remotePackManifestEntry({ version: '0.0.1', title: 'Bundled variant' }),
-                ],
-              }),
-            ),
-          [REMOTE_CSV_PATH]: async () => bundledCsv,
-        },
-        urls: {},
-      },
+      bundledModules: bundledRemoteConflictModules(bundledCsv),
     });
 
     // Byte-for-byte: the bundled text, never the remote variant's bytes.
@@ -290,22 +214,22 @@ describe('deterministic precedence', () => {
     const firstCsv = `${REMOTE_PACK_CSV}\n# first`;
     const secondCsv = `${REMOTE_PACK_CSV}\n# second`;
     const firstTransport = createFakeRemoteTransport(
-      await catalogueFiles(first, REMOTE_PACK_ID, firstCsv, '1.0.0'),
+      await remoteCatalogueFiles(first, REMOTE_PACK_ID, firstCsv, '1.0.0'),
       REMOTE_BASE_URL,
     );
     const secondTransport = createFakeRemoteTransport(
-      await catalogueFiles(second, REMOTE_PACK_ID, secondCsv, '2.0.0'),
-      SECOND_BASE_URL,
+      await remoteCatalogueFiles(second, REMOTE_PACK_ID, secondCsv, '2.0.0'),
+      SECOND_REMOTE_BASE_URL,
     );
 
     const registry = createConfiguredPackSourceRegistry({
       env: multiSourceEnv([
         { url: REMOTE_BASE_URL, publicKey: first.publicKeyBase64 },
-        { url: SECOND_BASE_URL, publicKey: second.publicKeyBase64 },
+        { url: SECOND_REMOTE_BASE_URL, publicKey: second.publicKeyBase64 },
       ]),
-      fetchImpl: combineTransports([
+      fetchImpl: combineRemoteTransports([
         { baseUrl: REMOTE_BASE_URL, transport: firstTransport },
-        { baseUrl: SECOND_BASE_URL, transport: secondTransport },
+        { baseUrl: SECOND_REMOTE_BASE_URL, transport: secondTransport },
       ]),
       logger: SILENT_LOGGER,
     });
@@ -329,7 +253,7 @@ describe('idempotent, additive composition', () => {
     const second = await createRemotePackSigningKey();
     const env = multiSourceEnv([
       { url: REMOTE_BASE_URL, publicKey: first.publicKeyBase64 },
-      { url: SECOND_BASE_URL, publicKey: second.publicKeyBase64 },
+      { url: SECOND_REMOTE_BASE_URL, publicKey: second.publicKeyBase64 },
     ]);
 
     const one = createConfiguredPackSourceRegistry({ env, logger: SILENT_LOGGER });
@@ -468,31 +392,31 @@ describe('applied pool and gating parity', () => {
     const SECOND_CARD_ID = 'biz-ms-remote-second-card';
 
     const firstTransport = createFakeRemoteTransport(
-      await catalogueFiles(
+      await remoteCatalogueFiles(
         first,
         FIRST_PACK_ID,
-        packCsv(FIRST_CARD_ID, 'First remote'),
+        remotePackCsv(FIRST_CARD_ID, 'First remote'),
       ),
       REMOTE_BASE_URL,
     );
     const secondTransport = createFakeRemoteTransport(
-      await catalogueFiles(
+      await remoteCatalogueFiles(
         second,
         SECOND_PACK_ID,
-        packCsv(SECOND_CARD_ID, 'Second remote'),
+        remotePackCsv(SECOND_CARD_ID, 'Second remote'),
       ),
-      SECOND_BASE_URL,
+      SECOND_REMOTE_BASE_URL,
     );
 
     const result = await bootstrapMainStreetCardPacks({
       contentDir: null,
       remotePackEnv: multiSourceEnv([
         { url: REMOTE_BASE_URL, publicKey: first.publicKeyBase64 },
-        { url: SECOND_BASE_URL, publicKey: second.publicKeyBase64 },
+        { url: SECOND_REMOTE_BASE_URL, publicKey: second.publicKeyBase64 },
       ]),
-      remotePackFetch: combineTransports([
+      remotePackFetch: combineRemoteTransports([
         { baseUrl: REMOTE_BASE_URL, transport: firstTransport },
-        { baseUrl: SECOND_BASE_URL, transport: secondTransport },
+        { baseUrl: SECOND_REMOTE_BASE_URL, transport: secondTransport },
       ]),
       fetchAsset: async () => new Uint8Array([0]),
       contentUnlocks: NOTHING_UNLOCKED,
@@ -513,7 +437,9 @@ describe('applied pool and gating parity', () => {
 
   it('reports an unentitled remote pack locked and never merges its cards', async () => {
     const key = await createRemotePackSigningKey();
-    const transport = createFakeRemoteTransport(await catalogueFiles(key, REMOTE_PACK_ID, REMOTE_PACK_CSV));
+    const transport = createFakeRemoteTransport(
+      await remoteCatalogueFiles(key, REMOTE_PACK_ID, REMOTE_PACK_CSV),
+    );
     const registry = createConfiguredPackSourceRegistry({
       env: multiSourceEnv([{ url: REMOTE_BASE_URL, publicKey: key.publicKeyBase64 }]),
       fetchImpl: transport.fetch,
