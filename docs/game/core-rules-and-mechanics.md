@@ -44,7 +44,7 @@ committing changes to player-facing text or docs.
 | **Resource Bank** | Holds the player's **Coins** (currency) and **Reputation** (plain score count). Coins start at 8 and Reputation starts at 3.
 | **Turn** | A full week consisting of several phases (see Section 5). Turn number increments after the **week end**.
 | **Event Card** | A card that triggers a one‑off effect (e.g., Festival, Tax, Storm). **Investment** events are taken from the single market row (**1 action**, no coins at take) and held until played (cost at play); **Incident** events resolve automatically from the face-down incident deck (CG-0MSTOATDP000JNHH).
-| **Incident Deck** | A hidden face‑down deck of Incident cards (card back + remaining count only). Each turn the top card is revealed and resolved at the end of the turn; when the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (repeat‑spacing / streak limits, CG-0MSTOATDP000JNHH). A peek staff member (staff‑lookout) can look at the top card once per turn as an action.
+| **Incident Deck** | A hidden face‑down deck of Incident cards (card back + remaining count only). Each turn the top card is revealed and resolved at the end of the turn; when the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (repeat‑spacing / streak limits, CG-0MSTOATDP000JNHH). A **management-company** staff member with the peek ability (`staff-lookout`, the Lookout) can look at the top card once per turn as an action.
 | **Upgrade Card** | A card that modifies a specific Business card (e.g., upgrade a Bakery to a Patisserie, increasing income and synergy range).
 | **Challenge** | A optional meta‑goal (e.g., *Build a Foodie Row*) that grants a bonus score at the end of the game if satisfied. The catalogue spans 6 categories: synergy, placement, resource, upgrade, cross-cutting and the newer **economic** category (MS-0MUI7ZJK8003HY9J), which currently holds the single **Serial Seller** challenge (sell 3+ street businesses in one game). Progress-capable challenges (e.g. Serial Seller) declare a `progress()` provider and the challenge HUD renders `<current>/<target>` (e.g. `2/3`) on their row.
 
@@ -171,7 +171,7 @@ interface GameState {
     upgrade: UpgradeCard[];
   };
   hand: (BusinessCard | CommunitySpaceCard | UpgradeCard | EventCard)[]; // merged hand: any mix, up to maxHandSize
-  maxHandSize: number;                 // starts at 3, growable via staff handSlotsAdded (no hard cap); per-seat in competitive play (bound seat's own capacity)
+  maxHandSize: number;                 // starts at 3, growable via management-company staff handSlotsAdded (no hard cap); per-seat in competitive play (bound seat's own capacity)
   challengesCompleted: string[]; // IDs of achieved challenges
   marketRefreshesThisTurn: number;     // re-rolls made this turn; drives the escalating paid cost, reset at WeekStart (MS-0MTR6ZRF5007PWNZ)
   investorFreeRerollUsedThisTurn: boolean; // per-turn Investor free re-roll gate, reset at WeekStart (MS-0MTISBYLS009936W)
@@ -384,7 +384,24 @@ offer deterministically with the same policy, so simulations never stall.
 
 ### 6.0 Action Economy (weekly action budget)
 
-Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting staff member** employed — the **Manager**, **Director**, **Executive** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting management-company staff member** employed — the **Manager**, **Director**, **Executive** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+
+> **Staff effects follow the two-type model (GDD Appendix D.4).** Every staff
+> member is exactly one of two types, and the type decides what it may affect.
+> **Business staff** are employed at a single business (recorded as
+> `employedAtSlot`) and their effects are scoped to that business and, where the
+> role says so, its 8-way neighbours. **Management-company staff** are employed
+> by the player — the management company — and their effects are scoped to the
+> player's turn. Action points and hand slots are **player-scope** effects, so
+> **only management-company staff grant them**: `actionsPerTurn` and
+> `handSlotsAdded` are management-company-only card fields, and a business-staff
+> template carries neither. Business staff therefore never change the weekly
+> action budget or the hand capacity — they change what one business earns,
+> costs or lends its neighbours. The runtime determinant is **assignment**, not
+> a flag: a member carrying an `employedAtSlot` is business staff, and a member
+> with no `employedAtSlot` is management-company staff. The full model, the role
+> roster and the expected gameplay outcomes are in `the-build-gdd.md`
+> Appendix D.4; the per-card types are in `card-catalog.md` § *Staff Cards*.
 
 **Week-start composition.** At WeekStart the weekly budget is:
 
@@ -393,7 +410,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 ```
 
 - The **base action banks**: any unused base action at end of week is banked, up to a **bank cap of 2**.
-- **Staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's, Executive's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
+- **Management-company staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's, Executive's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
 - Spending during the week draws down the combined budget (base + staff + banked share one counter).
 - **Banked is consumed 1-per-action.** Every action-type operation decrements the banked reserve by 1 (floor 0) alongside the weekly counter (CG-0MTCP7F9S009HARC) — banked actions are spent as the player acts, so a banked week grants only its carried-over actions, never an endless reserve. Premium same-week placements (which replace the action with a +50% coin charge) do **not** consume the bank.
 - **No expiry:** banked actions persist indefinitely across weeks until spent. They reset to 0 only on a new game.
@@ -401,7 +418,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > **Competitive play (human vs AI, MS-0MUVUPWHD0032CU4).** In a shared day the
 > banked reserve is a **single collective pool**: each seat's daily budget is
-> its bank-free base (`actionBudget = 1 + staff actions`) **plus** the
+> its bank-free base (`actionBudget = 1 + management-company staff actions`) **plus** the
 > currently-remaining `bankedActions`, added when the seat is bound
 > (`bindCompetitiveSeat`). Spending by one seat draws the shared pool down, so
 > the next seat receives base + the *remaining* bank rather than a stale
@@ -415,12 +432,13 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > **Per-seat hand capacity in competitive play (MS-0MV8PX4DV003LTFP).** Hand
 > capacity is **per seat**: each seat's maximum hand size is its own
-> (`PlayerRecord.maxHandSize`, base 3 plus that seat's staff `handSlotsAdded`).
-> `bindCompetitiveSeat` copies the acting seat's capacity onto the shared
-> working `state.maxHandSize` and `restoreCompetitiveSeat` writes it back, so a
-> staff card's hand-slot bonus applies **only to the employing seat** — one
-> seat's staff never enlarges another seat's hand. Single-player behaviour is
-> unchanged (the shared `maxHandSize` is used directly).
+> (`PlayerRecord.maxHandSize`, base 3 plus that seat's **management-company**
+> staff `handSlotsAdded`). `bindCompetitiveSeat` copies the acting seat's
+> capacity onto the shared working `state.maxHandSize` and
+> `restoreCompetitiveSeat` writes it back, so a management-company staff card's
+> hand-slot bonus applies **only to the employing seat** — one seat's staff never
+> enlarges another seat's hand. Single-player behaviour is unchanged (the shared
+> `maxHandSize` is used directly).
 
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 
@@ -434,11 +452,11 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. A hand card may be placed by **dragging it onto an empty slot** (the same gesture as the market row — MS-0MV76HVE4007AOO0), which reuses the click-path placement pricing (same-week composite premium applies at 0 actions). |
 | Direct buy-and-place (market→street) | 1–2 actions | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP): with **2 actions** remaining the upgrade drag charges the **discounted listed cost** and consumes **both** actions (drag + placement, no premium dialog); with **1 action** it charges the discount-first **+50% premium** and consumes 1 action, preceded by the premium explainer dialog. A vetoed or rejected upgrade drag states why in the instruction text (MS-0MVKT3TZF0091IHC). |
 | Apply a hand upgrade to a business | 1 action | Pays the discounted upgrade cost at apply. A held upgrade may be applied by **dragging it onto an eligible business** (MS-0MV76HVE4007AOO0) — same gesture as the market buy-and-play, but priced from hand: a same-week upgrade (just moved to hand this week) applies **free** (no second action); one held from a previous week costs **1 action**. The drag reuses the click path's undoable `playUpgradeFromHandCommand` and level-up burst. |
-| Hire a staff card | 1 action | From the general market row. |
+| Hire a staff card | 1 action | From the general market row. Hiring **business staff** also chooses the destination business — its **initial placement is free** and part of the hire action (it must match `allowedBusinessTypes` and have a free employment slot). Hiring **management-company staff** joins the company immediately, with no placement step. Both types add their ongoing salary to the IncomePhase deduction. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
-| Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
+| Relocate an employed **business staff** member | 1 action | Moves a hired **business staff** member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. **Management-company staff are never placed or relocated**, so no relocation cost ever applies to them. |
 
-> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
+> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the business-staff card. Only **business staff** can be relocated at all — **management-company staff** are hired into the company and never carry an `employedAtSlot`, so placement and relocation do not apply to them and no action is ever charged for one. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`max(1, level + 1)` capacity, mirroring the engine's `getEmploymentCapacity`) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
 
 > **Hand-drag: click-select then drag (MS-0MVK4E5M00021XEY).** Clicking a hand
 > card arms the placing-from-hand selection; a drag started on **that same
@@ -485,7 +503,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 - Hint (still 1/week)
 - Ending the turn
 
-> **Market research (re-roll) cost (MS-0MTR6ZRF5007PWNZ).** Researching the market is action-free but costs coins. The first re-roll of a turn costs **500**, the second **750**, the third **1000**, and each subsequent re-roll 250 more. The escalation **resets at WeekStart** alongside the other per-turn gates. Any staff or specialization refresh-cost discount (Accountant / IT Specialist `refreshCostDiscount`, Negotiator specialization skill) is subtracted from the escalated base and the total is clamped at 0, so a re-roll can never cost less than zero. The **Research** button label, its tooltip and the `canRefreshMarket()` legality check all read the same centralised `refreshMarketCost()`, and the button is disabled with the "not enough coins" reason when the current escalated price is unaffordable. The per-turn re-roll count participates in undo/redo and save/load, so reloading mid-turn preserves the escalated price.
+> **Market research (re-roll) cost (MS-0MTR6ZRF5007PWNZ).** Researching the market is action-free but costs coins. The first re-roll of a turn costs **500**, the second **750**, the third **1000**, and each subsequent re-roll 250 more. The escalation **resets at WeekStart** alongside the other per-turn gates. Any staff or specialization refresh-cost discount (Accountant / IT Specialist `refreshCostDiscount`, Negotiator specialization skill) is subtracted from the escalated base and the total is clamped at 0, so a re-roll can never cost less than zero. `refreshCostDiscount` is a **player-scope** field, so under the two-type model it belongs to **management-company** staff; the IT Specialist's shipped street-wide discount is a business-scope follow-up recorded in `the-build-gdd.md` D.4.3/D.4.8 and `card-catalog.md` § *Staff Cards*. The **Research** button label, its tooltip and the `canRefreshMarket()` legality check all read the same centralised `refreshMarketCost()`, and the button is disabled with the "not enough coins" reason when the current escalated price is unaffordable. The per-turn re-roll count participates in undo/redo and save/load, so reloading mid-turn preserves the escalated price.
 
 > **Investor: free market re-roll and 75% relevance bias (MS-0MTISBYLS009936W).** While at least one **Investor** (`staff-investor`) is **employed** at a business, the player may perform **one coin-free, action-free market re-roll per turn** — the *free re-roll*. It discards the visible row and refills it exactly like a paid research, but charges no coins and consumes no action. It is gated by a per-turn flag (`investorFreeRerollUsedThisTurn`) reset at **WeekStart** alongside the other per-turn gates. Once used, further re-rolls fall back to the normal **paid** `refreshMarket` path.
 >
