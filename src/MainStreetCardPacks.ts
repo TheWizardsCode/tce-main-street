@@ -397,6 +397,7 @@ export async function loadMainStreetCardPacks(
       `Card pack "${item.pack.id}" is incompatible (${item.reason}); it is not active.`,
     );
   }
+  warnings.push(...mergeRejectionWarnings(pool));
   warnings.push(...missingPackWarnings(options.requestedPacks, pool, result));
 
   for (const warning of warnings) {
@@ -411,6 +412,40 @@ export async function loadMainStreetCardPacks(
     warnings,
     errors: result.errors,
   };
+}
+
+/**
+ * One warning per pack the core merge rejected whole.
+ *
+ * The merge is the single authority on whether a pack's rows are usable, so
+ * its structural report (`errors` for a header mismatch, `conflicts` for a
+ * duplicate card id) is what the boot path turns into actionable warnings.
+ * A rejected pack contributes **no** rows; its siblings are unaffected.
+ */
+function mergeRejectionWarnings(pool: MainStreetCardPool): string[] {
+  const reasonsByPack = new Map<string, string[]>();
+  const addReason = (packId: string, reason: string): void => {
+    const reasons = reasonsByPack.get(packId) ?? [];
+    if (!reasons.includes(reason)) reasons.push(reason);
+    reasonsByPack.set(packId, reasons);
+  };
+
+  for (const error of pool.errors) {
+    const match = /^Pack "([^"]+)":\s*(.+)$/.exec(error);
+    if (match) addReason(match[1], match[2]);
+  }
+  for (const conflict of pool.conflicts) {
+    for (const source of conflict.sources) {
+      if (source === 'base') continue;
+      addReason(source, `duplicate card id "${conflict.id}"`);
+    }
+  }
+
+  return [...reasonsByPack].map(
+    ([packId, reasons]) =>
+      `Card pack "${packId}" was rejected: ${reasons.join('; ')}; ` +
+      'its cards are not active.',
+  );
 }
 
 /** Warnings for packs a save recorded that are no longer active. */

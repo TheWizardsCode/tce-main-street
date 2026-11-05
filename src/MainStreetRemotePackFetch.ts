@@ -7,9 +7,13 @@
  *
  *   1. **Host allow-list first.** A target that is not on the configured host is
  *      refused *before* any request — the injected transport is never called.
- *   2. **Hard timeout.** Every read is bounded by
- *      {@link DEFAULT_REMOTE_PACK_TIMEOUT_MS} (≈3 s, producer decision Q3) via
- *      an `AbortController`, so the boot path never stalls on a hung host.
+ *   2. **Hard timeout.** Every read — the manifest and each pack CSV, headers
+ *      and body alike — is bounded by
+ *      {@link DEFAULT_REMOTE_PACK_TIMEOUT_MS} (≈3 s, producer decision Q3)
+ *      through an `AbortController` **and** a deadline race, so a transport
+ *      that ignores the abort signal cannot stall the boot path either. The
+ *      timer is cleared on every path (success, error, timeout), so no handle
+ *      outlives the request.
  *
  * Every failure — refusal, timeout, transport rejection, a non-2xx response or
  * a body-read failure — resolves to `null` and logs **exactly one** warning on
@@ -128,17 +132,28 @@ export function createRemotePackTextFetcher(
       typeof AbortController === 'function' ? new AbortController() : null;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    if (controller !== null) {
+
+    // The deadline is a promise, not just a signal: a transport that ignores
+    // the abort signal would otherwise hang boot forever. Racing the read
+    // against the deadline bounds **every** read, whether or not the
+    // transport cooperates. The timer is always cleared in the `finally`
+    // below, so no handle outlives the request on any path.
+    const deadline = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         timedOut = true;
-        controller.abort();
+        controller?.abort();
+        reject(new Error(`timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-    }
+    });
 
     try {
       let response: RemotePackFetchResponse;
       try {
-        response = await fetchText(url, controller ? { signal: controller.signal } : {});
+        const read = fetchText(
+          url,
+          controller ? { signal: controller.signal } : {},
+        );
+        response = await Promise.race([read, deadline]);
       } catch (error) {
         if (timedOut) {
           warn(`timed out after ${timeoutMs}ms reading "${url}".`);
@@ -159,14 +174,21 @@ export function createRemotePackTextFetcher(
       }
 
       try {
-        const text = await response.text();
+        // Bound the body read too: headers can arrive before the deadline and
+        // the body stream can still hang. Racing the same deadline keeps the
+        // whole request bounded, not just the connection.
+        const text = await Promise.race([response.text(), deadline]);
         if (typeof text !== 'string') {
           warn(`failed to read "${url}": the response body was not text.`);
           return null;
         }
         return text;
       } catch (error) {
-        warn(`failed to read the body of "${url}": ${errorMessage(error)}.`);
+        if (timedOut) {
+          warn(`timed out after ${timeoutMs}ms reading "${url}".`);
+        } else {
+          warn(`failed to read the body of "${url}": ${errorMessage(error)}.`);
+        }
         return null;
       }
     } finally {

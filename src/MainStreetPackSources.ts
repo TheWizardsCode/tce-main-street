@@ -403,6 +403,14 @@ export function createDefaultPackSourceRegistry(): PackSourceRegistry {
 /** The id of the remote (signed catalogue) source. */
 export const REMOTE_PACK_SOURCE_ID = 'remote';
 
+/**
+ * The remote catalogue schema version this build understands.
+ *
+ * A signed catalogue that declares any other `version` is rejected whole: the
+ * game must never interpret a document whose shape it does not know.
+ */
+export const SUPPORTED_REMOTE_PACK_MANIFEST_VERSION = 1;
+
 /** Directory under the configured base URL that holds the catalogue. */
 const REMOTE_PACKS_DIRNAME = 'packs';
 
@@ -528,6 +536,16 @@ export function createRemotePackSource(
       warn(
         `rejected the catalogue at "${manifestUrl}" (malformed manifest: ` +
           `${parsed.errors.join('; ')}); no packs from this source are loaded.`,
+      );
+      return null;
+    }
+
+    if (parsed.manifest.version !== SUPPORTED_REMOTE_PACK_MANIFEST_VERSION) {
+      warn(
+        `rejected the catalogue at "${manifestUrl}" (unsupported manifest ` +
+          `version ${parsed.manifest.version}; this build supports version ` +
+          `${SUPPORTED_REMOTE_PACK_MANIFEST_VERSION}); no packs from this ` +
+          'source are loaded.',
       );
       return null;
     }
