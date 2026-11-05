@@ -318,7 +318,11 @@ re-balancing is an edit rather than a code change).
   disabled with a reason-specific hint (loans disabled, no configured options, or the
   outstanding obligation). Taking a loan there costs no action point and does not
   advance the day — **[ Next Turn ]** remains the only way to resume the closing. The
-  bailout dialog below is the second entry point.
+  bailout dialog below is the second entry point. Today this mid-game selector is the
+  **single-player** panel's: competitive play presents its own owner-keyed per-seat
+  Turn Summary panel with **[ Bank Loan ]** **disabled** (muted, inert, with its
+  explanatory hint) behind the per-seat-capable seam, so per-seat mid-game loans arrive
+  with MS-0MVL6DZI0000F6CG rather than here.
 - **One active loan per player.** A seat that already holds an active loan cannot take
   or accept another; the attempt is rejected with a clear, user-facing reason and no
   resource change. Debt never stacks.

@@ -24,6 +24,13 @@
  *    dialog like any other single-player closing, or it polls a state the
  *    scene is deliberately holding.
  *
+ * The competitive slices (MS-0MVRNV8PA000O6R5 and its parents) made the old
+ * blanket claim "competitive closings are never gated" false: the per-seat
+ * panel gates the next shared day too, so the competitive closing / panel /
+ * README passages are guarded here as well (round definition, owner-keyed row
+ * values, the disabled Bank Loan seam, the gate functions and the code anchors
+ * they name).
+ *
  * The behavioural contract itself (guard matrix, `endTurn` path selection, the
  * dialog appearing in a real scene) is asserted against the shipped code in
  * `turn-summary-gate.test.ts` and `turn-summary-dialog.browser.test.ts`; this
@@ -119,9 +126,20 @@ describe('Turn Summary gate documentation — ux-visual-audio.md', () => {
     // The pre-fix scope sentence (reduced motion grouped with the ungated
     // modes) must not creep back.
     expect(section).not.toContain('reduced motion, the tutorial, replay/headless');
-    // Tutorial / replay / competitive remain ungated and must still be named.
+    // Tutorial / replay stay ungated and must still be named.
     expect(section).toContain('the tutorial, replay/headless');
-    expect(section).toContain('competitive closings never present it');
+  });
+
+  it('scopes competitive out of THIS dialog only — the per-seat panel has its own gate', () => {
+    const section = uxSection(GATE_SECTION);
+    // MS-0MVRNV9Y8008IKGK presented a competitive Turn Summary panel, so the
+    // blanket "competitive closings never present it" claim is false. The
+    // scope sentence must name the single-player dialog and the sibling gate.
+    expect(section).toContain(
+      'competitive closings never present this single-player dialog',
+    );
+    expect(section).toContain('presentcompetitiveturnsummarygate');
+    expect(section).not.toContain('competitive closings never present it');
   });
 
   it('points at the suites that pin the gate, and those suites exist', () => {
@@ -171,6 +189,118 @@ describe('Turn Summary gate documentation — docs/dev/testing.md', () => {
       'reduced-motion, tutorial, replay/headless and competitive closings are never gated',
     );
     // The genuinely ungated modes stay documented.
-    expect(section).toContain('tutorial, replay/headless and competitive closings are never gated');
+    expect(section).toContain('tutorial and replay/headless closings are never gated');
+  });
+
+  it('tells browser-test authors that competitive closings are gated too', () => {
+    const section = testingGatesSection();
+    // MS-0MVRNV9Y8008IKGK gated the competitive closing on its per-seat panel,
+    // so "competitive closings are never gated" is false and a competitive
+    // end-of-turn test must dismiss the same [ Next Turn ] dialog.
+    expect(section).toContain('competitive closings are gated too');
+    expect(section).toContain('presentcompetitiveturnsummarygate');
+    expect(section).toContain('competitive end-of-turn test must dismiss the dialog');
+    expect(section).not.toContain('competitive closings are never gated');
+  });
+});
+
+/**
+ * The competitive panel section and the closing section it slots into. The
+ * behavioural contract is pinned by `competitive-turn-summary-gate.test.ts`,
+ * `turn-summary-competitive-model.test.ts` and
+ * `turn-summary-competitive.browser.test.ts`; this guard only keeps the shipped
+ * prose — and the code anchors it names — aligned with them (parent
+ * MS-0MVO1SFCM000ZLBI AC5, delivered by MS-0MVRNW8PA000O6R5).
+ */
+describe('Competitive Turn Summary documentation — ux-visual-audio.md', () => {
+  const COMPETITIVE_SECTION =
+    '### Competitive Turn Summary panel (per-seat round rows, MS-0MVRNV9Y8008IKGK)';
+  const CLOSING_SECTION =
+    '### Competitive phase-major closing presentation (MS-0MUXAQQON006XA6I)';
+
+  it('documents the round = one completed shared day assumption', () => {
+    const section = uxSection(COMPETITIVE_SECTION);
+    expect(section).toContain('round is one completed shared day');
+    expect(section).toContain('per completed round');
+  });
+
+  it('states the closing is gated on the panel, not auto-advanced', () => {
+    const closing = uxSection(CLOSING_SECTION);
+    expect(closing).toContain('turn summary gate');
+    expect(closing).toContain('[ next turn ]');
+    // The stale "the day always advances immediately" reading must be gone.
+    expect(closing).toContain('does not advance immediately');
+    expect(closing).toContain('presentcompetitiveturnsummarygate');
+    // The auto-advance carve-outs stay named.
+    expect(closing).toContain('reduced motion, replay and headless');
+  });
+
+  it('documents every surfaced row value across the delivered slices', () => {
+    const section = uxSection(COMPETITIVE_SECTION);
+    // businesses owned, income phases, ongoing expenses, net change and
+    // closing balances — one owner-keyed row per seat.
+    for (const phrase of [
+      'owner-keyed',
+      'businesses owned',
+      'income',
+      'ongoing expenses',
+      'net coin',
+      'closing',
+    ]) {
+      expect(section, `missing "${phrase}"`).toContain(phrase);
+    }
+    // The slice chain that delivered them must be traceable.
+    for (const id of [
+      'ms-0mvrnv9y8008ikgk',
+      'ms-0mvrnvhj50095n9y',
+      'ms-0mvrnw26w0070cp0',
+      'ms-0mvrnw5jt0046qi3',
+    ]) {
+      expect(section).toContain(id);
+    }
+    // The pre-slice placeholder claim is stale once the balances shipped.
+    expect(section).not.toContain('closing balances land in the dependent slices');
+  });
+
+  it('documents the always-disabled per-seat Bank Loan seam and the gate functions', () => {
+    const section = uxSection(COMPETITIVE_SECTION);
+    expect(section).toContain('competitive_bank_loan_hint');
+    expect(section).toContain('onbankloanaction');
+    expect(section).toContain('always disabled');
+    expect(section).toContain('shouldgatecompetitiveturnsummary()');
+    expect(section).toContain('presentcompetitiveturnsummarygate()');
+
+    // Code anchors the doc names must still exist, or the prose has drifted.
+    const controller = fs.readFileSync(
+      path.join(PROJECT_ROOT, 'src/scenes/MainStreetTurnControllerCompetitive.ts'),
+      'utf-8',
+    );
+    expect(controller).toContain('export function shouldGateCompetitiveTurnSummary(');
+    expect(controller).toContain('export function presentCompetitiveTurnSummaryGate(');
+    expect(
+      fs.readFileSync(
+        path.join(PROJECT_ROOT, 'src/scenes/MainStreetOverlayContent.ts'),
+        'utf-8',
+      ),
+    ).toContain('public showCompetitiveTurnSummaryDialog(');
+    expect(
+      fs.readFileSync(
+        path.join(PROJECT_ROOT, 'src/scenes/MainStreetTurnSummary.ts'),
+        'utf-8',
+      ),
+    ).toContain('export const COMPETITIVE_BANK_LOAN_HINT');
+  });
+});
+
+describe('Competitive Turn Summary documentation — README.md', () => {
+  const readme = normalise(
+    fs.readFileSync(path.join(PROJECT_ROOT, 'README.md'), 'utf-8'),
+  );
+
+  it('names the per-seat panel and the [ Next Turn ] gate', () => {
+    expect(readme).toContain('turn summary');
+    expect(readme).toContain('[ next turn ]');
+    expect(readme).toContain('one owner-keyed row per seat');
+    expect(readme).toContain('a round is one completed shared day');
   });
 });

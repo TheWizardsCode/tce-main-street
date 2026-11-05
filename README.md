@@ -83,11 +83,20 @@ reports each seat's own gain (for example `Player 2: +7 coins`) rather than
 the shared host total, which can differ from any seat's actual income.
 Eliminated seats are skipped.
 
+When that presentation finishes, a **Turn Summary** panel summarises the
+completed round — **one owner-keyed row per seat** showing businesses owned,
+income phases, ongoing expenses, the seat's incident and one-off deltas, net
+coin/reputation/score change and its closing coins, reputation and score — and
+the next shared day starts only when the player clicks **[ Next Turn ]**. A
+round is one completed shared day: every non-eliminated seat has taken its
+MarketPhase and the shared closing has run. **[ Bank Loan ]** is shown disabled
+with its hint, behind the seam that will enable per-seat loans.
+
 The engine's shared-day contract and seeded-replay determinism are unchanged —
 this is presentation only. Reduced motion, replay and headless contexts skip
-the animations, show the per-seat text and always advance the day; a global
-fast-forward bound caps the total closing time so a large roster cannot stall
-the game.
+the animations and the panel, show the per-seat text and always advance the
+day; a global fast-forward bound caps the total closing time so a large roster
+cannot stall the game.
 
 ## Card packs (DLC)
 

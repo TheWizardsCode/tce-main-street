@@ -7,6 +7,11 @@
  * (income choreography, incident reveal, activity-log timing, banking hint,
  * Enter binding) dismiss it through these helpers so their existing
  * advance-waits keep working unchanged.
+ *
+ * The competitive per-seat Turn Summary panel (MS-0MVRNV9Y8008IKGK) uses the
+ * same `[ Next Turn ]` button, so a browser test that drives a competitive
+ * end-of-turn (not gated under reduced motion / replay / headless) dismisses
+ * it through these helpers too — no mode-specific variant exists.
  */
 import Phaser from 'phaser';
 
@@ -28,6 +33,8 @@ export function findTurnSummaryNextTurnButton(
  *
  * No-op (returns `false`) when no dialog is up — e.g. tutorial / reduced
  * motion / replay auto-advance paths, or a turn that did not reach the gate.
+ * The competitive panel (MS-0MVRNV9Y8008IKGK) is found by the same button
+ * text, so one helper serves both modes.
  */
 export function dismissTurnSummaryDialogIfPresent(scene: SceneLike): boolean {
   const button = findTurnSummaryNextTurnButton(scene);

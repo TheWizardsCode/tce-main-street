@@ -896,7 +896,9 @@ condensed text-only summary.
   `presentTurnClosing` primitive (the **same** path used by single-player), so
   the single shared incident reveal and the next-day advance cannot drift. The
   shared income line is suppressed (`incomeSummary: ''`) because the per-seat
-  lines replace it.
+  lines replace it. In normal play the advance callback is the Turn Summary
+  gate (below, `presentCompetitiveTurnSummaryGate`), so the closing hands over
+  to the panel instead of starting the next day itself.
 - Bounded / non-blocking (AC6): the primitive waits for the combined
   choreography to finish collecting before the day advances
   (`waitForIncomeCollection`), clamped to the global fast-forward bound
@@ -904,14 +906,15 @@ condensed text-only summary.
   — once the bound is reached the closing stops waiting and advances the day.
   With no per-owner data the condensed shared summary is kept.
 - Turn Summary gate (MS-0MVRNV9Y8008IKGK): the closing's completion callback is
-  the gate, not the day advance — the panel appears once this presentation has
-  finished and **[ Next Turn ]** starts the next shared day. Reduced motion,
-  replay and headless keep the advance-on-completion pacing described here, so
-  this bound is unchanged for them. See
+  the gate, not the day advance — the owner-keyed per-seat panel appears once
+  this presentation has finished and **[ Next Turn ]** starts the next shared
+  day, so the day does **not** advance immediately. Reduced motion, replay and
+  headless keep the advance-on-completion pacing described here, so this bound
+  is unchanged for them. See
   [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk).
 - Accessibility (reduced motion), replay and headless: the per-seat
   animations are skipped, the per-seat text is still shown and the day always
-  advances.
+  advances on completion (no Turn Summary stop).
 - Per-owner destinations: each seat's `SlotPhaseBreakdown.ownerId` survives the
   `flatMap` into the combined slot list, so the combined sweep keeps drawing
   each slot at its **own** seat's bank — the human's coins/pips land on the HUD
@@ -1288,7 +1291,8 @@ condensed text-only summary.
 - Competitive closings carry no `turnLedger`, so `buildTurnSummary` returns
   `null` and the single-player dialog is not presented (parent AC4). They carry
   `TurnResult.playerRoundLedger` instead, rendered by the per-seat
-  [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk).
+  [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk)
+  through its own model builder (`buildCompetitiveTurnSummary`).
 - Tests: `tests/main-street/turn-summary-model.test.ts` (one test per
   surfaced value, owner-keyed shape, and a real-engine
   `processEndOfTurn` integration test); engine ledger coverage lives in
@@ -1339,8 +1343,9 @@ condensed text-only summary.
   (checkpoint + `startTurnPhase`).
 - Scope: deferred single-player closings. The tutorial, replay/headless and
   the resumed event-choice/piggyback tails keep the existing auto-advance
-  pacing, and competitive closings never present it — competitive play has
-  its own per-seat panel under the same gate contract (per-seat
+  pacing, and competitive closings never present this single-player dialog —
+  competitive play has its own owner-keyed per-seat panel under the same gate
+  contract (`presentCompetitiveTurnSummaryGate`; per-seat
   `perSeatClosingSummary` text is unchanged; parent AC4; see
   [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk)).
   **Reduced motion is
@@ -1370,12 +1375,16 @@ condensed text-only summary.
 ### Competitive Turn Summary panel (per-seat round rows, MS-0MVRNV9Y8008IKGK)
 
 Competitive play gets the same review-and-advance moment single-player has
-(parent MS-0MVO1SFCM000ZLBI): after the shared closing presentation finishes,
-a **Turn Summary** panel shows one owner-keyed row per non-eliminated seat, and
-the next shared day starts only on **[ Next Turn ]**. This slice is the tracer
-bullet — businesses owned, per-phase income and net coin change; the ongoing
-expense rows landed in MS-0MVRNVHJ50095N9Y (below) and the closing balances
-land in the dependent slices.
+(MS-0MVRNV9Y8008IKGK, parent MS-0MVO1SFCM000ZLBI): after the shared closing
+presentation finishes, a **Turn Summary** panel shows one owner-keyed row per
+non-eliminated seat, and the next shared day starts only on **[ Next Turn ]**.
+
+A **round** is one completed shared day: every non-eliminated seat has taken
+its MarketPhase and the shared closing (Income → Incident → EndCheck) has run
+(intake assumption, parent MS-0MVO1SFCM000ZLBI). The panel is presented per
+completed round — a partial day, an early exit or a closing that carries no
+round ledger advances as before — and every value on it is engine-computed and
+owner-keyed, so the whole panel is testable without a browser.
 
 - **Engine ledger (reporting-only).** `resolveCompetitiveClosingPhases`
   (`src/MainStreetEngineCompetitiveTurn.ts`) captures, per non-eliminated seat
@@ -1392,25 +1401,43 @@ land in the dependent slices.
   shared phase order (Income → Incident → EndCheck), RNG consumption and log
   lines are unchanged, and the field is absent for single-player, N=1,
   headless short-cuts and hand-built results.
+- **Per-seat net and closing balances (MS-0MVRNW26W0070CP0).** The ledger also
+  carries, per seat, the day-start wallet snapshot (`dayStart`), the closing
+  wallet (`closing`), the net reputation and score change (`netRepChange` /
+  `netScoreChange`) and the seat's own share of the resolved incident and of
+  the non-recurring one-off deltas — the same figures, order and signed
+  formatting the single-player panel shows, reconciling exactly
+  (`dayStart + net == closing`, the ledger's own identity). Every field is
+  optional and absent-safe: `buildCompetitiveTurnSummary` prefers the ledger's
+  closing snapshot, falls back to `dayStart + net`, then to the seat's
+  committed `PlayerRecord` wallet, and renders an absent figure as zero, so an
+  older or hand-built ledger still shows that seat's standing instead of a
+  gap.
 - **Model (Phaser-free).** `buildCompetitiveTurnSummary(state, result)` in
   `src/scenes/MainStreetTurnSummary.ts` turns that ledger into one row per seat
   — seat label from the same `buildCompetitiveScoreboard` rows (`You` / `AI n`),
   colour from the shared `resolveSeatColour` lookup, businesses owned, the
-  `base` / `synergy` / `reputation` / `events` income rows with their total, and
-  the net coin change. It returns `null` when the result carries no round
-  ledger, so browser and single-player callers are unaffected.
+  `base` / `synergy` / `reputation` / `events` income rows with their total, the
+  per-category ongoing expenses with their total, the seat's incident and
+  one-off deltas, its net coin / reputation / score change and its closing
+  coin / reputation / score balances. It returns `null` when the result carries
+  no round ledger, so browser and single-player callers are unaffected.
 - **Dialog.** `MainStreetOverlayContent.showCompetitiveTurnSummaryDialog()`
   (delegated by `MainStreetScene.showCompetitiveTurnSummaryDialog()`) renders a
-  `Turn Summary` / `Day <n>` title and, per seat, the seat label in its own
-  colour with businesses owned, the per-phase income line, and
-  `Income total … · Net change …`. Overlay conventions are the single-player
-  ones: `createOverlayBackground` / `createOverlayButton`, elements parented
-  into `s.hudContainer` at depths 199/200/201, everything pushed into
+  `Turn Summary` / `Day <n>` title and, per seat, five text lines: the seat
+  label in its own colour beside `Businesses owned: <n>`, the per-phase
+  `Income: …` line, the `Expenses: … · Total …` line, the
+  `Incident: … · One-off: …` line, and a bold totals line
+  `Income total: … · Net change: Coins …, Rep …, Score … · Closing: Coins …,
+  Rep …, Score …`. Overlay conventions are the single-player ones:
+  `createOverlayBackground` / `createOverlayButton`, elements parented into
+  `s.hudContainer` at depths 199/200/201, everything pushed into
   `s.overlayObjects` for dismissal, instant appearance (reduced-motion safe)
   and `safePlaySound` for the **[ Next Turn ]** click. **[ Bank Loan ]** is
   **always disabled** in competitive play — muted and inert with
   `COMPETITIVE_BANK_LOAN_HINT` — behind the `(seatId?: number) => void`
-  `onBankLoanAction` seam that `MS-0MVL6DZI0000F6CG` will enable per seat.
+  `onBankLoanAction` seam that `MS-0MVL6DZI0000F6CG` will enable per seat (a
+  documented per-seat-capable seam this item never enables).
 - **Per-seat expenses (MS-0MVRNVHJ50095N9Y).** `applyCompetitiveOngoingCosts`
   (`src/MainStreetEngineCommands.ts`) now **returns** the per-owner breakdown it
   charges — `{ staff, community, business }`, signed zero-or-negative — instead
@@ -1438,22 +1465,35 @@ land in the dependent slices.
   auto-advance pacing** (the competitive panel blocks the shared day, so those
   players are not given a new stop), and a closing with no round ledger — an
   early exit, a resumed-from-save closing — advances exactly as before.
+- **Invariants (MS-0MVRNW5JT0046QI3).** Only non-eliminated seats get rows, and
+  the gate never fires for single-player or N=1 (single-player has its own
+  gate); a headless / AI-driven competitive day advances with no overlay
+  surface. The panel adds no checkpoint save, mutates no engine state and
+  consumes no RNG, and a failing model build or a presentation that throws
+  advances immediately and exactly once — the panel can neither stall the
+  shared day nor start it twice.
 - **Tests.** `tests/main-street/competitive-turn-ledger.test.ts` (per-seat
   ledger for 2- and 3-seat closings, eliminated-seat omission, reconciliation
   with each seat's committed wallet, determinism, the dual-choice resume, the
-  N=1 / single-player absent cases, and the per-seat ongoing-expense breakdown
-  — mixed street split, Cost Cutter reduction, sold-slot exclusion, clamp
-  allocation and its reconciliation with the wallet movement),
+  N=1 / single-player absent cases, the per-seat ongoing-expense breakdown —
+  mixed street split, Cost Cutter reduction, sold-slot exclusion, clamp
+  allocation and its reconciliation with the wallet movement — and the
+  day-start / closing / net reputation / score reconciliation),
   `tests/main-street/turn-summary-competitive-model.test.ts` (row per seat,
   seat order, labels/colours, per-row values, the per-category expense rows and
-  total including a zero-expense seat and an absent breakdown, label parity
-  with the single-player panel, `null` without a ledger),
+  total including a zero-expense seat and an absent breakdown, the net
+  reputation / score and closing balances including their absent-safe
+  fallbacks, label parity with the single-player panel, `null` without a
+  ledger),
   `tests/main-street/competitive-turn-summary-gate.test.ts` (panel after the
   closing, `startTurnPhase` only on the click, reduced-motion / replay /
-  headless auto-advance) and
+  headless auto-advance, the invariants above) and
   `tests/main-street/turn-summary-competitive.browser.test.ts` (real Phaser
   overlay: rows, colours, depths/parenting, always-disabled **[ Bank Loan ]**,
-  and the per-seat expense line).
+  the per-seat expense line and the incident / one-off / net / closing
+  totals). The prose here is guarded by
+  `tests/main-street/turn-summary-gate-docs.test.ts`, which also pins the
+  single-player gate and the `docs/dev/testing.md` browser-test rule.
 
 ### Mid-game loan selector
 
