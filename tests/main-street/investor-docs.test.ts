@@ -36,20 +36,20 @@ function read(file: string): string {
   return fs.readFileSync(file, 'utf-8');
 }
 
-/** Parses the catalogue staff row whose first cell is `` `staff-investor` ``. */
+/** Parses the catalogue staff row `| `id` | Name | Type | Cost | Ongoing | Slots+ | Tier | … |`. */
 function parseCatalogRow(doc: string, id: string): DocumentedRow | null {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(
-    `^\\|\\s*\`${escaped}\`\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`,
+    `^\\|\\s*\`${escaped}\`\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`,
     'm',
   );
   const m = doc.match(re);
   if (!m) return null;
   return {
     name: m[1].trim(),
-    cost: Number(m[2].trim()),
-    ongoingCost: Number(m[3].trim()),
-    tier: m[5].trim(),
+    cost: Number(m[3].trim()),
+    ongoingCost: Number(m[4].trim()),
+    tier: m[6].trim(),
   };
 }
 
