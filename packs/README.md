@@ -37,6 +37,56 @@ the residential pack with **no manual `<contentDir>/packs/` copy step**.
   a signed envelope. See [Serve a catalogue remotely
   (signed)](../docs/dev/card-packs-runbook.md#3a-serve-a-catalogue-remotely-signed).
 
+## Remote catalogue (signed hosting)
+
+A pack can also be hosted **remotely** instead of (or as well as) being
+bundled: the operator serves a `packs/` tree under a base URL and the build
+loads a **signed** catalogue from it. The on-host layout is the same tree as
+above, with the base URL in front of it:
+
+```
+<base>/packs/manifest.json                      ← signed envelope (see below)
+<base>/packs/<gameId>/<packId>/cards.csv
+<base>/packs/<gameId>/<packId>/assets/<cardId>.png
+```
+
+Worked example for `<base> = https://packs.example.com/main-street`:
+
+```
+https://packs.example.com/main-street/
+  packs/
+    manifest.json                               ← signed envelope
+    main-street/
+      main-street-residential-pack/
+        cards.csv
+        assets/
+          biz-ms-residential-solar.png
+```
+
+A hosted catalogue uses the **same `manifest.json` shape as the bundled packs**
+(the `{ "version": 1, "packs": [ … ] }` document declared below), wrapped in a
+signature envelope:
+
+```json
+{
+  "manifest": { "version": 1, "packs": [ … ] },
+  "signature": "<base64 Ed25519 signature over canonical(manifest)>"
+}
+```
+
+The signature covers the manifest's canonical payload (object keys sorted
+recursively, no insignificant whitespace), the algorithm is **Ed25519**, and
+the game pins only the **public** key at build time — the private signing key
+is held by the operator and never ships. Only the configured host is
+requested, every catalogue read (manifest and pack CSV) is bounded (≈3 s), and
+any failure rejects the remote source whole with one console warning while
+bundled packs keep working.
+
+Full operator contract — configuration, the canonical payload rules, a
+reproducible worked signing example, every verification outcome and the
+degradation semantics — is in
+[docs/dev/remote-pack-hosting.md](../docs/dev/remote-pack-hosting.md).
+
 ## Pack Layout
 
 ```
@@ -144,7 +194,9 @@ npm run build:card-pack -- --input packs
   pack is refused whole.
 - Pack art lives in `assets/<cardId>.png` (the asset stem is the card id) and
   must be declared in the manifest's `assets` list.
-- All art must be project-generated (CC0) and licence-clean.
+- All art must be project-generated (CC0) and licence-clean. This applies
+  equally to remotely hosted pack content: a valid signature proves who
+  published a catalogue, not the rights to it.
 
 ## Adding a New Pack
 

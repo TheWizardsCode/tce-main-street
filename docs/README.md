@@ -67,6 +67,7 @@ fails the build if the legacy flat tree under `docs/` is ever recreated.
 | [`monte-carlo-sample-results.md`](dev/monte-carlo-sample-results.md) | Sample Monte-Carlo results |
 | [`testing.md`](dev/testing.md) | Testing process and browser-suite setup |
 | [`card-packs-runbook.md`](dev/card-packs-runbook.md) | Card-pack authoring lifecycle runbook |
+| [`remote-pack-hosting.md`](dev/remote-pack-hosting.md) | Remote pack catalogue hosting, signing and degradation contract |
 | [`analysis/`](dev/analysis/) | Balance analysis notes |
 | [`*evidence.md`](dev/payback-rebalance-evidence.md) | Before/after balance evidence |
 | [`assets/`](dev/assets/) | Generated baselines, manifests and evidence JSON/MD pairs |
