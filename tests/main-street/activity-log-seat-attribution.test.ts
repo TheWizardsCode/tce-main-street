@@ -321,7 +321,9 @@ const ATTRIBUTED_PATHS: AttributedCase[] = [
     name: 'peek incident deck',
     seatId: 1,
     drive: (s) => {
-      s.staffCards = [makeStaff({ id: 'attr-peek', name: 'Scout', peekOncePerTurn: true } as never)];
+      // The PlayerAction path binds the acting seat (copies the seat's staff
+      // into the shared list), so the peek-capable staff goes on the SEAT.
+      s.players![1].staffCards = [makeStaff({ id: 'attr-peek', name: 'Scout', peekOncePerTurn: true } as never)];
       s.incidentDeck = [makeIncident({ id: 'attr-peek-incident' })];
       s.activePlayerId = 1;
       return driveAction(s, { type: 'peek-incident-deck' }, { seatId: 1 });
@@ -407,7 +409,7 @@ const ATTRIBUTED_PATHS: AttributedCase[] = [
       s.players![1].coins = 100;
       return driveAction(s, { type: 'incident', event: makeIncident({ coinDelta: -5 }) }, { seatId: 1 });
     },
-    pick: (e) => e.text.startsWith('Incident: Test Incident (') && e.seatId !== undefined,
+    pick: (e) => e.text.startsWith('Incident: Test Incident (') && e.seatId === 1,
   },
 ];
 
@@ -425,6 +427,8 @@ describe('every acting-seat action path is attributed to its seat (MS-0MW3PFQ4L0
 
 interface SharedCase {
   name: string;
+  /** Optional fresh (not-yet-started) state builder (default: started market state). */
+  setup?: (seed: string) => MainStreetState;
   /** Drives the shared path; returns the appended entries. */
   drive: (state: MainStreetState) => LogEntry[];
   /** Predicate selecting the shared entry from the appended ones. */
@@ -434,6 +438,8 @@ interface SharedCase {
 const SHARED_PATHS: SharedCase[] = [
   {
     name: 'turn header (week start)',
+    // A fresh pre-day-start state: the week-start driver must run once.
+    setup: (seed) => createActivityLogState({ seed }),
     drive: (s) => startDay(s),
     pick: (e) => e.type === 'turn-header',
   },
@@ -507,6 +513,7 @@ const SHARED_PATHS: SharedCase[] = [
       (s.config as { maxTurns?: number }).maxTurns = 1;
       s.turn = 1;
       s.finalScore = 0;
+      s.players!.forEach((player) => { player.reputation = 0; });
       checkEndConditions(s);
       return s.activityLog.slice(before);
     },
@@ -515,8 +522,8 @@ const SHARED_PATHS: SharedCase[] = [
 ];
 
 describe('every shared / turn-level path stays unattributed (MS-0MW3PFQ4L0046Q3K AC2)', () => {
-  it.each(SHARED_PATHS)('$name carries no seat fields', ({ drive, pick }) => {
-    const state = competitive(`shared-${Math.random()}`);
+  it.each(SHARED_PATHS)('$name carries no seat fields', ({ setup, drive, pick }) => {
+    const state = setup ? setup(`shared-${Math.random()}`) : competitive(`shared-${Math.random()}`);
     const entries = drive(state);
     const entry = find(entries, pick);
 
@@ -559,12 +566,12 @@ describe('shared / turn-level paths that need a dedicated drive (AC2)', () => {
     applyCompetitiveOngoingCosts(state);
     const entries = state.activityLog.slice(before);
 
-    const seatZero = entries.filter((e) => e.text.includes('Ongoing costs:'));
+    const seatZero = entries.filter((e) => e.seatId === 0 && e.text.includes('Ongoing costs:'));
+    const seatOne = entries.filter((e) => e.seatId === 1 && e.text.includes('Ongoing costs:'));
     expect(seatZero.length).toBeGreaterThan(0);
-    for (const entry of seatZero) {
-      expect(entry.seatId).toBe(0);
-      expectAttributed(entry, state, 0);
-    }
+    expect(seatOne.length).toBeGreaterThan(0);
+    for (const entry of seatZero) expectAttributed(entry, state, 0);
+    for (const entry of seatOne) expectAttributed(entry, state, 1);
   });
 });
 
@@ -678,13 +685,15 @@ describe('undo/redo and multi-seat turns keep attribution truthful (AC6)', () =>
     state.activePlayerId = 0;
 
     const biz = state.market.cards.find((c) => c.family === 'business')!;
-    // Drive the action twice (forward, undo-restore, forward again) through
-    // the same engine seam the scene command layer uses.
+    // Drive the same action twice (execute, undo-restore, execute again)
+    // through the same engine seam the scene command layer uses; the bought
+    // card leaves the market each pass, so it is restored between passes.
     for (let pass = 0; pass < 2; pass++) {
+      state.market.cards = [biz];
       const before = state.activityLog.length;
       driveAction(state, { type: 'buy-business', cardId: biz.id, slotIndex: pass }, { seatId: 0 });
       const entries = state.activityLog.slice(before);
-      const bought = find(entries, (e) => e.text.startsWith('Bought'));
+      const bought = find(entries, (e) => e.text.startsWith('Placed') && !e.text.includes('from hand'));
       expectAttributed(bought, state, 0);
     }
 
@@ -709,15 +718,17 @@ describe('undo/redo and multi-seat turns keep attribution truthful (AC6)', () =>
       { type: 'buy-business', cardId: biz0.id, slotIndex: 0 },
       { seatId: 0 },
     );
-    const biz1 = state.market.cards.find((c) => c.family === 'business')!;
+    // Seat 1's purchase uses its own market card (the same row cannot be
+    // bought twice).
+    state.market.cards = [makeBiz({ id: 'second-biz', name: 'Bookshop', cost: 2 })];
     const seatOneEntries = driveAction(
       state,
-      { type: 'buy-business', cardId: biz1.id, slotIndex: 1 },
+      { type: 'buy-business', cardId: 'second-biz', slotIndex: 1 },
       { seatId: 1 },
     );
 
-    expectAttributed(find(seatZeroEntries, (e) => e.text.startsWith('Bought')), state, 0);
-    expectAttributed(find(seatOneEntries, (e) => e.text.startsWith('Bought')), state, 1);
+    expectAttributed(find(seatZeroEntries, (e) => e.text.startsWith('Placed') && !e.text.includes('from hand')), state, 0);
+    expectAttributed(find(seatOneEntries, (e) => e.text.startsWith('Placed') && !e.text.includes('from hand')), state, 1);
   });
 
   it('a per-owner phase loop attributes each row to its owner, not the ambient seat', () => {
@@ -748,7 +759,7 @@ describe('undo/redo and multi-seat turns keep attribution truthful (AC6)', () =>
       { type: 'buy-business', cardId: biz.id, slotIndex: 0 },
       { seatId: 1 },
     );
-    const bought = find(entries, (e) => e.text.startsWith('Bought'));
+    const bought = find(entries, (e) => e.text.startsWith('Placed') && !e.text.includes('from hand'));
 
     expectAttributed(bought, state, 1);
     // Attribution is entry data, not derived at render time: a structural
