@@ -747,7 +747,11 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     // `state.activityLog`, preserves entry order and keeps shared/turn-level
     // entries visible under every filter (Q2 = A). The human seat resolves
     // exactly as the engine derives it (`findHumanSeatId`), `-1` without a
-    // human seat so You/AI buckets stay empty there.
+    // human seat so You/AI buckets stay empty there. The unfiltered
+    // `state.activityLog` stays the source of truth for the preserved
+    // contracts — the deferral gate (MS-0MURBOD2E009SOM2), the scene-restart
+    // reset (MS-0MV14JDUG000E1V6) and the re-render trigger
+    // (MS-0MV1BMMO900824N9).
     const humanSeatId = (s.state.players?.length ?? 0) > 1 ? findHumanSeatId(s.state) : -1;
     const visibleEntries = filterLogEntries(entries, s.logFilter, humanSeatId);
 

@@ -834,6 +834,49 @@ Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: 
 
 The log **render** is deferred during the end-of-turn closing so entries appear only after the upcoming/phase UI, and the deferral flag (`logDeferredUntilPhaseComplete`) is reset on every scene creation — an interrupted closing must never leave the Activity Log blank across a scene restart (MS-0MURBOD2E009SOM2, MS-0MV14JDUG000E1V6).
 
+### Filtering (All / You / AI)
+
+In competitive (multi-seat) games the Activity Log can be filtered by seat
+through the All / You / AI control row beneath the title bar. The filter is
+**presentation-only and session-only** — it never mutates `state.activityLog`
+and is never persisted to save data (MS-0MW3PFRV6003LJLD,
+MS-0MW3PFSMB002EIY6):
+
+- **Selection.** `scene.logFilter` holds the active value of type `LogFilter`
+  (`'all' | 'human' | 'ai'`). It defaults to **All** (`'all'`) — every entry
+  visible — and resets to `'all'` on every scene creation / new game, in the
+  same lifecycle reset block as the other per-session log state
+  (`MainStreetLifecycleManagerLifecycle`).
+- **What each bucket matches.** `'all'` matches every entry. `'human'`
+  (**You**) matches only entries seat-attributed to the human seat. `'ai'`
+  (**AI**) matches entries attributed to **any** AI seat — the predicate
+  groups every AI seat into a single bucket (`entry.seatId !==
+  humanSeatId`). A roster with no human-controlled seat (`findHumanSeatId`
+  returns `-1`) leaves both seat buckets empty: nothing seat-attributed
+  matches You or AI, and the call never throws.
+- **Entries that stay visible under every filter** (producer decision Q2 = A):
+  genuinely shared / turn-level entries carry no seat attribution, so turn
+  headers, the per-turn net summary, incidents, market refresh/deal-in, week
+  start and game-over entries are never hidden by You or AI.
+- **Empty state.** A filter that matches no entries at all — not even shared
+  ones — renders the single line `No activity for this filter` instead of a
+  blank panel (`LOG_EMPTY_FILTER_MESSAGE`).
+- **Competitive-only availability.** The controls are shown only when the
+  roster has 2+ seats (`shouldShowLogFilterControls`); single-player,
+  single-seat and tutorial games render the log exactly as before, with no
+  filter row and no vertical space taken (producer decision Q3 = A).
+
+**Seat attribution.** An entry carries seat fields (`seatId`, `seatLabel`,
+`seatColour`) only when it is attributable to a competitive seat
+(`MainStreetStateLog`): `addLog` stamps the acting seat
+(`state.activePlayerId`, or an explicit seat via the explicit-seat overload
+for per-owner phase paths) when the roster has 2+ seats and the seat has a
+persisted colour, while genuinely shared / turn-level entries use the named
+`addLogShared` opt-out — turn header, per-turn net summary, incident draw,
+market refresh/deal-in, week start, game over, tutorial/help lines and the
+turn-level economy rows (staff / community-space / business ongoing-cost
+deductions) — and never carry seat fields (MS-0MW3PFQ4L0046Q3K).
+
 ### Per-Turn Stat History (`turnStatsHistory`)
 
 The Game Over overlay's stats graphs are fed by a persisted per-turn series, kept separate from the free-text activity log (MS-0MVAMU6OM008GJPV):

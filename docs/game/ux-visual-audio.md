@@ -1857,6 +1857,47 @@ always present.
 - Single-player is unchanged: with no roster (or one seat) the seat argument is
 ignored and entries render exactly as before.
 
+## Activity Log filter controls (All / You / AI, MS-0MW3PFSMB002EIY6)
+
+In competitive play (roster of 2+ seats) a compact filter-controls row sits
+beneath the Activity Log title bar offering **All / You / AI**, backed by
+`scene.logFilter` (`LogFilter = 'all' | 'human' | 'ai'`). The bucket semantics
+(what each filter matches, which shared entries stay visible, session-only
+reset) are documented in the game rules,
+[`core-rules-and-mechanics.md`](core-rules-and-mechanics.md) (*Filtering
+(All / You / AI)*); this section covers the control treatment.
+
+- **Placement.** The row is a slim strip (`LOG_FILTER_ROW_H` = 26 px) directly
+  beneath the log's title bar, holding three `createActionButton` controls
+  (All / You / AI) laid out across the panel width with a small breathing
+  margin. A solid strip behind the buttons (panel fill) keeps scrolled log
+  lines from showing through the gaps between them.
+- **Active/inactive treatment — not colour alone.** The active control uses a
+  bright gold fill at full alpha, a thicker 2 px stroke and a bold bright
+  label; inactive controls use a dimmed fill at reduced alpha, a 1 px stroke
+  and a normal-weight dimmed label (constants in
+  `MainStreetRendererStreet.ts`). Because fill alpha, stroke thickness and
+  label weight/brightness all change together, the selected filter stays
+  identifiable without colour perception.
+- **Space taken from the log viewport.** In competitive play the row reserves
+  its 26 px from the visible log area: `refreshLog` (`MainStreetRendererHud`)
+  subtracts `LOG_FILTER_ROW_H` from the panel's content height, and the wheel
+  handler (`MainStreetInputManager`) applies the same reservation, so scroll
+  bounds stay correct around the hidden strip. Single-player / tutorial hide
+  the row (`shouldShowLogFilterControls` = false) and consume no vertical
+  space — the log renders exactly as it always has.
+- **Interaction.** Clicking a control sets `scene.logFilter` and re-renders
+  through `refreshLog`, which honours the end-of-turn deferral gate — a click
+  during closing applies on the next render. Clicking the already-active
+  control is a no-op (no state mutation, no re-render), and hidden modes
+  leave the row inert.
+- **Empty state.** A filter that matches nothing — not even shared
+  entries — renders `No activity for this filter` in italic, neutral body
+  colour instead of a blank log (`LOG_EMPTY_FILTER_MESSAGE`).
+- **Session-only.** The selection is scene state, never persisted: it resets
+  to **All** on every scene creation / new game (lifecycle reset in
+  `MainStreetLifecycleManagerLifecycle`).
+
 ## Owner-coloured placed-card borders (F4, MS-0MUWNTN8W006C7EF)
 
 In competitive (multi-seat) games every placed business/community-space card on

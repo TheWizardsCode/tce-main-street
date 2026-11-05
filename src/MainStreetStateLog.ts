@@ -24,6 +24,15 @@
  * Import graph: depends on `MainStreetStateTypes` (state shape) and
  * `MainStreetAdjacencyOwner` (shared seat-label source).
  *
+ * Seat fields are **presentation-only** (epic MS-0MW1ZGM1F0010DQW): the
+ * renderer draws them as the coloured seat prefix and the presentational
+ * filter predicate (`MainStreetLogFilter`) groups entries into You / AI
+ * buckets from them — they are never read back into engine logic. The
+ * unfiltered `state.activityLog` always remains the source of truth for the
+ * preserved contracts: the deferred-render gate (MS-0MURBOD2E009SOM2), the
+ * scene-restart reset (MS-0MV14JDUG000E1V6) and the re-render trigger
+ * (MS-0MV1BMMO900824N9).
+ *
  * @module
  */
 

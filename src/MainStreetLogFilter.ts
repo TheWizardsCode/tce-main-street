@@ -20,6 +20,13 @@
  * summary, incident, market refresh, week start, game-over) never carry one
  * (`addLogShared`).
  *
+ * The projection is **presentation-only** (MS-0MW3PFRV6003LJLD): the caller
+ * renders the derived subset and never writes it back into
+ * `state.activityLog`. The unfiltered log stays the source of truth for the
+ * preserved contracts — the deferred-render gate (MS-0MURBOD2E009SOM2), the
+ * scene-restart reset (MS-0MV14JDUG000E1V6) and the re-render trigger
+ * (MS-0MV1BMMO900824N9) — all of which operate on the full log.
+ *
  * @module
  */
 
@@ -64,7 +71,9 @@ export function entryMatchesLogFilter(
  *
  * The input is never mutated and the retained entries keep their original
  * order and identity. Presentation-only: the caller must not write the result
- * back into `state.activityLog`.
+ * back into `state.activityLog` — the full log stays the source of truth for
+ * the deferred-render gate (MS-0MURBOD2E009SOM2), the scene-restart reset
+ * (MS-0MV14JDUG000E1V6) and the re-render trigger (MS-0MV1BMMO900824N9).
  *
  * @param entries The activity log entries (read-only).
  * @param filter The active filter.
