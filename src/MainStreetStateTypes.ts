@@ -63,6 +63,18 @@ export interface LogEntry {
    */
   seatColour?: string;
 }
+
+/**
+ * Activity Log view filter (competitive mode): which entries to show.
+ *
+ * - `'all'` — every entry (the default).
+ * - `'human'` — only the human seat's entries (labelled **You** in the UI).
+ * - `'ai'` — every AI seat's entries, grouped into one bucket.
+ *
+ * Declared here (next to `LogEntry`) so the pure predicate module
+ * (`MainStreetLogFilter`) and the scene/renderer share the single type.
+ */
+export type LogFilter = 'all' | 'human' | 'ai';
 // ── Phase Types ─────────────────────────────────────────────
 
 /**
