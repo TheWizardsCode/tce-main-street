@@ -23,7 +23,7 @@ import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
+import { addLogShared, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 
 /**
@@ -529,7 +529,7 @@ function finishCompetitiveClosingTail(
   const decayResult = decayActiveEffects(state.activeEffects);
   state.activeEffects = decayResult.active;
   for (const expired of decayResult.expired) {
-    addLog(state, `${expired.description} has expired.`, 'neutral');
+    addLogShared(state, `${expired.description} has expired.`, 'neutral');
     recordMainStreetEvent({ type: 'info', turn: state.turn, message: `${expired.description} has expired.` });
   }
   // Closing-phase EndCheck safety net: attribute any completion caused by the

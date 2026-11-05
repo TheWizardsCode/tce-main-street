@@ -16,7 +16,7 @@ import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } 
 import { acceptLoanOffer, applyEndOfTurnDeltas, canAffordPiggybackJoinFully, declineLoanOffer, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolveCompetitiveLoanOffer, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
-import { addLog } from '../MainStreetState';
+import { addLog, addLogShared } from '../MainStreetState';
 import { finalizeMainStreetTranscript, recordMainStreetEvent } from '../MainStreetTranscript';
 import type { TutorialActionType } from '../TutorialFlow';
 import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
@@ -1253,7 +1253,7 @@ export function performUndo(tcCtx: MainStreetTurnControllerContext): void {
       try {
         const cmd = s.undoManager.undo();
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-        addLog(s.state, 'Undo', 'neutral');
+        addLogShared(s.state, 'Undo', 'neutral');
         try { if (cmd) recordMainStreetEvent({ type: 'undo', turn: s.state.turn, reversedAction: { description: cmd.description } }); } catch (_) {}
         // Undoing a move-to-hand removes the card from hand, so any tracked
         // "just moved" card is stale (CG-0MSXIQIPJ000NDTL).
@@ -1300,7 +1300,7 @@ export function performRedo(tcCtx: MainStreetTurnControllerContext): void {
     try {
       const cmd = s.undoManager.redo();
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-      addLog(s.state, 'Redo', 'neutral');
+      addLogShared(s.state, 'Redo', 'neutral');
       try { if (cmd) recordMainStreetEvent({ type: 'redo', turn: s.state.turn, reappliedAction: { description: cmd.description } }); } catch (_) {}
       s.refreshAll();
       // Redo feedback (AGENTS.md rule 8): "Redid: <action>" pop bottom-centre

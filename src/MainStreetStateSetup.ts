@@ -58,7 +58,7 @@ import {
   AI_SEAT_DIFFICULTIES,
   AI_SEAT_STRATEGIES,
 } from './MainStreetStateTypes';
-import { addLog } from './MainStreetStateLog';
+import { addLogShared } from './MainStreetStateLog';
 import { assignSeatColours } from './MainStreetSeatColours';
 
 // ── Seed Helpers ────────────────────────────────────────────
@@ -129,7 +129,7 @@ function reshuffleIfNeeded<T>(state: MainStreetState, deck: T[], discard: T[], n
     while (discard.length > 0) {
       deck.push(discard.pop()!);
     }
-    addLog(state, `Reshuffled ${name} discard into deck`, 'neutral');
+    addLogShared(state, `Reshuffled ${name} discard into deck`, 'neutral');
   }
 }
 
@@ -145,7 +145,7 @@ function forceReshuffleFromDiscards<T>(state: MainStreetState, deck: T[], discar
     while (discard.length > 0) {
       deck.push(discard.pop()!);
     }
-    addLog(state, `Reshuffled ${name} discard into deck`, 'neutral');
+    addLogShared(state, `Reshuffled ${name} discard into deck`, 'neutral');
   }
 }
 
@@ -1023,7 +1023,7 @@ export function setStreetGridLattice(
   state.streetGridCols = nextCols;
   state.streetGridRows = nextRows;
 
-  addLog(
+  addLogShared(
     state,
     `Street grid expanded to ${nextCols}×${nextRows} streets (${nextSize} plots)`,
     'neutral',

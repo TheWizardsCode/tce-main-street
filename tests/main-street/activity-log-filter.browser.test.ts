@@ -46,15 +46,17 @@ describe('Activity Log filter baseline — browser harness (MS-0MW3PFLDP000CF2X)
     expect(handle.hasFilterControlRow()).toBe(false);
   }, 60_000);
 
-  it('renders a seat prefix only for the seat-attributed entry, never the shared one', async () => {
+  it('renders a seat prefix only for the attributed entry, never the shared one', async () => {
     handle = await bootActivityLogScene({ mode: 'competitive' });
     const scene = handle.scene;
 
     const prefixesBefore = seatPrefixLines(handle).length;
 
-    const { addLog } = await import('../../src/MainStreetState');
+    const { addLog, addLogShared } = await import('../../src/MainStreetState');
     addLog(scene.state, 1, 'Seat-attributed action', 'neutral'); // stamped "AI 1"
-    addLog(scene.state, 'Shared summary line', 'neutral'); // no seat fields
+    // Explicit opt-out: shared / turn-level entries carry no seat fields
+    // (MS-0MW3PFQ4L0046Q3K AC4).
+    addLogShared(scene.state, 'Shared summary line', 'neutral');
     scene.msRenderer.refreshLog();
     await waitFrames(3);
 

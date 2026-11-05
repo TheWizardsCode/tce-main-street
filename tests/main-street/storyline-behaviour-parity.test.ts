@@ -31,7 +31,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { setupMainStreetGame, addLog, type MainStreetState } from '../../src/MainStreetState';
+import { setupMainStreetGame, addLogShared, type MainStreetState } from '../../src/MainStreetState';
 import {
   getEventTemplates,
   getBaseTypeId,
@@ -82,7 +82,7 @@ function makeEngine(): StorylineEngineAdapter<MainStreetState, EventCard> {
       coins: state.resourceBank.coins,
       reputation: state.resourceBank.reputation,
     }),
-    appendLog: (state, text) => addLog(state, text, 'neutral'),
+    appendLog: (state, text) => addLogShared(state, text, 'neutral'),
     getActivityLog: (state) => state.activityLog,
     getTemplate: (id) => getEventTemplates().find((t) => t.id === id) ?? null,
     getBaseTypeId,

@@ -28,7 +28,7 @@ import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
 import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
+import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Places a card from the player's hand onto an empty tableau slot.
@@ -395,14 +395,15 @@ export function applyStaffOngoingCosts(state: MainStreetState, opts?: { apply?: 
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      // Turn-level economy row: the per-owner competitive rows carry seat data.
+      addLogShared(
         state,
         `Staff costs: -${actualDeduction} coins (${staffCards.length} staff) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for staff costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -456,14 +457,14 @@ export function applyCommunitySpaceOngoingCosts(state: MainStreetState, opts?: {
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      addLogShared(
         state,
         `Community space costs: -${actualDeduction} coins (${spaceCount} spaces) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for community space costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -522,14 +523,14 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      addLogShared(
         state,
         `Business costs: -${actualDeduction} coins (${bizCount} businesses) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for business costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -595,6 +596,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (actualDeduction > 0) {
       addLog(
         state,
+        player.playerId,
         `P${player.playerId} Staff costs: -${actualDeduction} coins (${staffCards.length} staff) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -602,6 +604,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (actualDeduction < totalCost) {
       addLog(
         state,
+        player.playerId,
         `P${player.playerId} Insufficient coins for staff costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -671,6 +674,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (actualDeduction > 0) {
       addLog(
         state,
+        ownerId,
         `P${ownerId} Ongoing costs: -${actualDeduction} coins (${label}) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -678,6 +682,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (actualDeduction < totalCost) {
       addLog(
         state,
+        ownerId,
         `P${ownerId} Insufficient coins for ongoing costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );

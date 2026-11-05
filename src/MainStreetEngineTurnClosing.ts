@@ -27,7 +27,7 @@ import { replenishIncidentDeck } from './MainStreetMarket';
 import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
 import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
 import type { MainStreetState, TurnStatSnapshot } from './MainStreetState';
-import { addLog, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
+import { addLog, addLogShared, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import {
   getPendingStorylineOptions,
@@ -65,7 +65,7 @@ export function resolveIncident(
   const employed = getEmployedSpecializationSkills(state);
   const incidentBuffs = computeIncidentSkillBuffs(employed);
   if (incidentBuffs.probabilityReductionPct > 0 && state.rng() < incidentBuffs.probabilityReductionPct) {
-    addLog(state, 'Risk Manager averted this week\'s incident.', 'neutral');
+    addLogShared(state, 'Risk Manager averted this week\'s incident.', 'neutral');
     return null;
   }
 
@@ -107,7 +107,7 @@ export function resolveIncident(
     const pending = createPendingStorylineChoice(event, state);
     if (pending) {
       state.pendingEventChoice = pending;
-      addLog(state, `Incident: ${event.name} — a decision is required.`, 'neutral');
+      addLogShared(state, `Incident: ${event.name} — a decision is required.`, 'neutral');
       return null;
     }
   }
@@ -129,7 +129,7 @@ export function resolveIncident(
       opts.deltasOut.coinChange = deltas.coinDelta;
       opts.deltasOut.repChange = deltas.repDelta;
     }
-    addLog(
+    addLogShared(
       state,
       `Incident: ${event.name} (${describeEventEffects(deltas.coinDelta, deltas.repDelta)})`,
       classifyEffect(deltas.coinDelta, deltas.repDelta),
@@ -142,7 +142,7 @@ export function resolveIncident(
   resolveEvent(state, event);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
-  addLog(
+  addLogShared(
     state,
     `Incident: ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
@@ -192,7 +192,7 @@ export function resolveEventOption(
   }
   const appliesEffect = option.effectPolicy === 'apply';
   if (!appliesEffect) {
-    addLog(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
+    addLogShared(state, `Chose to reject: ${event.name} consequences refused.`, 'neutral');
   }
 
   const { pushedCard, coinChange, repChange } = resolveStorylineOption(state, event, option);
@@ -202,7 +202,7 @@ export function resolveEventOption(
     // proportional Tax Audit this is the real percentage amount, e.g.
     // "Chose to accept: Tax Audit (-450 coins).", using the same
     // describeEventEffects formatting as the Incident: log lines.
-    addLog(
+    addLogShared(
       state,
       `Chose to accept: ${event.name} (${describeEventEffects(coinChange, repChange)}).`,
       classifyEffect(coinChange, repChange),
@@ -218,7 +218,7 @@ export function resolveEventOption(
   // "story update" tied to the storyline, when the card belongs to one.
   const update = storyUpdateLine(event, transcriptOption, coinChange, repChange);
   if (update) {
-    addLog(state, update, classifyEffect(coinChange, repChange));
+    addLogShared(state, update, classifyEffect(coinChange, repChange));
   }
 
   markChoiceResolved(pending, transcriptOption);
@@ -911,14 +911,14 @@ export function appendTurnNetRow(state: MainStreetState, turnEnded: number): voi
   const deltaScore = state.finalScore - startScore;
 
   // Delta summary line: Turn N net: +X coins, +Y rep (score: +Z)
-  addLog(
+  addLogShared(
     state,
     `Turn ${turnEnded} net: ${describeEventEffects(deltaCoins, deltaRep)} (score: ${deltaScore > 0 ? '+' : ''}${deltaScore})`,
     classifyEffect(deltaCoins, deltaRep),
   );
 
   // Totals line: Turn N: X coins, Y rep, Z score
-  addLog(
+  addLogShared(
     state,
     `Turn ${turnEnded} totals: ${Math.round(state.resourceBank.coins)} coins, ${Math.round(state.resourceBank.reputation)} rep, ${state.finalScore} score`,
     'neutral',
@@ -947,7 +947,7 @@ export function checkEndConditions(state: MainStreetState): boolean {
       // `continueAfterThreshold`, declining leaves the declared win.
       state.gameResult = 'win';
       state.endReason = 'score_threshold_continue';
-      addLog(
+      addLogShared(
         state,
         `Victory: Score threshold reached (${state.finalScore} pts) — enter endless mode to keep playing.`,
         'gain',
@@ -957,7 +957,7 @@ export function checkEndConditions(state: MainStreetState): boolean {
     // Non-endless (default): threshold wins end the game.
     state.gameResult = 'win';
     state.endReason = 'score_threshold';
-    addLog(state, `Victory: Score threshold reached (${state.finalScore} pts)`, 'gain');
+    addLogShared(state, `Victory: Score threshold reached (${state.finalScore} pts)`, 'gain');
     return true;
   }
 
@@ -974,14 +974,14 @@ export function checkEndConditions(state: MainStreetState): boolean {
     if (state.resourceBank.reputation > 0 && state.resourceBank.coins >= 0) {
       state.gameResult = 'win';
       state.endReason = 'turn_limit_victory';
-      addLog(state, `Victory: Survived ${state.config.maxTurns} turns (${state.finalScore} pts)`, 'gain');
+      addLogShared(state, `Victory: Survived ${state.config.maxTurns} turns (${state.finalScore} pts)`, 'gain');
       return true;
     }
 
     // Turn exhaustion: no win condition met
     state.gameResult = 'loss';
     state.endReason = 'turn_exhaustion';
-    addLog(state, `Game Over: Turn limit exhausted`, 'loss');
+    addLogShared(state, `Game Over: Turn limit exhausted`, 'loss');
     return true;
   }
 
@@ -1013,7 +1013,7 @@ export function checkImmediateLoss(state: MainStreetState): boolean {
     state.gameResult = 'loss';
     state.endReason = 'bankruptcy';
     updateScore(state);
-    addLog(state, `Game Over: Bankruptcy (coins: ${state.resourceBank.coins})`, 'loss');
+    addLogShared(state, `Game Over: Bankruptcy (coins: ${state.resourceBank.coins})`, 'loss');
     return true;
   }
 
@@ -1022,7 +1022,7 @@ export function checkImmediateLoss(state: MainStreetState): boolean {
     state.gameResult = 'loss';
     state.endReason = 'reputation_collapse';
     updateScore(state);
-    addLog(state, `Game Over: Reputation collapse (rep: ${state.resourceBank.reputation})`, 'loss');
+    addLogShared(state, `Game Over: Reputation collapse (rep: ${state.resourceBank.reputation})`, 'loss');
     return true;
   }
 
@@ -1181,7 +1181,7 @@ export function eliminateCompetitiveSeat(
   if (!player || player.eliminated) return 0;
   player.eliminated = true;
   const closed = closeEliminatedSeatBusinesses(state, playerId);
-  addLog(
+  addLogShared(
     state,
     `AI ${playerId} eliminated — ${closed} business${closed === 1 ? '' : 'es'} closed`,
     'loss',
@@ -1231,7 +1231,7 @@ export function checkLastStanding(state: MainStreetState): boolean {
   state.gameResult = 'win';
   state.endReason = 'last_standing';
   state.competitiveWinnerId = humanId;
-  addLog(state, `Victory: Player ${humanId} wins by last standing!`, 'gain');
+  addLogShared(state, `Victory: Player ${humanId} wins by last standing!`, 'gain');
   return true;
 }
 
@@ -1264,7 +1264,7 @@ export function continueAfterLastStanding(state: MainStreetState): boolean {
   state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
   state.phase = 'WeekStart';
   state.activePlayerId = Math.max(0, findHumanSeatId(state));
-  addLog(state, 'Continuing solo after last-standing win.', 'neutral');
+  addLogShared(state, 'Continuing solo after last-standing win.', 'neutral');
   return true;
 }
 
@@ -1295,7 +1295,7 @@ export function continueAfterThreshold(state: MainStreetState): boolean {
   state.bankedActions = Math.min(2, (state.bankedActions ?? 0) + bankable);
   state.phase = 'WeekStart';
   state.activePlayerId = Math.max(0, findHumanSeatId(state));
-  addLog(state, 'Continuing in endless mode after the threshold win.', 'neutral');
+  addLogShared(state, 'Continuing in endless mode after the threshold win.', 'neutral');
   return true;
 }
 
@@ -1401,7 +1401,7 @@ export function resolveCompetitiveSeatFailures(state: MainStreetState): boolean 
     state.endReason = humanFailure.reason;
     updateScore(state);
     const label = humanFailure.reason === 'bankruptcy' ? 'Bankruptcy' : 'Reputation collapse';
-    addLog(state, `Game Over: ${label} (Player ${humanFailure.playerId})`, 'loss');
+    addLogShared(state, `Game Over: ${label} (Player ${humanFailure.playerId})`, 'loss');
     return true;
   }
 
@@ -1502,7 +1502,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
         state.gameResult = isHumanWin ? 'win' : 'loss';
         state.endReason = 'score_threshold_continue';
         state.competitiveWinnerId = i;
-        addLog(
+        addLogShared(
           state,
           `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score}) — enter endless mode to keep playing.`,
           isHumanWin ? 'gain' : 'loss',
@@ -1512,7 +1512,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
       state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'score_threshold';
       state.competitiveWinnerId = i;
-      addLog(
+      addLogShared(
         state,
         `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${i} reached threshold (${effectiveThreshold} pts, score ${state.players[i].score})`,
         isHumanWin ? 'gain' : 'loss',
@@ -1539,7 +1539,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
       state.gameResult = isHumanWin ? 'win' : 'loss';
       state.endReason = 'turn_limit_victory';
       state.competitiveWinnerId = bestIdx;
-      addLog(
+      addLogShared(
         state,
         `${isHumanWin ? 'Victory' : 'Defeat'}: Player ${bestIdx} survived ${state.config.maxTurns} turns (${bestScore} pts)`,
         isHumanWin ? 'gain' : 'loss',
@@ -1549,7 +1549,7 @@ export function checkCompetitiveEndConditions(state: MainStreetState): boolean {
     state.gameResult = 'loss';
     state.endReason = 'turn_exhaustion';
     state.competitiveWinnerId = null;
-    addLog(state, 'Game Over: Turn limit exhausted', 'loss');
+    addLogShared(state, 'Game Over: Turn limit exhausted', 'loss');
     return true;
   }
 
@@ -1788,7 +1788,7 @@ export function finishDeferredTurnClosing(
   const decayResult = decayActiveEffects(state.activeEffects);
   state.activeEffects = decayResult.active;
   for (const expired of decayResult.expired) {
-    addLog(state, `${expired.description} has expired.`, 'neutral');
+    addLogShared(state, `${expired.description} has expired.`, 'neutral');
     recordMainStreetEvent({
       type: 'info',
       turn: state.turn,
@@ -1922,7 +1922,7 @@ function runSinglePlayerTurnClosing(
   const decayResult = decayActiveEffects(state.activeEffects);
   state.activeEffects = decayResult.active;
   for (const expired of decayResult.expired) {
-    addLog(state, `${expired.description} has expired.`, 'neutral');
+    addLogShared(state, `${expired.description} has expired.`, 'neutral');
     recordMainStreetEvent({
       type: 'info',
       turn: state.turn,

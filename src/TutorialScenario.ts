@@ -82,7 +82,7 @@
  */
 
 import type { MainStreetState, ResourceBank } from './MainStreetState';
-import { addLog } from './MainStreetState';
+import { addLogShared } from './MainStreetState';
 import {
   type BusinessCard,
   type EventCard,
@@ -550,7 +550,7 @@ export function ensureTutorialMarketForUpcomingSteps(
       else state.decks.event.push(displaced as EventCard);
     }
     state.market.cards.push(card);
-    addLog(state, `Scenario: showed ${card.name} in the market for the next step`, 'neutral');
+    addLogShared(state, `Scenario: showed ${card.name} in the market for the next step`, 'neutral');
   }
 }
 

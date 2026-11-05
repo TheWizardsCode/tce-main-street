@@ -15,7 +15,7 @@ import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
 import { deserializeSkillIds } from './MainStreetStaffSkills';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
-import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
+import { addLog, addLogShared, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
@@ -56,7 +56,7 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
     const logText = effectiveDuration > 0
       ? `${dEvent.name}: ${what} multiplier ${multiplierLabel}% for ${effectiveDuration} turns`
       : `${dEvent.name}: Resolved with no effect (fully neutralized)`;
-    addLog(state, logText, 'loss');
+    addLogShared(state, logText, 'loss');
 
     // Record transcript event
     recordMainStreetEvent({
@@ -906,7 +906,7 @@ export function raisePiggybackDecisions(
     }),
   );
   state.pendingPiggyback = { actingSeatId, event, paidCost, decisions };
-  addLog(
+  addLogShared(
     state,
     `Piggyback: ${event.name} — ${decisions.length} seat(s) invited to join fully.`,
     'neutral',

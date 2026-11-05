@@ -25,7 +25,7 @@ import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, can
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
-import { addLog } from '../MainStreetState';
+import { addLogShared } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep } from '../TutorialFlow';
 import type { TutorialActionType } from '../TutorialFlow';
@@ -299,7 +299,7 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'refresh-market' }, description: cmd.description }); } catch (_) {}
       flashConfirmation(s, 'Market researched');
-      addLog(s.state, 'Researched market (via UI)', 'neutral');
+      addLogShared(s.state, 'Researched market (via UI)', 'neutral');
       refreshed = true;
     } catch (e) {
       console.error('[MS] RefreshMarket failed', e);

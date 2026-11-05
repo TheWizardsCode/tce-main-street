@@ -59,6 +59,7 @@ export {
   describeEventEffects,
   classifyEffect,
   addLog,
+  addLogShared,
   resolveLogSeatColour,
   syncResourceBankToLedger,
 } from './MainStreetStateLog';

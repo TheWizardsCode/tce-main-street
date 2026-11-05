@@ -40,8 +40,14 @@ import {
   executeCompetitiveWeekStart,
   executeWeekStart,
   maybeOfferBailoutForSeat,
+  sellFromHand,
+  layoffStaffCard,
+  resolveIncident,
+  applyCompetitiveEventEffects,
   type PlayerAction,
 } from '../../../src/MainStreetEngine';
+import { sellBusiness } from '../../../src/MainStreetMarket';
+import type { EventCard } from '../../../src/MainStreetCards';
 import { bindCompetitiveSeat, restoreCompetitiveSeat } from '../../../src/MainStreetAiStrategy';
 
 // ── Headless driver ─────────────────────────────────────────
@@ -132,12 +138,25 @@ export function startDay(state: MainStreetState): LogEntry[] {
  *     pins attribution on.
  *   - `bailout` — the bankruptcy bailout offer for a seat
  *     (`maybeOfferBailoutForSeat`), which logs a seat-attributed entry.
+ *   - `sell` / `sell-from-hand` — the engine sale paths
+ *     (`sellBusiness` / `sellFromHand`), which log seat-attributed entries
+ *     (the daily action is charged by the scene command layer, so the
+ *     headless driver calls the engine mutation directly).
+ *   - `layoff` — the staff lay-off path (`layoffStaffCard`).
+ *   - `incident` — the shared incident draw (`resolveIncident`) followed by
+ *     the per-owner outcome routing (`applyCompetitiveEventEffects`), so a
+ *     single drive produces both the unattributed draw line and the
+ *     seat-attributed per-owner outcome lines.
  */
 export type ActivityLogDriveAction =
   | PlayerAction
   | { type: 'income' }
   | { type: 'reputation'; playerId: number; delta: number }
-  | { type: 'bailout'; playerId: number };
+  | { type: 'bailout'; playerId: number }
+  | { type: 'sell'; slotIndex: number }
+  | { type: 'sell-from-hand'; handIndex: number }
+  | { type: 'layoff'; cardId: string }
+  | { type: 'incident'; event?: EventCard };
 
 /**
  * Drives one action path through the engine and returns the activity-log
@@ -181,6 +200,32 @@ export function driveAction(
     }
     case 'bailout': {
       maybeOfferBailoutForSeat(state, action.playerId);
+      return state.activityLog.slice(prev);
+    }
+    case 'sell': {
+      // The acting seat is whatever `options.seatId` (or the ambient
+      // `activePlayerId`) says — same derivation the default `addLog` uses.
+      sellBusiness(state, action.slotIndex);
+      return state.activityLog.slice(prev);
+    }
+    case 'sell-from-hand': {
+      sellFromHand(state, action.handIndex);
+      return state.activityLog.slice(prev);
+    }
+    case 'layoff': {
+      layoffStaffCard(state, action.cardId);
+      return state.activityLog.slice(prev);
+    }
+    case 'incident': {
+      // Deterministic draw: when the caller supplies an incident card, drive
+      // it directly (fresh balance, no week window on fabricated cards).
+      if (action.event) {
+        state.incidentDeck = [action.event];
+      }
+      const incident = resolveIncident(state);
+      if (incident) {
+        applyCompetitiveEventEffects(state, incident);
+      }
       return state.activityLog.slice(prev);
     }
     default: {

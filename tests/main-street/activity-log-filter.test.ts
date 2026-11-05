@@ -9,9 +9,11 @@
  *
  * Baseline invariants:
  *
- *  - turn headers and shared entries carry no `seatId`;
- *  - seat-attributed income / reputation entries carry
- *    `seatId` + `seatLabel` + `seatColour`;
+ *  - turn headers carry no `seatId` and stay textually identical;
+ *  - every acting-seat action entry is attributed to the acting seat
+ *    (`seatId` + `seatLabel` + `seatColour`) — the per-path table lives in
+ *    `activity-log-seat-attribution.test.ts`
+ *    (MS-0MW3PFQ4L0046Q3K);
  *  - single-player (no roster) and single-seat entries carry no seat fields
  *    and render with no prefix (the renderer's prefix branch keys off
  *    `seatLabel && seatColour`; the browser harness pins the rendered
@@ -117,7 +119,7 @@ function ownSlot(state: MainStreetState, slotIndex: number, card: BusinessCard, 
 // ── Baseline invariants ─────────────────────────────────────
 
 describe('Activity Log filter baseline — headless harness (MS-0MW3PFLDP000CF2X)', () => {
-  describe('turn headers and shared entries carry no seatId', () => {
+  describe('turn headers stay seat-less; action entries are attributed', () => {
     it('startDay appends a seat-less Turn 1 turn header', () => {
       const state = createActivityLogState({ seed: 'baseline-header' });
       const entries = startDay(state);
@@ -130,77 +132,46 @@ describe('Activity Log filter baseline — headless harness (MS-0MW3PFLDP000CF2X
       expect(entries[0].seatColour).toBeUndefined();
     });
 
-    it('market-action appended entries carry no seat fields', () => {
-      // buy-business
+    it('market-action appended entries carry the acting seat attribution', () => {
+      // Every acting-seat action path is attributed to the seat that acted
+      // (MS-0MW3PFQ4L0046Q3K AC1). The complete one-case-per-path table lives
+      // in `activity-log-seat-attribution.test.ts`; this baseline spot-checks
+      // the family the filter depends on most.
       const buy = competitive('baseline-buy');
       buy.players![0].coins = 5000;
+      buy.activePlayerId = 0;
       const biz = buy.market.cards.find((c) => c.family === 'business')!;
       const buyEntries = driveAction(buy, { type: 'buy-business', cardId: biz.id, slotIndex: 0 }, { seatId: 0 });
       expect(buyEntries.length).toBeGreaterThan(0);
       for (const e of buyEntries) {
-        expect(e.seatId, `buy-business: ${e.text}`).toBeUndefined();
-        expect(e.seatLabel, `buy-business: ${e.text}`).toBeUndefined();
-        expect(e.seatColour, `buy-business: ${e.text}`).toBeUndefined();
-      }
-
-      // buy-and-place
-      const buyPlace = competitive('baseline-buy-place');
-      buyPlace.players![0].coins = 5000;
-      const bpBiz = buyPlace.market.cards.find((c) => c.family === 'business')!;
-      const bpEntries = driveAction(buyPlace, { type: 'buy-and-place', cardId: bpBiz.id, slotIndex: 0 }, { seatId: 0 });
-      for (const e of bpEntries) {
-        expect(e.seatId, `buy-and-place: ${e.text}`).toBeUndefined();
-      }
-
-      // play-business-from-hand
-      const fromHand = competitive('baseline-from-hand');
-      fromHand.players![0].coins = 5000;
-      fromHand.players![0].hand = [makeBiz({ id: 'h-biz', name: 'Cafe', cost: 2 })];
-      const fhEntries = driveAction(fromHand, { type: 'play-business-from-hand', handIndex: 0, slotIndex: 1 }, { seatId: 0 });
-      for (const e of fhEntries) {
-        expect(e.seatId, `play-business-from-hand: ${e.text}`).toBeUndefined();
+        expect(e.seatId, `buy-business: ${e.text}`).toBe(0);
+        expect(e.seatLabel, `buy-business: ${e.text}`).toBe('You');
+        expect(e.seatColour, `buy-business: ${e.text}`).toBe(buy.players![0].colour);
       }
 
       // move-to-hand
       const move = competitive('baseline-move');
+      move.activePlayerId = 1;
       const mvBiz = move.market.cards.find((c) => c.family === 'business')!;
-      const mvEntries = driveAction(move, { type: 'move-to-hand', cardId: mvBiz.id }, { seatId: 0 });
+      const mvEntries = driveAction(move, { type: 'move-to-hand', cardId: mvBiz.id }, { seatId: 1 });
       expect(mvEntries.length).toBeGreaterThan(0);
       for (const e of mvEntries) {
-        expect(e.seatId, `move-to-hand: ${e.text}`).toBeUndefined();
+        expect(e.seatId, `move-to-hand: ${e.text}`).toBe(1);
+        expect(e.seatLabel, `move-to-hand: ${e.text}`).toBe('AI 1');
+        expect(e.seatColour, `move-to-hand: ${e.text}`).toBe(move.players![1].colour);
       }
 
-      // upgrade
-      const upg = competitive('baseline-upgrade');
-      ownSlot(upg, 0, makeBiz({ id: 'upg-biz', name: 'Bakery', maxLevel: 3 }), 0);
-      upg.market.cards = [makeUpgrade({ id: 'upg-1', name: 'Better Ovens', targetBusiness: 'Bakery' })];
-      upg.players![0].coins = 20;
-      const upgEntries = driveAction(upg, { type: 'buy-upgrade', cardId: 'upg-1', targetSlot: 0 }, { seatId: 0 });
-      for (const e of upgEntries) {
-        expect(e.seatId, `upgrade: ${e.text}`).toBeUndefined();
-      }
-
-      // hire
-      const hire = competitive('baseline-hire');
-      hire.market.cards = [makeStaff({ id: 'staff-1', name: 'Helper', cost: 3 })];
-      hire.players![0].coins = 50;
-      const hireEntries = driveAction(hire, { type: 'hire-staff', cardId: 'staff-1' }, { seatId: 0 });
-      for (const e of hireEntries) {
-        expect(e.seatId, `hire: ${e.text}`).toBeUndefined();
-      }
-
-      // play-event keeps its shared "Played event" line seat-less while the
-      // per-owner "Investment" line carries the acting seat.
+      // play-event: the per-owner "Investment" line carries the acting seat.
       const ev = competitive('baseline-event');
-      ev.players![0].hand = [makeInvestmentEvent({ id: 'ev-1', name: 'Galaxy Fest', cost: 0, coinDelta: 3, reputationDelta: 2 })];
-      ev.players![0].coins = 20;
-      const evEntries = driveAction(ev, { type: 'play-event', handIndex: 0 }, { seatId: 0 });
-      const playedLine = evEntries.find((e) => e.text.startsWith('Played event'));
+      ev.players![1].hand = [makeInvestmentEvent({ id: 'ev-1', name: 'Galaxy Fest', cost: 0, coinDelta: 3, reputationDelta: 2 })];
+      ev.players![1].coins = 20;
+      ev.activePlayerId = 1;
+      const evEntries = driveAction(ev, { type: 'play-event', handIndex: 0 }, { seatId: 1 });
       const investmentLine = evEntries.find((e) => e.text.startsWith('Investment:'));
-      expect(playedLine).toBeDefined();
-      expect(playedLine!.seatId).toBeUndefined();
       expect(investmentLine).toBeDefined();
-      expect(investmentLine!.seatId).toBe(0);
+      expect(investmentLine!.seatId).toBe(1);
+      expect(investmentLine!.seatLabel).toBe('AI 1');
+      expect(investmentLine!.seatColour).toBe(ev.players![1].colour);
     });
   });
 

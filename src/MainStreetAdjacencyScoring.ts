@@ -13,7 +13,7 @@
 import type { BusinessCard, CommunitySpaceCard, EventCard, SynergyType } from './MainStreetCards';
 import { getBaseTypeId } from './MainStreetCards';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, syncResourceBankToLedger } from './MainStreetState';
+import { addLog, addLogShared, describeEventEffects, syncResourceBankToLedger } from './MainStreetState';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { applyActiveEffectMultiplier } from '@core-engine/ActiveEffect';
 import { computePerBusinessSkillBuffs, getEmployedSpecializationSkillsForBusiness } from './MainStreetStaffBuffs';
@@ -828,12 +828,14 @@ export function applyIncome(
   if (multiplied > 0) {
     // Integer economy: no decimal formatting (CG-0MTIO1M15001E9Y6).
     // Enriched with the effective coin delta (CG-0MT5W7UJJ0065MEZ).
-    addLog(state, `Income: +${multiplied} coins (${describeEventEffects(multiplied, 0)})`, 'gain');
+    // Shared host-wallet income row: the competitive per-owner rows
+    // (`applyCompetitiveIncome`) carry the seat attribution.
+    addLogShared(state, `Income: +${multiplied} coins (${describeEventEffects(multiplied, 0)})`, 'gain');
   } else {
-    addLog(state, `Income: +0 coins (${describeEventEffects(0, 0)})`, 'neutral');
+    addLogShared(state, `Income: +0 coins (${describeEventEffects(0, 0)})`, 'neutral');
   }
   if (repPerTurn > 0) {
-    addLog(state, `Reputation from cards: +${repPerTurn} (${describeEventEffects(0, repPerTurn)})`, 'gain');
+    addLogShared(state, `Reputation from cards: +${repPerTurn} (${describeEventEffects(0, repPerTurn)})`, 'gain');
   }
   return {
     total,
