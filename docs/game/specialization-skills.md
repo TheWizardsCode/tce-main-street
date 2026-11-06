@@ -13,11 +13,15 @@
 
 ## Overview
 
-Every staff card in the applicant pool carries **1–3 specialization skills**, randomized **once
-per game at start** and **locked for the full game** (established by CG-0MSTOATDU006UGAX). Skills
-are drawn from a global 16-skill pool, **disconnected from the staff member's nominal job** (a
-*Chef* can hold the *Security* skill). The Town Gossip peek ability (CG-0MSXOW6GN008ZSMN) is
-included as a fixed **baseline skill on every card**.
+Every staff card in the applicant pool carries **1–3 specialization skills**, randomised **once
+per game at start** and **locked for the full game** (established by CG-0MSTOATDU006UGAX). The
+draw is **type-consistent**: business staff draw only business-scope skills and
+management-company staff draw only management-company-scope skills, so a skill's scope always
+matches the card that holds it (see § *Cross-type assignments — gap closed* below for the shipped
+gate and assignment). Within its own type the draw is still **disconnected from the staff
+member's nominal job** — a *Chef* can hold Networker or Sales Champion — which is what keeps the
+roster varied. The Town Gossip peek ability (CG-0MSXOW6GN008ZSMN) is a management-company-scope
+skill, so it is a fixed **baseline skill on every management-company card**.
 
 Skills sit on top of the two staff types rather than beside them. A skill's **scope** decides
 which type can realise it, because the two staff types have different scopes of effect
@@ -126,51 +130,60 @@ skills stack freely within the scope their staff type allows.
   each management-company member's mitigation adds to the street-wide incident resolution, and no
   business-staff member contributes one under the two-type model.
 - **Scope does not change the cap.** Assigning a skill is unchanged: 1–3 locked skills per staff
-  card at game start, drawn from the global pool. What the two-type model adds is that a skill can
-  only take effect from a member whose type matches the skill's scope.
+  card at game start, drawn from the pool that matches the card's staff type (business staff draw
+  only business-scope skills; management-company staff draw only management-company-scope
+  skills). What the two-type model adds is that a skill can only take effect from a member whose
+  type matches the skill's scope — and the shipped assignment guarantees the two agree, so a
+  locked roster can no longer hold an effect its holder could never realise.
 
 This keeps the original anti-compounding intent (a member can still stack one income buff + one
 cost reduction + one incident mitigation, but never two income boosts or two reputation boosts)
 while making it explainable in the GDD's two-type vocabulary.
 
-## Shipped cross-type assignments — reconciliation follow-up
+## Cross-type assignments — gap closed
 
-The catalog is reconciled, but the shipped *assignment* is not yet type-consistent, and this is
-recorded here as a follow-up in the same way the GDD records per-card "Redesign delta" rows
-(App D.4.7):
+The cross-type **gap is closed** by MS-0MW3LTMHT001PRDT: both halves of the reconciliation
+follow-up this document used to record are shipped, and the shipped behaviour now matches the
+two-type model described above.
 
-- `assignStaffApplicantSkills` gives every staff card in the applicant pool 1–3 skills from the
-  **global** pool, regardless of the member's type. Business staff can therefore draw
-  management-company-scope skills (Cost Cutter, Negotiator, Brand Ambassador, the four
-  incident-mitigation skills and the Town Gossip baseline), and management-company staff can draw
-  business-scope skills (Chef, DJ, Networker, …) that can never resolve for them because they have
-  no `employedAtSlot`.
-- The street-wide folds (`getEmployedSpecializationSkills`) aggregate the skills of **every**
-  employed member, so a business-staff member holding a management-company skill currently leaks a
-  player/street-scope effect. The reverse leak does not occur: per-business folds key on the
-  employing slot, so a management-company member (no `employedAtSlot`) contributes no per-business
+- **Scope gate — behavioural (MS-0MW4MSNWR00123OZ).** A skill takes effect only from a member
+  whose type matches the skill's scope. The gate lives in the aggregation helpers of
+  `src/MainStreetStaffBuffs.ts` — the single place every consumer reads skills from — so no
+  consumer needs per-effect special-casing: `getStreetScopeSkills` (and its state-level wrapper
+  `getEmployedSpecializationSkills`) reads **management-company members only**, and
+  `getBusinessScopeSkills` (wrapped per slot by `getEmployedSpecializationSkillsForBusiness`)
+  reads business-scope skills from the members employed at that business. `getSalaryScopeSkills`
+  gates the Operations Manager salary discount to the charging member's own business-staff scope.
+- **Type-consistent assignment — deterministic (MS-0MW4MSNMJ006E9JH).** `assignSkillsToApplicant`
+  takes the member's staff type — `staffCardScope` derives it from `employedAtSlot`, or from the
+  template markers for a card that is not employed yet — and draws only from the catalog entries
+  whose `scope` matches. Business staff never draw a management-company-scope skill, and the Town
+  Gossip baseline is added only to management-company cards. The draw stays on the dedicated
+  `createSeededRng(numericSeed ^ 0x5eed)` stream with the same per-draw call order, so
+  same-seed ⇒ same game still holds.
+
+Two consequences are worth stating explicitly, because the interim behaviour did the opposite:
+
+- A **management-company-scope skill held by business staff** (Cost Cutter, Negotiator, Brand
+  Ambassador, the four incident-mitigation skills, the Town Gossip baseline) is **inert**: it is
+  filtered out of the street-wide aggregate, so it cannot leak a player/street-scope effect.
+- A **business-scope skill held by a management-company member** (Chef, DJ, Networker, …) is
+  likewise **inert**: the per-business folds only ever see business-scope skills from the members
+  employed at that business, so a member with no `employedAtSlot` contributes no per-business
   buff.
 
-Two follow-ups close the gap; neither is part of this documentation work item:
-
-1. **Scope gate (behavioural).** Apply player/street-scope effects only from management-company
-   members and per-business effects only from the employing business's members, so a skill is
-   inert when its scope does not match its holder's type.
-2. **Type-consistent assignment (deterministic).** Draw business-scope skills for business staff
-   and player-scope skills for management-company staff, keeping the Town Gossip baseline on
-   management-company cards. This changes the seeded assignment stream, so it needs its own work
-   item with determinism tests.
-
-Until they land, the shipped behaviour keeps street-wide effects from any employed member; this
-document describes the intended two-type model, not the interim behaviour.
+Cross-type holdings can therefore still exist — a legacy save or a hand-built fixture can carry
+any id on any member, because skills persist as stable id arrays — and they are harmless by
+construction: the gate is enforced where the effects are aggregated, not only where the skills
+are assigned.
 
 ## Street-wide and player-scope effects — flagged for additional testing ⚠️
 
 - **Cost Cutter (−15% street-wide ongoing costs)** is the only skill that scales with *every*
   earned card (staff salaries, community-space costs, and business hand/grid costs all deduct
-  less). It is a **management-company** effect, so under the two-type model only management-company
-  staff can deliver it, and it is **flagged for extra balance testing**; the income/reputation
-  per-business buffs are naturally bounded by the street's business count.
+  less). It is a **management-company** effect, so the staff-type scope gate means only
+  management-company staff can deliver it, and it is **flagged for extra balance testing**; the
+  income/reputation per-business buffs are naturally bounded by the street's business count.
 - **Risk Manager (−15% incident probability)** is modelled as a per-turn incident draw aversion
   (see wiring notes); its effect compounding with other management-company mitigation skills
   should be exercise-tested via `staff-skill-buff-wiring.test.ts` (I4).
@@ -180,19 +193,22 @@ document describes the intended two-type model, not the interim behaviour.
 - **Per-business folding (business staff).** `applyIncome` folds per-business income and
   reputation buffs over the **cached** `currentIncome` / `currentReputationPerTurn` values without
   mutating them — the adjacency caching contract (CG-0MSVYPEZ90085SHE) is preserved and
-  hiring/editing staff never leaves stale caches. The fold is fed by the skills of the members
-  employed **at that slot** (`getEmployedSpecializationSkillsForBusiness`), so a Chef employed at
-  one Food business never buffs another Food business elsewhere on the street, and
-  management-company members (no `employedAtSlot`) contribute nothing to it.
+  hiring/editing staff never leaves stale caches. The fold is fed by the business-scope skills of
+  the members employed at that slot (`getEmployedSpecializationSkillsForBusiness`, which applies
+  `getBusinessScopeSkills`), so a Chef employed at one Food business never buffs another Food
+  business elsewhere on the street, and management-company members (no `employedAtSlot`)
+  contribute nothing to it.
 - **Per-business formula:** `buffed = cachedIncome × (1 + percent) + flat`; per-turn reputation
   adds `flat` per placed business. Percent applies to the business's income including synergy; no
   interaction terms between skills (purely additive — T3 tests enforce no runaway compounding).
 - **Street-wide / player folds (management-company staff).** Ongoing-cost reduction, incident
   mitigation, the reputation-gain multiplier and the refresh discount are computed from the
-  street-wide skill aggregate (`getEmployedSpecializationSkills`). The Operations Manager's salary
-  discount is read from the same aggregate in the shipped code; under the two-type model it is a
-  business-staff effect applied to the employing business's staffing cost (see the scope-gate
-  follow-up above).
+  street-wide skill aggregate (`getEmployedSpecializationSkills`, which applies
+  `getStreetScopeSkills`), so these folds read management-company members only — a business-staff
+  member's management-company-scope skill never reaches them. The Operations Manager's salary
+  discount is a business-staff effect: each charging member's discount is read from its own
+  business-scope skills (`getSalaryScopeSkills`), so it discounts only that member's salary at the
+  employing business and a management-company member's cross-type Operations Manager is inert.
 - **Cost reductions:** Cost Cutter applies to **all three** ongoing-cost families
   (staff/community-space/business) at end of turn; Operations Manager discounts **only its own
   member's** salary (a business-staff cost effect); Negotiator reduces `refreshMarketCost` in
@@ -213,7 +229,9 @@ document describes the intended two-type model, not the interim behaviour.
   averted incidents stay in the deck).
 - **Determinism (I3):** skill assignment uses a dedicated `createSeededRng(numericSeed ^ 0x5eed)`
   stream, leaving the main RNG stream (deck shuffles, market draws, challenges) untouched —
-  same seed ⇒ same skills ⇒ same game.
+  same seed ⇒ same skills ⇒ same game. The type-consistent draw keeps that stream's per-draw call
+  order, so restricting the candidate pool by staff type changed which skills a seed yields but
+  not the stream's determinism.
 
 ## Serialization & compatibility
 

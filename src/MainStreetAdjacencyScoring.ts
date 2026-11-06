@@ -663,7 +663,10 @@ export function applyIncome(
   // currentIncome cache is never mutated, so hiring/editing staff never
   // leaves stale caches (AC2: no conflicts with the adjacency caching
   // contract). Street-wide skills (cost-cutter, incident mitigation, etc.)
-  // still aggregate over ALL staff via getEmployedSpecializationSkills.
+  // are a separate fold: getEmployedSpecializationSkills aggregates the
+  // management-company-scope skills of management-company members only, so a
+  // business-staff member's cross-type skill never leaks to it
+  // (MS-0MW4MSNWR00123OZ).
   const breakdown: SlotIncome[] = [];
   // Built in the same pass as `breakdown` so the buffed base/synergy split is
   // available: the staff income multiplier scales the whole cached income

@@ -15,6 +15,13 @@
  *  - the cross-references to `card-catalog.md` and `the-build-gdd.md`
  *    (Appendix D.4) resolve and agree with the shipped skill catalog.
  *
+ * The cross-type gap this document used to record as an open reconciliation
+ * follow-up is **closed** (MS-0MW3LTMHT001PRDT: scope gate
+ * MS-0MW4MSNWR00123OZ + type-consistent assignment MS-0MW4MSNMJ006E9JH), so
+ * the guard asserts the closed state — no type-blind "global pool" prose, no
+ * "not yet implemented" interim wording, and wiring notes that describe the
+ * gated folds and name the gate helpers.
+ *
  * The catalog (`STAFF_SKILL_CATALOG`) is the source of truth for which skills
  * exist, so a new skill that is not classified in the document fails this
  * guard.
@@ -52,6 +59,15 @@ function read(file: string): string {
 
 function doc(): string {
   return read(DOC);
+}
+
+/** The body of the `## <heading>` section, up to the next `## ` heading. */
+function section(text: string, heading: string): string {
+  const start = text.indexOf(`\n## ${heading}`);
+  if (start < 0) throw new Error(`specialization-skills.md has no "## ${heading}" section`);
+  const body = text.slice(start + 1);
+  const end = body.indexOf('\n## ', 1);
+  return end < 0 ? body : body.slice(0, end);
 }
 
 /** Collapses markdown blockquote line breaks and whitespace runs into single spaces. */
@@ -193,10 +209,58 @@ describe('specialization-skills.md two-type framing', () => {
     expect(text).toMatch(/company roster/i);
   });
 
-  it('records the shipped cross-type assignments as a reconciliation follow-up', () => {
+  it('records the cross-type assignment gap as closed, not outstanding', () => {
     const text = prose(doc());
-    expect(text).toMatch(/follow-up/i);
+    // Both halves of the follow-up are shipped and named: the behavioural
+    // scope gate and the deterministic type-consistent assignment.
+    expect(text).toMatch(/gap is closed/i);
+    expect(text).toMatch(/MS-0MW4MSNWR00123OZ/);
+    expect(text).toMatch(/MS-0MW4MSNMJ006E9JH/);
     expect(text).toMatch(/scope gate|scope-gate/i);
+    expect(text).toMatch(/type-consistent assignment/i);
+    // The interim behaviour is no longer described as what ships.
+    expect(text).not.toMatch(/not yet type-consistent/i);
+    expect(text).not.toMatch(/until they land/i);
+    expect(text).not.toMatch(/neither is part of this documentation work item/i);
+    expect(text).not.toMatch(/keeps street-wide effects from any employed member/i);
+    expect(text).not.toMatch(/currently leaks/i);
+  });
+
+  it('no longer describes assignment as a type-blind global pool', () => {
+    const text = prose(doc());
+    expect(text).not.toMatch(/global 16-skill pool/i);
+    expect(text).not.toMatch(/drawn from the global pool/i);
+    // The shipped draw is type-consistent: one pool per staff type.
+    expect(text).toMatch(/business staff draw only business-scope skills/i);
+    expect(text).toMatch(/management-company staff draw only management-company-scope skills/i);
+  });
+
+  it('wiring notes describe the gated folds and name the gate helpers', () => {
+    const wiring = prose(section(doc(), 'Wiring notes'));
+    // Street-wide/player folds read management-company members only.
+    expect(wiring).toMatch(/management-company members? only/i);
+    // Per-business folds read business-scope skills from the employing
+    // business's members (not every street-wide skill the street can hold).
+    expect(wiring).toMatch(/business-scope skills of the members employed at that slot/i);
+    // Operations Manager is a business-staff effect, gated per charging member.
+    expect(wiring).toMatch(/Operations Manager[^.]{0,160}business-staff effect/i);
+    // The aggregation helpers are the single gate point every consumer reads.
+    expect(wiring).toMatch(/getStreetScopeSkills/);
+    expect(wiring).toMatch(/getBusinessScopeSkills/);
+    expect(wiring).toMatch(/getSalaryScopeSkills/);
+  });
+
+  it('keeps the GDD D.4.8 paragraph and the staff catalogue in the closed state', () => {
+    const gdd = prose(read(GDD_DOC));
+    expect(gdd).toMatch(/A skill is inert when its scope does not match its holder's type/);
+    expect(gdd).not.toMatch(/shipped cross-type follow-?ups/i);
+
+    const catalogue = prose(read(CATALOG_DOC));
+    // The 12 specialization applicants are all business staff, so they draw
+    // business-scope skills only: the management-company Town Gossip baseline
+    // cannot appear on them.
+    expect(catalogue).not.toMatch(/Town Gossip baseline, stacking caps/);
+    expect(catalogue).toMatch(/type-consistent/i);
   });
 
   it('keeps the cross-references to the GDD and the card catalogue', () => {

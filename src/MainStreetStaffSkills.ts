@@ -15,6 +15,12 @@
  *   skills, management-company staff draw only management-company-scope
  *   skills. A skill's `scope` (see `getSkillScope`) must match the holder's
  *   staff type (GDD D.4.8: a skill is inert when the scopes differ).
+ *   Assignment is one half of that invariant; the effect half is the
+ *   staff-type scope gate at the aggregation site in `MainStreetStaffBuffs`
+ *   (`getStreetScopeSkills` for player/street effects, `getBusinessScopeSkills`
+ *   for per-business effects, `getSalaryScopeSkills` for the Operations
+ *   Manager salary discount), so a cross-type skill from a legacy save is
+ *   inert even though it can still be persisted.
  * - `skill-town-gossip` (the Town Gossip peek mechanic,
  *   CG-0MSXOW6GN008ZSMN) is the baseline skill on every management-company
  *   card and is never drawn into a business-staff pool.

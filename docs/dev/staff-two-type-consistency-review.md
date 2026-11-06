@@ -82,10 +82,13 @@ management-company staff grant hand capacity.
    submodule) still describes Main Street as “staff cards expand hand capacity
    with ongoing costs”. That file lives in the engine repository
    (`TheWizardsCode/Tableau-Card-Engine`), so it needs a work item there.
-2. **Engine deltas.** The per-card re-scopes and re-valuations above, plus the
-   specialization-skill scope gate and type-consistent assignment described in
-   `specialization-skills.md`, are behavioural work items — they are documented,
-   not implemented, by the redesign.
+2. **Engine deltas.** The per-card re-scopes and re-valuations above are
+   behavioural work items — they are documented, not implemented, by the
+   redesign. The specialization-skill half of this follow-up **has since
+   shipped**: the staff-type scope gate (MS-0MW4MSNWR00123OZ) and the
+   type-consistent assignment (MS-0MW4MSNMJ006E9JH), under
+   MS-0MW3LTMHT001PRDT, are recorded as closed in
+   `specialization-skills.md` (§ *Cross-type assignments — gap closed*).
 
 ## Re-running the checks
 
