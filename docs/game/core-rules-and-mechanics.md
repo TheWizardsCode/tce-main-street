@@ -355,6 +355,20 @@ re-balancing is an edit rather than a code change).
 - **The log row agrees.** The activity-log row written when the offer is raised states
   the shortfall in coins, so the log and the dialog can never disagree.
 
+**Payoff notification.** A loan retired by its final scheduled repayment is announced **once
+per retired loan**: immediately after the closing animations and before the End of Turn
+summary (or before the next week, where that summary gate is skipped), a congratulation
+states that the seat is **debt free**, that the weekly amount is **no longer deducted**
+and the **total repaid** over the term (MS-0MW1ZJDVE000MUID). It is **presentation-only**:
+nothing about it is written to or read from a save, and it changes no wallet, activity-log
+row, ledger entry or RNG draw — no state mutation and no RNG consumption — so a no-loan or
+`loansEnabled: false` turn is unchanged, and a resumed/deferred closing never announces the
+same payoff twice. The dialog is suppressed
+in `replayMode` / headless runs, and in competitive play only the **human seat** sees it —
+an AI seat's payoff changes nothing on screen. A closing that ends the run in a win or a
+loss presents the game-over overlay instead, so a congratulation never pre-empts the final
+result. See `docs/game/ux-visual-audio.md` → *Loan payoff congratulation dialog*.
+
 **Bankruptcy bailout.** In the closing sequence, *before* the bankruptcy / seat-failure
 declaration, a seat that would fail on `coins < 0` **and holds no active loan** is
 offered a loan instead of losing:

@@ -26,6 +26,21 @@ the setting on. See
 §6.0 and
 [docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
 
+## Loan payoff notification
+
+When the final scheduled repayment retires a loan, Main Street announces the
+**retired loan once** — after the closing animations and before the End of Turn
+summary. The congratulation states that the seat is **debt free**, that the
+weekly amount is **no longer deducted** and how much was repaid in total over
+the term, and dismissing it continues into the summary (or straight into the
+next week where that gate is skipped). It is **presentation-only** — no wallet,
+activity-log, ledger, save or RNG change — suppressed in replay/headless runs
+and shown only for the human seat in competitive play; a closing that ends the
+run shows the game-over overlay instead. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+§5.1 and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
 ## Closing a business
 
 Closing a non-sold street card (Manage Card → **Close**) costs **1 action and

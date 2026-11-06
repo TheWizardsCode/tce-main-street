@@ -1333,7 +1333,11 @@ condensed text-only summary.
   turn.
 - When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
   `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
-  every closing animation (phased income show + incident reveal) has finished.
+  every closing animation (phased income show + incident reveal) has finished
+  and after any loan payoff congratulation has been dismissed — a retired
+  loan's dialog is presented ahead of this gate (see [Loan payoff
+  congratulation dialog](#loan-payoff-congratulation-dialog)), so the summary
+  is never reachable behind it.
   `finishTurnPresentation` hands the shared closing primitive
   (`presentTurnClosing`) a gate callback instead of `advanceTurn` directly, so
   the dialog is presented only after all end-of-turn animations complete and
@@ -1614,6 +1618,59 @@ owner-keyed, so the whole panel is testable without a browser.
   presentation-once, accept/decline resume, post-closing pause) and
   `tests/main-street/MainStreetLoanOverlay.browser.test.ts` (rendering, button
   count, dismissal).
+
+### Loan payoff congratulation dialog
+
+- Renderer: `src/scenes/MainStreetLoanPayoffOverlay.ts` —
+  `showLoanPayoffDialog(payoff, onDismiss)`, exposed as
+  `MainStreetOverlayContent.showLoanPayoffDialog()` and delegated by
+  `MainStreetScene.showLoanPayoffDialog()` (MS-0MW3SN2LK00537GN, parent
+  MS-0MW1ZJDVE000MUID). It renders one `TurnResult.loanPayoffs` entry (engine
+  slice MS-0MW3SMTRO006M86W) and owns **no copy**: every string comes from the
+  model below.
+- Model: `src/scenes/MainStreetLoanPayoffModel.ts` (pure, no Phaser import) —
+  `buildLoanPayoffContent(payoff, ctx)` builds the headline `You are debt
+  free!`, the two body lines `110 coins/week is no longer deducted.` and
+  `660 coins repaid over 6 weeks.` from the payoff entry's own
+  `perTurnRepayment` / `totalRepayment` / `termTurns` (so the dialog can never
+  contradict the HUD figure that just disappeared), and the single-button
+  `Continue` dismiss label (MS-0MW3SMVVP006ZD4V, producer Q2 = B: no separate
+  interest line). `shouldPresentLoanPayoff(ctx)` is the one presentation gate
+  (see *Gating* below), `deriveLoanPayoffContext(s, payoff)` is the one home
+  for reading `replayMode`, the payoff's `ownerId`, `state.players` and
+  `state.gameResult` off the scene, and `presentLoanPayoffDialogs(s, payoffs,
+  next)` is the sequencer the turn-flow layer calls (MS-0MW3SN58E009HC84).
+- When it appears: **once per retired loan**, after the closing animations and
+  before the End of Turn summary (or before the next-week continuation where
+  that summary gate is skipped), one modal per payoff and never one per turn.
+  The single dismiss action resumes exactly the flow the dialog interrupted;
+  a resumed/deferred closing carries its payoffs without re-running the
+  repayment pass, so a payoff is never announced twice. A closing that ends
+  the run presents the game-over overlay instead.
+- Overlay pattern: `createOverlayBackground` / `createOverlayButton` from
+  `@ui`, every element parented into `s.hudContainer`, depths 199/200/201,
+  every created object tracked in `s.overlayObjects` for dismissal, and
+  `safePlaySound(COMMON_SFX_KEYS.UI_CLICK)` on dismissal. It is instant (no
+  fade-in) and therefore reduced-motion safe, and it has a **single dismiss
+  action** — no other button — which removes the overlay, clears the tracked
+  objects and calls its continuation **exactly once** (a guard makes a second
+  press a no-op), so the closing can never be resumed twice. The sequencer
+  presents the next payoff only after the previous one is dismissed, so no
+  more than one modal is ever active and the summary's buttons are never
+  reachable behind a congratulation.
+- Gating: suppressed entirely in `replayMode` (headless/replay runs) and for
+  any seat that is not the **human seat** — delegated to the existing
+  `isHumanSeatCredit` seam, so competitive play congratulates the human seat
+  and an AI seat's payoff changes nothing visible. A closing that already
+  ended the run suppresses the dialog too (game over wins). A scene without
+  the overlay surface simply continues the flow, so the closing can never be
+  stranded.
+- Tests: `tests/main-street/MainStreetLoanPayoff.browser.test.ts` (rendered
+  copy, `hudContainer` parenting, depths and `overlayObjects` tracking, the
+  single dismissal with its exactly-once continuation, and the suppressed
+  cases), `tests/main-street/loan-payoff-notification.test.ts` (copy model and
+  gate) and `tests/main-street/loan-payoff-turn-flow.test.ts` (once per
+  retired loan, placement ahead of the summary, resume and gating).
 
 ### Loan obligation HUD readout
 
