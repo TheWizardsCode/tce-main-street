@@ -46,6 +46,8 @@ import {
   type LoanSelectorDialogHandlers,
 } from './MainStreetLoanOverlay';
 import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
+import { showLoanPayoffDialog as renderLoanPayoffDialog } from './MainStreetLoanPayoffOverlay';
+import type { LoanPayoff } from '../MainStreetLoans';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
@@ -1422,6 +1424,36 @@ export class MainStreetOverlayContent {
     error?: string | null,
   ): void {
     renderLoanSelectorDialog(this.scene, model, handlers, error);
+  }
+
+  /**
+   * Shows the loan payoff congratulation dialog (MS-0MW3SN2LK00537GN, parent
+   * MS-0MW1ZJDVE000MUID).
+   *
+   * Presented when the seat's final scheduled repayment retires a loan, so the
+   * milestone is noticed and the stopped weekly deduction is explained. The
+   * copy is the Phaser-free {@link buildLoanPayoffContent} model's output — the
+   * renderer invents no string — and the model's presentation gate decides
+   * whether anything is drawn (never in `replayMode`/headless runs, never for a
+   * non-human seat, never when the same closing ended the run).
+   *
+   * Overlay conventions are the renderer's
+   * ({@link module:scenes/MainStreetLoanPayoffOverlay}): `createOverlayBackground`
+   * / `createOverlayButton` from `@ui`, every element parented into
+   * `s.hudContainer`, depths 199/200/201, every object tracked in
+   * `s.overlayObjects`, `safePlaySound` for the button SFX, instant appearance
+   * (reduced-motion safe) and a single dismiss action that resumes the
+   * interrupted flow exactly once.
+   *
+   * @param payoff    The retired loan, as reported on `TurnResult.loanPayoffs`.
+   * @param onDismiss Called exactly once when the player dismisses the dialog.
+   * @returns Whether the dialog was presented; `false` when the copy model's
+   *          gate suppressed it (replay/headless, non-human seat, run ended), in
+   *          which case `onDismiss` is never called and the caller continues the
+   *          flow itself.
+   */
+  public showLoanPayoffDialog(payoff: LoanPayoff, onDismiss: () => void): boolean {
+    return renderLoanPayoffDialog(this.scene, payoff, onDismiss);
   }
 
   /**

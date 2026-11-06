@@ -1549,6 +1549,37 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the loan payoff congratulation dialog (MS-0MW3SN2LK00537GN, parent
+   * MS-0MW1ZJDVE000MUID): the seat's final scheduled repayment retired a loan,
+   * so the player is congratulated on clearing the debt and told the weekly
+   * deduction has stopped. Delegates to the overlay manager's
+   * showLoanPayoffDialog; the overlay derives its context from this scene
+   * (`replayMode`, the payoff's own `ownerId`, `state.players` and
+   * `state.gameResult`) and the copy model's gate decides presentation.
+   *
+   * With no overlay surface (headless/tests) nothing is presented and the
+   * continuation is never invoked: the caller resumes the flow itself, which
+   * can never strand. The returned flag is the single source of that decision.
+   *
+   * @param payoff    The retired loan, as reported on `TurnResult.loanPayoffs`.
+   * @param onDismiss Called exactly once when the player dismisses the dialog.
+   * @returns Whether the dialog was presented; `false` means nothing was
+   *          drawn and the caller must continue the flow (the copy model's gate
+   *          suppressed it, or there is no overlay surface).
+   */
+  public showLoanPayoffDialog(
+    payoff: import('../MainStreetLoans').LoanPayoff,
+    onDismiss: () => void,
+  ): boolean {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showLoanPayoffDialog === 'function') {
+      return (this.msOverlayManager as any).showLoanPayoffDialog(payoff, onDismiss) === true;
+    }
+    // No overlay manager (headless/tests): nothing can be shown, and
+    // `onDismiss` is not invoked — the caller continues via the `false` result.
+    return false;
+  }
+
+  /**
    * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
    * per-phase income, per-category ongoing expenses, incident and one-off
    * deltas, the net change and the closing balances, with a primary

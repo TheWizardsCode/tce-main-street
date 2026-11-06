@@ -27,13 +27,13 @@
  *   / 200 (box) / 201 (elements), every object tracked in `s.overlayObjects`,
  *   and instant appearance (no fade-in — reduced-motion safe).
  *
- * **Test-first (red) phase.** Every case below is `it.fails` while the
- * renderer does not exist: `showLoanPayoffDialog` is absent, so the seam check
- * fails with the intended "expected a function" reason (never a syntax error in
- * this file). The paired implementation item (MS-0MW3SN2LK00537GN) flips each
- * `it.fails` to a plain `it` once the dialog renders; leaving one as `it.fails`
- * afterwards is itself a failure, so the pin cannot go stale. This is the
- * repo's documented red-phase convention (`tests/main-street/hud-total-counting.test.ts`,
+ * **Flipped from the red phase (landed).** The cases were authored `it.fails`
+ * by the browser-test slice (MS-0MW3SN0IT008TQU3) while
+ * `showLoanPayoffDialog` did not exist, and the renderer slice
+ * (MS-0MW3SN2LK00537GN) flipped every one to a plain `it` now that the dialog
+ * renders — leaving one as `it.fails` is itself a failure, so the pin cannot go
+ * stale. This is the repo's documented red-phase convention
+ * (`tests/main-street/hud-total-counting.test.ts`,
  * `tests/main-street/panel-opacity.browser.test.ts`).
  *
  * @module tests/main-street/MainStreetLoanPayoff.browser
@@ -141,7 +141,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
     game = null;
   });
 
-  it.fails(
+  it(
     'renders the modelled copy instantly, parented into the HUD at depths 199/200/201 and tracked for dismissal',
     async () => {
       game = await bootGame();
@@ -151,7 +151,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
       const content = expectedContent();
       const createdBefore = overlayObjects(s).length;
 
-      s.showLoanPayoffDialog(PAYOFF, () => {});
+      expect(s.showLoanPayoffDialog(PAYOFF, () => {})).toBe(true);
 
       // AC2: the rendered copy is the copy model's output — debt free, the
       // weekly amount no longer deducted, and the total repaid over the term.
@@ -197,7 +197,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
     30_000,
   );
 
-  it.fails(
+  it(
     'a single dismiss action removes the overlay, clears the tracked objects and calls the continuation exactly once',
     async () => {
       game = await bootGame();
@@ -206,7 +206,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
 
       const content = expectedContent();
       const onDismiss = vi.fn();
-      s.showLoanPayoffDialog(PAYOFF, onDismiss);
+      expect(s.showLoanPayoffDialog(PAYOFF, onDismiss)).toBe(true);
 
       const dismiss = overlayButtons(s).find((t) => t.text === content.dismissLabel);
       expect(dismiss).toBeDefined();
@@ -225,7 +225,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
     30_000,
   );
 
-  it.fails(
+  it(
     'presents no overlay when the payoff is suppressed in replayMode',
     async () => {
       game = await bootGame();
@@ -235,7 +235,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
       const before = overlayObjects(s).length;
       s.replayMode = true;
       try {
-        s.showLoanPayoffDialog(PAYOFF, () => {});
+        expect(s.showLoanPayoffDialog(PAYOFF, () => {})).toBe(false);
         expect(renderedCopy(s)).not.toContain('debt free');
       } finally {
         s.replayMode = false;
@@ -245,7 +245,7 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
     30_000,
   );
 
-  it.fails(
+  it(
     'presents no overlay when the payoff belongs to a non-human seat',
     async () => {
       game = await bootGame();
@@ -261,12 +261,37 @@ describe('Main Street loan payoff dialog overlay (browser)', () => {
         { playerId: 1, coins: 0, reputation: 0, hand: [], staffCards: [], actionBudget: 1, controller: 'ai' },
       ];
       try {
-        s.showLoanPayoffDialog({ ...PAYOFF, ownerId: 1 }, () => {});
+        expect(s.showLoanPayoffDialog({ ...PAYOFF, ownerId: 1 }, () => {})).toBe(false);
         expect(renderedCopy(s)).not.toContain('debt free');
       } finally {
         s.state.players = savedPlayers;
       }
       expect(overlayObjects(s)).toHaveLength(before);
+    },
+    30_000,
+  );
+
+  it(
+    'reports nothing presented and never invokes the continuation without an overlay surface (headless)',
+    async () => {
+      game = await bootGame();
+      const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+      expectPayoffDialogSeam(s);
+
+      const before = overlayObjects(s).length;
+      const onDismiss = vi.fn();
+      const manager = s.msOverlayManager;
+      s.msOverlayManager = undefined;
+      try {
+        // AC4 delegation contract: with no overlay manager there is nothing to
+        // draw, so the caller — not a phantom dismissal — resumes the flow.
+        expect(s.showLoanPayoffDialog(PAYOFF, onDismiss)).toBe(false);
+      } finally {
+        s.msOverlayManager = manager;
+      }
+      expect(onDismiss).not.toHaveBeenCalled();
+      expect(overlayObjects(s)).toHaveLength(before);
+      expect(renderedCopy(s)).not.toContain('debt free');
     },
     30_000,
   );
