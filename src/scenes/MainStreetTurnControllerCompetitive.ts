@@ -80,6 +80,7 @@ import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildCompetitiveTurnSummary } from './MainStreetTurnSummary';
+import { presentLoanPayoffDialogs } from './MainStreetLoanPayoffModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult } from '../MainStreetAdjacency';
@@ -769,7 +770,14 @@ export function presentCompetitiveDayTail(
   const afterClosing = shouldGateCompetitiveTurnSummary(tcCtx, closing)
     ? () => presentCompetitiveTurnSummaryGate(tcCtx, closing, nextDay)
     : nextDay;
-  presentCompetitiveClosing(tcCtx, closing, afterClosing);
+  // Loan payoff congratulation (MS-0MW3SN58E009HC84, parent AC3/AC6): the same
+  // one-dialog-per-payoff sequencing as single-player, presented once the
+  // closing animations finish and ahead of the Turn Summary panel / next day.
+  // The model gate keeps an AI seat's payoff invisible to the player, and a
+  // run that has already ended returns above — the game-over overlay wins.
+  presentCompetitiveClosing(tcCtx, closing, () =>
+    presentLoanPayoffDialogs(tcCtx.scene, closing.loanPayoffs, afterClosing),
+  );
 }
 
 /**

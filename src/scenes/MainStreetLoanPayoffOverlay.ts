@@ -38,7 +38,7 @@ import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import type { LoanPayoff } from '../MainStreetLoans';
 import {
   buildLoanPayoffContent,
-  type LoanPayoffContext,
+  deriveLoanPayoffContext,
 } from './MainStreetLoanPayoffModel';
 
 // ── Layout constants ────────────────────────────────────────
@@ -47,24 +47,6 @@ import {
 const PANEL_WIDTH = 520;
 /** Dialog height: headline, two body lines and the dismiss button. */
 const PANEL_HEIGHT = 240;
-
-/**
- * Derives the model's presentation context from the live scene.
- *
- * The renderer never decides presentation itself: it reports the scene's own
- * `replayMode`, the payoff's seat and the state's players / closing result, and
- * lets {@link shouldPresentLoanPayoff} answer. `undefined`-safe, because a
- * hand-built scene (tests, headless) may carry no state at all.
- */
-function loanPayoffContext(s: any, payoff: LoanPayoff): LoanPayoffContext {
-  const state = s?.state;
-  return {
-    replayMode: s?.replayMode === true,
-    seatId: payoff.ownerId,
-    players: state?.players ?? null,
-    gameResult: state?.gameResult,
-  };
-}
 
 /**
  * Draws the debt-free congratulation dialog.
@@ -87,7 +69,7 @@ export function showLoanPayoffDialog(
   payoff: LoanPayoff,
   onDismiss: () => void,
 ): boolean {
-  const content = buildLoanPayoffContent(payoff, loanPayoffContext(s, payoff));
+  const content = buildLoanPayoffContent(payoff, deriveLoanPayoffContext(s, payoff));
   if (!content) return false; // suppressed: replay/headless, AI seat or run over
 
   const centerX = s.layout.gameW / 2;

@@ -25,6 +25,7 @@ import type { MainStreetTurnControllerContext } from './MainStreetTurnController
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { deferUntilIncomeCollected, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
+import { presentLoanPayoffDialogs } from './MainStreetLoanPayoffModel';
 import {
   buildTurnSummaryLoanDescriptor,
   type TurnSummaryLoanDescriptor,
@@ -529,11 +530,26 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     const afterClosing = shouldGateTurnSummary(tcCtx, result)
       ? () => presentTurnSummaryGate(tcCtx, result, advanceTurn)
       : advanceTurn;
-    presentTurnClosing(tcCtx, result, afterClosing, {
-      animateIncident: !inTutorial,
-      delegateReducedMotionIncident: true,
-      pendingDeltas: deferred ? result : undefined,
-    });
+
+    // ── Loan payoff congratulation (MS-0MW3SN58E009HC84) ───────
+    // One modal per retired loan, presented after the closing animations and
+    // ahead of the End of Turn summary (or the next-week continuation where
+    // that gate is skipped). `presentLoanPayoffDialogs` filters each payoff
+    // through the model gate (replay/headless, non-human seats and a run that
+    // already ended present nothing) and dismisses into the exact flow that
+    // would have run without the dialog — so the summary, bailout,
+    // event-choice and next-week flows are unchanged, and the summary's
+    // buttons are never reachable while a congratulation is up.
+    presentTurnClosing(
+      tcCtx,
+      result,
+      () => presentLoanPayoffDialogs(s, result.loanPayoffs, afterClosing),
+      {
+        animateIncident: !inTutorial,
+        delegateReducedMotionIncident: true,
+        pendingDeltas: deferred ? result : undefined,
+      },
+    );
   
 }
 
