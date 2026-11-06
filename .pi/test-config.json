@@ -195,8 +195,8 @@
     },
     "competitive-turn-summary": {
       "commands": [
-        "npx vitest run --project unit tests/main-street/competitive-turn-ledger.test.ts tests/main-street/turn-summary-competitive-model.test.ts tests/main-street/competitive-turn-summary-gate.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/turn-summary-model.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/turn-summary-gate-docs.test.ts tests/main-street/turn-summary-bank-loan-docs.test.ts tests/main-street/competitive-loan-descriptor.test.ts tests/main-street/competitive-loan-active-obligation.test.ts tests/tooling/test-config-timeout-guard.test.ts",
-        "npx vitest run --project browser tests/main-street/turn-summary-competitive.browser.test.ts tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/competitive-loan-active-obligation.browser.test.ts"
+        "npx vitest run --project unit tests/main-street/competitive-turn-ledger.test.ts tests/main-street/turn-summary-competitive-model.test.ts tests/main-street/competitive-turn-summary-gate.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/turn-summary-model.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/turn-summary-gate-docs.test.ts tests/main-street/turn-summary-bank-loan-docs.test.ts tests/main-street/competitive-loan-descriptor.test.ts tests/main-street/competitive-loan-active-obligation.test.ts tests/main-street/competitive-loan-disabled-states.test.ts tests/tooling/test-config-timeout-guard.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-competitive.browser.test.ts tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/competitive-loan-active-obligation.browser.test.ts tests/main-street/competitive-loan-disabled-states.browser.test.ts"
       ],
       "paths": [
         "src/MainStreetEngineCompetitiveTurn.ts",
@@ -216,6 +216,8 @@
         "tests/main-street/competitive-loan-descriptor.test.ts",
         "tests/main-street/competitive-loan-active-obligation.test.ts",
         "tests/main-street/competitive-loan-active-obligation.browser.test.ts",
+        "tests/main-street/competitive-loan-disabled-states.test.ts",
+        "tests/main-street/competitive-loan-disabled-states.browser.test.ts",
         "tests/tooling/test-config-timeout-guard.ts",
         "tests/tooling/test-config-timeout-guard.test.ts"
       ]
