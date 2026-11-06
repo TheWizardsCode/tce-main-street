@@ -568,7 +568,7 @@ Business staff are the **specialists**: each is employed at one business and pay
 |---|---|---|---|---|---|---|
 | `staff-barista` | Barista | 2 | 50 | Any Cafe, or any Food-type business | **+20 coins/turn** to **each adjacent Food business** (flat synergy coin) | — |
 | `staff-baker` | Baker | 2 | 80 | Any Bakery, or any Food-type business | **+25 coins/turn** to **its own business** | Narrowed from adjacent Food businesses to its own business |
-| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy, before market saturation) | — |
+| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy, before market saturation) | Narrowed from nearby Food businesses to its own business |
 | `staff-florist` | Florist | 2 | 75 | Any Flower Shop, or any Commerce/Culture business | **+30 coins/turn** to **each adjacent Commerce or Culture business** | — |
 | `staff-mechanic` | Mechanic | 3 | 90 | Hardware Store, or any Service business | **+30 coins/turn** to **its own Service business** | — |
 | `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded up, floored at 0) | — |
@@ -598,9 +598,9 @@ Management-company staff are the **company layer**: they never stand on the stre
 | `staff-director` | Director | 9 | 400 | **+3 hand slots and +1 action/turn** | — |
 | `staff-executive` | Executive | 10 | 500 | **+2 actions/turn** | Was +1 hand slot and +1 action/turn |
 | `staff-general-manager` | General Manager | 12 | 500 | **+4 hand slots and +1 action/turn** | — |
-| `staff-socialite` | Socialite | 4 | 150 | **+10 reputation/turn** | — |
-| `staff-accountant` | Accountant | 6 | 150 | **−100 coins on every market refresh**, and **Tax Audit losses capped at 25%** of the assessed amount | — |
-| `staff-lookout` | Lookout | 7 | 200 | **Reveals the top card of the incident deck** (peek) **once per turn** | — |
+| `staff-socialite` | Socialite | 4 | 150 | **+1 hand slot and +10 reputation/turn** | — |
+| `staff-accountant` | Accountant | 6 | 150 | **+1 hand slot**, **−100 coins on every market refresh**, and **Tax Audit losses capped at 25%** of the assessed amount | — |
+| `staff-lookout` | Lookout | 7 | 200 | **+1 hand slot** and **reveals the top card of the incident deck** (peek) **once per turn** | — |
 
 #### D.4.5 Expected gameplay outcomes and strategic trade-offs
 
@@ -644,7 +644,7 @@ The roster in D.4.3 and D.4.4 **is** the remap of the 26 staff templates shipped
 - **9 management-company staff** — the cards that ship a hand-capacity (`handSlotsAdded > 0`) or action-point (`actionsPerTurn > 0`) grant: Apprentice, Assistant, Manager, Director, Executive, General Manager, Socialite, Accountant, Lookout. Those two shipped markers are the classification rule; a *third* player-scope field is not, because two business-staff cards still ship street-wide player-scope values (the IT Specialist's `refreshCostDiscount = 100` and the Delivery Driver's `purchaseCostDiscount = 50`) that the two-type target moves into business scope — both are recorded in the D.4.3 delta column and must not be read as type markers.
 - **17 business staff** — the per-business cards (`handSlotsAdded = 0`): Barista, Baker, Chef, Florist, Mechanic, Bookkeeper, Financial Advisor, IT Specialist, Delivery Driver, Security Guard, Maintenance Worker, Health & Safety Inspector, Customer Service Rep, Marketing Consultant, PR Officer, Event Planner, Investor.
 
-The "Redesign delta" columns in D.4.3 and D.4.4 name every card whose shipped effect is **re-scoped or re-valued** to fit the two-type model (scope tightenings for Security Guard, Maintenance Worker, Health & Safety Inspector, Marketing Consultant, PR Officer, Delivery Driver and IT Specialist; value changes for Assistant, Executive, Baker and Event Planner). Those deltas are **implementation follow-ups**, not part of this documentation work item; until they land, the shipped behaviour is the older, wider-scoped version.
+The "Redesign delta" columns in D.4.3 and D.4.4 name every card whose shipped effect is **re-scoped or re-valued** to fit the two-type model (scope tightenings for Security Guard, Maintenance Worker, Health & Safety Inspector, Marketing Consultant, PR Officer, Delivery Driver, IT Specialist and Chef; value changes for Assistant, Executive, Baker and Event Planner). Those deltas are **implementation follow-ups**, not part of this documentation work item; until they land, the shipped behaviour is the older, wider-scoped version.
 
 #### D.4.8 Implementation contract (what downstream work must satisfy)
 

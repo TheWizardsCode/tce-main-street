@@ -384,18 +384,19 @@ export interface StaffCard {
   /**
    * Street-grid slot index of the deployed business this staff member is
    * employed at (CG-0MSTOATDU006UGAX). Per-business specialization buffs
-   * (income/reputation) apply ONLY to this business; undefined = hand-slot
-   * staff (existing mechanic) who contribute no per-business income/rep
-   * buffs but whose street-wide skills still aggregate (cost cutter,
-   * incidents, brand ambassador, negotiator, ops-manager salary).
+   * (income/reputation) apply ONLY to this business; undefined = management-company
+   * staff (the two-type name for the existing mechanic, CG-0MSTOATDU006UGAX) who
+   * contribute no per-business income/rep buffs but whose street-wide skills
+   * still aggregate (cost cutter, incidents, brand ambassador, negotiator,
+   * ops-manager salary).
    */
   employedAtSlot?: number;
   /**
    * Business names and/or synergy type names this staff member may serve
    * (CG-0MTIOLY2A0092OT1). Absent/empty = generalist (matches any business;
-   * legacy hand-slot behaviour). Parsed from the `allowedBusinessTypes` CSV
-   * column; both specific business names (e.g. `Cafe`) and synergy type
-   * names (e.g. `Food`) are valid tokens.
+   * the pre-redesign staff default, superseded by the two-type model). Parsed
+   * from the `allowedBusinessTypes` CSV column; both specific business names
+   * (e.g. `Cafe`) and synergy type names (e.g. `Food`) are valid tokens.
    */
   readonly allowedBusinessTypes?: readonly string[];
   /**

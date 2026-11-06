@@ -411,9 +411,10 @@ Duration events (e.g. Flu Outbreak) also use:
 
 ### Job-applicant mechanic (CG-0MSTOATDU006UGAX)
 
-A second staff mechanic runs alongside the hand-slot staff above: **job
-applicants** who are employed at a specific deployed business and grant that
-business a passive specialization buff (per-business employment).
+A second staff mechanic runs alongside the **management-company staff**
+described above: **job applicants** who are employed at a specific deployed
+business and grant that business a passive specialization buff (per-business
+employment).
 
 - **Trigger:** at WeekStart each turn there is a chance `(reputation + income
   per turn)%` (capped at 15%) that a staff member applies for work. An

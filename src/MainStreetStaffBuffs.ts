@@ -205,7 +205,7 @@ export function computePerBusinessSkillBuffs(
  * (legacy saves / hand-built fixtures) contribute nothing.
  *
  * Per-business income/reputation buffs use
- * {@link getEmployedSpecializationSkillsForBusiness} instead, so hand-slot
+ * {@link getEmployedSpecializationSkillsForBusiness} instead, so management-company
  * staff (no `employedAtSlot`) never leak income/rep buffs onto the street
  * (CG-0MSTOATDU006UGAX).
  */
@@ -227,7 +227,7 @@ export function getEmployedSpecializationSkills(state: MainStreetState): Special
  * the given street-grid slot (`employedAtSlot === slotIndex`). Per-business
  * income/reputation buffs in `applyIncome` are derived from this per-slot
  * pool, so a Chef employed at one Food business never buffs another Food
- * business elsewhere on the street, and hand-slot staff (no `employedAtSlot`)
+ * business elsewhere on the street, and management-company staff (no `employedAtSlot`)
  * contribute no per-business buffs (CG-0MSTOATDU006UGAX).
  *
  * @param state     Current game state.
@@ -239,7 +239,7 @@ export function getEmployedSpecializationSkills(state: MainStreetState): Special
  * the given street-grid slot. Per-business income/reputation buffs in
  * `applyIncome` are derived from this per-slot pool, so a Chef employed at
  * one Food business never buffs another Food business elsewhere on the
- * street, and hand-slot staff contribute no per-business buffs
+ * street, and management-company staff contribute no per-business buffs
  * (CG-0MSTOATDU006UGAX / CG-0MU3BTTWT0025VPL).
  *
  * Reads the per-business employed-staff source of truth

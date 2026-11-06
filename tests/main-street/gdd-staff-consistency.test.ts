@@ -252,6 +252,27 @@ describe('GDD staff consistency — terminology (AC2)', () => {
   });
 });
 
+describe('GDD staff consistency — audit-gap pins (MS-0MW20VBSZ003A01O closure)', () => {
+  it('D.4.4 states the shipped +1 hand slot for Socialite, Accountant and Lookout', () => {
+    const docs = readConsistencyDocs(PROJECT_ROOT);
+    const d44 = docs.gdd.slice(docs.gdd.indexOf('#### D.4.4'), docs.gdd.indexOf('#### D.4.5'));
+    for (const id of ['staff-socialite', 'staff-accountant', 'staff-lookout']) {
+      const row = d44.split('\n').find(line => line.includes(`\`${id}\``));
+      expect(row, `${id} row must exist in D.4.4`).toBeDefined();
+      expect(row!, `${id} D.4.4 benefit must state the shipped +1 hand slot (delta is unchanged)`).toContain('+1 hand slot');
+    }
+  });
+
+  it('Chef is marked re-scoped in D.4.3 and named in the D.4.7 scope tightenings', () => {
+    const docs = readConsistencyDocs(PROJECT_ROOT);
+    const chefRow = docs.gdd.split('\n').find(line => line.includes('`staff-chef`'));
+    expect(chefRow, 'Chef row must exist in D.4.3').toBeDefined();
+    expect(chefRow!, 'Chef delta must note the scope tightening (was "nearby Food businesses")').not.toMatch(/\| — \|$/);
+    const d47 = docs.gdd.slice(docs.gdd.indexOf('#### D.4.7'));
+    expect(d47).toMatch(/scope tightenings for [^;]*Chef/);
+  });
+});
+
 describe('GDD staff consistency — standalone documentation check (AC4)', () => {
   it('CLI exits 0 and prints the JSON report for consistent docs', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);

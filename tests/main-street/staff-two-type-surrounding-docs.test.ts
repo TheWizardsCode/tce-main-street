@@ -29,6 +29,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const CONTENT = path.join(PROJECT_ROOT, 'docs/game/content-design-and-progression.md');
 const PRD = path.join(PROJECT_ROOT, 'docs/dev/prd-multi-use-card-economy.md');
 const SRC_README = path.join(PROJECT_ROOT, 'src/README.md');
+const SRC_STAFF_BUFFS = path.join(PROJECT_ROOT, 'src/MainStreetStaffBuffs.ts');
 
 const BUSINESS = 'Business';
 const MANAGEMENT_COMPANY = 'Management-company';
@@ -215,6 +216,14 @@ describe('src/README.md hand-capacity contract', () => {
 
   it('no longer describes staff as a hand-capacity purchase', () => {
     expect(staleStaffRoleStatements(read(SRC_README))).toEqual([]);
+  });
+});
+
+describe('src/MainStreetStaffBuffs.ts code comments (AC7)', () => {
+  it('uses the two-type name "management-company staff" rather than the pre-two-type "hand-slot staff"', () => {
+    const doc = read(SRC_STAFF_BUFFS);
+    expect(doc).toContain('management-company staff');
+    expect(doc).not.toMatch(/hand-slot staff/);
   });
 });
 
