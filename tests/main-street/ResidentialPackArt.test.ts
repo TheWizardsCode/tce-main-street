@@ -49,6 +49,7 @@ import {
 const ART_MAP = artMapJson as {
   version: number;
   aliases: Record<string, string>;
+  spriteAliases: Record<string, string>;
   art: Record<string, string>;
   fallback: string;
 };
@@ -185,8 +186,10 @@ describe('residential pack art — base coverage unchanged', () => {
 
     for (const sprite of baseSprites) {
       if (!knownSprites.has(sprite)) continue;
+      // A byte-identical duplicate (a Q11 per-upgrade copy) shares its target's
+      // embedded bitmap through the map's `spriteAliases` redirect.
       expect(
-        ART_MAP.art[sprite],
+        ART_MAP.art[sprite] ?? ART_MAP.art[ART_MAP.spriteAliases[sprite]],
         `card-art-map.json is missing base art for sprite "${sprite}"`,
       ).toBeDefined();
     }
