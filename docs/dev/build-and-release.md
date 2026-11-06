@@ -280,6 +280,28 @@ current worktree root); the full check is in
   fails with the lag diagnosis naming the tip and the re-pin step. The
   submodule pointer and the pin travel together.
 
+## The game-repo scaffold entry point: `npm run scaffold`
+
+Every game repo's scaffold entry point is **`npm run scaffold`** — in this
+repo it runs the engine-owned generator from the `./core` submodule
+(`package.json` → `scripts.scaffold`):
+
+```bash
+tsx ./core/scripts/game-repo-scaffold.ts --game main-street \
+  --game-repo-root . --core-root ./core --only main.ts --force
+```
+
+The `--core-root ./core` construction is what makes it game-repo-safe: the
+generator is driven from the repo's own submodule clone, so a game repo never
+needs (or touches) a sibling core checkout or a root `scripts/` tree of its
+own. **`scaffold:game` and `scaffold:games` are core-checkout-only npm
+scripts**: they live in the engine's own `package.json` (where
+`scripts/game-repo-scaffold.ts` exists) and are filtered out of generated game
+repos by the scaffold template — a game repo must never declare or run them
+(MS-0MVO30VXS002A1Z0; guarded by
+`tests/tooling/scaffold-scripts.test.ts` and
+`tests/main-street/scaffold-docs-drift.test.ts`).
+
 ## The launcher (`main.ts`) is generator-owned
 
 `./main.ts` is not hand-authored: it is exactly what the engine-owned generator
