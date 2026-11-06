@@ -531,18 +531,34 @@ npm run preview
 
 ## 11. Telemetry Events
 
-The walking skeleton emits the following events through the `GameEventEmitter` for debugging and future analytics:
+> **Reconciled (MS-0MW1ZHBPK006M8YS):** the table below is the live feed,
+> not the aspirational walking-skeleton list that previously lived here
+> (`market.view`, `market.purchase`, `action.place`, `income.compute`,
+> `turn.start`, `turn.phase_change`, `game.end`, `game.seeded_run` were never
+> emitted). The feed is the typed `GameEventMap` on `GameEventEmitter`
+> (`core/src/core-engine/GameEventEmitter.ts`), surfaced by the dev **Game
+> Events** overlay, mirrored into the DEV-only `GlobalEventBuffer`, and
+> forwarded to Phaser via `PhaserEventBridge`.
 
-| Event | Payload | When |
-|-------|---------|------|
-| `market.view` | `{ turn, businessCount, investmentCount, incidentQueueSize }` | Market is displayed |
-| `market.purchase` | `{ turn, cardType, cardName, cost }` | Player purchases a card |
-| `action.place` | `{ turn, cardName, slotIndex, synergyTypes }` | Business placed on street |
-| `income.compute` | `{ turn, totalIncome, businessCount, synergyBonusTotal }` | Income phase completes |
-| `turn.start` | `{ turn, phase }` | New turn begins |
-| `turn.phase_change` | `{ turn, fromPhase, toPhase }` | Phase transition |
-| `game.end` | `{ result, finalScore, turns, seed }` | Game ends (win or loss) |
-| `game.seeded_run` | `{ seed }` | Game setup completes |
+Main Street declares one game-specific event on top of the engine map and
+emits a small subset; the engine's vocabulary is game-agnostic and shared
+with every game:
+
+| Event | Payload | When (Main Street) |
+|-------|---------|--------------------|
+| `activity-log` | the `LogEntry` (`turn`, `text`, `type`, optional `seatId`/`seatLabel`/`seatColour`) | **Every Activity Log row**, emitted by `addLog(...)` / `addLogShared(...)` when the scene channel is live (MS-0MW1ZHBPK006M8YS) |
+| `card:placed` | `{ cardId, slotIndex }` | Business/upgrade placed on the street (10 scene sites) |
+| `income-gained` | `{ amount }` | Coins earned during income (`MainStreetAnimatorIncome`) |
+| `state-settled` | `{ turnNumber, phase }` | Engine turn output settles (`CardGameScene`) |
+| `ui-interaction` | `{ elementId, action }` | UI clicks (`SFX_KEYS.CLICK` path) |
+
+Other engine events (`turn-started`, `turn-completed`, `game-ended`,
+`card-drawn`, `card-flipped`, `card-swapped`, `card-discarded`,
+`card:dealt`, `undo`/`redo`, solitaire card events, …) remain available on
+`GameEventMap`; games emit what they use. The overlay renders every event
+that fires, so `activity-log` shows one row per Activity Log entry in
+emission order — the single instrumentation channel for debugging and future
+analytics/replay hooks.
 
 ---
 

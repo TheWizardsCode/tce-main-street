@@ -61,6 +61,8 @@ export {
   classifyEffect,
   addLog,
   addLogShared,
+  appendActivityLogEntry,
+  bindActivityLogFeed,
   resolveLogSeatColour,
   syncResourceBankToLedger,
 } from './MainStreetStateLog';

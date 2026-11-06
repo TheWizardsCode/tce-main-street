@@ -38,6 +38,8 @@
 
 import type { MainStreetState, LogEntry, LogEntryType } from './MainStreetStateTypes';
 import { getSeatDisplayLabel } from './MainStreetAdjacencyOwner';
+import { getActivityLogEmitter } from './MainStreetGameEvents';
+import type { GameEventEmitter } from '@core-engine/GameEventEmitter';
 
 /**
  * Background colour of the activity-log panel (mirrors the renderer's
@@ -256,7 +258,7 @@ export function addLog(
       entry.seatLabel = getSeatDisplayLabel(seatId);
       entry.seatColour = seat.colour;
     }
-    state.activityLog.push(entry);
+    publishActivityLogEntry(state, entry);
     return;
   }
 
@@ -273,7 +275,7 @@ export function addLog(
     entry.seatLabel = getSeatDisplayLabel(actingSeatId);
     entry.seatColour = state.players!.find((player) => player.playerId === actingSeatId)!.colour;
   }
-  state.activityLog.push(entry);
+  publishActivityLogEntry(state, entry);
 }
 
 /**
@@ -285,7 +287,78 @@ export function addLog(
  * this form so a You/AI filter never mislabels them as a seat's action.
  */
 export function addLogShared(state: MainStreetState, text: string, type: LogEntryType): void {
-  state.activityLog.push({ turn: state.turn, text, type });
+  publishActivityLogEntry(state, { turn: state.turn, text, type });
+}
+
+// ── Single write path / Game Events feed ────────────────────
+
+/**
+ * The SINGLE writer of `state.activityLog` (MS-0MW1ZHBPK006M8YS).
+ *
+ * Every Activity Log row — whether produced by the Game Events feed
+ * subscriber ({@link bindActivityLogFeed}) or by the headless no-emitter
+ * fallback ({@link publishActivityLogEntry}) — passes through this function;
+ * a guard test pins that no `.push` on `state.activityLog` exists anywhere
+ * else in the production source. Undo/save restore re-assigns the whole log
+ * from a snapshot (a restore, not a row write) and is intentionally not
+ * routed here (see `MainStreetCommands.restoreSnapshot`).
+ */
+export function appendActivityLogEntry(state: MainStreetState, entry: LogEntry): void {
+  state.activityLog.push(entry);
+}
+
+/**
+ * Routes a log entry to the Game Events feed when the scene channel is live,
+ * otherwise appends directly (headless fallback).
+ *
+ * Channel path: emits the typed `activity-log` event on the scene emitter
+ * (`window.__GAME_EVENTS__`); the subscriber registered by
+ * {@link bindActivityLogFeed} appends the row. The guard requires a live
+ * `activity-log` listener so a wrong/stale emitter (another game's scene on
+ * the same page) degrades to the direct append instead of silently dropping
+ * rows — the row can never be lost and can never be written twice.
+ *
+ * Headless path (no `window`, no emitter, or no subscriber): appends directly
+ * through the single writer, keeping Monte Carlo, unit tests and the tutorial
+ * scenario byte-identical with the pre-feed behaviour.
+ */
+function publishActivityLogEntry(state: MainStreetState, entry: LogEntry): void {
+  const emitter = getActivityLogEmitter();
+  if (emitter && emitter.listenerCount('activity-log') > 0) {
+    emitter.emit('activity-log', entry);
+    return;
+  }
+  appendActivityLogEntry(state, entry);
+}
+
+/**
+ * Binds the Game Events channel's `activity-log` event to the single writer.
+ *
+ * Called by the Main Street scene once per emitter creation (`initEventSystem`
+ * runs on every scene start/restart and creates a fresh emitter, so this fires
+ * exactly once per live channel). `getState` is evaluated at **emit** time —
+ * not at bind time — so in-place `state` replacement (competitive new game,
+ * save load, tutorial start, difficulty change) still appends to the current
+ * state; the scene instance is stable across those replacements.
+ *
+ * @param emitter  The scene's live {@link GameEventEmitter}.
+ * @param getState Resolves the `MainStreetState` to append to when a row fires
+ *                 (typically `() => scene.state`).
+ * @returns An unsubscribe function (the emitter is discarded on scene
+ *          shutdown via `removeAllListeners`, so callers may drop it).
+ */
+export function bindActivityLogFeed(
+  emitter: GameEventEmitter,
+  getState: () => MainStreetState | null | undefined,
+): () => void {
+  return emitter.on('activity-log', (entry: LogEntry) => {
+    const state = getState();
+    // Guard the brief boot window before the first state is assigned: no
+    // logging happens until the first `startTurnPhase`, so no rows are
+    // affected in practice, and a missing state must never throw out of the
+    // emit (an engine action would fail).
+    if (state) appendActivityLogEntry(state, entry);
+  });
 }
 
 /**

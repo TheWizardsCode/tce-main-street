@@ -848,6 +848,12 @@ Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: 
 
 The log **render** is deferred during the end-of-turn closing so entries appear only after the upcoming/phase UI, and the deferral flag (`logDeferredUntilPhaseComplete`) is reset on every scene creation — an interrupted closing must never leave the Activity Log blank across a scene restart (MS-0MURBOD2E009SOM2, MS-0MV14JDUG000E1V6).
 
+### Source: Game Events feed
+
+The Activity Log is produced through the Game Events feed (MS-0MW1ZHBPK006M8YS). `addLog(...)` / `addLogShared(...)` publish a typed `activity-log` event on the scene's `GameEventEmitter` (`window.__GAME_EVENTS__`), and a single subscriber bound at scene creation is the **only writer** of `state.activityLog` — no other code path appends a row (`appendActivityLogEntry` in `src/MainStreetStateLog.ts`; a guard test pins this). The payload is the exact `LogEntry` the log stores, so the dev **Game Events** overlay and the `GlobalEventBuffer` show one `activity-log` event per row in emission order — the overlay explains every log row and the two cannot drift.
+
+When no scene channel is live (headless Monte Carlo, unit tests, the tutorial scenario) `addLog` falls back to appending the row directly through the same single writer: every row is still logged and nothing is thrown. The log remains the authoritative, undoable, serialised record — undo/redo restores it from snapshots and saves round-trip it unchanged — while the feed stays an append-only session audit trail (an undone row is not retracted from the overlay).
+
 ### Filtering (All / You / AI)
 
 In competitive (multi-seat) games the Activity Log can be filtered by seat
