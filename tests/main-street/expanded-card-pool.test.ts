@@ -550,8 +550,9 @@ describe('Expanded Card Pool: synergyColor', () => {
     expect(synergyColor('Commerce')).toBe(0x27AE60);
   });
 
-  it('should return a color for Service (M2)', () => {
-    expect(synergyColor('Service')).toBe(0x9B59B6);
+  it('should return a pink/magenta color for Service (M2, MS-0MW1ZSC7U000V5MW)', () => {
+    // Replaced 0x9B59B6 (purple) — it matched the flat upgrade-card face.
+    expect(synergyColor('Service')).toBe(0xC2185B);
   });
 
   it('should return a color for Entertainment (M2)', () => {

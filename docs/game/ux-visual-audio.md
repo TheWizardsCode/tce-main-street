@@ -2003,10 +2003,13 @@ the header bar, art backing and icons carried the synergy colour.
 
 - **Palette.** A single shared dark palette, `CARD_FACE_PALETTE`
   (`src/MainStreetCardsUtils.ts`): Food `#5D4037`, Culture `#1565C0`,
-  Commerce `#2E7D32`, Service `#6A1B9A`, Entertainment `#C62828`,
+  Commerce `#2E7D32`, Service `#AD1457`, Entertainment `#C62828`,
   Health `#00838F`, default `#2f2f2f`. The bright `synergyColor` palette stays
   the accent for the header bar, 64×64 art backing and synergy icons, so the
-  white title / stat text remains legible on the darker face.
+  white title / stat text remains legible on the darker face. Service is a
+  pink / magenta (`#AD1457` face, `#C2185B` accent) rather than purple, so a
+  service business can never be confused with an upgrade card
+  (MS-0MW1ZSC7U000V5MW).
 - **Single synergy.** One palette colour fills the rounded face rect.
 - **Bridge (exactly two synergies).** The face is split horizontally —
   **top band = `synergyTypes[0]`, bottom band = `synergyTypes[1]`** — with both
@@ -2025,6 +2028,43 @@ the header bar, art backing and icons carried the synergy colour.
 - **Accessibility.** Both synergy icons are drawn bottom-left (one per type,
   18 px pitch), so colour is never the sole carrier of meaning. The rounded
   corners, inner gradient and header-bar treatment are preserved.
+
+## Checkerboard upgrade card faces (MS-0MW1ZSC7U000V5MW)
+
+Upgrade card faces are no longer a flat purple. Each upgrade face is a
+**checkerboard** of the retained violet upgrade colour (`#6B4C9A`,
+`UPGRADE_FACE_BASE_COLOUR`) and the face colour of the business the upgrade
+**targets** — so a player can pick a relevant upgrade from their hand without
+reading every title, and an upgrade card can never be mistaken for a service
+business (now pink / magenta).
+
+- **Derived, not stored.** Upgrade rows carry no synergy column of their own;
+  the colours are resolved from `targetBusiness` by looking that name up among
+  the business **and** community-space templates
+  (`resolveUpgradeFaceColours()` in `src/MainStreetCardsUtils.ts`, mirrored in
+  the static Node generator). No CSV schema change, so checksums and pack
+  fixtures stay valid.
+- **Single-synergy target.** A true two-colour checkerboard: violet on the
+  even squares, the target's synergy face colour on the odd squares (20 px
+  tiles, clipped to the rounded card rectangle).
+- **Bridge target (two synergy types).** Three colours: violet on the even
+  squares, and both synergy face colours alternating across the odd squares
+  (violet plus both, producer answer Q3 = B).
+- **Unresolvable target.** Unknown or missing `targetBusiness` degrades safely
+  to the previous flat violet face — the resolver returns no colours and never
+  throws. More than two synergy types degrades to the first two.
+- **Legibility.** The pattern is drawn behind every overlay (inner gradient,
+  header tint, art, title, "for <Business>" line, cost badge), and tile
+  contrast is modest, so the card stays readable at the reduced hand / stacked
+  scale. The title and target line remain a non-colour cue.
+- **One pattern, three renderers.** `generateUpgradeCardSvg`,
+  `generateCardSvgFromCsvRow` and the static `.mjs` generator emit identical
+  checkerboard markup; a test compares the TS and mjs markup directly, and the
+  shipped `public/assets/.../cards/*.svg` files are regenerated with the CSV.
+- **Out of scope.** The in-game board upgrade accent (the gold corner shard on
+  an upgraded business, `UpgradeOverlaySpec`) and the owner-coloured seat
+  border are unchanged — they are a separate visual language
+  (MS-0MUWNTN8W006C7EF).
 
 ## Scene Transitions
 

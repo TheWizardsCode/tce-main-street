@@ -41,8 +41,16 @@ import type {
   StaffCard,
   SynergyType,
 } from '../MainStreetCards';
-import { synergyColor, cardFaceBackground, CARD_FACE_PALETTE } from '../MainStreetCards';
-import type { CardFaceBackground } from '../MainStreetCards';
+import {
+  synergyColor,
+  cardFaceBackground,
+  CARD_FACE_PALETTE,
+  UPGRADE_FACE_BASE_COLOUR,
+  resolveUpgradeFaceColours,
+  getBusinessTemplates,
+  getCommunitySpaceTemplates,
+} from '../MainStreetCards';
+import type { CardFaceBackground, SynergyCardLookup } from '../MainStreetCards';
 import { formatCurrency } from '@core-engine/I18n';
 import { getCardArtDataUriForCard } from '../MainStreetCardArt';
 
@@ -69,6 +77,13 @@ const GRAPHIC_Y = 8;
 const TEXT_MIN_X = GRAPHIC_X + GRAPHIC_W + 8; // 80
 
 const FONT = 'Inter, Segoe UI, Arial, sans-serif';
+
+/**
+ * Checkerboard tile size (SVG user units) for upgrade card faces
+ * (MS-0MW1ZSC7U000V5MW). 20 px divides the 140×80 card exactly, so the
+ * pattern has no ragged edge cells at the default size.
+ */
+const UPGRADE_FACE_TILE = 20;
 
 /** Re-exported so the static (mjs) palette-agreement test can compare the two
  *  copies from a single import site (MS-0MUZH51PU007POJ4). */
@@ -126,6 +141,58 @@ function cardFaceSplitSvg(
     `    <rect x="0" y="${mid}" width="${width}" height="${height - mid}" fill="${split.bottom}" />`,
     `  </g>`,
   ].join('\n');
+}
+
+/**
+ * Build the checkerboard card-face background for an upgrade card
+ * (MS-0MW1ZSC7U000V5MW): `colours[0]` (violet) fills the even squares and the
+ * remaining colours cycle through the odd squares, so
+ *
+ * - a single-synergy target is a true two-colour checkerboard, and
+ * - a bridge target shows violet **plus both** synergy colours.
+ *
+ * The pattern is emitted — rather than a `<pattern>` fill — so the TS runtime
+ * generator and the static `.mjs` generator produce byte-identical markup and
+ * a test can compare them directly. The group is clipped to the rounded card
+ * rectangle, exactly like the bridge split, and sits behind every overlay so
+ * the title, "for <Business>" line, cost badge and art stay legible.
+ */
+function upgradeFaceCheckerSvg(
+  cardId: string,
+  colours: readonly string[],
+  width: number,
+  height: number,
+): string {
+  const targets = colours.slice(1).filter(Boolean);
+  const cols = Math.ceil(width / UPGRADE_FACE_TILE);
+  const rows = Math.ceil(height / UPGRADE_FACE_TILE);
+  const lines: string[] = [
+    `  <g clip-path="url(#${cardFaceClipId(cardId)})" class="ms-upgrade-checker">`,
+    `    <rect x="0" y="0" width="${width}" height="${height}" fill="${colours[0]}" />`,
+  ];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      // Even squares stay violet; odd squares carry the target's synergy colour(s).
+      if ((row + col) % 2 === 0) continue;
+      const colour = targets[((row + col - 1) / 2) % targets.length];
+      const x = col * UPGRADE_FACE_TILE;
+      const y = row * UPGRADE_FACE_TILE;
+      const w = Math.min(UPGRADE_FACE_TILE, width - x);
+      const h = Math.min(UPGRADE_FACE_TILE, height - y);
+      lines.push(`    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${colour}" />`);
+    }
+  }
+  lines.push('  </g>');
+  return lines.join('\n');
+}
+
+/**
+ * Lookup table for upgrade-face target resolution (MS-0MW1ZSC7U000V5MW): the
+ * active business + community-space templates, whose `name` an upgrade's
+ * `targetBusiness` matches.
+ */
+function upgradeTargetLookup(): readonly SynergyCardLookup[] {
+  return [...getBusinessTemplates(), ...getCommunitySpaceTemplates()];
 }
 
 /** Build the 64×64 left-art graphic (CG-0MTORJ5FS006B0UN).
@@ -394,7 +461,13 @@ export function generateUpgradeCardSvg(
   inner.push('  <text x="' + TEXT_MIN_X + '" y="35" font-family="' + FONT + '" font-size="9" fill="#bb99dd" font-weight="400" text-anchor="start">for ' + esc(card.targetBusiness) + '</text>');
   inner.push('  ' + costBadgeSvg(card.cost, width, height));
 
-  return svgShell(card.id, card.name, '#6B4C9A', inner, width, height);
+  // Checkerboard face (MS-0MW1ZSC7U000V5MW): violet plus the synergy colour(s)
+  // of the business this upgrade targets, derived from `targetBusiness` (no
+  // CSV column). An unknown / missing target resolves to no colours, so the
+  // shell keeps the flat violet face and nothing throws.
+  const checker = resolveUpgradeFaceColours(card.targetBusiness, upgradeTargetLookup());
+
+  return svgShell(card.id, card.name, UPGRADE_FACE_BASE_COLOUR, inner, width, height, null, checker);
 }
 
 /**
@@ -468,7 +541,10 @@ function costBadgeSvg(cost: number, width: number, height: number): string {
 /** Build the common SVG shell with defs, background, and gradient.
  *  `face` resolves the background rect for business/community-space cards
  *  (single fill or a two-tone bridge split, MS-0MUZH51PU007POJ4); when
- *  absent/undefined the flat `bgFill` rect is used (other families). */
+ *  absent/undefined the flat `bgFill` rect is used (other families).
+ *  `checker` (MS-0MW1ZSC7U000V5MW) renders the upgrade-family checkerboard
+ *  instead — violet first, then the target's synergy colour(s) — clipped to
+ *  the rounded card rectangle. Fewer than two colours keeps the flat fill. */
 function svgShell(
   cardId: string,
   name: string,
@@ -477,12 +553,17 @@ function svgShell(
   width: number,
   height: number,
   face?: CardFaceBackground | null,
+  checker?: readonly string[] | null,
 ): string {
   const faceSplit = face && face.split;
-  const faceClipDef = faceSplit ? '\n    ' + cardFaceClipPath(cardId, width, height) : '';
-  const faceRect = faceSplit
+  const checkerMarkup = checker && checker.length > 1
+    ? upgradeFaceCheckerSvg(cardId, checker, width, height)
+    : null;
+  const needsFaceClip = Boolean(faceSplit) || Boolean(checkerMarkup);
+  const faceClipDef = needsFaceClip ? '\n    ' + cardFaceClipPath(cardId, width, height) : '';
+  const faceRect = checkerMarkup ?? (faceSplit
     ? cardFaceSplitSvg(cardId, faceSplit, width, height)
-    : '  <rect x="0" y="0" width="' + width + '" height="' + height + '" rx="6" ry="6" fill="' + (face ? face.fill : bgFill) + '" />';
+    : '  <rect x="0" y="0" width="' + width + '" height="' + height + '" rx="6" ry="6" fill="' + (face ? face.fill : bgFill) + '" />');
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(name) + '">',
@@ -545,6 +626,13 @@ export function generateCardSvgFromCsvRow(
     ? '#' + synergyColor(synergies[0]).toString(16).padStart(6, '0')
     : scheme.accent;
 
+  // Checkerboard upgrade face (MS-0MW1ZSC7U000V5MW): violet + the synergy
+  // colour(s) of the business named in `targetBusiness`. Mirrors the static
+  // generator; an unresolvable target keeps the flat violet face.
+  const checker = family === 'upgrade'
+    ? resolveUpgradeFaceColours(row.targetBusiness, upgradeTargetLookup())
+    : null;
+
   // 64×64 left-art graphic — same stacking/overlap rules as concrete generators
   // CG-0MTORJ5FS006B0UN: accent-coloured placeholder with bold initial glyph.
   const glyph = (name || '?').trim().charAt(0).toUpperCase();
@@ -602,5 +690,5 @@ export function generateCardSvgFromCsvRow(
     inner.push('  ' + synergyIconSvg(synergies[i], GRAPHIC_X + i * 18, height - 22));
   }
 
-  return svgShell(id, name, scheme.bg, inner, width, height, face);
+  return svgShell(id, name, scheme.bg, inner, width, height, face, checker);
 }

@@ -2,7 +2,7 @@
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
 > **Card relationship diagrams:** the generated synergy, staff, upgrade-chain and community-space diagrams (with the regeneration and drift-guard commands) are documented in [card-diagrams.md](./card-diagrams.md).
-> **Last updated:** Synergy-coloured card faces + two-tone bridge split (MS-0MUZH51PU007POJ4)
+> **Last updated:** Service pink/magenta face + checkerboard upgrade faces (MS-0MW1ZSC7U000V5MW)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
 
@@ -189,12 +189,13 @@ Bridge cards belong to two synergy types simultaneously, enabling cross-type adj
 > **Face colouring (MS-0MUZH51PU007POJ4):** every business / community-space
 > card face is coloured by synergy type from a single shared dark palette
 > (`CARD_FACE_PALETTE` in `src/MainStreetCardsUtils.ts` — Food `#5D4037`,
-> Culture `#1565C0`, Commerce `#2E7D32`, Service `#6A1B9A`,
+> Culture `#1565C0`, Commerce `#2E7D32`, Service `#AD1457`,
 > Entertainment `#C62828`, Health `#00838F`; untyped default `#2f2f2f`). A
 > bridge card renders its face split horizontally into two bands — **top =
 > first `synergyTypes` entry, bottom = second** — inside the rounded card
 > corners. Both synergy icons stay visible bottom-left so colour is never the
-> sole cue.
+> sole cue. Service is pink / magenta rather than purple so it cannot be
+> confused with an upgrade card face (MS-0MW1ZSC7U000V5MW).
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
@@ -429,6 +430,17 @@ All 64 original event cards were audited. Seasonal/festival/tourist-style events
 ## Upgrade Cards
 
 Each Upgrade targets a specific Business by name. Applying an upgrade increments the business's level, adds an income bonus, and optionally extends synergy range.
+
+> **Upgrade face colouring (MS-0MW1ZSC7U000V5MW):** an upgrade card face is a
+> **checkerboard** of the retained violet upgrade colour (`#6B4C9A`) and the
+> face colour(s) of the business it targets. The colours are **derived** from
+> `targetBusiness` (no CSV synergy column) by `resolveUpgradeFaceColours()`,
+> which looks the target name up among the business and community-space rows:
+> a single-synergy target gives a two-colour checkerboard, a bridge target
+> (two synergy types) gives violet **plus both** synergy colours, and an
+> unknown/missing target degrades to the flat violet face. Upgrade card faces
+> are the only upgrade visual changed — the in-game gold corner accent on an
+> upgraded business is unchanged.
 
 ### M1 Upgrade Templates (3)
 
