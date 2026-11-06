@@ -262,13 +262,18 @@ describe('Competitive Turn Summary documentation — ux-visual-audio.md', () => 
     expect(section).not.toContain('closing balances land in the dependent slices');
   });
 
-  it('documents the always-disabled per-seat Bank Loan seam and the gate functions', () => {
+  it('documents the descriptor-driven per-seat Bank Loan affordance and the gate functions', () => {
     const section = uxSection(COMPETITIVE_SECTION);
-    expect(section).toContain('competitive_bank_loan_hint');
-    expect(section).toContain('onbankloanaction');
-    expect(section).toContain('always disabled');
+    // MS-0MW4YUHOU00474HZ: the button mirrors single-player, keyed to the
+    // human seat's descriptor — never the always-disabled static hint.
+    expect(section).toContain('bank loan');
+    expect(section).toContain('loandescriptor');
+    expect(section).toContain('human seat');
     expect(section).toContain('shouldgatecompetitiveturnsummary()');
     expect(section).toContain('presentcompetitiveturnsummarygate()');
+    // The stale always-disabled / static-hint copy must stay gone.
+    expect(section).not.toContain('always disabled');
+    expect(section).not.toContain('competitive_bank_loan_hint');
 
     // Code anchors the doc names must still exist, or the prose has drifted.
     const controller = fs.readFileSync(
@@ -288,7 +293,14 @@ describe('Competitive Turn Summary documentation — ux-visual-audio.md', () => 
         path.join(PROJECT_ROOT, 'src/scenes/MainStreetTurnSummary.ts'),
         'utf-8',
       ),
-    ).toContain('export const COMPETITIVE_BANK_LOAN_HINT');
+    ).toContain('loanDescriptor');
+    // The removed static hint must not be re-exported (descriptor-driven copy).
+    expect(
+      fs.readFileSync(
+        path.join(PROJECT_ROOT, 'src/scenes/MainStreetTurnSummary.ts'),
+        'utf-8',
+      ),
+    ).not.toContain('COMPETITIVE_BANK_LOAN_HINT');
   });
 });
 

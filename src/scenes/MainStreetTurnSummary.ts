@@ -49,6 +49,10 @@ import type { MainStreetState } from '../MainStreetState';
 import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
+import {
+  buildTurnSummaryLoanDescriptor,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
 
 // ── Row shapes ────────────────────────────────────────────────
 
@@ -319,18 +323,6 @@ function buildOwnerRows(
 
 // ── Competitive (per-seat) builder ────────────────────────────
 
-/**
- * The `[ Bank Loan ]` hint the competitive panel always shows
- * (MS-0MVRNV9Y8008IKGK).
- *
- * Loans are a per-seat affordance that does not exist in competitive play yet;
- * the button is therefore always disabled with this explanation, and the
- * `onBankLoanAction` seam is shaped `(seatId?: number) => void` so
- * MS-0MVL6DZI0000F6CG can enable it per seat without re-plumbing the panel.
- */
-export const COMPETITIVE_BANK_LOAN_HINT =
-  'Bank loans are not available in competitive play yet.';
-
 /** One seat's row in the competitive Turn Summary panel. */
 export interface CompetitiveTurnSummaryRow {
   /** Owner / seat index (index into `state.players`). */
@@ -389,6 +381,23 @@ export interface CompetitiveTurnSummaryRow {
 export interface CompetitiveTurnSummary {
   /** Shared day the round closed. */
   turn: number;
+  /**
+   * The human seat's `ownerId` (the row the panel's `[ Bank Loan ]` button is
+   * keyed to), or `-1` when the roster has no human seat. Resolved from the
+   * same roster {@link MainStreetLoanSelectorModel.buildTurnSummaryLoanDescriptor}
+   * reads, so the descriptor and the take agree on the seat.
+   */
+  humanSeatId: number;
+  /**
+   * The human seat's mid-game loan affordance, built by
+   * {@link MainStreetLoanSelectorModel.buildTurnSummaryLoanDescriptor} for
+   * `humanSeatId` (MS-0MW4YUHOU00474HZ AC1): `enabled` exactly when the human
+   * seat may borrow (loans enabled, no active loan on that seat, a non-empty
+   * menu), with the reason-specific hint otherwise. A roster without a human
+   * seat yields a disabled, hint-less descriptor (nothing to key the button
+   * to).
+   */
+  loanDescriptor: TurnSummaryLoanDescriptor;
   /** One row per non-eliminated seat, in seat order. */
   rows: CompetitiveTurnSummaryRow[];
 }
@@ -484,8 +493,23 @@ export function buildCompetitiveTurnSummary(
     buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
   );
 
+  // The human seat the panel's loan affordance keys to (MS-0MW4YUHOU00474HZ
+  // AC1): resolved from the scoreboard's `isHuman` rows — the same
+  // controller-derived source `findHumanSeatId` uses — and its mid-game loan
+  // descriptor. A roster with no human seat cannot key the button, so the
+  // descriptor is disabled with no hint (no reason is known).
+  const humanSeatId =
+    seats.find((seat) => seatsById.get(String(seat.ownerId))?.isHuman === true)?.ownerId
+    ?? -1;
+  const loanDescriptor =
+    humanSeatId >= 0
+      ? buildTurnSummaryLoanDescriptor(state, humanSeatId)
+      : { enabled: false, reason: null, activeLoan: null, options: [], hint: null };
+
   return {
     turn: ledger.turn,
+    humanSeatId,
+    loanDescriptor,
     rows: seats.map((seat) => {
       const ownerId = seat.ownerId;
       const rosterSeat = seatsById.get(String(ownerId));

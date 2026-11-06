@@ -209,6 +209,16 @@ export interface TakeLoanOptions {
  * the loan eligibility rule and the dialog share a single definition
  * (MS-0MVXYCIU00053HL1).
  *
+ * The competitive panel presents the same window one phase later: its
+ * per-seat closing finishes the shared day and rests on the **new** day's
+ * `WeekStart` (the closing advanced `state.turn`, so the panel holds before
+ * the next MarketPhase begins — MS-0MW4YUHOU00474HZ). A competitive roster
+ * (`players.length > 1`) at `WeekStart` is therefore the same pause, so the
+ * mid-game loan affordance is legal from the competitive panel exactly as from
+ * the single-player one. Single-player `WeekStart` is not a pause: its closing
+ * rests on `IncidentPhase`/`EndCheck`, so single-player eligibility is
+ * unchanged.
+ *
  * A finished game is never in the window: the day cannot be resumed, so no
  * loan can be booked against it.
  *
@@ -216,7 +226,11 @@ export interface TakeLoanOptions {
  */
 export function isDeferredClosingPause(state: MainStreetState): boolean {
   if (state.gameResult !== 'playing') return false;
-  return state.phase === 'IncidentPhase' || state.phase === 'EndCheck';
+  if (state.phase === 'IncidentPhase' || state.phase === 'EndCheck') return true;
+  // MS-0MW4YUHOU00474HZ: the competitive panel gates the shared day from the
+  // advanced day's WeekStart (the closing already advanced the turn), which is
+  // exactly the single-player deferred-closing pause, one phase later.
+  return state.phase === 'WeekStart' && (state.players?.length ?? 0) > 1;
 }
 
 /**

@@ -431,7 +431,12 @@ calling it unconditionally is safe. Reduced motion **is** gated in
 single-player (MS-0MW20KSEG001DH1X), so a reduced-motion end-of-turn test must
 dismiss the dialog like any other single-player closing; a competitive
 end-of-turn test must dismiss the dialog too (MS-0MVRNV9Y8008IKGK), because the
-competitive panel uses the same **[ Next Turn ]** button.
+competitive panel uses the same **[ Next Turn ]** button. A competitive
+end-of-turn test that drives a mid-game loan take must dismiss the loan
+selector's **[ Cancel ]** (or take and then dismiss the re-presented panel)
+before waiting for the day to advance — the competitive `[ Bank Loan ]` button
+is descriptor-enabled for the human seat and books the take via the same
+mid-game selector as single-player (MS-0MW4YUHOU00474HZ).
 
 ### The 60 s headroom rule
 

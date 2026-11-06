@@ -28,10 +28,14 @@ import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import {
-  COMPETITIVE_BANK_LOAN_HINT,
   buildCompetitiveTurnSummary,
   type CompetitiveTurnSummary,
 } from '../../src/scenes/MainStreetTurnSummary';
+import {
+  LOAN_SELECTOR_TITLE,
+  LOANS_DISABLED_HINT,
+  buildLoanSelectorModel,
+} from '../../src/scenes/MainStreetLoanSelectorModel';
 import type { CompetitiveRoundLedger } from '../../src/MainStreetEngineTypes';
 import { createCompetitiveState } from '../../src/MainStreetState';
 
@@ -138,6 +142,16 @@ function makeSummary(): { summary: CompetitiveTurnSummary; colours: string[] } {
   return { summary: summary!, colours };
 }
 
+/**
+ * Enables loans on the scene's live state for the mid-game selector flow and
+ * parks it in the deferred-closing pause, exactly like the single-player
+ * browser suite does before a take.
+ */
+function enableLoansForTake(s: SceneWithHud): void {
+  (s.state as any).config = { ...(s.state as any).config, loansEnabled: true };
+  s.state.phase = 'IncidentPhase';
+}
+
 describe('Main Street competitive turn-summary dialog overlay (browser)', () => {
   let game: Phaser.Game | null = null;
 
@@ -231,10 +245,12 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(nextTurnBtn!.depth).toBe(201);
     expect(bankLoanBtn!.depth).toBe(201);
     expect(nextTurnBtn!.input?.enabled).toBe(true);
-    // AC5: always disabled in competitive play, muted, with its hint.
+    // The fixture runs with `loansEnabled: false`, so the descriptor-driven
+    // button is disabled, muted and inert with the loans-disabled hint
+    // (MS-0MW4YUHOU00474HZ AC1: same rules as single-player).
     expect(bankLoanBtn!.input?.enabled).toBeFalsy();
     expect(bankLoanBtn!.style.color).toBe(MUTED_BUTTON_COLOUR);
-    expect(overlayText(s, COMPETITIVE_BANK_LOAN_HINT)).toBeDefined();
+    expect(overlayText(s, LOANS_DISABLED_HINT)).toBeDefined();
 
     // ── Backdrop 199 / box 200; every text parented in the HUD ──
     const overlayObjects = (s.overlayObjects ?? []) as Phaser.GameObjects.GameObject[];
@@ -262,7 +278,7 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     s.showCompetitiveTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, onBankLoanAction);
 
     // A disabled button is inert — pressing it neither fires the seam nor
-    // advances the day.
+    // advances the day (the loans-disabled descriptor disables it).
     overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
     expect(onBankLoanAction).not.toHaveBeenCalled();
     expect(nextTurnCalls).toBe(0);
@@ -278,6 +294,83 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(nextTurnCalls).toBe(1);
     expect(overlayText(s, 'Turn Summary')).toBeUndefined();
     expect((s.overlayObjects ?? []).length).toBe(0);
+  }, 30_000);
+
+  it('pressing the enabled [ Bank Loan ] opens the per-seat selector, books the take to the human seat and re-renders with the obligation hint', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const summaryState = createCompetitiveState({
+      seed: 'competitive-summary-loan-take',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: true,
+    });
+    const summary = buildCompetitiveTurnSummary(summaryState, {
+      playerRoundLedger: makeLedger(),
+      incident: null,
+    });
+    expect(summary).not.toBeNull();
+    expect(summary!.loanDescriptor.enabled).toBe(true);
+    const bankLoanBtn = (): Phaser.GameObjects.Text | undefined => overlayText(s, '[ Bank Loan ]');
+
+    // The panel's selector/take and the post-take re-render all read the
+    // scene's LIVE state, so drive the live scene with the same competitive
+    // state the summary was built from (the take books to `players[0]`). Park
+    // it in the deferred-closing pause, exactly like the single-player suite.
+    s.state = summaryState;
+    enableLoansForTake(s);
+    const coinsBefore = s.state.players![0].coins;
+    const actionsBefore = s.state.actionsRemaining;
+    const turnBefore = s.state.turn;
+
+    let nextTurnCalls = 0;
+    s.showCompetitiveTurnSummaryDialog(
+      summary!,
+      () => { nextTurnCalls += 1; },
+      undefined,
+      { playerRoundLedger: makeLedger() } as any,
+    );
+
+    // AC1: the button is enabled exactly when the human seat may borrow.
+    expect(bankLoanBtn()!.input?.enabled).toBe(true);
+    bankLoanBtn()!.emit('pointerdown');
+
+    // Pressing it swaps the panel for the mid-game loan selector, driven by
+    // the configured menu (one row per option, built by the shared builder).
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeDefined();
+    const model = buildLoanSelectorModel(s.state);
+    expect(model.rows.length).toBeGreaterThan(0);
+    const optionRow = overlayText(s, model.rows[0].label);
+    expect(optionRow).toBeDefined();
+    optionRow!.emit('pointerdown');
+
+    // AC2: booked to the human seat (ownerId 0), AP-neutral, day not advanced.
+    expect(s.state.loans?.[0]?.ownerId).toBe(0);
+    expect(s.state.players![0].coins).toBe(coinsBefore + 300);
+    expect(s.state.actionsRemaining).toBe(actionsBefore);
+    expect(s.state.turn).toBe(turnBefore);
+    expect(nextTurnCalls).toBe(0);
+
+    // Undoable through the shared undo manager (second half of AC2).
+    s.undoManager.undo();
+    expect(s.state.loans ?? []).toHaveLength(0);
+    expect(s.state.players![0].coins).toBe(coinsBefore);
+    s.undoManager.redo();
+
+    // Re-rendered panel: the fresh obligation disables the button with the
+    // descriptor's own hint, exactly one button pair remains, and
+    // [ Next Turn ] still resumes the shared day.
+    expect(overlayText(s, 'Turn Summary')).toBeDefined();
+    const refreshed = bankLoanBtn()!;
+    expect(refreshed.input?.enabled).toBe(false);
+    expect(overlayText(s, 'Loan: 110 coins/turn, 3 turns left')).toBeDefined();
+    const texts = (s.overlayObjects ?? []).filter(
+      (o: unknown) => o instanceof Phaser.GameObjects.Text,
+    ) as Phaser.GameObjects.Text[];
+    expect(texts.filter((t) => t.text === '[ Next Turn ]')).toHaveLength(1);
+    expect(texts.filter((t) => t.text === '[ Bank Loan ]')).toHaveLength(1);
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect(nextTurnCalls).toBe(1);
   }, 30_000);
 
   it('delegates from the scene to the overlay manager, and the headless branch advances once', async () => {

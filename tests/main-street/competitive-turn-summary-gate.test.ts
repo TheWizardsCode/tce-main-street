@@ -319,6 +319,27 @@ describe('presentCompetitiveTurnSummaryGate (MS-0MVRNV9Y8008IKGK)', () => {
     expect(JSON.stringify(state)).toBe(before);
     expect(state.rngCalls).toBe(rngCallsBefore);
   });
+
+  it('passes the human seat id and its loan seam to the panel (AC1/AC2 wiring)', () => {
+    const { scene, tcCtx } = makeHarness();
+
+    presentCompetitiveTurnSummaryGate(tcCtx, makeClosing(), vi.fn());
+
+    const [summary, , onBankLoanAction, result] =
+      scene.showCompetitiveTurnSummaryDialog.mock.calls[0];
+    // The summary model carries the human seat identity used to key the
+    // button (fixture: seat 0 is human, loans disabled).
+    expect(summary.humanSeatId).toBe(0);
+    expect(summary.loanDescriptor.enabled).toBe(false);
+    expect(summary.loanDescriptor.reason).toBe('loans-disabled');
+    // The seam is provided once a human seat exists and is invoked per press
+    // of the enabled button with that seat id.
+    expect(typeof onBankLoanAction).toBe('function');
+    onBankLoanAction(0);
+    // The closing result is handed over so the panel can re-render the same
+    // TurnResult after a take.
+    expect(result).toEqual(makeClosing());
+  });
 });
 
 // ── The competitive day tail ─────────────────────────────────

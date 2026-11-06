@@ -32,7 +32,7 @@ import {
   buildGameOverStatSeries,
   formatEndReason,
 } from './MainStreetGameOverSummary';
-import { buildTurnSummary, COMPETITIVE_BANK_LOAN_HINT, type CompetitiveTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
+import { buildTurnSummary, buildCompetitiveTurnSummary, type CompetitiveTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
 import { createStatsChart, destroyStatsChart } from './MainStreetStatsChart';
 import {
   buildLoanSelectorModel,
@@ -1848,13 +1848,16 @@ export class MainStreetOverlayContent {
    * single-player panel's own order and signed formatting).
    *
    * **[ Next Turn ]** is the primary action and resumes the shared day via
-   * {@link onNextTurn}. **[ Bank Loan ]** is **always disabled** here: loans are
-   * a per-seat affordance that does not exist in competitive play yet
-   * (MS-0MVL6DZI0000F6CG), so the button is muted and inert with
-   * {@link COMPETITIVE_BANK_LOAN_HINT}. The {@link onBankLoanAction} seam is
-   * accepted — and typed `(seatId?: number) => void` — so the loan item can
-   * enable it per seat later without re-plumbing this panel; it is deliberately
-   * never wired while the button is disabled.
+   * {@link onNextTurn}. **[ Bank Loan ]** mirrors the single-player button
+   * (MS-0MW4YUHOU00474HZ): interactive in normal colour exactly when the human
+   * seat's loan descriptor says it may borrow (`summary.loanDescriptor`), muted
+   * and inert with the descriptor's reason-specific hint otherwise (loans
+   * disabled / an active obligation / no configured options). Pressing the
+   * enabled button invokes {@link onBankLoanAction} with the human seat id,
+   * swaps the panel for the per-seat mid-game loan selector
+   * (`buildLoanSelectorModel` + `showLoanSelectorDialog`), and re-presents the
+   * **same** `TurnResult` panel after the take (`returnToSummary` pattern)
+   * so the freshly booked obligation disables the button with its hint.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
    * `createOverlayBackground` + `createOverlayButton`; ALL elements are parented
@@ -1863,15 +1866,24 @@ export class MainStreetOverlayContent {
    * (no fade-in — reduced-motion safe); the `[ Next Turn ]` SFX plays through
    * `safePlaySound`, so mute/volume are respected.
    *
-   * @param summary          The per-seat model built from the round ledger.
+   * @param summary          The per-seat model built from the round ledger (its
+   *                          `humanSeatId` + `loanDescriptor` drive the
+   *                          button).
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
-   * @param onBankLoanAction Per-seat loans seam (`seatId` omitted = the acting
-   *                          seat). Unused by this slice — see above.
+   * @param onBankLoanAction Per-seat loans seam, invoked with the human seat id
+   *                          once per press of the **enabled** `[ Bank Loan ]`
+   *                          button. Optional so headless/hand-built callers
+   *                          (which never enable the button) stay unchanged.
+   * @param result           The closed round's result the summary was built
+   *                          from (`playerRoundLedger`), so a post-take refresh
+   *                          can re-render the same `TurnResult` panel from the
+   *                          live state exactly like the single-player dialog.
    */
   public showCompetitiveTurnSummaryDialog(
     summary: CompetitiveTurnSummary,
     onNextTurn: () => void,
     onBankLoanAction?: (seatId?: number) => void,
+    result?: Pick<TurnResult, 'playerRoundLedger'>,
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
@@ -1979,25 +1991,152 @@ export class MainStreetOverlayContent {
     });
     s.overlayObjects.push(nextTurnBtn);
 
-    // [ Bank Loan ]: always disabled in competitive play (per-seat loans are
-    // MS-0MVL6DZI0000F6CG's job), muted and inert with its explanatory hint.
+    // [ Bank Loan ] (MS-0MW4YUHOU00474HZ): mirrors the single-player button.
+    // Interactive in normal colour exactly when the human seat's descriptor
+    // says it may borrow (`summary.loanDescriptor.enabled`); every other case
+    // (loans disabled, an active obligation, no configured menu, or a roster
+    // without a human seat) is muted and inert with the descriptor's
+    // reason-specific hint. The seat comes from `summary.humanSeatId`, so the
+    // take is keyed to the human seat, never the transient `activePlayerId`.
+    const loanEnabled = summary.loanDescriptor?.enabled === true;
+    const humanSeatId = summary.humanSeatId;
     const bankLoanBtn = createOverlayButton(
       s, centerX + 120, btnY,
       '[ Bank Loan ]', 201,
-      { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
+      loanEnabled && humanSeatId >= 0
+        ? undefined
+        : { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
     );
-    bankLoanBtn.disableInteractive();
+    if (loanEnabled && humanSeatId >= 0) {
+      bankLoanBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        onBankLoanAction?.(humanSeatId);
+
+        // Per-seat mid-game loan selector, driven by the configured menu rather
+        // than a pending offer (mirrors the single-player panel). Built before
+        // the swap, so a menu that cannot be built (or is empty) leaves this
+        // panel on screen instead of opening an empty modal.
+        let selector: LoanSelectorModel | null = null;
+        try {
+          selector = buildLoanSelectorModel(s.state, humanSeatId);
+        } catch {
+          selector = null;
+        }
+        if (!selector || selector.rows.length === 0) return;
+
+        /**
+         * Re-presents this panel from the **same** result against the live
+         * state: the summary is rebuilt with
+         * `buildCompetitiveTurnSummary(state, result)` and the human seat's
+         * loan descriptor is re-derived, so a loan taken in the selector shows
+         * up immediately as the disabled `[ Bank Loan ]` with its
+         * outstanding-obligation hint. Presentation-only: a failed rebuild
+         * keeps the values we were given rather than stranding the day.
+         */
+        const returnToSummary = (): void => {
+          let nextSummary = summary;
+          if (result) {
+            try {
+              nextSummary = buildCompetitiveTurnSummary(s.state, result) ?? summary;
+            } catch { /* presentation-only — keep the panel we were given */ }
+          }
+          this.showCompetitiveTurnSummaryDialog(
+            nextSummary,
+            onNextTurn,
+            onBankLoanAction,
+            result,
+          );
+        };
+
+        /**
+         * Draws the mid-game selector. `error` carries the engine's own refusal
+         * reason after a rejected confirm, so the dialog stays open and says
+         * why (MS-0MVXYCKFE000VF76).
+         */
+        const openSelector = (error?: string): void => {
+          this.showLoanSelectorDialog(
+            selector!,
+            {
+              // Confirming takes the loan through the command surface — never
+              // by mutating state inline — with the deferred-closing opt-in.
+              onAccept: (optionIndex) => confirmSelection(optionIndex),
+              // Cancel closes the selector and re-presents the Turn Summary
+              // panel with no state change.
+              onCancel: returnToSummary,
+            },
+            error,
+          );
+        };
+
+        /**
+         * Dispatches `takeLoanCommand` for one menu row keyed to the human
+         * seat, then refreshes in place. AP-neutral and reversible, so no
+         * action point is spent and the day never advances; the take is
+         * undoable through the shared undo manager. On success the panel is
+         * re-rendered from the same `result` against the post-take state. On
+         * refusal the engine's reason is shown in the still-open selector and
+         * nothing in `s.state` changes.
+         */
+        const confirmSelection = (optionIndex: number): void => {
+          let refusal: string | null = null;
+          try {
+            const cmd = takeLoanCommand(
+              s.state,
+              optionIndex,
+              { allowDuringClosing: true },
+              humanSeatId,
+            );
+            if (s.undoManager) {
+              s.undoManager.execute(cmd);
+            } else {
+              cmd.execute();
+            }
+          } catch (e) {
+            console.error('[BankLoan] Failed:', e);
+            refusal = (e as Error).message;
+          }
+
+          if (refusal !== null) {
+            // Public API contract: the engine refuses before any mutation, so
+            // there is nothing to roll back — only the reason to surface.
+            openSelector(refusal);
+            return;
+          }
+
+          // The take changed the wallet and booked an obligation: re-render the
+          // street/HUD from the post-take state and enable Undo, since the take
+          // pushed a reversible command.
+          s.refreshAll();
+          if (s.undoManager) {
+            s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+          }
+
+          returnToSummary();
+        };
+
+        // One modal at a time: dismiss this panel before the selector appears,
+        // so no Turn Summary button can be pressed behind its backdrop.
+        dismissDialog();
+        openSelector();
+      });
+    } else {
+      // The muted colour above already signals unavailability; disabling input
+      // keeps the button inert (no hover, no press, no seam call).
+      bankLoanBtn.disableInteractive();
+    }
     if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
     s.overlayObjects.push(bankLoanBtn);
 
-    addText(centerX, panelY + panelH - 26, COMPETITIVE_BANK_LOAN_HINT, {
-      fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
-      wordWrap: { width: panelW - 60 },
-    }, 0.5);
-
-    // The seam is accepted but intentionally unwired: the button cannot be
-    // pressed, and this slice never enables a loan in competitive play.
-    void onBankLoanAction;
+    // Reason-specific hint: the descriptor's own copy (loans disabled, no
+    // configured options, or the human seat's outstanding obligation). Nothing
+    // is rendered when the button is enabled, and nothing when a roster has no
+    // human seat (no reason is known).
+    if (!loanEnabled && summary.loanDescriptor?.hint) {
+      addText(centerX, panelY + panelH - 26, summary.loanDescriptor.hint, {
+        fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
+        wordWrap: { width: panelW - 60 },
+      }, 0.5);
+    }
   }
 
   /**

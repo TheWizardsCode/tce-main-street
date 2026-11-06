@@ -1437,11 +1437,18 @@ owner-keyed, so the whole panel is testable without a browser.
   `createOverlayBackground` / `createOverlayButton`, elements parented into
   `s.hudContainer` at depths 199/200/201, everything pushed into
   `s.overlayObjects` for dismissal, instant appearance (reduced-motion safe)
-  and `safePlaySound` for the **[ Next Turn ]** click. **[ Bank Loan ]** is
-  **always disabled** in competitive play — muted and inert with
-  `COMPETITIVE_BANK_LOAN_HINT` — behind the `(seatId?: number) => void`
-  `onBankLoanAction` seam that `MS-0MVL6DZI0000F6CG` will enable per seat (a
-  documented per-seat-capable seam this item never enables).
+  and `safePlaySound` for the **[ Next Turn ]** click. **[ Bank Loan ]**
+  mirrors the single-player button (MS-0MW4YUHOU00474HZ): enabled in normal
+  colour exactly when the human seat's descriptor (`summary.loanDescriptor`,
+  built by `buildTurnSummaryLoanDescriptor` for `summary.humanSeatId`) says it
+  may borrow, otherwise muted and inert with the descriptor's reason-specific
+  hint (loans disabled / an active obligation / no configured options).
+  Pressing it opens the per-seat mid-game loan selector (the same
+  `buildLoanSelectorModel` + `showLoanSelectorDialog` machinery as the
+  single-player panel), books the take to the human seat via an explicit
+  `ownerId`, and re-presents the same `TurnResult` panel with the obligation
+  hint. AI seats get no proactive affordance — bailout stays their only loan
+  path.
 - **Per-seat expenses (MS-0MVRNVHJ50095N9Y).** `applyCompetitiveOngoingCosts`
   (`src/MainStreetEngineCommands.ts`) now **returns** the per-owner breakdown it
   charges — `{ staff, community, business }`, signed zero-or-negative — instead

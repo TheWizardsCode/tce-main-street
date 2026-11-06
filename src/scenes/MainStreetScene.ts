@@ -1627,26 +1627,33 @@ export class MainStreetScene extends CardGameScene {
    * Shows the competitive (per-seat) Turn Summary panel
    * (MS-0MVRNV9Y8008IKGK): one owner-keyed row per non-eliminated seat with
    * businesses owned, per-phase income, the income total and the net coin
-   * change, plus a primary [ Next Turn ] action and an always-disabled
-   * [ Bank Loan ] affordance. Delegates to the overlay manager's
+   * change, plus a primary [ Next Turn ] action and a
+   * descriptor-driven [ Bank Loan ] affordance keyed to the human seat
+   * (MS-0MW4YUHOU00474HZ). Delegates to the overlay manager's
    * showCompetitiveTurnSummaryDialog.
    *
-   * @param summary          The per-seat model built from the round ledger.
+   * @param summary          The per-seat model built from the round ledger
+   *                          (its `humanSeatId`/`loanDescriptor` drive the
+   *                          button).
    * @param onNextTurn       Called when the player clicks [ Next Turn ] — the
    *                          shared day advances only then.
-   * @param onBankLoanAction Per-seat loans seam; unused by this slice (the
-   *                          button is always disabled in competitive play).
+   * @param onBankLoanAction Per-seat loans seam, invoked with the human seat
+   *                          id per press of the enabled [ Bank Loan ].
+   * @param result           The closed round's result, so the panel can
+   *                          re-render the same `TurnResult` after a take.
    */
   public showCompetitiveTurnSummaryDialog(
     summary: import('./MainStreetTurnSummary').CompetitiveTurnSummary,
     onNextTurn: () => void,
     onBankLoanAction?: (seatId?: number) => void,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'>,
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog === 'function') {
       (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog(
         summary,
         onNextTurn,
         onBankLoanAction,
+        result,
       );
     } else {
       // No overlay manager (headless/tests): continue the shared day rather

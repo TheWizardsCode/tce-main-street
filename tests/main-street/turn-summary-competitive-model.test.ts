@@ -201,6 +201,78 @@ describe('buildCompetitiveTurnSummary — owner rows', () => {
   });
 });
 
+// ── Human seat's loan affordance (MS-0MW4YUHOU00474HZ) ───────
+
+/**
+ * The summary keys the `[ Bank Loan ]` affordance to the human seat and
+ * carries its descriptor-driven loan state, so the panel needs no extra
+ * scene-state plumbing to decide the button (AC1).
+ */
+describe('buildCompetitiveTurnSummary — human seat loan state', () => {
+  it('resolves the human seat id from the roster (the row the button keys to)', () => {
+    const state = twoSeatState();
+    state.players![1].controller = 'human';
+    state.players![0].controller = 'ai';
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.humanSeatId).toBe(1);
+    expect(summary.loanDescriptor).toBeDefined();
+  });
+
+  it('builds a loans-enabled descriptor for the human seat when it may borrow', () => {
+    const state = twoSeatState();
+    state.config = { ...state.config, loansEnabled: true };
+    state.activePlayerId = 1; // transient seat ≠ human seat — must not matter
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.humanSeatId).toBe(0);
+    expect(summary.loanDescriptor.enabled).toBe(true);
+    expect(summary.loanDescriptor.reason).toBeNull();
+    expect(summary.loanDescriptor.hint).toBeNull();
+    // The menu is the configured table, so the panel can rebuild the selector.
+    expect(summary.loanDescriptor.options.length).toBeGreaterThan(0);
+  });
+
+  it('names loans-disabled as the reason when the mechanic is off', () => {
+    const state = twoSeatState(); // fixture defaults to loansEnabled: false
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.loanDescriptor.enabled).toBe(false);
+    expect(summary.loanDescriptor.reason).toBe('loans-disabled');
+    expect(summary.loanDescriptor.hint).toBe('Bank loans are disabled in this game.');
+  });
+
+  it('names the outstanding obligation when the human seat already owes', () => {
+    const state = twoSeatState();
+    state.config = { ...state.config, loansEnabled: true };
+    state.loans = [
+      { ownerId: 0, principal: 600, totalRepayment: 660, perTurnRepayment: 110,
+        turnsRemaining: 4, termTurns: 6, takenOnTurn: 1 },
+    ];
+
+    const summary = buildCompetitiveTurnSummary(state, summaryInput(makeLedger()))!;
+
+    expect(summary.loanDescriptor.enabled).toBe(false);
+    expect(summary.loanDescriptor.reason).toBe('active-loan');
+    expect(summary.loanDescriptor.hint).toContain('4 turns left');
+  });
+
+  it('is read-only: building the descriptor mutates no state and consumes no RNG', () => {
+    const state = twoSeatState();
+    state.config = { ...state.config, loansEnabled: true };
+    const before = JSON.stringify(state);
+    const rngCallsBefore = state.rngCalls;
+
+    buildCompetitiveTurnSummary(state, summaryInput(makeLedger()));
+
+    expect(JSON.stringify(state)).toBe(before);
+    expect(state.rngCalls).toBe(rngCallsBefore);
+  });
+});
+
 // ── Eliminated seats ────
 
 /**

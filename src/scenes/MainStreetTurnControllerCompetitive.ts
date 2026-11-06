@@ -708,11 +708,20 @@ export function presentCompetitiveTurnSummaryGate(
     return;
   }
 
-  // The loans seam stays a single hook shaped `(seatId?: number) => void`, so
-  // MS-0MVL6DZI0000F6CG can enable a per-seat loan from the panel later. It is
-  // deliberately not wired here: this slice never enables [ Bank Loan ].
+  // MS-0MW4YUHOU00474HZ: the human seat's mid-game loan affordance. The
+  // summary model already carries the human seat id and its descriptor
+  // (`buildCompetitiveTurnSummary` → `buildTurnSummaryLoanDescriptor`), so the
+  // seam is keyed to exactly that seat — never the transient `activePlayerId`
+  // of a round-robin turn. The closing result is handed over as well, so the
+  // panel can re-render itself from the **same** `TurnResult` after a take.
+  // The seam itself is a notification hook (the dialog opens the selector and
+  // books the take); it is provided once so a per-seat extension point exists
+  // for the panel, matching the single-player seam contract.
+  const humanSeatId = summary.humanSeatId ?? -1;
+  const onBankLoanAction =
+    humanSeatId >= 0 ? (_seatId?: number): void => { /* per-seat seam — the dialog owns the selector/take */ } : undefined;
   try {
-    s.showCompetitiveTurnSummaryDialog(summary, advanceOnce);
+    s.showCompetitiveTurnSummaryDialog(summary, advanceOnce, onBankLoanAction, closing);
   } catch {
     // A scene without an overlay surface (or any presentation failure) must
     // never strand the shared day: advance exactly as before the gate.
