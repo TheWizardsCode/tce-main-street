@@ -3,11 +3,13 @@
  *
  * Verifies the competitive per-seat Turn Summary panel in a real Phaser scene:
  *
- * 1. One row per seat, in seat order, rendering the panel model's own labels
+ * 1. One tab per seat, in seat order, rendering the panel model's own labels
  *    and seat colours (the competitive scoreboard's `You` / `AI n` +
- *    `resolveSeatColour` values) with businesses owned, the per-phase income
- *    breakdown, the incident / one-off deltas, the net coin / reputation /
- *    score change and the closing coin / reputation / score balances.
+ *    `resolveSeatColour` values) with the human ("You") tab selected by
+ *    default; selecting another seat's tab switches the whole statement body
+ *    to that seat's P&L — income and expenses with their totals, the incident
+ *    / one-off adjustments, the net profit/loss and the supplementary context
+ *    (reputation/score change, closing balances, businesses owned).
  * 2. Overlay pattern compliance — backdrop 199 / box 200 / elements 201, every
  *    element parented into `hudContainer` and pushed into `s.overlayObjects`
  *    for dismissal.
@@ -173,69 +175,50 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(title!.depth).toBe(201);
     expect(overlayText(s, `Day ${summary.turn}`)).toBeDefined();
 
-    // ── Seat rows: one per seat, in seat order, with seat labels ──
-    const humanLabel = overlayText(s, 'You');
-    const aiLabel = overlayText(s, 'AI 1');
-    expect(humanLabel).toBeDefined();
-    expect(aiLabel).toBeDefined();
-    expect(humanLabel!.depth).toBe(201);
-    expect(aiLabel!.depth).toBe(201);
+    // ── Tab strip: one tab per seat, human ("You") tab selected by default ──
+    const humanTab = overlayText(s, '[ You ]');
+    const aiTab = overlayText(s, 'AI 1');
+    expect(humanTab).toBeDefined();
+    expect(aiTab).toBeDefined();
+    expect(humanTab!.depth).toBe(201);
+    expect(aiTab!.depth).toBe(201);
     // Reused seat colours, not an ad-hoc palette.
-    expect(humanLabel!.style.color).toBe(colours[0]);
-    expect(aiLabel!.style.color).toBe(colours[1]);
-    expect(humanLabel!.style.color).not.toBe(aiLabel!.style.color);
+    expect(humanTab!.style.color).toBe(colours[0]);
+    expect(aiTab!.style.color).toBe(colours[1]);
+    expect(humanTab!.style.color).not.toBe(aiTab!.style.color);
 
-    // ── Businesses owned, per-phase income and net change per row ──
+    // ── The default statement is the human seat's own P&L ────────
     expect(overlayText(s, 'Businesses owned: 3')).toBeDefined();
-    expect(overlayText(s, 'Businesses owned: 2')).toBeDefined();
-    expect(
-      overlayText(
-        s,
-        'Income: Base income +12 · Synergy income +4 · Reputation income +2 · Event income -1',
-      ),
-    ).toBeDefined();
-    expect(
-      overlayText(
-        s,
-        'Income: Base income +8 · Synergy income 0 · Reputation income +1 · Event income 0',
-      ),
-    ).toBeDefined();
-    // ── Incident / one-off and net change + closing balances per seat ──
-    // (MS-0MVRNW26W0070CP0 — the single-player panel's order and formatting.)
-    expect(
-      overlayText(s, 'Incident: Coins -2, Rep -1 · One-off: Coins 0, Rep +1'),
-    ).toBeDefined();
-    expect(
-      overlayText(s, 'Incident: Coins 0, Rep 0 · One-off: Coins -4, Rep 0'),
-    ).toBeDefined();
-    expect(
-      overlayText(
-        s,
-        'Income total: +17 · Net change: Coins +9, Rep +1, Score +3 · Closing: Coins 49, Rep 3, Score 13',
-      ),
-    ).toBeDefined();
-    expect(
-      overlayText(
-        s,
-        'Income total: +9 · Net change: Coins +5, Rep 0, Score +5 · Closing: Coins 23, Rep 0, Score 5',
-      ),
-    ).toBeDefined();
+    expect(overlayText(s, 'Base income: +12')).toBeDefined();
+    expect(overlayText(s, 'Total income: +17')).toBeDefined();
+    expect(overlayText(s, 'Staff wages: -3')).toBeDefined();
+    expect(overlayText(s, 'Total operating expenses: -6')).toBeDefined();
+    expect(overlayText(s, 'Incident: Coins -2, Rep -1')).toBeDefined();
+    expect(overlayText(s, 'One-off: Coins 0, Rep +1')).toBeDefined();
+    expect(overlayText(s, 'Net profit/loss: +9')).toBeDefined();
+    expect(overlayText(s, 'Reputation change: +1 · Score change: +3')).toBeDefined();
+    expect(overlayText(s, 'Closing coins: 49 · Closing Rep 3 · Score 13')).toBeDefined();
 
-    // ── Per-seat expense rows and totals (MS-0MVRNVHJ50095N9Y) ──
-    // Same category labels and signed formatting as the single-player panel;
-    // a seat that spent nothing still renders all three rows at 0.
-    expect(
-      overlayText(
-        s,
-        'Expenses: Staff wages -3 · Community spaces -1 · Business costs -2 · Total -6',
-      ),
-    ).toBeDefined();
-    expect(
-      overlayText(
-        s,
-        'Expenses: Staff wages 0 · Community spaces 0 · Business costs 0 · Total 0',
-      ),
-    ).toBeDefined();
+    // ── Selecting the AI tab switches the whole statement body ───
+    aiTab!.emit('pointerdown');
+    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
+    // A seat that spent nothing still renders all three expense rows at 0
+    // (MS-0MVRNVHJ50095N9Y), in the single-player panel's signed formatting.
+    expect(overlayText(s, 'Businesses owned: 2')).toBeDefined();
+    expect(overlayText(s, 'Base income: +8')).toBeDefined();
+    expect(overlayText(s, 'Total income: +9')).toBeDefined();
+    expect(overlayText(s, 'Staff wages: 0')).toBeDefined();
+    expect(overlayText(s, 'Community spaces: 0')).toBeDefined();
+    expect(overlayText(s, 'Business costs: 0')).toBeDefined();
+    expect(overlayText(s, 'Total operating expenses: 0')).toBeDefined();
+    expect(overlayText(s, 'Incident: Coins 0, Rep 0')).toBeDefined();
+    expect(overlayText(s, 'One-off: Coins -4, Rep 0')).toBeDefined();
+    expect(overlayText(s, 'Net profit/loss: +5')).toBeDefined();
+    expect(overlayText(s, 'Reputation change: 0 · Score change: +5')).toBeDefined();
+    expect(overlayText(s, 'Closing coins: 23 · Closing Rep 0 · Score 5')).toBeDefined();
+    // The human seat's figures are gone — the body really switched.
+    expect(overlayText(s, 'Businesses owned: 3')).toBeUndefined();
+    expect(overlayText(s, 'Net profit/loss: +9')).toBeUndefined();
 
     // ── Buttons ───────────────────────────────────────────────
     const nextTurnBtn = overlayText(s, '[ Next Turn ]');

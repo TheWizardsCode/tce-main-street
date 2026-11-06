@@ -1580,9 +1580,12 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
-   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
-   * per-phase income, per-category ongoing expenses, incident and one-off
-   * deltas, the net change and the closing balances, with a primary
+   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): the unified tabbed
+   * profit/loss statement for the selected player (parent MS-0MW4XULA90002OEY,
+   * child MS-0MW5EQHFK005NXXM) — Income and Less: Operating expenses sections
+   * with their totals, the Incident and One-off adjustments, an emphasised Net
+   * profit/loss bottom line and the supplementary context (reputation/score
+   * change, closing balances, businesses owned) — with a primary
    * [ Next Turn ] action and a [ Bank Loan ] affordance whose availability
    * comes from the loans descriptor (MS-0MVXYCICT0051LU7).
    * Delegates to the overlay manager's showTurnSummaryDialog.
@@ -1624,13 +1627,12 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
-   * Shows the competitive (per-seat) Turn Summary panel
-   * (MS-0MVRNV9Y8008IKGK): one owner-keyed row per non-eliminated seat with
-   * businesses owned, per-phase income, the income total and the net coin
-   * change, plus a primary [ Next Turn ] action and a
-   * descriptor-driven [ Bank Loan ] affordance keyed to the human seat
-   * (MS-0MW4YUHOU00474HZ). Delegates to the overlay manager's
-   * showCompetitiveTurnSummaryDialog.
+   * Shows the competitive Turn Summary panel (MS-0MVRNV9Y8008IKGK): the same
+   * unified tabbed profit/loss statement as {@link showTurnSummaryDialog}, with
+   * one interactive tab per non-eliminated seat (the human `You` tab selected
+   * by default) plus a primary [ Next Turn ] action and a descriptor-driven
+   * [ Bank Loan ] affordance keyed to the human seat (MS-0MW4YUHOU00474HZ).
+   * Delegates to the overlay manager's showCompetitiveTurnSummaryDialog.
    *
    * @param summary          The per-seat model built from the round ledger
    *                          (its `humanSeatId`/`loanDescriptor` drive the

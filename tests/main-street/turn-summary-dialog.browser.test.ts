@@ -4,9 +4,12 @@
  * Verifies the turn summary overlay in a real Phaser scene (child 3 of the
  * end-of-turn-summary epic MS-0MVL6HMDP004WI41):
  *
- * 1. Every surfaced value renders — businesses owned, per-phase income,
- *    per-category ongoing expenses, incident and one-off deltas, the net
- *    change and the closing balances (parent AC2).
+ * 1. Every surfaced value renders — the selected player's tabbed profit/loss
+ *    statement (Income and Less: Operating expenses sections with their
+ *    totals, the Incident and One-off adjustments, the emphasised Net
+ *    profit/loss bottom line) plus the supplementary context (reputation/score
+ *    change, closing balances, businesses owned, resolved incident) — parent
+ *    AC2 of MS-0MW4XULA90002OEY (child MS-0MW5EQHFK005NXXM).
  * 2. Overlay pattern compliance — backdrop 199 / box 200 / elements 201,
  *    ALL elements parented into `hudContainer` and pushed into
  *    `s.overlayObjects` for dismissal (AC1/AC2).
@@ -278,36 +281,32 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     expect(overlayText(s, 'Synergy income: +30')).toBeDefined();
     expect(overlayText(s, 'Reputation income: +10')).toBeDefined();
     expect(overlayText(s, 'Event income: -20')).toBeDefined();
-    expect(overlayText(s, 'Income total: +140')).toBeDefined();
+    expect(overlayText(s, 'Total income: +140')).toBeDefined();
 
     // ── Ongoing expenses per category + total ─────────────────
-    expect(overlayText(s, 'Expenses')).toBeDefined();
+    expect(overlayText(s, 'Less: Operating expenses')).toBeDefined();
     expect(overlayText(s, 'Staff wages: -50')).toBeDefined();
     expect(overlayText(s, 'Community spaces: -20')).toBeDefined();
     expect(overlayText(s, 'Business costs: -10')).toBeDefined();
-    expect(overlayText(s, 'Expenses total: -80')).toBeDefined();
+    expect(overlayText(s, 'Total operating expenses: -80')).toBeDefined();
 
-    // ── Businesses owned (human seat) ─────────────────────────
+    // ── Businesses owned (supplementary context) ──────────────
     expect(overlayText(s, 'Businesses owned: 3')).toBeDefined();
 
-    // ── Incident delta + resolved incident name ───────────────
-    expect(overlayText(s, 'Incident')).toBeDefined();
-    expect(overlayText(s, 'Test Incident — Coins -40, Rep -2')).toBeDefined();
+    // ── Incident + one-off adjustments, with the drawn incident ──
+    expect(overlayText(s, 'Incident: Coins -40, Rep -2')).toBeDefined();
+    expect(overlayText(s, 'One-off: Coins -30, Rep +4')).toBeDefined();
+    expect(overlayText(s, 'Incident drawn: Test Incident')).toBeDefined();
 
-    // ── One-off event deltas ──────────────────────────────────
-    expect(overlayText(s, 'One-off changes')).toBeDefined();
-    expect(overlayText(s, 'Coins -30, Rep +4')).toBeDefined();
+    // ── Emphasised Net profit/loss bottom line ────────────────
+    expect(overlayText(s, 'Net profit/loss: -10')).toBeDefined();
 
-    // ── Net change ────────────────────────────────────────────
-    expect(overlayText(s, 'Net change')).toBeDefined();
-    expect(overlayText(s, 'Coins -10, Rep +2, Score +14')).toBeDefined();
-
-    // ── Closing balances (derived by the model) ───────────────
-    expect(overlayText(s, 'Closing balances')).toBeDefined();
+    // ── Supplementary context (non-monetary figures) ──────────
+    expect(overlayText(s, 'Reputation change: +2 · Score change: +14')).toBeDefined();
     expect(
       overlayText(
         s,
-        `Coins ${summary.closing.coins}, Rep ${summary.closing.reputation}, Score ${summary.closing.score}`,
+        `Closing coins: ${summary.closing.coins} · Closing Rep ${summary.closing.reputation} · Score ${summary.closing.score}`,
       ),
     ).toBeDefined();
 

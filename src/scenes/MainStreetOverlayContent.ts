@@ -1,4 +1,4 @@
-import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand, takeLoanCommand } from '../MainStreetCommands';
+import { sellBusinessCommand, closeBusinessCommand, letGoStaffCommand } from '../MainStreetCommands';
 import { canCloseBusiness, canSellBusiness } from '../MainStreetMarket';
 import { addLog } from '../MainStreetState';
 import { flashError, flashConfirmation } from './MainStreetFeedback';
@@ -32,11 +32,13 @@ import {
   buildGameOverStatSeries,
   formatEndReason,
 } from './MainStreetGameOverSummary';
-import { buildTurnSummary, buildCompetitiveTurnSummary, type CompetitiveTurnSummary, type TurnSummary } from './MainStreetTurnSummary';
+import type { CompetitiveTurnSummary, TurnSummary } from './MainStreetTurnSummary';
+import {
+  showCompetitiveTurnSummaryDialog as showTabbedCompetitiveTurnSummaryDialog,
+  showTurnSummaryDialog as showTabbedTurnSummaryDialog,
+} from './MainStreetTurnSummaryOverlay';
 import { createStatsChart, destroyStatsChart } from './MainStreetStatsChart';
 import {
-  buildLoanSelectorModel,
-  buildTurnSummaryLoanDescriptor,
   type LoanSelectorModel,
   type TurnSummaryLoanDescriptor,
 } from './MainStreetLoanSelectorModel';
@@ -65,22 +67,6 @@ import {
 // Default English strings are registered at module-load time (merges with the
 // other Main Street 'en' bundles).
 registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
-
-/**
- * Muted text colour for an unavailable overlay affordance — the Turn Summary
- * dialog's `[ Bank Loan ]` button when the loans descriptor says the acting
- * seat may not borrow (MS-0MVXYCJCK006UE62).
- */
-const UNAVAILABLE_ACTION_COLOUR = '#6b6459';
-
-/**
- * Formats a signed integer for dialog rows as `+N` / `-N` / `0`. Coins are
- * whole numbers (integer economy, CG-0MTIO1M15001E9Y6), so no rounding is
- * applied here.
- */
-function formatSigned(value: number): string {
-  return value > 0 ? `+${value}` : String(value);
-}
 
 export class MainStreetOverlayContent {
   constructor(private readonly scene: any) {}
@@ -1457,52 +1443,44 @@ export class MainStreetOverlayContent {
   }
 
   /**
-   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT).
+   * Shows the unified tabbed P&L Turn Summary dialog (parent
+   * MS-0MW4XULA90002OEY, child MS-0MW5ER6HC000HVQ8).
    *
    * Presented after the end-of-turn animations complete (gated into the
-   * deferred closing by MS-0MVP46Q8X003419R). Renders the turn just closed
-   * from the Phaser-free {@link buildTurnSummary} model (child
-   * MS-0MVP45WBA001GAVY): businesses owned, per-phase income, per-category
-   * ongoing expenses, incident and one-off deltas, the net change and the
-   * closing balances. `[ Next Turn ]` is the primary action and resumes the
-   * closing flow via {@link onNextTurn}. `[ Bank Loan ]` follows the
-   * pre-computed {@link loanDescriptor} (MS-0MVXYCICT0051LU7, wired by
+   * deferred closing by MS-0MVP46Q8X003419R). The panel is one **tabbed
+   * profit/loss statement for the management company**: a tab strip (one tab
+   * per player, the human `You` tab selected by default; a single
+   * non-interactive `You` tab in single-player) plus the selected player's
+   * statement — Income (base / synergy / reputation / events) with a total,
+   * Less: Operating expenses (staff / community / business) with a total, the
+   * Incident and One-off adjustments and an emphasised Net profit/loss bottom
+   * line — with the non-monetary figures (reputation/score change, closing
+   * balances and businesses owned) as supplementary context outside the P&L
+   * lines.
+   *
+   * `[ Next Turn ]` is the primary action and resumes the closing flow via
+   * {@link onNextTurn}. `[ Bank Loan ]` follows the pre-computed
+   * {@link loanDescriptor} (MS-0MVXYCICT0051LU7, wired by
    * MS-0MVXYCJCK006UE62): interactive — normal colour, `UI_CLICK` SFX, one
    * {@link onBankLoanAction} call per press — exactly when the descriptor is
    * enabled, otherwise muted and inert with the descriptor's reason-specific
-   * hint (loans disabled / no configured options / the seat's outstanding
-   * obligation) and **no** hint line at all when it is enabled. Because the
-   * availability answer arrives pre-computed, this overlay never reaches into
-   * scene state to decide it.
+   * hint and **no** hint line at all when it is enabled.
    *
-   * Pressing the enabled `[ Bank Loan ]` swaps this panel for the mid-game loan
-   * selector (MS-0MVXYCJVU000QBK1, parent AC2): the shared bailout renderer in
-   * its `select` mode, driven by the configured `config.loanOptions` menu. One
-   * modal at a time — this panel is dismissed first, so no Turn Summary button
-   * can be pressed behind the selector's backdrop — and closing the selector
-   * (Cancel, or a refused option) re-presents this dialog with no state change.
-   *
-   * Confirming a selector option takes the loan (MS-0MVXYCKFE000VF76):
-   * `takeLoanCommand(state, optionIndex, { allowDuringClosing: true })` runs
-   * through the undo stack (AP-neutral and reversible — no action point is
-   * spent and the day never advances), then this dialog is re-rendered from the
-   * **same** {@link result} against the post-take state, so the newly recorded
-   * obligation shows up as the disabled `[ Bank Loan ]` hint. A refusal (for
-   * example a race into an active loan) re-draws the selector with the engine's
-   * own reason and leaves every resource untouched. `[ Next Turn ]` remains the
-   * only way to resume the deferred closing either way.
-   *
-   * The initial affordance answer still arrives pre-computed through
-   * {@link loanDescriptor}; the overlay re-derives it from the live state only
-   * when it re-renders itself after a take, because that take is what changed
-   * the answer.
+   * Pressing the enabled `[ Bank Loan ]` swaps the panel for the mid-game loan
+   * selector (MS-0MVXYCJVU000QBK1). Confirming an option takes the loan
+   * (MS-0MVXYCKFE000VF76) through the undo stack (AP-neutral and reversible —
+   * no action point is spent and the day never advances), then the panel is
+   * re-presented from the **same** {@link result} against the post-take state,
+   * **preserving the selected tab**, so the newly recorded obligation shows up
+   * as the disabled `[ Bank Loan ]` hint. `[ Next Turn ]` remains the only way
+   * to resume the deferred closing either way.
    *
    * Overlay pattern compliance (AGENTS.md UI Best Practices):
-   * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL
-   * elements are parented into `s.hudContainer`; depths 199 (backdrop) /
-   * 200 (box) / 201 (elements). Instant appearance (no fade-in —
-   * reduced-motion safe); `[ Next Turn ]` plays its SFX via `safePlaySound`
-   * (mute/volume respected). Dismissal resets `s.overlayObjects`.
+   * `createOverlayBackground` + `createOverlayButton` from `@ui`; ALL elements
+   * are parented into `s.hudContainer`; depths 199 (backdrop) / 200 (box) /
+   * 201 (elements); instant appearance (no fade-in — reduced-motion safe);
+   * SFX via `safePlaySound`; tabs operable by pointer and by the Left/Right
+   * arrow keys. Dismissal resets `s.overlayObjects`.
    *
    * @param summary          The turn's rendered summary model.
    * @param onNextTurn       Called when the player clicks [ Next Turn ].
@@ -1528,343 +1506,40 @@ export class MainStreetOverlayContent {
     onBankLoanAction?: () => void,
     result?: Pick<TurnResult, 'turnLedger' | 'incident'>,
   ): void {
-    const s = this.scene;
-    if (s.replayMode) return; // headless/replay: never present UI
-
-    /** Dismisses everything this dialog owns and releases the tracked objects. */
-    const dismissDialog = (): void => {
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
-    };
-
-    const centerX = s.layout.gameW / 2;
-    const panelW = 640;
-    const panelH = 560;
-    const panelX = centerX - panelW / 2;
-    const panelY = s.layout.gameH / 2 - panelH / 2;
-    const leftX = panelX + 32;
-    const rightX = panelX + 344;
-    const colTop = panelY + 92;
-
-    // Backdrop 199 / box 200 (createOverlayBackground), elements 201 below.
-    const boxConfig = {
-      width: panelW,
-      height: panelH,
-      color: 0x000000,
-      alpha: 1.0,
-      depth: 200,
-    };
-    const overlay = createOverlayBackground(
-      s,
-      { depth: 199, alpha: 0.6 },
-      boxConfig,
+    showTabbedTurnSummaryDialog(
+      this.scene,
+      summary,
+      onNextTurn,
+      loanDescriptor,
+      onBankLoanAction,
+      result,
     );
-    s.overlayObjects.push(...overlay.objects);
-
-    /** Adds a depth-201 element, parenting it into the HUD container. */
-    const addText = (
-      x: number,
-      y: number,
-      text: string,
-      style: Record<string, unknown>,
-      originX = 0,
-      originY = 0,
-    ): void => {
-      const obj = s.add.text(x, y, text, style)
-        .setOrigin(originX, originY)
-        .setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(obj);
-      s.overlayObjects.push(obj);
-    };
-
-    // ── Title band ────────────────────────────────────────────────
-    addText(centerX, panelY + 30, 'Turn Summary', {
-      fontSize: '24px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    }, 0.5);
-    addText(centerX, panelY + 60, `Day ${summary.turn}`, {
-      fontSize: '15px', color: '#bbaa88', fontFamily: FONT_FAMILY,
-    }, 0.5);
-
-    // ── Left column: income, expenses, businesses owned ──────────
-    let y = colTop;
-    addText(leftX, y, 'Income', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    y += 22;
-    for (const row of summary.income) {
-      addText(leftX, y, `${row.label}: ${formatSigned(row.coins)}`, {
-        fontSize: '13px', color: row.coins < 0 ? '#ff8888' : '#ddccbb', fontFamily: FONT_FAMILY,
-      });
-      y += 20;
-    }
-    addText(leftX, y, `Income total: ${formatSigned(summary.incomeTotal)}`, {
-      fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
-    });
-    y += 28;
-    addText(leftX, y, 'Expenses', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    y += 22;
-    for (const row of summary.expenses) {
-      // Ongoing costs are signed (zero or negative) — render them as-is.
-      addText(leftX, y, `${row.label}: ${formatSigned(row.coins)}`, {
-        fontSize: '13px', color: '#ff8888', fontFamily: FONT_FAMILY,
-      });
-      y += 20;
-    }
-    addText(leftX, y, `Expenses total: ${formatSigned(summary.expensesTotal)}`, {
-      fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
-    });
-    y += 28;
-    addText(leftX, y, `Businesses owned: ${summary.humanOwner?.businessesOwned ?? 0}`, {
-      fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-    });
-
-    // ── Right column: incident, one-off, net, closing ─────────────
-    let ry = colTop;
-    addText(rightX, ry, 'Incident', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    ry += 22;
-    addText(rightX, ry,
-      `${summary.incidentName ?? 'No incident'} — Coins ${formatSigned(summary.incident.coins)}, Rep ${formatSigned(summary.incident.reputation)}`,
-      {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-        wordWrap: { width: panelW - (rightX - panelX) - 32 },
-      },
-    );
-    ry += 30;
-    addText(rightX, ry, 'One-off changes', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    ry += 22;
-    addText(rightX, ry,
-      `Coins ${formatSigned(summary.oneOff.coins)}, Rep ${formatSigned(summary.oneOff.reputation)}`,
-      {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-      },
-    );
-    ry += 30;
-    addText(rightX, ry, 'Net change', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    ry += 22;
-    addText(rightX, ry,
-      `Coins ${formatSigned(summary.net.coins)}, Rep ${formatSigned(summary.net.reputation)}, Score ${formatSigned(summary.net.score)}`,
-      {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-      },
-    );
-    ry += 30;
-    addText(rightX, ry, 'Closing balances', {
-      fontSize: '15px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    });
-    ry += 22;
-    addText(rightX, ry,
-      `Coins ${summary.closing.coins}, Rep ${summary.closing.reputation}, Score ${summary.closing.score}`,
-      {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-      },
-    );
-
-    // ── Actions ───────────────────────────────────────────────────
-    const btnY = panelY + panelH - 60;
-
-    // Primary action: resumes the deferred closing flow via onNextTurn.
-    const nextTurnBtn = createOverlayButton(
-      s, centerX - 120, btnY,
-      '[ Next Turn ]', 201,
-    );
-    if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
-    nextTurnBtn.on('pointerdown', () => {
-      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissDialog();
-      onNextTurn();
-    });
-    s.overlayObjects.push(nextTurnBtn);
-
-    // ── [ Bank Loan ] (MS-0MVXYCJCK006UE62) ───────────────────────
-    // Interactive exactly when the descriptor says the acting seat may borrow:
-    // normal colour, `UI_CLICK` SFX and exactly one `onBankLoanAction` call per
-    // press. Every other case (loans off, no configured menu, an active loan,
-    // or no descriptor at all) is muted and inert.
-    const loanEnabled = loanDescriptor?.enabled === true;
-    const bankLoanBtn = createOverlayButton(
-      s, centerX + 120, btnY,
-      '[ Bank Loan ]', 201,
-      loanEnabled
-        ? undefined
-        : { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
-    );
-    if (loanEnabled) {
-      bankLoanBtn.on('pointerdown', () => {
-        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-        onBankLoanAction?.();
-
-        // Mid-game loan selector (MS-0MVXYCJVU000QBK1): the shipped bailout
-        // renderer in its `select` mode, driven by the configured menu rather
-        // than a pending offer. Built before the swap, so a menu that cannot be
-        // built (or is empty) leaves this dialog on screen instead of opening
-        // an empty modal.
-        let selector: LoanSelectorModel | null = null;
-        try {
-          selector = buildLoanSelectorModel(s.state);
-        } catch {
-          selector = null;
-        }
-        if (!selector || selector.rows.length === 0) return;
-
-        /**
-         * Re-presents this dialog from the **same** result against the live
-         * state (MS-0MVXYCKFE000VF76): the summary is rebuilt with
-         * `buildTurnSummary(state, result)` and the loans descriptor is
-         * re-derived, so a loan taken in the selector shows up immediately as
-         * the disabled `[ Bank Loan ]` with its outstanding-obligation hint.
-         * Presentation-only: a failed rebuild keeps the values we were given
-         * rather than stranding the closing.
-         */
-        const returnToSummary = (): void => {
-          let nextSummary = summary;
-          if (result) {
-            try {
-              nextSummary = buildTurnSummary(s.state, result) ?? summary;
-            } catch { /* presentation-only — keep the summary we were given */ }
-          }
-          let nextDescriptor = loanDescriptor;
-          try {
-            nextDescriptor = buildTurnSummaryLoanDescriptor(s.state);
-          } catch { /* presentation-only — keep the pre-take descriptor */ }
-          this.showTurnSummaryDialog(
-            nextSummary,
-            onNextTurn,
-            nextDescriptor,
-            onBankLoanAction,
-            result,
-          );
-        };
-
-        /**
-         * Draws the mid-game selector. `error` carries the engine's own refusal
-         * reason after a rejected confirm, so the dialog stays open and says
-         * why (MS-0MVXYCKFE000VF76).
-         */
-        const openSelector = (error?: string): void => {
-          this.showLoanSelectorDialog(
-            selector!,
-            {
-              // Confirming takes the loan through the command surface — never
-              // by mutating state inline — with the deferred-closing opt-in
-              // from MS-0MVXYCIU00053HL1 (the dialog lives in that window).
-              onAccept: (optionIndex) => confirmSelection(optionIndex),
-              // Cancel closes the selector and re-presents the Turn Summary
-              // dialog with no state change (parent AC2).
-              onCancel: returnToSummary,
-            },
-            error,
-          );
-        };
-
-        /**
-         * Dispatches `takeLoanCommand` for one menu row, then refreshes in place.
-         *
-         * AP-neutral and reversible, so no action point is spent and the day
-         * never advances; the take is undoable through the shared undo manager.
-         * On success the dialog is re-rendered from the same `result` against
-         * the post-take state. On refusal the engine's reason is shown in the
-         * still-open selector and nothing in `s.state` changes.
-         */
-        const confirmSelection = (optionIndex: number): void => {
-          let refusal: string | null = null;
-          try {
-            const cmd = takeLoanCommand(s.state, optionIndex, { allowDuringClosing: true });
-            if (s.undoManager) {
-              s.undoManager.execute(cmd);
-            } else {
-              cmd.execute();
-            }
-          } catch (e) {
-            console.error('[BankLoan] Failed:', e);
-            refusal = (e as Error).message;
-          }
-
-          if (refusal !== null) {
-            // Public API contract: the engine refuses before any mutation, so
-            // there is nothing to roll back — only the reason to surface.
-            openSelector(refusal);
-            return;
-          }
-
-          // The take changed the wallet and booked an obligation: re-render the
-          // street/HUD from the post-take state and enable Undo, since the take
-          // pushed a reversible command.
-          s.refreshAll();
-          if (s.undoManager) {
-            s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-          }
-
-          returnToSummary();
-        };
-
-        // One modal at a time: dismiss this panel before the selector appears,
-        // so no Turn Summary button can be pressed behind its backdrop.
-        dismissDialog();
-        openSelector();
-      });
-    } else {
-      // The muted colour above already signals unavailability; disabling input
-      // keeps the button inert (no hover, no press, no seam call).
-      bankLoanBtn.disableInteractive();
-    }
-    if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
-    s.overlayObjects.push(bankLoanBtn);
-
-    // Reason-specific hint: the descriptor's own copy (loans disabled, no
-    // configured options, or the seat's outstanding obligation). Nothing is
-    // rendered when the button is enabled, and nothing when there is no
-    // descriptor to supply a reason.
-    if (!loanEnabled && loanDescriptor?.hint) {
-      addText(centerX, panelY + panelH - 24, loanDescriptor.hint, {
-        fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
-        wordWrap: { width: panelW - 60 },
-      }, 0.5);
-    }
   }
 
   /**
-   * Shows the competitive (per-seat) Turn Summary panel (MS-0MVRNV9Y8008IKGK,
-   * parent MS-0MVO1SFCM000ZLBI).
+   * Shows the unified tabbed P&L Turn Summary dialog for a competitive closing
+   * (parent MS-0MVO1SFCM000ZLBI, child MS-0MW5ER6HC000HVQ8).
    *
-   * Presented after `presentCompetitiveClosing` has finished (gated into the
-   * competitive day tail by `shouldGateCompetitiveTurnSummary`), so the shared
-   * day advances only when the player clicks **[ Next Turn ]**. Renders the
-   * Phaser-free {@link CompetitiveTurnSummary} model: one row per non-eliminated
-   * seat, in seat order, with the seat's own label (`You` / `AI n`) in its own
-   * `resolveSeatColour` colour, businesses owned, the per-phase income
-   * breakdown with its total, the per-category ongoing expenses with their
-   * total (MS-0MVRNVHJ50095N9Y — the same labels and signed formatting as the
-   * single-player panel), the seat's share of the resolved incident and
-   * one-off deltas, the net coin / reputation / score change and the closing
-   * coin / reputation / score balances (MS-0MVRNW26W0070CP0 — the
-   * single-player panel's own order and signed formatting).
+   * The same tabbed statement as {@link showTurnSummaryDialog}, with one
+   * **interactive** tab per non-eliminated seat (in seat order, each in its own
+   * `resolveSeatColour` colour) and the human `You` tab selected by default;
+   * selecting another seat's tab (by pointer or the Left/Right arrow keys)
+   * switches the whole statement body to that seat's figures.
    *
-   * **[ Next Turn ]** is the primary action and resumes the shared day via
-   * {@link onNextTurn}. **[ Bank Loan ]** mirrors the single-player button
-   * (MS-0MW4YUHOU00474HZ): interactive in normal colour exactly when the human
-   * seat's loan descriptor says it may borrow (`summary.loanDescriptor`), muted
-   * and inert with the descriptor's reason-specific hint otherwise (loans
-   * disabled / an active obligation / no configured options). Pressing the
-   * enabled button invokes {@link onBankLoanAction} with the human seat id,
-   * swaps the panel for the per-seat mid-game loan selector
-   * (`buildLoanSelectorModel` + `showLoanSelectorDialog`), and re-presents the
-   * **same** `TurnResult` panel after the take (`returnToSummary` pattern)
-   * so the freshly booked obligation disables the button with its hint.
+   * `[ Next Turn ]` resumes the shared day via {@link onNextTurn}.
+   * `[ Bank Loan ]` mirrors the single-player button (MS-0MW4YUHOU00474HZ):
+   * interactive in normal colour exactly when the human seat's descriptor
+   * (`summary.loanDescriptor`) says it may borrow, muted and inert with the
+   * reason-specific hint otherwise. Pressing the enabled button invokes
+   * {@link onBankLoanAction} with the human seat id, swaps the panel for the
+   * per-seat mid-game loan selector, and re-presents the **same** `TurnResult`
+   * panel after the take with the selected tab preserved.
    *
-   * Overlay pattern compliance (AGENTS.md UI Best Practices):
-   * `createOverlayBackground` + `createOverlayButton`; ALL elements are parented
-   * into `s.hudContainer`; depths 199 (backdrop) / 200 (box) / 201 (elements);
-   * everything pushed into `s.overlayObjects` for dismissal; instant appearance
-   * (no fade-in — reduced-motion safe); the `[ Next Turn ]` SFX plays through
-   * `safePlaySound`, so mute/volume are respected.
+   * Overlay conventions are the renderer's
+   * ({@link module:scenes/MainStreetTurnSummaryOverlay}): `hudContainer`
+   * parenting, depths 199/200/201, every element tracked in
+   * `s.overlayObjects`, instant appearance (reduced-motion safe) and
+   * `safePlaySound` for the SFX.
    *
    * @param summary          The per-seat model built from the round ledger (its
    *                          `humanSeatId` + `loanDescriptor` drive the
@@ -1885,404 +1560,13 @@ export class MainStreetOverlayContent {
     onBankLoanAction?: (seatId?: number) => void,
     result?: Pick<TurnResult, 'playerRoundLedger'>,
   ): void {
-    const s = this.scene;
-    if (s.replayMode) return; // headless/replay: never present UI
-
-    /** Dismisses everything this panel owns and releases the tracked objects. */
-    const dismissDialog = (): void => {
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
-    };
-
-    const centerX = s.layout.gameW / 2;
-    const panelW = 760;
-    // Each seat row is five text lines: identity, income, expenses, incident /
-    // one-off, and the bold totals line (net change + closing balances)
-    // (MS-0MVRNVHJ50095N9Y added the expense line; MS-0MVRNW26W0070CP0 added
-    // the incident/one-off and net/closing lines).
-    const rowH = 110;
-    const headerH = 116;
-    const footerH = 96;
-    const panelH = headerH + summary.rows.length * rowH + footerH;
-    const panelX = centerX - panelW / 2;
-    const panelY = s.layout.gameH / 2 - panelH / 2;
-    const leftX = panelX + 32;
-    const rightX = panelX + panelW - 32;
-
-    // Backdrop 199 / box 200 (createOverlayBackground), elements 201 below.
-    const overlay = createOverlayBackground(
-      s,
-      { depth: 199, alpha: 0.6 },
-      { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 },
+    showTabbedCompetitiveTurnSummaryDialog(
+      this.scene,
+      summary,
+      onNextTurn,
+      onBankLoanAction,
+      result,
     );
-    s.overlayObjects.push(...overlay.objects);
-
-    /** Adds a depth-201 element, parenting it into the HUD container. */
-    const addText = (
-      x: number,
-      y: number,
-      text: string,
-      style: Record<string, unknown>,
-      originX = 0,
-      originY = 0,
-    ): void => {
-      const obj = s.add.text(x, y, text, style)
-        .setOrigin(originX, originY)
-        .setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(obj);
-      s.overlayObjects.push(obj);
-    };
-
-    // ── Title band ────────────────────────────────────────────────
-    addText(centerX, panelY + 30, 'Turn Summary', {
-      fontSize: '24px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-    }, 0.5);
-    addText(centerX, panelY + 60, `Day ${summary.turn}`, {
-      fontSize: '15px', color: '#bbaa88', fontFamily: FONT_FAMILY,
-    }, 0.5);
-
-    // ── One row per seat, in seat order ───────────────────────────
-    summary.rows.forEach((row, index) => {
-      const rowY = panelY + headerH + index * rowH;
-      // Seat identity: the label in the seat's own scoreboard colour, so the
-      // panel reads like the HUD/street/game-over surfaces.
-      addText(leftX, rowY, row.label, {
-        fontSize: '17px', fontStyle: 'bold', color: row.colour ?? '#ddccbb', fontFamily: FONT_FAMILY,
-      });
-      addText(rightX, rowY + 2, `Businesses owned: ${row.businessesOwned}`, {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-      }, 1);
-      // Per-phase income subtotals, then the total and the round's net change.
-      addText(leftX, rowY + 26, `Income: ${row.income.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')}`, {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-        wordWrap: { width: panelW - 64 },
-      });
-      // Per-category ongoing expenses (staff / community / business) with their
-      // total — the single-player panel's labels, order and signed formatting.
-      // Ongoing costs are signed (zero or negative) — render them as-is.
-      addText(leftX, rowY + 46, `Expenses: ${row.expenses.map((line) => `${line.label} ${formatSigned(line.coins)}`).join(' · ')} · Total ${formatSigned(row.expensesTotal)}`, {
-        fontSize: '13px', color: '#ff8888', fontFamily: FONT_FAMILY,
-        wordWrap: { width: panelW - 64 },
-      });
-      // The seat's share of the resolved incident and its non-recurring
-      // (MarketPhase / other) deltas (MS-0MVRNW26W0070CP0).
-      addText(leftX, rowY + 66, `Incident: Coins ${formatSigned(row.incident.coins)}, Rep ${formatSigned(row.incident.reputation)} · One-off: Coins ${formatSigned(row.oneOff.coins)}, Rep ${formatSigned(row.oneOff.reputation)}`, {
-        fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-        wordWrap: { width: panelW - 64 },
-      });
-      // Net change and closing balances — the single-player panel's own
-      // ordering (net change before closing balances) and signed formatting.
-      addText(leftX, rowY + 88, `Income total: ${formatSigned(row.incomeTotal)} · Net change: Coins ${formatSigned(row.netCoinChange)}, Rep ${formatSigned(row.netRepChange)}, Score ${formatSigned(row.netScoreChange)} · Closing: Coins ${row.closing.coins}, Rep ${row.closing.reputation}, Score ${row.closing.score}`, {
-        fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
-        wordWrap: { width: panelW - 64 },
-      });
-    });
-
-    // ── Actions ───────────────────────────────────────────────────
-    const btnY = panelY + panelH - 62;
-
-    // Primary action: resumes the shared day via onNextTurn.
-    const nextTurnBtn = createOverlayButton(s, centerX - 120, btnY, '[ Next Turn ]', 201);
-    if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
-    nextTurnBtn.on('pointerdown', () => {
-      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-      dismissDialog();
-      onNextTurn();
-    });
-    s.overlayObjects.push(nextTurnBtn);
-
-    // [ Bank Loan ] (MS-0MW4YUHOU00474HZ): mirrors the single-player button.
-    // Interactive in normal colour exactly when the human seat's descriptor
-    // says it may borrow (`summary.loanDescriptor.enabled`); every other case
-    // (loans disabled, an active obligation, no configured menu, or a roster
-    // without a human seat) is muted and inert with the descriptor's
-    // reason-specific hint. The seat comes from `summary.humanSeatId`, so the
-    // take is keyed to the human seat, never the transient `activePlayerId`.
-    const loanEnabled = summary.loanDescriptor?.enabled === true;
-    const humanSeatId = summary.humanSeatId;
-    const bankLoanBtn = createOverlayButton(
-      s, centerX + 120, btnY,
-      '[ Bank Loan ]', 201,
-      loanEnabled && humanSeatId >= 0
-        ? undefined
-        : { color: UNAVAILABLE_ACTION_COLOUR, hoverColor: UNAVAILABLE_ACTION_COLOUR },
-    );
-    if (loanEnabled && humanSeatId >= 0) {
-      bankLoanBtn.on('pointerdown', () => {
-        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-        onBankLoanAction?.(humanSeatId);
-
-        // Per-seat mid-game loan selector, driven by the configured menu rather
-        // than a pending offer (mirrors the single-player panel). Built before
-        // the swap, so a menu that cannot be built (or is empty) leaves this
-        // panel on screen instead of opening an empty modal.
-        let selector: LoanSelectorModel | null = null;
-        try {
-          selector = buildLoanSelectorModel(s.state, humanSeatId);
-        } catch {
-          selector = null;
-        }
-        if (!selector || selector.rows.length === 0) return;
-
-        /**
-         * Re-presents this panel from the **same** result against the live
-         * state: the summary is rebuilt with
-         * `buildCompetitiveTurnSummary(state, result)` and the human seat's
-         * loan descriptor is re-derived, so a loan taken in the selector shows
-         * up immediately as the disabled `[ Bank Loan ]` with its
-         * outstanding-obligation hint. Presentation-only: a failed rebuild
-         * keeps the values we were given rather than stranding the day.
-         */
-        const returnToSummary = (): void => {
-          let nextSummary = summary;
-          if (result) {
-            try {
-              nextSummary = buildCompetitiveTurnSummary(s.state, result) ?? summary;
-            } catch { /* presentation-only — keep the panel we were given */ }
-          }
-          this.showCompetitiveTurnSummaryDialog(
-            nextSummary,
-            onNextTurn,
-            onBankLoanAction,
-            result,
-          );
-        };
-
-        /**
-         * Draws the mid-game selector. `error` carries the engine's own refusal
-         * reason after a rejected confirm, so the dialog stays open and says
-         * why (MS-0MVXYCKFE000VF76).
-         */
-        const openSelector = (error?: string): void => {
-          this.showLoanSelectorDialog(
-            selector!,
-            {
-              // Confirming takes the loan through the command surface — never
-              // by mutating state inline — with the deferred-closing opt-in.
-              onAccept: (optionIndex) => confirmSelection(optionIndex),
-              // Cancel closes the selector and re-presents the Turn Summary
-              // panel with no state change.
-              onCancel: returnToSummary,
-            },
-            error,
-          );
-        };
-
-        /**
-         * Dispatches `takeLoanCommand` for one menu row keyed to the human
-         * seat, then refreshes in place. AP-neutral and reversible, so no
-         * action point is spent and the day never advances; the take is
-         * undoable through the shared undo manager. On success the panel is
-         * re-rendered from the same `result` against the post-take state. On
-         * refusal the engine's reason is shown in the still-open selector and
-         * nothing in `s.state` changes.
-         */
-        const confirmSelection = (optionIndex: number): void => {
-          let refusal: string | null = null;
-          try {
-            const cmd = takeLoanCommand(
-              s.state,
-              optionIndex,
-              { allowDuringClosing: true },
-              humanSeatId,
-            );
-            if (s.undoManager) {
-              s.undoManager.execute(cmd);
-            } else {
-              cmd.execute();
-            }
-          } catch (e) {
-            console.error('[BankLoan] Failed:', e);
-            refusal = (e as Error).message;
-          }
-
-          if (refusal !== null) {
-            // Public API contract: the engine refuses before any mutation, so
-            // there is nothing to roll back — only the reason to surface.
-            openSelector(refusal);
-            return;
-          }
-
-          // The take changed the wallet and booked an obligation: re-render the
-          // street/HUD from the post-take state and enable Undo, since the take
-          // pushed a reversible command.
-          s.refreshAll();
-          if (s.undoManager) {
-            s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-          }
-
-          returnToSummary();
-        };
-
-        // One modal at a time: dismiss this panel before the selector appears,
-        // so no Turn Summary button can be pressed behind its backdrop.
-        dismissDialog();
-        openSelector();
-      });
-    } else {
-      // The muted colour above already signals unavailability; disabling input
-      // keeps the button inert (no hover, no press, no seam call).
-      bankLoanBtn.disableInteractive();
-    }
-    if (s.hudContainer) s.hudContainer.add(bankLoanBtn);
-    s.overlayObjects.push(bankLoanBtn);
-
-    // Reason-specific hint: the descriptor's own copy (loans disabled, no
-    // configured options, or the human seat's outstanding obligation). Nothing
-    // is rendered when the button is enabled, and nothing when a roster has no
-    // human seat (no reason is known).
-    if (!loanEnabled && summary.loanDescriptor?.hint) {
-      addText(centerX, panelY + panelH - 26, summary.loanDescriptor.hint, {
-        fontSize: '12px', color: '#998877', fontFamily: FONT_FAMILY, align: 'center',
-        wordWrap: { width: panelW - 60 },
-      }, 0.5);
-    }
-  }
-
-  /**
-   * Shows the human piggyback decision prompt (F5 of MS-0MUYC47EL005Z69H).
-   *
-   * Presented when the human seat holds a pending piggyback decision raised
-   * after another active seat organised an eligible event. The player decides
-   * whether to **join fully** (pay exactly `round(1.5 × paidCost)` coins for
-   * a 100% share — no action point spent) or **keep the automatic 50%
-   * free-ride** share. There is NO decline/skip option: the 50% share is
-   * always applied, so the prompt offers exactly the two outcomes, and an
-   * unaffordable join-fully is hidden (the free-ride applies instead).
-   *
-   * Overlay pattern compliance (AGENTS.md UI Best Practices):
-   * createOverlayBackground + createOverlayButton from @ui; ALL elements are
-   * parented into `s.hudContainer`; depths 199 (backdrop) / 200 (box) /
-   * 201 (elements). Dialog appears instantly (no fade-in — reduced-motion
-   * safe); button SFX plays through safePlaySound (respects mute/volume).
-   * Cleanup on dismissal resets `s.overlayObjects`.
-   *
-   * @param info     The exact prompt data (event, 150% charge, affordability,
-   *                 100%/50% reward projections) from the turn controller.
-   * @param onJoin   Called when the player chooses to join fully.
-   * @param onKeep   Called when the player keeps the 50% free-ride.
-   */
-  public showPiggybackDialog(
-    info: {
-      event: EventCard;
-      charge: number;
-      affordable: boolean;
-      fullReward: { coins: number; reputation: number };
-      halfReward: { coins: number; reputation: number };
-    },
-    onJoin: () => void,
-    onKeep: () => void,
-  ): void {
-    const s = this.scene;
-    if (s.replayMode) return; // headless/replay: never present UI
-
-    const panelW = 520;
-    const panelH = 340;
-    const panelY = s.layout.gameH / 2 - panelH / 2;
-
-    const boxConfig = {
-      width: panelW,
-      height: panelH,
-      color: 0x000000,
-      alpha: 1.0,
-      depth: 200,
-    };
-    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
-    s.overlayObjects.push(...overlay.objects);
-
-    // Title: the event name — the exact thing the player is piggybacking on.
-    const titleText = s.add.text(
-      s.layout.gameW / 2, panelY + 24,
-      `${info.event.name} — piggyback`,
-      {
-        fontSize: '21px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
-        align: 'center', wordWrap: { width: panelW - 60 },
-      },
-    ).setOrigin(0.5).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(titleText);
-    s.overlayObjects.push(titleText);
-
-    const joinCoins = Math.round(info.fullReward.coins);
-    const joinRep = Math.round(info.fullReward.reputation);
-    const rideCoins = Math.round(info.halfReward.coins);
-    const rideRep = Math.round(info.halfReward.reputation);
-
-    // Body: the exact 150% coin cost and the reward shares (AC1).
-    const bodyText = s.add.text(
-      s.layout.gameW / 2, panelY + 64,
-      `Another seat organised this event. You already hold the automatic 50% share.\n\n` +
-        `Join fully: pay ${info.charge} coins (no action used) for a 100% share of the rewards — ` +
-        `+${joinCoins} coins / +${joinRep} reputation.\n\n` +
-        `Keep the 50% share: nothing to pay — +${rideCoins} coins / +${rideRep} reputation.`,
-      {
-        fontSize: '13px',
-        color: '#ddccbb',
-        fontFamily: FONT_FAMILY,
-        align: 'center',
-        lineSpacing: 4,
-        wordWrap: { width: panelW - 70 },
-      },
-    ).setOrigin(0.5, 0).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(bodyText);
-    s.overlayObjects.push(bodyText);
-
-    // Two outcomes only — never a decline/skip (AC2).
-    if (info.affordable) {
-      const joinBtn = createOverlayButton(
-        s, s.layout.gameW / 2 - 150, panelY + panelH - 52,
-        `Join fully — ${info.charge} coins`, 201,
-        { fontSize: '13px', color: '#88ff88', hoverColor: '#aaffaa' },
-      );
-      if (s.hudContainer) s.hudContainer.add(joinBtn);
-      joinBtn.on('pointerdown', () => {
-        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-        dismissOverlay(s.overlayObjects);
-        s.overlayObjects = [];
-        onJoin();
-      });
-      s.overlayObjects.push(joinBtn);
-
-      const keepBtn = createOverlayButton(
-        s, s.layout.gameW / 2 + 150, panelY + panelH - 52,
-        'Keep 50% share', 201,
-        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
-      );
-      if (s.hudContainer) s.hudContainer.add(keepBtn);
-      keepBtn.on('pointerdown', () => {
-        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-        dismissOverlay(s.overlayObjects);
-        s.overlayObjects = [];
-        onKeep();
-      });
-      s.overlayObjects.push(keepBtn);
-    } else {
-      // Unaffordable join-fully: the option is hidden — only the free-ride
-      // outcome remains and it applies automatically (AC2).
-      const noteText = s.add.text(
-        s.layout.gameW / 2, panelY + panelH - 106,
-        `Joining fully needs ${info.charge} coins — you cannot afford it this week.\nThe automatic 50% share (${rideCoins}c / ${rideRep}r) applies.`,
-        {
-          fontSize: '12px', color: '#cc9988', fontFamily: FONT_FAMILY,
-          align: 'center', wordWrap: { width: panelW - 70 },
-        },
-      ).setOrigin(0.5, 0).setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(noteText);
-      s.overlayObjects.push(noteText);
-
-      const keepBtn = createOverlayButton(
-        s, s.layout.gameW / 2, panelY + panelH - 52,
-        'Continue with my 50% share', 201,
-        { fontSize: '13px', color: '#99ccff', hoverColor: '#bbddff' },
-      );
-      if (s.hudContainer) s.hudContainer.add(keepBtn);
-      keepBtn.on('pointerdown', () => {
-        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
-        dismissOverlay(s.overlayObjects);
-        s.overlayObjects = [];
-        onKeep();
-      });
-      s.overlayObjects.push(keepBtn);
-    }
   }
 
   /**

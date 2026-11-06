@@ -52,7 +52,12 @@
  * owned) kept as supplementary context. {@link buildPLTabs} provides the
  * per-player tab model (id / label / colour / is-human, human default). Both
  * reuse the builders above, so single-player (`TurnLedger`) and competitive
- * (`CompetitiveRoundLedger`) closings share one statement shape.
+ * (`CompetitiveRoundLedger`) closings share one statement shape. The tabbed
+ * dialog holds the built summary rather than the raw result, so
+ * {@link buildPLTabsFromTurnSummary} / {@link buildPLTabsFromCompetitiveSummary}
+ * and {@link buildPLFromTurnSummary} / {@link buildPLFromCompetitiveRow} project
+ * the same statement and tabs from it — one source of truth for both entry
+ * points.
  *
  * @module src/scenes/MainStreetTurnSummary
  */
@@ -699,16 +704,53 @@ export function buildPLTabs(
   result: PLResultInput,
 ): PLTab[] {
   const competitive = buildCompetitiveTurnSummary(state, result);
-  const tabs: PLTab[] = competitive
-    ? competitive.rows.map((row) => ({
-      id: String(row.ownerId),
-      label: row.label,
-      colour: row.colour,
-      isHuman: row.isHuman,
-      isDefault: false,
-    }))
-    : singlePlayerTabs(state, result);
+  if (competitive) return buildPLTabsFromCompetitiveSummary(competitive);
+  const summary = buildTurnSummary(state, result);
+  return summary ? buildPLTabsFromTurnSummary(summary) : [];
+}
 
+/**
+ * Builds the tab model from an already-built single-player summary.
+ *
+ * The tabbed dialog receives the summary (not the raw result), so it needs the
+ * same tab projection without re-deriving the summary — one owner row per tab,
+ * or the single human `You` tab when the player owns no business yet.
+ *
+ * @param summary The single-player Turn Summary model.
+ */
+export function buildPLTabsFromTurnSummary(summary: TurnSummary): PLTab[] {
+  const seats = summary.owners.length > 0
+    ? summary.owners
+    : [{ ownerId: '0', label: 'You', isHuman: true }];
+  return markDefaultTab(seats.map((seat) => ({
+    id: seat.ownerId,
+    label: seat.label,
+    colour: undefined,
+    isHuman: seat.isHuman,
+    isDefault: false,
+  })));
+}
+
+/**
+ * Builds the tab model from an already-built competitive summary: one tab per
+ * non-eliminated seat, in seat order, with the seat's own label and colour.
+ *
+ * @param summary The competitive (per-seat) Turn Summary model.
+ */
+export function buildPLTabsFromCompetitiveSummary(
+  summary: CompetitiveTurnSummary,
+): PLTab[] {
+  return markDefaultTab(summary.rows.map((row) => ({
+    id: String(row.ownerId),
+    label: row.label,
+    colour: row.colour,
+    isHuman: row.isHuman,
+    isDefault: false,
+  })));
+}
+
+/** Marks exactly one tab as the default: the human seat, else the first tab. */
+function markDefaultTab(tabs: PLTab[]): PLTab[] {
   const defaultTab = tabs.find((tab) => tab.isHuman) ?? tabs[0];
   if (defaultTab) defaultTab.isDefault = true;
   return tabs;
@@ -731,66 +773,37 @@ export function buildPLProjection(
   result: PLResultInput,
   playerKey?: string | number,
 ): PLProjection | null {
-  const tabs = buildPLTabs(state, result);
-  if (tabs.length === 0) return null;
-  const key = playerKey === undefined
-    ? (tabs.find((tab) => tab.isDefault) ?? tabs[0]).id
-    : String(playerKey);
-  const tab = tabs.find((candidate) => candidate.id === key);
-  if (!tab) return null;
-
   const competitive = buildCompetitiveTurnSummary(state, result);
   if (competitive) {
+    const key = selectPlayerKey(buildPLTabsFromCompetitiveSummary(competitive), playerKey);
     const row = competitive.rows.find((candidate) => String(candidate.ownerId) === key);
-    if (!row) return null;
-    return {
-      playerKey: key,
-      label: tab.label,
-      isHuman: tab.isHuman,
-      colour: tab.colour,
-      income: plSection(
-        'income',
-        PL_LABELS.income,
-        PL_LABELS.incomeTotal,
-        row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
-        row.incomeTotal,
-      ),
-      expenses: plSection(
-        'expenses',
-        PL_LABELS.expenses,
-        PL_LABELS.expensesTotal,
-        row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
-        row.expensesTotal,
-      ),
-      incident: {
-        key: 'incident',
-        label: PL_LABELS.incident,
-        coins: row.incident.coins,
-        reputation: row.incident.reputation,
-      },
-      oneOff: {
-        key: 'oneOff',
-        label: PL_LABELS.oneOff,
-        coins: row.oneOff.coins,
-        reputation: row.oneOff.reputation,
-      },
-      net: {
-        label: PL_LABELS.net,
-        coins: row.netCoinChange,
-        reputation: row.netRepChange,
-        score: row.netScoreChange,
-      },
-      context: {
-        reputationChange: row.netRepChange,
-        scoreChange: row.netScoreChange,
-        closingCoins: row.closing.coins,
-        businessesOwned: row.businessesOwned,
-      },
-    };
+    return row ? buildPLFromCompetitiveRow(row) : null;
   }
 
   const summary = buildTurnSummary(state, result);
-  if (!summary) return null;
+  return summary ? buildPLFromTurnSummary(summary, playerKey) : null;
+}
+
+/**
+ * Projects one player's P&L statement from an already-built single-player
+ * summary, or `null` when that player has no statement.
+ *
+ * The tabbed dialog holds the summary (not the raw result), so this is the same
+ * projection {@link buildPLProjection} produces, without re-deriving the
+ * summary. Every figure comes from the summary's own committed ledger rows, so
+ * the statement still reconciles exactly.
+ *
+ * @param summary   The single-player Turn Summary model.
+ * @param playerKey Owner key (`'0'` in single-player); omitted → the human tab.
+ */
+export function buildPLFromTurnSummary(
+  summary: TurnSummary,
+  playerKey?: string | number,
+): PLProjection | null {
+  const tabs = buildPLTabsFromTurnSummary(summary);
+  const key = selectPlayerKey(tabs, playerKey);
+  const tab = tabs.find((candidate) => candidate.id === key);
+  if (!tab) return null;
   const owner = summary.owners.find((candidate) => candidate.ownerId === key);
   // A player with an empty street has no owner row but is still owed a
   // statement (the single-player human seat is always `'0'`).
@@ -842,23 +855,68 @@ export function buildPLProjection(
   };
 }
 
-/** The single-player tab rows (`TurnLedger` owner keys, else the human seat). */
-function singlePlayerTabs(
-  state: MainStreetState,
-  result: PLResultInput,
-): PLTab[] {
-  const summary = buildTurnSummary(state, result);
-  if (!summary) return [];
-  const seats = summary.owners.length > 0
-    ? summary.owners
-    : [{ ownerId: '0', label: 'You', isHuman: true }];
-  return seats.map((seat) => ({
-    id: seat.ownerId,
-    label: seat.label,
-    colour: undefined,
-    isHuman: seat.isHuman,
-    isDefault: false,
-  }));
+/**
+ * Projects one seat's P&L statement from an already-built competitive row.
+ *
+ * The tabbed dialog holds the competitive summary (not the raw result), so this
+ * is the same projection {@link buildPLProjection} produces for a seat, without
+ * re-deriving the summary.
+ *
+ * @param row The seat's competitive Turn Summary row.
+ */
+export function buildPLFromCompetitiveRow(
+  row: CompetitiveTurnSummaryRow,
+): PLProjection {
+  return {
+    playerKey: String(row.ownerId),
+    label: row.label,
+    isHuman: row.isHuman,
+    colour: row.colour,
+    income: plSection(
+      'income',
+      PL_LABELS.income,
+      PL_LABELS.incomeTotal,
+      row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      row.incomeTotal,
+    ),
+    expenses: plSection(
+      'expenses',
+      PL_LABELS.expenses,
+      PL_LABELS.expensesTotal,
+      row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
+      row.expensesTotal,
+    ),
+    incident: {
+      key: 'incident',
+      label: PL_LABELS.incident,
+      coins: row.incident.coins,
+      reputation: row.incident.reputation,
+    },
+    oneOff: {
+      key: 'oneOff',
+      label: PL_LABELS.oneOff,
+      coins: row.oneOff.coins,
+      reputation: row.oneOff.reputation,
+    },
+    net: {
+      label: PL_LABELS.net,
+      coins: row.netCoinChange,
+      reputation: row.netRepChange,
+      score: row.netScoreChange,
+    },
+    context: {
+      reputationChange: row.netRepChange,
+      scoreChange: row.netScoreChange,
+      closingCoins: row.closing.coins,
+      businessesOwned: row.businessesOwned,
+    },
+  };
+}
+
+/** Resolves the statement/tab key: the requested player, else the default tab. */
+function selectPlayerKey(tabs: readonly PLTab[], playerKey?: string | number): string {
+  if (playerKey !== undefined) return String(playerKey);
+  return (tabs.find((tab) => tab.isDefault) ?? tabs[0])?.id ?? '';
 }
 
 /** Assembles one titled statement section. */
