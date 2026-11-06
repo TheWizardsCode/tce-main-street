@@ -8,15 +8,28 @@
  * skills (same-seed ⇒ same-game determinism, mirroring the engine's shuffled
  * decks).
  *
- * Assignment rules (AC3/AC4 of CG-0MT1CIWSD003VBPK):
+ * Assignment rules (MS-0MW4MSNMJ006E9JH, refining AC3/AC4 of
+ * CG-0MT1CIWSD003VBPK):
  * - Every staff applicant receives 1–3 skills.
- * - `skill-town-gossip` (the Town Gossip peek mechanic, CG-0MSXOW6GN008ZSMN)
- *   is always included as the baseline skill.
+ * - Skills are **type-consistent**: business staff draw only business-scope
+ *   skills, management-company staff draw only management-company-scope
+ *   skills. A skill's `scope` (see `getSkillScope`) must match the holder's
+ *   staff type (GDD D.4.8: a skill is inert when the scopes differ).
+ * - `skill-town-gossip` (the Town Gossip peek mechanic,
+ *   CG-0MSXOW6GN008ZSMN) is the baseline skill on every management-company
+ *   card and is never drawn into a business-staff pool.
  * - Stacking constraint: no staff member may hold more than 1 income-boost
  *   skill AND more than 1 reputation-boost skill simultaneously, preventing
  *   runaway stacking. The baseline Town Gossip is exempt from this cap — it is
  *   a fixed informational ability (peek) rather than a stacking boost, and
  *   exempting it keeps the reputation pool reachable.
+ *
+ * Staff type (GDD D.4.2/D.4.7/D.4.8): the type is a property of the card
+ * template. At runtime a member carrying `employedAtSlot` is business staff and
+ * one without is management-company staff. Cards in the deck and market row
+ * are not employed yet, so `staffCardScope` falls back to the template marker
+ * the GDD defines — `handSlotsAdded > 0` or `actionsPerTurn > 0` means
+ * management-company staff, everything else business staff.
  *
  * Skills only modify computations through the buff helpers in
  * `MainStreetStaffBuffs` / adjacency wiring; this module stays free of engine
@@ -29,11 +42,11 @@
  * @module
  */
 
-import type { SpecializationSkill, SpecializationSkillCategory } from './MainStreetCards';
+import type { SpecializationSkill, SpecializationSkillCategory, SkillScope } from './MainStreetCards';
 import type { MainStreetState } from './MainStreetState';
 import { createSeededRng } from '@core-engine/SeededRng';
 
-export type { SpecializationSkill, SpecializationSkillCategory } from './MainStreetCards';
+export type { SpecializationSkill, SpecializationSkillCategory, SkillScope } from './MainStreetCards';
 export { STACKED_SKILL_CATEGORIES } from './MainStreetCards';
 
 // ── Effect Categories (AC4) ─────────────────────────────────
@@ -44,7 +57,7 @@ export { STACKED_SKILL_CATEGORIES } from './MainStreetCards';
  */
 export type SkillCategory = SpecializationSkillCategory;
 
-/** Baseline skill always assigned to every staff applicant. */
+/** Baseline skill on every management-company card. */
 export const BASELINE_SKILL_ID = 'skill-town-gossip' as const;
 
 /**
@@ -63,26 +76,26 @@ export const STAFF_SKILL_CHIP_COLORS: Readonly<Record<SpecializationSkillCategor
 
 /** The global specialization-skill pool (locked at game start). */
 export const STAFF_SKILL_CATALOG: readonly SpecializationSkill[] = [
-  // Category A: Income Boosts
-  { id: 'skill-networker', name: 'Networker', category: 'income-boost', description: '+20 coins per adjacent business synergy (passive).', effect: 'adjacency-coin-bonus' },
-  { id: 'skill-chef', name: 'Chef de Cuisine', category: 'income-boost', description: '+20% income from Food businesses.', effect: 'income-percent-food' },
-  { id: 'skill-dj', name: 'DJ', category: 'income-boost', description: '+20% income from Entertainment businesses.', effect: 'income-percent-entertainment' },
-  { id: 'skill-sales-champion', name: 'Sales Champion', category: 'income-boost', description: '+50 coins per turn from Commerce businesses.', effect: 'income-flat-commerce' },
-  { id: 'skill-tech-guru', name: 'Tech Guru', category: 'income-boost', description: 'Unlocks +1 synergy range for Entertainment businesses.', effect: 'synergy-range-entertainment' },
+  // Category A: Income Boosts (business-staff scope)
+  { id: 'skill-networker', name: 'Networker', category: 'income-boost', scope: 'business', description: '+20 coins per adjacent business synergy (passive).', effect: 'adjacency-coin-bonus' },
+  { id: 'skill-chef', name: 'Chef de Cuisine', category: 'income-boost', scope: 'business', description: '+20% income from Food businesses.', effect: 'income-percent-food' },
+  { id: 'skill-dj', name: 'DJ', category: 'income-boost', scope: 'business', description: '+20% income from Entertainment businesses.', effect: 'income-percent-entertainment' },
+  { id: 'skill-sales-champion', name: 'Sales Champion', category: 'income-boost', scope: 'business', description: '+50 coins per turn from Commerce businesses.', effect: 'income-flat-commerce' },
+  { id: 'skill-tech-guru', name: 'Tech Guru', category: 'income-boost', scope: 'business', description: 'Unlocks +1 synergy range for Entertainment businesses.', effect: 'synergy-range-entertainment' },
   // Category B: Reputation Boosts
-  { id: 'skill-town-gossip', name: 'Town Gossip', category: 'reputation-boost', description: 'Peek at the top incident-deck card once per turn (baseline).', effect: 'peek-incident-deck' },
-  { id: 'skill-community-builder', name: 'Community Builder', category: 'reputation-boost', description: '+10 reputation per turn from all businesses.', effect: 'reputation-flat-all' },
-  { id: 'skill-brand-ambassador', name: 'Brand Ambassador', category: 'reputation-boost', description: '+50% reputation gain from incidents and investments.', effect: 'reputation-multiplier-sources' },
-  { id: 'skill-pr-strategist', name: 'PR Strategist', category: 'reputation-boost', description: '+15 reputation per turn from Service businesses.', effect: 'reputation-flat-service' },
+  { id: 'skill-town-gossip', name: 'Town Gossip', category: 'reputation-boost', scope: 'management-company', description: 'Peek at the top incident-deck card once per turn (baseline).', effect: 'peek-incident-deck' },
+  { id: 'skill-community-builder', name: 'Community Builder', category: 'reputation-boost', scope: 'business', description: '+10 reputation per turn from all businesses.', effect: 'reputation-flat-all' },
+  { id: 'skill-brand-ambassador', name: 'Brand Ambassador', category: 'reputation-boost', scope: 'management-company', description: '+50% reputation gain from incidents and investments.', effect: 'reputation-multiplier-sources' },
+  { id: 'skill-pr-strategist', name: 'PR Strategist', category: 'reputation-boost', scope: 'business', description: '+15 reputation per turn from Service businesses.', effect: 'reputation-flat-service' },
   // Category C: Cost Reductions
-  { id: 'skill-cost-cutter', name: 'Cost Cutter', category: 'cost-reduction', description: '-15% ongoing costs for the entire street (flagged for extra balance testing).', effect: 'ongoing-cost-street-pct' },
-  { id: 'skill-negotiator', name: 'Negotiator', category: 'cost-reduction', description: '-100 cost on business card refreshes.', effect: 'refresh-cost-flat' },
-  { id: 'skill-operations-manager', name: 'Operations Manager', category: 'cost-reduction', description: '-50 salary cost for this employed staff member.', effect: 'salary-flat' },
-  // Category D: Incident Mitigation
-  { id: 'skill-quality-inspector', name: 'Quality Inspector', category: 'incident-mitigation', description: '-30% coin damage from all incidents.', effect: 'incident-coin-damage-pct' },
-  { id: 'skill-risk-manager', name: 'Risk Manager', category: 'incident-mitigation', description: 'Reduces incident probability by 15%.', effect: 'incident-probability-pct' },
-  { id: 'skill-security-consultant', name: 'Security Consultant', category: 'incident-mitigation', description: 'Immunity to theft/loss incidents on the home business.', effect: 'incident-theft-immunity' },
-  { id: 'skill-compliance', name: 'Compliance Officer', category: 'incident-mitigation', description: 'Reduces incident reputation damage by 50.', effect: 'incident-rep-damage-flat' },
+  { id: 'skill-cost-cutter', name: 'Cost Cutter', category: 'cost-reduction', scope: 'management-company', description: '-15% ongoing costs for the entire street (flagged for extra balance testing).', effect: 'ongoing-cost-street-pct' },
+  { id: 'skill-negotiator', name: 'Negotiator', category: 'cost-reduction', scope: 'management-company', description: '-100 cost on business card refreshes.', effect: 'refresh-cost-flat' },
+  { id: 'skill-operations-manager', name: 'Operations Manager', category: 'cost-reduction', scope: 'business', description: '-50 salary cost for this employed staff member.', effect: 'salary-flat' },
+  // Category D: Incident Mitigation (management-company scope)
+  { id: 'skill-quality-inspector', name: 'Quality Inspector', category: 'incident-mitigation', scope: 'management-company', description: '-30% coin damage from all incidents.', effect: 'incident-coin-damage-pct' },
+  { id: 'skill-risk-manager', name: 'Risk Manager', category: 'incident-mitigation', scope: 'management-company', description: 'Reduces incident probability by 15%.', effect: 'incident-probability-pct' },
+  { id: 'skill-security-consultant', name: 'Security Consultant', category: 'incident-mitigation', scope: 'management-company', description: 'Immunity to theft/loss incidents on the home business.', effect: 'incident-theft-immunity' },
+  { id: 'skill-compliance', name: 'Compliance Officer', category: 'incident-mitigation', scope: 'management-company', description: 'Reduces incident reputation damage by 50.', effect: 'incident-rep-damage-flat' },
 ];
 
 /** O(1) lookup of a specialization skill by id. */
@@ -92,6 +105,47 @@ export function getSkill(skillId: string): SpecializationSkill {
     throw new Error(`Unknown specialization skill id: ${skillId}`);
   }
   return skill;
+}
+
+/**
+ * Returns the staff type a skill takes effect from (MS-0MW4MSNMJ006E9JH).
+ *
+ * The classification is the "16 skills by staff type" table in
+ * `docs/game/specialization-skills.md`: eight business-scope skills and eight
+ * management-company-scope skills. Assigning a skill to a member of the other
+ * type would create an effect it can never realise (GDD D.4.8).
+ *
+ * @param skillId Catalog skill id (see {@link getSkill}).
+ * @returns The skill's scope (`'business'` or `'management-company'`).
+ * @throws Error when the id is not in the catalog.
+ */
+export function getSkillScope(skillId: string): SkillScope {
+  return getSkill(skillId).scope;
+}
+
+/**
+ * Derives a staff card's type for skill assignment (MS-0MW4MSNMJ006E9JH).
+ *
+ * The GDD's two-type model (D.4.2/D.4.8) makes staff type a property of the
+ * card template with `employedAtSlot` as the runtime determinant: a member
+ * carrying a slot is business staff, one without is management-company staff.
+ * Deck and market-row cards are not employed yet, so for those the template
+ * marker the GDD defines decides (D.4.7): `handSlotsAdded > 0` or
+ * `actionsPerTurn > 0` is management-company staff, everything else is
+ * business staff. A present `employedAtSlot` always wins, so a hired member is
+ * classified by its actual assignment.
+ *
+ * @param card A staff card (or the fields needed to classify it).
+ * @returns The card's staff type as a skill scope.
+ */
+export function staffCardScope(card: {
+  readonly employedAtSlot?: number;
+  readonly handSlotsAdded?: number;
+  readonly actionsPerTurn?: number;
+}): SkillScope {
+  if (card.employedAtSlot !== undefined) return 'business';
+  if ((card.handSlotsAdded ?? 0) > 0 || (card.actionsPerTurn ?? 0) > 0) return 'management-company';
+  return 'business';
 }
 
 // ── Serialization (I2, CG-0MT4WXQCN001G1LF) ─────────────────
@@ -163,15 +217,25 @@ const SKILL_RNG_SALT = 0x5eed;
  * numeric seed produces the same assignments for the same seed (same seed ⇒
  * same game), without perturbing the main RNG stream.
  *
- * Skills are deliberately assigned from the global pool regardless of the
- * staff member's nominal job — a "Chef" can hold the "Security" skill.
+ * Skills are drawn from the pool matching the card's staff type: business
+ * staff receive business-scope skills, management-company staff receive
+ * management-company-scope skills plus the Town Gossip baseline
+ * (MS-0MW4MSNMJ006E9JH). A skill assigned this way can always resolve from
+ * its holder (GDD D.4.8).
  *
  * @param state Initialized game state (decks + market already assembled).
  */
 export function assignStaffApplicantSkills(state: MainStreetState): void {
   const skillRng = createSeededRng(state.numericSeed ^ SKILL_RNG_SALT);
-  const assign = (card: { specializationSkillIds?: string[] }): void => {
-    card.specializationSkillIds = serializeSkillIds(assignSkillsToApplicant(skillRng));
+  const assign = (card: {
+    specializationSkillIds?: string[];
+    employedAtSlot?: number;
+    handSlotsAdded?: number;
+    actionsPerTurn?: number;
+  }): void => {
+    card.specializationSkillIds = serializeSkillIds(
+      assignSkillsToApplicant(skillRng, staffCardScope(card)),
+    );
   };
 
   for (const card of state.decks.staff) {
@@ -179,7 +243,12 @@ export function assignStaffApplicantSkills(state: MainStreetState): void {
   }
   for (const card of state.market.cards) {
     if (card.family === 'staff') {
-      assign(card as { specializationSkillIds?: string[] });
+      assign(card as {
+        specializationSkillIds?: string[];
+        employedAtSlot?: number;
+        handSlotsAdded?: number;
+        actionsPerTurn?: number;
+      });
     }
   }
 }
@@ -192,22 +261,42 @@ const MAX_REPUTATION_BOOST = 1;
 
 /**
  * Assigns specialization skills to a single staff applicant using a seeded
- * RNG (`() => number` in [0, 1), e.g. `createSeededRng`).
+ * RNG (`() => number` in [0, 1), e.g. `createSeededRng`) and a staff type
+ * scope.
+ *
+ * The draw is type-consistent (MS-0MW4MSNMJ006E9JH): every skill is drawn
+ * from the catalog entries whose `scope` matches `scope`, and a
+ * management-company draw always starts with the Town Gossip baseline. The
+ * per-member stacking caps still hold inside the filtered pool.
  *
  * Every draw decision consumes exactly one `rng()` call in a fixed order, so
  * the same RNG stream always produces the same skill set (and order).
  *
  * @param rng Seeded RNG; the same stream yields identical assignments.
- * @returns 1–3 skills, always including the Town Gossip baseline.
+ * @param scope Staff type of the member being assigned (`'business'` or
+ *   `'management-company'`). Use {@link staffCardScope} to derive it from a card.
+ * @returns 1–3 skills, all of the member's scope; management-company rosters
+ *   always include the Town Gossip baseline first.
  */
-export function assignSkillsToApplicant(rng: () => number): SpecializationSkill[] {
-  const skills: SpecializationSkill[] = [getSkill(BASELINE_SKILL_ID)];
-  // 1..3 total skills: the baseline plus 0..2 drawn from the pool.
+export function assignSkillsToApplicant(rng: () => number, scope: SkillScope): SpecializationSkill[] {
+  const skills: SpecializationSkill[] = [];
+  const remaining = STAFF_SKILL_CATALOG.filter(s => s.scope === scope);
+
+  // The Town Gossip baseline is management-company scope only: it is never
+  // drawn into a business-staff pool.
+  const baseline =
+    scope === 'management-company' ? remaining.find(s => s.id === BASELINE_SKILL_ID) : undefined;
+  if (baseline) {
+    skills.push(baseline);
+    remaining.splice(remaining.indexOf(baseline), 1);
+  }
+
+  // 1..3 total skills: management-company draws add to the baseline, business
+  // draws (which have no baseline) fill all 1–3 slots from the business pool.
   const total = 1 + Math.floor(rng() * 3);
-  const toDraw = total - 1;
+  const toDraw = scope === 'management-company' ? total - 1 : total;
 
   // Candidates remain eligible while the stacking cap allows their category.
-  const remaining = STAFF_SKILL_CATALOG.filter(s => s.id !== BASELINE_SKILL_ID);
   let incomeBoost = 0;
   let reputationBoost = 0;
 
@@ -236,12 +325,17 @@ export function assignSkillsToApplicant(rng: () => number): SpecializationSkill[
  *
  * @param rng Seeded RNG shared across applicants.
  * @param count Number of applicants to generate.
+ * @param scope Staff type of every generated applicant.
  * @returns One skill set per applicant, in roster order.
  */
-export function assignSkillsToApplicants(rng: () => number, count: number): SpecializationSkill[][] {
+export function assignSkillsToApplicants(
+  rng: () => number,
+  count: number,
+  scope: SkillScope,
+): SpecializationSkill[][] {
   const roster: SpecializationSkill[][] = [];
   for (let i = 0; i < count; i += 1) {
-    roster.push(assignSkillsToApplicant(rng));
+    roster.push(assignSkillsToApplicant(rng, scope));
   }
   return roster;
 }

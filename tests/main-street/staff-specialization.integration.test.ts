@@ -28,6 +28,7 @@ import { applyIncome, syncCardCurrentIncome } from '../../src/MainStreetAdjacenc
 import { buildCardTooltipInfo } from '../../src/MainStreetFormatting';
 import {
   getSkill,
+  staffCardScope,
   BASELINE_SKILL_ID,
   deserializeSkillIds,
 } from '../../src/MainStreetStaffSkills';
@@ -120,27 +121,44 @@ describe('D1: staff specialization end-to-end integration', () => {
     expect(key(restored)).toEqual(key(state));
   });
 
-  it('Town Gossip peek coexists with assigned skills (baseline on every member)', () => {
+  it('Town Gossip peek coexists with assigned skills (baseline on management-company members)', () => {
     const state = setupMainStreetGame({ seed: 'd1-peek' });
     executeWeekStart(state);
     state.phase = 'MarketPhase';
     state.resourceBank.coins = 99999;
 
-    // Every market staff member carries the baseline peek skill.
+    // The baseline is management-company scope: management-company row staff
+    // carry it, business row staff do not (MS-0MW4MSNMJ006E9JH).
     for (const card of state.market.cards.filter(c => c.family === 'staff') as StaffCard[]) {
-      expect(card.specializationSkillIds).toContain(BASELINE_SKILL_ID);
+      if (staffCardScope(card) === 'management-company') {
+        expect(card.specializationSkillIds, card.id).toContain(BASELINE_SKILL_ID);
+      } else {
+        expect(card.specializationSkillIds, card.id).not.toContain(BASELINE_SKILL_ID);
+      }
     }
 
-    // Hire one and use the peek action end-to-end.
-    const rowStaff = state.market.cards.filter(c => c.family === 'staff') as StaffCard[];
-    if (rowStaff.length > 0) {
-      hireStaffCard(state, rowStaff[0].id);
-      const before = state.revealedPeekedCard;
-      const peeked = peekIncidentDeck(state);
-      expect(peeked).toBeTruthy();
-      expect(state.revealedPeekedCard).not.toBe(before);
-      expect(state.revealedPeekedCard).toBe(peeked);
+    // Hire a management-company member (the type that carries the peek
+    // baseline) and use the peek action end-to-end.
+    const managementRow = (state.market.cards.filter(c => c.family === 'staff') as StaffCard[]).find(
+      c => staffCardScope(c) === 'management-company',
+    );
+    if (managementRow) {
+      hireStaffCard(state, managementRow.id);
+    } else {
+      // No management-company applicant in this seed's row: add one directly
+      // so the peek mechanic (management-company baseline) is still exercised.
+      const template = createStaffDeck(1).find(c => staffCardScope(c) === 'management-company')!;
+      state.staffCards.push({
+        ...template,
+        id: 'staff-d1-peek',
+        specializationSkillIds: [BASELINE_SKILL_ID],
+      });
     }
+    const before = state.revealedPeekedCard;
+    const peeked = peekIncidentDeck(state);
+    expect(peeked).toBeTruthy();
+    expect(state.revealedPeekedCard).not.toBe(before);
+    expect(state.revealedPeekedCard).toBe(peeked);
   });
 
   it('stacking constraint holds across the real per-game roster (no hand-tuning)', () => {

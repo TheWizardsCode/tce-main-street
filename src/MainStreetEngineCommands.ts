@@ -26,7 +26,7 @@ import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
-import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
+import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
@@ -1285,7 +1285,7 @@ export function resolveStaffApplicant(state: MainStreetState): void {
   // Assign specialization skills if not already present
   if (!Array.isArray(card.specializationSkillIds)) {
     card.specializationSkillIds = serializeSkillIds(
-      assignSkillsToApplicant(state.rng),
+      assignSkillsToApplicant(state.rng, staffCardScope(card)),
     );
   }
 

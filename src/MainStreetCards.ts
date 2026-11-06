@@ -57,6 +57,7 @@ export type {
   StaffBusinessTarget,
   SpecializationSkillCategory,
   SpecializationSkill,
+  SkillScope,
   EventTrigger,
   EventTarget,
   CardFamily,

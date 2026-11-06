@@ -48,6 +48,17 @@ export type SpecializationSkillCategory =
   | 'incident-mitigation';
 
 /**
+ * The staff type a specialization skill takes effect from (MS-0MW4MSNMJ006E9JH).
+ *
+ * The two types are the GDD's staff types (Appendix D.4): `business` staff are
+ * employed at one business (`employedAtSlot`) and their skills resolve per
+ * business; `management-company` staff are employed by the player and their
+ * skills resolve against the player's turn or the street-wide economy. A skill
+ * whose scope does not match its holder's type is inert.
+ */
+export type SkillScope = 'business' | 'management-company';
+
+/**
  * Categories tracked by the per-staff stacking cap: a staff member may hold
  * at most 1 income-boost AND at most 1 reputation-boost skill beyond the Town
  * Gossip baseline. Other categories (cost-reduction, incident-mitigation)
@@ -72,6 +83,12 @@ export interface SpecializationSkill {
   readonly description: string;
   /** Effect category; also the stacking-tracked category for income/reputation boosts. */
   readonly category: SpecializationSkillCategory;
+  /**
+   * Staff type this skill takes effect from (MS-0MW4MSNMJ006E9JH). The
+   * assignment path draws only skills whose scope matches the card's staff
+   * type, so a skill can never be assigned to a member that cannot realise it.
+   */
+  readonly scope: SkillScope;
   /**
    * Machine-readable effect hint consumed by buff wiring (MainStreetStaffBuffs,
    * I4 CG-0MT4WXV2J000M35M) and rendering/help text (I5 CG-0MT4WXX1Q00860VP).
