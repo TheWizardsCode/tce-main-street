@@ -42,6 +42,18 @@
  * post-turn balances while staying integer-consistent with the displayed net
  * and row subtotals.
  *
+ * Profit/loss statement (parent MS-0MW4XULA90002OEY, producer answers Q1=A,
+ * Q2=A, Q3=A): {@link buildPLProjection} re-projects one player's committed
+ * ledger figures as an ordered coins-only profit/loss statement — Income
+ * (base / synergy / reputation / events) with a total, Less: Operating
+ * expenses (staff / community / business) with a total, the Incident and
+ * One-off adjustments and an emphasised Net profit/loss bottom line — with the
+ * non-monetary figures (reputation/score change, closing coins, businesses
+ * owned) kept as supplementary context. {@link buildPLTabs} provides the
+ * per-player tab model (id / label / colour / is-human, human default). Both
+ * reuse the builders above, so single-player (`TurnLedger`) and competitive
+ * (`CompetitiveRoundLedger`) closings share one statement shape.
+ *
  * @module src/scenes/MainStreetTurnSummary
  */
 
@@ -548,4 +560,314 @@ export function buildCompetitiveTurnSummary(
       };
     }),
   };
+}
+
+// ── Profit/loss statement projection ──────────────────────────
+
+/** The statement's two monetary sections. */
+export type PLStatementSectionKey = 'income' | 'expenses';
+
+/** One monetary line of the profit/loss statement. */
+export interface PLStatementLine {
+  /**
+   * Stable line key: the ledger's own phase (`base` / `synergy` /
+   * `reputation` / `events`) or expense category (`staff` / `community` /
+   * `business`), so a renderer can key a line without parsing its label.
+   */
+  key: string;
+  /** Display label (the same wording both Turn Summary panels use today). */
+  label: string;
+  /** Signed coin amount: credited for income, zero-or-negative for expenses. */
+  coins: number;
+}
+
+/**
+ * One titled section of the statement, with its lines and total.
+ *
+ * The total is the ledger's own subtotal (never a re-sum of the lines), so the
+ * statement reconciles to the committed figures it is projected from.
+ */
+export interface PLStatementSection {
+  key: PLStatementSectionKey;
+  /** Section heading (`Income` / `Less: Operating expenses`). */
+  label: string;
+  /** The section's monetary lines, in fixed display order. */
+  lines: PLStatementLine[];
+  /** Label of the section's total row. */
+  totalLabel: string;
+  /** Sum of the section's coins, from the committed ledger. */
+  total: number;
+}
+
+/** A coin/reputation adjustment row (the incident or one-off delta). */
+export interface PLAdjustmentLine {
+  key: 'incident' | 'oneOff';
+  label: string;
+  coins: number;
+  reputation: number;
+}
+
+/**
+ * Non-monetary figures shown alongside — never inside — the monetary P&L
+ * lines (producer Q2=A).
+ */
+export interface PLSupplementaryContext {
+  /** The day's net reputation change. */
+  reputationChange: number;
+  /** The day's net score change. */
+  scoreChange: number;
+  /** Closing coin balance for the player the statement belongs to. */
+  closingCoins: number;
+  /** Businesses standing on the street at closing for that player. */
+  businessesOwned: number;
+}
+
+/**
+ * One player's management-company profit/loss statement for the closed turn.
+ *
+ * Reconciles exactly:
+ * `income.total + expenses.total + incident.coins + oneOff.coins ==
+ * net.coins` (the ledger's own identity).
+ */
+export interface PLProjection {
+  /** Ledger owner key the statement belongs to (`String(playerId)`). */
+  playerKey: string;
+  /** Tab/seat display label: `You` for the human seat, `AI n` otherwise. */
+  label: string;
+  /** True when this statement belongs to the human seat. */
+  isHuman: boolean;
+  /** The seat's colour-blind-safe hex colour; `undefined` in single-player. */
+  colour?: string;
+  /** Income section (base / synergy / reputation / events) with its total. */
+  income: PLStatementSection;
+  /** Less: Operating expenses section (staff / community / business). */
+  expenses: PLStatementSection;
+  /** Incident coin/reputation adjustment. */
+  incident: PLAdjustmentLine;
+  /** Non-recurring (market, event-play, other) coin/reputation adjustment. */
+  oneOff: PLAdjustmentLine;
+  /** Emphasised bottom line: net profit/loss for the day. */
+  net: { label: string; coins: number; reputation: number; score: number };
+  /** Non-monetary figures, kept outside the monetary lines. */
+  context: PLSupplementaryContext;
+}
+
+/** One player's tab in the unified tabbed Turn Summary dialog. */
+export interface PLTab {
+  /** Ledger owner key (`String(playerId)`; `'0'` in single-player). */
+  id: string;
+  /** Display label: `You` for the human seat, `AI n` otherwise. */
+  label: string;
+  /** Seat colour; `undefined` in single-player (there is nothing to compare). */
+  colour?: string;
+  /** True when the tab belongs to the human seat. */
+  isHuman: boolean;
+  /** True for exactly one tab: the human seat, else the first tab. */
+  isDefault: boolean;
+}
+
+/** Fixed statement wording (UK English, matching the existing panel labels). */
+const PL_LABELS = {
+  income: 'Income',
+  incomeTotal: 'Total income',
+  expenses: 'Less: Operating expenses',
+  expensesTotal: 'Total operating expenses',
+  incident: 'Incident',
+  oneOff: 'One-off',
+  net: 'Net profit/loss',
+} as const;
+
+/** The result fields the P&L projection reads (both ledger shapes). */
+type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'>;
+
+/**
+ * Builds the tab model of the unified Turn Summary dialog: one tab per player,
+ * with the human seat marked as the default.
+ *
+ * Competitive closings (`TurnResult.playerRoundLedger`) win when present — the
+ * ledger that carries the seats the panel shows, already filtered to the
+ * non-eliminated seats. Otherwise the single-player `TurnLedger` yields its
+ * owner rows, or a single `You` tab when the player owns no business yet (a
+ * statement is still owed: staff wages, incidents and one-offs can all move the
+ * day's result with an empty street). No ledger of either shape → no tabs.
+ *
+ * @param state  Committed game state after the closing (read-only).
+ * @param result The closed turn's result.
+ */
+export function buildPLTabs(
+  state: MainStreetState,
+  result: PLResultInput,
+): PLTab[] {
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  const tabs: PLTab[] = competitive
+    ? competitive.rows.map((row) => ({
+      id: String(row.ownerId),
+      label: row.label,
+      colour: row.colour,
+      isHuman: row.isHuman,
+      isDefault: false,
+    }))
+    : singlePlayerTabs(state, result);
+
+  const defaultTab = tabs.find((tab) => tab.isHuman) ?? tabs[0];
+  if (defaultTab) defaultTab.isDefault = true;
+  return tabs;
+}
+
+/**
+ * Builds the P&L statement for one player, or `null` when the result carries no
+ * ledger of either shape or the named player has no statement.
+ *
+ * Re-projects the committed ledger only — no new accounting data, no state
+ * mutation, no RNG — so the dialog is a presentation of the turn's own figures.
+ *
+ * @param state     Committed state after the closing (read-only).
+ * @param result    The closed turn's result (either ledger shape).
+ * @param playerKey Owner key (`'0'`, `1`, …) of the player to project;
+ *                  omitted → the default (human) tab.
+ */
+export function buildPLProjection(
+  state: MainStreetState,
+  result: PLResultInput,
+  playerKey?: string | number,
+): PLProjection | null {
+  const tabs = buildPLTabs(state, result);
+  if (tabs.length === 0) return null;
+  const key = playerKey === undefined
+    ? (tabs.find((tab) => tab.isDefault) ?? tabs[0]).id
+    : String(playerKey);
+  const tab = tabs.find((candidate) => candidate.id === key);
+  if (!tab) return null;
+
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  if (competitive) {
+    const row = competitive.rows.find((candidate) => String(candidate.ownerId) === key);
+    if (!row) return null;
+    return {
+      playerKey: key,
+      label: tab.label,
+      isHuman: tab.isHuman,
+      colour: tab.colour,
+      income: plSection(
+        'income',
+        PL_LABELS.income,
+        PL_LABELS.incomeTotal,
+        row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+        row.incomeTotal,
+      ),
+      expenses: plSection(
+        'expenses',
+        PL_LABELS.expenses,
+        PL_LABELS.expensesTotal,
+        row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
+        row.expensesTotal,
+      ),
+      incident: {
+        key: 'incident',
+        label: PL_LABELS.incident,
+        coins: row.incident.coins,
+        reputation: row.incident.reputation,
+      },
+      oneOff: {
+        key: 'oneOff',
+        label: PL_LABELS.oneOff,
+        coins: row.oneOff.coins,
+        reputation: row.oneOff.reputation,
+      },
+      net: {
+        label: PL_LABELS.net,
+        coins: row.netCoinChange,
+        reputation: row.netRepChange,
+        score: row.netScoreChange,
+      },
+      context: {
+        reputationChange: row.netRepChange,
+        scoreChange: row.netScoreChange,
+        closingCoins: row.closing.coins,
+        businessesOwned: row.businessesOwned,
+      },
+    };
+  }
+
+  const summary = buildTurnSummary(state, result);
+  if (!summary) return null;
+  const owner = summary.owners.find((candidate) => candidate.ownerId === key);
+  // A player with an empty street has no owner row but is still owed a
+  // statement (the single-player human seat is always `'0'`).
+  const emptyStreetHuman = summary.owners.length === 0 && key === '0';
+  if (!owner && !emptyStreetHuman) return null;
+
+  return {
+    playerKey: key,
+    label: tab.label,
+    isHuman: tab.isHuman,
+    colour: tab.colour,
+    income: plSection(
+      'income',
+      PL_LABELS.income,
+      PL_LABELS.incomeTotal,
+      summary.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      summary.incomeTotal,
+    ),
+    expenses: plSection(
+      'expenses',
+      PL_LABELS.expenses,
+      PL_LABELS.expensesTotal,
+      summary.expenses.map((line) => ({
+        key: line.category,
+        label: line.label,
+        coins: line.coins,
+      })),
+      summary.expensesTotal,
+    ),
+    incident: {
+      key: 'incident',
+      label: PL_LABELS.incident,
+      coins: summary.incident.coins,
+      reputation: summary.incident.reputation,
+    },
+    oneOff: {
+      key: 'oneOff',
+      label: PL_LABELS.oneOff,
+      coins: summary.oneOff.coins,
+      reputation: summary.oneOff.reputation,
+    },
+    net: { label: PL_LABELS.net, ...summary.net },
+    context: {
+      reputationChange: summary.net.reputation,
+      scoreChange: summary.net.score,
+      closingCoins: owner?.coins ?? summary.closing.coins,
+      businessesOwned: owner?.businessesOwned ?? 0,
+    },
+  };
+}
+
+/** The single-player tab rows (`TurnLedger` owner keys, else the human seat). */
+function singlePlayerTabs(
+  state: MainStreetState,
+  result: PLResultInput,
+): PLTab[] {
+  const summary = buildTurnSummary(state, result);
+  if (!summary) return [];
+  const seats = summary.owners.length > 0
+    ? summary.owners
+    : [{ ownerId: '0', label: 'You', isHuman: true }];
+  return seats.map((seat) => ({
+    id: seat.ownerId,
+    label: seat.label,
+    colour: undefined,
+    isHuman: seat.isHuman,
+    isDefault: false,
+  }));
+}
+
+/** Assembles one titled statement section. */
+function plSection(
+  key: PLStatementSectionKey,
+  label: string,
+  totalLabel: string,
+  lines: PLStatementLine[],
+  total: number,
+): PLStatementSection {
+  return { key, label, lines, totalLabel, total };
 }
