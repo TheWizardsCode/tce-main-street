@@ -427,8 +427,13 @@ export interface StaffCard {
   readonly reputationPerTurn?: number;
   /**
    * Optional flat coin discount applied to each investment-row refresh
-   * (e.g. the Accountant's "refresh costs 1 less" ability — Group F,
+   * (e.g. the Accountant's "refresh costs 100 less" ability — Group F,
    * CG-0MSQJ7VL9009JHF4).
+   *
+   * Management-company-scope only (GDD D.4.8 §4): business staff express
+   * their cost effects as per-business buffs, so this field must not be set
+   * on a business-staff template (the IT Specialist's shipped value was
+   * moved to {@link StaffCard.synergyRangeBonus} — MS-0MW3JXF6U00753LB).
    */
   readonly refreshCostDiscount?: number;
   /**
@@ -443,11 +448,13 @@ export interface StaffCard {
   readonly upgradeCostDiscount?: number;
   /**
    * Optional flat coin discount applied to business-card purchase cost,
-   * summed street-wide across all hired staff (e.g. the Delivery Driver's
-   * "reduces business card purchase cost by 50" ability —
-   * CG-0MUMCVH3N007KT1M). Street-wide: every hired staff member's
-   * `purchaseCostDiscount` is summed, clamped at 0. Absent for staff
-   * without the ability (backward compatible).
+   * summed street-wide across all hired staff.
+   *
+   * @deprecated Street-wide purchase discounts do not fit the two-type model
+   * (GDD D.4.8 §4: business staff effects are per-business). Use the
+   * placement-scoped {@link StaffCard.adjacencyPurchaseDiscount} instead —
+   * the field is retained only so legacy saves/fixtures keep resolving
+   * (MS-0MW3JXF6U00753LB).
    */
   readonly purchaseCostDiscount?: number;
   /**
@@ -489,6 +496,103 @@ export interface StaffCard {
    * compatible).
    */
   readonly marketRelevanceBias?: number;
+  /**
+   * Flat coins per turn a business-staff member adds to its employing
+   * business (`incomeBonusTarget: 'own'`, the default — e.g. the Baker's
+   * +25 coins/turn) or to EACH 8-way neighbouring business matching
+   * `incomeBonusTypes` (`incomeBonusTarget: 'adjacent'` — e.g. the Barista's
+   * +20 coins/turn to each adjacent Food business). Never street-wide; the
+   * effect resolves per business (GDD D.4.3/D.4.8 §2, MS-0MW3JXF6U00753LB).
+   */
+  readonly incomeBonus?: number;
+  /** Which businesses {@link StaffCard.incomeBonus} reaches (default `'own'`). */
+  readonly incomeBonusTarget?: StaffBuffTarget;
+  /**
+   * Business names and/or synergy types that an `'adjacent'`
+   * {@link StaffCard.incomeBonus} must match. Empty/absent = every adjacent
+   * business (the Florist's "Commerce or Culture" is `['Commerce', 'Culture']`).
+   */
+  readonly incomeBonusTypes?: readonly string[];
+  /**
+   * Fractional income boost to the employing business's own coin income
+   * (0.2 = +20%, the Chef). Applied after adjacency synergy and before the
+   * market-saturation (duplicate) factor is already baked into the cached
+   * income, mirroring the specialization-skill percentage buffs.
+   */
+  readonly incomePercent?: number;
+  /**
+   * Flat reputation per turn to the employing business (`'own'`, the default
+   * — e.g. the PR Officer's +15) or to EACH adjacent business (`'adjacent'` —
+   * e.g. the Customer Service Rep's +10). Business staff never use the
+   * street-wide `reputationPerTurn` field (GDD D.4.8 §4).
+   */
+  readonly reputationBonus?: number;
+  /** Which businesses {@link StaffCard.reputationBonus} reaches (default `'own'`). */
+  readonly reputationBonusTarget?: StaffBuffTarget;
+  /**
+   * Fraction of the employing business's reputation per turn added
+   * (0.1 = +10%, the Marketing Consultant's "+10% reputation from all
+   * sources"). Per-business only (GDD D.4.8 §4).
+   */
+  readonly reputationPercent?: number;
+  /**
+   * Extra synergy range (in grid slots) applied to the employing business
+   * only (the IT Specialist's +1 — it links with businesses up to 2 slots
+   * away). Read at income time, never written into the card's own
+   * `synergyRangeBonus` (the staff buff is not an upgrade).
+   */
+  readonly synergyRangeBonus?: number;
+  /**
+   * Flat coin discount on the purchase cost of a business placed 8-way
+   * adjacent to the employing business (the Delivery Driver's 50). The
+   * discount is resolved against the placement slot, so it never leaks
+   * street-wide (GDD D.4.3/D.4.8).
+   */
+  readonly adjacencyPurchaseDiscount?: number;
+  /**
+   * Optional incident-mitigation effect scoped to the employing business (or
+   * its local cluster). At most one per card: every staff role states one
+   * unique benefit (GDD D.4.3).
+   */
+  readonly incidentEffect?: StaffIncidentEffect;
+}
+
+/**
+ * Which businesses a business-staff per-business buff reaches (MS-0MW3JXF6U00753LB,
+ * GDD D.4.3/D.4.8):
+ *
+ *  - `own` — only the business recorded in `employedAtSlot`;
+ *  - `adjacent` — only the 8-way neighbours of that business (never the
+ *    employing business itself).
+ *
+ * A `cluster` scope (own plus adjacent, used by the incident-mitigation
+ * effects) is expressed by {@link StaffIncidentEffect.target}.
+ */
+export type StaffBuffTarget = 'own' | 'adjacent';
+
+/** Which of an incident's dimensions a business-staff effect mitigates. */
+export type StaffIncidentEffectKind = 'coin' | 'reputation' | 'frequency';
+
+/**
+ * A business-staff incident-mitigation effect (GDD D.4.3: Security Guard,
+ * Maintenance Worker, Health & Safety Inspector).
+ *
+ * `target` is the business-staff scope: `own` protects only the employing
+ * business, `cluster` protects the employing business and its 8-way
+ * neighbours (GDD D.4.8 §2 — a business-staff effect never reaches past the
+ * local cluster).
+ */
+export interface StaffIncidentEffect {
+  /** Incident dimension mitigated. */
+  readonly kind: StaffIncidentEffectKind;
+  /**
+   * Magnitude: a fraction in `[0, 1]` for `coin` / `frequency` (a share of
+   * the damage / draw chance removed) and a non-negative coin amount for
+   * `reputation` (flat reputation damage removed, floored at 0).
+   */
+  readonly amount: number;
+  /** Business-staff scope of the mitigation. */
+  readonly target: 'own' | 'cluster';
 }
 
 /** Community Space card placed on the street grid, parallel to BusinessCard. */

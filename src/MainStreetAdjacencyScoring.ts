@@ -16,7 +16,11 @@ import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, syncResourceBankToLedger } from './MainStreetState';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
 import { applyActiveEffectMultiplier } from '@core-engine/ActiveEffect';
-import { computePerBusinessSkillBuffs, getEmployedSpecializationSkillsForBusiness } from './MainStreetStaffBuffs';
+import {
+  computeBusinessStaffBuffs,
+  computePerBusinessSkillBuffs,
+  getEmployedSpecializationSkillsForBusiness,
+} from './MainStreetStaffBuffs';
 import type { GridDims } from './MainStreetAdjacencyGeometry';
 import { hasAdjacentSameType, resolveNeighbors, sameStreetCell } from './MainStreetAdjacencyGeometry';
 import { DUPLICATE_FACTOR_MAX_COUNT, DUPLICATE_FACTOR_TABLE } from './MainStreetCardsConstants';
@@ -113,6 +117,12 @@ export function synergyCoinContributionPerNeighbor(
  * @param grid               The street grid.
  * @param index              The slot index of the business.
  * @param bonusPerNeighbor   Global multiplier on per-card coin synergy (defaults to 1).
+ * @param soldSlots          Sold-slot flags.
+ * @param gridDims           Grid dimensions (defaults to the legacy 1×1 grid).
+ * @param extraRange         Additional synergy range from a staff buff (the IT
+ *                           Specialist's +1, MS-0MW3JXF6U00753LB). Read-only:
+ *                           the card's own `synergyRangeBonus` cache is never
+ *                           mutated.
  * @returns The synergy coin bonus.
  */
 export function computeSynergyBonus(
@@ -121,6 +131,7 @@ export function computeSynergyBonus(
   bonusPerNeighbor: number = 1,
   soldSlots: boolean[] = [],
   gridDims?: GridDims,
+  extraRange: number = 0,
 ): number {
   // Source-slot guard: a sold card earns no synergy income itself
   // (its neighbours, however, keep receiving synergy from it — CG-0MT5XUE2200047IJ)
@@ -133,7 +144,7 @@ export function computeSynergyBonus(
   if (rate === 0) return 0;
 
   const baseType = getBaseTypeId(business.id);
-  const range = 1 + business.synergyRangeBonus;
+  const range = 1 + business.synergyRangeBonus + Math.max(0, extraRange);
   const neighborIndices = resolveNeighbors(index, range, gridDims);
 
   // Count matching, different-type neighbors (N)
@@ -188,6 +199,9 @@ export function computeSynergyBonus(
  *
  * @param grid   The street grid.
  * @param index  The slot index of the business.
+ * @param soldSlots Sold-slot flags.
+ * @param gridDims  Grid dimensions (defaults to the legacy 1×1 grid).
+ * @param extraRange Additional synergy range from a staff buff (read-only).
  * @returns The synergy reputation bonus.
  */
 export function computeSynergyRepBonus(
@@ -195,6 +209,7 @@ export function computeSynergyRepBonus(
   index: number,
   soldSlots: boolean[] = [],
   gridDims?: GridDims,
+  extraRange: number = 0,
 ): number {
   // Source-slot guard: a sold card earns no synergy reputation itself
   // (its neighbours keep receiving rep synergy from it — CG-0MT5XUE2200047IJ)
@@ -209,7 +224,7 @@ export function computeSynergyRepBonus(
   }
 
   const baseType = getBaseTypeId(business.id);
-  const range = 1 + business.synergyRangeBonus;
+  const range = 1 + business.synergyRangeBonus + Math.max(0, extraRange);
   const neighborIndices = resolveNeighbors(index, range, gridDims);
 
   let bonus = 0;
@@ -388,6 +403,11 @@ export function computeBusinessIncome(
  * @param grid               The street grid.
  * @param index              The slot index of the business.
  * @param bonusPerNeighbor   Global multiplier on per-card coin synergy (defaults to 1).
+ * @param soldSlots          Sold-slot flags.
+ * @param gridDims           Grid dimensions (defaults to the legacy 1×1 grid).
+ * @param extraRange         Additional synergy range from a staff buff (the IT
+ *                           Specialist's +1). Read-only: never written to the
+ *                           card's `synergyRangeBonus` cache.
  * @returns The reduced base/synergy split, total and applied factor.
  */
 export function computeBusinessIncomeParts(
@@ -396,6 +416,7 @@ export function computeBusinessIncomeParts(
   bonusPerNeighbor: number = 1,
   soldSlots: boolean[] = [],
   gridDims?: GridDims,
+  extraRange: number = 0,
 ): BusinessIncomeParts {
   // Sold cards produce no income
   if (soldSlots[index]) return { baseIncome: 0, synergyBonus: 0, total: 0, factor: 1 };
@@ -407,7 +428,7 @@ export function computeBusinessIncomeParts(
   if (hasAdjacentSameType(grid, index, soldSlots, gridDims)) {
     base = roundInt(base * 0.6);
   }
-  const synergy = computeSynergyBonus(grid, index, bonusPerNeighbor, soldSlots, gridDims);
+  const synergy = computeSynergyBonus(grid, index, bonusPerNeighbor, soldSlots, gridDims, extraRange);
   // Duplicate factor: street-wide market saturation, multiplicative with the
   // adjacent same-type penalty above (MS-0MVYG50V1007W8BP).
   const factor = duplicateIncomeFactor(grid, index, soldSlots, gridDims);
@@ -426,6 +447,8 @@ export function computeBusinessIncomeParts(
  * @param grid      The street grid.
  * @param index     The slot index of the card.
  * @param soldSlots Array of sold slot flags (sold slots return 0).
+ * @param gridDims  Grid dimensions (defaults to the legacy 1×1 grid).
+ * @param extraRange Additional synergy range from a staff buff (read-only).
  * @returns The total reputation per turn contributed by this card.
  */
 export function computeSingleCardReputation(
@@ -433,11 +456,13 @@ export function computeSingleCardReputation(
   index: number,
   soldSlots: boolean[] = [],
   gridDims?: GridDims,
+  extraRange: number = 0,
 ): number {
   if (soldSlots[index]) return 0;
   const slot = grid[index];
   if (!slot) return 0;
-  return (slot.reputationPerTurn ?? 0) + slot.reputationBonus + computeSynergyRepBonus(grid, index, soldSlots, gridDims);
+  return (slot.reputationPerTurn ?? 0) + slot.reputationBonus
+    + computeSynergyRepBonus(grid, index, soldSlots, gridDims, extraRange);
 }
 
 /**
@@ -680,20 +705,37 @@ export function applyIncome(
     const card = grid[i];
     if (!card) continue;
 
-    const slotIncome = card.currentIncome ?? 0;
     // Board adjacency synergy is reported separately from base income so the
     // phased animation can route it along the synergy lines (CG-0MTV6LZEA003YS3E).
     // The cached `currentIncome` already folds base (with the same-type
     // penalty) + synergy and the duplicate-business factor, so the synergy
     // component is the factor-reduced share — the phase sum stays consistent
     // with the credited total (MS-0MV0UCMF9004H9NT).
-    const synergy = computeBusinessIncomeParts(
+    const cachedParts = computeBusinessIncomeParts(
       grid,
       i,
       state.config.synergyBonusPerNeighbor,
       soldSlots,
       gridDims,
-    ).synergyBonus;
+    );
+    // Business-staff card buffs (GDD D.4.3/D.4.8); `own` effects come from the
+    // staff employed here, `adjacent` effects from the neighbours' staff.
+    const staffBuffs = computeBusinessStaffBuffs(state, i);
+    // A staff synergy-range buff (IT Specialist) reveals extra links the
+    // cached income does not carry. Recomputed read-only — the cache itself is
+    // never mutated, so hiring/moving staff cannot leave it stale.
+    const extraSynergy = staffBuffs.synergyRangeBonus > 0
+      ? computeBusinessIncomeParts(
+          grid,
+          i,
+          state.config.synergyBonusPerNeighbor,
+          soldSlots,
+          gridDims,
+          staffBuffs.synergyRangeBonus,
+        ).total - cachedParts.total
+      : 0;
+    const slotIncome = (card.currentIncome ?? 0) + extraSynergy;
+    const synergy = cachedParts.synergyBonus + extraSynergy;
     // Per-business income skill buffs: +pct of the business's cached income,
     // plus a flat coin bonus (chef/dj/sales-champion — I4). Fed by the staff
     // employed AT this slot only (CG-0MSTOATDU006UGAX).
@@ -702,8 +744,13 @@ export function applyIncome(
       baseIncome: (card as BusinessCard).baseIncome ?? 0,
       ongoingCost: (card as BusinessCard).ongoingCost ?? 0,
     });
-    const buffedIncome = slotIncome * (1 + buffs.income.percent) + buffs.income.flat;
-    const buffedSynergy = synergy * (1 + buffs.income.percent);
+    // Skill and card percentage boosts compose additively; the flat coin
+    // bonuses (skill + card) are added once, after the multiplier.
+    const incomePercentBoost = buffs.income.percent + staffBuffs.incomePercent;
+    const buffedIncome = slotIncome * (1 + incomePercentBoost)
+      + buffs.income.flat
+      + staffBuffs.incomeFlat;
+    const buffedSynergy = synergy * (1 + incomePercentBoost);
     breakdown.push({
       slotIndex: i,
       businessName: card.name,
@@ -778,7 +825,17 @@ export function applyIncome(
       baseIncome: (card as BusinessCard).baseIncome ?? 0,
       ongoingCost: (card as BusinessCard).ongoingCost ?? 0,
     });
-    repPerTurn += baseRep + buffs.reputation.flat;
+    // Business-staff card reputation buffs (GDD D.4.3/D.4.8): the PR Officer's
+    // +15 and the Marketing Consultant's +10% land on the employing business
+    // only, and a neighbour's Customer Service Rep adds its flat bonus here.
+    const repStaffBuffs = computeBusinessStaffBuffs(state, i);
+    const extraRepSynergy = repStaffBuffs.synergyRangeBonus > 0
+      ? computeSynergyRepBonus(grid, i, soldSlots, gridDims, repStaffBuffs.synergyRangeBonus)
+        - computeSynergyRepBonus(grid, i, soldSlots, gridDims)
+      : 0;
+    repPerTurn += (baseRep + extraRepSynergy) * (1 + repStaffBuffs.reputationPercent)
+      + buffs.reputation.flat
+      + repStaffBuffs.reputationFlat;
   }
   // Staff reputation abilities (e.g. the Socialite's +10 rep/turn —
   // Group F, CG-0MSQJ7VL9009JHF4) also accrue during the income phase.
@@ -912,20 +969,32 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
       if (!card) continue;
       if (getSlotOwnerId(state, i) !== ownerId) continue;
 
-      const slotIncome = card.currentIncome ?? 0;
       // Board adjacency synergy (board-wide, ownership-independent) is
       // reported separately from base income (CG-0MTV6LZEA003YS3E). The parts
       // helper returns the synergy share AFTER the duplicate-business factor,
       // exactly as `applyIncome` does, so `slotIncome - synergy` is the
       // factor-scaled base rather than an unreduced one
       // (MS-0MW0UG07W009PO4E AC2).
-      const synergy = computeBusinessIncomeParts(
+      const cachedParts = computeBusinessIncomeParts(
         grid,
         i,
         state.config.synergyBonusPerNeighbor,
         soldSlots,
         gridDims,
-      ).synergyBonus;
+      );
+      const staffBuffs = computeBusinessStaffBuffs(state, i);
+      const extraSynergy = staffBuffs.synergyRangeBonus > 0
+        ? computeBusinessIncomeParts(
+            grid,
+            i,
+            state.config.synergyBonusPerNeighbor,
+            soldSlots,
+            gridDims,
+            staffBuffs.synergyRangeBonus,
+          ).total - cachedParts.total
+        : 0;
+      const slotIncome = (card.currentIncome ?? 0) + extraSynergy;
+      const synergy = cachedParts.synergyBonus + extraSynergy;
       const profile = {
         synergyTypes: (card as BusinessCard).synergyTypes ?? [],
         baseIncome: (card as BusinessCard).baseIncome ?? 0,
@@ -935,8 +1004,11 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
         getEmployedSpecializationSkillsForBusiness(state, i),
         profile,
       );
-      const buffedIncome = slotIncome * (1 + buffs.income.percent) + buffs.income.flat;
-      const buffedSynergy = synergy * (1 + buffs.income.percent);
+      const incomePercentBoost = buffs.income.percent + staffBuffs.incomePercent;
+      const buffedIncome = slotIncome * (1 + incomePercentBoost)
+        + buffs.income.flat
+        + staffBuffs.incomeFlat;
+      const buffedSynergy = synergy * (1 + incomePercentBoost);
       breakdown.push({
         slotIndex: i,
         businessName: card.name,
@@ -964,7 +1036,14 @@ export function applyCompetitiveIncome(state: MainStreetState): OwnerIncomeResul
         getEmployedSpecializationSkillsForBusiness(state, i),
         profile,
       );
-      repPerTurn += baseRep + repBuffs.reputation.flat;
+      // Business-staff card reputation buffs (GDD D.4.3/D.4.8) — per business.
+      const extraRepSynergy = staffBuffs.synergyRangeBonus > 0
+        ? computeSynergyRepBonus(grid, i, soldSlots, gridDims, staffBuffs.synergyRangeBonus)
+          - computeSynergyRepBonus(grid, i, soldSlots, gridDims)
+        : 0;
+      repPerTurn += (baseRep + extraRepSynergy) * (1 + staffBuffs.reputationPercent)
+        + repBuffs.reputation.flat
+        + staffBuffs.reputationFlat;
     }
 
     // Staff reputation abilities owned by THIS player (per-player staff).

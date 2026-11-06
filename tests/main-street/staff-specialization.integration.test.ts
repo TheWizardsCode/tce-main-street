@@ -75,8 +75,12 @@ describe('D1: staff specialization end-to-end integration', () => {
     if (hasIncomeSkill) {
       employed!.employedAtSlot = 0;
     } else {
+      // Use a plain business-staff template with NO card-level income buff, so
+      // this fixture isolates the specialization skill (a Chef CARD would add
+      // its own +20% on top of `skill-chef`, MS-0MW3JXF6U00753LB).
+      const plainBusinessStaff = createStaffDeck(1).find(c => c.id.startsWith('staff-security'))!;
       a.staffCards.push({
-        ...a.decks.staff[0],
+        ...plainBusinessStaff,
         id: 'staff-d1-chef',
         specializationSkillIds: ['skill-town-gossip', 'skill-chef'],
         employedAtSlot: 0,

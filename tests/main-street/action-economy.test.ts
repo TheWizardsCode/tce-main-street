@@ -135,20 +135,22 @@ describe('action-granting staff ladder', () => {
     expect(director.actionsPerTurn).toBe(1);
   });
 
-  it('Executive grants +1 action/turn and a single hand slot (a trade-off from +4 slots)', () => {
+  it('Executive grants +2 actions/turn and no hand slot (GDD D.4.4 redesign delta)', () => {
     const executive = staffTemplate('staff-executive');
     expect(executive.cost).toBe(2000);
     expect(executive.ongoingCost).toBe(500);
-    expect(executive.handSlotsAdded).toBe(1);
-    expect(executive.actionsPerTurn).toBe(1);
+    // Re-valued from "+1 hand slot and +1 action" to "+2 actions only"
+    // (MS-0MW3JXF6U00753LB).
+    expect(executive.handSlotsAdded).toBe(0);
+    expect(executive.actionsPerTurn).toBe(2);
   });
 
-  it('Executive description states the +1 hand slot and the action benefit (no longer +4 slots)', () => {
+  it('Executive description states the +2 action benefit and no hand slot', () => {
     const executive = staffTemplate('staff-executive');
     expect(executive.description).not.toContain('+4 slots');
     expect(executive.description).not.toContain('major hand capacity');
-    expect(executive.description).toContain('+1 hand slot');
-    expect(executive.description.toLowerCase()).toContain('action');
+    expect(executive.description).not.toContain('+1 hand slot');
+    expect(executive.description).toContain('+2 actions');
   });
 
   it('only Manager, Director, Executive and General Manager grant actionsPerTurn', () => {
@@ -160,7 +162,11 @@ describe('action-granting staff ladder', () => {
     ]);
     for (const card of getStaffCardTemplates()) {
       if (granters.has(card.id)) {
-        expect(card.actionsPerTurn, `${card.id} should grant an action`).toBe(1);
+        // The Executive's action grant was re-valued to +2 by the two-type
+        // redesign (MS-0MW3JXF6U00753LB); the rest grant +1.
+        expect(card.actionsPerTurn, `${card.id} should grant an action`).toBe(
+          card.id === 'staff-executive' ? 2 : 1,
+        );
       } else {
         expect(card.actionsPerTurn ?? 0, `${card.id} should not grant an action`).toBe(0);
       }
@@ -192,8 +198,8 @@ describe('action-granting staff ladder', () => {
     state.bankedActions = 5; // deliberately above the bank cap
     state.phase = 'WeekStart';
     executeWeekStart(state, true);
-    // 1 base + 1 Executive + min(2, 5) banked = 4
-    expect(state.actionsRemaining).toBe(4);
+    // 1 base + 2 Executive + min(2, 5) banked = 5
+    expect(state.actionsRemaining).toBe(5);
   });
 
   it('banks only the base action on an idle Manager week (staff actions never bank)', () => {

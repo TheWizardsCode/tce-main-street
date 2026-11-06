@@ -45,6 +45,8 @@ import type { SpecializationSkill } from './MainStreetStaffSkills';
 import { deserializeSkillIds } from './MainStreetStaffSkills';
 import { roundInt } from './MainStreetDifficulty';
 import type { MainStreetState } from './MainStreetState';
+import type { GridDims } from './MainStreetAdjacencyGeometry';
+import { resolveNeighbors } from './MainStreetAdjacencyGeometry';
 
 // ── Buff Profiles ───────────────────────────────────────────
 
@@ -295,6 +297,270 @@ export function getSalaryScopeSkills(card: StaffCard): SpecializationSkill[] {
   return isBusinessStaffCard(card) ? getBusinessScopeSkills([card]) : [];
 }
 
+// ── Business-staff per-business card buffs (GDD D.4.3/D.4.8) ─
+//
+// The card-level business-staff abilities (Baker, Chef, Barista, Florist,
+// Mechanic, Event Planner, PR Officer, Marketing Consultant, Customer Service
+// Rep, IT Specialist, Delivery Driver and the three incident roles) resolve
+// **per business**: an effect either lands on the employing business (`own`)
+// or on each of its 8-way neighbours (`adjacent`) — never street-wide
+// (GDD D.4.8 §2). They are folded in at income/incident/purchase time and are
+// never written into a card's cached `currentIncome` / `synergyRangeBonus`,
+// so hiring or moving staff never leaves a stale cache
+// (MS-0MW3JXF6U00753LB).
+
+/** The grid dimensions the adjacency resolver should use for this state. */
+function stateGridDims(state: MainStreetState): GridDims | undefined {
+  return state.streetGridCols && state.streetGridRows
+    ? { cols: state.streetGridCols, rows: state.streetGridRows }
+    : undefined;
+}
+
+/**
+ * The staff members employed at one street-grid slot.
+ *
+ * Reads the per-business `employedStaff` source of truth
+ * (CG-0MTIOLY2A0092OT1) and falls back to `employedAtSlot` links for legacy
+ * in-memory states / hand-built fixtures — the same semantics as
+ * `getEmployedStaffForBusiness` and
+ * {@link getEmployedSpecializationSkillsForBusiness}.
+ */
+function getMembersAtSlot(state: MainStreetState, slotIndex: number): StaffCard[] {
+  const business = state.streetGrid[slotIndex];
+  if (business && Array.isArray((business as { employedStaff?: unknown }).employedStaff)) {
+    return (business as { employedStaff: StaffCard[] }).employedStaff;
+  }
+  return (state.staffCards ?? []).filter(card => card.employedAtSlot === slotIndex);
+}
+
+/** The 8-way neighbouring slot indices of `slotIndex` in this state's grid. */
+function adjacentSlotIndices(state: MainStreetState, slotIndex: number): number[] {
+  return resolveNeighbors(slotIndex, 1, stateGridDims(state));
+}
+
+/**
+ * True when a business matches a staff effect's type filter.
+ *
+ * Both specific business names (e.g. `Flower Shop`) and synergy types (e.g.
+ * `Commerce`) are valid filter tokens, matching `allowedBusinessTypes`
+ * semantics. An empty/absent filter matches every business.
+ */
+function businessMatchesTypes(
+  business: { readonly name?: string; readonly synergyTypes?: readonly string[] } | null | undefined,
+  types: readonly string[] | undefined,
+): boolean {
+  if (!types || types.length === 0) return true;
+  if (!business) return false;
+  const wanted = types.map(t => t.toLowerCase());
+  if (business.name && wanted.includes(business.name.toLowerCase())) return true;
+  return (business.synergyTypes ?? []).some(synergy => wanted.includes(String(synergy).toLowerCase()));
+}
+
+/**
+ * Per-business card buffs contributed by staff employed at (and around) one
+ * street-grid slot (MS-0MW3JXF6U00753LB).
+ *
+ * `incomeFlat` / `reputationFlat` already include both sources:
+ *  - the slot's own business-staff `own`-targeted effects, and
+ *  - the `adjacent`-targeted effects of staff employed at the 8 neighbours,
+ *    filtered by the effect's type list.
+ */
+export interface BusinessStaffBuffs {
+  /** Flat coins per turn added to this business's income. */
+  readonly incomeFlat: number;
+  /** Fractional income boost (0.2 = +20%) on this business's cached income. */
+  readonly incomePercent: number;
+  /** Flat reputation per turn added to this business. */
+  readonly reputationFlat: number;
+  /** Fraction of this business's reputation per turn added (0.1 = +10%). */
+  readonly reputationPercent: number;
+  /** Extra synergy range (slots) for this business (IT Specialist +1). */
+  readonly synergyRangeBonus: number;
+}
+
+/** One business's incident mitigation contributed by its local cluster. */
+export interface BusinessIncidentMitigation {
+  /** Share of incident coin damage removed (0.1 = -10%). */
+  readonly coinDamageReductionPct: number;
+  /** Flat incident reputation damage removed (floored at 0 by the consumer). */
+  readonly reputationDamageReductionFlat: number;
+  /** Share of the incident draw averted for this business (0.1 = -10%). */
+  readonly frequencyReductionPct: number;
+}
+
+/** A fresh zero-valued buff bundle (a slot with no business staff). */
+function emptyBusinessStaffBuffs(): BusinessStaffBuffs {
+  return {
+    incomeFlat: 0,
+    incomePercent: 0,
+    reputationFlat: 0,
+    reputationPercent: 0,
+    synergyRangeBonus: 0,
+  };
+}
+
+/**
+ * Computes the per-business card buffs for one street-grid slot
+ * (MS-0MW3JXF6U00753LB).
+ *
+ * Reads `own`-targeted buffs from the slot's employees and `adjacent`-targeted
+ * buffs from the 8 neighbours' employees (filtered by the effect's type list),
+ * so a Barista employed next door adds coins to THIS business while a Barista
+ * elsewhere on the street does not (GDD D.4.8 §2).
+ *
+ * Pure: never mutates state and consumes no RNG, so the income phase can
+ * recompute it on demand without invalidating adjacency caches.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index of the receiving business.
+ * @returns The per-business buff bundle (zeroed when no staff contribute).
+ */
+export function computeBusinessStaffBuffs(
+  state: MainStreetState,
+  slotIndex: number,
+): BusinessStaffBuffs {
+  const self = state.streetGrid[slotIndex];
+  let incomeFlat = 0;
+  let incomePercent = 0;
+  let reputationFlat = 0;
+  let reputationPercent = 0;
+  let synergyRangeBonus = 0;
+  let hasAny = false;
+
+  for (const member of getMembersAtSlot(state, slotIndex)) {
+    if ((member.incomeBonusTarget ?? 'own') === 'own') {
+      if (member.incomeBonus) {
+        incomeFlat += member.incomeBonus;
+        hasAny = true;
+      }
+    }
+    if (member.incomePercent) {
+      incomePercent += member.incomePercent;
+      hasAny = true;
+    }
+    if ((member.reputationBonusTarget ?? 'own') === 'own') {
+      if (member.reputationBonus) {
+        reputationFlat += member.reputationBonus;
+        hasAny = true;
+      }
+    }
+    if (member.reputationPercent) {
+      reputationPercent += member.reputationPercent;
+      hasAny = true;
+    }
+    if (member.synergyRangeBonus) {
+      synergyRangeBonus += member.synergyRangeBonus;
+      hasAny = true;
+    }
+  }
+
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      if (member.incomeBonus && member.incomeBonusTarget === 'adjacent') {
+        if (businessMatchesTypes(self, member.incomeBonusTypes)) {
+          incomeFlat += member.incomeBonus;
+          hasAny = true;
+        }
+      }
+      if (member.reputationBonus && member.reputationBonusTarget === 'adjacent') {
+        reputationFlat += member.reputationBonus;
+        hasAny = true;
+      }
+    }
+  }
+
+  if (!hasAny) return emptyBusinessStaffBuffs();
+  return { incomeFlat, incomePercent, reputationFlat, reputationPercent, synergyRangeBonus };
+}
+
+/**
+ * Incident mitigation contributed to one business by business staff
+ * (Security Guard, Maintenance Worker, Health & Safety Inspector — GDD D.4.3).
+ *
+ * `own`-scoped effects apply only from the business's OWN employees;
+ * `cluster`-scoped effects also apply from staff employed at its 8-way
+ * neighbours. Management-company incident skills are a separate (street-wide)
+ * fold and are not included here.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index of the protected business.
+ * @returns The mitigation bundle (zeroed when no staff protect the business).
+ */
+export function computeBusinessIncidentMitigation(
+  state: MainStreetState,
+  slotIndex: number,
+): BusinessIncidentMitigation {
+  let coinDamageReductionPct = 0;
+  let reputationDamageReductionFlat = 0;
+  let frequencyReductionPct = 0;
+
+  const apply = (member: StaffCard): void => {
+    const effect = member.incidentEffect;
+    if (!effect) return;
+    if (effect.kind === 'coin') coinDamageReductionPct += effect.amount;
+    else if (effect.kind === 'reputation') reputationDamageReductionFlat += effect.amount;
+    else frequencyReductionPct += effect.amount;
+  };
+
+  for (const member of getMembersAtSlot(state, slotIndex)) apply(member);
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      if (member.incidentEffect?.target === 'cluster') apply(member);
+    }
+  }
+
+  return { coinDamageReductionPct, reputationDamageReductionFlat, frequencyReductionPct };
+}
+
+/**
+ * Strongest per-business incident-frequency reduction among `slotIndices`
+ * (the Health & Safety Inspector's -10%, GDD D.4.3).
+ *
+ * The incident resolver draws ONE avert roll per turn, so the strongest
+ * protector among the incident's candidate businesses decides it — several
+ * inspectors never stack into multiple rolls. Pure; consumes no RNG.
+ *
+ * @param state       Current game state (read-only).
+ * @param slotIndices Candidate businesses the incident could hit.
+ * @returns Fraction of the draw averted (`0` when no business protects itself).
+ */
+export function computeIncidentFrequencyReduction(
+  state: MainStreetState,
+  slotIndices: readonly number[],
+): number {
+  return slotIndices.reduce(
+    (max, slot) => Math.max(max, computeBusinessIncidentMitigation(state, slot).frequencyReductionPct),
+    0,
+  );
+}
+
+/**
+ * Flat purchase discount for placing a business at `slotIndex`, contributed by
+ * Delivery Drivers employed at the 8 neighbouring businesses
+ * (GDD D.4.3: "-50 coins on the purchase cost of any business placed adjacent
+ * to its own business").
+ *
+ * Clamped at 0, mirroring the legacy street-wide aggregation it replaces.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot receiving the new business.
+ * @returns Non-negative flat coin discount for this placement.
+ */
+export function computeAdjacentPurchaseDiscount(
+  state: MainStreetState,
+  slotIndex: number,
+): number {
+  let total = 0;
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      total += member.adjacencyPurchaseDiscount ?? 0;
+    }
+  }
+  return Math.max(0, total);
+}
+
 // ── Street / engine-level buff helpers ──────────────────────
 
 /**
@@ -396,57 +662,76 @@ export function computeRefreshCostDiscount(skills: readonly SpecializationSkill[
 }
 
 /**
- * Flat coin discount on business-card purchases, summed street-wide across
- * every hired staff member (e.g. the Delivery Driver's "purchase costs 50
- * less" ability — CG-0MUMCVH3N007KT1M).
+ * Flat coin discount on business-card purchases for a placement at
+ * `slotIndex`.
  *
- * Summates the `purchaseCostDiscount` field of every card in `state.staffCards`
- * and floors at 0 — the same aggregation and clamp semantics as the
- * `refreshMarketCost` staff discount path.
+ * Two sources, both clamped at 0:
+ *  1. the placement-scoped {@link computeAdjacentPurchaseDiscount} — the
+ *     two-type delivery effect (a Delivery Driver discounts businesses placed
+ *     next to its own business, GDD D.4.3);
+ *  2. the legacy street-wide `purchaseCostDiscount` sum, retained only for
+ *     legacy saves/fixtures that still carry the deprecated field. No shipped
+ *     card sets it any more (MS-0MW3JXF6U00753LB).
+ *
+ * Callers that do not know the destination slot (pure affordability
+ * projections) omit `slotIndex`; they then see only the legacy discount, so
+ * they never promise a discount the placement path will not grant.
  *
  * Pure: never mutates state and consumes no RNG.
  *
- * @param state Current game state.
+ * @param state     Current game state.
+ * @param slotIndex Optional target placement slot (enables the adjacency
+ *                  discount).
  * @returns Non-negative flat coin discount for a business-card purchase.
  */
-export function computePurchaseCostDiscount(state: MainStreetState): number {
-  const total = (state.staffCards ?? []).reduce(
+export function computePurchaseCostDiscount(state: MainStreetState, slotIndex?: number): number {
+  const legacy = (state.staffCards ?? []).reduce(
     (sum, card) => sum + (card.purchaseCostDiscount ?? 0),
     0,
   );
-  return Math.max(0, total);
+  const adjacent = slotIndex === undefined ? 0 : computeAdjacentPurchaseDiscount(state, slotIndex);
+  return Math.max(0, legacy + adjacent);
 }
 
 /**
  * Effective base coin cost of acquiring/placing a business or
- * community-space card, after the street-wide `purchaseCostDiscount`
- * (CG-0MUMCVH3N007KT1M). The result is floored at 0. This is the single
- * shared source of truth for the click (`purchaseBusiness`), drag
- * (`buyAndPlaceBusiness`) and deferred from-hand (`playBusinessFromHand`)
- * acquisition paths, including the UI affordability pre-gates.
+ * community-space card at `slotIndex`, after the placement's purchase
+ * discount (GDD D.4.3 / MS-0MW3JXF6U00753LB). The result is floored at 0.
+ *
+ * This is the single shared source of truth for the click (`purchaseBusiness`),
+ * drag (`buyAndPlaceBusiness`) and deferred from-hand
+ * (`playBusinessFromHand`) acquisition paths, including the UI affordability
+ * pre-gates, so every path charges the same price.
  *
  * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state      Current game state.
+ * @param listedCost Listed card cost.
+ * @param slotIndex  Optional target placement slot (enables the adjacency
+ *                   discount).
  */
 export function computeEffectiveBusinessPurchaseCost(
   state: MainStreetState,
   listedCost: number,
+  slotIndex?: number,
 ): number {
-  return Math.max(0, listedCost - computePurchaseCostDiscount(state));
+  return Math.max(0, listedCost - computePurchaseCostDiscount(state, slotIndex));
 }
 
 /**
  * Effective +50% drag/composite premium on a business or community-space
- * card, after the street-wide `purchaseCostDiscount` (CG-0MUMCVH3N007KT1M).
- * Per the discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is
- * applied to the base cost BEFORE the premium.
+ * card placed at `slotIndex`, after the purchase discount. Per the
+ * discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is applied
+ * to the base cost BEFORE the premium.
  *
  * Pure: never mutates state and consumes no RNG.
  */
 export function computeBusinessPurchasePremium(
   state: MainStreetState,
   listedCost: number,
+  slotIndex?: number,
 ): number {
-  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost) * 1.5 * 2) / 2;
+  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost, slotIndex) * 1.5 * 2) / 2;
 }
 
 /**

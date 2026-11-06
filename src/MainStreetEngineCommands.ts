@@ -76,8 +76,10 @@ export function placeFromHand(
   // Cost-at-play (CG-0MSTOATDT009BRX2): moving a card to hand is free, but
   // placing it on the street pays its listed cost (or the optional premium
   // price for same-week composite buy-and-play when no action is available,
-  // CG-0MSTOF1N5005PK2R / CG-0MT24X0SX007RLHN).
-  const price = premiumCost ?? card.cost;
+  // CG-0MSTOF1N5005PK2R / CG-0MT24X0SX007RLHN). The listed path applies the
+  // placement-scoped Delivery Driver adjacency discount (GDD D.4.3 /
+  // MS-0MW3JXF6U00753LB); a caller-supplied premium is already net of it.
+  const price = premiumCost ?? computeEffectiveBusinessPurchaseCost(state, card.cost, slotIndex);
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
   }
@@ -242,8 +244,10 @@ export function canPlaceFromHand(
     return { legal: false, reason: `Slot ${slotIndex} is already occupied.` };
   }
 
-  // Check coin sufficiency against the applicable price (listed or premium)
-  const price = premiumCost ?? card.cost;
+  // Check coin sufficiency against the applicable price (listed or premium).
+  // The listed path applies the placement-scoped Delivery Driver adjacency
+  // discount (GDD D.4.3 / MS-0MW3JXF6U00753LB).
+  const price = premiumCost ?? computeEffectiveBusinessPurchaseCost(state, card.cost, slotIndex);
   if (state.resourceBank.coins < price) {
     return { legal: false, reason: `Insufficient coins to place ${card.name}: need ${price}, have ${state.resourceBank.coins}.` };
   }
@@ -819,14 +823,16 @@ export function buyAndPlaceBusiness(
     throw new Error(`Slot ${slotIndex} is already occupied.`);
   }
 
-  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): discount the
-  // base cost first, then apply the +50% premium (discount-first rule,
-  // CG-0MTKMGL66004I0PC). When a `priceOverride` is supplied for GM parity it
-  // is the LISTED price, so the street-wide purchase discount still applies
-  // (the override replaces the premium, not the discount).
-  const premiumCost = computeBusinessPurchasePremium(state, card.cost);
+  // Delivery Driver adjacency discount (GDD D.4.3 / MS-0MW3JXF6U00753LB):
+  // discount the base cost first, then apply the +50% premium (discount-first
+  // rule, CG-0MTKMGL66004I0PC). The discount is resolved against the
+  // DESTINATION slot, so it never leaks street-wide. When a `priceOverride`
+  // is supplied for GM parity it is the LISTED price, so the placement's
+  // purchase discount still applies (the override replaces the premium, not
+  // the discount).
+  const premiumCost = computeBusinessPurchasePremium(state, card.cost, slotIndex);
   const price = priceOverride !== undefined
-    ? computeEffectiveBusinessPurchaseCost(state, priceOverride)
+    ? computeEffectiveBusinessPurchaseCost(state, priceOverride, slotIndex)
     : premiumCost;
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to buy-and-place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
@@ -916,6 +922,9 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  * Validates whether the hired staff member may be placed at the given
  * street-grid slot (CG-0MU3BTSQ8006ZRCU AC3/AC4):
  * - the member must be a hired staff card (present in `state.staffCards`);
+ * - the member must be **business staff**: management-company staff are
+ *   employed by the player and never take a business destination
+ *   (GDD D.4.2, MS-0MW3JXF6U00753LB);
  * - the slot must hold a business/community-space card;
  * - the business name or one of its synergy types must match the staff's
  *   `allowedBusinessTypes` (`staffMatchesBusiness`; absent field = generalist);
@@ -937,6 +946,18 @@ export function canPlaceStaffOnBusiness(
   }
   if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
     return { legal: false, reason: `Invalid slot index: ${slotIndex}.` };
+  }
+  // Type = assignment (GDD D.4.2/D.4.8 §1): management-company staff are
+  // employed by the player and never carry a destination business, so an
+  // attempt to place one is rejected (MS-0MW3JXF6U00753LB). The type comes
+  // from the card's shipped marker (`handSlotsAdded` / `actionsPerTurn`) for
+  // an unplaced member, and from its existing assignment otherwise.
+  const member = state.staffCards[staffIndex]!;
+  if (staffCardScope(member) === 'management-company') {
+    return {
+      legal: false,
+      reason: `${member.name} is management-company staff and cannot be employed at a business.`,
+    };
   }
   const business = state.streetGrid[slotIndex];
   if (!business) {

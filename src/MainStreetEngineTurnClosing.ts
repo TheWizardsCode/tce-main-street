@@ -12,6 +12,7 @@ import { executeAction } from './MainStreetEngineActions';
 import { acceptLoanOffer, applyBusinessOngoingCosts, applyCommunitySpaceOngoingCosts, applyStaffOngoingCosts, declineStaffApplicant } from './MainStreetEngineCommands';
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, hasPendingPiggyback, resolveEvent } from './MainStreetEngineEvents';
+import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
 import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnLedger, TurnResult } from './MainStreetEngineTypes';
 import { roundInt } from './MainStreetDifficulty';
@@ -26,7 +27,11 @@ import type { DifficultyName } from './MainStreetDifficulty';
 import { replenishIncidentDeck } from './MainStreetMarket';
 import { applyLoanRepayments, largestBailoutOption, maybeOfferBailout, maybeOfferBailoutForSeat } from './MainStreetLoans';
 import type { LoanPayoff } from './MainStreetLoans';
-import { computeIncidentSkillBuffs, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
+import {
+  computeIncidentFrequencyReduction,
+  computeIncidentSkillBuffs,
+  getEmployedSpecializationSkills,
+} from './MainStreetStaffBuffs';
 import type { MainStreetState, TurnStatSnapshot } from './MainStreetState';
 import { addLog, addLogShared, syncResourceBankToLedger, advanceWeek, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
@@ -39,6 +44,24 @@ import {
   createPendingStorylineChoice,
 } from './MainStreetStoryline';
 import { storyUpdateLine } from './MainStreetStorylineUi';
+
+/**
+ * The placed businesses an incident can hit, used to scope business-staff
+ * frequency mitigation (Health & Safety Inspector, GDD D.4.3).
+ *
+ * A `SpecificSynergy` incident can only hit matching businesses; `All` and
+ * `RandomBusiness` incidents can hit any placed business, so every placed slot
+ * is a candidate (the target is not chosen until resolution). Consumes no RNG.
+ */
+function incidentCandidateSlotsFor(state: MainStreetState, event: EventCard): number[] {
+  const placedSlots: number[] = [];
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    if (state.streetGrid[i] !== null) placedSlots.push(i);
+  }
+  if (event.target !== 'SpecificSynergy') return placedSlots;
+  const targets = eventSynergyTargets(state, event);
+  return placedSlots.filter(slot => matchesEventSynergyTargets(state.streetGrid[slot], targets));
+}
 
 /**
  * Resolves the front Incident event from the face-down incident deck
@@ -90,6 +113,21 @@ export function resolveIncident(
   // Remove the chosen card by index (deck remains face-down, player sees only
   // the resolved sequence).
   const event = state.incidentDeck.splice(idx, 1)[0]!;
+
+  // Health & Safety Inspector (GDD D.4.3, MS-0MW3JXF6U00753LB): a business-staff
+  // incident effect reduces the incident frequency of ITS OWN business. The
+  // incident's candidate businesses are the ones its target can hit (a
+  // business-type match, or any placed business for a street-wide/random
+  // target); the strongest protector rolls once. An averted card returns to
+  // the SAME deck position untouched, so it resolves next turn — mirroring the
+  // Risk Manager's untouched-deck semantics above.
+  const candidateSlots = incidentCandidateSlotsFor(state, event);
+  const businessFrequencyPct = computeIncidentFrequencyReduction(state, candidateSlots);
+  if (businessFrequencyPct > 0 && state.rng() < businessFrequencyPct) {
+    state.incidentDeck.splice(idx, 0, event);
+    addLogShared(state, 'Health & Safety Inspector averted this week\'s incident.', 'neutral');
+    return null;
+  }
 
   // Track the draw so the balance history mirrors the resolved sequence.
   recordIncidentDraw(state.incidentBalance, event);

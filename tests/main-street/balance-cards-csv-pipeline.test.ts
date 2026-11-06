@@ -79,11 +79,15 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(advisor?.upgradeCostDiscount).toBe('100');
   });
 
-  it('parses purchaseCostDiscount into the Delivery Driver row', () => {
+  it('leaves the Delivery Driver purchaseCostDiscount column empty after the two-type redesign', () => {
     const rows = readCsvFile(CSV_PATH);
     const delivery = rows.find(r => r.id === 'staff-delivery');
     expect(delivery).toBeDefined();
-    expect(delivery?.purchaseCostDiscount).toBe('50');
+    // The street-wide `purchaseCostDiscount` is gone: the discount is now a
+    // placement-scoped adjacency effect carried in the row's `effect` spec
+    // (GDD D.4.3 / MS-0MW3JXF6U00753LB), which the balance pass preserves.
+    expect(delivery?.purchaseCostDiscount).toBe('');
+    expect(delivery?.effect).toBe('purchase-discount:adjacent:50');
   });
 
   it('runs the full balancing pass on the real CSV', () => {
@@ -95,8 +99,9 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(accountant?.refreshCostDiscount).toBe('100');
     const advisor = result.rows.find(r => r.id === 'staff-financial');
     expect(advisor?.upgradeCostDiscount).toBe('100');
-    const delivery = result.rows.find(r => r.id === 'staff-delivery');
-    expect(delivery?.purchaseCostDiscount).toBe('50');
+    // Staff rows survive the pass, including the two-type effect spec.
+    expect(result.rows.find(r => r.id === 'staff-delivery')?.effect)
+      .toBe('purchase-discount:adjacent:50');
   });
 
   it('round-trips the balanced CSV with all 44 columns intact', () => {
@@ -108,8 +113,8 @@ describe('balance-cards CSV pipeline (regression CG-0MSREC65T004J5SS)', () => {
     expect(accountant?.refreshCostDiscount).toBe('100');
     const advisor = reparsed.find(r => r.id === 'staff-financial');
     expect(advisor?.upgradeCostDiscount).toBe('100');
-    const delivery = reparsed.find(r => r.id === 'staff-delivery');
-    expect(delivery?.purchaseCostDiscount).toBe('50');
+    expect(reparsed.find(r => r.id === 'staff-delivery')?.effect)
+      .toBe('purchase-discount:adjacent:50');
   });
 
   it('treats refreshCostDiscount as numeric in row validation', () => {

@@ -82,13 +82,19 @@ export function canPickUpBusinessCard(tcCtx: MainStreetTurnControllerContext, ca
     // Composite-parity buy-and-place price (CG-0MT24X0SX007RLHN): on GM
     // 2-action days the drag charges the LISTED cost (consuming 2 actions);
     // on a 1-action day it charges the +50% premium (consuming 1 action).
-    // Check affordability against the applicable price, after the
-    // street-wide Delivery Driver purchase discount (CG-0MUMCVH3N007KT1M).
-    const price = s.state.actionsRemaining >= 2
-      ? computeEffectiveBusinessPurchaseCost(s.state, card.cost)
-      : computeBusinessPurchasePremium(s.state, card.cost);
-    if (s.state.resourceBank.coins < price) return false;
-    if (!s.state.streetGrid.some((slot: any) => slot === null)) return false;
+    // Check affordability against the applicable price. The Delivery Driver's
+    // discount is placement-scoped (GDD D.4.3 / MS-0MW3JXF6U00753LB), so the
+    // veto has to hold for at least ONE empty slot rather than a single
+    // slot-agnostic price.
+    const premiumDrag = s.state.actionsRemaining < 2;
+    const hasAffordableEmptySlot = s.state.streetGrid.some((slot: any, index: number) => {
+      if (slot !== null) return false;
+      const price = premiumDrag
+        ? computeBusinessPurchasePremium(s.state, card.cost, index)
+        : computeEffectiveBusinessPurchaseCost(s.state, card.cost, index);
+      return s.state.resourceBank.coins >= price;
+    });
+    if (!hasAffordableEmptySlot) return false;
 
     // Tutorial gating: only allow select-business if it is the required
     // action or the tutorial is inactive.
@@ -127,8 +133,8 @@ export function canDropBusinessCard(tcCtx: MainStreetTurnControllerContext, card
     const card = s.state.market.cards.find((c: any) => c.id === cardId);
     if (card && (card.family === 'business' || card.family === 'community-space')) {
       const price = s.state.actionsRemaining >= 2
-        ? computeEffectiveBusinessPurchaseCost(s.state, card.cost)
-        : computeBusinessPurchasePremium(s.state, card.cost);
+        ? computeEffectiveBusinessPurchaseCost(s.state, card.cost, slotIndex)
+        : computeBusinessPurchasePremium(s.state, card.cost, slotIndex);
       if (s.state.resourceBank.coins < price) return false;
     }
 
@@ -308,12 +314,16 @@ export function canPickUpHandCard(tcCtx: MainStreetTurnControllerContext, cardId
     const sameWeek = s.justMovedHandCardId != null && s.justMovedHandCardId === card.id;
     if (!sameWeek && s.state.actionsRemaining <= 0) return false;
     const premiumApplies = sameWeek && s.state.actionsRemaining <= 0;
-    const premiumCost = premiumApplies
-      ? computeBusinessPurchasePremium(s.state, card.cost)
-      : undefined;
-    // AC2: pickup is vetoed when no affordable empty slot exists.
-    const hasAffordableEmptySlot = s.state.streetGrid.some((slot: any, index: number) =>
-      slot === null && canPlaceFromHand(s.state, handIndex, index, premiumCost).legal);
+    // AC2: pickup is vetoed when no affordable empty slot exists. The premium
+    // is placement-scoped (the Delivery Driver's adjacency discount), so it is
+    // resolved per candidate slot inside the predicate.
+    const hasAffordableEmptySlot = s.state.streetGrid.some((slot: any, index: number) => {
+      if (slot !== null) return false;
+      const premiumCost = premiumApplies
+        ? computeBusinessPurchasePremium(s.state, card.cost, index)
+        : undefined;
+      return canPlaceFromHand(s.state, handIndex, index, premiumCost).legal;
+    });
     if (!hasAffordableEmptySlot) return false;
     return true;
 
@@ -358,7 +368,7 @@ export function canDropHandCard(tcCtx: MainStreetTurnControllerContext, cardId: 
     if (!sameWeek && s.state.actionsRemaining <= 0) return false;
     const premiumApplies = sameWeek && s.state.actionsRemaining <= 0;
     const premiumCost = premiumApplies
-      ? computeBusinessPurchasePremium(s.state, card.cost)
+      ? computeBusinessPurchasePremium(s.state, card.cost, slotIndex)
       : undefined;
     return canPlaceFromHand(s.state, handIndex, slotIndex, premiumCost).legal;
 
