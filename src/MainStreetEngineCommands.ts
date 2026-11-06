@@ -25,8 +25,8 @@ import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
-import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
-import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
+import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
@@ -382,9 +382,10 @@ export function applyStaffOngoingCosts(state: MainStreetState, opts?: { apply?: 
 
   let totalCost = 0;
   for (const card of staffCards) {
-    // Operations Manager: -50 of THIS member's own salary (computeStaffSalaryCost).
-    const memberSkills = Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [];
-    totalCost += computeStaffSalaryCost(memberSkills, card.ongoingCost);
+    // Operations Manager: -50 of THIS member's own salary, gated to business
+    // staff — a management-company member's cross-type Operations Manager is
+    // inert (MS-0MW4MSNWR00123OZ AC3).
+    totalCost += computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
   }
   totalCost = roundInt(totalCost * (1 - streetReduction));
 
@@ -580,13 +581,10 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
   for (const player of state.players) {
     const staffCards = player.staffCards ?? [];
     if (staffCards.length === 0) continue;
-    const ownerSkills = staffCards.flatMap((card) =>
-      Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [],
-    );
+    const ownerSkills = getStreetScopeSkills(staffCards);
     let totalCost = 0;
     for (const card of staffCards) {
-      const memberSkills = Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [];
-      totalCost += computeStaffSalaryCost(memberSkills, card.ongoingCost);
+      totalCost += computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
     }
     totalCost = roundInt(totalCost * (1 - computeStreetOngoingCostReductionPct(ownerSkills)));
     if (totalCost <= 0) continue;
@@ -1368,9 +1366,7 @@ export function letGoStaffMember(state: MainStreetState, idx: number): void {
   }
 
   const member = state.staffCards[idx];
-  const skills = Array.isArray((member as any).specializationSkillIds)
-    ? deserializeSkillIds((member as any).specializationSkillIds)
-    : [];
+  const skills = getSalaryScopeSkills(member);
   const salary = computeStaffSalaryCost(skills, member.ongoingCost);
 
   // Deduct salary (clamped at 0) and 1 reputation

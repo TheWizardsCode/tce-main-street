@@ -32,7 +32,7 @@ import {
   BASELINE_SKILL_ID,
   deserializeSkillIds,
 } from '../../src/MainStreetStaffSkills';
-import { getEmployedSpecializationSkills } from '../../src/MainStreetStaffBuffs';
+import { getEmployedSpecializationSkillsForBusiness } from '../../src/MainStreetStaffBuffs';
 import { createStaffDeck } from '../../src/MainStreetCards';
 import type { StaffCard } from '../../src/MainStreetCards';
 
@@ -89,7 +89,9 @@ describe('D1: staff specialization end-to-end integration', () => {
     };
     syncCardCurrentIncome(a.streetGrid, 0);
 
-    const employedSkills = getEmployedSpecializationSkills(a);
+    // Chef is a business-scope skill, so it is read from the per-business pool
+    // (the street-wide pool is management-company scope only).
+    const employedSkills = getEmployedSpecializationSkillsForBusiness(a, 0);
     const hasChefEmployed = employedSkills.some(s => s.id === 'skill-chef');
     const result = applyIncome(a);
     const slotTotal = result.breakdown?.find((s: { slotIndex: number }) => s.slotIndex === 0)?.total ?? 0;

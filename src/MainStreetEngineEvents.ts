@@ -12,8 +12,7 @@ import { applyCompetitiveIncome, getSlotOwnerId } from './MainStreetAdjacency';
 import type { EventCard, SpecializationSkill, DurationEventCard } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
-import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
-import { deserializeSkillIds } from './MainStreetStaffSkills';
+import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, getStreetScopeSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, addLogShared, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
@@ -408,9 +407,10 @@ function buildOwnerEventContext(
   player: PlayerRecord,
 ): OwnerEventContext {
   const ownerId = player.playerId;
-  const skills = (player.staffCards ?? []).flatMap((card) =>
-    Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [],
-  );
+  // Street-wide (management-company-scope) skills only, gated by staff type —
+  // a business-staff member's cross-type skill is inert here too
+  // (MS-0MW4MSNWR00123OZ AC1/AC4).
+  const skills = getStreetScopeSkills(player.staffCards ?? []);
   const incidentBuffs =
     event.trigger === 'Incident' ? computeIncidentSkillBuffs(skills) : null;
   const theftNeutralized =

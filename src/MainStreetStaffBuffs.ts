@@ -27,6 +27,16 @@
  *   (-50 rep), skill-risk-manager (-15% probability), skill-security-
  *   consultant (theft/loss immunity on the home business).
  *
+ * **Staff-type scope gate (MS-0MW4MSNWR00123OZ):** every skill takes effect
+ * only from a member whose type matches the skill's scope. Business staff
+ * (an `employedAtSlot` link) realise business-scope skills, scoped to their
+ * business; management-company staff (no `employedAtSlot`) realise
+ * management-company-scope skills, scoped to the player/street. The gate is
+ * applied by the aggregation helpers ({@link getEmployedSpecializationSkills},
+ * {@link getEmployedSpecializationSkillsForBusiness},
+ * {@link getSalaryScopeSkills}), so a skill held cross-type is inert in every
+ * consumer without per-consumer special-casing.
+ *
  * @module
  */
 
@@ -127,6 +137,12 @@ export const TAX_AUDIT_ACCOUNTANT_RATE = 0.25;
  * Computes the per-business buff bundle for one business from the employed
  * skill set. Pure: never mutates `profile` or any game state.
  *
+ * Callers pass the gated per-business pool
+ * ({@link getEmployedSpecializationSkillsForBusiness}), which carries only
+ * business-scope skills from members employed at the business, so a
+ * management-company-scope skill can never reach this fold
+ * (MS-0MW4MSNWR00123OZ AC2/AC4).
+ *
  * @param skills  Employed specialization skills (one or more staff members).
  * @param profile Immutable per-business inputs.
  * @returns The buff bundle to fold into income/reputation/cost computations.
@@ -193,54 +209,121 @@ export function computePerBusinessSkillBuffs(
   return { income, reputation, ongoingCosts, incidents };
 }
 
-// ── Street / engine-level buff helpers ──────────────────────
+// ── Staff-type scope gate (MS-0MW4MSNWR00123OZ) ─────────────
+//
+// The two-type model (GDD D.4.2/D.4.8) makes a specialization skill take
+// effect ONLY from a member whose type matches the skill's scope:
+//   - business staff (an `employedAtSlot` link) realise business-scope skills,
+//     scoped to the employing business;
+//   - management-company staff (no `employedAtSlot`) realise
+//     management-company-scope skills, scoped to the player/street.
+// The gate is applied in the aggregation helpers below — the single place
+// every consumer reads skills from — so no consumer needs special-casing
+// (AC4). A skill assigned cross-type (existing save / hand-built fixture) is
+// therefore inert. Type is derived from `employedAtSlot` presence, so no new
+// persisted field is needed (AC5).
 
 /**
- * Flattens the specialization skills of every currently employed staff
- * member (hired cards in `state.staffCards`) into one skill list — the
- * STREET-WIDE aggregation used for buffs that are not business-scoped
- * (cost-cutter, incident mitigation, brand-ambassador, negotiator,
- * ops-manager salary, networker, tech-guru). Skills are read from the
- * card's locked `specializationSkillIds` (I3); members without the field
- * (legacy saves / hand-built fixtures) contribute nothing.
+ * Resolves a staff card's locked skill roster, tolerating legacy/unknown ids.
  *
- * Per-business income/reputation buffs use
- * {@link getEmployedSpecializationSkillsForBusiness} instead, so management-company
- * staff (no `employedAtSlot`) never leak income/rep buffs onto the street
- * (CG-0MSTOATDU006UGAX).
+ * A stale/unknown skill id on a saved member must not break the income phase;
+ * the member's skills are skipped (documented forward-compat path).
  */
-export function getEmployedSpecializationSkills(state: MainStreetState): SpecializationSkill[] {
-  return (state.staffCards ?? []).flatMap(card => {
-    const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
-    try {
-      return deserializeSkillIds(ids);
-    } catch {
-      // A stale/unknown skill id on a saved member must not break the income
-      // phase; skip the member's skills (documented forward-compat path).
-      return [];
-    }
-  });
+function resolveCardSkills(card: StaffCard): SpecializationSkill[] {
+  const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
+  try {
+    return deserializeSkillIds(ids);
+  } catch {
+    return [];
+  }
 }
 
 /**
- * Flattens the specialization skills of ONLY the staff member(s) employed at
- * the given street-grid slot (`employedAtSlot === slotIndex`). Per-business
+ * True when a staff card is business staff: it carries an `employedAtSlot`
+ * link. Management-company staff have no slot (the two-type model's runtime
+ * determinant — GDD D.4.2/D.4.8; no persisted type field).
+ */
+export function isBusinessStaffCard(card: StaffCard): boolean {
+  return card.employedAtSlot !== undefined;
+}
+
+/**
+ * Management-company-scope (player/street-scope) skills the given members can
+ * realise. A skill takes effect only from a management-company member, i.e.
+ * one with no `employedAtSlot`: a management-company-scope skill held by
+ * business staff is inert (Cost Cutter, Negotiator, Brand Ambassador, the
+ * four incident-mitigation skills and the Town Gossip baseline), and a
+ * business-scope skill is never street-wide (MS-0MW4MSNWR00123OZ AC1).
+ *
+ * @param cards Staff members to aggregate (e.g. `state.staffCards`).
+ * @returns The realisable management-company-scope skills, in card order.
+ */
+export function getStreetScopeSkills(cards: readonly StaffCard[]): SpecializationSkill[] {
+  return cards.flatMap(card =>
+    isBusinessStaffCard(card)
+      ? []
+      : resolveCardSkills(card).filter(skill => skill.scope === 'management-company'),
+  );
+}
+
+/**
+ * Business-scope skills of the given members. Callers pass the members
+ * employed at ONE business (the per-business `employedStaff` source of truth,
+ * falling back to `employedAtSlot` links), so membership itself establishes
+ * the business-staff type; the gate here is the skill's scope — a
+ * management-company-scope skill held by business staff is filtered out and
+ * produces no per-business income, reputation or ongoing-cost buff
+ * (MS-0MW4MSNWR00123OZ AC2).
+ *
+ * @param cards Members employed at one business.
+ * @returns The realisable business-scope skills, in member order.
+ */
+export function getBusinessScopeSkills(cards: readonly StaffCard[]): SpecializationSkill[] {
+  return cards.flatMap(card => resolveCardSkills(card).filter(skill => skill.scope === 'business'));
+}
+
+/**
+ * Business-scope skills a member can realise for its own salary (the
+ * Operations Manager discount): only business staff (an `employedAtSlot`
+ * link) discount a business staffing cost, so a management-company member's
+ * cross-type Operations Manager is inert (MS-0MW4MSNWR00123OZ AC3).
+ *
+ * @param card The member whose salary is being charged.
+ * @returns The realisable business-scope skills (empty for company staff).
+ */
+export function getSalaryScopeSkills(card: StaffCard): SpecializationSkill[] {
+  return isBusinessStaffCard(card) ? getBusinessScopeSkills([card]) : [];
+}
+
+// ── Street / engine-level buff helpers ──────────────────────
+
+/**
+ * Flattens the management-company-scope specialization skills of every
+ * management-company staff member (hired cards in `state.staffCards` with no
+ * `employedAtSlot`) into one skill list — the STREET-WIDE aggregation used for
+ * buffs that are not business-scoped (cost-cutter, incident mitigation,
+ * brand-ambassador, negotiator). Skills are read from the card's locked
+ * `specializationSkillIds` (I3); members without the field (legacy saves /
+ * hand-built fixtures) contribute nothing.
+ *
+ * The staff-type gate lives here (see {@link getStreetScopeSkills}), so a
+ * business-staff member's management-company-scope skill never leaks a
+ * player/street effect, and per-business buffs use
+ * {@link getEmployedSpecializationSkillsForBusiness} instead
+ * (MS-0MW4MSNWR00123OZ AC1/AC4).
+ */
+export function getEmployedSpecializationSkills(state: MainStreetState): SpecializationSkill[] {
+  return getStreetScopeSkills(state.staffCards ?? []);
+}
+
+/**
+ * Flattens the business-scope specialization skills of ONLY the staff
+ * member(s) employed at the given street-grid slot. Per-business
  * income/reputation buffs in `applyIncome` are derived from this per-slot
  * pool, so a Chef employed at one Food business never buffs another Food
- * business elsewhere on the street, and management-company staff (no `employedAtSlot`)
- * contribute no per-business buffs (CG-0MSTOATDU006UGAX).
- *
- * @param state     Current game state.
- * @param slotIndex Street-grid slot index of the target business.
- * @returns The employed specialization skills at that slot (empty when none).
- */
-/**
- * Flattens the specialization skills of ONLY the staff member(s) employed at
- * the given street-grid slot. Per-business income/reputation buffs in
- * `applyIncome` are derived from this per-slot pool, so a Chef employed at
- * one Food business never buffs another Food business elsewhere on the
- * street, and management-company staff contribute no per-business buffs
- * (CG-0MSTOATDU006UGAX / CG-0MU3BTTWT0025VPL).
+ * business elsewhere on the street, and management-company-scope skills held
+ * by business staff are filtered out (CG-0MSTOATDU006UGAX /
+ * CG-0MU3BTTWT0025VPL / MS-0MW4MSNWR00123OZ AC2).
  *
  * Reads the per-business employed-staff source of truth
  * (`business.employedStaff`, CG-0MTIOLY2A0092OT1 AC2) and falls back to
@@ -250,7 +333,7 @@ export function getEmployedSpecializationSkills(state: MainStreetState): Special
  *
  * @param state     Current game state.
  * @param slotIndex Street-grid slot index of the target business.
- * @returns The employed specialization skills at that slot (empty when none).
+ * @returns The realisable business-scope skills at that slot (empty when none).
  */
 export function getEmployedSpecializationSkillsForBusiness(
   state: MainStreetState,
@@ -261,16 +344,7 @@ export function getEmployedSpecializationSkillsForBusiness(
     business && Array.isArray((business as { employedStaff?: unknown }).employedStaff)
       ? (business as { employedStaff: StaffCard[] }).employedStaff
       : (state.staffCards ?? []).filter(card => card.employedAtSlot === slotIndex);
-  return members.flatMap(card => {
-    const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
-    try {
-      return deserializeSkillIds(ids);
-    } catch {
-      // Stale/unknown skill ids are skipped (same forward-compat path as the
-      // street-wide aggregator).
-      return [];
-    }
-  });
+  return getBusinessScopeSkills(members);
 }
 
 /**
@@ -450,12 +524,23 @@ export function computeProportionalCoinLoss(coins: number, rate: number): number
   return Math.min(coins, roundInt(coins * effectiveRate));
 }
 
-/** Flat salary discount for THIS employed staff member (Operations Manager, -50). */
+/**
+ * Flat salary discount for THIS employed staff member (Operations Manager, -50).
+ *
+ * The caller supplies the member's realisable skills — use
+ * {@link getSalaryScopeSkills} to gate them by staff type: the discount is a
+ * business-staff effect and never applies from a management-company member
+ * (MS-0MW4MSNWR00123OZ AC3).
+ */
 export function computeStaffSalaryDiscount(skills: readonly SpecializationSkill[]): number {
   return skills.filter(s => s.id === 'skill-operations-manager').length * OPERATIONS_MANAGER_SALARY_DISCOUNT;
 }
 
-/** A staff member's ongoing salary after the Operations Manager discount (clamped at 0). */
+/**
+ * A staff member's ongoing salary after the Operations Manager discount
+ * (clamped at 0). Pass {@link getSalaryScopeSkills}' output so a cross-type
+ * Operations Manager is inert (MS-0MW4MSNWR00123OZ AC3).
+ */
 export function computeStaffSalaryCost(
   skills: readonly SpecializationSkill[],
   baseSalary: number,

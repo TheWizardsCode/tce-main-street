@@ -402,10 +402,13 @@ export interface StaffCard {
    * Street-grid slot index of the deployed business this staff member is
    * employed at (CG-0MSTOATDU006UGAX). Per-business specialization buffs
    * (income/reputation) apply ONLY to this business; undefined = management-company
-   * staff (the two-type name for the existing mechanic, CG-0MSTOATDU006UGAX) who
-   * contribute no per-business income/rep buffs but whose street-wide skills
-   * still aggregate (cost cutter, incidents, brand ambassador, negotiator,
-   * ops-manager salary).
+   * staff (the two-type name for the existing mechanic, CG-0MSTOATDU006UGAX).
+   *
+   * The two-type scope gate (MS-0MW4MSNWR00123OZ) derives the member's type
+   * from this field: a present slot means business staff (business-scope
+   * skills only, scoped to this business), absent means management-company
+   * staff (management-company-scope skills only, player/street-scoped). A
+   * skill held cross-type is inert, so no persisted type field is needed.
    */
   employedAtSlot?: number;
   /**

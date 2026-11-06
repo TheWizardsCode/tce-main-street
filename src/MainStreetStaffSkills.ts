@@ -156,14 +156,26 @@ export function staffCardScope(card: {
  * Gossip baseline specialization skill (`skill-town-gossip`, parent epic
  * CG-0MT1CIWSD003VBPK). Consolidates the peek gates used by the engine,
  * AI, renderer, and turn controller.
+ *
+ * The Town Gossip baseline is a management-company-scope skill, so it only
+ * enables the peek from a management-company member (no `employedAtSlot`);
+ * a business-staff member holding it is inert (MS-0MW4MSNWR00123OZ AC1). The
+ * Lookout's own `peekOncePerTurn` ability is not a specialization skill and
+ * is unaffected by staff type.
  */
 export function hasPeekCapableStaff(state: {
-  staffCards?: readonly { peekOncePerTurn?: boolean; specializationSkillIds?: readonly string[] }[];
+  staffCards?: readonly {
+    peekOncePerTurn?: boolean;
+    specializationSkillIds?: readonly string[];
+    employedAtSlot?: number;
+  }[];
 }): boolean {
   return (state.staffCards ?? []).some(
     card =>
       card.peekOncePerTurn === true ||
-      (Array.isArray(card.specializationSkillIds) && card.specializationSkillIds.includes(BASELINE_SKILL_ID)),
+      (card.employedAtSlot === undefined &&
+        Array.isArray(card.specializationSkillIds) &&
+        card.specializationSkillIds.includes(BASELINE_SKILL_ID)),
   );
 }
 
