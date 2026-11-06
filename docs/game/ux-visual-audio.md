@@ -494,10 +494,11 @@ side by the **owning seat** instead:
   `MS-0MUTU8J9T0034OT7`; the single shared HUD anchor contract this seam
   extends per seat is `MS-0MUYT57J80021CWW`; the owner identity is carried by
   `MS-0MW083KRZ009NJTA` and the per-owner resolver by `MS-0MW083O38005B22F`.
-  The fuller per-seat **Turn Summary dialog** is delivered by
-  `MS-0MVRNV9Y8008IKGK` (competitive summary rows end-to-end), parent
-  `MS-0MVO1SFCM000ZLBI` (End of Turn summary dialog for competitive mode) —
-  see
+  The fuller per-seat **Turn Summary** is the competitive portion of the
+  unified tabbed P&L overlay delivered by `MS-0MVRNV9Y8008IKGK` (competitive
+  summary rows end-to-end) and `MS-0MW5ER6HC000HVQ8` (tabbed P&L overlay),
+  parent `MS-0MVO1SFCM000ZLBI` (End of Turn summary dialog for competitive
+  mode) — see
   [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk);
   that panel consumes `TurnResult.playerRoundLedger` and does **not** change
   this flight routing.
@@ -1269,9 +1270,8 @@ condensed text-only summary.
   dialog content (MS-0MVP45WBA001GAVY, parent MS-0MVL6HMDP004WI41).
 - Reported values, for the turn just closed:
   - **Businesses owned** — one owner-keyed row per `businessesOwned` key
-    (`ownerId` / `playerId`, `label`, `isHuman`, count + wallet). The dialog
-    currently renders the single human seat (`humanOwner`); the multi-owner
-    rows are already present for a future per-player panel.
+    (`ownerId` / `playerId`, `label`, `isHuman`, count + wallet), so every
+    player's row already carries the figures its own tab renders.
   - **Income subtotals per phase** — base / synergy / reputation / events,
     plus `incomeTotal` (the four rows sum to the income phase's credited
     coins).
@@ -1286,31 +1286,88 @@ condensed text-only summary.
     identity (the deferred closing refreshes the net rows against the final
     state, so closing balances are the post-turn values and stay
     integer-consistent with the displayed rows).
+- Profit/loss projection (parent MS-0MW4XULA90002OEY, producer answers Q1=A,
+  Q2=A, Q3=A): `buildPLProjection(state, result, playerKey)` re-projects one
+  player's committed figures as an ordered, **coins-only** profit/loss
+  statement, and `buildPLTabs(state, result)` builds the matching per-player
+  tab model. Both are Phaser-free and re-project the committed ledger only —
+  no new accounting data, no state mutation, no RNG.
+  - **Statement shape** — the `Income` section lists base / synergy /
+    reputation / events with a `Total income` row; `Less: Operating expenses`
+    lists staff / community / business with a `Total operating expenses` row;
+    the `Incident` and `One-off` adjustments follow; the statement closes with
+    an emphasised `Net profit/loss` bottom line. Section totals come from the
+    ledger's own subtotals (never a re-sum of the lines), so
+    `income.total + expenses.total + incident.coins + oneOff.coins` equals
+    `net.coins` — the ledger's own identity. Every label is UK English and
+    matches the wording both panels already use (`Base income`, `Staff
+    wages`, …).
+  - **Supplementary context** — the non-monetary figures never become P&L
+    lines: `context` carries the day's net reputation and score change, the
+    closing coin balance and the businesses owned for the selected player.
+  - **Tab model** — one `PLTab` per player: `{ id, label, colour?, isHuman,
+    isDefault }`. `id` is the ledger owner key (`String(playerId)`), `label`
+    is `You` for the human seat and `AI n` otherwise, `colour` is the seat's
+    shared `resolveSeatColour` value (absent in single-player, where there is
+    nothing to compare), and exactly one tab is the default: the human seat,
+    else the first tab. A single-player player who owns no business yet still
+    gets one `You` tab — staff wages, incidents and one-offs can move the
+    day's result with an empty street.
+  - **One source of truth for both entry points** — `buildPLTabs` /
+    `buildPLProjection` resolve which ledger shape the result carries, and the
+    tabbed dialog's own helpers (`buildPLTabsFromTurnSummary` /
+    `buildPLTabsFromCompetitiveSummary`, `buildPLFromTurnSummary` /
+    `buildPLFromCompetitiveRow`) project the same tabs and statement from the
+    already-built summary it holds, so the two can never drift.
 - Read-only: never mutates state, consumes no RNG, and never touches the
   save-point ordering (the checkpoint stays in `finalizeTurn`).
 - Competitive closings carry no `turnLedger`, so `buildTurnSummary` returns
-  `null` and the single-player dialog is not presented (parent AC4). They carry
-  `TurnResult.playerRoundLedger` instead, rendered by the per-seat
-  [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk)
-  through its own model builder (`buildCompetitiveTurnSummary`).
+  `null` and the single-player summary is not presented (parent AC4). They
+  carry `TurnResult.playerRoundLedger` instead, rendered by the competitive
+  portion of the same
+  [tabbed overlay](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk)
+  through its own row builder (`buildCompetitiveTurnSummary`) and the same
+  P&L/tab projection.
 - Tests: `tests/main-street/turn-summary-model.test.ts` (one test per
   surfaced value, owner-keyed shape, and a real-engine
-  `processEndOfTurn` integration test); engine ledger coverage lives in
+  `processEndOfTurn` integration test), `tests/main-street/turn-summary-pl-model.test.ts`
+  (one test per P&L line and section total, exact reconciliation for
+  profitable / loss / zero days, the tab model and its default, and the
+  supplementary context); engine ledger coverage lives in
   `tests/main-street/end-of-turn-ledger.test.ts`.
 
 ### Turn Summary dialog and the closing gate
 
-- Overlay: `MainStreetOverlayContent.showTurnSummaryDialog()`
-  (MS-0MVP46AMO002SZUT) renders the model above — instant (no fade-in, so it
-  is reduced-motion safe), overlay-pattern compliant (`hudContainer`
-  parenting, depths 199/200/201, dismissal via `s.overlayObjects`). It shows
-  a `Turn Summary` / `Day <n>` title, then two columns: **left** income per
-  phase (base / synergy / reputation / events) with its total, ongoing
-  expenses per category (staff / community / business) with its total, and
-  **businesses owned** for the human seat; **right** the resolved incident
-  (name + coin/reputation delta), the one-off changes, the net coin /
-  reputation / score change and the closing coin / reputation / score
-  balances. The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
+- Overlay: one unified tabbed P&L panel (parent MS-0MW4XULA90002OEY, child
+  MS-0MW5ER6HC000HVQ8) replaces the old flat two-column single-player dialog
+  (`MainStreetOverlayContent.showTurnSummaryDialog()`, MS-0MVP46AMO002SZUT)
+  and the old per-seat text block (`showCompetitiveTurnSummaryDialog()`).
+  Both methods delegate to the same renderer, `presentTurnSummaryPanel()` in
+  `src/scenes/MainStreetTurnSummaryOverlay.ts`, so the two layouts can never
+  drift. It is instant (no fade-in, so it is reduced-motion safe) and
+  overlay-pattern compliant (`hudContainer` parenting, depths 199/200/201,
+  dismissal via `s.overlayObjects`).
+  - **Tab strip** — a `Turn Summary` / `Day <n>` title, then one tab per
+    player, each in its seat colour where one exists (single-player uses the
+    dialog gold). The human (`You`) tab is selected by
+    default, drawn bracketed and bold; selecting any other player's tab
+    redraws the **whole** statement body from that player's figures.
+    Single-player renders one **non-interactive** `You` tab (shown, never
+    clickable); competitive renders one interactive tab per non-eliminated
+    seat. Tabs are operable by pointer **and** keyboard — the Left/Right
+    arrow keys cycle the players' tabs with wrap-around — and a tab press
+    plays `UI_CLICK` through `safePlaySound`.
+  - **Statement body** — the selected player's P&L projection: the **Income**
+    section (base / synergy / reputation / events) with its `Total income`
+    row, **Less: Operating expenses** (staff / community / business) with its
+    `Total operating expenses` row, the **Incident** and **One-off**
+    adjustments, and the emphasised **Net profit/loss** bottom line (green
+    for a profit, red for a loss), followed by the non-monetary
+    **supplementary context** — reputation/score change, closing
+    coins/reputation/score, businesses owned and (single-player) the incident
+    drawn — outside the monetary lines.
+
+  The actions are **[ Next Turn ]** (primary) and **[ Bank Loan ]**,
   whose availability comes from the Phaser-free loans descriptor
   (`buildTurnSummaryLoanDescriptor()`, MS-0MVXYCICT0051LU7). Every button
   plays its `UI_CLICK` SFX through `safePlaySound`, so the Settings mute /
@@ -1326,11 +1383,13 @@ condensed text-only summary.
 
   Pressing the enabled button opens the mid-game loan selector below.
   **[ Next Turn ]** remains the only way to resume the deferred closing, so
-  the day still advances only on that click. No descriptor (a hand-built /
-  legacy state) means disabled with no hint, because no reason is known.
-  `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with no
-  overlay manager (headless), continues the closing instead of stranding the
-  turn.
+  the day still advances only on that click. A loan taken in the selector
+  re-renders this same panel in place from the same result against the
+  post-take state, **preserving the selected tab**. No descriptor (a
+  hand-built / legacy state) means disabled with no hint, because no reason is
+  known. `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with
+  no overlay manager (headless), continues the closing instead of stranding
+  the turn.
 - When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
   `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
   every closing animation (phased income show + incident reveal) has finished
@@ -1348,9 +1407,10 @@ condensed text-only summary.
 - Scope: deferred single-player closings. The tutorial, replay/headless and
   the resumed event-choice/piggyback tails keep the existing auto-advance
   pacing, and competitive closings never present this single-player dialog —
-  competitive play has its own owner-keyed per-seat panel under the same gate
-  contract (`presentCompetitiveTurnSummaryGate`; per-seat
-  `perSeatClosingSummary` text is unchanged; parent AC4; see
+  competitive play gates the same unified overlay through its own per-seat
+  entry point under the same gate contract
+  (`presentCompetitiveTurnSummaryGate`; per-seat `perSeatClosingSummary` text
+  is unchanged; parent AC4; see
   [Competitive Turn Summary panel](#competitive-turn-summary-panel-per-seat-round-rows-ms-0mvrnv9y8008ikgk)).
   **Reduced motion is
   gated too** (MS-0MW20KSEG001DH1X): the dialog is instant-appearance, so
@@ -1371,17 +1431,24 @@ condensed text-only summary.
 - Tests: `tests/main-street/turn-summary-gate.test.ts` (gate on/off per mode
   incl. the reduced-motion × replay × tutorial × competitive guard matrix,
   `endTurn` closing-path selection, `onNextTurn` continuation, delta
-  ordering/idempotence, banking-hint ordering) and
+  ordering/idempotence, banking-hint ordering),
   `tests/main-street/turn-summary-dialog.browser.test.ts` (overlay rendering in
   a real Phaser scene, plus the reduced-motion end-of-turn presenting the
-  dialog).
+  dialog) and `tests/main-street/turn-summary-pl-overlay.browser.test.ts` (the
+  tabbed P&L body, the default and per-seat tabs, tab switching by pointer and
+  Left/Right keys, the single non-interactive `You` tab and the selected tab
+  surviving the post-loan-take re-render).
 
 ### Competitive Turn Summary panel (per-seat round rows, MS-0MVRNV9Y8008IKGK)
 
 Competitive play gets the same review-and-advance moment single-player has
 (MS-0MVRNV9Y8008IKGK, parent MS-0MVO1SFCM000ZLBI): after the shared closing
-presentation finishes, a **Turn Summary** panel shows one owner-keyed row per
-non-eliminated seat, and the next shared day starts only on **[ Next Turn ]**.
+presentation finishes, the **Turn Summary** panel opens on the human seat's
+management-company P&L statement, with one owner-keyed **tab per non-eliminated
+seat**, and the next shared day starts only on **[ Next Turn ]**. This is the
+competitive portion of the same
+[unified tabbed P&L overlay](#turn-summary-dialog-and-the-closing-gate) that
+single-player uses — there is no separate competitive layout.
 
 A **round** is one completed shared day: every non-eliminated seat has taken
 its MarketPhase and the shared closing (Income → Incident → EndCheck) has run
@@ -1424,16 +1491,24 @@ owner-keyed, so the whole panel is testable without a browser.
   `base` / `synergy` / `reputation` / `events` income rows with their total, the
   per-category ongoing expenses with their total, the seat's incident and
   one-off deltas, its net coin / reputation / score change and its closing
-  coin / reputation / score balances. It returns `null` when the result carries
-  no round ledger, so browser and single-player callers are unaffected.
+  coin / reputation / score balances. `buildPLTabsFromCompetitiveSummary` turns
+  those rows into the panel's tabs (seat order, seat colour, human default) and
+  `buildPLFromCompetitiveRow` projects each one as that seat's P&L statement,
+  so competitive and single-player share one statement shape. It returns `null`
+  when the result carries no round ledger, so browser and single-player callers
+  are unaffected.
 - **Dialog.** `MainStreetOverlayContent.showCompetitiveTurnSummaryDialog()`
-  (delegated by `MainStreetScene.showCompetitiveTurnSummaryDialog()`) renders a
-  `Turn Summary` / `Day <n>` title and, per seat, five text lines: the seat
-  label in its own colour beside `Businesses owned: <n>`, the per-phase
-  `Income: …` line, the `Expenses: … · Total …` line, the
-  `Incident: … · One-off: …` line, and a bold totals line
-  `Income total: … · Net change: Coins …, Rep …, Score … · Closing: Coins …,
-  Rep …, Score …`. Overlay conventions are the single-player ones:
+  (delegated by `MainStreetScene.showCompetitiveTurnSummaryDialog()`) renders
+  the competitive side of the unified tabbed panel
+  (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a tab per
+  non-eliminated seat in its own colour with the human (`You`) tab selected by
+  default, and the selected seat's P&L statement — Income (base / synergy /
+  reputation / events) with its total, Less: Operating expenses (staff /
+  community / business) with its total, the Incident and One-off adjustments,
+  the emphasised net profit/loss, and the supplementary context (reputation /
+  score change, closing balances and businesses owned). Selecting another
+  seat's tab switches the **whole** statement body to that seat; the Left/Right
+  arrow keys cycle the tabs. Overlay conventions are the single-player ones:
   `createOverlayBackground` / `createOverlayButton`, elements parented into
   `s.hudContainer` at depths 199/200/201, everything pushed into
   `s.overlayObjects` for dismissal, instant appearance (reduced-motion safe)
@@ -1447,8 +1522,8 @@ owner-keyed, so the whole panel is testable without a browser.
   `buildLoanSelectorModel` + `showLoanSelectorDialog` machinery as the
   single-player panel), books the take to the human seat via an explicit
   `ownerId`, and re-presents the same `TurnResult` panel with the obligation
-  hint. AI seats get no proactive affordance — bailout stays their only loan
-  path.
+  hint while **preserving the selected tab**. AI seats get no proactive
+  affordance — bailout stays their only loan path.
 - **Per-seat expenses (MS-0MVRNVHJ50095N9Y).** `applyCompetitiveOngoingCosts`
   (`src/MainStreetEngineCommands.ts`) now **returns** the per-owner breakdown it
   charges — `{ staff, community, business }`, signed zero-or-negative — instead
@@ -1462,8 +1537,9 @@ owner-keyed, so the whole panel is testable without a browser.
   it renders three zero rows), `buildCompetitiveTurnSummary` exposes
   `expenses` / `expensesTotal` per seat using the **single-player** labels
   (`Staff wages` / `Community spaces` / `Business costs`), order and signed
-  formatting, and the panel renders one `Expenses: … · Total …` line per seat
-  in the single-player expense colour.
+  formatting, and each seat's tab renders those three rows (in the
+  single-player expense colour) under `Less: Operating expenses`, summing to
+  that seat's `Total operating expenses`.
 - **Gate.** `shouldGateCompetitiveTurnSummary()` /
   `presentCompetitiveTurnSummaryGate()` in
   `src/scenes/MainStreetTurnControllerCompetitive.ts` slot into
@@ -1500,11 +1576,13 @@ owner-keyed, so the whole panel is testable without a browser.
   closing, `startTurnPhase` only on the click, reduced-motion / replay /
   headless auto-advance, the invariants above) and
   `tests/main-street/turn-summary-competitive.browser.test.ts` (real Phaser
-  overlay: rows, colours, depths/parenting, always-disabled **[ Bank Loan ]**,
-  the per-seat expense line and the incident / one-off / net / closing
-  totals). The prose here is guarded by
-  `tests/main-street/turn-summary-gate-docs.test.ts`, which also pins the
-  single-player gate and the `docs/dev/testing.md` browser-test rule.
+  overlay: one tab per seat, per-seat colours, depths/parenting, tab switching,
+  the descriptor-driven **[ Bank Loan ]**, the per-seat expense rows and the
+  incident / one-off / net / closing figures), plus the cross-mode
+  `tests/main-street/turn-summary-pl-overlay.browser.test.ts`. The prose here is
+  guarded by `tests/main-street/turn-summary-gate-docs.test.ts` (which also
+  pins the single-player gate and the `docs/dev/testing.md` browser-test rule)
+  and `tests/main-street/turn-summary-pl-docs.test.ts`.
 
 ### Mid-game loan selector
 
@@ -1538,10 +1616,12 @@ owner-keyed, so the whole panel is testable without a browser.
   AP-neutral and reversible (it goes through the undo manager), so
   `actionsRemaining`/`bankedActions` are untouched, `state.turn` does not move
   and the closing is **not** resumed — the day advances only on
-  **[ Next Turn ]**, exactly once. On success the Turn Summary dialog is re-rendered in place
-  from the **same** `TurnResult` (`buildTurnSummary(state, result)`) against the
-  post-take state, and its loans descriptor is re-derived from the live state,
-  so the freshly booked obligation appears as the disabled **[ Bank Loan ]**
+  **[ Next Turn ]**, exactly once. On success the Turn Summary panel is
+  re-rendered in place from the **same** `TurnResult` against the post-take
+  state, **preserving the selected tab** (single-player rebuilds through
+  `buildTurnSummary`, competitive through `buildCompetitiveTurnSummary`), and
+  its loans descriptor is re-derived from the live state, so the freshly
+  booked obligation appears as the disabled **[ Bank Loan ]**
   with its `Loan: <n> coins/turn, <n> turns left` hint. A refused confirm
   (e.g. a race into an active loan) re-draws the selector with the engine's own
   reason in an extra red line and leaves every resource untouched, because the
