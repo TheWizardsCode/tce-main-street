@@ -39,6 +39,7 @@ import {
   buildLoanSelectorModel,
 } from '../../src/scenes/MainStreetLoanSelectorModel';
 import type { CompetitiveRoundLedger } from '../../src/MainStreetEngineTypes';
+import { formatLoanObligation } from '../../src/MainStreetLoans';
 import { createCompetitiveState } from '../../src/MainStreetState';
 
 /** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
@@ -354,6 +355,67 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(texts.filter((t) => t.text === '[ Bank Loan ]')).toHaveLength(1);
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
     expect(nextTurnCalls).toBe(1);
+  }, 30_000);
+
+  it('books the overlay take to the human seat when the shared day closed on an AI seat, and the re-render shows the human obligation', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const state = createCompetitiveState({
+      seed: 'competitive-summary-overlay-owner-forward',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: true,
+    });
+    // Regression (MS-0MW5X3AYS0072ED3): a round-robin shared day can close on
+    // an AI seat, leaving `activePlayerId` pointing at it. The panel's take
+    // must forward the human seat explicitly, never borrow the transient
+    // acting seat.
+    state.activePlayerId = 1;
+    s.state = state;
+    enableLoansForTake(s);
+
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: makeLedger(),
+      incident: null,
+    });
+    expect(summary).not.toBeNull();
+    // The human seat is resolved from the scoreboard, not the acting seat.
+    expect(summary!.humanSeatId).toBe(0);
+    expect(summary!.loanDescriptor.enabled).toBe(true);
+
+    const humanCoinsBefore = state.players![0].coins;
+    const aiCoinsBefore = state.players![1].coins;
+    let nextTurnCalls = 0;
+
+    s.showCompetitiveTurnSummaryDialog(
+      summary!,
+      () => { nextTurnCalls += 1; },
+      undefined,
+      { playerRoundLedger: makeLedger() } as any,
+    );
+
+    // Drive the real overlay path: [ Bank Loan ] → selector row → take.
+    overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeDefined();
+    const model = buildLoanSelectorModel(s.state);
+    expect(model.rows.length).toBeGreaterThan(0);
+    overlayText(s, model.rows[0].label)!.emit('pointerdown');
+
+    // AC2: credited to the human seat only — the acting AI seat's wallet and
+    // loan book are untouched, and the day does not advance.
+    expect(s.state.loans?.[0]?.ownerId).toBe(0);
+    expect(s.state.players![0].coins).toBe(humanCoinsBefore + model.rows[0].principal);
+    expect(s.state.players![1].coins).toBe(aiCoinsBefore);
+    expect(s.state.activePlayerId).toBe(1);
+    expect(nextTurnCalls).toBe(0);
+
+    // The re-rendered Turn Summary shows the obligation on the human seat: the
+    // button is disabled with the human seat's own obligation hint.
+    expect(overlayText(s, 'Turn Summary')).toBeDefined();
+    const refreshed = overlayText(s, '[ Bank Loan ]')!;
+    expect(refreshed.input?.enabled).toBe(false);
+    expect(overlayText(s, formatLoanObligation(s.state.loans![0]))).toBeDefined();
+    expect(nextTurnCalls).toBe(0);
   }, 30_000);
 
   it('delegates from the scene to the overlay manager, and the headless branch advances once', async () => {

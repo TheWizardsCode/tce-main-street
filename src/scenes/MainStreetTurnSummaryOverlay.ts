@@ -122,6 +122,14 @@ export interface TurnSummaryOverlayModel {
   tabsInteractive: boolean;
   /** Loans availability for the acting seat (absent → disabled, no hint). */
   loanDescriptor?: TurnSummaryLoanDescriptor;
+  /**
+   * The seat a mid-game take books to, forwarded as `ownerId` to
+   * `takeLoanCommand` (MS-0MW5X3AYS0072ED3). Competitive panels key to the
+   * human seat — never the transient round-robin `activePlayerId`, which can
+   * point at an AI seat when the shared day closed. Absent in single-player,
+   * which keeps the acting-seat default.
+   */
+  loanOwnerId?: number;
 }
 
 /** The seams the panel calls back into. */
@@ -285,6 +293,7 @@ function competitivePanelModel(
     selectedTabId: resolveSelectedTabId(views, selectedTabId),
     tabsInteractive: views.length > 1,
     loanDescriptor: summary.humanSeatId >= 0 ? summary.loanDescriptor : undefined,
+    loanOwnerId: summary.humanSeatId >= 0 ? summary.humanSeatId : undefined,
   };
 }
 
@@ -595,7 +604,15 @@ export function presentTurnSummaryPanel(
         const confirmSelection = (optionIndex: number): void => {
           let refusal: string | null = null;
           try {
-            const cmd = takeLoanCommand(s.state, optionIndex, { allowDuringClosing: true });
+            // Competitive panels key the take to the human seat (the model's
+            // `loanOwnerId`); single-player leaves it undefined so the command
+            // keeps its acting-seat default (MS-0MW5X3AYS0072ED3).
+            const cmd = takeLoanCommand(
+              s.state,
+              optionIndex,
+              { allowDuringClosing: true },
+              model.loanOwnerId,
+            );
             if (s.undoManager) {
               s.undoManager.execute(cmd);
             } else {
