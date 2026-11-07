@@ -134,6 +134,7 @@ export type {
 // ── TurnClosing ─────────────────────────────────────────────
 export {
   appendTurnNetRow,
+  recordTurnStats,
   applyEndOfTurnDeltas,
   applyFirstSharedDaySolvencyGrace,
   checkCompetitiveEndConditions,
@@ -222,7 +223,7 @@ export {
 } from './MainStreetLoans';
 
 export type { ActiveLoan, LoanOption, PendingLoanOffer } from './MainStreetStateTypes';
-export type { TakeLoanOptions } from './MainStreetLoans';
+export type { LoanPayoff, TakeLoanOptions } from './MainStreetLoans';
 
 // ── Re-exports kept for convenience (tests/consumers import these from the engine) ──
 export { reputationCoinMultiplier, applyReputationMultiplier } from './MainStreetDifficulty';

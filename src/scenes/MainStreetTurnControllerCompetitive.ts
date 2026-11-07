@@ -25,6 +25,11 @@
  *      next-day advance via the shared `presentTurnClosing` primitive
  *      (MS-0MUXAQQON006XA6I). Bounded and non-blocking, so the day never
  *      stalls even under reduced motion, replay or a headless context.
+ *   6. {@link presentCompetitiveDayTail} gates that advance on the competitive
+ *      Turn Summary panel (MS-0MVRNV9Y8008IKGK): the panel is the closing's
+ *      completion callback, so the next shared day starts only on
+ *      **[ Next Turn ]**. Reduced motion, replay and headless keep the
+ *      auto-advance pacing of step 5.
  *
  * All functions are Phaser-free and operate on `MainStreetState`, so they are
  * exercised by the node integration test while the scene wires them behind a
@@ -74,6 +79,8 @@ import {
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { continueAfterLastStanding, continueAfterThreshold } from '../MainStreetEngineTurnClosing';
 import { closingSummary, perSeatClosingSummary, presentTurnClosing } from './MainStreetTurnControllerAnimation';
+import { buildCompetitiveTurnSummary } from './MainStreetTurnSummary';
+import { presentLoanPayoffDialogs } from './MainStreetLoanPayoffModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { COMPETITIVE_CLOSING_MAX_TOTAL_MS } from './MainStreetAnimatorTiming';
 import type { OwnerIncomeResult } from '../MainStreetAdjacency';
@@ -451,6 +458,11 @@ export function competitiveClosingSummary(result: TurnResult): string {
  *  - AC4: the next day always starts (bounded); text feedback survives reduced
  *         motion, replay and headless contexts.
  *
+ * The next-day advance it drives is the caller's `onComplete`: in the shipped
+ * day tail that is the Turn Summary gate (MS-0MVRNV9Y8008IKGK), so the day
+ * starts on **[ Next Turn ]** — or immediately under reduced motion, replay
+ * and headless, where the gate is not applied.
+ *
  * @param tcCtx      Scene context (only `scene` is used).
  * @param result     The closing `TurnResult` from `runCompetitiveClosing`.
  * @param onComplete Invoked exactly once when the presentation is done.
@@ -557,7 +569,9 @@ function presentPerSeatCompetitiveClosing(
  * runs the closing (resolving any paused choice), presents the closing results
  * via {@link presentCompetitiveClosing} and hands control back to the scene:
  * game-over via `handleGameOver`, otherwise the next day via `startTurnPhase`.
- * The presentation is bounded/non-blocking, so the next day always starts.
+ * The presentation is bounded/non-blocking, and the advance is gated by the
+ * competitive Turn Summary panel (MS-0MVRNV9Y8008IKGK) — so the day starts on
+ * **[ Next Turn ]**, or immediately under reduced motion, replay and headless.
  */
 export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): void {
   const s = tcCtx.scene;
@@ -610,10 +624,121 @@ export function endCompetitiveTurnDay(tcCtx: MainStreetTurnControllerContext): v
 }
 
 /**
+ * Whether the competitive Turn Summary panel gates the next shared day
+ * (MS-0MVRNV9Y8008IKGK, parent AC1/AC4).
+ *
+ * The panel is presented only where the player can act on it and there is
+ * something to show:
+ *
+ *  - the state is competitive (N >= 2) — single-player has its own gate in
+ *    `MainStreetTurnControllerTurnFlow`;
+ *  - the closing surfaced a competitive round ledger (`playerRoundLedger`) —
+ *    an absent ledger (an early exit, a hand-built result, a resumed closing
+ *    from a save) means nothing to present, so the day advances as before;
+ *  - the scene can present a dialog (`showCompetitiveTurnSummaryDialog`) —
+ *    headless/AI-driven contexts have no UI surface;
+ *  - replay and **reduced motion** keep today's auto-advance pacing, per the
+ *    parent contract. (Unlike the single-player panel, the competitive one
+ *    blocks the shared day, so reduced-motion players keep the existing
+ *    non-blocking cadence rather than gaining a new stop.)
+ */
+export function shouldGateCompetitiveTurnSummary(
+  tcCtx: MainStreetTurnControllerContext,
+  closing: TurnResult,
+): boolean {
+  const s = tcCtx.scene;
+  try {
+    if (!isCompetitiveState(s.state)) return false;
+  } catch {
+    // Defensive: an unreadable state keeps the legacy pacing (never stall).
+    return false;
+  }
+  if (s.replayMode === true) return false;
+  if (s.settingsPanel?.reducedMotion === true) return false;
+  if (typeof s.showCompetitiveTurnSummaryDialog !== 'function') return false;
+  const ledger = closing.playerRoundLedger;
+  return ledger != null && ledger.seats.length > 0;
+}
+
+/**
+ * Presents the competitive per-seat Turn Summary panel and resumes the shared
+ * day on **[ Next Turn ]** (MS-0MVRNV9Y8008IKGK).
+ *
+ * Runs where `startTurnPhase` used to run: as the closing presentation's
+ * completion callback, so the panel appears only after
+ * `presentCompetitiveClosing` has finished (its income choreography has
+ * collected and the incident has been revealed).
+ *
+ * Never stalls (MS-0MVRNW5JT0046QI3): a failing model build, an empty row set,
+ * a scene without dialog support, or a presentation that throws (e.g. no
+ * overlay manager on the scene) advances immediately, matching the previous
+ * pacing. The advance is single-shot: a dialog that calls **[ Next Turn ]** and
+ * then throws can never start the day twice.
+ *
+ * @param tcCtx      Scene context.
+ * @param closing    The finished shared-day closing.
+ * @param onNextTurn Invoked when the player clicks **[ Next Turn ]** (the next
+ *                   shared day starts only then).
+ */
+export function presentCompetitiveTurnSummaryGate(
+  tcCtx: MainStreetTurnControllerContext,
+  closing: TurnResult,
+  onNextTurn: () => void,
+): void {
+  const s = tcCtx.scene;
+
+  let advanced = false;
+  const advanceOnce = (): void => {
+    if (advanced) return;
+    advanced = true;
+    onNextTurn();
+  };
+
+  let summary: ReturnType<typeof buildCompetitiveTurnSummary> = null;
+  try {
+    summary = buildCompetitiveTurnSummary(s.state, closing);
+  } catch { /* presentation-only — never strand the day */ }
+
+  if (
+    !summary
+    || summary.rows.length === 0
+    || typeof s.showCompetitiveTurnSummaryDialog !== 'function'
+  ) {
+    advanceOnce();
+    return;
+  }
+
+  // MS-0MW4YUHOU00474HZ: the human seat's mid-game loan affordance. The
+  // summary model already carries the human seat id and its descriptor
+  // (`buildCompetitiveTurnSummary` → `buildTurnSummaryLoanDescriptor`), so the
+  // seam is keyed to exactly that seat — never the transient `activePlayerId`
+  // of a round-robin turn. The closing result is handed over as well, so the
+  // panel can re-render itself from the **same** `TurnResult` after a take.
+  // The seam itself is a notification hook (the dialog opens the selector and
+  // books the take); it is provided once so a per-seat extension point exists
+  // for the panel, matching the single-player seam contract.
+  const humanSeatId = summary.humanSeatId ?? -1;
+  const onBankLoanAction =
+    humanSeatId >= 0 ? (_seatId?: number): void => { /* per-seat seam — the dialog owns the selector/take */ } : undefined;
+  try {
+    s.showCompetitiveTurnSummaryDialog(summary, advanceOnce, onBankLoanAction, closing);
+  } catch {
+    // A scene without an overlay surface (or any presentation failure) must
+    // never strand the shared day: advance exactly as before the gate.
+    advanceOnce();
+  }
+}
+
+/**
  * Presents the finished competitive closing (or the game-over result) then
  * advances the shared day. Shared by the normal close path and the F5
  * piggyback continuation so both flows report identically
  * (checkpoint → closing summary → next day).
+ *
+ * The advance is the competitive Turn Summary gate (MS-0MVRNV9Y8008IKGK):
+ * once {@link presentCompetitiveClosing} completes, the per-seat panel is
+ * presented and `startTurnPhase` runs only on **[ Next Turn ]**. Reduced
+ * motion, replay and headless keep the auto-advance pacing.
  */
 export function presentCompetitiveDayTail(
   tcCtx: MainStreetTurnControllerContext,
@@ -645,7 +770,23 @@ export function presentCompetitiveDayTail(
   try { tcCtx.onSaveCheckpoint?.(); } catch { /* non-fatal */ }
   // Present the closing (income → incident → end check) before the next day
   // starts. Bounded/non-blocking: the day always advances (AC4).
-  presentCompetitiveClosing(tcCtx, closing, () => tcCtx.startTurnPhase());
+  //
+  // The Turn Summary panel (MS-0MVRNV9Y8008IKGK) intercepts the advance: it is
+  // presented once the closing presentation completes, and the next shared day
+  // starts only on **[ Next Turn ]**. Reduced motion, replay and headless keep
+  // the existing auto-advance pacing, so the day can never stall.
+  const nextDay = (): void => tcCtx.startTurnPhase();
+  const afterClosing = shouldGateCompetitiveTurnSummary(tcCtx, closing)
+    ? () => presentCompetitiveTurnSummaryGate(tcCtx, closing, nextDay)
+    : nextDay;
+  // Loan payoff congratulation (MS-0MW3SN58E009HC84, parent AC3/AC6): the same
+  // one-dialog-per-payoff sequencing as single-player, presented once the
+  // closing animations finish and ahead of the Turn Summary panel / next day.
+  // The model gate keeps an AI seat's payoff invisible to the player, and a
+  // run that has already ended returns above — the game-over overlay wins.
+  presentCompetitiveClosing(tcCtx, closing, () =>
+    presentLoanPayoffDialogs(tcCtx.scene, closing.loanPayoffs, afterClosing),
+  );
 }
 
 /**

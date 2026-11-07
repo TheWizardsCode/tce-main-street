@@ -44,7 +44,7 @@ committing changes to player-facing text or docs.
 | **Resource Bank** | Holds the player's **Coins** (currency) and **Reputation** (plain score count). Coins start at 8 and Reputation starts at 3.
 | **Turn** | A full week consisting of several phases (see Section 5). Turn number increments after the **week end**.
 | **Event Card** | A card that triggers a one‑off effect (e.g., Festival, Tax, Storm). **Investment** events are taken from the single market row (**1 action**, no coins at take) and held until played (cost at play); **Incident** events resolve automatically from the face-down incident deck (CG-0MSTOATDP000JNHH).
-| **Incident Deck** | A hidden face‑down deck of Incident cards (card back + remaining count only). Each turn the top card is revealed and resolved at the end of the turn; when the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (repeat‑spacing / streak limits, CG-0MSTOATDP000JNHH). A peek staff member (staff‑lookout) can look at the top card once per turn as an action.
+| **Incident Deck** | A hidden face‑down deck of Incident cards (card back + remaining count only). Each turn the top card is revealed and resolved at the end of the turn; when the deck is exhausted, resolved events are reshuffled back in with the order rebuilt constraint‑aware (repeat‑spacing / streak limits, CG-0MSTOATDP000JNHH). A **management-company** staff member with the peek ability (`staff-lookout`, the Lookout) can look at the top card once per turn as an action.
 | **Upgrade Card** | A card that modifies a specific Business card (e.g., upgrade a Bakery to a Patisserie, increasing income and synergy range).
 | **Challenge** | A optional meta‑goal (e.g., *Build a Foodie Row*) that grants a bonus score at the end of the game if satisfied. The catalogue spans 6 categories: synergy, placement, resource, upgrade, cross-cutting and the newer **economic** category (MS-0MUI7ZJK8003HY9J), which currently holds the single **Serial Seller** challenge (sell 3+ street businesses in one game). Progress-capable challenges (e.g. Serial Seller) declare a `progress()` provider and the challenge HUD renders `<current>/<target>` (e.g. `2/3`) on their row.
 
@@ -171,7 +171,7 @@ interface GameState {
     upgrade: UpgradeCard[];
   };
   hand: (BusinessCard | CommunitySpaceCard | UpgradeCard | EventCard)[]; // merged hand: any mix, up to maxHandSize
-  maxHandSize: number;                 // starts at 3, growable via staff handSlotsAdded (no hard cap); per-seat in competitive play (bound seat's own capacity)
+  maxHandSize: number;                 // starts at 3, growable via management-company staff handSlotsAdded (no hard cap); per-seat in competitive play (bound seat's own capacity)
   challengesCompleted: string[]; // IDs of achieved challenges
   marketRefreshesThisTurn: number;     // re-rolls made this turn; drives the escalating paid cost, reset at WeekStart (MS-0MTR6ZRF5007PWNZ)
   investorFreeRerollUsedThisTurn: boolean; // per-turn Investor free re-roll gate, reset at WeekStart (MS-0MTISBYLS009936W)
@@ -318,7 +318,12 @@ re-balancing is an edit rather than a code change).
   disabled with a reason-specific hint (loans disabled, no configured options, or the
   outstanding obligation). Taking a loan there costs no action point and does not
   advance the day — **[ Next Turn ]** remains the only way to resume the closing. The
-  bailout dialog below is the second entry point.
+  bailout dialog below is the second entry point. The single-player End of Turn panel
+  offers the button to the acting seat; the competitive per-seat Turn Summary panel
+  offers it to the **human seat only** (same rules: loans enabled, no active loan on
+  that seat, a configured menu), with the take booked to that seat via an explicit
+  `ownerId` — never to the round-robin `activePlayerId` (MS-0MW4YUHOU00474HZ). AI
+  seats keep the bailout-only policy and never get a proactive loan affordance.
 - **One active loan per player.** A seat that already holds an active loan cannot take
   or accept another; the attempt is rejected with a clear, user-facing reason and no
   resource change. Debt never stacks.
@@ -351,6 +356,20 @@ re-balancing is an edit rather than a code change).
 - **The log row agrees.** The activity-log row written when the offer is raised states
   the shortfall in coins, so the log and the dialog can never disagree.
 
+**Payoff notification.** A loan retired by its final scheduled repayment is announced **once
+per retired loan**: immediately after the closing animations and before the End of Turn
+summary (or before the next week, where that summary gate is skipped), a congratulation
+states that the seat is **debt free**, that the weekly amount is **no longer deducted**
+and the **total repaid** over the term (MS-0MW1ZJDVE000MUID). It is **presentation-only**:
+nothing about it is written to or read from a save, and it changes no wallet, activity-log
+row, ledger entry or RNG draw — no state mutation and no RNG consumption — so a no-loan or
+`loansEnabled: false` turn is unchanged, and a resumed/deferred closing never announces the
+same payoff twice. The dialog is suppressed
+in `replayMode` / headless runs, and in competitive play only the **human seat** sees it —
+an AI seat's payoff changes nothing on screen. A closing that ends the run in a win or a
+loss presents the game-over overlay instead, so a congratulation never pre-empts the final
+result. See `docs/game/ux-visual-audio.md` → *Loan payoff congratulation dialog*.
+
 **Bankruptcy bailout.** In the closing sequence, *before* the bankruptcy / seat-failure
 declaration, a seat that would fail on `coins < 0` **and holds no active loan** is
 offered a loan instead of losing:
@@ -380,7 +399,59 @@ offer deterministically with the same policy, so simulations never stall.
 
 ### 6.0 Action Economy (weekly action budget)
 
-Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting staff member** employed — the **Manager**, **Director**, **Executive** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+Each week (MarketPhase) the player has a base of **one action**, plus one more per **action-granting management-company staff member** employed — the **Manager**, **Director**, **Executive** and **General Manager** each grant `actionsPerTurn: 1` (MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J, CG-0MSTOF1N5005PK2R) — plus any **banked** actions carried over from previous weeks (CG-0MT3IOPZB005LNAR). The budget resets at **WeekStart**; spending it blocks further action-type operations until the next week. The remaining budget is shown in the HUD action counter (banked count shown as `(N banked)` when non-zero).
+
+> **Out of actions — the Auto advance turn setting (MS-0MW1ZDI8Z006GPFY).**
+> When the player spends their last action point and the spending action's
+> animations and audio have completed, the game reacts **at most once per
+> turn** (a once-per-turn latch reset at WeekStart):
+>
+> - With the **Auto advance turn** setting **on** (Settings panel toggle,
+>   persisted in `localStorage` under `tce-main-street-auto-advance-turn`,
+>   default **off**), the turn ends automatically — the identical code path
+>   as clicking **End Turn** (same phase flow, income/incident/event-choice
+>   resolution, turn-summary presentation and save/checkpoint behaviour).
+> - With the setting **off** (the default), the same moment presents a *No
+>   Actions Left* dialog that explains the player is out of actions, that
+>   some kinds of employed staff grant extra action points, and that they
+>   must press **End Turn** to break for the weekend. The dialog offers
+>   **[ End Turn ]** (the same `endTurn()` path), a **[ Dismiss ]**
+>   affordance that returns the player to the market phase (the action-free
+>   operations that remain — selling, researching, discarding from hand,
+>   opening the journal — stay reachable), and an unchecked
+>   `[ ] Automatically end my turn when I run out of actions` checkbox that
+>   turns the setting on immediately.
+>
+> Guards: the trigger never fires mid-animation/audio, never during the
+> tutorial unless the current tutorial step allows `end-turn`, never while it
+> is not the human seat's turn in competitive play, and never in `uiPhase`
+> values where End Turn is not offered (`placing-from-hand`,
+> `event-selected`, `applicant`).
+
+> **Staff effects follow the two-type model (GDD Appendix D.4).** Every staff
+> member is exactly one of two types, and the type decides what it may affect.
+> **Business staff** are employed at a single business (recorded as
+> `employedAtSlot`) and their effects are scoped to that business and, where the
+> role says so, its 8-way neighbours. **Management-company staff** are employed
+> by the player — the management company — and their effects are scoped to the
+> player's turn. Action points and hand slots are **player-scope** effects, so
+> **only management-company staff grant them**: `actionsPerTurn` and
+> `handSlotsAdded` are management-company-only card fields, and a business-staff
+> template carries neither. Business staff therefore never change the weekly
+> action budget or the hand capacity — they change what one business earns,
+> costs or lends its neighbours. The runtime determinant is **assignment**, not
+> a flag: a member carrying an `employedAtSlot` is business staff, and a member
+> with no `employedAtSlot` is management-company staff. The full model, the role
+> roster and the expected gameplay outcomes are in `the-build-gdd.md`
+> Appendix D.4; the per-card types are in `card-catalog.md` § *Staff Cards*.
+>
+> **Shipped value vs. the two-type target.** All four action-granting cards ship
+> `actionsPerTurn: 1`, which is what the engine charges today. The two-type model
+> re-values the **Executive** to **+2 actions/turn** and drops its shipped hand
+> slot, while the Manager, Director and General Manager keep +1 action/turn; that
+> re-valuation is an implementation follow-up recorded in `the-build-gdd.md`
+> D.4.4/D.4.7 and `card-catalog.md` § *Staff Cards*, not a change to the shipped
+> rules described here.
 
 **Week-start composition.** At WeekStart the weekly budget is:
 
@@ -389,7 +460,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 ```
 
 - The **base action banks**: any unused base action at end of week is banked, up to a **bank cap of 2**.
-- **Staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's, Executive's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
+- **Management-company staff actions never bank.** Staff-derived actions (e.g. the Manager's, Director's, Executive's or General Manager's +1 `actionsPerTurn`) are **consumed first** and are not bankable — an idle action-granting-staff week banks exactly 1 (the base), not 2.
 - Spending during the week draws down the combined budget (base + staff + banked share one counter).
 - **Banked is consumed 1-per-action.** Every action-type operation decrements the banked reserve by 1 (floor 0) alongside the weekly counter (CG-0MTCP7F9S009HARC) — banked actions are spent as the player acts, so a banked week grants only its carried-over actions, never an endless reserve. Premium same-week placements (which replace the action with a +50% coin charge) do **not** consume the bank.
 - **No expiry:** banked actions persist indefinitely across weeks until spent. They reset to 0 only on a new game.
@@ -397,7 +468,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > **Competitive play (human vs AI, MS-0MUVUPWHD0032CU4).** In a shared day the
 > banked reserve is a **single collective pool**: each seat's daily budget is
-> its bank-free base (`actionBudget = 1 + staff actions`) **plus** the
+> its bank-free base (`actionBudget = 1 + management-company staff actions`) **plus** the
 > currently-remaining `bankedActions`, added when the seat is bound
 > (`bindCompetitiveSeat`). Spending by one seat draws the shared pool down, so
 > the next seat receives base + the *remaining* bank rather than a stale
@@ -411,12 +482,13 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 
 > **Per-seat hand capacity in competitive play (MS-0MV8PX4DV003LTFP).** Hand
 > capacity is **per seat**: each seat's maximum hand size is its own
-> (`PlayerRecord.maxHandSize`, base 3 plus that seat's staff `handSlotsAdded`).
-> `bindCompetitiveSeat` copies the acting seat's capacity onto the shared
-> working `state.maxHandSize` and `restoreCompetitiveSeat` writes it back, so a
-> staff card's hand-slot bonus applies **only to the employing seat** — one
-> seat's staff never enlarges another seat's hand. Single-player behaviour is
-> unchanged (the shared `maxHandSize` is used directly).
+> (`PlayerRecord.maxHandSize`, base 3 plus that seat's **management-company**
+> staff `handSlotsAdded`). `bindCompetitiveSeat` copies the acting seat's
+> capacity onto the shared working `state.maxHandSize` and
+> `restoreCompetitiveSeat` writes it back, so a management-company staff card's
+> hand-slot bonus applies **only to the employing seat** — one seat's staff never
+> enlarges another seat's hand. Single-player behaviour is unchanged (the shared
+> `maxHandSize` is used directly).
 
 > **Follow-ups:** Tutorial coverage of banking is tracked in CG-0MT3JK16W006A66P; a banking-aware AI strategy (deliberate hoarding) in CG-0MT3JMGA60091J8W.
 
@@ -430,11 +502,11 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. A hand card may be placed by **dragging it onto an empty slot** (the same gesture as the market row — MS-0MV76HVE4007AOO0), which reuses the click-path placement pricing (same-week composite premium applies at 0 actions). |
 | Direct buy-and-place (market→street) | 1–2 actions | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP): with **2 actions** remaining the upgrade drag charges the **discounted listed cost** and consumes **both** actions (drag + placement, no premium dialog); with **1 action** it charges the discount-first **+50% premium** and consumes 1 action, preceded by the premium explainer dialog. A vetoed or rejected upgrade drag states why in the instruction text (MS-0MVKT3TZF0091IHC). |
 | Apply a hand upgrade to a business | 1 action | Pays the discounted upgrade cost at apply. A held upgrade may be applied by **dragging it onto an eligible business** (MS-0MV76HVE4007AOO0) — same gesture as the market buy-and-play, but priced from hand: a same-week upgrade (just moved to hand this week) applies **free** (no second action); one held from a previous week costs **1 action**. The drag reuses the click path's undoable `playUpgradeFromHandCommand` and level-up burst. |
-| Hire a staff card | 1 action | From the general market row. |
+| Hire a staff card | 1 action | From the general market row. Hiring **business staff** also chooses the destination business — its **initial placement is free** and part of the hire action (it must match `allowedBusinessTypes` and have a free employment slot). Hiring **management-company staff** joins the company immediately, with no placement step. Both types add their ongoing salary to the IncomePhase deduction. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
-| Relocate an employed staff member | 1 action | Moves a hired staff member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. |
+| Relocate an employed **business staff** member | 1 action | Moves a hired **business staff** member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. **Management-company staff are never placed or relocated**, so no relocation cost ever applies to them. |
 
-> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the staff card. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`level + 1` capacity) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
+> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the business-staff card. Only **business staff** can be relocated at all — **management-company staff** are hired into the company and never carry an `employedAtSlot`, so placement and relocation do not apply to them and no action is ever charged for one. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`max(1, level + 1)` capacity, mirroring the engine's `getEmploymentCapacity`) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
 
 > **Hand-drag: click-select then drag (MS-0MVK4E5M00021XEY).** Clicking a hand
 > card arms the placing-from-hand selection; a drag started on **that same
@@ -481,7 +553,7 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 - Hint (still 1/week)
 - Ending the turn
 
-> **Market research (re-roll) cost (MS-0MTR6ZRF5007PWNZ).** Researching the market is action-free but costs coins. The first re-roll of a turn costs **500**, the second **750**, the third **1000**, and each subsequent re-roll 250 more. The escalation **resets at WeekStart** alongside the other per-turn gates. Any staff or specialization refresh-cost discount (Accountant / IT Specialist `refreshCostDiscount`, Negotiator specialization skill) is subtracted from the escalated base and the total is clamped at 0, so a re-roll can never cost less than zero. The **Research** button label, its tooltip and the `canRefreshMarket()` legality check all read the same centralised `refreshMarketCost()`, and the button is disabled with the "not enough coins" reason when the current escalated price is unaffordable. The per-turn re-roll count participates in undo/redo and save/load, so reloading mid-turn preserves the escalated price.
+> **Market research (re-roll) cost (MS-0MTR6ZRF5007PWNZ).** Researching the market is action-free but costs coins. The first re-roll of a turn costs **500**, the second **750**, the third **1000**, and each subsequent re-roll 250 more. The escalation **resets at WeekStart** alongside the other per-turn gates. Any staff or specialization refresh-cost discount (the Accountant's `refreshCostDiscount`, the Negotiator specialization skill) is subtracted from the escalated base and the total is clamped at 0, so a re-roll can never cost less than zero. `refreshCostDiscount` is a **player-scope** field, so under the two-type model it belongs to **management-company** staff; the IT Specialist's shipped street-wide discount was re-scoped to +1 synergy range for its own business by the two-type redesign (`the-build-gdd.md` D.4.3/D.4.8, `card-catalog.md` § *Staff Cards*, MS-0MW3JXF6U00753LB). The **Research** button label, its tooltip and the `canRefreshMarket()` legality check all read the same centralised `refreshMarketCost()`, and the button is disabled with the "not enough coins" reason when the current escalated price is unaffordable. The per-turn re-roll count participates in undo/redo and save/load, so reloading mid-turn preserves the escalated price.
 
 > **Investor: free market re-roll and 75% relevance bias (MS-0MTISBYLS009936W).** While at least one **Investor** (`staff-investor`) is **employed** at a business, the player may perform **one coin-free, action-free market re-roll per turn** — the *free re-roll*. It discards the visible row and refills it exactly like a paid research, but charges no coins and consumes no action. It is gated by a per-turn flag (`investorFreeRerollUsedThisTurn`) reset at **WeekStart** alongside the other per-turn gates. Once used, further re-rolls fall back to the normal **paid** `refreshMarket` path.
 >
@@ -776,6 +848,67 @@ Every resource-mutating action appends an entry to the activity log showing its 
 Each completed turn ends with a **per-turn net summary row** — `Turn <n> net: <effective deltas>` — comparing the resource bank against a **week-start snapshot** taken at the beginning of `executeWeekStart`. The snapshot is persisted with saves (legacy saves fall back to the current resources), and the net row is emitted even when the game ends prematurely — in that case it is written **before** the `Game Over` / `Bankruptcy` banner so the summary precedes the loss entry. When both are present, the net row always precedes the game-over entry; on a normal turn it is the final log entry.
 
 The log **render** is deferred during the end-of-turn closing so entries appear only after the upcoming/phase UI, and the deferral flag (`logDeferredUntilPhaseComplete`) is reset on every scene creation — an interrupted closing must never leave the Activity Log blank across a scene restart (MS-0MURBOD2E009SOM2, MS-0MV14JDUG000E1V6).
+
+### Source: Game Events feed
+
+The Activity Log is produced through the Game Events feed (MS-0MW1ZHBPK006M8YS). `addLog(...)` / `addLogShared(...)` publish a typed `activity-log` event on the scene's `GameEventEmitter` (`window.__GAME_EVENTS__`), and a single subscriber bound at scene creation is the **only writer** of `state.activityLog` — no other code path appends a row (`appendActivityLogEntry` in `src/MainStreetStateLog.ts`; a guard test pins this). The payload is the exact `LogEntry` the log stores, so the dev **Game Events** overlay and the `GlobalEventBuffer` show one `activity-log` event per row in emission order — the overlay explains every log row and the two cannot drift.
+
+When no scene channel is live (headless Monte Carlo, unit tests, the tutorial scenario) `addLog` falls back to appending the row directly through the same single writer: every row is still logged and nothing is thrown. The log remains the authoritative, undoable, serialised record — undo/redo restores it from snapshots and saves round-trip it unchanged — while the feed stays an append-only session audit trail (an undone row is not retracted from the overlay).
+
+### Filtering (All / You / AI)
+
+In competitive (multi-seat) games the Activity Log can be filtered by seat
+through the All / You / AI control row beneath the title bar. The filter is
+**presentation-only and session-only** — it never mutates `state.activityLog`
+and is never persisted to save data (MS-0MW3PFRV6003LJLD,
+MS-0MW3PFSMB002EIY6):
+
+- **Selection.** `scene.logFilter` holds the active value of type `LogFilter`
+  (`'all' | 'human' | 'ai'`). It defaults to **All** (`'all'`) — every entry
+  visible — and resets to `'all'` on every scene creation / new game, in the
+  same lifecycle reset block as the other per-session log state
+  (`MainStreetLifecycleManagerLifecycle`).
+- **What each bucket matches.** `'all'` matches every entry. `'human'`
+  (**You**) matches only entries seat-attributed to the human seat. `'ai'`
+  (**AI**) matches entries attributed to **any** AI seat — the predicate
+  groups every AI seat into a single bucket (`entry.seatId !==
+  humanSeatId`). A roster with no human-controlled seat (`findHumanSeatId`
+  returns `-1`) leaves both seat buckets empty: nothing seat-attributed
+  matches You or AI, and the call never throws.
+- **Entries that stay visible under every filter** (producer decision Q2 = A):
+  genuinely shared / turn-level entries carry no seat attribution, so turn
+  headers, the per-turn net summary, incidents, market refresh/deal-in, week
+  start and game-over entries are never hidden by You or AI.
+- **Empty state.** A filter that matches no entries at all — not even shared
+  ones — renders the single line `No activity for this filter` instead of a
+  blank panel (`LOG_EMPTY_FILTER_MESSAGE`).
+- **Competitive-only availability.** The controls are shown only when the
+  roster has 2+ seats (`shouldShowLogFilterControls`); single-player,
+  single-seat and tutorial games render the log exactly as before, with no
+  filter row and no vertical space taken (producer decision Q3 = A).
+
+**Seat attribution.** An entry carries seat fields (`seatId`, `seatLabel`,
+`seatColour`) only when it is attributable to a competitive seat
+(`MainStreetStateLog`): `addLog` stamps the acting seat
+(`state.activePlayerId`, or an explicit seat via the explicit-seat overload
+for per-owner phase paths) when the roster has 2+ seats and the seat has a
+persisted colour, while genuinely shared / turn-level entries use the named
+`addLogShared` opt-out — turn header, per-turn net summary, incident draw,
+market refresh/deal-in, week start, game over, tutorial/help lines and the
+turn-level economy rows (staff / community-space / business ongoing-cost
+deductions) — and never carry seat fields (MS-0MW3PFQ4L0046Q3K).
+
+### Per-Turn Stat History (`turnStatsHistory`)
+
+The Game Over overlay's stats graphs are fed by a persisted per-turn series, kept separate from the free-text activity log (MS-0MVAMU6OM008GJPV):
+
+- **Shape.** `TurnStatSnapshot { turn, coins, reputation, score, profit, businesses, staff }`, stored in `MainStreetState.turnStatsHistory` — one entry per closed turn, in ascending turn order.
+- **When recorded.** The shared closing tail (`appendTurnNetRow` → `recordTurnStats`) records exactly one snapshot per completed turn on **every** closing path: the legacy single-player tail (`runSinglePlayerTurnClosing`, including its immediate-loss early exit), the deferred-mutation tail (`finishDeferredTurnClosing`, including its immediate-loss early exit) and the competitive shared-day closing. Recording is keyed by `turn`, so a repeated call for the same turn appends nothing.
+- **Field definitions.** `coins` / `reputation` are the closing wallet values (in competitive mode, the **human seat's** `PlayerRecord`, resolved via `findHumanSeatId`, never an AI seat's); `profit` is the turn's net coin delta measured against the `weekStartCoins` day-start snapshot (the same definition as the `Turn <n> net:` log row above); `businesses` counts non-null `streetGrid` entries; `staff` is the active staff count; `score` is the shared `finalScore`.
+- **Persistence.** `turnStatsHistory` is serialised in `MainStreetSerializedState` and restored by `deserializeMainStreetState`. Legacy saves that predate the field load with an empty history (`[]`) — no crash and no fabricated data — and malformed entries are dropped defensively.
+- **UI.** The pure overlay model (`buildGameOverStatSeries`) turns the series into the five end-of-game graphs and the final cash-at-end-of-turn figure (see the UX notes, *Game-over panel*).
+
+**Competitive scope (working assumption):** the recorded series describes the **human seat's** trajectory only. Per-seat multi-series graphs, or a strictly human-owned `businesses` / per-seat `profit` figure, are a separate producer-confirmed decision tracked as an Open Question on MS-0MVAMU6OM008GJPV.
 
 ---
 

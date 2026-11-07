@@ -71,6 +71,7 @@ export type { SynergyPair } from './MainStreetAdjacencyNeighbors';
 // ── Owner ───────────────────────────────────────────────────
 export {
   getSlotOwnerId,
+  countBusinessesOwnedByOwner,
   tagSlotOwnerIfCompetitive,
 } from './MainStreetAdjacencyOwner';
 

@@ -260,9 +260,9 @@ export function canPurchaseBusiness(
   }
 
   // Check coins against the effective (discounted) cost.
-  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
-  // discount applied to the base listed cost.
-  const purchaseDiscount = computePurchaseCostDiscount(state);
+  // Delivery Driver adjacency discount (GDD D.4.3 / MS-0MW3JXF6U00753LB):
+  // resolved against the destination slot, so it never leaks street-wide.
+  const purchaseDiscount = computePurchaseCostDiscount(state, slotIndex);
   const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
   if (state.resourceBank.coins < effectiveCost) {
     return { legal: false, reason: `Not enough coins. Need ${effectiveCost}, have ${state.resourceBank.coins}.` };
@@ -497,9 +497,9 @@ export function purchaseBusiness(
   const marketIndex = state.market.cards.findIndex(c => c.id === cardId);
   const card = state.market.cards[marketIndex];
 
-  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): street-wide
-  // discount applied to the base listed cost.
-  const purchaseDiscount = computePurchaseCostDiscount(state);
+  // Delivery Driver adjacency discount (GDD D.4.3 / MS-0MW3JXF6U00753LB):
+  // resolved against the destination slot, so it never leaks street-wide.
+  const purchaseDiscount = computePurchaseCostDiscount(state, slotIndex);
   const effectiveCost = Math.max(0, card.cost - purchaseDiscount);
 
   // Deduct effective (discounted) cost

@@ -134,22 +134,22 @@ Community-space cards are placed on the street grid like businesses but generate
 
 ### 1.4 Staff Cards
 
-Staff cards expand hand capacity at an ongoing per-turn coin cost. *(Group F, CG-0MSQJ7VL9009JHF4, grew this family from 3 to 7 cards.)*
+Staff are a hireable card family split into **two types**, defined once in [the-build-gdd.md](./the-build-gdd.md) (Appendix D.4): **business staff** are employed at a single business and their effects are scoped to that business and, where the card says so, its 8-way neighbours; **management-company staff** are employed by the player (the management company) and their effects are scoped to the hand, the action budget, the market and incident insight. A member's type is determined by assignment — a member carrying an `employedAtSlot` is business staff — and only management-company staff expand hand capacity. The table below is the **core management-company ladder** plus the Investor (business staff); the full roster of all 26 staff templates, with the shipped cost, salary, tier and type of every card, is in [card-catalog.md](./card-catalog.md) § *Staff Cards*. *(Group F, CG-0MSQJ7VL9009JHF4, grew this family from 3 to 7 cards.)*
 
-| Name | Cost | Ongoing/turn | Slots+ | Tier | Ability | Description |
-|------|------|--------------|--------|------|---------|-------------|
-| Apprentice | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot. *(Group F.)* |
-| Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. |
-| Manager | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. |
-| Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds hand capacity and reputation. *(Group F.)* |
-| Accountant | 800 | 150 | +1 | 6 | refresh −100; tax 25% | Makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J; ×100 rescale CG-0MTKMGL66004I0PC.)* |
-| Lookout | 1000 | 200 | +1 | 7 | peek once/turn | Peek at the top incident-deck card once per turn. *(CG-0MSXOW6GN008ZSMN.)* |
-| Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
-| Executive | 2000 | 500 | +1 | 10 | +1 action/turn | An experienced executive adds +1 hand slot and grants an extra action per week, traded against hand capacity. *(Group F; MS-0MUYAEXBN008YC0J.)* |
-| General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
-| Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. While employed at a business, grants one coin-free, action-free market re-roll per turn, biased 75% toward that business's synergy types; it advances the paid re-roll escalation counter. Generalist — serves every synergy type. *(MS-0MTISBYLS009936W.)* |
+| Name | Staff type | Cost | Ongoing/turn | Slots+ | Tier | Ability | Description |
+|------|------------|------|--------------|--------|------|---------|-------------|
+| Apprentice | Management-company | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot. *(Group F.)* |
+| Assistant | Management-company | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. |
+| Manager | Management-company | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. |
+| Socialite | Management-company | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds hand capacity and reputation. *(Group F.)* |
+| Accountant | Management-company | 800 | 150 | +1 | 6 | refresh −100; tax 25% | Makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. *(Group F; CG-0MTQ7W0ZX0059R3J; ×100 rescale CG-0MTKMGL66004I0PC.)* |
+| Lookout | Management-company | 1000 | 200 | +1 | 7 | peek once/turn | Peek at the top incident-deck card once per turn. *(CG-0MSXOW6GN008ZSMN.)* |
+| Director | Management-company | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. |
+| Executive | Management-company | 2000 | 500 | +1 | 10 | +1 action/turn | An experienced executive adds +1 hand slot and grants an extra action per week, traded against hand capacity. *(Group F; MS-0MUYAEXBN008YC0J.)* |
+| General Manager | Management-company | 2000 | 500 | +4 | 12 | +1 action/turn | Grants an extra action per week while employed. *(CG-0MSTOF1N5005PK2R.)* |
+| Investor | Business | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. While employed at a business, grants one coin-free, action-free market re-roll per turn, biased 75% toward that business's synergy types; it advances the paid re-roll escalation counter. Generalist — serves every synergy type. *(MS-0MTISBYLS009936W.)* |
 
-> 12-tier expansion (CG-0MT3C744B009DS84): the core staff card ladder is spread across 9 of the 12 tiers (the ladder alone cannot cover every tier); the tier tracks the cost ladder 200→2000. The full staff catalogue (specialization applicants, business specialists and the Investor) is listed in [card-catalog.md](./card-catalog.md).
+> 12-tier expansion (CG-0MT3C744B009DS84): the core staff card ladder is spread across 9 of the 12 tiers (the ladder alone cannot cover every tier); the tier tracks the cost ladder 200→2000. The remaining 16 staff cards — the specialization applicants and the business specialists, all **business staff** — are listed in [card-catalog.md](./card-catalog.md). The shipped values above are what the engine does today; the two-type target re-values the Assistant (+2 hand slots) and the Executive (+2 actions/turn, no hand slot) and re-scopes some business-staff effects, as recorded in the GDD Appendix D.4 deltas.
 
 ## 2. Recipes / Blueprints
 

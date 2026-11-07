@@ -82,7 +82,7 @@
  */
 
 import type { MainStreetState, ResourceBank } from './MainStreetState';
-import { addLog } from './MainStreetState';
+import { addLogShared } from './MainStreetState';
 import {
   type BusinessCard,
   type EventCard,
@@ -377,6 +377,9 @@ export function createTutorialScenario(
     weekStartCoins: initCoins,
     weekStartRep: initRep,
     weekStartScore: 0,
+    // Per-turn economy history (MS-0MVAMU6OM008GJPV): recorded by the shared
+    // end-of-turn closing tail, exactly like `setupMainStreetGame`.
+    turnStatsHistory: [],
     ledger: createEconomyLedger({
       coins: initCoins,
       reputation: initRep,
@@ -547,7 +550,7 @@ export function ensureTutorialMarketForUpcomingSteps(
       else state.decks.event.push(displaced as EventCard);
     }
     state.market.cards.push(card);
-    addLog(state, `Scenario: showed ${card.name} in the market for the next step`, 'neutral');
+    addLogShared(state, `Scenario: showed ${card.name} in the market for the next step`, 'neutral');
   }
 }
 

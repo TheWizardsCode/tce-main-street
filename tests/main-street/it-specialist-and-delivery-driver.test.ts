@@ -1,35 +1,30 @@
 /**
- * Main Street: IT Specialist and Delivery Driver cost-reduction effects
- * (CG-0MUMCVH3N007KT1M).
+ * Main Street: Delivery Driver and IT Specialist under the two-type staff
+ * model (MS-0MW3JXF6U00753LB, superseding CG-0MUMCVH3N007KT1M's street-wide
+ * wiring).
  *
- * The IT Specialist advertises "reduces market refresh cost by 100" —
- * backed by `refreshCostDiscount = 100` in card-data.csv; the engine's
- * `refreshMarketCost` already sums `refreshCostDiscount` street-wide.
+ * GDD D.4.3 scopes both cards to the business they are employed at:
+ *  - the **Delivery Driver** discounts businesses placed 8-way ADJACENT to its
+ *    own business (never a street-wide purchase discount), and
+ *  - the **IT Specialist** grants **+1 synergy range to its own business**
+ *    (its shipped street-wide refresh discount is gone).
  *
- * The Delivery Driver advertises "reduces business card purchase cost by 50"
- * — backed by a new `purchaseCostDiscount = 50` column; applied street-wide
- * across every hired staff member, through all acquisition paths
- * (`purchaseBusiness`, `buyAndPlaceBusiness`, `playBusinessFromHand`),
- * with the discount-first / premium-then ordering rule.
- *
- * Covered here:
- *   - `computePurchaseCostDiscount` aggregation / floor semantics.
- *   - IT Specialist refresh discount (already wired via `refreshMarketCost`).
- *   - Delivery Driver purchase discount: click (`purchaseBusiness`),
- *     drag (`buyAndPlaceBusiness`), deferred play-from-hand, stacking,
- *     clamp at 0, discount-then-premium ordering.
- *   - AI affordability parity: the AI uses the effective discounted cost.
+ * The discount is resolved against the destination slot through every
+ * acquisition path (`purchaseBusiness`, `buyAndPlaceBusiness`,
+ * `playBusinessFromHand`, drag-drop pre-gates), keeping the discount-first /
+ * premium-then ordering rule (CG-0MTKMGL66004I0PC).
  *
  * @module
  */
-
 import { describe, it, expect } from 'vitest';
 
 import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
 import {
-  computePurchaseCostDiscount,
-  computeEffectiveBusinessPurchaseCost,
+  computeAdjacentPurchaseDiscount,
   computeBusinessPurchasePremium,
+  computeBusinessStaffBuffs,
+  computeEffectiveBusinessPurchaseCost,
+  computePurchaseCostDiscount,
 } from '../../src/MainStreetStaffBuffs';
 import {
   canPurchaseBusiness,
@@ -38,25 +33,19 @@ import {
   moveToHand,
 } from '../../src/MainStreetMarket';
 import { buyAndPlaceBusiness } from '../../src/MainStreetEngine';
-import { refreshMarketCost, canRefreshMarket, refreshMarket } from '../../src/MainStreetMarketRefill';
-import {
-  createStaffDeck,
-  REFRESH_MARKET_COST,
-  type BusinessCard,
-  type StaffCard,
-} from '../../src/MainStreetCards';
+import { refreshMarketCost, canRefreshMarket } from '../../src/MainStreetMarketRefill';
+import { REFRESH_MARKET_COST, type BusinessCard, type StaffCard } from '../../src/MainStreetCards';
 import { executeWeekStart } from '../../src/MainStreetEngine';
 import {
   bestVisibleBankTarget,
   enumerateLegalActions,
-  scoreAction,
 } from '../../src/MainStreetAiStrategy';
 
 // ── Fixtures ──────────────────────────────────────────────────
 
-const IT_REFRESH_DISCOUNT = 100;
 const DELIVERY_PURCHASE_DISCOUNT = 50;
 
+/** A minimal business card fixture. */
 function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
   return {
     family: 'business',
@@ -78,22 +67,8 @@ function makeBiz(overrides: Partial<BusinessCard> = {}): BusinessCard {
   };
 }
 
-function makeItSpecialist(overrides: Partial<StaffCard> = {}): StaffCard {
-  return {
-    family: 'staff',
-    id: 'staff-it-itd',
-    name: 'IT Specialist',
-    cost: 800,
-    ongoingCost: 100,
-    handSlotsAdded: 0,
-    description: 'Modernizes operations. Reduces market refresh cost by 100.',
-    refreshCostDiscount: IT_REFRESH_DISCOUNT,
-    allowedBusinessTypes: ['Commerce', 'Entertainment', 'Service'],
-    ...overrides,
-  };
-}
-
-function makeDeliveryDriver(overrides: Partial<StaffCard> = {}): StaffCard {
+/** A hired Delivery Driver employed at `employedAtSlot`. */
+function employedDriver(employedAtSlot: number, overrides: Partial<StaffCard> = {}): StaffCard {
   return {
     family: 'staff',
     id: 'staff-delivery-itd',
@@ -101,450 +76,277 @@ function makeDeliveryDriver(overrides: Partial<StaffCard> = {}): StaffCard {
     cost: 300,
     ongoingCost: 50,
     handSlotsAdded: 0,
-    description: 'Handles the logistics. Reduces business card purchase cost by 50.',
-    purchaseCostDiscount: DELIVERY_PURCHASE_DISCOUNT,
+    description: 'Handles the logistics. Reduces the purchase cost of any business placed adjacent to its own business by 50.',
+    adjacencyPurchaseDiscount: DELIVERY_PURCHASE_DISCOUNT,
     allowedBusinessTypes: ['Food', 'Commerce'],
+    employedAtSlot,
     ...overrides,
   };
 }
 
-// ── IT Specialist: refresh cost discount ──────────────────────
+/** A hired IT Specialist employed at `employedAtSlot`. */
+function employedItSpecialist(employedAtSlot: number): StaffCard {
+  return {
+    family: 'staff',
+    id: 'staff-it-itd',
+    name: 'IT Specialist',
+    cost: 800,
+    ongoingCost: 100,
+    handSlotsAdded: 0,
+    description: 'Modernizes operations. Links its own business with businesses up to 2 slots away (+1 synergy range).',
+    synergyRangeBonus: 1,
+    allowedBusinessTypes: ['Commerce', 'Entertainment', 'Service'],
+    employedAtSlot,
+  };
+}
 
-describe('IT Specialist: refresh cost discount', () => {
-  it('is already wired via refreshMarketCost (refreshCostDiscount)', () => {
-    const state = setupMainStreetGame({ seed: 'it-refresh-1' });
-    state.phase = 'MarketPhase';
-    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST);
+/**
+ * Places the driver's own business at slot 2 (the employer) and returns the
+ * state. On the 5-wide grid, slots 1, 3, 6, 7, 8 are adjacent; slot 4 and 9
+ * are not.
+ */
+function stateWithDriver(seed: string): MainStreetState {
+  const state = setupMainStreetGame({ seed });
+  executeWeekStart(state);
+  state.phase = 'MarketPhase';
+  state.resourceBank.coins = 100000;
+  const employer = makeBiz({ id: 'biz-driver-employer', name: 'Grocery', synergyTypes: ['Food'] });
+  state.streetGrid[2] = employer;
+  const driver = employedDriver(2);
+  state.staffCards.push(driver);
+  employer.employedStaff = [driver];
+  return state;
+}
 
-    const it = makeItSpecialist();
-    state.staffCards.push(it);
+const ADJACENT_SLOT = 1;
+const DISTANT_SLOT = 9;
 
-    expect(refreshMarketCost(state)).toBe(REFRESH_MARKET_COST - IT_REFRESH_DISCOUNT);
-  });
+// ── Adjacency-scoped discount aggregation ─────────────────────
 
-  it('stacks with the Accountant refreshCostDiscount', () => {
-    const state = setupMainStreetGame({ seed: 'it-refresh-stack' });
-    state.phase = 'MarketPhase';
-    state.resourceBank.coins = REFRESH_MARKET_COST * 10;
-
-    // Hire the Accountant (+100 refresh discount).
-    const accountant = createStaffDeck(1).find(c => c.id.startsWith('staff-accountant'));
-    expect(accountant).toBeTruthy();
-    state.market.cards.push({ ...accountant! });
-    purchaseStaffCardFromMarket(state, accountant!.id);
-
-    // Also have the IT Specialist (+100 refresh discount).
-    const it = makeItSpecialist();
-    state.staffCards.push(it);
-
-    const expected = REFRESH_MARKET_COST - IT_REFRESH_DISCOUNT - 100;
-    expect(refreshMarketCost(state)).toBe(expected);
-  });
-
-  it('can afford a refresh only with the IT Specialist discount', () => {
-    // Without the IT Specialist, 400 coins is below the 500 base cost.
-    const without = setupMainStreetGame({ seed: 'it-afford-none' });
-    without.phase = 'MarketPhase';
-    without.resourceBank.coins = 400;
-    expect(canRefreshMarket(without).legal).toBe(false);
-
-    // With the IT Specialist, the effective cost is 500 - 100 = 400.
-    const withIt = setupMainStreetGame({ seed: 'it-afford-it' });
-    withIt.phase = 'MarketPhase';
-    withIt.staffCards.push(makeItSpecialist());
-    withIt.resourceBank.coins = 400;
-    expect(canRefreshMarket(withIt).legal).toBe(true);
-  });
-
-  it('charges the discounted cost', () => {
-    const state = setupMainStreetGame({ seed: 'it-charge' });
-    state.phase = 'MarketPhase';
-    state.resourceBank.coins = REFRESH_MARKET_COST + 100;
-
-    const it = makeItSpecialist();
-    state.staffCards.push(it);
-
-    const coinsBefore = state.resourceBank.coins;
-    refreshMarket(state);
-
-    expect(state.resourceBank.coins).toBe(coinsBefore - (REFRESH_MARKET_COST - IT_REFRESH_DISCOUNT));
-  });
-
-  it('floors at 0 when discounts exceed the base cost', () => {
-    const state = setupMainStreetGame({ seed: 'it-floor' });
-    state.phase = 'MarketPhase';
-
-    // Two IT Specialists = -200.
-    state.staffCards.push(makeItSpecialist());
-    state.staffCards.push(makeItSpecialist({ id: 'staff-it-itd-2' }));
-
-    // Accountant = -100.
-    const accountant = createStaffDeck(1).find(c => c.id.startsWith('staff-accountant'));
-    state.market.cards.push({ ...accountant! });
-    purchaseStaffCardFromMarket(state, accountant!.id);
-
-    // Total discount = 200 + 100 = 300 > 500? No, 300 < 500.
-    // Add two more Accountants: total = 200 + 200 = 400 < 500.
-    // Add three more: total = 200 + 300 = 500 = 500 → cost = 0.
-    for (let i = 0; i < 3; i++) {
-      const ac2 = createStaffDeck(1).find(c => c.id.startsWith('staff-accountant'));
-      state.market.cards.push({ ...ac2! });
-      purchaseStaffCardFromMarket(state, ac2!.id);
-    }
-
-    expect(refreshMarketCost(state)).toBe(0);
-
-    // Even with 0 coins, refresh should be legal.
-    state.resourceBank.coins = 0;
-    expect(canRefreshMarket(state).legal).toBe(true);
-
-    const coinsBefore = state.resourceBank.coins;
-    refreshMarket(state);
-    expect(state.resourceBank.coins).toBe(coinsBefore); // cost = 0
-  });
-});
-
-// ── computePurchaseCostDiscount ───────────────────────────────
-
-describe('computePurchaseCostDiscount', () => {
+describe('Delivery Driver: adjacency-scoped purchase discount', () => {
   it('is 0 with no hired staff', () => {
     const state = setupMainStreetGame({ seed: 'pcd-no-staff' });
+    expect(computePurchaseCostDiscount(state, ADJACENT_SLOT)).toBe(0);
+    expect(computeAdjacentPurchaseDiscount(state, ADJACENT_SLOT)).toBe(0);
+  });
+
+  it('discounts only slots adjacent to the employing business', () => {
+    const state = stateWithDriver('pcd-adjacent');
+
+    expect(computeAdjacentPurchaseDiscount(state, ADJACENT_SLOT)).toBe(DELIVERY_PURCHASE_DISCOUNT);
+    expect(computePurchaseCostDiscount(state, ADJACENT_SLOT)).toBe(DELIVERY_PURCHASE_DISCOUNT);
+    // Its own slot and far slots are not discounted.
+    expect(computePurchaseCostDiscount(state, 2)).toBe(0);
+    expect(computePurchaseCostDiscount(state, DISTANT_SLOT)).toBe(0);
+  });
+
+  it('never leaks street-wide when no destination slot is known', () => {
+    const state = stateWithDriver('pcd-no-slot');
     expect(computePurchaseCostDiscount(state)).toBe(0);
   });
 
-  it('sums purchaseCostDiscount across hired staff street-wide', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-sum' });
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
+  it('stacks additively across drivers employed around the target slot', () => {
+    const state = stateWithDriver('pcd-stack');
+    state.streetGrid[0] = makeBiz({ id: 'biz-second-employer', name: 'Diner', synergyTypes: ['Food'] });
+    const second = employedDriver(0);
+    state.staffCards.push(second);
+    state.streetGrid[0]!.employedStaff = [second];
 
-    expect(computePurchaseCostDiscount(state)).toBe(DELIVERY_PURCHASE_DISCOUNT);
+    // Slot 1 neighbours the employer at slot 2 AND the second at slot 0.
+    expect(computeAdjacentPurchaseDiscount(state, ADJACENT_SLOT)).toBe(DELIVERY_PURCHASE_DISCOUNT * 2);
   });
 
-  it('stacks additively across multiple Delivery Drivers', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-stack' });
-    state.staffCards.push(makeDeliveryDriver());
-    state.staffCards.push(makeDeliveryDriver({ id: 'staff-delivery-itd-2' }));
+  it('derives the effective cost and premium per placement slot (discount first)', () => {
+    const state = stateWithDriver('pcd-derived');
 
-    expect(computePurchaseCostDiscount(state)).toBe(DELIVERY_PURCHASE_DISCOUNT * 2);
-  });
+    expect(computeEffectiveBusinessPurchaseCost(state, 300, ADJACENT_SLOT)).toBe(250);
+    expect(computeBusinessPurchasePremium(state, 300, ADJACENT_SLOT)).toBe(Math.ceil(250 * 1.5 * 2) / 2);
+    expect(computeBusinessPurchasePremium(state, 300, ADJACENT_SLOT)).not.toBe(Math.ceil(300 * 1.5 * 2) / 2);
 
-  it('ignores staff without purchaseCostDiscount', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-no-op' });
-    state.staffCards.push(makeItSpecialist()); // has refreshCostDiscount, not purchaseCostDiscount
-
-    expect(computePurchaseCostDiscount(state)).toBe(0);
-  });
-
-  it('floors a negative aggregate at 0', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-floor' });
-    const delivery = makeDeliveryDriver({ purchaseCostDiscount: -30 });
-    state.staffCards.push(delivery);
-
-    expect(computePurchaseCostDiscount(state)).toBe(0);
-  });
-
-  it('derives the effective purchase cost and premium (discount first)', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-derived' });
-    state.staffCards.push(makeDeliveryDriver());
-
-    // 300 listed - 50 = 250 effective base; premium is 50% of the discounted
-    // base (375), NOT the listed base (450).
-    expect(computeEffectiveBusinessPurchaseCost(state, 300)).toBe(250);
-    expect(computeBusinessPurchasePremium(state, 300)).toBe(
-      Math.ceil(250 * 1.5 * 2) / 2,
-    );
-    expect(computeBusinessPurchasePremium(state, 300)).not.toBe(
-      Math.ceil(300 * 1.5 * 2) / 2,
-    );
+    expect(computeEffectiveBusinessPurchaseCost(state, 300, DISTANT_SLOT)).toBe(300);
+    expect(computeBusinessPurchasePremium(state, 300, DISTANT_SLOT)).toBe(Math.ceil(300 * 1.5 * 2) / 2);
   });
 
   it('floors the derived effective cost at 0', () => {
-    const state = setupMainStreetGame({ seed: 'pcd-derived-floor' });
-    state.staffCards.push(makeDeliveryDriver());
-
-    expect(computeEffectiveBusinessPurchaseCost(state, 40)).toBe(0);
-    expect(computeBusinessPurchasePremium(state, 40)).toBe(0);
+    const state = stateWithDriver('pcd-derived-floor');
+    expect(computeEffectiveBusinessPurchaseCost(state, 40, ADJACENT_SLOT)).toBe(0);
+    expect(computeBusinessPurchasePremium(state, 40, ADJACENT_SLOT)).toBe(0);
   });
 });
 
-// ── Delivery Driver: click purchase (purchaseBusiness) ────────
+// ── Click purchase (purchaseBusiness) ─────────────────────────
 
-describe('Delivery Driver: click purchase (purchaseBusiness)', () => {
-  it('makes a business affordable only because of the driver', () => {
-    const state = setupMainStreetGame({ seed: 'dd-click-afford' });
-    state.phase = 'MarketPhase';
-    state.resourceBank.coins = 500;
+describe('Delivery Driver: click purchase', () => {
+  it('charges the discounted cost for an adjacent slot', () => {
+    const state = stateWithDriver('dd-click-adjacent');
+    const biz = makeBiz({ id: 'biz-click-adjacent', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
 
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(
-      c => (c.family === 'business' || c.family === 'community-space') && c.cost <= state.resourceBank.coins,
-    );
-    if (!biz) return;
-
-    expect(canPurchaseBusiness(state, biz.id, 0).legal).toBe(true);
+    expect(canPurchaseBusiness(state, biz.id, ADJACENT_SLOT).legal).toBe(true);
+    const result = purchaseBusiness(state, biz.id, ADJACENT_SLOT);
+    expect(result.cost).toBe(300 - DELIVERY_PURCHASE_DISCOUNT);
   });
 
-  it('charges the discounted cost', () => {
-    const state = setupMainStreetGame({ seed: 'dd-click-discount' });
-    state.phase = 'MarketPhase';
+  it('charges the full listed cost for a distant slot', () => {
+    const state = stateWithDriver('dd-click-distant');
+    const biz = makeBiz({ id: 'biz-click-distant', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
 
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    const slot = state.streetGrid.findIndex(s => s === null);
-    state.resourceBank.coins = 5000;
-
-    const result = purchaseBusiness(state, biz.id, slot);
-
-    expect(result.cost).toBe(Math.max(0, biz.cost - DELIVERY_PURCHASE_DISCOUNT));
+    const result = purchaseBusiness(state, biz.id, DISTANT_SLOT);
+    expect(result.cost).toBe(300);
   });
 
   it('floors the effective cost at 0 when discount ≥ listed cost', () => {
-    const state = setupMainStreetGame({ seed: 'dd-click-floor' });
-    state.phase = 'MarketPhase';
+    const state = stateWithDriver('dd-click-floor');
+    const biz = makeBiz({ id: 'biz-dd-floor', cost: DELIVERY_PURCHASE_DISCOUNT - 10, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
     state.resourceBank.coins = 0;
 
-    // Hire a Delivery Driver whose 50-coin discount covers the listed cost.
-    state.staffCards.push(makeDeliveryDriver());
-
-    // Inject a deterministic business card at or below the discount so the
-    // test never depends on the seeded market composition. (The previous
-    // version read the first business from the seeded market and silently
-    // returned when none was present, making the assertion vacuous — and it
-    // broke once the upgrade draw-weight change shifted the seeded stream.)
-    const biz = makeBiz({ id: 'biz-dd-floor', cost: DELIVERY_PURCHASE_DISCOUNT - 10 });
-    state.market.cards = [biz];
-
-    const slot = state.streetGrid.findIndex(s => s === null);
-    expect(canPurchaseBusiness(state, biz.id, slot).legal).toBe(true);
-
-    const result = purchaseBusiness(state, biz.id, slot);
+    expect(canPurchaseBusiness(state, biz.id, ADJACENT_SLOT).legal).toBe(true);
+    const result = purchaseBusiness(state, biz.id, ADJACENT_SLOT);
     expect(result.cost).toBe(0);
     expect(state.resourceBank.coins).toBe(0);
   });
 });
 
-// ── Delivery Driver: drag buy-and-place ───────────────────────
+// ── Drag buy-and-place ────────────────────────────────────────
 
-describe('Delivery Driver: drag buy-and-place (buyAndPlaceBusiness)', () => {
+describe('Delivery Driver: drag buy-and-place', () => {
   it('discounts the base cost before the +50% premium', () => {
-    const state = setupMainStreetGame({ seed: 'dd-drag-premium' });
-    state.phase = 'MarketPhase';
+    const state = stateWithDriver('dd-drag-premium');
+    const biz = makeBiz({ id: 'biz-drag', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
+    state.resourceBank.coins = Math.ceil(250 * 1.5 * 2) / 2;
 
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    const slot = state.streetGrid.findIndex(s => s === null);
-    const baseCost = biz.cost;
-    const discountedBase = Math.max(0, baseCost - DELIVERY_PURCHASE_DISCOUNT);
-    const expectedDragPrice = Math.ceil(discountedBase * 1.5 * 2) / 2;
-
-    state.resourceBank.coins = expectedDragPrice;
-
-    const result = buyAndPlaceBusiness(state, biz.id, slot);
-
-    expect(result.cost).toBe(expectedDragPrice);
-    // Sanity: the premium is applied after the discount, not before.
-    const undiscDragPrice = Math.ceil(baseCost * 1.5 * 2) / 2;
-    expect(result.cost).not.toBe(undiscDragPrice - DELIVERY_PURCHASE_DISCOUNT);
+    const result = buyAndPlaceBusiness(state, biz.id, ADJACENT_SLOT);
+    expect(result.cost).toBe(Math.ceil(250 * 1.5 * 2) / 2);
   });
 
-  it('is illegal without sufficient coins for the discounted premium', () => {
-    const state = setupMainStreetGame({ seed: 'dd-drag-legal' });
-    state.phase = 'MarketPhase';
+  it('is illegal one coin short of the discounted premium', () => {
+    const state = stateWithDriver('dd-drag-legal');
+    const biz = makeBiz({ id: 'biz-drag-legal', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
+    state.resourceBank.coins = Math.ceil(250 * 1.5 * 2) / 2 - 1;
 
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    const slot = state.streetGrid.findIndex(s => s === null);
-    const discountedBase = Math.max(0, biz.cost - DELIVERY_PURCHASE_DISCOUNT);
-    const expectedDragPrice = Math.ceil(discountedBase * 1.5 * 2) / 2;
-
-    // One coin short.
-    state.resourceBank.coins = expectedDragPrice - 1;
-    expect(() => buyAndPlaceBusiness(state, biz.id, slot)).toThrow(/coins/i);
+    expect(() => buyAndPlaceBusiness(state, biz.id, ADJACENT_SLOT)).toThrow(/coins/i);
   });
 
-  it('discounts the GM listed-cost priceOverride (2-action drag parity)', () => {
-    const state = setupMainStreetGame({ seed: 'dd-drag-gm' });
-    state.phase = 'MarketPhase';
+  it('discounts the GM listed-cost priceOverride', () => {
+    const state = stateWithDriver('dd-drag-gm');
+    const biz = makeBiz({ id: 'biz-drag-gm', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
+    state.resourceBank.coins = 250;
 
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    const slot = state.streetGrid.findIndex(s => s === null);
-    const effectiveListed = Math.max(0, biz.cost - DELIVERY_PURCHASE_DISCOUNT);
-    state.resourceBank.coins = effectiveListed;
-
-    // GM parity passes the listed cost as `priceOverride`; the street-wide
-    // discount still applies (the override replaces the premium, not the
-    // discount).
-    const result = buyAndPlaceBusiness(state, biz.id, slot, biz.cost);
-
-    expect(result.cost).toBe(effectiveListed);
+    const result = buyAndPlaceBusiness(state, biz.id, ADJACENT_SLOT, 300);
+    expect(result.cost).toBe(250);
     expect(state.resourceBank.coins).toBe(0);
   });
-});
 
-// ── Delivery Driver: play from hand ───────────────────────────
+  it('charges the undiscounted premium for a distant placement', () => {
+    const state = stateWithDriver('dd-drag-distant');
+    const biz = makeBiz({ id: 'biz-drag-distant', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
 
-describe('Delivery Driver: play business from hand (playBusinessFromHand)', () => {
-  it('charges the discounted base cost (no premium path)', () => {
-    const state = setupMainStreetGame({ seed: 'dd-hand' });
-    state.phase = 'MarketPhase';
-
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    moveToHand(state, biz.id);
-    const handIndex = state.hand.findIndex(h => h.id === biz.id);
-    const slot = state.streetGrid.findIndex(s => s === null);
-    const baseCost = biz.cost;
-    const effectiveCost = Math.max(0, baseCost - DELIVERY_PURCHASE_DISCOUNT);
-    state.resourceBank.coins = effectiveCost;
-
-    const result = playBusinessFromHand(state, handIndex, slot);
-
-    expect(result.cost).toBe(effectiveCost);
-  });
-
-  it('charges the discounted-then-premium cost (premium path)', () => {
-    const state = setupMainStreetGame({ seed: 'dd-hand-premium' });
-    state.phase = 'MarketPhase';
-
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    const biz = state.market.cards.find(c => c.family === 'business');
-    if (!biz) return;
-
-    moveToHand(state, biz.id);
-    const handIndex = state.hand.findIndex(h => h.id === biz.id);
-    const slot = state.streetGrid.findIndex(s => s === null);
-
-    const discountedBase = Math.max(0, biz.cost - DELIVERY_PURCHASE_DISCOUNT);
-    const expectedPremiumPrice = Math.ceil(discountedBase * 1.5 * 2) / 2;
-    state.resourceBank.coins = expectedPremiumPrice;
-
-    const result = playBusinessFromHand(state, handIndex, slot, expectedPremiumPrice);
-
-    expect(result.cost).toBe(expectedPremiumPrice);
+    const result = buyAndPlaceBusiness(state, biz.id, DISTANT_SLOT);
+    expect(result.cost).toBe(Math.ceil(300 * 1.5 * 2) / 2);
   });
 });
 
-// ── AI affordability parity ───────────────────────────────────
+// ── Play from hand ───────────────────────────────────────────
+
+describe('Delivery Driver: play business from hand', () => {
+  it('charges the discounted base cost for an adjacent slot', () => {
+    const state = stateWithDriver('dd-hand-adjacent');
+    const biz = makeBiz({ id: 'biz-hand-adjacent', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
+    moveToHand(state, biz.id);
+    const handIndex = state.hand.findIndex(h => h.id === biz.id);
+    state.resourceBank.coins = 250;
+
+    const result = playBusinessFromHand(state, handIndex, ADJACENT_SLOT);
+    expect(result.cost).toBe(250);
+  });
+
+  it('charges the full listed cost for a distant slot', () => {
+    const state = stateWithDriver('dd-hand-distant');
+    const biz = makeBiz({ id: 'biz-hand-distant', cost: 300, synergyTypes: ['Commerce'] });
+    state.market.cards = [biz];
+    moveToHand(state, biz.id);
+    const handIndex = state.hand.findIndex(h => h.id === biz.id);
+    state.resourceBank.coins = 300;
+
+    const result = playBusinessFromHand(state, handIndex, DISTANT_SLOT);
+    expect(result.cost).toBe(300);
+  });
+});
+
+// ── AI affordability parity (no assumed street-wide discount) ─
 
 describe('AI affordability parity', () => {
-  it('scores business targets using the effective discounted cost', () => {
+  it('banks towards the listed cost when no placement slot is known', () => {
     const state = setupMainStreetGame({ seed: 'ai-pc-afford' });
     executeWeekStart(state);
     state.phase = 'MarketPhase';
 
-    // Isolate the market to a single known business card.
     state.hand = [];
     state.market.cards = [];
     const biz = makeBiz({ id: 'biz-ai-parity-afford', cost: 300, baseIncome: 200 });
     state.market.cards.push(biz);
-
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-    state.resourceBank.coins = 0; // unaffordable at either price → a banking target
+    state.staffCards.push(employedDriver(2));
+    state.resourceBank.coins = 0;
 
     const bankTarget = bestVisibleBankTarget(state, state.resourceBank.coins, 60);
 
     expect(bankTarget).not.toBeNull();
-    // The AI sees the discounted cost, not the listed cost.
-    expect(bankTarget!.cost).toBe(300 - DELIVERY_PURCHASE_DISCOUNT);
+    // The adjacency discount cannot be claimed without a destination slot.
+    expect(bankTarget!.cost).toBe(300);
   });
 
-  it('treats a business as affordable once the discounted cost is within coins', () => {
-    const state = setupMainStreetGame({ seed: 'ai-pc-target' });
-    executeWeekStart(state);
-    state.phase = 'MarketPhase';
-
-    state.hand = [];
-    state.market.cards = [];
-    const biz = makeBiz({ id: 'biz-ai-parity-target', cost: 300, baseIncome: 200 });
-    state.market.cards.push(biz);
-
-    const delivery = makeDeliveryDriver();
-    state.staffCards.push(delivery);
-
-    // Exactly enough for the discounted cost (250), but not the listed (300).
-    const discounted = 300 - DELIVERY_PURCHASE_DISCOUNT;
-    state.resourceBank.coins = discounted;
-
-    // Affordable at the discounted price → not a banking target.
-    const bankTarget = bestVisibleBankTarget(state, state.resourceBank.coins, 60);
-    expect(bankTarget).toBeNull();
-  });
-
-  it('enumerates a discounted-only play-business-from-hand action', () => {
+  it('does not enumerate a play-from-hand action the placement cannot afford', () => {
     const state = setupMainStreetGame({ seed: 'ai-pc-enumerate' });
     executeWeekStart(state);
     state.phase = 'MarketPhase';
     state.actionsRemaining = 1;
     state.market.cards = [];
-    state.staffCards.push(makeDeliveryDriver());
+    state.staffCards.push(employedDriver(2));
 
     const biz = makeBiz({ id: 'biz-ai-enum', cost: 300, baseIncome: 200 });
     state.hand = [biz];
-    // Exactly enough for the discounted cost (250), but not the listed (300).
+    // Enough for a discounted adjacent placement only: the enumerated actions
+    // must not claim affordability for a full-price slot.
     state.resourceBank.coins = 300 - DELIVERY_PURCHASE_DISCOUNT;
 
     const actions = enumerateLegalActions(state);
-
-    expect(actions.some(a => a.type === 'play-business-from-hand')).toBe(true);
-  });
-
-  it('scores a business purchase using the discounted cost', () => {
-    const slotIndex = 0;
-    const scoreWith = (withDriver: boolean): number => {
-      const state = setupMainStreetGame({ seed: 'ai-pc-score' });
-      executeWeekStart(state);
-      state.phase = 'MarketPhase';
-      state.actionsRemaining = 1;
-      state.market.cards = [];
-      if (withDriver) state.staffCards.push(makeDeliveryDriver());
-      const biz = makeBiz({ id: 'biz-ai-score', cost: 300, baseIncome: 200 });
-      state.market.cards.push(biz);
-      state.resourceBank.coins = 1000;
-      return scoreAction(state, { type: 'buy-business', cardId: biz.id, slotIndex });
-    };
-
-    // The AI values the purchase at the discounted cost, so the score is
-    // exactly the discount higher than without the Driver.
-    expect(scoreWith(true) - scoreWith(false)).toBe(DELIVERY_PURCHASE_DISCOUNT);
+    expect(actions.some(a => a.type === 'play-business-from-hand')).toBe(false);
   });
 });
 
-// ── Helper ────────────────────────────────────────────────────
+// ── IT Specialist: no street-wide refresh discount ───────────
 
-/** Hire a staff card from the market row (bypasses the market-row UI layer). */
-function purchaseStaffCardFromMarket(state: MainStreetState, cardId: string): void {
-  const marketIdx = state.market.cards.findIndex(c => c.id === cardId && c.family === 'staff');
-  const card = marketIdx !== -1 ? state.market.cards[marketIdx] : undefined;
-  if (!card || card.family !== 'staff') return;
+describe('IT Specialist: refresh discount removed, synergy range added', () => {
+  it('does not change the market refresh cost', () => {
+    const state = setupMainStreetGame({ seed: 'it-refresh' });
+    executeWeekStart(state);
+    state.phase = 'MarketPhase';
+    state.resourceBank.coins = REFRESH_MARKET_COST * 10;
 
-  state.resourceBank.coins -= card.cost;
-  state.market.cards.splice(marketIdx, 1);
-  state.staffCards.push({ ...card });
-  state.maxHandSize += card.handSlotsAdded;
-}
+    const before = refreshMarketCost(state);
+    state.staffCards.push(employedItSpecialist(2));
+
+    expect(refreshMarketCost(state)).toBe(before);
+    expect(canRefreshMarket(state).legal).toBe(true);
+  });
+
+  it('reports a +1 synergy range buff for its own business only', () => {
+    const state = setupMainStreetGame({ seed: 'it-range-buff' });
+    executeWeekStart(state);
+    state.streetGrid[2] = makeBiz({ id: 'biz-it-employer', synergyTypes: ['Commerce'] });
+    state.streetGrid[3] = makeBiz({ id: 'biz-it-neighbour', synergyTypes: ['Commerce'] });
+    const it = employedItSpecialist(2);
+    state.staffCards.push(it);
+    state.streetGrid[2]!.employedStaff = [it];
+
+    expect(computeBusinessStaffBuffs(state, 2).synergyRangeBonus).toBe(1);
+    expect(computeBusinessStaffBuffs(state, 3).synergyRangeBonus).toBe(0);
+  });
+});

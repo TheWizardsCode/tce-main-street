@@ -91,6 +91,52 @@ browser distribution. The Electron launcher keeps its content-directory install
 path (`npm run build:card-pack` → `<contentDir>/packs/`), which is documented in
 [packs/README.md](packs/README.md).
 
+### Remote pack catalogue
+
+The same build can carry a **signed remote catalogue** alongside the bundled
+packs. It is configured with Vite environment variables and is **inert when
+unset** (no remote source, no remote request).
+
+| Variable | Meaning |
+|----------|---------|
+| `VITE_REMOTE_PACK_URL` | Base URL the remote `packs/` tree is served from, e.g. `https://packs.example.com/main-street`. The catalogue is read from `<base>/packs/manifest.json` and pack files from `<base>/packs/<gameId>/<packId>/…`. |
+| `VITE_REMOTE_PACK_PUBLIC_KEY` | The pinned Ed25519 public key (raw 32-byte key, standard padded base64) every remote manifest signature must verify against. |
+
+Both must be set for a single catalogue. Several catalogues compose through
+`VITE_REMOTE_PACK_SOURCES`, a non-empty JSON array of
+`{ "url", "publicKey" }` entries **in precedence order**:
+
+```bash
+VITE_REMOTE_PACK_SOURCES='[
+  { "url": "https://packs.example.com/main-street", "publicKey": "<base64 key A>" },
+  { "url": "https://partner.example.net/main-street", "publicKey": "<base64 key B>" }
+]'
+```
+
+The declared order is kept, so the first catalogue listed wins a pack-id
+conflict between remote sources; a malformed entry is skipped and reported
+while its valid siblings still compose. Bundled packs are always registered
+first and win any conflict.
+
+**Changing the configuration requires a rebuild.** The URL, the pinned key and
+the catalogue list are compiled into the bundle at build time; there is no
+runtime or launcher override, and editing the host-side catalogue does not
+change the pinned configuration. Rebuild and redeploy after any configuration
+change.
+
+Remote content is **fetched and refused only**: the manifest must arrive as a
+signed envelope whose Ed25519 signature verifies against the pinned key, only
+the configured host is requested, every catalogue read (manifest and pack CSV)
+is bounded at ≈3 s, and any failure (unreachable host, timeout,
+missing/invalid signature, malformed catalogue) rejects that source whole with
+one console warning while the bundled packs keep playing. There is no
+client-side caching, so the bundled packs remain the offline story.
+
+The full hosting contract — layout, canonical signed payload with a reproducible
+example, every verification outcome, degradation semantics, the key-separation
+rule and the licence-clean requirement — is
+[docs/dev/remote-pack-hosting.md](docs/dev/remote-pack-hosting.md).
+
 ## First-time setup
 
 GitHub Pages must be enabled once for this repository by an administrator:

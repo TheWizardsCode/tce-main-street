@@ -403,13 +403,19 @@ export function orderIncidentDeck(
 
 /**
  * Returns the synergy-type color used for placeholder card rendering.
+ *
+ * Service is a pink / magenta (MS-0MW1ZSC7U000V5MW): the previous purple
+ * (`0x9B59B6`) was indistinguishable from the flat purple face every upgrade
+ * card used, so the two card families read as the same thing at a glance.
+ * The new hue is deliberately distinct from every other synergy accent and
+ * from the owner seat palette.
  */
 export function synergyColor(type: SynergyType): number {
   switch (type) {
     case 'Food':          return 0xE67E22; // Orange
     case 'Culture':       return 0x3498DB; // Blue
     case 'Commerce':      return 0x27AE60; // Green
-    case 'Service':       return 0x9B59B6; // Purple
+    case 'Service':       return 0xC2185B; // Pink / magenta
     case 'Entertainment': return 0xE74C3C; // Red
     case 'Health':        return 0x1ABC9C; // Teal/Cyan
   }
@@ -434,7 +440,10 @@ export const CARD_FACE_PALETTE: Readonly<Record<string, string>> = Object.freeze
   Food:          '#5D4037',
   Culture:       '#1565C0',
   Commerce:      '#2E7D32',
-  Service:       '#6A1B9A',
+  // Pink / magenta (MS-0MW1ZSC7U000V5MW) — replaces the old `#6A1B9A` purple,
+  // which matched the upgrade-card face. Kept darker than the `synergyColor`
+  // accent so the white title / stat text stays legible.
+  Service:       '#AD1457',
   Entertainment: '#C62828',
   Health:        '#00838F',
   // Fallback — keeps the previous neutral face for unknown / zero-synergy rows.
@@ -487,6 +496,68 @@ export function cardFaceBackground(
 
   // >2 synergy types: out of scope today — degrade to a single first colour.
   return { fill: first, split: null };
+}
+
+/**
+ * The violet base of an upgrade card's checkerboard face
+ * (MS-0MW1ZSC7U000V5MW) — the retained upgrade-family purple (`#6B4C9A`).
+ * Also the safe fallback face for an upgrade whose target cannot be resolved.
+ */
+export const UPGRADE_FACE_BASE_COLOUR = '#6B4C9A';
+
+/**
+ * The minimal card shape {@link resolveUpgradeFaceColours} needs: a display
+ * name (what an upgrade's `targetBusiness` matches) and its synergy types.
+ */
+export interface SynergyCardLookup {
+  readonly name: string;
+  readonly synergyTypes: readonly SynergyType[];
+}
+
+/**
+ * Resolve the checkerboard colours for an upgrade card face
+ * (MS-0MW1ZSC7U000V5MW).
+ *
+ * Upgrade rows carry no synergy column of their own — the only link to their
+ * target is `targetBusiness`, a business / community-space **name**. The
+ * colours are therefore derived by looking that name up among the supplied
+ * cards and reading the target's synergy types from the shared
+ * {@link CARD_FACE_PALETTE} (no CSV schema change, so checksums and pack
+ * fixtures stay valid).
+ *
+ * - The first entry is always {@link UPGRADE_FACE_BASE_COLOUR} (the violet
+ *   every upgrade face keeps).
+ * - A single-synergy target adds that synergy's face colour (two colours).
+ * - A bridge target (two synergy types) adds both (three colours).
+ * - More than two synergy types degrades safely to the first two.
+ *
+ * @param targetBusiness The upgrade's target business name (case-insensitive).
+ * @param cards          Candidate cards (businesses / community spaces).
+ * @returns The checkerboard colours, base first; an **empty array** when the
+ *          target is missing/unknown or has no resolvable synergy, so the
+ *          caller can fall back to the flat violet face. Never throws.
+ */
+export function resolveUpgradeFaceColours(
+  targetBusiness: string | null | undefined,
+  cards: readonly SynergyCardLookup[] | null | undefined,
+): readonly string[] {
+  const wanted = String(targetBusiness ?? '').trim().toLowerCase();
+  if (!wanted) return [];
+
+  const list = Array.isArray(cards) ? cards : [];
+  const target = list.find(
+    (card) => String(card?.name ?? '').trim().toLowerCase() === wanted,
+  );
+  if (!target) return [];
+
+  const colours: string[] = [];
+  for (const type of target.synergyTypes ?? []) {
+    const colour = CARD_FACE_PALETTE[type];
+    if (colour && !colours.includes(colour)) colours.push(colour);
+  }
+  if (colours.length === 0) return [];
+
+  return [UPGRADE_FACE_BASE_COLOUR, ...colours.slice(0, 2)];
 }
 
 /**

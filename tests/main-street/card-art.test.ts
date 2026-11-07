@@ -15,6 +15,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
@@ -47,10 +48,16 @@ import { generateCardSvg, resolveCardArtDataUri } from '../../src/scripts/genera
 // @ts-ignore: no declaration file for .mjs script — intentional
 import { RESIDENTIAL_PACK_ART } from '../../src/scripts/generate-residential-pack-art.mjs';
 // @ts-ignore: no declaration file for .mjs script — intentional
-import { buildAliasesFromCsv, buildMappingsFromCsv } from '../../src/scripts/generate-main-street-card-art.mjs';
+import { buildAliasesFromCsv, buildDuplicateSpriteAliases, buildMappingsFromCsv, planUpgradeArtCopies } from '../../src/scripts/generate-main-street-card-art.mjs';
 import artMapJson from '../../src/card-art-map.json';
 
-const ART_MAP = artMapJson as { version: number; aliases: Record<string, string>; art: Record<string, string>; fallback: string };
+const ART_MAP = artMapJson as {
+  version: number;
+  aliases: Record<string, string>;
+  spriteAliases: Record<string, string>;
+  art: Record<string, string>;
+  fallback: string;
+};
 
 const SPRITES_DIR = path.resolve('src/sprites');
 const ART_DATA_URI = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/;
@@ -209,8 +216,18 @@ describe('MainStreetCardArt — sprite coverage', () => {
     }
   });
 
-  it('reports the number of generated base sprites', () => {
-    expect(cardArtSpriteCount()).toBe(baseSourceSpriteStems().length);
+  it('reports the number of embedded base bitmaps (duplicate sprites share one)', () => {
+    // Each committed base sprite is renderable: either it embeds its own bitmap
+    // or it is a byte-identical copy redirected via `spriteAliases` (Q11).
+    const stems = baseSourceSpriteStems();
+    for (const stem of stems) {
+      expect(
+        ART_MAP.art[stem] ?? ART_MAP.art[ART_MAP.spriteAliases[stem]],
+        `card-art-map.json cannot render committed sprite "${stem}"`,
+      ).toBeTruthy();
+    }
+    const embedded = new Set(stems.map((stem) => ART_MAP.spriteAliases[stem] ?? stem));
+    expect(cardArtSpriteCount()).toBe(embedded.size);
   });
 });
 
@@ -299,8 +316,8 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
   });
 
   it('applies the documented per-family mapping rules', () => {
-    // Upgrade -> its targetBusiness art (duplicated under newDisplayName).
-    expect(MAPPINGS['Upgrade to Patisserie']).toBe('Bakery');
+    // Upgrade -> its own duplicated sprite under the new display name (Q11).
+    expect(MAPPINGS['Upgrade to Patisserie']).toBe('Patisserie_upgrade_level0');
     // Art-less event -> (trigger, targetSynergy) category sprite.
     expect(MAPPINGS['Rainy Day']).toBe('Incident__Food');
     // Existing dedicated event art is retained (not category-overridden).
@@ -347,8 +364,98 @@ describe('CG-0MUBVL4H80061B1E — CSV drift guard', () => {
     }
   });
 
-  it('card-art-map.json version is 3 (CG-0MUBVL4H80061B1E CSV-driven)', () => {
-    expect(ART_MAP.version).toBe(3);
+  it('card-art-map.json version is 4 (Q11 spriteAliases)', () => {
+    expect(ART_MAP.version).toBe(4);
+  });
+});
+
+describe('CG-0MUBVL4H80061B1E — per-upgrade art copies (Q11, AC2)', () => {
+  const CSV_PATH = path.resolve('src/card-data.csv');
+  const KNOWN_SPRITES = new Set(sourceSpriteStems());
+  const MAPPINGS = buildMappingsFromCsv(CSV_PATH, KNOWN_SPRITES) as Record<string, string>;
+  const PLAN = planUpgradeArtCopies() as Array<{
+    cardName: string;
+    sprite: string;
+    target: string;
+    targetMissing: boolean;
+    exists: boolean;
+  }>;
+
+  /** Committed bytes of a 1024×1024 source sprite. */
+  function spriteBytes(stem: string): Buffer {
+    return fs.readFileSync(path.join(SPRITES_DIR, `${stem}_1024_x_1024.png`));
+  }
+
+  it('plans one uniquely named copy per upgrade card', () => {
+    // card-data.csv carries 39 upgrade rows; every one needs its own art file.
+    expect(PLAN.length).toBe(39);
+    for (const plan of PLAN) {
+      expect(plan.sprite, `${plan.cardName} has no upgrade-copy sprite name`).toMatch(
+        /_upgrade_level\d+$/,
+      );
+      expect(plan.sprite.startsWith('Upgrade to ')).toBe(false);
+    }
+    expect(new Set(PLAN.map((plan) => plan.sprite)).size).toBe(PLAN.length);
+  });
+
+  it('commits a literal copy of the target art for every upgrade that can be copied', () => {
+    const copiable = PLAN.filter((plan) => !plan.targetMissing);
+    expect(copiable.length).toBeGreaterThan(0);
+
+    for (const plan of copiable) {
+      expect(plan.exists, `missing upgrade art copy ${plan.sprite}_1024_x_1024.png`).toBe(true);
+      expect(
+        spriteBytes(plan.sprite).equals(spriteBytes(plan.target)),
+        `${plan.sprite} is not a byte-identical copy of ${plan.target}`,
+      ).toBe(true);
+      // The card resolves through its own copy to the target business's bitmap.
+      expect(MAPPINGS[plan.cardName]).toBe(plan.sprite);
+      expect(hasDedicatedCardArt(plan.cardName)).toBe(true);
+      expect(getCardArtDataUri(plan.cardName)).toBe(getCardArtDataUri(plan.target));
+    }
+  });
+
+  it('leaves an upgrade on its target while the target art is still pending', () => {
+    for (const plan of PLAN.filter((entry) => entry.targetMissing)) {
+      expect(plan.exists).toBe(false);
+      expect(MAPPINGS[plan.cardName]).toBe(plan.target);
+    }
+  });
+
+  it('embeds each duplicated bitmap once and redirects the copy to it', () => {
+    // Reproducibility: the committed table must equal a fresh generator run.
+    expect(ART_MAP.spriteAliases).toEqual(buildDuplicateSpriteAliases());
+
+    for (const plan of PLAN.filter((entry) => entry.exists)) {
+      const canonical = ART_MAP.spriteAliases[plan.sprite];
+      expect(canonical, `${plan.sprite} is not redirected to a shared bitmap`).toBeTruthy();
+      // A copy always redirects to a base sprite, never to another copy.
+      expect(/_upgrade_level\d+$/.test(canonical)).toBe(false);
+      expect(ART_MAP.art[canonical]).toBe(ART_MAP.art[plan.target]);
+      expect(ART_MAP.art[plan.sprite]).toBeUndefined();
+    }
+  });
+
+  it('redirects a duplicate onto a base sprite, never onto another copy', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ms-upgrade-copies-'));
+    const write = (stem: string, bytes: string) =>
+      fs.writeFileSync(path.join(dir, `${stem}_1024_x_1024.png`), bytes);
+    try {
+      // "Dental Clinic_upgrade_level0" sorts before "Dentist", but the base
+      // sprite must still win: an artist differentiates the copy, not the base.
+      write('Dental Clinic_upgrade_level0', 'shared-a');
+      write('Dentist', 'shared-a');
+      write('Gym', 'shared-b');
+      write('Fitness Center_upgrade_level0', 'shared-b');
+      write('Resort Spa_upgrade_level0', 'unique');
+
+      expect(buildDuplicateSpriteAliases(dir)).toEqual({
+        'Dental Clinic_upgrade_level0': 'Dentist',
+        'Fitness Center_upgrade_level0': 'Gym',
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

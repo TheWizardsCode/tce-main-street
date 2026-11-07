@@ -15,6 +15,11 @@
  * future staff card cannot silently introduce a cost-reduction description
  * without either backing it with data or documenting the gap.
  *
+ * The two-type redesign (MS-0MW3JXF6U00753LB) removed the IT Specialist's and
+ * Delivery Driver's street-wide cost discounts, so those contracts are gone:
+ * the IT Specialist now grants +1 synergy range and the Delivery Driver
+ * discounts adjacent placements (`staffAdjacentPurchaseDiscount`).
+ *
  * @module
  */
 
@@ -50,18 +55,11 @@ const STAFF_COST_TEXT_CONTRACTS: readonly StaffCostTextContract[] = [
     descriptionPattern: /upgrade\s+cost\s+by\s+(\d+)/i,
     expectedAmount: 100,
   },
-  {
-    id: 'staff-it',
-    column: 'refreshCostDiscount',
-    descriptionPattern: /refresh\s+cost\s+by\s+(\d+)/i,
-    expectedAmount: 100,
-  },
-  {
-    id: 'staff-delivery',
-    column: 'purchaseCostDiscount',
-    descriptionPattern: /purchase\s+cost\s+by\s+(\d+)/i,
-    expectedAmount: 50,
-  },
+  // The IT Specialist and the Delivery Driver no longer advertise a
+  // street-wide cost reduction: the two-type redesign moves the IT Specialist
+  // to +1 synergy range and the Delivery Driver to a placement-scoped
+  // adjacency discount (MS-0MW3JXF6U00753LB), so neither has a cost-text
+  // contract any more.
 ];
 
 /**

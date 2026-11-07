@@ -32,6 +32,7 @@
  */
 
 import type { MainStreetState } from './MainStreetState';
+import { addLog, addLogShared } from './MainStreetStateLog';
 import type { SynergyType } from './MainStreetCards';
 import { CHALLENGE_BONUS_POINTS } from './MainStreetCards';
 import type {
@@ -516,11 +517,15 @@ export function evaluateChallenges(
     state,
     (challenge, s) => {
       s.challengesCompleted.push(challenge.id);
-      s.activityLog.push({
-        turn: s.turn,
-        text: `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`,
-        type: 'gain',
-      });
+      if (seatId != null) {
+        // Competitive: a challenge completed by an acting seat is that seat's
+        // outcome (MS-0MW3PFQ4L0046Q3K AC1) — attribute it so the You/AI
+        // filter never drops or mislabels it.
+        addLog(state, seatId, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain');
+      } else {
+        // Single-player / legacy: no seat context, shared line (unchanged).
+        addLogShared(state, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain');
+      }
       // Persistent achievement bridge (F7). Gated to the human seat in
       // competitive mode so an AI completion never unlocks the human's
       // achievement (MS-0MUWNTJIK009O6BZ, Q3 = A); single-player / legacy

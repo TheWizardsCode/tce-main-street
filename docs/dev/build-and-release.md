@@ -280,6 +280,69 @@ current worktree root); the full check is in
   fails with the lag diagnosis naming the tip and the re-pin step. The
   submodule pointer and the pin travel together.
 
+### The release derived-files step restores the pin with the gitlink
+
+The ship release (`/skill:ship release`) regenerates derived version files on
+the merged tree: it runs `npm run build` and commits the tracked files the
+build rewrote (subject `Regenerate derived version files for v<version>`), so a
+consumer repo whose derived version file is tracked ships it matching the bumped
+`package.json`. In this repo `npm run build` runs `engine:sync` first, which
+advances `./core` and rewrites `configs/engine-pin.json` to the advanced commit
+— so the regeneration step must keep **both** artefacts at the composition the
+merged commit records.
+
+The step restores, for every staged submodule gitlink it returns to its
+recorded entry, any staged **tracked** file whose `HEAD` content carries the
+recorded (gitlink) SHA and whose staged content carries the advanced one — the
+pin file — back to `HEAD`, both the index entry and the working-tree file. The
+derived-files commit therefore carries neither a pointer bump **nor** a pin that
+disagrees with the recorded pointer. This replaces the earlier claim that
+gitlink exclusion alone "keeps pin/pointer invariants intact": excluding the
+pointer without also restoring its pin is exactly what shipped a disagreeing
+pin and failed the release pin contract (the derived-files commit that broke
+v0.1.25 pinned the build's advanced engine while the gitlink stayed at the
+merged commit).
+
+The rule is generic — derived from the recorded/advanced SHA pair alone, with
+no per-repo pin-path list and no `package.json` schema; a full or
+≥7-character abbreviated SHA matches — so a repo without submodules behaves
+byte-for-byte as before. A pin the release deliberately bumped in an earlier
+commit survives, because the restore returns to `HEAD`, so the deliberate
+engine advance stays a separate reviewable commit (never reversed by
+regeneration). The regeneration log line names the restored pointer(s) and pin
+file(s).
+
+Afterwards the working `./core` checkout may legitimately stay ahead of the
+restored gitlink: the engine-checkout preflight accepts the pin or any
+descendant of it, so only the **committed** artefacts must agree. The contract
+that `git ls-files -s core` equals the pin's `sha` is guarded by
+`tests/main-street/engine-submodule-sync.test.ts` ("release pin contract
+(AC3)"); the generic rule and its regression fixture live in the framework
+(`skill/ship/scripts/release/regenerate-version.js`, SA-0MW6LOXBO0008706,
+extending the pointer exclusion of SA-0MVO274QN006GXGQ).
+
+## The game-repo scaffold entry point: `npm run scaffold`
+
+Every game repo's scaffold entry point is **`npm run scaffold`** — in this
+repo it runs the engine-owned generator from the `./core` submodule
+(`package.json` → `scripts.scaffold`):
+
+```bash
+tsx ./core/scripts/game-repo-scaffold.ts --game main-street \
+  --game-repo-root . --core-root ./core --only main.ts --force
+```
+
+The `--core-root ./core` construction is what makes it game-repo-safe: the
+generator is driven from the repo's own submodule clone, so a game repo never
+needs (or touches) a sibling core checkout or a root `scripts/` tree of its
+own. **`scaffold:game` and `scaffold:games` are core-checkout-only npm
+scripts**: they live in the engine's own `package.json` (where
+`scripts/game-repo-scaffold.ts` exists) and are filtered out of generated game
+repos by the scaffold template — a game repo must never declare or run them
+(MS-0MVO30VXS002A1Z0; guarded by
+`tests/tooling/scaffold-scripts.test.ts` and
+`tests/main-street/scaffold-docs-drift.test.ts`).
+
 ## The launcher (`main.ts`) is generator-owned
 
 `./main.ts` is not hand-authored: it is exactly what the engine-owned generator

@@ -15,7 +15,10 @@
  *
  * Resolution order (CG-0MUBVL4H80061B1E): the resolver is name-keyed; all
  * indirection (upgrade duplication, event-category, staff role) is baked into
- * the generated `aliases` map so the public API stays unchanged.
+ * the generated `aliases` map so the public API stays unchanged. A source
+ * sprite that duplicates another sprite's bytes (the Q11 per-upgrade copies) is
+ * redirected to the canonical sprite through the generated `spriteAliases`
+ * table, so the shared bitmap is embedded only once.
  *
  * Pack-aware resolution (F3, `MS-0MV26K321003MWO0`):
  * {@link getCardArtDataUriForCard} consults the pack-art registry by card id
@@ -41,6 +44,7 @@ interface CardArtMap {
   format: string;
   fallback: string;
   aliases: Record<string, string>;
+  spriteAliases?: Record<string, string>;
   art: Record<string, string>;
 }
 
@@ -65,12 +69,17 @@ export const CARD_ART_FORMAT = MAP.format;
 export const CARD_ART_FALLBACK = MAP.fallback;
 
 /**
- * Resolve a card name to the sprite base name used for its art. Falls back to
- * the generic `Fallback` sprite when no dedicated art exists.
+ * Resolve a card name to the sprite base name whose bitmap is embedded in the
+ * map. Falls back to the generic `Fallback` sprite when no dedicated art exists.
  *
  * All upgrade-duplication, event-category, and staff-role indirection is
- * expressed in `MAP.aliases` by the generator so the resolver stays simple:
- * it just looks up the alias (or exact name) in the art table.
+ * expressed in `MAP.aliases` by the generator so the resolver stays simple: it
+ * looks up the alias (or exact name), follows a `spriteAliases` redirect when
+ * the mapped source sprite only duplicates another sprite's bytes (the Q11
+ * per-upgrade copies), and checks the art table.
+ *
+ * The returned name is always a key of `MAP.art`, so
+ * `MAP.art[resolveCardArtName(name)]` is the card's bitmap.
  *
  * @param cardName - The card's display/name field.
  * @returns A sprite base name present in `MAP.art` (or the fallback name).
@@ -78,7 +87,8 @@ export const CARD_ART_FALLBACK = MAP.fallback;
 export function resolveCardArtName(cardName: string): string {
   const trimmed = (cardName ?? '').trim();
   const aliased = MAP.aliases[trimmed] ?? trimmed;
-  if (MAP.art[aliased]) return aliased;
+  const embedded = MAP.spriteAliases?.[aliased] ?? aliased;
+  if (MAP.art[embedded]) return embedded;
   return MAP.fallback;
 }
 
@@ -90,7 +100,8 @@ export function resolveCardArtName(cardName: string): string {
 export function hasDedicatedCardArt(cardName: string): boolean {
   const trimmed = (cardName ?? '').trim();
   const aliased = MAP.aliases[trimmed] ?? trimmed;
-  return Boolean(MAP.art[aliased]);
+  const embedded = MAP.spriteAliases?.[aliased] ?? aliased;
+  return Boolean(MAP.art[embedded]);
 }
 
 /**

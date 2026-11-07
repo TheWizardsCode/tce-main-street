@@ -2,7 +2,7 @@
 
 > **Source of truth:** `src/card-data.csv` (CSV) — loaded by `MainStreetCards.ts` at build time (work item CG-0MR6ZR23J006ZDNZ)
 > **Card relationship diagrams:** the generated synergy, staff, upgrade-chain and community-space diagrams (with the regeneration and drift-guard commands) are documented in [card-diagrams.md](./card-diagrams.md).
-> **Last updated:** Synergy-coloured card faces + two-tone bridge split (MS-0MUZH51PU007POJ4)
+> **Last updated:** Service pink/magenta face + checkerboard upgrade faces (MS-0MW1ZSC7U000V5MW)
 
 This document lists every card template in the Main Street card pool, organised by family (Business, Event, Upgrade, Community Space, Staff). Each entry includes all gameplay-relevant fields and a short design rationale.
 
@@ -85,15 +85,16 @@ Card templates are stored as rows in `card-data.csv` and parsed at build time by
   reputation-bonus upgrade variants (Tea Lounge, Adventure Park, Orchard,
   Grand Fountain, Health Center).
 - Staff grew from 3 to 7 with the Group F expansion (CG-0MSQJ7VL9009JHF4):
-  Apprentice (budget) and Executive (+1 slot and +1 action/week premium) cost
-  points, plus two
+  Apprentice (budget) and Executive (+2 actions/week premium after the two-type
+  redesign) cost points, plus two
   NEW ability mechanics — the Socialite's +10 rep/turn and the Accountant's
   market-refresh discount of 100 (StaffCard optional ability fields). The
   Financial Advisor's per-business upgrade discount of 100 is implemented via
-  the `upgradeCostDiscount` field (CG-0MTKMGL66004I0PC); the IT Specialist
-  (`refreshCostDiscount = 100`) and Delivery Driver (`purchaseCostDiscount = 50`)
-  cost-reduction descriptions are now data-backed and fully implemented
-  (CG-0MUMCVH3N007KT1M).
+  the `upgradeCostDiscount` field (CG-0MTKMGL66004I0PC). The IT Specialist's
+  shipped street-wide refresh discount and the Delivery Driver's street-wide
+  purchase discount (CG-0MUMCVH3N007KT1M) were re-scoped by the two-type
+  redesign to +1 synergy range for its own business and a placement-scoped
+  adjacency discount respectively (MS-0MW3JXF6U00753LB).
 - Staff gained the market-shaping **Investor** (`staff-investor`, MS-0MTISBYLS009936W):
   while employed at a business it grants one **coin-free, action-free market
   re-roll per turn**, biased **75%** toward the hosting business's synergy types
@@ -189,12 +190,13 @@ Bridge cards belong to two synergy types simultaneously, enabling cross-type adj
 > **Face colouring (MS-0MUZH51PU007POJ4):** every business / community-space
 > card face is coloured by synergy type from a single shared dark palette
 > (`CARD_FACE_PALETTE` in `src/MainStreetCardsUtils.ts` — Food `#5D4037`,
-> Culture `#1565C0`, Commerce `#2E7D32`, Service `#6A1B9A`,
+> Culture `#1565C0`, Commerce `#2E7D32`, Service `#AD1457`,
 > Entertainment `#C62828`, Health `#00838F`; untyped default `#2f2f2f`). A
 > bridge card renders its face split horizontally into two bands — **top =
 > first `synergyTypes` entry, bottom = second** — inside the rounded card
 > corners. Both synergy icons stay visible bottom-left so colour is never the
-> sole cue.
+> sole cue. Service is pink / magenta rather than purple so it cannot be
+> confused with an upgrade card face (MS-0MW1ZSC7U000V5MW).
 
 | ID | Name | Cost | Income | Synergy | Upgrade Path | Description | Rationale |
 |----|------|------|--------|---------|--------------|-------------|-----------|
@@ -430,6 +432,17 @@ All 64 original event cards were audited. Seasonal/festival/tourist-style events
 
 Each Upgrade targets a specific Business by name. Applying an upgrade increments the business's level, adds an income bonus, and optionally extends synergy range.
 
+> **Upgrade face colouring (MS-0MW1ZSC7U000V5MW):** an upgrade card face is a
+> **checkerboard** of the retained violet upgrade colour (`#6B4C9A`) and the
+> face colour(s) of the business it targets. The colours are **derived** from
+> `targetBusiness` (no CSV synergy column) by `resolveUpgradeFaceColours()`,
+> which looks the target name up among the business and community-space rows:
+> a single-synergy target gives a two-colour checkerboard, a bridge target
+> (two synergy types) gives violet **plus both** synergy colours, and an
+> unknown/missing target degrades to the flat violet face. Upgrade card faces
+> are the only upgrade visual changed — the in-game gold corner accent on an
+> upgraded business is unchanged.
+
 ### M1 Upgrade Templates (3)
 
 | ID | Name | Target | Cost | Income+ | Range+ | Description | Rationale |
@@ -593,33 +606,53 @@ This writes per-run and aggregate metrics to:
 
 ## Staff Cards
 
-Staff cards are a separate card family (`family: 'staff'`) that expand hand capacity at an ongoing per-turn coin cost. In competitive play the bonus applies **only to the employing seat** — each seat's hand capacity is its own (`PlayerRecord.maxHandSize`), so one seat's staff never enlarges another seat's hand (MS-0MV8PX4DV003LTFP). They do not occupy hand slots and are tier-gated like every other family (rebalance CG-0MT2WU0CX005Z143; 12-tier spread CG-0MT3C744B009DS84): staff unlock as their tier is reached, so a fresh run starts with only the Tier-1 staff (Apprentice). They are hired directly from the general market row (0–1 staff per row, `MARKET_STAFF_MAX`) — there is no dedicated staff market (CG-0MT2WTN0L004JA53). A second wave of 12 specialization applicant cards (CG-0MT4WXNR80090FXZ) adds role-themed staff across tiers 2–5; none grant hand slots — they are employed-applicant cards whose effects (synergy/incident/cost bonuses) are wired by the staff-specialization epic. **Staff specialization skills** (1–3 locked skills per applicant, Town Gossip baseline, stacking caps) are documented in [specialization-skills.md](specialization-skills.md). **Business-specialist staff** (CG-0MTIOLY2A0092OT1) carry an `allowedBusinessTypes` list (specific business names and/or synergy types); they may only be employed at matching businesses and are purchasable from the general market like other staff. The **Investor** (`staff-investor`, MS-0MTISBYLS009936W) adds a market-shaping ability: while employed it grants one coin-free, action-free market re-roll per turn, biased 75% toward the hosting business's synergy types, driven by the new `freeMarketRerollPerTurn` flag and `marketRelevanceBias` fraction columns. See [core-rules-and-mechanics.md](./core-rules-and-mechanics.md) for the full mechanic. Relocating **any** employed staff member to another business now costs 1 action point (MS-0MUOSUNYR0073SI1); the initial placement at hire time remains free.
+Staff cards are a separate card family (`family: 'staff'`). Every staff member belongs to exactly one of **two types**, and the type decides what the member may affect, where it is assigned and how the player interacts with it — the full model, its example roles and its gameplay outcomes are in [the-build-gdd.md](the-build-gdd.md) (Appendix D.4):
 
-| ID | Name | Cost | Ongoing/turn | Slots+ | Tier | Ability | Description | Rationale |
-|----|------|------|--------------|--------|------|---------|-------------|-----------|
-| `staff-apprentice` | Apprentice | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot with a small ongoing cost. | Budget entry point *(Group F).* |
-| `staff-assistant` | Assistant | 300 | 100 | +1 | 2 | — | Hire an assistant to help manage your hand. | Original M2 staff. |
-| `staff-manager` | Manager | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. | Mid-tier action economy, traded against one hand slot *(MS-0MTQ7S5EJ008MWD0).* |
-| `staff-socialite` | Socialite | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds +1 hand slot and +10 reputation per turn. | **NEW** reputation ability *(Group F).* |
-| `staff-accountant` | Accountant | 800 | 150 | +1 | 6 | Refresh −100; Tax 25% | A meticulous accountant makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J); refresh discount rescaled ×100 (CG-0MTKMGL66004I0PC).* |
-| `staff-lookout` | Lookout | 1000 | 200 | +1 | 7 | Peek once/turn | A sharp-eyed lookout can peek at the top card of the incident deck once per turn. | **NEW** peek ability *(CG-0MSXOW6GN008ZSMN).* |
-| `staff-director` | Director | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. | Premium action economy + capacity *(MS-0MTQ7S5EJ008MWD0).* |
-| `staff-executive` | Executive | 2000 | 500 | +1 | 10 | +1 action/turn | An experienced executive adds +1 hand slot and grants +1 action per week at a high ongoing cost. | Tier-10 action economy, traded against hand capacity *(Group F; MS-0MUYAEXBN008YC0J).* |
-| `staff-general-manager` | General Manager | 2000 | 500 | +4 | 12 | +1 action/turn | A seasoned leader grants **+1 action per week** while employed (2 actions instead of 1). | **NEW** action-economy ability *(CG-0MSTOF1N5005PK2R).* |
-| `staff-barista` | Barista | 300 | 50 | — | 2 | Food synergy | A skilled barista brings warmth to any business. Adjacent Food businesses gain +20 synergy coins. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-bookkeeper` | Bookkeeper | 300 | 50 | — | 2 | −20% ongoing | Keeps the books tight. Reduces this business ongoing cost by 20%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-customer-rep` | Customer Service Rep | 300 | 50 | — | 2 | Service synergy | Ensures every visitor leaves satisfied. Adjacent businesses gain +10 synergy reputation. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-delivery` | Delivery Driver | 300 | 50 | — | 2 | -50 purchase cost | Handles the logistics. Reduces business card purchase cost by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); street-wide purchase discount implemented (`purchaseCostDiscount = 50`) across all acquisition paths (click, drag, deferred play-from-hand) — CG-0MUMCVH3N007KT1M. |
-| `staff-security` | Security Guard | 700 | 75 | — | 3 | −10% incident coins | Experienced guard watches over the street. Reduces all incident coin damage by 10%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-marketing` | Marketing Consultant | 700 | 100 | — | 3 | +10% rep sources | Expert at drawing crowds. Businesses gain +10% reputation from all sources. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-event-planner` | Event Planner | 700 | 75 | — | 3 | Entertainment synergy | Creates buzz and draws visitors. +100 synergy coin per turn from Entertainment businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-maintenance` | Maintenance Worker | 700 | 75 | — | 3 | -50 incident rep | Keeps everything running smoothly. Reduces incident reputation damage by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-it` | IT Specialist | 800 | 100 | — | 4 | Refresh −100 | Modernizes operations. Reduces market refresh cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); rescaled ×100 (CG-0MTKMGL66004I0PC); street-wide refresh discount implemented (`refreshCostDiscount = 100`), stacks with Accountant and Negotiator — CG-0MUMCVH3N007KT1M. |
-| `staff-health-safety` | Health & Safety Inspector | 800 | 100 | — | 4 | −10% Health incidents | Keeps everything up to code. Reduces incident frequency by 10% for Health businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-pr` | PR Officer | 800 | 100 | — | 4 | +15 rep/turn | Manages the street image. +15 reputation per turn from all businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
-| `staff-financial` | Financial Advisor | 1000 | 125 | — | 5 | Upgrade −100 | Smart investments pay off. Reduces this business upgrade cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); per-business upgrade discount implemented (`upgradeCostDiscount`) — market, hand and drag paths (CG-0MTKMGL66004I0PC).* |
-| `staff-florist` | Florist | 400 | 75 | — | 2 | Commerce/Culture bonus | A specialist florist brings beauty and trade. +30 coins per turn from adjacent Commerce and Culture businesses. Serves Flower Shop, Commerce, Culture. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
-| `staff-baker` | Baker | 400 | 80 | — | 2 | Food bonus | A master baker keeps the neighbourhood well-fed. +25 coins per turn from adjacent Food businesses. Serves Bakery, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
-| `staff-chef` | Chef | 600 | 100 | — | 3 | +20% Food income | An experienced chef boosts nearby Food businesses with +20% income. Serves Cafe/Diner/Delicatessen, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
-| `staff-mechanic` | Mechanic | 500 | 90 | — | 3 | +30 coins Service | A skilled mechanic keeps Service businesses running smoothly. +30 coins per turn from a Service business. Serves Hardware Store, Service. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
-| `staff-investor` | Investor | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. Grants one free market re-roll each turn with a 75% bias toward this business's synergy types. | **NEW** market-shaping ability — one coin-free, action-free re-roll per turn; advances the paid escalation counter; generalist (`allowedBusinessTypes` = every synergy type) *(MS-0MTISBYLS009936W).* |
+- **Business staff** — employed at a **single business**; the effect is scoped to that business and, where the card says so, to the businesses 8-way adjacent to it. Never street-wide. Card-data marker: `handSlotsAdded = 0` and no `actionsPerTurn`.
+- **Management-company staff** — employed by the **management company** (the player); the effect is player/turn-scoped: hand slots, action points, per-turn reputation, market prices and incident insight. Card-data marker: `handSlotsAdded > 0` or `actionsPerTurn > 0`.
+
+> **The two markers classify the shipped roster; other player-scope fields do not.** The marker pair above is what separates the 9 management-company cards from the 17 business-staff cards in the table below (it is also the rule the consistency check applies). It is deliberately narrower than "any player-scope field": a player-scope field on a business-staff card would be a modelling error, not a type marker. The two fields that once sat there — the IT Specialist's `refreshCostDiscount` and the Delivery Driver's `purchaseCostDiscount` — are gone: the two-type redesign moved them into business scope (GDD D.4.3, D.4.8 rule 4, MS-0MW3JXF6U00753LB).
+
+The runtime determinant is **assignment**, not a separate flag: a staff member is business staff if and only if it carries an `employedAtSlot` — the grid slot of the business that employs it — and a member with no `employedAtSlot` is management-company staff (GDD D.4.2 and D.4.8).
+
+Rules shared by both types: staff cards do **not** occupy hand slots; they are tier-gated like every other family (rebalance CG-0MT2WU0CX005Z143; 12-tier spread CG-0MT3C744B009DS84), so a fresh run starts with only the Tier-1 staff (Apprentice); they are hired directly from the general market row (0–1 staff per row, `MARKET_STAFF_MAX`) — there is no dedicated staff market (CG-0MT2WTN0L004JA53); hiring costs 1 action and an ongoing per-turn salary is deducted during the IncomePhase (clamped at 0 coins and logged); lay-off costs one turn's salary plus 1 reputation. In competitive play a management-company staff member's hand-slot bonus applies **only to the employing seat** — each seat's hand capacity is its own (`PlayerRecord.maxHandSize`), so one seat's staff never enlarges another seat's hand (MS-0MV8PX4DV003LTFP). Relocating an employed **business** staff member to another business costs 1 action point (MS-0MUOSUNYR0073SI1); the initial placement at hire time is free, and management-company staff are never placed or relocated.
+
+Two supporting systems sit on top of the types:
+
+- **Specialization applicants.** A second wave of 12 specialization applicant cards (CG-0MT4WXNR80090FXZ) adds role-themed staff across tiers 2–5; none grant hand slots, and all are **business staff** — they are employed at a business and their effects (synergy/incident/cost bonuses) are per-business. Their 1–3 locked specialization skills are drawn from the business-scope pool (type-consistent assignment), so none of these applicants can hold a management-company-scope skill; the catalog, the stacking caps, the staff-type scope gate and the Town Gossip baseline are documented in [specialization-skills.md](specialization-skills.md). Skills are a property of every staff card, and a skill's scope decides which staff type can realise it (per-business skills are business-staff effects; street-wide/player-scope skills are management-company staff effects).
+- **Business-specialist staff** (CG-0MTIOLY2A0092OT1) carry an `allowedBusinessTypes` list (specific business names and/or synergy types); they may only be employed at matching businesses and are purchasable from the general market like other staff.
+
+The **Investor** (`staff-investor`, MS-0MTISBYLS009936W) is **business staff** with a market-shaping ability: while employed at a business it grants one coin-free, action-free market re-roll per turn, biased 75% toward **its own business's** synergy types, driven by the `freeMarketRerollPerTurn` flag and `marketRelevanceBias` fraction columns. See [core-rules-and-mechanics.md](./core-rules-and-mechanics.md) for the full mechanic.
+
+The roster below is the remap of the **26 shipped staff templates**: **9 management-company staff** (the cards that grant hand capacity or action points) and **17 business staff** (the per-business cards). The **Type** column reads `Business` for business staff and `Management-company` for management-company staff.
+
+| ID | Name | Type | Cost | Ongoing/turn | Slots+ | Tier | Ability | Description | Rationale |
+|----|------|------|------|--------------|--------|------|---------|-------------|-----------|
+| `staff-apprentice` | Apprentice | Management-company | 200 | 50 | +1 | 1 | — | A budget hire who frees up a hand slot with a small ongoing cost. | Budget entry point *(Group F).* |
+| `staff-assistant` | Assistant | Management-company | 300 | 100 | +2 | 2 | — | Hire an assistant to help manage your hand. Adds +2 hand slots with a small ongoing cost. | Original M2 staff; hand grant raised +1 → +2 by the two-type redesign *(MS-0MW3JXF6U00753LB).* |
+| `staff-manager` | Manager | Management-company | 700 | 250 | +1 | 3 | +1 action/turn | A skilled manager keeps things organised. Adds +1 hand slot and an extra action per week. | Mid-tier action economy, traded against one hand slot *(MS-0MTQ7S5EJ008MWD0).* |
+| `staff-socialite` | Socialite | Management-company | 800 | 150 | +1 | 4 | +10 rep/turn | A charming socialite adds +1 hand slot and +10 reputation per turn. | **NEW** reputation ability *(Group F).* |
+| `staff-accountant` | Accountant | Management-company | 800 | 150 | +1 | 6 | Refresh −100; Tax 25% | A meticulous accountant makes market refreshes cost 100 less and reduces Tax Audit losses to 25%. | **NEW** economy ability *(Group F); Tax Audit mitigation (CG-0MTQ7W0ZX0059R3J); refresh discount rescaled ×100 (CG-0MTKMGL66004I0PC).* |
+| `staff-lookout` | Lookout | Management-company | 1000 | 200 | +1 | 7 | Peek once/turn | A sharp-eyed lookout can peek at the top card of the incident deck once per turn. | **NEW** peek ability *(CG-0MSXOW6GN008ZSMN).* |
+| `staff-director` | Director | Management-company | 1400 | 400 | +3 | 9 | +1 action/turn | An experienced director oversees your operations and grants an extra action per week. | Premium action economy + capacity *(MS-0MTQ7S5EJ008MWD0).* |
+| `staff-executive` | Executive | Management-company | 2000 | 500 | — | 10 | +2 actions/turn | An experienced executive grants +2 actions per week at a high ongoing cost. | Tier-10 action economy, traded against hand capacity *(Group F; MS-0MUYAEXBN008YC0J); re-valued to +2 actions and no hand slot by the two-type redesign *(MS-0MW3JXF6U00753LB).* |
+| `staff-general-manager` | General Manager | Management-company | 2000 | 500 | +4 | 12 | +1 action/turn | A seasoned leader grants **+1 action per week** while employed (2 actions instead of 1). | **NEW** action-economy ability *(CG-0MSTOF1N5005PK2R).* |
+| `staff-barista` | Barista | Business | 300 | 50 | — | 2 | +20 coins to each adjacent Food | A skilled barista brings warmth to any business. Each adjacent Food business gains +20 coins per turn. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); adjacency coin wired per business *(MS-0MW3JXF6U00753LB).* |
+| `staff-bookkeeper` | Bookkeeper | Business | 300 | 50 | — | 2 | −20% ongoing | Keeps the books tight. Reduces this business ongoing cost by 20%. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ).* |
+| `staff-customer-rep` | Customer Service Rep | Business | 300 | 50 | — | 2 | +10 rep to each adjacent business | Ensures every visitor leaves satisfied. Each adjacent business gains +10 reputation per turn. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); adjacency reputation wired per business *(MS-0MW3JXF6U00753LB).* |
+| `staff-delivery` | Delivery Driver | Business | 300 | 50 | — | 2 | −50 on adjacent placements | Handles the logistics. Reduces the purchase cost of any business placed adjacent to its own business by 50. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from a street-wide discount (CG-0MUMCVH3N007KT1M) to a placement-scoped adjacency discount (the row's `effect` spec `purchase-discount:adjacent:50`) across the click, drag and play-from-hand paths *(MS-0MW3JXF6U00753LB).* |
+| `staff-security` | Security Guard | Business | 700 | 75 | — | 3 | −10% incident coins (own + adjacent) | Experienced guard watches over its business cluster. Reduces incident coin damage by 10% for its own business and its adjacent businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from street-wide to the employing cluster *(MS-0MW3JXF6U00753LB).* |
+| `staff-marketing` | Marketing Consultant | Business | 700 | 100 | — | 3 | +10% rep for its own business | Expert at drawing crowds. Its own business gains +10% reputation from all sources. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from street-wide to the employing business *(MS-0MW3JXF6U00753LB).* |
+| `staff-event-planner` | Event Planner | Business | 700 | 75 | — | 3 | +100 coins per adjacent Entertainment | Creates buzz and draws visitors. Gains +100 coins per turn from each adjacent Entertainment business. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); clarified and wired as an adjacency effect *(MS-0MW3JXF6U00753LB).* |
+| `staff-maintenance` | Maintenance Worker | Business | 700 | 75 | — | 3 | −50 incident rep (own + adjacent) | Keeps everything running smoothly. Reduces incident reputation damage by 50 for its own business and its adjacent businesses. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from street-wide to the employing cluster *(MS-0MW3JXF6U00753LB).* |
+| `staff-it` | IT Specialist | Business | 800 | 100 | — | 4 | +1 synergy range (own business) | Modernizes operations. Links its own business with businesses up to 2 slots away (+1 synergy range). | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from the street-wide refresh discount (CG-0MUMCVH3N007KT1M) to +1 synergy range for its own business *(MS-0MW3JXF6U00753LB).* |
+| `staff-health-safety` | Health & Safety Inspector | Business | 800 | 100 | — | 4 | −10% incident frequency (own business) | Keeps everything up to code. Reduces incident frequency by 10% for its own business. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from all Health businesses to the employing business *(MS-0MW3JXF6U00753LB).* |
+| `staff-pr` | PR Officer | Business | 800 | 100 | — | 4 | +15 rep/turn (own business) | Manages the street image. Its own business gains +15 reputation per turn. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); re-scoped from the street-wide `reputationPerTurn` value to a per-business buff *(MS-0MW3JXF6U00753LB).* |
+| `staff-financial` | Financial Advisor | Business | 1000 | 125 | — | 5 | Upgrade −100 | Smart investments pay off. Reduces this business upgrade cost by 100. | **NEW** specialization applicant *(CG-0MT4WXNR80090FXZ); per-business upgrade discount implemented (`upgradeCostDiscount`) — market, hand and drag paths (CG-0MTKMGL66004I0PC).* |
+| `staff-florist` | Florist | Business | 400 | 75 | — | 2 | +30 coins per adjacent Commerce/Culture | A specialist florist brings beauty and trade. Each adjacent Commerce or Culture business gains +30 coins per turn. Serves Flower Shop, Commerce, Culture. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
+| `staff-baker` | Baker | Business | 400 | 80 | — | 2 | +25 coins to its own business | A master baker keeps the neighbourhood well-fed. Its own business gains +25 coins per turn. Serves Bakery, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1); narrowed from adjacent Food businesses to its own business *(MS-0MW3JXF6U00753LB).* |
+| `staff-chef` | Chef | Business | 600 | 100 | — | 3 | +20% income (own business) | An experienced chef boosts its own business with +20% coin income. Serves Cafe/Diner/Delicatessen, Food. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1); narrowed from nearby Food businesses to its own business *(MS-0MW3JXF6U00753LB).* |
+| `staff-mechanic` | Mechanic | Business | 500 | 90 | — | 3 | +30 coins to its own business | A skilled mechanic keeps its own Service business running smoothly. +30 coins per turn. Serves Hardware Store, Service. | **NEW** business specialist *(CG-0MTIOLY2A0092OT1).* |
+| `staff-investor` | Investor | Business | 1000 | 125 | — | 5 | Free re-roll/turn (75% relevance) | A savvy investor works the market. Grants one free market re-roll each turn with a 75% bias toward its own business's synergy types. | **NEW** market-shaping ability — one coin-free, action-free re-roll per turn; advances the paid escalation counter; generalist (`allowedBusinessTypes` = every synergy type) *(MS-0MTISBYLS009936W).* |
+
+**Shipped effects vs. the two-type target.** This table records the **shipped** `src/card-data.csv` values, which now match the two-type target: Assistant +2 hand slots, Executive +2 actions/turn (no hand slot), Baker +25 coins/turn to its **own** business, Event Planner +100 coins/turn from **each adjacent** Entertainment business, and the eight re-scoped business-staff cards (Delivery Driver, Security Guard, Maintenance Worker, Health & Safety Inspector, Marketing Consultant, PR Officer, IT Specialist and Chef) resolve their effects against the employing business (plus its 8-way neighbours where the role states it) instead of street-wide. The per-card deltas are stated in [the-build-gdd.md](the-build-gdd.md) D.4.3, D.4.4, D.4.7 and D.4.8; the card-level engine wiring and its tests landed with MS-0MW3JXF6U00753LB.

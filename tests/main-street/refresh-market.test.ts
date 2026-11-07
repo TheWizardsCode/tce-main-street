@@ -559,7 +559,9 @@ describe('AC6: maxHandSize base 3, growable', () => {
     state.resourceBank.coins = 5000;
     purchaseStaffCard(state, assistant.id);
     const capacity = state.maxHandSize;
-    expect(capacity).toBe(4);
+    // Base 3 + the Assistant's +2 hand slots (two-type redesign,
+    // GDD D.4.4 / MS-0MW3JXF6U00753LB).
+    expect(capacity).toBe(5);
 
     // Move movable (non-staff) cards; top up the row with business cards
     // when a staff card occupies the last row slot (CG-0MT3KZNQB0053K55).

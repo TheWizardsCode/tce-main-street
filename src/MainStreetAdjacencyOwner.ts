@@ -30,6 +30,34 @@ export function getSlotOwnerId(state: MainStreetState, slotIndex: number): numbe
 }
 
 /**
+ * Counts the businesses standing on the street per owner.
+ *
+ * Keys are owner ids as strings (`String(playerId)`; `'0'` in single-player) so
+ * the map is owner-keyed and JSON-serialisable — the shared source of truth for
+ * the single-player `TurnLedger.businessesOwned`
+ * (MS-0MVP45KZV006TMUK) and the competitive round ledger
+ * (MS-0MVRNV9Y8008IKGK). Sold slots are excluded: a sold business no longer
+ * runs as a business on the street.
+ *
+ * @param state Current game state (read-only).
+ * @returns Owner id → count of that owner's businesses on the street.
+ */
+export function countBusinessesOwnedByOwner(
+  state: MainStreetState,
+): Record<string, number> {
+  const owned: Record<string, number> = {};
+  const soldSlots = state.soldSlots ?? [];
+  for (let slotIndex = 0; slotIndex < state.streetGrid.length; slotIndex++) {
+    const card = state.streetGrid[slotIndex];
+    if (!card || card.family !== 'business') continue;
+    if (soldSlots[slotIndex]) continue;
+    const ownerKey = String(getSlotOwnerId(state, slotIndex));
+    owned[ownerKey] = (owned[ownerKey] ?? 0) + 1;
+  }
+  return owned;
+}
+
+/**
  * Tags a street slot with its owner when the state is competitive
  * (`ownerTaggedGrid` present). No-op in single-player state. The card
  * reference is kept in sync with `streetGrid` so the tag never drifts.

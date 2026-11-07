@@ -82,8 +82,8 @@
     },
     "main-street-overlay-dialogs": {
       "commands": [
-        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts tests/main-street/turn-summary-bank-loan.test.ts",
-        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts"
+        "npx vitest run --project unit tests/main-street/MainStreetLoanOverlay.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/activity-log-deferred-rendering.test.ts tests/main-street/income-collection-cap.test.ts tests/main-street/game-over-summary.test.ts tests/main-street/game-over-summary-acceptance.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/piggyback-human-prompt.test.ts tests/main-street/challenge-game-over-per-seat.test.ts tests/main-street/turn-summary-bank-loan.test.ts tests/main-street/stats-chart.test.ts tests/main-street/game-over-overlay.test.ts tests/main-street/competitive-game-over-stats.test.ts tests/main-street/end-of-game-stats-acceptance.test.ts tests/main-street/loan-payoff-turn-flow.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/MainStreetLoanOverlay.browser.test.ts tests/main-street/MainStreetLoanPayoff.browser.test.ts tests/main-street/stats-chart.browser.test.ts tests/main-street/game-over-stats-column.browser.test.ts tests/main-street/MainStreetOutOfActionsDialog.browser.test.ts"
       ],
       "paths": [
         "src/scenes/MainStreetOverlayContent.ts",
@@ -93,13 +93,27 @@
         "src/scenes/MainStreetLoanOverlayModel.ts",
         "src/scenes/MainStreetLoanRowModel.ts",
         "src/scenes/MainStreetLoanSelectorModel.ts",
+        "src/scenes/MainStreetLoanPayoffModel.ts",
+        "src/scenes/MainStreetLoanPayoffOverlay.ts",
         "src/scenes/MainStreetGameOverSummary.ts",
         "src/scenes/MainStreetTurnControllerTurnFlow.ts",
+        "tests/main-street/loan-payoff-turn-flow.test.ts",
         "tests/main-street/turn-summary-dialog.browser.test.ts",
+        "tests/main-street/MainStreetOutOfActionsDialog.browser.test.ts",
         "tests/main-street/turn-summary-bank-loan.browser.test.ts",
         "tests/main-street/MainStreetLoanOverlay.browser.test.ts",
+        "tests/main-street/MainStreetLoanPayoff.browser.test.ts",
         "tests/main-street/MainStreetLoanOverlay.test.ts",
-        "tests/main-street/turn-summary-bank-loan.test.ts"
+        "tests/main-street/turn-summary-bank-loan.test.ts",
+        "src/scenes/MainStreetStatsChart.ts",
+        "tests/main-street/stats-chart.test.ts",
+        "tests/main-street/stats-chart.browser.test.ts",
+        "tests/main-street/game-over-overlay.test.ts",
+        "tests/main-street/game-over-stats-column.browser.test.ts",
+        "tests/main-street/competitive-game-over-stats.test.ts",
+        "src/MainStreetEngineTurnClosing.ts",
+        "tests/main-street/end-of-game-stats-acceptance.test.ts",
+        "src/scenes/MainStreetTurnSummaryOverlay.ts"
       ]
     },
     "hand-panel-browser": {
@@ -178,6 +192,39 @@
         "src/createMainStreetGame.ts",
         "src/gym/GymCardIndexScene.ts",
         "src/scenes/MainStreetScene.ts"
+      ]
+    },
+    "competitive-turn-summary": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/competitive-turn-ledger.test.ts tests/main-street/turn-summary-competitive-model.test.ts tests/main-street/competitive-turn-summary-gate.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/turn-summary-model.test.ts tests/main-street/turn-summary-pl-model.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/turn-summary-gate-docs.test.ts tests/main-street/turn-summary-bank-loan-docs.test.ts tests/main-street/competitive-loan-descriptor.test.ts tests/main-street/competitive-loan-active-obligation.test.ts tests/main-street/competitive-loan-disabled-states.test.ts tests/tooling/test-config-timeout-guard.test.ts tests/main-street/turn-summary-pl-docs.test.ts",
+        "npx vitest run --project browser tests/main-street/turn-summary-competitive.browser.test.ts tests/main-street/turn-summary-dialog.browser.test.ts tests/main-street/turn-summary-bank-loan.browser.test.ts tests/main-street/competitive-loan-active-obligation.browser.test.ts tests/main-street/competitive-loan-disabled-states.browser.test.ts tests/main-street/turn-summary-pl-overlay.browser.test.ts"
+      ],
+      "paths": [
+        "src/MainStreetEngineCompetitiveTurn.ts",
+        "src/MainStreetEngineTypes.ts",
+        "src/MainStreetEngineTurnClosing.ts",
+        "src/MainStreetAdjacencyOwner.ts",
+        "src/MainStreetAdjacency.ts",
+        "src/MainStreetStateTypes.ts",
+        "src/scenes/MainStreetTurnSummary.ts",
+        "src/scenes/MainStreetTurnControllerCompetitive.ts",
+        "src/scenes/MainStreetOverlayContent.ts",
+        "src/scenes/MainStreetScene.ts",
+        "tests/main-street/competitive-turn-ledger.test.ts",
+        "tests/main-street/turn-summary-competitive-model.test.ts",
+        "tests/main-street/turn-summary-pl-model.test.ts",
+        "tests/main-street/turn-summary-pl-docs.test.ts",
+        "tests/main-street/competitive-turn-summary-gate.test.ts",
+        "tests/main-street/turn-summary-competitive.browser.test.ts",
+        "tests/main-street/competitive-loan-descriptor.test.ts",
+        "tests/main-street/competitive-loan-active-obligation.test.ts",
+        "tests/main-street/competitive-loan-active-obligation.browser.test.ts",
+        "tests/main-street/competitive-loan-disabled-states.test.ts",
+        "tests/main-street/competitive-loan-disabled-states.browser.test.ts",
+        "tests/tooling/test-config-timeout-guard.ts",
+        "tests/tooling/test-config-timeout-guard.test.ts",
+        "src/scenes/MainStreetTurnSummaryOverlay.ts",
+        "tests/main-street/turn-summary-pl-overlay.browser.test.ts"
       ]
     }
   }

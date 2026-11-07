@@ -10,6 +10,7 @@
 import { finishDeferredTurnClosing, processEndOfTurn } from './MainStreetEngineTurnClosing';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
 import type { EventCard } from './MainStreetCards';
+import type { LoanPayoff } from './MainStreetLoans';
 
 export interface BuyBusinessAction {
   type: 'buy-business';
@@ -189,6 +190,155 @@ export type PlayerAction =
 
 // ── Turn Result ─────────────────────────────────────────────
 
+/**
+ * One seat's wallet snapshot used by the competitive round ledger
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * `coins` / `reputation` / `score` are the seat's `PlayerRecord` values at one
+ * moment in time — the day-start snapshot or the closing balance — so the
+ * ledger can reconcile `dayStart + net == closing` per seat.
+ */
+export interface OwnerRoundBalance {
+  coins: number;
+  reputation: number;
+  score: number;
+}
+
+/**
+ * One seat's round ledger for a competitive shared closing
+ * (MS-0MVRNV9Y8008IKGK).
+ *
+ * Reporting-only: every value mirrors deltas already applied to the seat's
+ * `PlayerRecord` during the shared closing, so reading it consumes no RNG and
+ * mutates no state. It exists so a per-seat Turn Summary panel is testable
+ * without a browser.
+ *
+ * Extended with the day's net change, closing balances and the seat's share of
+ * the resolved incident and one-off deltas (MS-0MVRNW26W0070CP0), so a
+ * competitive row carries the same figures the single-player panel shows.
+ * Every addition is optional and absent-safe: consumers fall back to the
+ * pre-extension row shape when a hand-built or older ledger omits them.
+ */
+export interface OwnerRoundLedger {
+  /** Owner / seat index (index into `state.players`). */
+  ownerId: number;
+  /**
+   * Businesses standing on the street at closing for this owner. Sold slots
+   * are excluded (they no longer run as businesses), matching
+   * `TurnLedger.businessesOwned`.
+   */
+  businessesOwned: number;
+  /**
+   * Per-phase income subtotals, mirroring `IncomeResult.phaseBreakdown` for
+   * this seat's own slots: the four values sum to the coins the income phase
+   * credited to this seat.
+   */
+  incomeByPhase: TurnLedger['incomeByPhase'];
+  /** Sum of {@link incomeByPhase} — coins the income phase credited to this seat. */
+  incomeTotal: number;
+  /**
+   * Ongoing expenses charged to this seat in the closing, split by category
+   * (MS-0MVRNVHJ50095N9Y). Same categories, sign convention and semantics as
+   * `TurnLedger.ongoingCosts`, so the per-seat panel reuses the single-player
+   * expense labels and signed formatting.
+   *
+   * Optional and absent-safe: a hand-built ledger (or one produced before this
+   * field existed) carries no breakdown, which consumers render as three zero
+   * rows rather than dropping the seat.
+   */
+  ongoingCosts?: OwnerOngoingCosts;
+  /**
+   * Day-start wallet snapshot for this seat: coins / reputation / score as they
+   * stood when the shared day opened, before any seat's MarketPhase ran
+   * (MS-0MVRNW26W0070CP0). The baseline for the three net rows, so the net
+   * covers the seat's own MarketPhase spending and matches the single-player
+   * ledger's day-start identity.
+   *
+   * Optional and absent-safe: a hand-built ledger (or a closing reached without
+   * a day start) omits it, and consumers treat the closing balance minus the
+   * net change as the baseline instead.
+   */
+  dayStart?: OwnerRoundBalance;
+  /**
+   * Closing wallet balances for this seat (its committed `PlayerRecord` after
+   * the shared closing) (MS-0MVRNW26W0070CP0). Satisfies the reconciliation
+   * identity `dayStart + net == closing` per seat. Optional and absent-safe;
+   * consumers fall back to the committed wallet in `state.players`.
+   */
+  closing?: OwnerRoundBalance;
+  /**
+   * Net coin change for this seat for the day (income + ongoing costs +
+   * incident routing + one-off deltas), measured against {@link dayStart}.
+   */
+  netCoinChange: number;
+  /**
+   * Net reputation change for this seat for the day, measured against
+   * {@link dayStart}. Optional and absent-safe (consumers render zero).
+   */
+  netRepChange?: number;
+  /**
+   * Net score change for this seat for the day, measured against
+   * {@link dayStart}. Optional and absent-safe (consumers render zero).
+   */
+  netScoreChange?: number;
+  /**
+   * The seat's share of the resolved incident's coin delta (negative = loss),
+   * routed per owner by `applyCompetitiveEventEffects`. Optional and
+   * absent-safe (consumers render zero).
+   */
+  incidentCoinChange?: number;
+  /**
+   * The seat's share of the resolved incident's reputation delta (negative =
+   * loss). Optional and absent-safe (consumers render zero).
+   */
+  incidentRepChange?: number;
+  /**
+   * Non-recurring signed coin/reputation deltas for this seat: pre-closing
+   * MarketPhase spending/earning plus any closing effect outside income,
+   * ongoing costs and the incident — the same residual convention as
+   * `TurnLedger.oneOffDeltas`, so the row reconciles exactly. Optional and
+   * absent-safe (consumers render zero).
+   */
+  oneOffDeltas?: {
+    coins: number;
+    reputation: number;
+  };
+}
+
+/**
+ * One seat's ongoing (recurring) expense breakdown for a shared closing
+ * (MS-0MVRNVHJ50095N9Y, parent MS-0MVO1SFCM000ZLBI).
+ *
+ * Values are **signed** coin deltas — zero or negative — mirroring
+ * `TurnLedger.ongoingCosts` for the single-player ledger, so both Turn Summary
+ * panels format the same categories the same way. Each value is the amount
+ * actually charged to that seat's own wallet (clamped when the wallet ran
+ * short), matching the single-player attribution convention.
+ */
+export interface OwnerOngoingCosts {
+  /** Staff salaries charged to this seat (zero or negative). */
+  staff: number;
+  /** Community-space running costs charged to this seat (zero or negative). */
+  community: number;
+  /** Business running costs charged to this seat (zero or negative). */
+  business: number;
+}
+
+/**
+ * Owner-keyed competitive round ledger surfaced by a competitive shared
+ * closing (MS-0MVRNV9Y8008IKGK, parent MS-0MVO1SFCM000ZLBI).
+ *
+ * Optional and absent-safe: single-player closings (`TurnResult.turnLedger`),
+ * N=1 and hand-built results carry no ledger, so every consumer must treat
+ * absence as "nothing to present".
+ */
+export interface CompetitiveRoundLedger {
+  /** The shared day the round closed (the day that just finished). */
+  turn: number;
+  /** One entry per non-eliminated seat the closing surfaced, in seat order. */
+  seats: OwnerRoundLedger[];
+}
+
 /** Result returned after processing a full turn cycle. */
 
 /**
@@ -282,6 +432,29 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
   /** Challenge IDs that were newly completed during this turn's evaluation. */
   newlyCompletedChallenges: string[];
   /**
+   * Loans retired by their final scheduled repayment during this closing
+   * (loan payoff notification, MS-0MW3SMTRO006M86W). One seat-tagged entry per
+   * retired loan, carrying the owner id, per-turn repayment, total repayment
+   * and term — exactly the figures the HUD loan row showed before the debt
+   * disappeared, so presentation congratulates on the engine's own decision
+   * instead of diffing `state.loans` before and after the turn.
+   *
+   * Populated by `processEndOfTurn` (the shared/single-player closing,
+   * including its choice-pending, bailout-paused and deferred-closing results)
+   * and by `resolveCompetitiveClosingPhases` (the shared competitive closing);
+   * absent when nothing retired. The deferred closing spreads the paused
+   * result, so a resumed turn carries the same entries without re-running the
+   * repayment pass — a payoff is never reported twice. The dual-choice resume
+   * (`finishDeferredEndOfTurn`) likewise does not re-run the repayment pass: a
+   * retirement reported on the paused result is not repeated there.
+   *
+   * Presentation-only and transient: never written to or read from a save, no
+   * new state field, no state mutation and no RNG consumption. `loansEnabled:
+   * false` and no-loan turns leave it absent, so their behaviour stays
+   * byte-identical (parent AC 8).
+   */
+  loanPayoffs?: LoanPayoff[];
+  /**
    * True when the closing sequence paused because a dual-choice incident was
    * drawn (CG-0MTSHG8RP008E128). When set, `state.pendingEventChoice` holds
    * the drawn event and the UI must present the Accept/Reject dialog before
@@ -340,6 +513,21 @@ export interface TurnResult extends PendingEndOfTurnDeltas {
    * day-start snapshot, but the closing phases have not run yet.
    */
   turnLedger?: TurnLedger;
+  /**
+   * Competitive round ledger (MS-0MVRNV9Y8008IKGK): per-seat businesses owned,
+   * per-phase income subtotals, ongoing expenses, the day's net coin /
+   * reputation / score change, the day-start and closing balances and the
+   * seat's share of the incident / one-off deltas
+   * (MS-0MVRNW26W0070CP0) for the shared day just closed. Populated by
+   * `resolveCompetitiveClosingPhases` for N >= 2
+   * (threaded through `finishCompetitiveClosingTail`, including the deferred
+   * dual-choice resume); absent for single-player, N=1, headless short-cuts and
+   * hand-built results, so consumers must treat it as optional.
+   *
+   * Presentation-only data: it mirrors deltas already applied to each
+   * `PlayerRecord`, so reading it consumes no RNG and mutates no state.
+   */
+  playerRoundLedger?: CompetitiveRoundLedger;
 }
 
 /**
