@@ -177,12 +177,18 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(overlayText(s, `Day ${summary.turn}`)).toBeDefined();
 
     // ── Tab strip: one tab per seat, human ("You") tab selected by default ──
+    // Both tabs are always drawn as `[ Label ]` buttons; the selected one is
+    // bold, so the player can always switch back to their own statement.
     const humanTab = overlayText(s, '[ You ]');
-    const aiTab = overlayText(s, 'AI 1');
+    const aiTab = overlayText(s, '[ AI 1 ]');
     expect(humanTab).toBeDefined();
     expect(aiTab).toBeDefined();
     expect(humanTab!.depth).toBe(201);
     expect(aiTab!.depth).toBe(201);
+    expect(humanTab!.style.fontStyle).toBe('bold');
+    expect(aiTab!.style.fontStyle).not.toBe('bold');
+    expect(humanTab!.input?.enabled).toBe(true);
+    expect(aiTab!.input?.enabled).toBe(true);
     // Reused seat colours, not an ad-hoc palette.
     expect(humanTab!.style.color).toBe(colours[0]);
     expect(aiTab!.style.color).toBe(colours[1]);
@@ -202,7 +208,10 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
 
     // ── Selecting the AI tab switches the whole statement body ───
     aiTab!.emit('pointerdown');
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
+    expect(overlayText(s, '[ AI 1 ]')!.style.fontStyle).toBe('bold');
+    // …and the human tab is still a visible, enabled button.
+    expect(overlayText(s, '[ You ]')!.style.fontStyle).not.toBe('bold');
+    expect(overlayText(s, '[ You ]')!.input?.enabled).toBe(true);
     // A seat that spent nothing still renders all three expense rows at 0
     // (MS-0MVRNVHJ50095N9Y), in the single-player panel's signed formatting.
     expect(overlayText(s, 'Businesses owned: 2')).toBeDefined();

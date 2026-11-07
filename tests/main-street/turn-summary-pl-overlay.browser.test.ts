@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissBootModals } from './helpers/bootModals';
 import type { EventCard } from '../../src/MainStreetCards';
 import type { CompetitiveRoundLedger, TurnLedger } from '../../src/MainStreetEngineTypes';
 import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
@@ -62,6 +63,13 @@ async function bootGame(): Promise<Phaser.Game> {
   const { createMainStreetGame } = await import('../../src/createMainStreetGame');
   const game = createMainStreetGame({ type: Phaser.CANVAS });
   await waitForScene(game, 'MainStreetScene');
+
+  // The boot flow presents the blocking "New Game" selector, whose interactive
+  // backdrop hit-tests above the panel's tab strip, so a synthetic press would
+  // land on the backdrop instead of a tab. Poll for it (the modal decision runs
+  // after the asynchronous campaign/checkpoint load) and dismiss it before any
+  // pointer interaction.
+  await dismissBootModals(game.scene.getScene('MainStreetScene'));
   return game;
 }
 
@@ -69,6 +77,103 @@ function destroyGame(game: Phaser.Game | null): void {
   if (game) game.destroy(true, false);
   const container = document.getElementById('game-container');
   if (container) container.remove();
+}
+
+const GAME_W = 1280;
+const GAME_H = 720;
+
+/**
+ * Dispatch a native DOM MouseEvent at canvas (game-world) coordinates.
+ *
+ * The tab strip is only genuinely usable if Phaser's own hit-testing resolves
+ * the tab under the pointer — `emit('pointerdown')` bypasses the input manager
+ * entirely and would hide a tab that cannot be clicked (MS-0MW4XULA90002OEY).
+ */
+function dispatchMouse(type: string, worldX: number, worldY: number): void {
+  const canvas = document.querySelector('#game-container canvas') as HTMLCanvasElement;
+  expect(canvas).toBeTruthy();
+  const rect = canvas.getBoundingClientRect();
+  const clientX = rect.x + (worldX / GAME_W) * rect.width;
+  const clientY = rect.y + (worldY / GAME_H) * rect.height;
+  canvas.dispatchEvent(
+    new MouseEvent(type, {
+      clientX,
+      clientY,
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+    }),
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  label: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await wait(25);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
+/** The world-space centre of an overlay text (buttons are centre-origin). */
+function centreOf(obj: Phaser.GameObjects.Text): { x: number; y: number } {
+  const matrix = obj.getWorldTransformMatrix();
+  return { x: matrix.tx, y: matrix.ty };
+}
+
+/**
+ * Simulate a plain click (mousedown + mouseup, no movement) through the real
+ * Phaser pointer pipeline at an overlay text's centre.
+ *
+ * Phaser resolves the top-most pointer target from each camera's render list,
+ * which only contains the objects drawn in the previous frame. A panel that was
+ * drawn in the current frame is therefore not clickable until it has rendered
+ * once, so the caller waits for the target to enter the render list first.
+ */
+async function clickOverlayText(s: SceneWithHud, obj: Phaser.GameObjects.Text): Promise<void> {
+  await waitForCondition(
+    () => (s.cameras.main.renderList as Phaser.GameObjects.GameObject[]).includes(obj),
+    `the panel to render before clicking \u201c${obj.text}\u201d`,
+  );
+  const { x, y } = centreOf(obj);
+  dispatchMouse('mousedown', x, y);
+  await wait(30);
+  dispatchMouse('mouseup', x, y);
+}
+
+/**
+ * Waits until `label`'s tab is the bold (selected) one. On timeout it reports
+ * the pointer pipeline's state, so a press that never lands is diagnosable
+ * from the failure message alone (no re-run with extra logging).
+ */
+async function waitForSelectedTab(s: SceneWithHud, label: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (overlayText(s, label)?.style.fontStyle === 'bold') return;
+    await wait(25);
+  }
+  const tab = overlayText(s, label);
+  const renderList = s.cameras.main.renderList as Phaser.GameObjects.GameObject[];
+  throw new Error(
+    `Timed out waiting for the "${label}" tab to become the selected (bold) tab: `
+    + JSON.stringify({
+      topMostUnderPointer: (s.input._temp as any[]).map((o) => o.text ?? o.type),
+      tabInRenderList: tab ? renderList.includes(tab) : null,
+      tabRenderIndex: tab ? renderList.indexOf(tab) : null,
+      tabLocalPointer: tab ? [tab.input?.localX, tab.input?.localY] : null,
+      pointer: [s.input.activePointer.x, s.input.activePointer.y],
+      renderedButtons: overlayTexts(s).filter((t) => t.text.startsWith('[')).map((t) => t.text),
+    }),
+  );
 }
 
 type SceneWithHud = Phaser.Scene & Record<string, any>;
@@ -211,6 +316,48 @@ function makeCompetitiveSummary(state: MainStreetState) {
   return summary!;
 }
 
+/**
+ * A hand-built three-seat competitive ledger: seat 0 is the human, seats 1 and
+ * 2 are AI. Each seat reconciles (income + expenses + incident + one-off ===
+ * net) and each has a distinct net, so the statement body identifies the seat.
+ */
+function makeThreeSeatLedger(): CompetitiveRoundLedger {
+  const seat = (ownerId: number, base: number, net: number) => ({
+    ownerId,
+    businessesOwned: ownerId + 1,
+    incomeByPhase: { base, synergy: 0, reputation: 0, events: 0 },
+    incomeTotal: base,
+    ongoingCosts: { staff: 0, community: 0, business: 0 },
+    dayStart: { coins: 10, reputation: 0, score: 0 },
+    closing: { coins: 10 + net, reputation: 0, score: 0 },
+    netCoinChange: net,
+    netRepChange: 0,
+    netScoreChange: 0,
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    oneOffDeltas: { coins: 0, reputation: 0 },
+  });
+  return {
+    turn: 7,
+    seats: [seat(0, 10, 10), seat(1, 20, 20), seat(2, 30, 30)],
+  };
+}
+
+/** Builds the three-seat competitive state + summary through the real builders. */
+function threeSeatSummary() {
+  const state = createCompetitiveState({
+    seed: 'turn-summary-pl-overlay-three',
+    playerCount: 3,
+    difficulty: 'Easy',
+  });
+  const summary = buildCompetitiveTurnSummary(state, {
+    playerRoundLedger: makeThreeSeatLedger(),
+    incident: null,
+  });
+  expect(summary).not.toBeNull();
+  return summary!;
+}
+
 /** Every P&L / context line of the human seat's competitive statement. */
 const HUMAN_STATEMENT = [
   'Base income: +12',
@@ -342,19 +489,29 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
 
     s.showCompetitiveTurnSummaryDialog(summary, () => {});
 
-    // ── Human tab selected by default; both seat tabs are present ──
+    // ── Human tab selected by default; a button per seat ────────
     const humanTab = overlayText(s, '[ You ]');
-    const aiTab = overlayText(s, 'AI 1');
+    const aiTab = overlayText(s, '[ AI 1 ]');
     expect(humanTab).toBeDefined();
     expect(aiTab).toBeDefined();
-    // The selected tab is bracketed and bold; both are interactive.
+    // Every tab is drawn in the button form `[ Label ]` in **both** states, so
+    // the way back to the player's own statement is always a visible button
+    // (the gap the producer rejected MS-0MW4XULA90002OEY for). Selection is
+    // signalled by weight, not by being the only bracketed label.
+    expect(overlayText(s, 'You')).toBeUndefined();
+    expect(overlayText(s, 'AI 1')).toBeUndefined();
     expect(humanTab!.style.fontStyle).toBe('bold');
+    expect(aiTab!.style.fontStyle).not.toBe('bold');
+    // Both seat tabs are real pointer targets.
     expect(humanTab!.input?.enabled).toBe(true);
     expect(aiTab!.input?.enabled).toBe(true);
     // Reused seat colours, not an ad-hoc palette.
     expect(humanTab!.style.color).toBe(humanColour);
     expect(aiTab!.style.color).toBe(aiColour);
     expect(humanColour).not.toBe(aiColour);
+    // The selected (bold) label's whole width is inside its own hit area.
+    const selectedHitArea = humanTab!.input?.hitArea as { width: number };
+    expect(selectedHitArea.width).toBeGreaterThanOrEqual(humanTab!.width);
 
     // The default statement is the human seat's own figures.
     expectStatement(s, HUMAN_STATEMENT);
@@ -364,11 +521,9 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
       expect(overlayText(s, line)).toBeUndefined();
     }
 
-    // ── Selecting the AI tab switches the entire statement body ──
-    aiTab!.emit('pointerdown');
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
-    expect(overlayText(s, 'You')).toBeDefined();
-    expect(overlayText(s, 'AI 1')).toBeUndefined(); // the selected tab is bracketed
+    // ── Selecting the AI tab (real pointer) switches the whole body ──
+    await clickOverlayText(s, aiTab!);
+    await waitForSelectedTab(s, '[ AI 1 ]');
     expectStatement(s, AI_STATEMENT);
     expect(overlayText(s, 'Net profit/loss: +5')).toBeDefined();
     // The human seat's figures are gone — the body really switched.
@@ -377,13 +532,74 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     }
 
     // ── Switching back restores the human statement ─────────────
-    overlayText(s, 'You')!.emit('pointerdown');
-    expect(overlayText(s, '[ You ]')).toBeDefined();
+    // The regression the producer found (MS-0MW4XULA90002OEY): after
+    // selecting the AI tab there must still be a **button** for the player's
+    // own statement — a bracketed, enabled, non-selected control.
+    const youTab = overlayText(s, '[ You ]');
+    expect(youTab).toBeDefined();
+    expect(youTab!.style.fontStyle).not.toBe('bold');
+    expect(youTab!.input?.enabled).toBe(true);
+    await clickOverlayText(s, youTab!);
+    await waitForSelectedTab(s, '[ You ]');
     expectStatement(s, HUMAN_STATEMENT);
+
+    // ── Hovering a tab is visible feedback (a real pointer affordance) ──
+    const unselected = overlayText(s, '[ AI 1 ]')!;
+    expect(unselected.style.color).toBe(aiColour);
+    unselected.emit('pointerover');
+    expect(unselected.style.color).not.toBe(aiColour);
+    unselected.emit('pointerout');
+    expect(unselected.style.color).toBe(aiColour);
 
     // Exactly one action pair survives every re-render.
     expect(overlayTexts(s).filter((t) => t.text === '[ Next Turn ]')).toHaveLength(1);
     expect(overlayTexts(s).filter((t) => t.text === '[ Bank Loan ]')).toHaveLength(1);
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect((s.overlayObjects ?? []).length).toBe(0);
+  }, 30_000);
+
+  it('switches from any AI seat back to the player\u2019s own statement (real pointer)', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const summary = threeSeatSummary();
+
+    s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    // One button per seat, in seat order, human first and selected.
+    const youTab = overlayText(s, '[ You ]');
+    const ai1Tab = overlayText(s, '[ AI 1 ]');
+    const ai2Tab = overlayText(s, '[ AI 2 ]');
+    expect(youTab).toBeDefined();
+    expect(ai1Tab).toBeDefined();
+    expect(ai2Tab).toBeDefined();
+    expect(youTab!.style.fontStyle).toBe('bold');
+
+    // Adjacent tab targets never overlap: each neighbour's centre is clear of
+    // the other's box, so a press can never land on the wrong management
+    // company's statement.
+    const youCentre = centreOf(youTab!);
+    const ai1Centre = centreOf(ai1Tab!);
+    const ai2Centre = centreOf(ai2Tab!);
+    expect(ai1Centre.x - youCentre.x).toBeGreaterThan(youTab!.width / 2);
+    expect(ai2Centre.x - ai1Centre.x).toBeGreaterThan(ai1Tab!.width / 2);
+
+    // Walk out to the last AI seat by pointer, then back to the player's own.
+    await clickOverlayText(s, ai1Tab!);
+    await waitForSelectedTab(s, '[ AI 1 ]');
+    expect(overlayText(s, 'Net profit/loss: +20')).toBeDefined();
+
+    await clickOverlayText(s, overlayText(s, '[ AI 2 ]')!);
+    await waitForSelectedTab(s, '[ AI 2 ]');
+    expect(overlayText(s, 'Net profit/loss: +30')).toBeDefined();
+
+    // The human tab is still a visible, enabled button — press it to return.
+    const backToYou = overlayText(s, '[ You ]');
+    expect(backToYou).toBeDefined();
+    expect(backToYou!.input?.enabled).toBe(true);
+    await clickOverlayText(s, backToYou!);
+    await waitForSelectedTab(s, '[ You ]');
+    expect(overlayText(s, 'Net profit/loss: +10')).toBeDefined();
+
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
     expect((s.overlayObjects ?? []).length).toBe(0);
   }, 30_000);
@@ -514,8 +730,8 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     );
 
     // Select the AI seat's tab first: that selection must survive the take.
-    overlayText(s, 'AI 1')!.emit('pointerdown');
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
+    overlayText(s, '[ AI 1 ]')!.emit('pointerdown');
+    expect(overlayText(s, '[ AI 1 ]')!.style.fontStyle).toBe('bold');
     expectStatement(s, AI_STATEMENT);
 
     overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
@@ -540,7 +756,9 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     // The panel re-rendered in place, still on the AI seat's tab, with the
     // freshly booked obligation disabling [ Bank Loan ] and explaining why.
     expect(overlayText(s, 'Turn Summary')).toBeDefined();
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
+    expect(overlayText(s, '[ AI 1 ]')!.style.fontStyle).toBe('bold');
+    // The player's own statement is still a visible, enabled button.
+    expect(overlayText(s, '[ You ]')!.input?.enabled).toBe(true);
     expectStatement(s, AI_STATEMENT);
     expect(overlayText(s, '[ Bank Loan ]')!.input?.enabled).toBeFalsy();
     expect(

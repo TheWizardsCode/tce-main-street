@@ -138,6 +138,11 @@ describe('Unified tabbed overlay documentation — ux-visual-audio.md', () => {
     expect(dialog).toContain('you');
     // Switching a tab redraws the whole statement, not just the tab chrome.
     expect(dialog).toContain('whole');
+    // Every tab keeps the button form in both states, so the player always has
+    // a visible button back to their own statement (MS-0MW4XULA90002OEY).
+    expect(dialog).toContain('every tab is drawn in the dialog\'s button form');
+    expect(dialog).toContain('[ label ]');
+    expect(dialog).toContain('bold');
   });
 
   it('documents keyboard tab switching', () => {
@@ -170,6 +175,9 @@ describe('Competitive portion of the tabbed overlay — ux-visual-audio.md', () 
     expect(competitive).toContain('buildpltabsfromcompetitivesummary');
     expect(competitive).toContain('buildplfromcompetitiverow');
     expect(competitive).toContain('switches the whole statement body');
+    // Every seat tab is a button in both states, so switching back to the
+    // player's own statement is always possible (MS-0MW4XULA90002OEY).
+    expect(competitive).toContain('always drawn as a [ label ] button');
   });
 
   it('documents the competitive side as the same overlay, not a second layout', () => {

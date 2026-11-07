@@ -1349,14 +1349,19 @@ condensed text-only summary.
   dismissal via `s.overlayObjects`).
   - **Tab strip** — a `Turn Summary` / `Day <n>` title, then one tab per
     player, each in its seat colour where one exists (single-player uses the
-    dialog gold). The human (`You`) tab is selected by
-    default, drawn bracketed and bold; selecting any other player's tab
-    redraws the **whole** statement body from that player's figures.
-    Single-player renders one **non-interactive** `You` tab (shown, never
-    clickable); competitive renders one interactive tab per non-eliminated
-    seat. Tabs are operable by pointer **and** keyboard — the Left/Right
-    arrow keys cycle the players' tabs with wrap-around — and a tab press
-    plays `UI_CLICK` through `safePlaySound`.
+    dialog gold). **Every** tab is drawn in the dialog's button form —
+    `[ Label ]` — whether or not it is selected, so the player's own statement
+    is always a visible button to switch back to
+    (MS-0MW4XULA90002OEY: a rejected review found no button to return to the
+    player's own tab). The selected tab is the **bold** one; the others keep
+    their seat colour and brighten on hover, so every tab reads as a control.
+    The human (`You`) tab is selected by
+    default; selecting any other player's tab redraws the **whole** statement
+    body from that player's figures. Single-player renders one
+    **non-interactive** `You` tab (shown, never clickable); competitive renders
+    one interactive tab per non-eliminated seat. Tabs are operable by pointer
+    **and** keyboard — the Left/Right arrow keys cycle the players' tabs with
+    wrap-around — and a tab press plays `UI_CLICK` through `safePlaySound`.
   - **Statement body** — the selected player's P&L projection: the **Income**
     section (base / synergy / reputation / events) with its `Total income`
     row, **Less: Operating expenses** (staff / community / business) with its
@@ -1506,7 +1511,11 @@ owner-keyed, so the whole panel is testable without a browser.
   reputation / events) with its total, Less: Operating expenses (staff /
   community / business) with its total, the Incident and One-off adjustments,
   the emphasised net profit/loss, and the supplementary context (reputation /
-  score change, closing balances and businesses owned). Selecting another
+  score change, closing balances and businesses owned). Every seat tab is
+  always drawn as a `[ Label ]` button in its own `resolveSeatColour` colour;
+  the selected one is bold, so switching from an AI seat back to the player's
+  own statement is always an obvious button press
+  (MS-0MW4XULA90002OEY). Selecting another
   seat's tab switches the **whole** statement body to that seat; the Left/Right
   arrow keys cycle the tabs. Overlay conventions are the single-player ones:
   `createOverlayBackground` / `createOverlayButton`, elements parented into

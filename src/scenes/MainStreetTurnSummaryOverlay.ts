@@ -83,6 +83,9 @@ const UNAVAILABLE_ACTION_COLOUR = '#6b6459';
 const SELECTED_TAB_COLOUR = '#ffcc44';
 const TAB_COLOUR = '#bbaa88';
 
+/** Hover colour for every tab: a clear, seat-independent pointer affordance. */
+const TAB_HOVER_COLOUR = '#ffffff';
+
 /** Net-profit colour: green for a profit, red for a loss. */
 const PROFIT_COLOUR = '#88ff88';
 const LOSS_COLOUR = '#ff8888';
@@ -93,6 +96,22 @@ const LOSS_COLOUR = '#ff8888';
  */
 function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : String(value);
+}
+
+/**
+ * Re-sizes a tab's input hit area to its current rendered size.
+ *
+ * `createOverlayButton` derives the hit area from the text size at creation,
+ * so a later `setFontStyle('bold')` would leave the (wider) selected label
+ * partly outside its own clickable rectangle. Tabs whose hit area is a simple
+ * rectangle are refreshed here; anything else is left untouched.
+ */
+function syncHitArea(tab: Phaser.GameObjects.Text): void {
+  const hitArea = (tab.input as { hitArea?: { setSize?: (w: number, h: number) => void } } | null)
+    ?.hitArea;
+  if (hitArea && typeof hitArea.setSize === 'function') {
+    hitArea.setSize(tab.width, tab.height);
+  }
 }
 
 /** One player's tab in the presented panel. */
@@ -415,26 +434,33 @@ export function presentTurnSummaryPanel(
       fontSize: '15px', color: '#bbaa88', fontFamily: FONT_FAMILY,
     }, 0.5);
 
-    // ── Tab strip: one tab per player, selected tab bracketed ────
+    // ── Tab strip: one button per player, selected tab in bold ───
+    // Every tab is drawn in the dialog's **button** form — `[ Label ]` — in
+    // every state, so the player always sees a control for each management
+    // company and can switch **back** to their own tab (the gap the producer
+    // rejected the parent for: the selected tab was the only bracketed one, so
+    // the other tabs read as plain labels rather than buttons). Selection is
+    // signalled by weight, and hovering any tab brightens it.
     const tabY = panelY + 100;
     const tabsClickable = model.tabsInteractive && model.tabs.length > 1;
     let cursor = leftX;
     for (const view of model.tabs) {
       const selected = view.tab.id === model.selectedTabId;
       // Each tab keeps its seat's own colour (the shared `resolveSeatColour`
-      // value); selection is signalled by the brackets + bold weight. A panel
-      // with no seat colour (single-player) uses the dialog's gold.
+      // value); selection is signalled by the bold weight. A panel with no seat
+      // colour (single-player) uses the dialog's gold.
       const tabColour = view.tab.colour
         ?? (selected ? SELECTED_TAB_COLOUR : TAB_COLOUR);
       const tab = createOverlayButton(
         s, 0, tabY,
-        selected ? `[ ${view.tab.label} ]` : view.tab.label,
+        `[ ${view.tab.label} ]`,
         201,
-        { fontSize: '15px', color: tabColour, hoverColor: tabColour },
+        { fontSize: '15px', color: tabColour, hoverColor: TAB_HOVER_COLOUR },
       );
       if (selected) tab.setFontStyle('bold');
       // Measure, then lay the tab out in the strip (buttons are centre-origin).
       tab.setX(cursor + tab.width / 2);
+      syncHitArea(tab);
       if (s.hudContainer) s.hudContainer.add(tab);
       s.overlayObjects.push(tab);
       if (tabsClickable) {
