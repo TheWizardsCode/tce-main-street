@@ -169,7 +169,10 @@ a different engine being served.
   the two remedies are now published in
   [Testing § "Limitation: a lagging pin can fail the build before the
   gate"](../testing.md#limitation-a-lagging-pin-can-fail-the-build-before-the-gate)
-  so this record is no longer its only description.
+  so this record is no longer its only description. The finish report and the
+  build-failure comment now name both SHAs for this condition — verified live in
+  [AC1 verification: a failed build reports a lagging engine
+  pin](ac1-finish-gate-engine-lag-verification.md).
 - The exclusion is conditional on origin: a pin/gitlink the item itself
   changed before the build is committed, never restored.
 - Restore is fail-closed: an unrestorable gitlink refuses finish with an

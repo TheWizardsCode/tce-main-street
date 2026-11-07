@@ -214,7 +214,8 @@ npx vitest run tests/e2e/replay-main-street.e2e.test.ts --project unit
 The player hand is rendered by a **single merged `HandView`** configured in
 `MainStreetRenderer.createContainers`. One horizontal row holds any mix of
 business and event cards up to `maxHandSize` total (base 3 per
-`BASE_HAND_CAPACITY`, growable via staff upgrade cards' `handSlotsAdded`).
+`BASE_HAND_CAPACITY`, growable by **management-company** staff `handSlotsAdded`
+only — business staff never grant hand slots, see the GDD Appendix D.4).
 Event cards are no longer held in a
 separate slot — a purchased Investment event simply joins the shared hand and
 is played by clicking it during the Market phase.
@@ -410,9 +411,10 @@ Duration events (e.g. Flu Outbreak) also use:
 
 ### Job-applicant mechanic (CG-0MSTOATDU006UGAX)
 
-A second staff mechanic runs alongside the hand-slot staff above: **job
-applicants** who are employed at a specific deployed business and grant that
-business a passive specialization buff (per-business employment).
+A second staff mechanic runs alongside the **management-company staff**
+described above: **job applicants** who are employed at a specific deployed
+business and grant that business a passive specialization buff (per-business
+employment).
 
 - **Trigger:** at WeekStart each turn there is a chance `(reputation + income
   per turn)%` (capped at 15%) that a staff member applies for work. An

@@ -20,6 +20,8 @@
 export type {
   LogEntryType,
   LogEntry,
+  LogFilter,
+  TurnStatSnapshot,
   TurnPhase,
   MarketState,
   ResourceBank,
@@ -58,6 +60,9 @@ export {
   describeEventEffects,
   classifyEffect,
   addLog,
+  addLogShared,
+  appendActivityLogEntry,
+  bindActivityLogFeed,
   resolveLogSeatColour,
   syncResourceBankToLedger,
 } from './MainStreetStateLog';

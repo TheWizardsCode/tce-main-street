@@ -59,6 +59,20 @@ At the end of each **MarketPhase**, all unpurchased market cards move to their r
 
 ### 5. Staff Cards
 
+> **Status update (MS-0MW2XMBD5006UV3N):** this section records the original
+> Group F design, in which staff were a hand-capacity purchase. Staff are now a
+> **two-type** family — **business staff** (employed at a single business, effects
+> scoped to that business) and **management-company staff** (employed by the
+> player, effects player/turn-scoped) — so the ladder below is only the
+> management-company subset of the roster, and the lay-off rule it states
+> ("removing random hand cards equal to `handSlotsAdded`") was never implemented:
+> lay-off costs one turn's salary plus 1 reputation. The authoritative model is
+> [the-build-gdd.md](../game/the-build-gdd.md) Appendix D.4; the roster of record
+> is [card-catalog.md](../game/card-catalog.md) § *Staff Cards*. The statements
+> below are retained for historical accuracy.
+
+#### Original design (historical, superseded)
+
 Staff cards are a new card family (`family: 'staff'`) that expand the player's hand capacity at an ongoing coin cost.
 
 #### Templates

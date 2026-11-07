@@ -7,8 +7,9 @@
  * skills keep aggregating:
  *   AC1  Income buffs apply ONLY to the employed business slot.
  *   AC2  Reputation buffs apply ONLY to the employed business slot drivers.
- *   AC3  Street-wide skills (Cost Cutter, Brand Ambassador, Negotiator,
- *        Operations Manager salary) still aggregate across ALL staff.
+ *   AC3  Street-wide skills are management-company-staff effects: they
+ *        aggregate across management-company members (no `employedAtSlot`)
+ *        and are inert when a business-staff member holds them.
  *   AC4  No double-counting: per-business income/rep buffs are not also
  *        credited street-wide.
  *   AC5  Hand-slot staff (no employment) contribute no per-business buffs.
@@ -120,16 +121,18 @@ describe('AC2: reputation buffs apply only to their business driver', () => {
 
 // ── AC3: street-wide skills preserved ───────────────────────
 
-describe('AC3: street-wide skills still aggregate over employed staff', () => {
-  it('getEmployedSpecializationSkills includes employed members (Cost Cutter etc.)', () => {
+describe('AC3: street-wide skills aggregate over management-company staff', () => {
+  it('getEmployedSpecializationSkills gates management-company skills by staff type', () => {
     const state = setupMainStreetGame({ seed: 'scope-street' });
     placeBusinessAt(state, 0, ['Food'], 2);
-    // Employed member with a street-wide skill; hand-slot member too.
+    // Business staff (employedAtSlot) holding a management-company-scope skill:
+    // inert under the two-type model.
     employAt(state, 0, staffWithSkills('cutter', ['skill-cost-cutter']));
+    // Management-company member (no employedAtSlot) with the same scope: aggregates.
     state.staffCards.push(staffWithSkills('neg', ['skill-negotiator']));
 
     const ids = getEmployedSpecializationSkills(state).map(s => s.id);
-    expect(ids).toContain('skill-cost-cutter'); // present even though employed
+    expect(ids).not.toContain('skill-cost-cutter');
     expect(ids).toContain('skill-negotiator');
   });
 

@@ -57,6 +57,7 @@ export type {
   StaffBusinessTarget,
   SpecializationSkillCategory,
   SpecializationSkill,
+  SkillScope,
   EventTrigger,
   EventTarget,
   CardFamily,
@@ -128,7 +129,9 @@ export {
   synergyColor,
   CARD_FACE_PALETTE,
   cardFaceBackground,
+  UPGRADE_FACE_BASE_COLOUR,
+  resolveUpgradeFaceColours,
   cardLabel,
 } from './MainStreetCardsUtils';
 
-export type { CardFaceBackground } from './MainStreetCardsUtils';
+export type { CardFaceBackground, SynergyCardLookup } from './MainStreetCardsUtils';

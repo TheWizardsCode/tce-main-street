@@ -40,6 +40,7 @@ import type {
   MainStreetSerializedState,
   PlayerRecord,
   OwnerTaggedSlot,
+  TurnStatSnapshot,
 } from './MainStreetStateTypes';
 import type { StorylineOption } from './MainStreetCardsTypes';
 import { restoreActiveLoans, restorePendingLoanOffer } from './MainStreetLoans';
@@ -64,6 +65,7 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
     weekStartCoins: state.weekStartCoins,
     weekStartRep: state.weekStartRep,
     weekStartScore: state.weekStartScore,
+    turnStatsHistory: structuredClone(state.turnStatsHistory ?? []),
     decks: structuredClone(state.decks),
     discards: structuredClone(state.discards),
     challengesCompleted: [...state.challengesCompleted],
@@ -639,6 +641,28 @@ function resizeSoldSlots(sold: boolean[] | undefined, gridLength: number): boole
 }
 
 /**
+ * Shape guard for a restored {@link TurnStatSnapshot} entry
+ * (MS-0MVAMU6OM008GJPV AC4).
+ *
+ * A legacy/corrupt save must never inject non-numeric or missing values into
+ * the game-over graphs, so each entry is validated before it is kept. Returns
+ * true only for an object carrying all seven numeric fields.
+ */
+function isTurnStatSnapshot(value: unknown): value is TurnStatSnapshot {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.turn === 'number' &&
+    typeof entry.coins === 'number' &&
+    typeof entry.reputation === 'number' &&
+    typeof entry.score === 'number' &&
+    typeof entry.profit === 'number' &&
+    typeof entry.businesses === 'number' &&
+    typeof entry.staff === 'number'
+  );
+}
+
+/**
  * Backfills the per-seat competitive configuration on load
  * (MS-0MUTU8ICD002I1MK AC5).
  *
@@ -745,6 +769,21 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     weekStartRep: saved.weekStartRep ?? saved.resourceBank.reputation,
     weekStartScore:
       saved.weekStartScore ?? saved.finalScore ?? 0,
+    // Per-turn economy history (MS-0MVAMU6OM008GJPV AC3/AC4): legacy saves
+    // predate the series, so default to an empty history. Each restored entry
+    // is defensively validated so a malformed save cannot inject bad numbers
+    // into the graphs.
+    turnStatsHistory: Array.isArray(saved.turnStatsHistory)
+      ? saved.turnStatsHistory.filter(isTurnStatSnapshot).map((entry) => ({
+          turn: entry.turn,
+          coins: entry.coins,
+          reputation: entry.reputation,
+          score: entry.score,
+          profit: entry.profit,
+          businesses: entry.businesses,
+          staff: entry.staff,
+        }))
+      : [],
     ledger: createEconomyLedger({
       coins: saved.resourceBank.coins,
       reputation: saved.resourceBank.reputation,

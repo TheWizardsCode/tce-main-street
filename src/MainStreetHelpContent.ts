@@ -150,13 +150,14 @@ export function buildMainStreetHelpContent(cfg: HelpContentConfig): HelpSectionC
       // (`loansEnabled`); only headless/simulation configs turn them off, and
       // those never render the help panel. The default menu figures are pinned
       // against `config.loanOptions` by `help-panel-content.test.ts`.
-      // Reviewed against the mid-game entry point (MS-0MVPWSQMG004198C): the
+      // Reviewed against the mid-game entry points (MS-0MVPWSQMG004198C for
+      // single-player, MS-0MW4YUHOU00474HZ for competitive): the
       // no-action-cost rule already matches; the opening line names the
-      // Turn Summary `[ Bank Loan ]` button so the copy does not imply that
-      // loans only exist as a bailout.
+      // Turn Summary `[ Bank Loan ]` button in both modes so the copy does not
+      // imply that loans only exist as a bailout.
       heading: 'Bank Loans',
       body:
-        'Loans credit the principal immediately and cost no action point; take one from the [ Bank Loan ] button on the End of Turn summary.\n' +
+        'Loans credit the principal immediately and cost no action point; take one from the [ Bank Loan ] button on the End of Turn summary (in competitive play, the button on the Turn Summary offers your own seat the same menu).\n' +
         'Menu: choose 300 coins over 3 weeks, 600 over 6 weeks or 1000 over 10 weeks;\n' +
         'each option repays 110 coins per week (principal plus a flat 10% interest).\n' +
         'One loan at a time: repay the current loan before taking another.\n' +

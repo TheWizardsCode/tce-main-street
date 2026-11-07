@@ -162,9 +162,11 @@ describe('moveStaffOnBusiness relocates an employed member', () => {
     const chef = hire(state, 'staff-chef');
     placeStaffOnBusiness(state, chef.id, 0);
 
-    // Fill the destination to its level-0 capacity (1).
-    const assistant = hire(state, 'staff-assistant'); // generalist
-    placeStaffOnBusiness(state, assistant.id, 1);
+    // Fill the destination to its level-0 capacity (1) with business staff
+    // (management-company staff never take a business destination,
+    // GDD D.4.2 / MS-0MW3JXF6U00753LB).
+    const filler = hire(state, 'staff-customer-rep'); // generalist business staff
+    placeStaffOnBusiness(state, filler.id, 1);
 
     const legality = canMoveStaffOnBusiness(state, chef.id, 1);
     expect(legality.legal).toBe(false);

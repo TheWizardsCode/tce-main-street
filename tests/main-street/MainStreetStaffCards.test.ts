@@ -507,7 +507,11 @@ describe('MainStreet Staff Cards & Hand Capacity', () => {
 
         fn(state, staffCard.id);
 
-        expect(getMaxHandSize(state)).toBe(maxBefore - staffCard.handSlotsAdded);
+        // maxHandSize is clamped at 2 by the lay-off rule, so a card whose
+        // grant exceeds the headroom removes only what is available.
+        expect(getMaxHandSize(state)).toBe(
+          Math.max(2, maxBefore - staffCard.handSlotsAdded),
+        );
       },
     );
 

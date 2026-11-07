@@ -129,7 +129,7 @@ describe('AC1: multi-category stacks compose additively, without runaway compoun
 describe('AC2: max 1 income-boost + 1 reputation-boost per staff in stacked scenarios', () => {
   it('seeded 3-skill members never exceed 1 income-boost or 1 reputation-boost', () => {
     for (let seed = 0; seed < 400; seed += 1) {
-      const members = assignSkillsToApplicants(createSeededRng(seed), 20);
+      const members = assignSkillsToApplicants(createSeededRng(seed), 20, 'business');
       for (const member of members) {
         const ids = member.map(s => s.id);
         expect(categoryCount(ids, 'income-boost')).toBeLessThanOrEqual(1);
@@ -146,7 +146,7 @@ describe('AC2: max 1 income-boost + 1 reputation-boost per staff in stacked scen
     // including one income-boost and one reputation-boost beyond baseline.
     let combo: string[] | null = null;
     for (let seed = 0; seed < 4000 && !combo; seed += 1) {
-      const member = assignSkillsToApplicants(createSeededRng(seed), 1)[0];
+      const member = assignSkillsToApplicants(createSeededRng(seed), 1, 'business')[0];
       const ids = member.map(s => s.id);
       if (
         ids.length === 3 &&
@@ -161,7 +161,7 @@ describe('AC2: max 1 income-boost + 1 reputation-boost per staff in stacked scen
 
   it('duplicate assignment of the same income skill is impossible within a member', () => {
     for (let seed = 0; seed < 200; seed += 1) {
-      for (const member of assignSkillsToApplicants(createSeededRng(seed), 10)) {
+      for (const member of assignSkillsToApplicants(createSeededRng(seed), 10, 'business')) {
         const ids = member.map(s => s.id);
         expect(new Set(ids).size).toBe(ids.length);
       }
@@ -207,14 +207,14 @@ describe('AC3: synergy-enhancement skills compose with income/reputation skills'
 
 describe('seeded RNG fixtures are deterministic', () => {
   it('the same seed yields identical 3-skill stacks across a roster', () => {
-    const first = assignSkillsToApplicants(createSeededRng(5), 30);
-    const replay = assignSkillsToApplicants(createSeededRng(5), 30);
+    const first = assignSkillsToApplicants(createSeededRng(5), 30, 'business');
+    const replay = assignSkillsToApplicants(createSeededRng(5), 30, 'business');
     expect(replay.map(m => m.map(s => s.id))).toEqual(first.map(m => m.map(s => s.id)));
   });
 
   it('different seeds produce different stacked rosters', () => {
-    const a = assignSkillsToApplicants(createSeededRng(1), 15);
-    const b = assignSkillsToApplicants(createSeededRng(2), 15);
+    const a = assignSkillsToApplicants(createSeededRng(1), 15, 'business');
+    const b = assignSkillsToApplicants(createSeededRng(2), 15, 'business');
     const key = (roster: { id: string }[][]) => roster.map(m => m.map(s => s.id).sort().join('+')).join('|');
     // Extremely unlikely to collide over 15 members × 2 seeds; a collision
     // would indicate the RNG was not consumed between rosters.

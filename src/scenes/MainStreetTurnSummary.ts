@@ -16,6 +16,19 @@
  * ledger itself is presentation-only data already committed by the engine, so
  * building the summary never changes the turn.
  *
+ * Competitive parity (MS-0MVRNVHJ50095N9Y):
+ * {@link buildCompetitiveTurnSummary} reuses the same income/expense labels,
+ * order and signed formatting as the single-player builder, so a competitive
+ * seat row reads exactly like the single-player panel's rows.
+ *
+ * Per-seat standing (MS-0MVRNW26W0070CP0): each competitive row also carries
+ * the day's net coin/reputation/score change, the closing coin / reputation /
+ * score balances and the seat's share of the resolved incident and one-off
+ * deltas — the same figures, order and signed formatting the single-player
+ * panel shows. Every addition degrades to zero (or the committed wallet) when
+ * the ledger omits it, so older/hand-built ledgers keep the previous row
+ * shape instead of throwing.
+ *
  * Owner-keyed by design: `TurnLedger.businessesOwned` is keyed by owner id, so
  * every {@link TurnSummaryOwnerRow} keeps its `ownerId` (the ledger key) and
  * per-seat wallet. The dialog currently renders the single human seat
@@ -29,12 +42,34 @@
  * post-turn balances while staying integer-consistent with the displayed net
  * and row subtotals.
  *
+ * Profit/loss statement (parent MS-0MW4XULA90002OEY, producer answers Q1=A,
+ * Q2=A, Q3=A): {@link buildPLProjection} re-projects one player's committed
+ * ledger figures as an ordered coins-only profit/loss statement — Income
+ * (base / synergy / reputation / events) with a total, Less: Operating
+ * expenses (staff / community / business) with a total, the Incident and
+ * One-off adjustments and an emphasised Net profit/loss bottom line — with the
+ * non-monetary figures (reputation/score change, closing coins, businesses
+ * owned) kept as supplementary context. {@link buildPLTabs} provides the
+ * per-player tab model (id / label / colour / is-human, human default). Both
+ * reuse the builders above, so single-player (`TurnLedger`) and competitive
+ * (`CompetitiveRoundLedger`) closings share one statement shape. The tabbed
+ * dialog holds the built summary rather than the raw result, so
+ * {@link buildPLTabsFromTurnSummary} / {@link buildPLTabsFromCompetitiveSummary}
+ * and {@link buildPLFromTurnSummary} / {@link buildPLFromCompetitiveRow} project
+ * the same statement and tabs from it — one source of truth for both entry
+ * points.
+ *
  * @module src/scenes/MainStreetTurnSummary
  */
 
 import type { MainStreetState } from '../MainStreetState';
-import type { TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
+import {
+  buildTurnSummaryLoanDescriptor,
+  type TurnSummaryLoanDescriptor,
+} from './MainStreetLoanSelectorModel';
 
 // ── Row shapes ────────────────────────────────────────────────
 
@@ -176,7 +211,9 @@ const EXPENSE_CATEGORIES: readonly TurnSummaryExpenseCategory[] = [
  *
  * `null` is the competitive / hand-built signal: `TurnResult.turnLedger` is
  * optional and competitive closings do not populate it (parent AC4 keeps the
- * dialog out of competitive play), so the caller renders nothing.
+ * single-player dialog out of competitive play — the competitive panel reads
+ * `TurnResult.playerRoundLedger` through
+ * {@link buildCompetitiveTurnSummary}), so the caller renders nothing.
  *
  * @param state  Committed game state after the closing deltas landed.
  * @param result The closed turn's result (ledger plus resolved incident).
@@ -299,4 +336,596 @@ function buildOwnerRows(
         ...wallet,
       };
     });
+}
+
+// ── Competitive (per-seat) builder ────────────────────────────
+
+/** One seat's row in the competitive Turn Summary panel. */
+export interface CompetitiveTurnSummaryRow {
+  /** Owner / seat index (index into `state.players`). */
+  ownerId: number;
+  /** Display label: `You` for the human seat, `AI <n>` for AI seats. */
+  label: string;
+  /** True when this seat is controlled by the human. */
+  isHuman: boolean;
+  /**
+   * The seat's colour-blind-safe hex colour (the competitive scoreboard's
+   * `resolveSeatColour` value); `undefined` when the roster has no assignment.
+   */
+  colour?: string;
+  /** Businesses standing on the street at closing for this seat. */
+  businessesOwned: number;
+  /** Per-phase income subtotals, in `base` / `synergy` / `reputation` / `events` order. */
+  income: TurnSummaryIncomeRow[];
+  /** Sum of {@link income} — coins the income phase credited to this seat. */
+  incomeTotal: number;
+  /**
+   * Per-category ongoing expenses for this seat, in `staff` / `community` /
+   * `business` order (MS-0MVRNVHJ50095N9Y). Same labels, order and signed
+   * (zero-or-negative) convention as the single-player panel's rows; a seat
+   * whose ledger carries no breakdown gets three zero rows rather than
+   * dropping the section.
+   */
+  expenses: TurnSummaryExpenseRow[];
+  /** Sum of {@link expenses} — ongoing coins this seat was charged. */
+  expensesTotal: number;
+  /** Net coin change for this seat across the shared closing. */
+  netCoinChange: number;
+  /**
+   * Net reputation change for this seat for the day (0 when the ledger carries
+   * no reputation row — absent-safe, MS-0MVRNW26W0070CP0).
+   */
+  netRepChange: number;
+  /**
+   * Net score change for this seat for the day (0 when absent — absent-safe,
+   * MS-0MVRNW26W0070CP0).
+   */
+  netScoreChange: number;
+  /**
+   * Closing coin / reputation / score balances for this seat
+   * (MS-0MVRNW26W0070CP0). Derived from the ledger's closing snapshot, else
+   * `day-start + net`, else the committed `PlayerRecord` wallet, so an older
+   * ledger still renders the seat's standing.
+   */
+  closing: TurnSummaryClosing;
+  /** The seat's share of the resolved incident's coin/reputation delta. */
+  incident: TurnSummaryDeltas;
+  /** Non-recurring (market, event-play, other) coin/reputation delta. */
+  oneOff: TurnSummaryDeltas;
+}
+
+/** Everything the competitive Turn Summary panel surfaces for the round closed. */
+export interface CompetitiveTurnSummary {
+  /** Shared day the round closed. */
+  turn: number;
+  /**
+   * The human seat's `ownerId` (the row the panel's `[ Bank Loan ]` button is
+   * keyed to), or `-1` when the roster has no human seat. Resolved from the
+   * same roster {@link MainStreetLoanSelectorModel.buildTurnSummaryLoanDescriptor}
+   * reads, so the descriptor and the take agree on the seat.
+   */
+  humanSeatId: number;
+  /**
+   * The human seat's mid-game loan affordance, built by
+   * {@link MainStreetLoanSelectorModel.buildTurnSummaryLoanDescriptor} for
+   * `humanSeatId` (MS-0MW4YUHOU00474HZ AC1): `enabled` exactly when the human
+   * seat may borrow (loans enabled, no active loan on that seat, a non-empty
+   * menu), with the reason-specific hint otherwise. A roster without a human
+   * seat yields a disabled, hint-less descriptor (nothing to key the button
+   * to).
+   */
+  loanDescriptor: TurnSummaryLoanDescriptor;
+  /** One row per non-eliminated seat, in seat order. */
+  rows: CompetitiveTurnSummaryRow[];
+}
+
+/**
+ * Builds the per-category expense rows a seat's row renders
+ * (MS-0MVRNVHJ50095N9Y).
+ *
+ * Reuses the single-player row builder's labels and fixed `staff` /
+ * `community` / `business` order, so both panels read identically. An absent
+ * breakdown (a hand-built or older ledger) is rendered as three zero rows: the
+ * seat is still shown, with "nothing spent" rather than a missing section.
+ *
+ * @param costs The seat's ongoing-cost breakdown, if the ledger carries one.
+ */
+function buildExpenseRows(
+  costs: OwnerOngoingCosts | undefined,
+): TurnSummaryExpenseRow[] {
+  return EXPENSE_CATEGORIES.map((category) => ({
+    category,
+    label: EXPENSE_LABELS[category],
+    coins: costs?.[category] ?? 0,
+  }));
+}
+
+/**
+ * Derives one competitive row's closing balances
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * Preference order: the ledger's own closing snapshot (the committed wallet
+ * after the closing), then the day-start snapshot plus the net rows (the
+ * ledger's reconciliation identity), then the committed `PlayerRecord` wallet
+ * from the roster. Hand-built or older ledgers carry none of the first two, so
+ * the seat still shows its standing instead of zeros.
+ */
+function competitiveClosing(
+  seat: OwnerRoundLedger,
+  rosterSeat: { coins: number; reputation: number; score: number } | undefined,
+  net: { coins: number; reputation: number; score: number },
+): TurnSummaryClosing {
+  if (seat.closing) return { ...seat.closing };
+  if (seat.dayStart) {
+    return {
+      coins: seat.dayStart.coins + net.coins,
+      reputation: seat.dayStart.reputation + net.reputation,
+      score: seat.dayStart.score + net.score,
+    };
+  }
+  return {
+    coins: rosterSeat?.coins ?? 0,
+    reputation: rosterSeat?.reputation ?? 0,
+    score: rosterSeat?.score ?? 0,
+  };
+}
+
+/**
+ * Builds the competitive (per-seat) Turn Summary model, or `null` when the
+ * result carries no competitive round ledger (MS-0MVRNV9Y8008IKGK).
+ *
+ * Reuses the single-player presentation conventions rather than forking them:
+ * seat labels come from the same `buildCompetitiveScoreboard` rows (`You` /
+ * `AI n`) and colours from the shared `resolveSeatColour` lookup, so a seat
+ * reads the same colour here as on the HUD, the street and the game-over
+ * summary.
+ *
+ * `null` is the absent-safe signal: single-player closings
+ * (`TurnResult.turnLedger`), N=1 closings, headless results and hand-built
+ * results carry no `playerRoundLedger`, so the caller presents nothing and the
+ * day advances exactly as before.
+ *
+ * Eliminated seats never become rows (MS-0MVRNW5JT0046QI3): a seat the closing
+ * knocked out — bankruptcy / reputation collapse resolved after the income
+ * phase — is filtered here as well as at ledger emission, so the panel shows
+ * exactly the seats still playing (no ghost rows) even for a hand-built or
+ * legacy ledger that still carries one. `null` when nothing remains to show,
+ * which the gate treats as "advance immediately".
+ *
+ * @param state  Committed state after the closing (read-only).
+ * @param result The closed shared day's result (round ledger).
+ */
+export function buildCompetitiveTurnSummary(
+  state: MainStreetState,
+  result: Pick<TurnResult, 'playerRoundLedger'>,
+): CompetitiveTurnSummary | null {
+  const ledger = result.playerRoundLedger;
+  if (!ledger || ledger.seats.length === 0) return null;
+
+  const roster = state.players ?? [];
+  const seats = ledger.seats.filter((seat) => roster[seat.ownerId]?.eliminated !== true);
+  if (seats.length === 0) return null;
+
+  const seatsById = new Map(
+    buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
+  );
+
+  // The human seat the panel's loan affordance keys to (MS-0MW4YUHOU00474HZ
+  // AC1): resolved from the scoreboard's `isHuman` rows — the same
+  // controller-derived source `findHumanSeatId` uses — and its mid-game loan
+  // descriptor. A roster with no human seat cannot key the button, so the
+  // descriptor is disabled with no hint (no reason is known).
+  const humanSeatId =
+    seats.find((seat) => seatsById.get(String(seat.ownerId))?.isHuman === true)?.ownerId
+    ?? -1;
+  const loanDescriptor =
+    humanSeatId >= 0
+      ? buildTurnSummaryLoanDescriptor(state, humanSeatId)
+      : { enabled: false, reason: null, activeLoan: null, options: [], hint: null };
+
+  return {
+    turn: ledger.turn,
+    humanSeatId,
+    loanDescriptor,
+    rows: seats.map((seat) => {
+      const ownerId = seat.ownerId;
+      const rosterSeat = seatsById.get(String(ownerId));
+      const expenses = buildExpenseRows(seat.ongoingCosts);
+      const net = {
+        coins: seat.netCoinChange,
+        reputation: seat.netRepChange ?? 0,
+        score: seat.netScoreChange ?? 0,
+      };
+      return {
+        ownerId,
+        label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
+        isHuman: rosterSeat ? rosterSeat.isHuman : ownerId === 0,
+        colour: rosterSeat?.colour,
+        businessesOwned: seat.businessesOwned,
+        income: INCOME_PHASES.map((phase) => ({
+          phase,
+          label: INCOME_LABELS[phase],
+          coins: seat.incomeByPhase[phase],
+        })),
+        incomeTotal: seat.incomeTotal,
+        expenses,
+        expensesTotal: sum(expenses.map((row) => row.coins)),
+        netCoinChange: net.coins,
+        netRepChange: net.reputation,
+        netScoreChange: net.score,
+        closing: competitiveClosing(seat, rosterSeat, net),
+        incident: {
+          coins: seat.incidentCoinChange ?? 0,
+          reputation: seat.incidentRepChange ?? 0,
+        },
+        oneOff: {
+          coins: seat.oneOffDeltas?.coins ?? 0,
+          reputation: seat.oneOffDeltas?.reputation ?? 0,
+        },
+      };
+    }),
+  };
+}
+
+// ── Profit/loss statement projection ──────────────────────────
+
+/** The statement's two monetary sections. */
+export type PLStatementSectionKey = 'income' | 'expenses';
+
+/** One monetary line of the profit/loss statement. */
+export interface PLStatementLine {
+  /**
+   * Stable line key: the ledger's own phase (`base` / `synergy` /
+   * `reputation` / `events`) or expense category (`staff` / `community` /
+   * `business`), so a renderer can key a line without parsing its label.
+   */
+  key: string;
+  /** Display label (the same wording both Turn Summary panels use today). */
+  label: string;
+  /** Signed coin amount: credited for income, zero-or-negative for expenses. */
+  coins: number;
+}
+
+/**
+ * One titled section of the statement, with its lines and total.
+ *
+ * The total is the ledger's own subtotal (never a re-sum of the lines), so the
+ * statement reconciles to the committed figures it is projected from.
+ */
+export interface PLStatementSection {
+  key: PLStatementSectionKey;
+  /** Section heading (`Income` / `Less: Operating expenses`). */
+  label: string;
+  /** The section's monetary lines, in fixed display order. */
+  lines: PLStatementLine[];
+  /** Label of the section's total row. */
+  totalLabel: string;
+  /** Sum of the section's coins, from the committed ledger. */
+  total: number;
+}
+
+/** A coin/reputation adjustment row (the incident or one-off delta). */
+export interface PLAdjustmentLine {
+  key: 'incident' | 'oneOff';
+  label: string;
+  coins: number;
+  reputation: number;
+}
+
+/**
+ * Non-monetary figures shown alongside — never inside — the monetary P&L
+ * lines (producer Q2=A).
+ */
+export interface PLSupplementaryContext {
+  /** The day's net reputation change. */
+  reputationChange: number;
+  /** The day's net score change. */
+  scoreChange: number;
+  /** Closing coin balance for the player the statement belongs to. */
+  closingCoins: number;
+  /** Businesses standing on the street at closing for that player. */
+  businessesOwned: number;
+}
+
+/**
+ * One player's management-company profit/loss statement for the closed turn.
+ *
+ * Reconciles exactly:
+ * `income.total + expenses.total + incident.coins + oneOff.coins ==
+ * net.coins` (the ledger's own identity).
+ */
+export interface PLProjection {
+  /** Ledger owner key the statement belongs to (`String(playerId)`). */
+  playerKey: string;
+  /** Tab/seat display label: `You` for the human seat, `AI n` otherwise. */
+  label: string;
+  /** True when this statement belongs to the human seat. */
+  isHuman: boolean;
+  /** The seat's colour-blind-safe hex colour; `undefined` in single-player. */
+  colour?: string;
+  /** Income section (base / synergy / reputation / events) with its total. */
+  income: PLStatementSection;
+  /** Less: Operating expenses section (staff / community / business). */
+  expenses: PLStatementSection;
+  /** Incident coin/reputation adjustment. */
+  incident: PLAdjustmentLine;
+  /** Non-recurring (market, event-play, other) coin/reputation adjustment. */
+  oneOff: PLAdjustmentLine;
+  /** Emphasised bottom line: net profit/loss for the day. */
+  net: { label: string; coins: number; reputation: number; score: number };
+  /** Non-monetary figures, kept outside the monetary lines. */
+  context: PLSupplementaryContext;
+}
+
+/** One player's tab in the unified tabbed Turn Summary dialog. */
+export interface PLTab {
+  /** Ledger owner key (`String(playerId)`; `'0'` in single-player). */
+  id: string;
+  /** Display label: `You` for the human seat, `AI n` otherwise. */
+  label: string;
+  /** Seat colour; `undefined` in single-player (there is nothing to compare). */
+  colour?: string;
+  /** True when the tab belongs to the human seat. */
+  isHuman: boolean;
+  /** True for exactly one tab: the human seat, else the first tab. */
+  isDefault: boolean;
+}
+
+/** Fixed statement wording (UK English, matching the existing panel labels). */
+const PL_LABELS = {
+  income: 'Income',
+  incomeTotal: 'Total income',
+  expenses: 'Less: Operating expenses',
+  expensesTotal: 'Total operating expenses',
+  incident: 'Incident',
+  oneOff: 'One-off',
+  net: 'Net profit/loss',
+} as const;
+
+/** The result fields the P&L projection reads (both ledger shapes). */
+type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'>;
+
+/**
+ * Builds the tab model of the unified Turn Summary dialog: one tab per player,
+ * with the human seat marked as the default.
+ *
+ * Competitive closings (`TurnResult.playerRoundLedger`) win when present — the
+ * ledger that carries the seats the panel shows, already filtered to the
+ * non-eliminated seats. Otherwise the single-player `TurnLedger` yields its
+ * owner rows, or a single `You` tab when the player owns no business yet (a
+ * statement is still owed: staff wages, incidents and one-offs can all move the
+ * day's result with an empty street). No ledger of either shape → no tabs.
+ *
+ * @param state  Committed game state after the closing (read-only).
+ * @param result The closed turn's result.
+ */
+export function buildPLTabs(
+  state: MainStreetState,
+  result: PLResultInput,
+): PLTab[] {
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  if (competitive) return buildPLTabsFromCompetitiveSummary(competitive);
+  const summary = buildTurnSummary(state, result);
+  return summary ? buildPLTabsFromTurnSummary(summary) : [];
+}
+
+/**
+ * Builds the tab model from an already-built single-player summary.
+ *
+ * The tabbed dialog receives the summary (not the raw result), so it needs the
+ * same tab projection without re-deriving the summary — one owner row per tab,
+ * or the single human `You` tab when the player owns no business yet.
+ *
+ * @param summary The single-player Turn Summary model.
+ */
+export function buildPLTabsFromTurnSummary(summary: TurnSummary): PLTab[] {
+  const seats = summary.owners.length > 0
+    ? summary.owners
+    : [{ ownerId: '0', label: 'You', isHuman: true }];
+  return markDefaultTab(seats.map((seat) => ({
+    id: seat.ownerId,
+    label: seat.label,
+    colour: undefined,
+    isHuman: seat.isHuman,
+    isDefault: false,
+  })));
+}
+
+/**
+ * Builds the tab model from an already-built competitive summary: one tab per
+ * non-eliminated seat, in seat order, with the seat's own label and colour.
+ *
+ * @param summary The competitive (per-seat) Turn Summary model.
+ */
+export function buildPLTabsFromCompetitiveSummary(
+  summary: CompetitiveTurnSummary,
+): PLTab[] {
+  return markDefaultTab(summary.rows.map((row) => ({
+    id: String(row.ownerId),
+    label: row.label,
+    colour: row.colour,
+    isHuman: row.isHuman,
+    isDefault: false,
+  })));
+}
+
+/** Marks exactly one tab as the default: the human seat, else the first tab. */
+function markDefaultTab(tabs: PLTab[]): PLTab[] {
+  const defaultTab = tabs.find((tab) => tab.isHuman) ?? tabs[0];
+  if (defaultTab) defaultTab.isDefault = true;
+  return tabs;
+}
+
+/**
+ * Builds the P&L statement for one player, or `null` when the result carries no
+ * ledger of either shape or the named player has no statement.
+ *
+ * Re-projects the committed ledger only — no new accounting data, no state
+ * mutation, no RNG — so the dialog is a presentation of the turn's own figures.
+ *
+ * @param state     Committed state after the closing (read-only).
+ * @param result    The closed turn's result (either ledger shape).
+ * @param playerKey Owner key (`'0'`, `1`, …) of the player to project;
+ *                  omitted → the default (human) tab.
+ */
+export function buildPLProjection(
+  state: MainStreetState,
+  result: PLResultInput,
+  playerKey?: string | number,
+): PLProjection | null {
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  if (competitive) {
+    const key = selectPlayerKey(buildPLTabsFromCompetitiveSummary(competitive), playerKey);
+    const row = competitive.rows.find((candidate) => String(candidate.ownerId) === key);
+    return row ? buildPLFromCompetitiveRow(row) : null;
+  }
+
+  const summary = buildTurnSummary(state, result);
+  return summary ? buildPLFromTurnSummary(summary, playerKey) : null;
+}
+
+/**
+ * Projects one player's P&L statement from an already-built single-player
+ * summary, or `null` when that player has no statement.
+ *
+ * The tabbed dialog holds the summary (not the raw result), so this is the same
+ * projection {@link buildPLProjection} produces, without re-deriving the
+ * summary. Every figure comes from the summary's own committed ledger rows, so
+ * the statement still reconciles exactly.
+ *
+ * @param summary   The single-player Turn Summary model.
+ * @param playerKey Owner key (`'0'` in single-player); omitted → the human tab.
+ */
+export function buildPLFromTurnSummary(
+  summary: TurnSummary,
+  playerKey?: string | number,
+): PLProjection | null {
+  const tabs = buildPLTabsFromTurnSummary(summary);
+  const key = selectPlayerKey(tabs, playerKey);
+  const tab = tabs.find((candidate) => candidate.id === key);
+  if (!tab) return null;
+  const owner = summary.owners.find((candidate) => candidate.ownerId === key);
+  // A player with an empty street has no owner row but is still owed a
+  // statement (the single-player human seat is always `'0'`).
+  const emptyStreetHuman = summary.owners.length === 0 && key === '0';
+  if (!owner && !emptyStreetHuman) return null;
+
+  return {
+    playerKey: key,
+    label: tab.label,
+    isHuman: tab.isHuman,
+    colour: tab.colour,
+    income: plSection(
+      'income',
+      PL_LABELS.income,
+      PL_LABELS.incomeTotal,
+      summary.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      summary.incomeTotal,
+    ),
+    expenses: plSection(
+      'expenses',
+      PL_LABELS.expenses,
+      PL_LABELS.expensesTotal,
+      summary.expenses.map((line) => ({
+        key: line.category,
+        label: line.label,
+        coins: line.coins,
+      })),
+      summary.expensesTotal,
+    ),
+    incident: {
+      key: 'incident',
+      label: PL_LABELS.incident,
+      coins: summary.incident.coins,
+      reputation: summary.incident.reputation,
+    },
+    oneOff: {
+      key: 'oneOff',
+      label: PL_LABELS.oneOff,
+      coins: summary.oneOff.coins,
+      reputation: summary.oneOff.reputation,
+    },
+    net: { label: PL_LABELS.net, ...summary.net },
+    context: {
+      reputationChange: summary.net.reputation,
+      scoreChange: summary.net.score,
+      closingCoins: owner?.coins ?? summary.closing.coins,
+      businessesOwned: owner?.businessesOwned ?? 0,
+    },
+  };
+}
+
+/**
+ * Projects one seat's P&L statement from an already-built competitive row.
+ *
+ * The tabbed dialog holds the competitive summary (not the raw result), so this
+ * is the same projection {@link buildPLProjection} produces for a seat, without
+ * re-deriving the summary.
+ *
+ * @param row The seat's competitive Turn Summary row.
+ */
+export function buildPLFromCompetitiveRow(
+  row: CompetitiveTurnSummaryRow,
+): PLProjection {
+  return {
+    playerKey: String(row.ownerId),
+    label: row.label,
+    isHuman: row.isHuman,
+    colour: row.colour,
+    income: plSection(
+      'income',
+      PL_LABELS.income,
+      PL_LABELS.incomeTotal,
+      row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      row.incomeTotal,
+    ),
+    expenses: plSection(
+      'expenses',
+      PL_LABELS.expenses,
+      PL_LABELS.expensesTotal,
+      row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
+      row.expensesTotal,
+    ),
+    incident: {
+      key: 'incident',
+      label: PL_LABELS.incident,
+      coins: row.incident.coins,
+      reputation: row.incident.reputation,
+    },
+    oneOff: {
+      key: 'oneOff',
+      label: PL_LABELS.oneOff,
+      coins: row.oneOff.coins,
+      reputation: row.oneOff.reputation,
+    },
+    net: {
+      label: PL_LABELS.net,
+      coins: row.netCoinChange,
+      reputation: row.netRepChange,
+      score: row.netScoreChange,
+    },
+    context: {
+      reputationChange: row.netRepChange,
+      scoreChange: row.netScoreChange,
+      closingCoins: row.closing.coins,
+      businessesOwned: row.businessesOwned,
+    },
+  };
+}
+
+/** Resolves the statement/tab key: the requested player, else the default tab. */
+function selectPlayerKey(tabs: readonly PLTab[], playerKey?: string | number): string {
+  if (playerKey !== undefined) return String(playerKey);
+  return (tabs.find((tab) => tab.isDefault) ?? tabs[0])?.id ?? '';
+}
+
+/** Assembles one titled statement section. */
+function plSection(
+  key: PLStatementSectionKey,
+  label: string,
+  totalLabel: string,
+  lines: PLStatementLine[],
+  total: number,
+): PLStatementSection {
+  return { key, label, lines, totalLabel, total };
 }

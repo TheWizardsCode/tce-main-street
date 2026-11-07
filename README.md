@@ -14,6 +14,33 @@ A playable web build is published automatically to:
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how the Pages site is built, released and
 verified.
 
+## Auto advance turn
+
+When the player spends their last action point, a persisted **Auto advance
+turn** setting (Settings panel toggle, default **off**) decides what happens:
+with it **on**, the turn ends automatically once the spending action's
+animations finish (the same flow as clicking **End Turn**); with it **off**
+(the default), a dialog explains the out-of-actions state and offers to turn
+the setting on. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+§6.0 and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
+## Loan payoff notification
+
+When the final scheduled repayment retires a loan, Main Street announces the
+**retired loan once** — after the closing animations and before the End of Turn
+summary. The congratulation states that the seat is **debt free**, that the
+weekly amount is **no longer deducted** and how much was repaid in total over
+the term, and dismissing it continues into the summary (or straight into the
+next week where that gate is skipped). It is **presentation-only** — no wallet,
+activity-log, ledger, save or RNG change — suppressed in replay/headless runs
+and shown only for the human seat in competitive play; a closing that ends the
+run shows the game-over overlay instead. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+§5.1 and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
 ## Closing a business
 
 Closing a non-sold street card (Manage Card → **Close**) costs **1 action and
@@ -54,8 +81,13 @@ eliminated the human wins by **last standing**, with an explicit option to
 continue solo. A human seat's own collapse still ends the game as a loss. The
 Game Over screen states the reason the run ended in plain language and shows
 every seat's final coins, reputation and score side by side, flagging bankrupt,
-collapsed and eliminated seats. See
-[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
+collapsed and eliminated seats. A **third Stats column** graphs the run turn by
+turn — profit per turn, and cash, businesses, staff and reputation at end of
+turn — alongside the final `Cash at end of turn` figure and a
+`[ View detailed stats ]` link on the Summary column, so players can see what
+worked and learn from a failed run. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+and [docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
 
 Competitive challenges are credited **per seat**: the shared challenge pool is
 kept, but each completion is attributed to the seat that satisfied it
@@ -78,11 +110,20 @@ reports each seat's own gain (for example `Player 2: +7 coins`) rather than
 the shared host total, which can differ from any seat's actual income.
 Eliminated seats are skipped.
 
+When that presentation finishes, a **Turn Summary** panel summarises the
+completed round — **one owner-keyed row per seat** showing businesses owned,
+income phases, ongoing expenses, the seat's incident and one-off deltas, net
+coin/reputation/score change and its closing coins, reputation and score — and
+the next shared day starts only when the player clicks **[ Next Turn ]**. A
+round is one completed shared day: every non-eliminated seat has taken its
+MarketPhase and the shared closing has run. **[ Bank Loan ]** is shown disabled
+with its hint, behind the seam that will enable per-seat loans.
+
 The engine's shared-day contract and seeded-replay determinism are unchanged —
 this is presentation only. Reduced motion, replay and headless contexts skip
-the animations, show the per-seat text and always advance the day; a global
-fast-forward bound caps the total closing time so a large roster cannot stall
-the game.
+the animations and the panel, show the per-seat text and always advance the
+day; a global fast-forward bound caps the total closing time so a large roster
+cannot stall the game.
 
 ## Card packs (DLC)
 
@@ -133,6 +174,22 @@ registered first; a same-origin or remote source can be added **additively** by
 registering it after the bundled one — see
 [packs/README.md](packs/README.md#bundled-source-web-build) and the core
 [Card Packs](core/docs/DEVELOPER.md#pack-sources-additive-game-side) section.
+
+A **signed remote catalogue** is the shipped second source: build with
+`VITE_REMOTE_PACK_URL` + `VITE_REMOTE_PACK_PUBLIC_KEY` (or the ordered
+`VITE_REMOTE_PACK_SOURCES` list for several catalogues) and boot discovers the
+remote packs alongside the bundled ones, verifying an Ed25519 signature against
+the pinned public key first. Configuration is build-time, so changing a URL, a
+key or the catalogue list requires a rebuild; the private signing key is held
+by the operator and never ships. Only the configured host is requested and
+every catalogue read (manifest and CSV) is timeout-bounded; any failure rejects
+that source whole with one console warning while the game keeps playing the
+bundled packs (the offline story — there is no client-side caching). The full
+hosting/signing contract —
+layout, canonical payload with a reproducible example, every verification
+outcome, degradation semantics, the key-separation rule and the licence-clean
+requirement — is in
+[docs/dev/remote-pack-hosting.md](docs/dev/remote-pack-hosting.md).
 
 A plain browser has no Electron `window.tce.contentUnlocks` bridge, so the
 content-unlock read is backed by

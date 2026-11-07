@@ -206,13 +206,14 @@ describe('I4: cost-reduction skills apply to ongoing/refresh costs', () => {
     expect(computeStaffSalaryCost([], 100)).toBe(100);
     expect(computeStaffSalaryCost([getSkill('skill-operations-manager')], 100)).toBe(50);
 
-    // Engine path: hiring the member reduces the staff-cost deduction by 0.5.
+    // Engine path: a business-staff member's Operations Manager reduces the
+    // staff-cost deduction by 0.5 (the discount is a business-staff effect).
     const state = setupMainStreetGame({ seed: 'i4-ops' });
     executeWeekStart(state);
-    state.staffCards.push({ ...staffWithSkills('ops', ['skill-operations-manager']) });
+    state.staffCards.push({ ...staffWithSkills('ops', ['skill-operations-manager']), employedAtSlot: 0 });
     const control = setupMainStreetGame({ seed: 'i4-ops' });
     executeWeekStart(control);
-    control.staffCards.push({ ...staffWithSkills('ops', []) }); // same member, no skills
+    control.staffCards.push({ ...staffWithSkills('ops', []), employedAtSlot: 0 }); // same member, no skills
     state.resourceBank.coins = 100;
     control.resourceBank.coins = 100;
     endTurnHeadless(state);
@@ -445,14 +446,15 @@ describe('per-business buff scoping in applyIncome (CG-0MSTOATDU006UGAX)', () =>
     expect(state2.resourceBank.reputation).toBeCloseTo(before2 + 10);
   });
 
-  it('street-wide incident skills still aggregate across ALL staff (hand-slot + employed)', () => {
+  it('street-wide incident skills still aggregate across management-company staff (hand-slot)', () => {
     const withCommerce = (s: ReturnType<typeof setupMainStreetGame>) => placeBusiness(s, ['Commerce'], 2);
-    // Hand-slot Compliance Officer + employed Risk Manager both contribute.
+    // Both holders are management-company staff (no employedAtSlot), so both
+    // management-company-scope skills aggregate street-wide.
     const state = setupMainStreetGame({ seed: 'scope-incident' });
     executeWeekStart(state);
     withCommerce(state);
     hireSynthetic(state, 'compliance', ['skill-compliance']);
-    employSynthetic(state, 'risk', ['skill-risk-manager'], 0);
+    hireSynthetic(state, 'risk', ['skill-risk-manager']);
     const ids = getEmployedSpecializationSkills(state).map(s => s.id);
     expect(ids).toContain('skill-compliance');
     expect(ids).toContain('skill-risk-manager');

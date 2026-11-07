@@ -28,6 +28,7 @@ import type {
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
+import type { OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
 
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
 
@@ -62,6 +63,18 @@ export interface LogEntry {
    */
   seatColour?: string;
 }
+
+/**
+ * Activity Log view filter (competitive mode): which entries to show.
+ *
+ * - `'all'` — every entry (the default).
+ * - `'human'` — only the human seat's entries (labelled **You** in the UI).
+ * - `'ai'` — every AI seat's entries, grouped into one bucket.
+ *
+ * Declared here (next to `LogEntry`) so the pure predicate module
+ * (`MainStreetLogFilter`) and the scene/renderer share the single type.
+ */
+export type LogFilter = 'all' | 'human' | 'ai';
 // ── Phase Types ─────────────────────────────────────────────
 
 /**
@@ -340,6 +353,34 @@ export interface CompetitiveModeSelection extends GameModeSelectionBase {
 /** A start-of-game selection passed to `createStateFromModeSelection`. */
 export type GameModeSelection = SinglePlayerModeSelection | CompetitiveModeSelection;
 
+// ── Per-turn stat history (MS-0MVAMU6OM008GJPV) ─────────────
+
+/**
+ * One snapshot of the run's economy at the end of a completed turn.
+ *
+ * Recorded once per turn by the shared closing tail (see
+ * `recordTurnStats` in `MainStreetEngineTurnClosing.ts`) and rendered by the
+ * Game Over overlay's stats column. `profit` is the turn's net coin delta,
+ * measured against the `weekStartCoins` day-start snapshot using the same
+ * definition as the per-turn net summary row (`appendTurnNetRow`).
+ */
+export interface TurnStatSnapshot {
+  /** The 1-based turn number this snapshot summarises. */
+  turn: number;
+  /** Coins at the end of the turn (`resourceBank.coins`). */
+  coins: number;
+  /** Reputation at the end of the turn (`resourceBank.reputation`). */
+  reputation: number;
+  /** Score at the end of the turn (`finalScore`). */
+  score: number;
+  /** The turn's net coin delta (`coins − weekStartCoins`). */
+  profit: number;
+  /** Non-null entries in `streetGrid` at the end of the turn. */
+  businesses: number;
+  /** Active staff cards (`staffCards.length`) at the end of the turn. */
+  staff: number;
+}
+
 // ── Main Street State ───────────────────────────────────────
 
 /**
@@ -393,6 +434,14 @@ export interface MainStreetState {
   weekStartRep: number;
   /** Score at the start of the current turn (day-start snapshot). */
   weekStartScore: number;
+  /**
+   * Per-turn economy history, one {@link TurnStatSnapshot} per completed turn
+   * (MS-0MVAMU6OM008GJPV). Recorded from the shared end-of-turn closing tail,
+   * keyed by `turn` so a repeat call for the same turn appends nothing. Never
+   * mutated by the UI; persisted by `MainStreetStateSerialize` with a legacy
+   * `[]` fallback.
+   */
+  turnStatsHistory: TurnStatSnapshot[];
   /** Remaining cards in each deck (draw from end = top). */
   decks: {
     business: BusinessCard[];
@@ -652,6 +701,64 @@ export interface MainStreetState {
    */
   _newlyCompletedThisAction?: string[];
   /**
+   * Transient day-start wallet snapshot per seat (MS-0MVRNW26W0070CP0).
+   *
+   * Captured by `executeCompetitiveWeekStart` before any seat's MarketPhase
+   * runs, so the competitive round ledger can measure each seat's net change
+   * against the same day-start baseline the single-player ledger uses
+   * (`weekStartCoins` / Rep / Score) — including that seat's own MarketPhase
+   * spending. Keyed by `PlayerRecord.playerId`. Never serialized and never
+   * read by the economy: a closing reached without a day start falls back to
+   * the pre-closing wallet snapshot.
+   */
+  _competitiveSeatDayStart?: Map<number, OwnerRoundBalance> | null;
+  /**
+   * Transient accumulator for the competitive round ledger
+   * (MS-0MVRNV9Y8008IKGK).
+   *
+   * Set by `resolveCompetitiveClosingPhases` when the shared closing's income
+   * phase captures each seat's per-phase income, and consumed by
+   * `finishCompetitiveClosingTail` to surface `TurnResult.playerRoundLedger`.
+   * Keeping it on the state is what lets the **deferred dual-choice resume**
+   * finish the ledger: the resume re-enters the closing tail without the
+   * original result, but still needs each seat's day-start balance and the
+   * incident deltas routed before the pause. Never serialized and never read
+   * by the economy — it holds reporting data only.
+   */
+  _competitiveRoundLedger?: {
+    /** Shared day being closed. */
+    turn: number;
+    /** Per-seat values captured before the closing's economy ran. */
+    seats: Array<{
+      ownerId: number;
+      incomeByPhase: { base: number; synergy: number; reputation: number; events: number };
+      incomeTotal: number;
+      /**
+       * Day-start wallet baseline for the net rows: the `_competitiveSeatDayStart`
+       * entry when the day started through `executeCompetitiveWeekStart`,
+       * otherwise the seat wallet captured at the top of the closing
+       * (MS-0MVRNW26W0070CP0).
+       */
+      dayStart: OwnerRoundBalance;
+      /**
+       * Reputation the income phase credited to this seat
+       * (`OwnerIncomeResult.income.repDelta`), so the ledger can attribute the
+       * reputation residual to the one-off row (MS-0MVRNW26W0070CP0).
+       */
+      incomeRepDelta: number;
+      /**
+       * Ongoing expenses actually charged to the seat, split by category
+       * (MS-0MVRNVHJ50095N9Y) — the value `applyCompetitiveOngoingCosts`
+       * returned for this owner. Reporting data only.
+       */
+      ongoingCosts: OwnerOngoingCosts;
+      /** The seat's share of the resolved incident's coin delta. */
+      incidentCoinChange: number;
+      /** The seat's share of the resolved incident's reputation delta. */
+      incidentRepChange: number;
+    }>;
+  } | null;
+  /**
    * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
    * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
    * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
@@ -845,6 +952,11 @@ export interface MainStreetSerializedState {
   weekStartRep: number;
   /** Day-start score snapshot for the per-turn net summary row. */
   weekStartScore: number;
+  /**
+   * Per-turn economy history (see `MainStreetState.turnStatsHistory`).
+   * Optional in the saved shape: absent on legacy saves, which load with `[]`.
+   */
+  turnStatsHistory?: TurnStatSnapshot[];
   decks: {
     business: BusinessCard[];
     communitySpace: CommunitySpaceCard[];

@@ -66,7 +66,9 @@ fails the build if the legacy flat tree under `docs/` is ever recreated.
 | [`monte-carlo-attribution-analysis.md`](dev/monte-carlo-attribution-analysis.md) | Monte-Carlo attribution analysis |
 | [`monte-carlo-sample-results.md`](dev/monte-carlo-sample-results.md) | Sample Monte-Carlo results |
 | [`testing.md`](dev/testing.md) | Testing process and browser-suite setup |
+| [`staff-two-type-consistency-review.md`](dev/staff-two-type-consistency-review.md) | Cross-document consistency review of the two-type staff model |
 | [`card-packs-runbook.md`](dev/card-packs-runbook.md) | Card-pack authoring lifecycle runbook |
+| [`remote-pack-hosting.md`](dev/remote-pack-hosting.md) | Remote pack catalogue hosting, signing and degradation contract |
 | [`analysis/`](dev/analysis/) | Balance analysis notes |
 | [`*evidence.md`](dev/payback-rebalance-evidence.md) | Before/after balance evidence |
 | [`assets/`](dev/assets/) | Generated baselines, manifests and evidence JSON/MD pairs |
@@ -90,6 +92,26 @@ away; `tests/main-street/docs-site-nav.test.ts` fails if a top-level document
 is not reachable. Mermaid fences are rendered in the browser via
 `vitepress-plugin-mermaid`; the committed storyline SVGs under
 `game/assets/` remain the canonical rendered artefacts.
+
+### Opening the site from another machine or host (WSL)
+
+`npm run docs` binds the dev server to `localhost` only. When the browser does
+not run in the same network namespace as the server — the common WSL setup,
+where the server runs inside WSL and the browser runs on Windows —
+`http://localhost:5174/` refuses the connection even though the server is
+running. Bind the server to all interfaces and open the network address it
+prints instead:
+
+```bash
+npm run docs -- --host
+#   ➜  Local:   http://localhost:5174/
+#   ➜  Network: http://172.20.160.1:5174/
+```
+
+Open the **Network** address in the browser, not `localhost` (the port and IP
+vary per run). This is an environment limitation rather than a site defect, so
+there is nothing to configure in this repository — the note exists purely to
+save the next reader the hunt (MS-0MUYK064P0032374 AC10).
 
 ## Related
 

@@ -13,6 +13,9 @@
  *   - `tce-main-street-enabled-card-packs` — the JSON array of card-pack ids
  *     the player has enabled, seeding new games (child of CG-0MUZFD1WR0031QTB).
  *     Absent means "no preference yet" and all entitled packs are enabled.
+ *   - `tce-main-street-auto-advance-turn` — when 'true', the out-of-actions
+ *     moment ends the turn automatically instead of showing the explainer
+ *     dialog. Absent or any other value means "off" (the default).
  *
  * @module
  */
@@ -29,6 +32,9 @@ export const PREMIUM_DIALOG_DISMISSED_KEY = 'tce-main-street-buy-and-place-premi
 
 /** Storage key for the enabled card-pack id list (seeds new games). */
 export const ENABLED_CARD_PACKS_KEY = 'tce-main-street-enabled-card-packs';
+
+/** Storage key for the auto-advance turn preference. */
+export const AUTO_ADVANCE_TURN_KEY = 'tce-main-street-auto-advance-turn';
 
 /**
  * Resolves the storage backend (browser localStorage when available).
@@ -87,6 +93,48 @@ export function setBuyAndPlacePremiumDialogDismissed(
     } else {
       backend.setItem(PREMIUM_DIALOG_DISMISSED_KEY, 'false');
     }
+  } catch {
+    // ignore storage failures — the preference is best-effort persistence
+  }
+}
+
+/**
+ * Returns true when the player has opted in to automatically ending the turn
+ * when their action budget reaches zero ("Auto advance turn").
+ *
+ * Defaults to `false`: a missing entry, an unavailable backend or any stored
+ * value other than 'true' mean the setting is off, which surfaces the
+ * out-of-actions explainer dialog instead.
+ *
+ * @param storage Optional storage backend (defaults to browser localStorage).
+ */
+export function isAutoAdvanceTurnEnabled(storage?: StorageLike | null): boolean {
+  const backend = resolveStorage(storage);
+  if (!backend) return false;
+  try {
+    return backend.getItem(AUTO_ADVANCE_TURN_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Persists the auto-advance turn preference.
+ *
+ * The value is always written explicitly ('true'/'false') so an opt-out is a
+ * stored preference rather than an absent one.
+ *
+ * @param enabled Whether the turn should end automatically out of actions.
+ * @param storage Optional storage backend (defaults to browser localStorage).
+ */
+export function setAutoAdvanceTurnEnabled(
+  enabled: boolean,
+  storage?: StorageLike | null,
+): void {
+  const backend = resolveStorage(storage);
+  if (!backend) return;
+  try {
+    backend.setItem(AUTO_ADVANCE_TURN_KEY, enabled ? 'true' : 'false');
   } catch {
     // ignore storage failures — the preference is best-effort persistence
   }

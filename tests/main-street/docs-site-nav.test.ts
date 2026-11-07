@@ -1,6 +1,6 @@
 /**
  * Navigation coverage guard for the local VitePress docs site
- * (MS-0MUYK064P0032374, AC2 + AC5).
+ * (MS-0MUYK064P0032374, AC2 + AC5 + AC10).
  *
  * The docs site is a local browsing layer over the two-tree documentation
  * (`docs/game/` + `docs/dev/`). Its sidebar is generated from the files on
@@ -210,5 +210,39 @@ describe('docs site tooling is a local-only dev dependency (AC1, AC8, AC9)', () 
     expect(typeof siteConfig.markdown?.config).toBe('function');
     expect((siteConfig.vite?.plugins ?? []).length).toBeGreaterThan(0);
     expect(siteConfig.themeConfig?.sidebar).toEqual(docsSiteConfig.themeConfig?.sidebar);
+  });
+});
+
+/**
+ * Remote-browser access note (AC10, MS-0MUYK064P0032374).
+ *
+ * `npm run docs` binds VitePress to `localhost` only. In the WSL setup the
+ * producer reported (server in WSL, browser on Windows) `http://localhost:5174/`
+ * refuses the connection even though the server is running; starting the server
+ * with `npm run docs -- --host` and opening the printed network IP address
+ * works. The producer's 2026-10-23 audit rejected the item for this and asked
+ * for it to be **documented, not fixed** — so this guard keeps the reading
+ * instruction in place on both entry points instead of asserting behaviour.
+ */
+describe('docs site remote-browser access is documented (AC10)', () => {
+  const entryPoints = ['docs/README.md', 'docs/index.md'] as const;
+
+  it.each(entryPoints)('%s documents the `--host` invocation', (relativePath) => {
+    expect(readProjectFile(relativePath)).toContain('npm run docs -- --host');
+  });
+
+  it.each(entryPoints)('%s points the reader at the printed network IP address', (relativePath) => {
+    const doc = readProjectFile(relativePath);
+    expect(doc).toMatch(/network (IP )?address/i);
+    // The note is only actionable if it says which address to open instead of
+    // `localhost`; the printed URL itself is environment-specific, so the doc
+    // quotes the dev server's output shape rather than a hard-coded IP.
+    expect(doc).toContain('Network');
+  });
+
+  it.each(entryPoints)('%s names the localhost-only binding (WSL caveat)', (relativePath) => {
+    const doc = readProjectFile(relativePath);
+    expect(doc).toContain('localhost');
+    expect(doc).toContain('WSL');
   });
 });

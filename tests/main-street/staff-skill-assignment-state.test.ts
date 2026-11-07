@@ -1,13 +1,16 @@
 /**
- * Main Street: Staff specialization — game-start skill randomization &
- * assignment state tests (I3, CG-0MT4WXSWG0023VR0; parent CG-0MT1CIWSD003VBPK).
+ * Main Street: Staff specialization — game-start type-consistent skill
+ * assignment state tests (MS-0MW4MSNMJ006E9JH, refining I3
+ * CG-0MT4WXSWG0023VR0; parent CG-0MT1CIWSD003VBPK).
  *
  * Validates the per-game skill assignment contract:
  * - AC1: skills randomized once at game start, locked for the full game.
- * - AC2: 1–3 skills per staff applicant from the global pool.
+ * - AC2: every card draws only skills matching its staff type; business staff
+ *   never receive the Town Gossip baseline, management-company staff always do.
  * - AC3: no staff member holds >1 income-boost AND >1 reputation-boost.
- * - AC4: Town Gossip included as the baseline skill.
- * - AC5: skills disconnected from the nominal job.
+ * - AC4: 1–3 skills per staff applicant.
+ * - AC5: skills stay disconnected from the nominal job *within* the type's
+ *   scope (a Chef can hold Operations Manager, not Compliance).
  * - AC6: deterministic under seeded RNG (same seed → same assignment).
  * - Serialization: locked skill rosters survive save → restore.
  *
@@ -23,6 +26,8 @@ import {
 } from '../../src/MainStreetState';
 import {
   getSkill,
+  getSkillScope,
+  staffCardScope,
   BASELINE_SKILL_ID,
   deserializeSkillIds,
 } from '../../src/MainStreetStaffSkills';
@@ -44,7 +49,7 @@ function skillIdsOf(cards: StaffCard[]): string[][] {
 }
 
 describe('I3: game-start skill assignment (CG-0MT4WXSWG0023VR0)', () => {
-  it('AC2/AC4: every staff instance has 1–3 skills incl. the Town Gossip baseline', () => {
+  it('AC4: every staff instance has 1–3 skills', () => {
     const state = setupMainStreetGame({ seed: 'i3-roster' });
     const cards = allStaffInstances(state);
     expect(cards.length).toBeGreaterThanOrEqual(21); // full staff catalog in deck
@@ -52,7 +57,26 @@ describe('I3: game-start skill assignment (CG-0MT4WXSWG0023VR0)', () => {
       expect(card.specializationSkillIds, card.id).toBeDefined();
       expect(card.specializationSkillIds!.length).toBeGreaterThanOrEqual(1);
       expect(card.specializationSkillIds!.length).toBeLessThanOrEqual(3);
-      expect(card.specializationSkillIds).toContain(BASELINE_SKILL_ID);
+    }
+  });
+
+  it('AC2: every assigned skill matches the card type; baseline only on management-company cards', () => {
+    for (let seed = 0; seed < 40; seed += 1) {
+      const state = setupMainStreetGame({ seed: `i3-scope-${seed}` });
+      for (const card of allStaffInstances(state)) {
+        const ids = card.specializationSkillIds ?? [];
+        const expectedScope = staffCardScope(card);
+        for (const id of ids) {
+          expect(getSkillScope(id), `${card.id} seed ${seed} holds ${id}`).toBe(expectedScope);
+        }
+        if (expectedScope === 'management-company') {
+          expect(ids, `${card.id} seed ${seed} baseline`).toContain(BASELINE_SKILL_ID);
+        } else {
+          expect(ids, `${card.id} seed ${seed} must not hold the baseline`).not.toContain(
+            BASELINE_SKILL_ID,
+          );
+        }
+      }
     }
   });
 
@@ -82,19 +106,25 @@ describe('I3: game-start skill assignment (CG-0MT4WXSWG0023VR0)', () => {
     expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
   });
 
-  it('AC5: skills are disconnected from the nominal job (a Chef can hold Security)', () => {
-    // Across a scan of seeds, the chef template must eventually receive a
-    // non-Food-category skill (pool draws are job-agnostic).
+  it('AC5: skills are disconnected from the nominal job within the type scope', () => {
+    // Across a scan of seeds the Chef template (business staff) must eventually
+    // receive a non-income-boost business skill (e.g. Operations Manager); it
+    // must never receive a management-company skill.
     const chefCards: string[][] = [];
     for (let seed = 0; seed < 300; seed += 1) {
       const state = setupMainStreetGame({ seed: `i3-jobless-${seed}` });
-      const chef = allStaffInstances(state).find(c => c.id.startsWith('staff-barista'));
+      const chef = allStaffInstances(state).find(c => c.id.startsWith('staff-chef'));
       if (chef) chefCards.push(chef.specializationSkillIds ?? []);
     }
+    expect(chefCards.length).toBeGreaterThan(0);
     const hasOffTheme = chefCards.some(ids =>
       ids.some(id => getSkill(id).category !== 'income-boost'),
     );
-    expect(hasOffTheme, 'barista pool draws must eventually include off-theme skills').toBe(true);
+    expect(hasOffTheme, 'chef draws must eventually include off-theme business skills').toBe(true);
+    expect(
+      chefCards.every(ids => ids.every(id => getSkillScope(id) === 'business')),
+      'chef must never draw management-company skills',
+    ).toBe(true);
   });
 
   it('AC1: assignments are locked — hires and market refills never re-roll', () => {

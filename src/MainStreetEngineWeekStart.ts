@@ -9,7 +9,7 @@
 import { resolveStaffApplicant } from './MainStreetEngineCommands';
 import { refillMarket, cycleMarketCards } from './MainStreetMarket';
 import type { MainStreetState, TurnPhase } from './MainStreetState';
-import { PHASE_ORDER, addLog } from './MainStreetState';
+import { PHASE_ORDER, addLogShared } from './MainStreetState';
 
 export function executeWeekStart(state: MainStreetState, skipMarketRefill: boolean = false): void {
   if (state.phase !== 'WeekStart') {
@@ -30,8 +30,8 @@ export function executeWeekStart(state: MainStreetState, skipMarketRefill: boole
     }
   }
 
-  // Log turn header
-  addLog(state, `Turn ${state.turn}`, 'turn-header');
+  // Log turn header (shared, turn-level: never a seat's action)
+  addLogShared(state, `Turn ${state.turn}`, 'turn-header');
 
   // Action economy: reset daily action budget.
   // Base 1 action + sum of actionsPerTurn from employed staff + banked actions (capped at 2).

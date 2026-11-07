@@ -1,5 +1,6 @@
 /**
- * Loan documentation drift guard (MS-0MVPWSFDN000QJXB, parent AC2).
+ * Loan documentation drift guard (MS-0MVPWSFDN000QJXB, parent AC2;
+ * loan-payoff notification MS-0MW3SN7XG003VPUM).
  *
  * The rules documentation is the deliverable for the Bank Loans documentation
  * slice, so the guard asserts the shipped copy against the shipped loan code
@@ -8,6 +9,13 @@
  * repayment must equal `MainStreetLoans`' own arithmetic. Re-balancing the
  * default menu without updating `docs/game/core-rules-and-mechanics.md` fails
  * here instead of silently shipping stale rules.
+ *
+ * It also pins the **loan payoff notification** prose (§5.1 of the rules, the
+ * dialog section of `ux-visual-audio.md` and the README summary), so the
+ * shipped announcement — once per retired loan, after the closing animations
+ * and before the End of Turn summary, debt free / weekly amount no longer
+ * deducted / total repaid, presentation-only and human-seat-only in
+ * competitive play — cannot drift out of the documentation.
  *
  * @module
  */
@@ -23,6 +31,22 @@ import {
 } from '../../src/MainStreetLoans';
 
 const CORE_RULES = path.resolve(__dirname, '../../docs/game/core-rules-and-mechanics.md');
+const UX_DOC = path.resolve(__dirname, '../../docs/game/ux-visual-audio.md');
+const README = path.resolve(__dirname, '../../README.md');
+
+/** Collapses hard line breaks / casing so phrase checks are wrap-insensitive. */
+function normalise(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** The body of a `### <heading>` (or `## <heading>`) section, stopped at the next heading. */
+function headingSection(doc: string, heading: string): string {
+  const start = doc.indexOf(heading);
+  expect(start, `documentation has no "${heading}" section`).toBeGreaterThanOrEqual(0);
+  const rest = doc.slice(start + heading.length);
+  const next = rest.search(/^#{2,3}\s/m);
+  return next === -1 ? rest : rest.slice(0, next);
+}
 
 /** The `### 5.1 Bank loans` section body (start of the next top-level rule). */
 function loanSection(): string {
@@ -89,6 +113,24 @@ describe('Bank loans rules documentation (§5.1 of core-rules-and-mechanics.md)'
     expect(section.toLowerCase()).toContain('no compounding');
   });
 
+  it('states the loan payoff notification rule', () => {
+    const section = normalise(loanSection());
+    // Announced once per retired loan, after the closing animations and before
+    // the End of Turn summary.
+    expect(section).toContain('payoff notification');
+    expect(section).toContain('once per retired loan');
+    expect(section).toContain('after the closing animations');
+    expect(section).toContain('before the end of turn summary');
+    // The dialog's three facts.
+    expect(section).toContain('debt free');
+    expect(section).toContain('no longer deducted');
+    expect(section).toContain('total repaid');
+    // Presentation only: no state, log, save or RNG change.
+    expect(section).toContain('presentation-only');
+    expect(section).toContain('no rng');
+    expect(section).toContain('written to or read from a save');
+  });
+
   it('states the one-loan, no-action-cost, unclamped-repayment and bailout rules', () => {
     const section = loanSection().toLowerCase();
     expect(section).toContain('one active loan per player');
@@ -99,5 +141,67 @@ describe('Bank loans rules documentation (§5.1 of core-rules-and-mechanics.md)'
     // AI policy and the loans-off no-op that keeps headless baselines identical.
     expect(section).toContain('largest');
     expect(section).toContain('loansenabled');
+  });
+});
+
+describe('Loan payoff dialog documentation (ux-visual-audio.md)', () => {
+  const doc = fs.readFileSync(UX_DOC, 'utf-8');
+  const section = normalise(headingSection(doc, '### Loan payoff congratulation dialog'));
+
+  it('names the renderer, the copy model and the turn-flow sequencer', () => {
+    expect(section).toContain('mainstreetloanpayoffoverlay');
+    expect(section).toContain('showloanpayoffdialog');
+    expect(section).toContain('mainstreetloanpayoffmodel');
+    expect(section).toContain('buildloanpayoffcontent');
+    expect(section).toContain('shouldpresentloanpayoff');
+    expect(section).toContain('presentloanpayoffdialogs');
+    expect(section).toContain('turnresult.loanpayoffs');
+  });
+
+  it('states when the dialog appears and what dismissing it resumes', () => {
+    expect(section).toContain('once per retired loan');
+    expect(section).toContain('after the closing animations');
+    expect(section).toContain('before the end of turn summary');
+    expect(section).toContain('next-week');
+    expect(section).toContain('game-over overlay');
+  });
+
+  it('states the copy it renders from the model', () => {
+    expect(section).toContain('debt free');
+    expect(section).toContain('no longer deducted');
+    expect(section).toContain('repaid over');
+    expect(section).toContain('continue');
+  });
+
+  it('states the overlay conventions, single dismiss action and reduced-motion safety', () => {
+    expect(section).toContain('createoverlaybackground');
+    expect(section).toContain('createoverlaybutton');
+    expect(section).toContain('s.hudcontainer');
+    expect(section).toContain('199/200/201');
+    expect(section).toContain('s.overlayobjects');
+    expect(section).toContain('single dismiss action');
+    expect(section).toContain('exactly once');
+    expect(section).toContain('reduced-motion safe');
+    expect(section).toContain('no fade-in');
+  });
+
+  it('states the replayMode and human-seat-only competitive gating', () => {
+    expect(section).toContain('replaymode');
+    expect(section).toContain('ishumanseatcredit');
+    expect(section).toContain('human seat');
+    expect(section).toContain('ai seat');
+  });
+});
+
+describe('Loan payoff notification documentation (README.md)', () => {
+  const section = normalise(headingSection(fs.readFileSync(README, 'utf-8'), '## Loan payoff notification'));
+
+  it('summarises the announcement without contradicting the rules', () => {
+    expect(section).toContain('retired loan');
+    expect(section).toContain('once');
+    expect(section).toContain('debt free');
+    expect(section).toContain('no longer deducted');
+    expect(section).toContain('end of turn summary');
+    expect(section).toContain('presentation-only');
   });
 });

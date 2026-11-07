@@ -121,13 +121,14 @@ export function playBusinessFromHand(
     throw new Error(`Card at hand index ${handIndex} is not a business/community-space card.`);
   }
 
-  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): discount the
-  // base listed cost first. When the caller requests the composite/drag
-  // premium (a numeric `premiumCost`), apply the +50% premium to the
-  // discounted base (discount-first rule, CG-0MTKMGL66004I0PC).
+  // Delivery Driver adjacency discount (GDD D.4.3 / MS-0MW3JXF6U00753LB):
+  // discount the base listed cost first, resolved against the DESTINATION
+  // slot so it never leaks street-wide. When the caller requests the
+  // composite/drag premium (a numeric `premiumCost`), apply the +50% premium
+  // to the discounted base (discount-first rule, CG-0MTKMGL66004I0PC).
   const price = premiumCost !== undefined
-    ? computeBusinessPurchasePremium(state, card.cost)
-    : computeEffectiveBusinessPurchaseCost(state, card.cost);
+    ? computeBusinessPurchasePremium(state, card.cost, slotIndex)
+    : computeEffectiveBusinessPurchaseCost(state, card.cost, slotIndex);
 
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to play ${card.name} from hand. Need ${price}, have ${state.resourceBank.coins}.`);

@@ -64,7 +64,11 @@ export const EXPECTED_SUITE_COMMANDS = [
  * `event-choice-dialogs-browser` was added the other way round — pin and config
  * together (MS-0MVZNRBDJ001L19R) — so the two touched event-choice dialog
  * browser suites are selectable at last: they sat in no group, so neither the
- * pinned full suite nor changed scope ever ran them.
+ * pinned full suite nor changed scope ever ran them. `competitive-turn-summary`
+ * followed the same pin-and-config-together route
+ * (MS-0MVRNV9Y8008IKGK): the competitive Turn Summary engine/model/gate suites
+ * and their browser overlay sit in no pre-existing group, so without it changed
+ * scope would skip them entirely while the panel's own source files change.
  */
 export const EXPECTED_GROUP_NAMES = [
   'hand-bottom-anchor-browser',
@@ -80,6 +84,7 @@ export const EXPECTED_GROUP_NAMES = [
   'help-settings-panels-browser',
   'event-choice-dialogs-browser',
   'webgl-clipping-browser',
+  'competitive-turn-summary',
 ] as const;
 
 /** The shape of `.pi/test-config.json` this guard inspects. */
@@ -142,7 +147,7 @@ export function evaluateTimeoutPerCommand(config: TestConfigLike): Verdict {
 
 /**
  * Assert the config's structural invariants survive an edit to
- * `timeoutPerCommand`: the three-command full suite and all thirteen named groups.
+ * `timeoutPerCommand`: the three-command full suite and all fourteen named groups.
  *
  * Returns an empty list when everything is present, otherwise one message per
  * problem found.

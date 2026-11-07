@@ -15,12 +15,17 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { generateBusinessCardSvg, generateCardSvgFromCsvRow } from '../../src/scenes/MainStreetCardSvgGenerator';
-import { CARD_FACE_PALETTE as TS_CARD_FACE_PALETTE } from '../../src/MainStreetCards';
+import {
+  CARD_FACE_PALETTE as TS_CARD_FACE_PALETTE,
+  UPGRADE_FACE_BASE_COLOUR as TS_UPGRADE_FACE_BASE_COLOUR,
+} from '../../src/MainStreetCards';
 // @ts-ignore: no declaration file for .mjs script — intentional
 import {
   generateCardSvg as generateCardSvgMjs,
   regenerateCardSvgs,
   CARD_FACE_PALETTE as MJS_CARD_FACE_PALETTE,
+  UPGRADE_FACE_BASE_COLOUR as MJS_UPGRADE_FACE_BASE_COLOUR,
+  resolveUpgradeFaceColours as resolveUpgradeFaceColoursMjs,
   // @ts-ignore: no declaration file for .mjs script — intentional
 } from '../../src/scripts/generate-main-street-card-svgs.mjs';
 
@@ -388,5 +393,149 @@ describe('TS CSV-row SVG generator — staff baked cost text', () => {
     };
     const svg = generateCardSvgFromCsvRow(row);
     expect(svg).toContain('+2 slots');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MS-0MW1ZSC7U000V5MW — Service colour + checkerboard upgrade faces
+// ---------------------------------------------------------------------------
+
+/** Extract the upgrade checkerboard `<g>` markup from an SVG (TS or mjs). */
+function extractCheckerMarkup(svg: string): string {
+  const match = svg.match(
+    /<g clip-path="url\(#ms-face-clip-[^"]*\)" class="ms-upgrade-checker">[\s\S]*?<\/g>/,
+  );
+  return match ? match[0] : '';
+}
+
+/** Distinct fill colours used by the checkerboard group (empty when absent). */
+function checkerColours(svg: string): string[] {
+  const markup = extractCheckerMarkup(svg);
+  const fills = [...markup.matchAll(/fill="(#[0-9a-fA-F]{6})"/g)].map((m) => m[1].toLowerCase());
+  return [...new Set(fills)];
+}
+
+describe('MS-0MW1ZSC7U000V5MW — mjs Service palette entry', () => {
+  it('shares the TS violet base and the new Service pink/magenta', () => {
+    expect(MJS_UPGRADE_FACE_BASE_COLOUR).toBe(TS_UPGRADE_FACE_BASE_COLOUR);
+    expect(MJS_CARD_FACE_PALETTE.Service).toBe('#AD1457');
+  });
+});
+
+describe('MS-0MW1ZSC7U000V5MW — mjs upgrade checkerboard faces', () => {
+  it('renders violet + the single synergy colour', () => {
+    const svg = generateCardSvgMjs({
+      id: 'upg-patisserie',
+      name: 'Upgrade to Patisserie',
+      family: 'upgrade',
+      cost: 300,
+      synergies: [],
+      targetBusiness: 'Bakery',
+      trigger: null,
+    });
+    expect(checkerColours(svg)).toHaveLength(2);
+    expect(checkerColours(svg)).toEqual(
+      expect.arrayContaining([MJS_UPGRADE_FACE_BASE_COLOUR.toLowerCase(), '#5d4037']),
+    );
+  });
+
+  it('renders all three colours for a bridge target', () => {
+    const svg = generateCardSvgMjs({
+      id: 'upg-roastery',
+      name: 'Upgrade to Roastery',
+      family: 'upgrade',
+      cost: 300,
+      synergies: [],
+      targetBusiness: 'Cafe',
+      trigger: null,
+    });
+    expect(checkerColours(svg)).toHaveLength(3);
+    expect(checkerColours(svg)).toEqual(
+      expect.arrayContaining([MJS_UPGRADE_FACE_BASE_COLOUR.toLowerCase(), '#5d4037', '#1565c0']),
+    );
+  });
+
+  it('degrades to the flat violet face for an unresolvable target', () => {
+    const svg = generateCardSvgMjs({
+      id: 'upg-unknown',
+      name: 'Upgrade to Unknown',
+      family: 'upgrade',
+      cost: 300,
+      synergies: [],
+      targetBusiness: 'Nonexistent Business',
+      trigger: null,
+    });
+    expect(extractCheckerMarkup(svg)).toBe('');
+    expect(svg).toContain(`rx="6" ry="6" fill="${MJS_UPGRADE_FACE_BASE_COLOUR}"`);
+  });
+
+  it('resolves the same colours as the TS resolver', () => {
+    expect(resolveUpgradeFaceColoursMjs('Cafe', [{ name: 'Cafe', synergies: ['Food', 'Culture'] }]))
+      .toEqual([MJS_UPGRADE_FACE_BASE_COLOUR, '#5D4037', '#1565C0']);
+    expect(resolveUpgradeFaceColoursMjs('Bakery', [{ name: 'Bakery', synergies: ['Food'] }]))
+      .toEqual([MJS_UPGRADE_FACE_BASE_COLOUR, '#5D4037']);
+    expect(resolveUpgradeFaceColoursMjs('Nope', [{ name: 'Bakery', synergies: ['Food'] }]))
+      .toEqual([]);
+  });
+});
+
+describe('MS-0MW1ZSC7U000V5MW — TS and mjs checkerboard patterns agree', () => {
+  it('emits byte-identical checkerboard markup for a single-synergy target', () => {
+    const mjs = generateCardSvgMjs({
+      id: 'upg-agreement-single',
+      name: 'Upgrade to Agreement',
+      family: 'upgrade',
+      cost: 300,
+      targetBusiness: 'Bakery',
+    });
+    const ts = generateCardSvgFromCsvRow({
+      id: 'upg-agreement-single',
+      name: 'Upgrade to Agreement',
+      family: 'upgrade',
+      cost: '300',
+      targetBusiness: 'Bakery',
+    });
+    expect(extractCheckerMarkup(ts)).not.toBe('');
+    expect(extractCheckerMarkup(mjs)).toBe(extractCheckerMarkup(ts));
+  });
+
+  it('emits byte-identical checkerboard markup for a bridge target', () => {
+    const mjs = generateCardSvgMjs({
+      id: 'upg-agreement-bridge',
+      name: 'Upgrade to Agreement',
+      family: 'upgrade',
+      cost: 300,
+      targetBusiness: 'Cafe',
+    });
+    const ts = generateCardSvgFromCsvRow({
+      id: 'upg-agreement-bridge',
+      name: 'Upgrade to Agreement',
+      family: 'upgrade',
+      cost: '300',
+      targetBusiness: 'Cafe',
+    });
+    expect(extractCheckerMarkup(mjs)).toBe(extractCheckerMarkup(ts));
+  });
+});
+
+describe('MS-0MW1ZSC7U000V5MW — shipped static SVGs carry the new faces', () => {
+  it('regenerates upgrade SVGs with checkerboards (single + bridge targets)', () => {
+    regenerateCardSvgs();
+    const svgDir = resolve(process.cwd(), 'public/assets/games/main-street/svg/cards');
+
+    const single = readFileSync(resolve(svgDir, 'upg-patisserie.svg'), 'utf8');
+    expect(checkerColours(single)).toHaveLength(2);
+    expect(single).toContain('class="ms-upgrade-checker"');
+
+    const bridge = readFileSync(resolve(svgDir, 'upg-roastery.svg'), 'utf8');
+    expect(checkerColours(bridge)).toHaveLength(3);
+  });
+
+  it('ships Service business faces in the new pink/magenta', () => {
+    regenerateCardSvgs();
+    const svgDir = resolve(process.cwd(), 'public/assets/games/main-street/svg/cards');
+    const svg = readFileSync(resolve(svgDir, 'biz-hardware.svg'), 'utf8');
+    expect(svg).toContain('rx="6" ry="6" fill="#AD1457"');
+    expect(svg).not.toContain('fill="#6A1B9A"');
   });
 });

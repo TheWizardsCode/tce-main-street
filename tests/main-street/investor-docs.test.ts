@@ -36,37 +36,51 @@ function read(file: string): string {
   return fs.readFileSync(file, 'utf-8');
 }
 
-/** Parses the catalogue staff row whose first cell is `` `staff-investor` ``. */
+/** Parses the catalogue staff row `| `id` | Name | Type | Cost | Ongoing | Slots+ | Tier | … |`. */
 function parseCatalogRow(doc: string, id: string): DocumentedRow | null {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(
-    `^\\|\\s*\`${escaped}\`\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`,
+    `^\\|\\s*\`${escaped}\`\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`,
     'm',
   );
   const m = doc.match(re);
   if (!m) return null;
   return {
     name: m[1].trim(),
-    cost: Number(m[2].trim()),
-    ongoingCost: Number(m[3].trim()),
-    tier: m[5].trim(),
+    cost: Number(m[3].trim()),
+    ongoingCost: Number(m[4].trim()),
+    tier: m[6].trim(),
   };
 }
 
-/** Parses the prose progression-table row `| Name | Cost | Ongoing/turn | … |`. */
+/**
+ * Parses a prose progression-table row (`| Name | … |`) using the table's own
+ * header, so a column added to the table cannot silently shift the values the
+ * guard reads.
+ */
 function parseContentRow(doc: string, name: string): DocumentedRow | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(
-    `^\\|\\s*${escaped}\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`,
-    'm',
+  const lines = doc.split('\n');
+  const headerIndex = lines.findIndex(
+    line => /^\|\s*Name\s*\|/.test(line) && /\bStaff type\b/.test(line),
   );
-  const m = doc.match(re);
-  if (!m) return null;
+  if (headerIndex < 0) return null;
+  const header = lines[headerIndex].split('|').map(cell => cell.trim());
+  const column = (label: string): number => header.indexOf(label);
+  const costAt = column('Cost');
+  const ongoingAt = column('Ongoing/turn');
+  const tierAt = column('Tier');
+  if (costAt < 0 || ongoingAt < 0 || tierAt < 0) return null;
+
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rowRe = new RegExp(`^\\|\\s*${escaped}\\s*\\|`, 'm');
+  const rowIndex = lines.findIndex(line => rowRe.test(line));
+  if (rowIndex < 0) return null;
+  const cells = lines[rowIndex].split('|').map(cell => cell.trim());
   return {
     name,
-    cost: Number(m[1].trim()),
-    ongoingCost: Number(m[2].trim()),
-    tier: m[4].trim(),
+    cost: Number(cells[costAt]),
+    ongoingCost: Number(cells[ongoingAt]),
+    tier: cells[tierAt],
   };
 }
 

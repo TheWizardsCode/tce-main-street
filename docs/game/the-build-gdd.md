@@ -141,7 +141,7 @@ interface GameState {
     upgrade: CardDeck<UpgradeCard>;
   };
   hand: (BusinessCard | EventCard)[]; // merged hand: any mix, up to maxHandSize
-  maxHandSize: number;                 // starts at 2, growable via staff upgrade cards
+  maxHandSize: number;                 // starts at 2, growable via management-company staff (Appendix D.4)
   challengesCompleted: Set<string>; // IDs of achieved challenges
 }
 ```
@@ -462,6 +462,8 @@ A formal GDD section covering The Build's AI design with enough detail for an en
 ## Glossary
 
 - **Slot** – A position on the street grid where a Business card may be placed.
+- **Business staff** – A staff member employed at a single business, whose effect is scoped to that business and (where stated) its 8-way neighbours. See Appendix D.4.
+- **Management-company staff** – A staff member employed by the player (the management company), whose effect is scoped to the player's turn — hand, actions, market, incident insight, street-wide economy. See Appendix D.4.
 - **Synergy** – Bonus income earned when adjacent businesses share a Synergy Type.
 - **Resource Bank** – Holds Coins and Reputation.
 - **Challenge** – Optional meta‑goal that provides bonus points.
@@ -507,6 +509,7 @@ Main Street's economy was extended with a **multi-use card economy** where every
 - Each player has a **hand** holding business cards (initial capacity: 2).
 - Cards purchased from the market can be placed in the hand instead of on the tableau.
 - Hand capacity is displayed in the UI as "Hand: N/M".
+- Only **management-company staff** add hand slots (Appendix D.4.4); **business staff** are employed at a single business and never change hand capacity.
 
 ### D.2 Hand Cards Do Not Generate Synergy
 
@@ -520,19 +523,146 @@ Main Street's economy was extended with a **multi-use card economy** where every
 - The market is then refilled from the decks.
 - Discard piles reshuffle into decks when depleted.
 
-### D.4 Staff Cards
+### D.4 Staff System
 
-Staff cards are a new purchasable card type that increase hand capacity:
+*Rewritten by MS-0MW2XMA0Z007MZ6D (parent epic **MS-0MW20VBSZ003A01O**), superseding the three-tier hand-capacity model that previously occupied this appendix.*
 
-| Tier | Cost | Ongoing Cost | Slots |
-|------|------|-------------|-------|
-| Assistant | 3 | 1 | +1 |
-| Manager | 6 | 2 | +2 |
-| Director | 10 | 3 | +3 |
+Staff are the management layer of the Main Street economy. A **staff card** (`family: 'staff'`) is a hireable template that is either employed at a **single business** or employed by the **management company** — the player. Every staff member belongs to exactly one of those two types, and the type decides, in one glance, **what the member may affect, where the member is assigned, and how the player interacts with them**.
 
-- Staff cards do NOT occupy hand slots.
-- Ongoing costs are deducted each IncomePhase.
-- Staff can be laid off, removing random hand cards equal to slots provided.
+The design commits to exactly **two types** — not a spectrum, not a third category:
+
+- **Business staff** — assigned to one street business; their effect is scoped to that business and, where the role says so, to the businesses immediately around it.
+- **Management-company staff** — assigned to the management company (the player); their effect is scoped to the player's turn: hand, actions, market, incident insight and street-wide economy.
+
+Every staff card does **not** occupy a hand slot. Salaries are ongoing per-turn costs deducted during the IncomePhase (clamped at 0 coins and logged).
+
+#### D.4.1 The two types at a glance
+
+| Dimension | Business staff | Management-company staff |
+|---|---|---|
+| **Scope of effect** | The **employing business**, plus the businesses 8-way adjacent to it where the role explicitly says so (its local cluster). Effects resolve **per business**, never street-wide. | **The player (the management company)**: hand capacity, action budget, per-turn reputation, market prices, market re-rolls and incident-deck insight. Effects are street-independent and persist whatever is on the grid. |
+| **Where assigned** | Employed at **one business slot** (recorded as `employedAtSlot`). Placement is chosen at hire; the member lives on that business. | Employed by the **company itself** — no street slot, no `employedAtSlot`. The member never appears on the grid. |
+| **Who pays the salary** | The business it is employed at; the salary is an operating cost of that business, deducted from the player's coins in the IncomePhase. | The management company; deducted from the player's coins in the IncomePhase. |
+| **Lifetime** | Active only while its business is on the street. Selling the business ends the effect and the salary with it. | Active for as long as the member is employed; independent of the street's composition. |
+| **How the player interacts** | Hire from the market row (**1 action**) and **choose the destination business**. The destination must match `allowedBusinessTypes` and have a free employment slot (`max(1, level + 1)` per business). Relocating an employed member to another business costs **1 action**; the initial placement at hire is free. | Hire from the market row (**1 action**) and the member joins the company immediately — no placement step, no relocation. Its ability applies from the next IncomePhase. |
+| **Design purpose** | **Business-level efficiency and profit**: raise one business's output, lower its costs, or strengthen its immediate cluster. | **Widen what the player can do in a turn**: capacity, tempo, information and prices. |
+| **Card-data marker** | `handSlotsAdded = 0`; the ability is expressed as a per-business buff. | At least one player-scope ability field (`handSlotsAdded > 0`, `actionsPerTurn`, `peekOncePerTurn`, `refreshCostDiscount` or `taxAuditRate`). |
+
+#### D.4.2 How a staff member's type is determined and assigned
+
+1. **The type is a property of the card template.** It is fixed at design time and printed on the card; the player never chooses the type, only (for business staff) the destination business.
+2. **The runtime determinant is assignment.** A staff member is **business staff** if and only if it carries an `employedAtSlot` — the street-grid slot index of the business that employs it. A staff member with no `employedAtSlot` is **management-company staff**. This is the single testable rule the rest of the system derives from.
+3. **Assignment rules.**
+   - Hiring business staff **requires** a destination business: the destination must match the member's `allowedBusinessTypes` (business names and/or synergy types) and have a free employment slot (`max(1, level + 1)`; a level-0 business has one).
+   - Hiring management-company staff **never** asks for a destination, and an attempt to place one on a business is rejected.
+   - Only business staff may be relocated; relocation costs 1 action and is atomic with a successful move (an illegal attempt spends nothing) and is undoable.
+4. **Salaries.** Every employed member — of either type — adds its ongoing cost to the IncomePhase deduction. The deduction is clamped at 0 coins (the player is never driven negative) and logged.
+5. **Lay-off.** Letting a member go is available from the Manage Card dialog of the business that employs it (business staff) or from the company roster (management-company staff). Lay-off costs one turn's salary (clamped at 0) and 1 reputation; the member's buffs stop applying from the next IncomePhase.
+6. **Applicants.** The per-turn walk-on applicant flow hires at 0 coins and consumes no action. The applicant's type decides the flow: a business-staff applicant targets a business with a free slot (drawn from the deployed businesses), a management-company applicant joins the company.
+
+#### D.4.3 Business staff — roles and impacts
+
+Business staff are the **specialists**: each is employed at one business and pays for itself out of that business's local economy. The table lists the full business-staff roster. Every role states **one unique benefit** with its concrete magnitude and direction; no two roles share a benefit.
+
+| Card | Role | Tier | Salary (coins/turn) | Employed at | Unique benefit (magnitude and direction) | Redesign delta vs. shipped card |
+|---|---|---|---|---|---|---|
+| `staff-barista` | Barista | 2 | 50 | Any Cafe, or any Food-type business | **+20 coins/turn** to **each adjacent Food business** (flat synergy coin) | — |
+| `staff-baker` | Baker | 2 | 80 | Any Bakery, or any Food-type business | **+25 coins/turn** to **its own business** | Narrowed from adjacent Food businesses to its own business |
+| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy, before market saturation) | Narrowed from nearby Food businesses to its own business |
+| `staff-florist` | Florist | 2 | 75 | Any Flower Shop, or any Commerce/Culture business | **+30 coins/turn** to **each adjacent Commerce or Culture business** | — |
+| `staff-mechanic` | Mechanic | 3 | 90 | Hardware Store, or any Service business | **+30 coins/turn** to **its own Service business** | — |
+| `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded up, floored at 0) | — |
+| `staff-financial` | Financial Advisor | 5 | 125 | Commerce business | **−100 coins** on **each upgrade** purchased for **its own business** (floored at 0) | — |
+| `staff-it` | IT Specialist | 4 | 100 | Commerce, Entertainment or Service business | **+1 synergy range** for **its own business** (it links with businesses up to 2 slots away) | Was a street-wide −100 market-refresh discount (player-scoped; did not fit the business-staff scope) |
+| `staff-delivery` | Delivery Driver | 2 | 50 | Food or Commerce business | **−50 coins** on the purchase cost of **any business placed adjacent to its own business** | Was a street-wide purchase discount |
+| `staff-security` | Security Guard | 3 | 75 | Any business | **−10% coin damage** from Incidents for **its own business and its adjacent businesses** (rounded down) | Was street-wide |
+| `staff-maintenance` | Maintenance Worker | 3 | 75 | Any business | **−50 reputation damage** from Incidents for **its own business and its adjacent businesses** (floored at 0) | Was street-wide |
+| `staff-health-safety` | Health & Safety Inspector | 4 | 100 | Health business | **−10% Incident frequency** for **its own business** (deterministic per-turn avert) | Was scoped to all Health businesses on the street |
+| `staff-customer-rep` | Customer Service Rep | 2 | 50 | Any business | **+10 synergy reputation/turn** to **each adjacent business** | — |
+| `staff-marketing` | Marketing Consultant | 3 | 100 | Commerce, Food or Culture business | **+10% reputation from all sources** for **its own business** | Was street-wide |
+| `staff-pr` | PR Officer | 4 | 100 | Any business | **+15 reputation/turn** to **its own business** | Was all businesses on the street |
+| `staff-event-planner` | Event Planner | 3 | 75 | Entertainment business | **+100 coins/turn** from **each adjacent Entertainment business** (synergy coin) | Clarified as an adjacency effect |
+| `staff-investor` | Investor | 5 | 125 | Any business | **One coin-free, action-free market re-roll per turn**, with each drawn slot **75% biased** towards its own business's synergy types | — |
+
+**Reading the table.** "Its own business" means exactly the business recorded in `employedAtSlot`; "adjacent" means the 8-way (orthogonal + diagonal) neighbours of that business, so a business-staff effect can cover at most the employing business plus its neighbours. A sold business's staff stop producing an effect (and stop costing a salary) — the member is let go with the business.
+
+#### D.4.4 Management-company staff — roles and impacts
+
+Management-company staff are the **company layer**: they never stand on the street, they are paid by the player, and they change the shape of a turn rather than the output of a single business. Every role states **one unique benefit**; no two roles share a benefit.
+
+| Card | Role | Tier | Salary (coins/turn) | Unique benefit (magnitude and direction) | Redesign delta vs. shipped card |
+|---|---|---|---|---|---|
+| `staff-apprentice` | Apprentice | 1 | 50 | **+1 hand slot** | — |
+| `staff-assistant` | Assistant | 2 | 100 | **+2 hand slots** | Was +1 hand slot |
+| `staff-manager` | Manager | 3 | 250 | **+1 hand slot and +1 action/turn** | — |
+| `staff-director` | Director | 9 | 400 | **+3 hand slots and +1 action/turn** | — |
+| `staff-executive` | Executive | 10 | 500 | **+2 actions/turn** | Was +1 hand slot and +1 action/turn |
+| `staff-general-manager` | General Manager | 12 | 500 | **+4 hand slots and +1 action/turn** | — |
+| `staff-socialite` | Socialite | 4 | 150 | **+1 hand slot and +10 reputation/turn** | — |
+| `staff-accountant` | Accountant | 6 | 150 | **+1 hand slot**, **−100 coins on every market refresh**, and **Tax Audit losses capped at 25%** of the assessed amount | — |
+| `staff-lookout` | Lookout | 7 | 200 | **+1 hand slot** and **reveals the top card of the incident deck** (peek) **once per turn** | — |
+
+#### D.4.5 Expected gameplay outcomes and strategic trade-offs
+
+**Business staff drive business-level efficiency and profit.** Each one is a local multiplier: the player pays a fixed salary to raise the coin or reputation output of a single business (or to cut its costs, upgrades or the price of its neighbours). Because the gain is local, the return scales with the business itself — a high-income business with several matching neighbours turns a +20% or +20/turn buff into a large absolute gain, while the same member on a thin, isolated business barely covers its salary. Business staff therefore reward **street composition** (clusters, synergy density and upgrade levels) and are the main lever for turning a good location into a great one. Their ceiling is deliberately local: one business's staff cannot lift the whole street, and selling the business ends their contribution.
+
+**Management-company staff widen what the player can do in a turn.** Their benefits are capacity and tempo: extra hand slots let the player hold more options, extra actions let the player convert those options into placements, upgrades and sales, and market and incident insight (peek, re-roll, refresh and tax discounts) lowers the variance and the price of every decision. Because the benefit is player-scoped, it is **independent of what is on the street** — it keeps paying even on a turn with no good purchase — but it does **not** scale with the street: two extra actions are only worth what the player can find to spend them on, and an extra hand slot is only worth what the player can afford to fill it with.
+
+| Decision | Business staff | Management-company staff |
+|---|---|---|
+| **Payoff shape** | Scales with the employing business's own output and its synergy neighbours | Scales with how many actions and hand slots the player can convert into placed, upgraded and sold cards |
+| **Best when** | The street holds a strong local cluster and the player intends to keep and upgrade those businesses | The player is action-starved, hand-capped, or losing value to market refreshes and incidents |
+| **Fails when** | The business is sold, left un-upgraded, or isolated from matching neighbours | The player is already unconstrained — extra capacity cannot be spent |
+| **Ongoing risk** | Salary is wasted if the business is idle or sold | Salary is a fixed drain that does not shrink when the street does |
+| **Information value** | Low: the payoff is visible in the business's own numbers | High: peek and re-roll reduce incident and market variance |
+| **Compounding** | With synergy, upgrades and adjacent businesses | With everything the player can afford to place |
+
+A worked comparison: on a Food cluster, a Barista (+20 coins/turn to each adjacent Food business) covering two neighbours returns +40 coins/turn for its 50 coins/turn salary; a Manager costs five times as much (250 coins/turn) and returns +1 action and +1 hand slot per turn, which is worth a full extra placement only if the player has the coins and a card to spend it on. The two types are therefore **complementary but not interchangeable**: business staff are the profit engine once the street exists; management-company staff are what lets the player build the street in the first place.
+
+> **Balance note.** All magnitudes in this appendix are **directional and provisional**. They exist to state intent and to make the two types testable, not to lock balance; final values are set by playtest.
+
+#### D.4.6 Supersession of the old three-tier hand-capacity model
+
+The three-tier model that previously occupied this appendix (Assistant / Manager / Director as pure hand-capacity purchases) is **superseded** and must not be used as a description of staff anywhere in the documentation. The reasons it cannot stand:
+
+- It described staff as a single lever (**hand slots**) with three magnitudes; the roster now has **two types and 26 distinct roles**, and 17 of the 26 grant **no hand capacity at all**.
+- It had no notion of *where* a staff member works, so it could not express business-scoped effects.
+- Its lay-off rule ("removing random hand cards equal to slots provided") contradicted the implemented lay-off: one turn's salary plus 1 reputation.
+
+| Old tier (superseded) | Old benefit and cost | Replaced by |
+|---|---|---|
+| Assistant | +1 hand slot; cost 3, ongoing 1 (old currency scale) | **Assistant**, management-company staff: **+2 hand slots**; tier 2, salary 100 |
+| Manager | +2 hand slots; cost 6, ongoing 2 (old currency scale) | **Manager**, management-company staff: **+1 hand slot and +1 action/turn**; tier 3, salary 250 |
+| Director | +3 hand slots; cost 10, ongoing 3 (old currency scale) | **Director**, management-company staff: **+3 hand slots and +1 action/turn**; tier 9, salary 400 |
+
+The following statements from the old appendix remain true and are carried forward: staff cards do **not** occupy hand slots, ongoing costs are deducted each IncomePhase, and hand capacity is displayed as "Hand: N/M".
+
+#### D.4.7 Mapping the shipped 26 staff cards
+
+The roster in D.4.3 and D.4.4 **is** the remap of the 26 staff templates shipped in `src/card-data.csv`, and it accounts for every one of them with no card left unclassified and no card described by two types:
+
+- **9 management-company staff** — the cards that ship a hand-capacity (`handSlotsAdded > 0`) or action-point (`actionsPerTurn > 0`) grant: Apprentice, Assistant, Manager, Director, Executive, General Manager, Socialite, Accountant, Lookout. Those two shipped markers are the classification rule; a *third* player-scope field is not, because a player-scope field on a business-staff card would be a modelling error rather than a type marker (the IT Specialist's `refreshCostDiscount = 100` and the Delivery Driver's `purchaseCostDiscount = 50` were such fields; both have since been moved into business scope — see the D.4.3 delta column and MS-0MW3JXF6U00753LB).
+- **17 business staff** — the per-business cards (`handSlotsAdded = 0`): Barista, Baker, Chef, Florist, Mechanic, Bookkeeper, Financial Advisor, IT Specialist, Delivery Driver, Security Guard, Maintenance Worker, Health & Safety Inspector, Customer Service Rep, Marketing Consultant, PR Officer, Event Planner, Investor.
+
+The "Redesign delta" columns in D.4.3 and D.4.4 name every card whose effect was **re-scoped or re-valued** to fit the two-type model (scope tightenings for Security Guard, Maintenance Worker, Health & Safety Inspector, Marketing Consultant, PR Officer, Delivery Driver, IT Specialist and Chef; value changes for Assistant, Executive, Baker and Event Planner). Those deltas were **implementation follow-ups** to this documentation work item and have landed: the shipped `src/card-data.csv` rows and the card-level engine wiring now match the D.4.3/D.4.4 target columns (MS-0MW3JXF6U00753LB).
+
+#### D.4.8 Implementation contract (what downstream work must satisfy)
+
+The section is deliberately precise enough to drive implementation and audit. The following invariants are authoritative and testable:
+
+1. **Type is assignment.** `isBusinessStaff(member) === (member.employedAtSlot !== undefined)`; a management-company staff member never carries `employedAtSlot`.
+2. **Scope.** A business-staff buff resolves **only** against its `employedAtSlot` business or that business's 8-way neighbours. A management-company buff resolves against the player and must not touch an individual business's income or reputation.
+3. **Capacity marker.** `handSlotsAdded > 0` implies management-company staff; business staff always have `handSlotsAdded = 0`.
+4. **Player-scope fields are management-company-only.** `actionsPerTurn`, `peekOncePerTurn`, `refreshCostDiscount` and `taxAuditRate` must not be set on a business-staff template. Business-staff reputation and cost effects must be modelled as per-business buffs, not through the street-wide `reputationPerTurn` field.
+5. **Employment capacity.** A business holds at most `max(1, level + 1)` staff members, and a member may only be placed at a business matching its `allowedBusinessTypes`.
+6. **Removal is complete.** Selling a business or laying off a member removes the effect and the salary from the same IncomePhase; no buff survives its employment.
+7. **Determinism.** Every staff effect is deterministic given the seeded RNG; the Investor's re-roll bias, the Lookout's peek and the Health & Safety Inspector's incident avert all consume the documented RNG stream only.
+
+**Specialization skills (supporting system).** The locked 1–3 specialization skills a staff card can carry are scoped by the same two types: per-business skills (income boosts, per-business reputation and salary effects) are **business-staff** effects, and street-wide or player-scope skills (incident mitigation, ongoing-cost reduction, the market-refresh discount, event-source reputation multipliers and the incident peek) are **management-company staff** effects. A skill is inert when its scope does not match its holder's type; the 16-skill classification, the staff-type scope gate and the type-consistent assignment are shipped and documented in [specialization-skills.md](specialization-skills.md) (§ *Cross-type assignments — gap closed*).
+
+**Documentation consistency check.** The two-type model, the D.4.3/D.4.4 roster tables and the cross-references to `card-catalog.md`, `core-rules-and-mechanics.md` and `specialization-skills.md` are verified mechanically by `npm run validate:gdd` (machine-readable report: `npm run validate:gdd -- --json`). The check fails on a stale reference to the superseded hand-capacity model, a roster count/type/tier/salary that disagrees with `src/card-data.csv`, two roles sharing a benefit, a broken cross-reference, or the un-hyphenated type name. It also runs inside the unit suite (`tests/main-street/gdd-staff-consistency.test.ts`), so a documentation drift fails the build.
+
+Existing fields this contract relies on (see `src/MainStreetCardsTypes.ts`): `handSlotsAdded`, `employedAtSlot`, `allowedBusinessTypes`, `reputationPerTurn`, `refreshCostDiscount`, `upgradeCostDiscount`, `purchaseCostDiscount` (legacy/street-wide, no shipped card sets it), `taxAuditRate`, `actionsPerTurn`, `peekOncePerTurn`, `freeMarketRerollPerTurn` and `marketRelevanceBias`, plus the business-staff per-business card-effect fields (`incomeBonus` with `incomeBonusTarget` and `incomeBonusTypes`, `incomePercent`, `reputationBonus` with `reputationBonusTarget`, `reputationPercent`, `synergyRangeBonus`, `adjacencyPurchaseDiscount`, `incidentEffect`). The business-staff fields are parsed from a compact spec in the CSV row's `effect` column (`dimension:<scope>:<amount>[:<types>]`, e.g. `income:adjacent:20:Food`), which keeps the base header unchanged so card packs keep validating; the card-level wiring landed with MS-0MW3JXF6U00753LB.
 
 ### D.5 Removed Mechanics
 

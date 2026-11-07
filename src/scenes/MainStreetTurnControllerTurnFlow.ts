@@ -16,7 +16,7 @@ import { playEventCommand, resolveEventChoiceCommand, resolvePiggybackCommand } 
 import { acceptLoanOffer, applyEndOfTurnDeltas, canAffordPiggybackJoinFully, declineLoanOffer, executeWeekStart, findHumanSeatId, finishDeferredEndOfTurn, finishDeferredTurnClosing, piggybackJoinFullyCost, processEndOfTurn, projectPiggybackEventReward, resolveCompetitiveLoanOffer, resolvePendingPiggyback } from '../MainStreetEngine';
 import type { TurnResult } from '../MainStreetEngine';
 import { canPlayEvent } from '../MainStreetMarket';
-import { addLog } from '../MainStreetState';
+import { addLog, addLogShared } from '../MainStreetState';
 import { finalizeMainStreetTranscript, recordMainStreetEvent } from '../MainStreetTranscript';
 import type { TutorialActionType } from '../TutorialFlow';
 import { ensureTutorialMarketForUpcomingSteps } from '../TutorialScenario';
@@ -25,6 +25,7 @@ import type { MainStreetTurnControllerContext } from './MainStreetTurnController
 import { celebrateChallengeIds } from './MainStreetChallengeCelebration';
 import { deferUntilIncomeCollected, presentTurnClosing } from './MainStreetTurnControllerAnimation';
 import { buildTurnSummary } from './MainStreetTurnSummary';
+import { presentLoanPayoffDialogs } from './MainStreetLoanPayoffModel';
 import {
   buildTurnSummaryLoanDescriptor,
   type TurnSummaryLoanDescriptor,
@@ -77,6 +78,11 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     // presentation window; a hint left armed by a game-over closing must not
     // leak into the next playthrough (MS-0MV79JQ4H003E6BH).
     (s as any).pendingBankingHint = false;
+
+    // A new day begins: release the once-per-turn out-of-actions latch so
+    // the post-action trigger can fire again this turn
+    // (MS-0MW3O2NBM001CLKW). Each day is a fresh zero/one opportunity.
+    s.outOfActionsLatchFired = false;
 
     s.refreshAll();
 
@@ -213,20 +219,27 @@ export function endTurn(tcCtx: MainStreetTurnControllerContext): void {
     s.previousReputation = s.state.resourceBank.reputation;
     s.endOfTurnDeltasApplied = false;
     // Display-only running totals (MS-0MUYAESVU007X2U8): reset here and only
-    // initialise below in the deferred animation path, so reduced-motion /
-    // tutorial / replay keep the existing instant-final behaviour.
+    // initialise below in the deferred animation path, so the tutorial /
+    // replay paths keep the existing instant-final behaviour.
     s.displayedCoins = null;
     s.displayedReputation = null;
     s.displayedIncomeCounted = false;
     try {
-      // Deferred-mutation mode: normal interactive play defers the resource
-      // application until the end-of-turn animations complete. Tutorial and
-      // reduced-motion keep the legacy immediate path (no animation-window
-      // pacing regressions); replay never mutates state.
-      const reducedMotion = (s as any).settingsPanel?.reducedMotion === true;
+      // Deferred-mutation mode: interactive play defers the resource
+      // application until the end-of-turn animations complete. The tutorial
+      // keeps the legacy immediate path (no animation-window pacing
+      // regressions) and replay never mutates state.
+      //
+      // Reduced motion takes the deferred path too (MS-0MW20KSEG001DH1X): the
+      // Turn Summary dialog gates the deferred closing, so a reduced-motion
+      // closing must carry `requiresDeferredClosing` or the dialog could never
+      // be presented for those players. Nothing animates under reduced motion
+      // — the animator finalizes each income phase instantly — so the deferred
+      // closing completes as promptly as the legacy path did, at the same
+      // moment the day previously advanced on its own.
       const inTutorialBefore =
         (s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true;
-      const deferred = !inTutorialBefore && !reducedMotion && !s.replayMode;
+      const deferred = !inTutorialBefore && !s.replayMode;
       if (deferred) {
         // Open the display-only counters at the pre-reconciliation values so
         // the HUD counts from the captured total as flights land/depart.
@@ -510,16 +523,33 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
     // The Turn Summary gate (MS-0MVP46Q8X003419R) intercepts the deferred
     // closing: the day no longer advances straight off the animations — the
     // summary dialog is presented first and `advanceTurn` runs only once the
-    // player clicks [ Next Turn ]. Reduced-motion / tutorial / replay (already
-    // non-deferred) keep the existing auto-advance pacing.
+    // player clicks [ Next Turn ]. Tutorial / replay (already non-deferred)
+    // keep the existing auto-advance pacing. Reduced motion is deferred and so
+    // gated too (MS-0MW20KSEG001DH1X): the dialog is instant-appearance, so it
+    // is reduced-motion safe.
     const afterClosing = shouldGateTurnSummary(tcCtx, result)
       ? () => presentTurnSummaryGate(tcCtx, result, advanceTurn)
       : advanceTurn;
-    presentTurnClosing(tcCtx, result, afterClosing, {
-      animateIncident: !inTutorial,
-      delegateReducedMotionIncident: true,
-      pendingDeltas: deferred ? result : undefined,
-    });
+
+    // ── Loan payoff congratulation (MS-0MW3SN58E009HC84) ───────
+    // One modal per retired loan, presented after the closing animations and
+    // ahead of the End of Turn summary (or the next-week continuation where
+    // that gate is skipped). `presentLoanPayoffDialogs` filters each payoff
+    // through the model gate (replay/headless, non-human seats and a run that
+    // already ended present nothing) and dismisses into the exact flow that
+    // would have run without the dialog — so the summary, bailout,
+    // event-choice and next-week flows are unchanged, and the summary's
+    // buttons are never reachable while a congratulation is up.
+    presentTurnClosing(
+      tcCtx,
+      result,
+      () => presentLoanPayoffDialogs(s, result.loanPayoffs, afterClosing),
+      {
+        animateIncident: !inTutorial,
+        delegateReducedMotionIncident: true,
+        pendingDeltas: deferred ? result : undefined,
+      },
+    );
   
 }
 
@@ -531,15 +561,18 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
  *
  *  - `requiresDeferredClosing` — the turn is mid-closing with its deltas
  *    un-applied; the dialog is the gate in front of `finalizeTurn`. Every
- *    legacy/immediate closing (reduced motion, tutorial, replay, the resumed
- *    event-choice tail) already ran its closing and advances untouched.
+ *    legacy/immediate closing (tutorial, replay, the resumed event-choice
+ *    tail) already ran its closing and advances untouched.
  *  - replay — headless/replay never presents UI.
- *  - reduced motion — keeps the existing auto-advance pacing (no extra click
- *    to sit through).
  *  - tutorial — keeps its window-safe step pacing.
  *  - competitive — operator decision (parent AC4): competitive closings keep
  *    their per-seat closing text (`perSeatClosingSummary`) and never present
  *    the single-player summary dialog.
+ *
+ * Reduced motion is deliberately **not** a guard (MS-0MW20KSEG001DH1X): the
+ * dialog itself is instant-appearance (no fade, no tween) and therefore
+ * reduced-motion safe, so those players get the same closing summary as
+ * everyone else instead of a silently auto-advanced day.
  */
 export function shouldGateTurnSummary(
   tcCtx: MainStreetTurnControllerContext,
@@ -548,7 +581,6 @@ export function shouldGateTurnSummary(
   const s = tcCtx.scene;
   if (result.requiresDeferredClosing !== true) return false;
   if (s.replayMode === true) return false;
-  if (s.settingsPanel?.reducedMotion === true) return false;
   if ((s as { tutorialController?: { isActive?: boolean } }).tutorialController?.isActive === true) {
     return false;
   }
@@ -1219,6 +1251,11 @@ export function onPlayHeldEvent(tcCtx: MainStreetTurnControllerContext, handInde
         s.msAnimator.animateEventPlayed({ x: playedPos.x, y: playedPos.y, eventName: card.name });
       } catch (_) { /* presentation-only — ignore */ }
     }
+
+    // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the play-event
+    // resolved (no blocking transfer) — if it spent the last action point,
+    // fire the auto-advance / dialog trigger.
+    tcCtx.scene.maybeRunOutOfActionsTrigger?.();
   
 }
 
@@ -1232,7 +1269,7 @@ export function performUndo(tcCtx: MainStreetTurnControllerContext): void {
       try {
         const cmd = s.undoManager.undo();
         s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-        addLog(s.state, 'Undo', 'neutral');
+        addLogShared(s.state, 'Undo', 'neutral');
         try { if (cmd) recordMainStreetEvent({ type: 'undo', turn: s.state.turn, reversedAction: { description: cmd.description } }); } catch (_) {}
         // Undoing a move-to-hand removes the card from hand, so any tracked
         // "just moved" card is stale (CG-0MSXIQIPJ000NDTL).
@@ -1279,7 +1316,7 @@ export function performRedo(tcCtx: MainStreetTurnControllerContext): void {
     try {
       const cmd = s.undoManager.redo();
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-      addLog(s.state, 'Redo', 'neutral');
+      addLogShared(s.state, 'Redo', 'neutral');
       try { if (cmd) recordMainStreetEvent({ type: 'redo', turn: s.state.turn, reappliedAction: { description: cmd.description } }); } catch (_) {}
       s.refreshAll();
       // Redo feedback (AGENTS.md rule 8): "Redid: <action>" pop bottom-centre
