@@ -13,15 +13,17 @@ import { FONT_FAMILY, clearTransientHud, markHudTransient } from '@ui';
 import { attachHudTooltipZone, mainStreetRenderCardSvg } from '@ui/Renderer/adapters/MainStreetAdapter';
 import type { StaffCard } from '../MainStreetCards';
 import { formatChallengeProgress } from '../MainStreetChallenges';
-import { computeScore } from '../MainStreetEngine';
+import { computeScore, findHumanSeatId } from '../MainStreetEngine';
 import { buildCardTooltipInfo, weekLabel } from '../MainStreetFormatting';
 import { hudLoanReadout } from '../MainStreetLoans';
 import { getAffordableBusinessCards, getAffordableUpgradeCards, getEmptySlots } from '../MainStreetMarket';
 import type { SpecializationSkill } from '../MainStreetStaffSkills';
 import { STAFF_SKILL_CHIP_COLORS, getSkill, hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import type { PendingApplicant } from '../MainStreetState';
+import { filterLogEntries, shouldShowLogFilterControls } from '../MainStreetLogFilter';
 import { resolveLogSeatColour } from '../MainStreetStateLog';
-import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
+import { BOX_STROKE, CHALLENGE_LINE_H, CHALLENGE_PAD, CHALLENGE_TITLE_H, HUD_BAR_HEIGHT_PX, LOG_COLORS, LOG_EMPTY_FILTER_MESSAGE, LOG_FILTER_ROW_H, LOG_FONT_SIZE, LOG_LINE_H, LOG_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA } from './MainStreetConstants';
+import { refreshLogFilterRow } from './MainStreetRendererStreet';
 import { HUD_ARIA_LABELS, buildActionTooltip, buildCoinsToRepTooltip, buildCoinsTooltip, buildHudScoreLine, buildRepToCoinsTooltip, buildReputationTooltip, buildScoreTooltip } from './MainStreetHudTooltips';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -728,15 +730,47 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
     const entries = s.state.activityLog;
     const newCount = entries.length;
 
-    // Visible area inside the panel (below title bar, above bottom edge)
-    const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - 4);
+    // ── Filter-controls row sync (MS-0MW3PFSMB002EIY6) ────────────
+    // Repaint the All / You / AI row for the current mode and selection on
+    // every log refresh, so mode changes that flow through `refreshAll` (new
+    // game selection, tutorial start, turn end) keep the row visible/active
+    // treatment correct. Runs before the deferral gate so a filter click
+    // during the end-of-turn window highlights the clicked control
+    // immediately while the log content itself stays deferred.
+    refreshLogFilterRow(renderer);
+
+    // ── Filter projection (MS-0MW3PFRV6003LJLD) ──────────────────
+    // Presentation-only: derive the visible subset BEFORE the render loop and
+    // use it for content height, scroll bounds, the empty-state line and the
+    // per-entry visibility pass, so a filtered log never accounts for hidden
+    // entries. The pure predicate (`filterLogEntries`) never mutates
+    // `state.activityLog`, preserves entry order and keeps shared/turn-level
+    // entries visible under every filter (Q2 = A). The human seat resolves
+    // exactly as the engine derives it (`findHumanSeatId`), `-1` without a
+    // human seat so You/AI buckets stay empty there. The unfiltered
+    // `state.activityLog` stays the source of truth for the preserved
+    // contracts — the deferral gate (MS-0MURBOD2E009SOM2), the scene-restart
+    // reset (MS-0MV14JDUG000E1V6) and the re-render trigger
+    // (MS-0MV1BMMO900824N9).
+    const humanSeatId = (s.state.players?.length ?? 0) > 1 ? findHumanSeatId(s.state) : -1;
+    const visibleEntries = filterLogEntries(entries, s.logFilter, humanSeatId);
+
+    // Visible area inside the panel (below title bar, above bottom edge). In
+    // competitive play the filter-controls row reserves `LOG_FILTER_ROW_H`
+    // beneath the title bar, so it is subtracted here to keep scroll bounds
+    // correct; single-player / tutorial hide the controls
+    // (`shouldShowLogFilterControls`) and consume no vertical space.
+    const filterRowH = shouldShowLogFilterControls(s.state) ? LOG_FILTER_ROW_H : 0;
+    const visibleH = Math.max(1, s.layout.logH - LOG_TITLE_H - filterRowH - 4);
 
     // ── Deferral gate (MS-0MURBOD2E009SOM2) ─────────────────────
     // When logDeferredUntilPhaseComplete is true, suppress all rendering
     // so log entries added during end-of-turn closing only appear AFTER
     // the upcoming/phase UI updates have been displayed to the player.
-    // Do NOT update logPrevEntryCount while deferred — the next render
-    // after deferral is cleared must see a count change and re-render.
+    // Do NOT update logPrevEntryCount (or logPrevFilter) while deferred — the
+    // next render after deferral is cleared must see the count/filter change
+    // and re-render; a filter change made while deferred therefore applies on
+    // the next render instead of forcing one out of order.
     //
     // Reset contract (MS-0MV14JDUG000E1V6): the flag is scene-instance
     // state, so `createScene()` resets it on every scene creation. Without
@@ -760,19 +794,39 @@ export function refreshLog(renderer: MainStreetRendererContext): void {
       return;
     }
 
-    // ── Re-render only if the entry count changed ────────────────
-    if (newCount !== s.logPrevEntryCount) {
+    // ── Re-render when the entry count changed OR the filter changed ──
+    // A filter change is a re-render trigger even when the entry count is
+    // unchanged, tracked alongside `logPrevEntryCount` (MS-0MV1BMMO900824N9
+    // extended for the filter rule): selecting a filter re-renders a
+    // same-length log through the pure predicate.
+    if (newCount !== s.logPrevEntryCount || s.logFilter !== s.logPrevFilter) {
       s.logPrevEntryCount = newCount;
+      s.logPrevFilter = s.logFilter;
 
-      // Render ALL entries to compute the true total content height.
-      // Per-entry visibility (applied below) hides off-screen entries.
+      // Render the filter-visible entries to compute the true total content
+      // height. Per-entry visibility (applied below) hides off-screen entries.
       s.logContentContainer.removeAll(true);
 
       const contentW = s.layout.logW - LOG_PAD * 2;
       let yOff = 0;
 
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
+      if (visibleEntries.length === 0) {
+        // Empty state (MS-0MW3PFRV6003LJLD): a filter with no matching
+        // entries — even shared/turn-level ones — renders a clear, non-blank
+        // single line instead of an empty panel.
+        const emptyTxt = s.add.text(LOG_PAD, 0, LOG_EMPTY_FILTER_MESSAGE, {
+          fontSize: `${LOG_FONT_SIZE}px`,
+          fontStyle: 'italic',
+          color: LOG_COLORS.neutral,
+          fontFamily: FONT_FAMILY,
+          wordWrap: { width: contentW },
+        });
+        s.logContentContainer.add(emptyTxt);
+        yOff += Math.max(LOG_LINE_H, emptyTxt.height + 2);
+      }
+
+      for (let i = 0; i < visibleEntries.length; i++) {
+        const entry = visibleEntries[i];
         if (!entry) continue;
 
         const color = LOG_COLORS[entry.type] ?? LOG_COLORS.neutral;

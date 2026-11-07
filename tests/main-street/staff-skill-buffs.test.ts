@@ -279,24 +279,25 @@ describe('per-business employment scoping (CG-0MSTOATDU006UGAX)', () => {
     expect(getEmployedSpecializationSkillsForBusiness(state, 4)).toHaveLength(0);
   });
 
-  it('street-wide aggregation still includes hand-slot + employed staff', () => {
+  it('street-wide aggregation is management-company staff only (two-type model)', () => {
     const state = setupMainStreetGame({ seed: 'scope-street' });
     state.staffCards.push(employedMember('cutter', ['skill-cost-cutter'], 2));
     state.staffCards.push({ ...createStaffDeck(1)[0], id: 'staff-hand', name: 'Hand Negotiator', specializationSkillIds: ['skill-negotiator'] });
 
     const allIds = getEmployedSpecializationSkills(state).map(s => s.id);
-    expect(allIds).toContain('skill-cost-cutter');
+    // Business staff holding a management-company-scope skill: inert.
+    expect(allIds).not.toContain('skill-cost-cutter');
+    // Management-company staff (no employedAtSlot): aggregates street-wide.
     expect(allIds).toContain('skill-negotiator');
 
-    // Street-wide skills on an employed member stay street-wide: them appearing
-    // in the business's per-business pool must not reshape the business income
-    // profile (cost-cutter is a % reduction, computed separately).
+    // The per-business pool carries only business-scope skills, so the employed
+    // member's cost-cutter reshapes nothing in the business income profile.
     const buffs = computePerBusinessSkillBuffs(
       getEmployedSpecializationSkillsForBusiness(state, 2),
       profile(['Food']),
     );
     expect(buffs.income.percent).toBe(0);
     expect(buffs.reputation.flat).toBe(0);
-    expect(buffs.ongoingCosts.reductionPct).toBeCloseTo(0.15);
+    expect(buffs.ongoingCosts.reductionPct).toBe(0);
   });
 });

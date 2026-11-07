@@ -209,6 +209,16 @@ export interface TakeLoanOptions {
  * the loan eligibility rule and the dialog share a single definition
  * (MS-0MVXYCIU00053HL1).
  *
+ * The competitive panel presents the same window one phase later: its
+ * per-seat closing finishes the shared day and rests on the **new** day's
+ * `WeekStart` (the closing advanced `state.turn`, so the panel holds before
+ * the next MarketPhase begins — MS-0MW4YUHOU00474HZ). A competitive roster
+ * (`players.length > 1`) at `WeekStart` is therefore the same pause, so the
+ * mid-game loan affordance is legal from the competitive panel exactly as from
+ * the single-player one. Single-player `WeekStart` is not a pause: its closing
+ * rests on `IncidentPhase`/`EndCheck`, so single-player eligibility is
+ * unchanged.
+ *
  * A finished game is never in the window: the day cannot be resumed, so no
  * loan can be booked against it.
  *
@@ -216,7 +226,11 @@ export interface TakeLoanOptions {
  */
 export function isDeferredClosingPause(state: MainStreetState): boolean {
   if (state.gameResult !== 'playing') return false;
-  return state.phase === 'IncidentPhase' || state.phase === 'EndCheck';
+  if (state.phase === 'IncidentPhase' || state.phase === 'EndCheck') return true;
+  // MS-0MW4YUHOU00474HZ: the competitive panel gates the shared day from the
+  // advanced day's WeekStart (the closing already advanced the turn), which is
+  // exactly the single-player deferred-closing pause, one phase later.
+  return state.phase === 'WeekStart' && (state.players?.length ?? 0) > 1;
 }
 
 /**
@@ -563,6 +577,26 @@ export function debitLoanRepayment(
 }
 
 /**
+ * One loan retired by its final scheduled repayment, as reported to the
+ * presentation layer (loan payoff notification, MS-0MW3SMTRO006M86W).
+ *
+ * Mirrors the `ActiveLoan` fields the HUD loan row and the loan dialogs
+ * already show, so a congratulation never contradicts the figures the player
+ * saw before the debt disappeared. Transient reporting data: it is never
+ * persisted and never mutates `state`.
+ */
+export interface LoanPayoff {
+  /** Seat whose loan was retired (the shared owner-id convention). */
+  ownerId: number;
+  /** Fixed per-turn repayment that stopped being deducted. */
+  perTurnRepayment: number;
+  /** Total repaid over the whole term. */
+  totalRepayment: number;
+  /** Term the loan was repaid over, in turns. */
+  termTurns: number;
+}
+
+/**
  * Applies one turn's scheduled repayment to every active loan
  * (Bank Loans epic MS-0MVL6DZI0000F6CG, slice MS-0MVPWS885006O5QR).
  *
@@ -593,14 +627,27 @@ export function debitLoanRepayment(
  * loans are skipped entirely — no debit, no term decrement, no log row — while
  * every other seat's loan is billed normally.
  *
+ * `retiredOut` is the reporting out-channel for the loan payoff notification
+ * (MS-0MW3SMTRO006M86W): one {@link LoanPayoff} is appended per loan this pass
+ * retires, at the unambiguous point where {@link applyLoanPayment} returns
+ * `null`. It is **reporting only** — the numeric return value, the wallet
+ * debit, the log rows and every other behaviour stay exactly as they were, and
+ * a call that retires nothing (loans disabled, no loans, all excluded, or a
+ * term still running) appends nothing.
+ *
  * @param state Current game state (mutated in-place unless deferred).
- * @param opts  Optional deferred-mutation flag (`apply: false`) and the loan
- *              owners to skip for this pass (`excludeOwnerIds`).
+ * @param opts  Optional deferred-mutation flag (`apply: false`), the loan
+ *              owners to skip for this pass (`excludeOwnerIds`) and the
+ *              reporting out-channel for retired loans (`retiredOut`).
  * @returns The signed coin total debited by this pass (zero or negative).
  */
 export function applyLoanRepayments(
   state: MainStreetState,
-  opts?: { apply?: boolean; excludeOwnerIds?: readonly number[] },
+  opts?: {
+    apply?: boolean;
+    excludeOwnerIds?: readonly number[];
+    retiredOut?: LoanPayoff[];
+  },
 ): number {
   // Hard no-op: loans disabled must not move coins, log, or bookkeep.
   if (!state.config.loansEnabled) return 0;
@@ -623,7 +670,16 @@ export function applyLoanRepayments(
     totalRepaid += amount;
 
     const next = applyLoanPayment(loan);
-    if (next) surviving.push(next);
+    if (next) {
+      surviving.push(next);
+    } else {
+      opts?.retiredOut?.push({
+        ownerId: loan.ownerId,
+        perTurnRepayment: loan.perTurnRepayment,
+        totalRepayment: loan.totalRepayment,
+        termTurns: loan.termTurns,
+      });
+    }
 
     addLog(
       state,

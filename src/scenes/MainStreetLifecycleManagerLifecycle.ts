@@ -16,7 +16,7 @@ import { getEndTurnKeybind } from '@ui/SettingsStore';
 import { DIFFICULTY_NAMES } from '../MainStreetDifficulty';
 import { buildMainStreetHelpContent, helpContentConfigFor, SYNERGY_HELP_ICONS } from '../MainStreetHelpContent';
 import { createMainStreetCheckpointManager, saveCampaignProgress } from '../MainStreetSaveLoad';
-import { setupMainStreetGame } from '../MainStreetState';
+import { setupMainStreetGame, bindActivityLogFeed } from '../MainStreetState';
 import { MainStreetTranscriptRecorder, setMainStreetRecorder } from '../MainStreetTranscript';
 import { createTutorialControllerState, startTutorial } from '../TutorialFlow';
 import type { TutorialControllerState } from '../TutorialFlow';
@@ -262,9 +262,24 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.logAutoScroll = true;
     s.logPrevEntryCount = 0;
     s.logDeferredUntilPhaseComplete = false;
+    // The view filter is session-only state: reset to All on every scene
+    // creation / new game and never persisted to save data (epic
+    // MS-0MW1ZGM1F0010DQW). `logPrevFilter` follows so the first refresh
+    // after a restart does not see a spurious filter change.
+    s.logFilter = 'all';
+    s.logPrevFilter = 'all';
 
     s.detectReplayMode();
     s.initEventSystem();
+    // Feed the Activity Log through the Game Events channel
+    // (MS-0MW1ZHBPK006M8YS): `addLog(...)` emits a typed `activity-log` event
+    // when this scene's emitter is live, and this subscriber is the single
+    // writer of `state.activityLog`. It resolves `s.state` at emit time so
+    // in-place state replacement (competitive new game, save load, tutorial
+    // start, difficulty change) still appends to the current state. Runs once
+    // per emitter creation — `initEventSystem` builds a fresh emitter on every
+    // scene start/restart, and shutdownBase removes its listeners.
+    bindActivityLogFeed(s.gameEvents, () => s.state);
     s.initHUDContainer();
     s.initMenuButton();
 

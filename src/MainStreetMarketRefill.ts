@@ -12,7 +12,7 @@
 import type { LegalityResult } from '@rule-engine';
 import { shuffleArray } from '@card-system';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, classifyEffect, refillSingleRowMarket } from './MainStreetState';
+import { addLogShared, describeEventEffects, classifyEffect, refillSingleRowMarket } from './MainStreetState';
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard, StaffCard, SynergyType } from './MainStreetCards';
 import { REFRESH_MARKET_COST, REFRESH_MARKET_COST_STEP } from './MainStreetCards';
 import { computeRefreshCostDiscount, getEmployedSpecializationSkills } from './MainStreetStaffBuffs';
@@ -122,7 +122,7 @@ export function refreshMarket(state: MainStreetState): RefreshResult {
     const name = (c as any).name ?? c.id;
     return `${c.id}${name ? ` (${name})` : ''}`;
   });
-  addLog(state, `Researched market (-€${cost}): replaced ${replacedStrings.join(', ')} (${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLogShared(state, `Researched market (-€${cost}): replaced ${replacedStrings.join(', ')} (${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
 
   return { replaced: removed, cost };
 }
@@ -265,7 +265,7 @@ export function useFreeMarketReroll(state: MainStreetState): RefreshResult {
     const name = (c as any).name ?? c.id;
     return `${c.id}${name ? ` (${name})` : ''}`;
   });
-  addLog(
+  addLogShared(
     state,
     `Investor free re-roll: replaced ${replacedStrings.join(', ')} (coin-free)`,
     'neutral',
@@ -343,7 +343,7 @@ export function replenishIncidentDeck(state: MainStreetState): void {
   // consumes no RNG), so the deck order here only sets the candidate order.
   shuffleArray(pool, state.rng);
   state.incidentDeck = pool;
-  addLog(state, 'Reshuffled incident deck from event cards', 'neutral');
+  addLogShared(state, 'Reshuffled incident deck from event cards', 'neutral');
 }
 
 /**

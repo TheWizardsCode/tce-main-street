@@ -52,7 +52,9 @@ interface NewStaffContract {
 
 const NEW_STAFF_CONTRACTS: NewStaffContract[] = [
   { id: 'staff-apprentice', name: 'Apprentice', cost: 200, ongoingCost: 50, handSlotsAdded: 1 },
-  { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 1, actionsPerTurn: 1 },
+  // Executive re-valued to +2 actions / no hand slot by the two-type redesign
+  // (GDD D.4.4, MS-0MW3JXF6U00753LB).
+  { id: 'staff-executive', name: 'Executive', cost: 2000, ongoingCost: 500, handSlotsAdded: 0, actionsPerTurn: 2 },
   { id: 'staff-socialite', name: 'Socialite', cost: 800, ongoingCost: 150, handSlotsAdded: 1, reputationPerTurn: 10 },
   { id: 'staff-accountant', name: 'Accountant', cost: 800, ongoingCost: 150, handSlotsAdded: 1, refreshCostDiscount: 100 },
 ];
@@ -262,10 +264,12 @@ describe('Group F: Accountant refresh discount (AC2)', () => {
 // ── AC3: No regression for existing staff ─────────────────────────────
 
 describe('Group F: existing staff no-regression (AC3)', () => {
-  it('Assistant/Manager/Director keep their cost stats; Manager slots drop to +1 and Manager/Director grant an action', () => {
+  it('Assistant/Manager/Director keep their cost stats; Manager slots drop to +1, Manager/Director grant an action, and the Assistant grants +2 slots (two-type redesign)', () => {
     const deck = createStaffDeck(1);
     const expected = [
-      { id: 'staff-assistant', cost: 300, ongoingCost: 100, slots: 1, actions: undefined },
+      // Assistant: +1 → +2 hand slots (GDD D.4.4 redesign delta,
+      // MS-0MW3JXF6U00753LB).
+      { id: 'staff-assistant', cost: 300, ongoingCost: 100, slots: 2, actions: undefined },
       { id: 'staff-manager', cost: 700, ongoingCost: 250, slots: 1, actions: 1 },
       { id: 'staff-director', cost: 1400, ongoingCost: 400, slots: 3, actions: 1 },
     ];
@@ -288,10 +292,13 @@ describe('Group F: existing staff no-regression (AC3)', () => {
     expect(card.actionsPerTurn).toBeUndefined();
   });
 
-  it('Executive is no longer ability-free: it grants +1 action/turn', () => {
+  it('Executive is no longer ability-free: it grants +2 actions/turn (two-type redesign)', () => {
     const deck = createStaffDeck(1);
     const card = findStaff(deck, 'staff-executive')!;
-    expect(card.actionsPerTurn).toBe(1);
+    expect(card.actionsPerTurn).toBe(2);
+    // Re-valued from +1 hand slot and +1 action to +2 actions only
+    // (GDD D.4.4, MS-0MW3JXF6U00753LB).
+    expect(card.handSlotsAdded).toBe(0);
     expect(card.reputationPerTurn).toBeUndefined();
     expect(card.refreshCostDiscount).toBeUndefined();
   });

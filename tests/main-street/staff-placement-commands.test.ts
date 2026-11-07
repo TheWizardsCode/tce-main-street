@@ -110,13 +110,25 @@ describe('AC3: placement validates allowedBusinessTypes', () => {
     expect(getEmployedStaffCountAt(state, 0)).toBe(0);
   });
 
-  it('generalist staff (no restriction) place on any business', () => {
+  it('generalist BUSINESS staff (no restriction) place on any business', () => {
     const state = freshState();
     placeBusinessAt(state, 0, 'Gym', ['Health']);
-    const assistant = hire(state, 'staff-assistant'); // all six synergy types
-    expect(canPlaceStaffOnBusiness(state, assistant.id, 0).legal).toBe(true);
-    placeStaffOnBusiness(state, assistant.id, 0);
-    expect(assistant.employedAtSlot).toBe(0);
+    // Customer Service Rep: business staff, all six synergy types.
+    const generalist = hire(state, 'staff-customer-rep');
+    expect(canPlaceStaffOnBusiness(state, generalist.id, 0).legal).toBe(true);
+    placeStaffOnBusiness(state, generalist.id, 0);
+    expect(generalist.employedAtSlot).toBe(0);
+  });
+
+  it('rejects management-company staff (type = assignment, GDD D.4.2)', () => {
+    const state = freshState();
+    placeBusinessAt(state, 0, 'Gym', ['Health']);
+    const assistant = hire(state, 'staff-assistant');
+    const legality = canPlaceStaffOnBusiness(state, assistant.id, 0);
+    expect(legality.legal).toBe(false);
+    expect((legality as { reason?: string }).reason ?? '').toMatch(/management-company/i);
+    expect(assistant.employedAtSlot).toBeUndefined();
+    expect(getEmployedStaffCountAt(state, 0)).toBe(0);
   });
 
   it('rejects placement on empty slots and un-hired ids', () => {

@@ -398,6 +398,30 @@ describe('takeLoan — competitive seat wallets', () => {
     expect(state.players![0].coins).toBe(seat0Coins);
     expect(state.loans[0].ownerId).toBe(1);
   });
+
+  it('takeLoanCommand forwards an explicit ownerId (human seat, not the transient acting seat)', () => {
+    const state = createCompetitiveState({ seed: 'loans-command-owner', playerCount: 2 });
+    executeWeekStart(state);
+    // The acting (transient) seat differs from the human seat the competitive
+    // Turn Summary panel books the take to (AC2 of MS-0MW4YUHOU00474HZ).
+    state.activePlayerId = 1;
+    const seat0Coins = state.players![0].coins;
+    const seat1Coins = state.players![1].coins;
+
+    const mgr = new UndoRedoManager();
+    const actionsBefore = state.actionsRemaining;
+    mgr.execute(takeLoanCommand(state, 0, undefined, 0));
+
+    expect(state.players![0].coins).toBe(seat0Coins + 300);
+    expect(state.players![1].coins).toBe(seat1Coins);
+    expect(state.loans[0].ownerId).toBe(0);
+
+    // AP-neutral and undoable through the command surface (AC2).
+    expect(state.actionsRemaining).toBe(actionsBefore);
+    mgr.undo();
+    expect(state.players![0].coins).toBe(seat0Coins);
+    expect(state.loans).toEqual([]);
+  });
 });
 
 // ── Undo / redo ─────────────────────────────────────────────
@@ -587,6 +611,33 @@ describe('takeLoan — deferred-closing window eligibility (MS-0MVXYCIU00053HL1)
 
     expect(state.resourceBank.coins).toBe(coinsBefore + 300);
     expect(state.loans[0]).toMatchObject({ principal: 300, termTurns: 3 });
+  });
+
+  it('covers the competitive panel: a competitive roster at WeekStart is the same pause (MS-0MW4YUHOU00474HZ)', () => {
+    // The competitive Turn Summary panel presents after its closing completed
+    // and rests on the advanced day's WeekStart (the panel holds the next
+    // MarketPhase). That is the same deferred-closing pause, and the take is
+    // legal there with the opt-in — keyed to whatever owner the caller picks.
+    const state = createCompetitiveState({ seed: 'loans-comp-weekstart', playerCount: 2 });
+    executeWeekStart(state);
+    state.phase = 'WeekStart';
+    const coinsBefore = state.players![0].coins;
+
+    expect(isDeferredClosingPause(state)).toBe(true);
+    takeLoan(state, 1, 0, { allowDuringClosing: true });
+
+    expect(state.players![0].coins).toBe(coinsBefore + 600);
+    expect(state.loans[0].ownerId).toBe(0);
+  });
+
+  it('does not treat single-player WeekStart as a pause (competitive roster only)', () => {
+    const state = closingPauseState('IncidentPhase');
+    state.phase = 'WeekStart';
+
+    expect(isDeferredClosingPause(state)).toBe(false);
+    expect(() => takeLoan(state, 0, undefined, { allowDuringClosing: true })).toThrow(
+      /market phase/i,
+    );
   });
 
   it('AC1 — threads the opt-in through the reversible command surface', () => {

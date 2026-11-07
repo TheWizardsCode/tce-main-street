@@ -33,7 +33,7 @@ import type { EventCard } from './MainStreetCardsTypes';
 import type { MainStreetState } from './MainStreetStateTypes';
 import { getBaseTypeId, getEventTemplates } from './MainStreetCards';
 import { resolveEvent } from './MainStreetEngineEvents';
-import { addLog, syncResourceBankToLedger } from './MainStreetState';
+import { addLogShared, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Maps the core engine seam onto `MainStreetState`.
@@ -65,7 +65,7 @@ export const mainStreetStorylineEngineAdapter: StorylineEngineAdapter<
     // `resolveEventOption` uses after resolving an option.
     syncResourceBankToLedger(state);
   },
-  appendLog: (state, text) => addLog(state, text, 'neutral'),
+  appendLog: (state, text) => addLogShared(state, text, 'neutral'),
   getActivityLog: (state) => state.activityLog,
   getTemplate: (id) => getEventTemplates().find((t) => t.id === id) ?? null,
   getBaseTypeId: (id) => getBaseTypeId(id),

@@ -13,15 +13,18 @@ import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPig
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
 import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
+import type { CompetitiveRoundLedger, OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, applyCompetitiveIncome } from './MainStreetAdjacency';
 import type { IncomeResult, OwnerIncomeResult } from './MainStreetAdjacency';
+import { countBusinessesOwnedByOwner } from './MainStreetAdjacencyOwner';
 import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
+import type { LoanPayoff } from './MainStreetLoans';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
+import { addLogShared, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 
 /**
@@ -36,6 +39,13 @@ export function executeCompetitiveWeekStart(
 ): void {
   executeWeekStart(state, skipMarketRefill);
   if (state.players && state.players.length > 0) {
+    // Day-start wallet snapshot per seat (MS-0MVRNW26W0070CP0): the shared
+    // `weekStart*` fields only snapshot the host wallet, so the competitive
+    // round ledger keeps its own per-seat baseline captured before any seat's
+    // MarketPhase runs. That makes each seat's net change cover its own
+    // MarketPhase spending, matching the single-player ledger's day-start
+    // identity. Reporting-only and never serialized.
+    state._competitiveSeatDayStart = captureSeatWallets(state);
     state.activePlayerId = Math.max(0, getFirstActivePlayerId(state));
     // Per-player action budgets: reset each day from staff actions only.
     // Banked actions are a *shared* pool, not baked into the per-seat base
@@ -229,9 +239,9 @@ function mergeMidTurnChallenges(
  * (MS-0MVPWSAMH005LV9R).
  *
  * No failure has been declared yet: the caller presents the offer and resumes
- * through {@link resolveCompetitiveLoanOffer}. `playerIncome` is carried so a
- * resumed closing still presents the per-seat income captured before the
- * pause.
+ * through {@link resolveCompetitiveLoanOffer}. `playerIncome` (and the round
+ * ledger, MS-0MVRNV9Y8008IKGK) are carried so a resumed closing still presents
+ * the per-seat values captured before the pause.
  */
 function pausedCompetitiveLoanOfferResult(
   state: MainStreetState,
@@ -248,7 +258,200 @@ function pausedCompetitiveLoanOfferResult(
     choicePending: false,
     pendingLoanOffer: true,
     playerIncome: base?.playerIncome,
+    playerRoundLedger: base?.playerRoundLedger,
   };
+}
+
+/**
+ * Snapshot of each seat's wallet (coins / reputation / score) at one moment
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * Used for the day-start baseline captured by `executeCompetitiveWeekStart`
+ * and as the pre-closing fallback for closings that never saw a day start, so
+ * the round ledger can reconcile `dayStart + net == closing` per seat.
+ */
+function captureSeatWallets(state: MainStreetState): Map<number, OwnerRoundBalance> {
+  return new Map(
+    (state.players ?? []).map((seat) => [
+      seat.playerId,
+      { coins: seat.coins, reputation: seat.reputation, score: seat.score },
+    ]),
+  );
+}
+
+/**
+ * Records the per-owner incident deltas the shared incident routed to each
+ * seat's wallet (MS-0MVRNW26W0070CP0).
+ *
+ * Called immediately after `applyCompetitiveEventEffects` from both the
+ * normal closing and the deferred dual-choice resume, so a paused-then-resumed
+ * closing still reports the seat's incident share. No-op when no ledger
+ * accumulator exists (single-player / N=1 / an early exit). Reporting-only.
+ *
+ * @param state   Competitive state whose accumulator may hold seats.
+ * @param changes Per-owner deltas returned by `applyCompetitiveEventEffects`.
+ */
+function recordSeatIncidentDeltas(
+  state: MainStreetState,
+  changes: readonly { ownerId: number; coins: number; reputation: number }[],
+): void {
+  const pending = state._competitiveRoundLedger;
+  if (!pending) return;
+  for (const seat of pending.seats) {
+    const routed = changes.find((change) => change.ownerId === seat.ownerId);
+    seat.incidentCoinChange = routed?.coins ?? 0;
+    seat.incidentRepChange = routed?.reputation ?? 0;
+  }
+}
+
+/** An all-zero ongoing-cost breakdown, reused for seats with no expenses. */
+const EMPTY_ONGOING_COSTS: OwnerOngoingCosts = { staff: 0, community: 0, business: 0 };
+
+/**
+ * Captures the competitive round ledger's per-seat values (MS-0MVRNV9Y8008IKGK)
+ * on the transient `state._competitiveRoundLedger` accumulator.
+ *
+ * Called immediately after the per-owner income phase, where each seat's
+ * per-phase income and the pre-closing coin balances are both still available.
+ * The accumulator holds reporting data only — it never feeds the economy — and
+ * is finalised into `TurnResult.playerRoundLedger` at the end of the closing
+ * tail (which also covers the deferred dual-choice resume).
+ *
+ * @param state        Competitive state being closed (mutated: accumulator).
+ * @param playerIncome Per-owner income the closing surfaced, in seat order.
+ * @param walletsBefore Seat wallets captured before the economy ran — the
+ *                     day-start fallback for closings without a day start.
+ * @param ongoingCosts Per-owner ongoing-expense breakdown the closing charged
+ *                     (MS-0MVRNVHJ50095N9Y); absent categories record as zero.
+ */
+function captureRoundLedger(
+  state: MainStreetState,
+  playerIncome: readonly OwnerIncomeResult[],
+  walletsBefore: ReadonlyMap<number, OwnerRoundBalance>,
+  ongoingCosts: ReadonlyMap<number, OwnerOngoingCosts>,
+): void {
+  const dayStart = state._competitiveSeatDayStart ?? walletsBefore;
+  state._competitiveRoundLedger = {
+    turn: state.turn,
+    seats: playerIncome.map((entry) => {
+      let base = 0;
+      let synergy = 0;
+      let reputation = 0;
+      let events = 0;
+      for (const slot of entry.income?.phaseBreakdown?.perSlotBreakdown ?? []) {
+        base += slot.baseIncome;
+        synergy += slot.synergyBonus;
+        reputation += slot.repBonus;
+        for (const delta of slot.eventDeltas) events += delta.delta;
+      }
+      const incomeByPhase = {
+        base: Math.round(base),
+        synergy: Math.round(synergy),
+        reputation: Math.round(reputation),
+        events: Math.round(events),
+      };
+      return {
+        ownerId: entry.ownerId,
+        incomeByPhase,
+        incomeTotal: incomeByPhase.base + incomeByPhase.synergy
+          + incomeByPhase.reputation + incomeByPhase.events,
+        // Day-start baseline for the net rows (MS-0MVRNW26W0070CP0): the
+        // week-start snapshot when the day started normally, else the wallet
+        // captured before this closing's economy ran (absent-safe fallback).
+        dayStart: { ...(dayStart.get(entry.ownerId) ?? { coins: 0, reputation: 0, score: 0 }) },
+        // Income-phase reputation credited to this seat, so the ledger's
+        // reputation residual attributes to the one-off row (not income).
+        incomeRepDelta: entry.income.repDelta ?? 0,
+        // Per-seat expense breakdown (MS-0MVRNVHJ50095N9Y): the amounts the
+        // closing actually charged this seat, split by category. A seat with
+        // no ongoing costs records three zeroes, so the panel always renders
+        // the full row set.
+        ongoingCosts: { ...(ongoingCosts.get(entry.ownerId) ?? EMPTY_ONGOING_COSTS) },
+        // Filled in by `recordSeatIncidentDeltas` once the incident resolves.
+        incidentCoinChange: 0,
+        incidentRepChange: 0,
+      };
+    }),
+  };
+}
+
+/**
+ * Builds the public round ledger from the transient accumulator, leaving it in
+ * place (MS-0MVRNV9Y8008IKGK).
+ *
+ * Used by the paused returns: the deferred resume re-enters the closing tail
+ * and must still find the pre-closing baseline, so the accumulator is only
+ * dropped by a terminal return ({@link takeRoundLedger}).
+ *
+ * @param state Competitive state whose closing is in flight.
+ * @returns The ledger, or `undefined` when no per-seat data was captured
+ *          (single-player / N=1 / a closing that never reached income).
+ */
+function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | undefined {
+  const pending = state._competitiveRoundLedger;
+  if (!pending || pending.seats.length === 0) return undefined;
+  // Turn Summary invariant (MS-0MVRNW5JT0046QI3): a seat eliminated by this
+  // closing (bankruptcy / reputation collapse resolved after the income phase)
+  // no longer plays the round, so it never reaches `playerRoundLedger` and can
+  // never become a ghost row. Seats eliminated before the income phase are
+  // already absent (`playerIncome` filters them).
+  const seats = pending.seats.filter(
+    (seat) => state.players?.[seat.ownerId]?.eliminated !== true,
+  );
+  if (seats.length === 0) return undefined;
+  const owned = countBusinessesOwnedByOwner(state);
+  return {
+    turn: pending.turn,
+    seats: seats.map((seat) => {
+      const closing: OwnerRoundBalance = {
+        coins: Math.round(state.players?.[seat.ownerId]?.coins ?? 0),
+        reputation: Math.round(state.players?.[seat.ownerId]?.reputation ?? 0),
+        score: Math.round(state.players?.[seat.ownerId]?.score ?? 0),
+      };
+      const netCoinChange = closing.coins - seat.dayStart.coins;
+      const netRepChange = closing.reputation - seat.dayStart.reputation;
+      const netScoreChange = closing.score - seat.dayStart.score;
+      const ongoing = seat.ongoingCosts;
+      const ongoingTotal = ongoing.staff + ongoing.community + ongoing.business;
+      return {
+        ownerId: seat.ownerId,
+        businessesOwned: owned[String(seat.ownerId)] ?? 0,
+        incomeByPhase: { ...seat.incomeByPhase },
+        incomeTotal: seat.incomeTotal,
+        ongoingCosts: { ...seat.ongoingCosts },
+        dayStart: { ...seat.dayStart },
+        closing,
+        netCoinChange,
+        netRepChange,
+        netScoreChange,
+        incidentCoinChange: seat.incidentCoinChange,
+        incidentRepChange: seat.incidentRepChange,
+        // The residual reconciles the row exactly, mirroring
+        // `TurnLedger.oneOffDeltas`: everything not attributable to income,
+        // ongoing costs or the incident (MarketPhase spending/earning, loan
+        // repayments, clamped deductions, …).
+        oneOffDeltas: {
+          coins: netCoinChange - seat.incomeTotal - ongoingTotal - seat.incidentCoinChange,
+          reputation: netRepChange - seat.incomeRepDelta - seat.incidentRepChange,
+        },
+      };
+    }),
+  };
+}
+
+/**
+ * Builds the public round ledger and clears the accumulator — the terminal
+ * closing path (MS-0MVRNV9Y8008IKGK).
+ *
+ * The per-seat day-start snapshot is consumed with it (MS-0MVRNW26W0070CP0), so
+ * a closing reached without a fresh `executeCompetitiveWeekStart` falls back to
+ * the pre-closing wallets instead of measuring against a stale day.
+ */
+function takeRoundLedger(state: MainStreetState): CompetitiveRoundLedger | undefined {
+  const ledger = currentRoundLedger(state);
+  state._competitiveRoundLedger = null;
+  state._competitiveSeatDayStart = null;
+  return ledger;
 }
 
 /**
@@ -277,35 +480,49 @@ function finishCompetitiveClosingTail(
   playerIncome?: OwnerIncomeResult[],
   opts?: { skipLoanRepayments?: boolean; skipLoanRepaymentForOwners?: readonly number[] },
 ): TurnResult {
+  // Round ledger (MS-0MVRNV9Y8008IKGK): reporting-only per-seat data captured
+  // when the income phase ran. Paused returns keep the accumulator for the
+  // resume; terminal returns take (and clear) it.
+  const pausedRoundLedger = (): CompetitiveRoundLedger | undefined => currentRoundLedger(state);
   // Phase: LoanRepayment (Bank Loans epic MS-0MVL6DZI0000F6CG, slice
   // MS-0MVPWS885006O5QR): each borrowing seat pays its fixed per-turn amount
   // from its own `PlayerRecord` wallet after the incident and before seat
   // failures are evaluated, so a shortfall feeds the ordinary bankruptcy path
   // and other seats' wallets are untouched. `loansEnabled: false` is a hard
   // no-op (parent AC8).
+  // Retirement reporting (MS-0MW3SMTRO006M86W): the `retiredOut` channel
+  // collects one seat-tagged payoff per loan this closing retires; every
+  // result returned below carries them, and the field stays absent when
+  // nothing retired. Reporting only — the debit, term bookkeeping and log
+  // rows are unchanged.
+  const loanPayoffs: LoanPayoff[] = [];
   if (opts?.skipLoanRepayments !== true) {
     const excluded = opts?.skipLoanRepaymentForOwners;
-    applyLoanRepayments(
-      state,
-      excluded && excluded.length > 0 ? { excludeOwnerIds: excluded } : undefined,
-    );
+    applyLoanRepayments(state, {
+      ...(excluded && excluded.length > 0 ? { excludeOwnerIds: excluded } : {}),
+      retiredOut: loanPayoffs,
+    });
   }
+  /** Attaches this closing's retirements, omitting the field when none. */
+  const withLoanPayoffs = (result: TurnResult): TurnResult =>
+    loanPayoffs.length > 0 ? { ...result, loanPayoffs } : result;
 
   // Seat failures (and the per-seat bailout intercept, MS-0MVPWSAMH005LV9R):
   // AI offers resolve inline; a human offer pauses the closing here.
   const ended = resolveCompetitiveSeatFailures(state);
   if (state.pendingLoanOffer) {
-    return pausedCompetitiveLoanOfferResult(state, {
+    return withLoanPayoffs(pausedCompetitiveLoanOfferResult(state, {
       income,
       incident,
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
-    });
+      playerRoundLedger: pausedRoundLedger(),
+    }));
   }
   if (ended) {
     appendTurnNetRow(state, turnEnded);
-    return {
+    return withLoanPayoffs({
       income,
       incident,
       incidentCoinChange,
@@ -315,13 +532,14 @@ function finishCompetitiveClosingTail(
       newlyCompletedChallenges: [],
       choicePending: false,
       playerIncome,
-    };
+      playerRoundLedger: takeRoundLedger(state),
+    });
   }
   state.phase = 'EndCheck';
   const decayResult = decayActiveEffects(state.activeEffects);
   state.activeEffects = decayResult.active;
   for (const expired of decayResult.expired) {
-    addLog(state, `${expired.description} has expired.`, 'neutral');
+    addLogShared(state, `${expired.description} has expired.`, 'neutral');
     recordMainStreetEvent({ type: 'info', turn: state.turn, message: `${expired.description} has expired.` });
   }
   // Closing-phase EndCheck safety net: attribute any completion caused by the
@@ -337,13 +555,14 @@ function finishCompetitiveClosingTail(
   // Defensive bailout pause (MS-0MVPWSAMH005LV9R): never advance the day while
   // a seat still has a bailout decision to make.
   if (state.pendingLoanOffer) {
-    return pausedCompetitiveLoanOfferResult(state, {
+    return withLoanPayoffs(pausedCompetitiveLoanOfferResult(state, {
       income,
       incident,
       incidentCoinChange,
       incidentRepChange,
       playerIncome,
-    });
+      playerRoundLedger: pausedRoundLedger(),
+    }));
   }
   if (state.gameResult === 'playing') {
     state.turn += 1;
@@ -370,7 +589,7 @@ function finishCompetitiveClosingTail(
   appendTurnNetRow(state, turnEnded);
   // Keep per-player scores fresh for callers that read them after resolution.
   updateCompetitiveScores(state);
-  return {
+  return withLoanPayoffs({
     income,
     incident,
     incidentCoinChange,
@@ -380,7 +599,8 @@ function finishCompetitiveClosingTail(
     newlyCompletedChallenges,
     choicePending: false,
     playerIncome,
-  };
+    playerRoundLedger: takeRoundLedger(state),
+  });
 }
 
 export function resolveCompetitiveClosingPhases(
@@ -429,6 +649,13 @@ export function resolveCompetitiveClosingPhases(
   // Loans taken by the pre-income bailout intercept below must not pay their
   // first instalment in this same closing (mirrors the single-player resume).
   const loansBeforeFailureCheck = new Set((state.loans ?? []).map((loan) => loan.ownerId));
+  // Baseline for the round ledger's per-seat net change (MS-0MVRNV9Y8008IKGK):
+  // each seat's wallet captured before any closing phase touches it. The
+  // ledger prefers the day-start snapshot from `executeCompetitiveWeekStart`
+  // and falls back to this snapshot when the closing was reached without a
+  // day start (MS-0MVRNW26W0070CP0), so paused/closing-only paths stay
+  // absent-safe.
+  const seatWalletsBefore = captureSeatWallets(state);
   const ended = resolveCompetitiveSeatFailures(state);
   const skipLoanRepaymentForOwners = [
     ...(state.loans ?? [])
@@ -476,7 +703,12 @@ export function resolveCompetitiveClosingPhases(
     // only captures the values already applied to each `PlayerRecord`.
     playerIncome = applyCompetitiveIncome(state)
       .filter(r => !state.players![r.ownerId]?.eliminated);
-    applyCompetitiveOngoingCosts(state);
+    const ongoingCosts = applyCompetitiveOngoingCosts(state);
+    // Round ledger (MS-0MVRNV9Y8008IKGK): capture the same per-seat values for
+    // the Turn Summary panel, including the per-category ongoing-cost
+    // breakdown the call above just charged (MS-0MVRNVHJ50095N9Y).
+    // Reporting-only — the accumulator is never read by the economy below.
+    captureRoundLedger(state, playerIncome, seatWalletsBefore, ongoingCosts);
   }
   state.phase = 'IncidentPhase';
   const coinsBefore = state.resourceBank.coins;
@@ -485,9 +717,11 @@ export function resolveCompetitiveClosingPhases(
   const incidentCoinChange = state.resourceBank.coins - coinsBefore;
   const incidentRepChange = state.resourceBank.reputation - repBefore;
   // Route the resolved shared incident to each owner's wallet per-owner
-  // (street-wide resolution semantics retained; CG-0MTIIL6J200291ZQ).
+  // (street-wide resolution semantics retained; CG-0MTIIL6J200291ZQ). The
+  // returned per-owner deltas are reporting data for the round ledger
+  // (MS-0MVRNW26W0070CP0).
   if ((state.players?.length ?? 0) > 1 && incident) {
-    applyCompetitiveEventEffects(state, incident);
+    recordSeatIncidentDeltas(state, applyCompetitiveEventEffects(state, incident));
   }
   // Dual-choice pause (CG-0MTSHG8RP008E128): resolveIncident deferred the
   // drawn incident; stop before EndCheck and surface choicePending.
@@ -502,6 +736,9 @@ export function resolveCompetitiveClosingPhases(
       newlyCompletedChallenges: [],
       choicePending: true,
       playerIncome,
+      // Paused, not finished: keep the accumulator so the resume can measure
+      // the final net change from the pre-closing baseline.
+      playerRoundLedger: currentRoundLedger(state),
     };
   }
   return finishCompetitiveClosingTail(
@@ -589,7 +826,10 @@ export function resolveCompetitivePendingChoice(state: MainStreetState): TurnRes
   // every option whose policy is 'apply' (all CSV content). The legacy
   // accept-only branch is gone — the label no longer determines the effect.
   if (chosenOption?.effectPolicy === 'apply') {
-    applyCompetitiveEventEffects(state, event, state.activePlayerId ?? 0);
+    recordSeatIncidentDeltas(
+      state,
+      applyCompetitiveEventEffects(state, event, state.activePlayerId ?? 0),
+    );
   }
   state.pendingEventChoice = null;
   return finishCompetitiveClosingTail(state, null, null, 0, 0, turnEnded);

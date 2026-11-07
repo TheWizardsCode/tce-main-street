@@ -19,13 +19,15 @@ import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatDuplicatePenal
 import { duplicateIncomeFactor } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
-import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
+import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_FILTER_BTN_GAP, LOG_FILTER_BTN_H, LOG_FILTER_ROW_H, LOG_FILTER_ROW_PAD_X, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
+import { shouldShowLogFilterControls } from '../MainStreetLogFilter';
+import type { LogFilter } from '../MainStreetStateTypes';
 import { buildUpgradeOverlaySpec, circularDistance, sampleShaderGradient, shouldAnimateShaderEffect, wrapShaderPhase } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import { synergyLineEndpoints } from './synergyLineEndpoints';
 import { seatColourToNumber } from '../MainStreetSeatColours';
-import { createGameZone } from '@ui/Renderer';
+import { createActionButton, createGameZone } from '@ui/Renderer';
 import { createContainerClip } from '@ui/ContainerClip';
 import Phaser from 'phaser';
 
@@ -317,6 +319,13 @@ export function createContainers(renderer: MainStreetRendererContext): void {
     s.logContentContainer = s.add.container(0, LOG_TITLE_H + 2);
     s.logContainer.add(s.logContentContainer);
 
+    // Filter-controls row (MS-0MW3PFSMB002EIY6): three mutually exclusive
+    // All / You / AI controls directly beneath the title bar, rebuilt on every
+    // scene creation. Added after the content container so it renders above
+    // scrolled log lines; shown only when `shouldShowLogFilterControls` is
+    // true (competitive 2+ seats) and hidden otherwise.
+    createLogFilterRow(renderer);
+
     // Renderer-aware clip for the scrollable content.
     //
     // Canvas keeps the long-standing `GeometryMask` path: `GeometryMask`
@@ -344,6 +353,167 @@ export function createContainers(renderer: MainStreetRendererContext): void {
     s.input.off('wheel', s.handleLogWheel, s);
     s.input.on('wheel', s.handleLogWheel, s);
   
+}
+
+// ── Activity Log filter controls (MS-0MW3PFSMB002EIY6) ─────
+
+/**
+ * One rendered filter control: the filter value it selects and its
+ * `createActionButton` container (Rectangle background + Text label).
+ */
+interface LogFilterControl {
+  filter: LogFilter;
+  button: Phaser.GameObjects.Container;
+}
+
+/** Active-control treatment — bright gold fill at full alpha, 2 px stroke, bold bright label. */
+const FILTER_ACTIVE_FILL = 0x665522;
+const FILTER_ACTIVE_ALPHA = 1;
+const FILTER_ACTIVE_STROKE = 0xffcc44;
+const FILTER_ACTIVE_STROKE_W = 2;
+const FILTER_ACTIVE_LABEL = '#ffdd88';
+
+/** Inactive-control treatment — dimmed fill, 1 px stroke, normal-weight dim label. */
+const FILTER_INACTIVE_FILL = 0x554422;
+const FILTER_INACTIVE_ALPHA = 0.45;
+const FILTER_INACTIVE_STROKE = 0xaa8855;
+const FILTER_INACTIVE_STROKE_W = 1;
+const FILTER_INACTIVE_LABEL = '#aa9977';
+
+/**
+ * Build the Activity Log filter-controls row.
+ *
+ * Three `createActionButton` controls (All / You / AI) laid out across
+ * `s.layout.logW`: button width is derived from the panel geometry and the
+ * named row constants (`LOG_FILTER_ROW_PAD_X`, `LOG_FILTER_BTN_GAP`,
+ * `LOG_FILTER_BTN_H`) — never a hard-coded panel coordinate. The row is
+ * stored on the scene as `logFilterRow` (with `logFilterControls`) and added
+ * to `logContainer` beneath the title bar.
+ *
+ * Idempotent: an existing (possibly stale, across `scene.restart()`) row is
+ * destroyed first so a rebuild never leaves orphaned game objects or a
+ * duplicate row.
+ */
+function createLogFilterRow(renderer: MainStreetRendererContext): void {
+  const s = renderer.scene;
+
+  // Teardown guard (AC: no orphaned objects / duplicate rows after restart).
+  // Phaser destroys the whole display list on scene shutdown, but a defensive
+  // destroy keeps a double `createContainers` in one scene-life clean too.
+  const prev = s.logFilterRow as Phaser.GameObjects.Container | undefined;
+  if (prev && prev.active) {
+    prev.destroy(true);
+  }
+
+  const row = s.add.container(0, 0).setName('logFilterRow');
+  // Solid strip behind the controls (panel fill) so scrolled log lines never
+  // show through the gaps between buttons; hidden with the whole row in
+  // single-player / tutorial where the log renders as it always has.
+  const strip = s.add.graphics();
+  strip.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+  strip.fillRect(0, LOG_TITLE_H, s.layout.logW, LOG_FILTER_ROW_H);
+  row.add(strip);
+  const btnH = LOG_FILTER_BTN_H;
+  const btnW = Math.max(
+    24,
+    Math.floor((s.layout.logW - LOG_FILTER_ROW_PAD_X * 2 - LOG_FILTER_BTN_GAP * 2) / 3),
+  );
+  const rowTop = LOG_TITLE_H + (LOG_FILTER_ROW_H - btnH) / 2;
+  const controls: LogFilterControl[] = [];
+
+  const makeButton = (filter: LogFilter, label: string, index: number): void => {
+    const x = LOG_FILTER_ROW_PAD_X + index * (btnW + LOG_FILTER_BTN_GAP);
+    const button = createActionButton(
+      s,
+      x,
+      rowTop,
+      btnW,
+      label,
+      () => applyLogFilter(renderer, filter),
+      { height: btnH, fontSize: '11px' },
+    );
+    row.add(button);
+    controls.push({ filter, button });
+  };
+
+  makeButton('all', 'All', 0);
+  makeButton('human', 'You', 1);
+  makeButton('ai', 'AI', 2);
+
+  s.logFilterRow = row;
+  s.logFilterControls = controls;
+  s.logContainer.add(row);
+
+  // Initial paint / visibility (state may already be set at create time).
+  refreshLogFilterRow(renderer);
+}
+
+/**
+ * Apply a filter selection from a control click.
+ *
+ * Sets `scene.logFilter` and re-renders the log through `renderer.refreshLog()`
+ * (which honours the deferral gate — a click during the end-of-turn window
+ * applies on the next render). Clicking the already-active control is a no-op:
+ * no state mutation, no re-render. Hidden modes (single-player / tutorial)
+ * leave the row inert.
+ */
+function applyLogFilter(renderer: MainStreetRendererContext, filter: LogFilter): void {
+  const s = renderer.scene;
+  const row = s.logFilterRow as Phaser.GameObjects.Container | undefined;
+  if (!row || row.visible === false) return;
+  if (s.logFilter === filter) return;
+  s.logFilter = filter;
+  renderer.refreshLog();
+}
+
+/**
+ * Repaint the filter row for the current mode and selection.
+ *
+ * Shows the row only when `shouldShowLogFilterControls(state)` is true and
+ * repaints the active/inactive treatment from `s.logFilter`. Called from
+ * `refreshLog` (so mode changes via `refreshAll` — new game selection, turn
+ * end, tutorial start — keep the row in sync) and at row build time.
+ */
+export function refreshLogFilterRow(renderer: MainStreetRendererContext): void {
+  const s = renderer.scene;
+  const row = s.logFilterRow as Phaser.GameObjects.Container | undefined;
+  const controls = s.logFilterControls as LogFilterControl[] | undefined;
+  if (!row || !controls) return;
+
+  const show = shouldShowLogFilterControls(s.state);
+  row.setVisible(show);
+  if (!show) return;
+
+  for (const control of controls) {
+    paintLogFilterButton(control.button, control.filter === s.logFilter);
+  }
+}
+
+/**
+ * Apply the active/inactive treatment to one filter button.
+ *
+ * The distinction is deliberately more than colour alone: fill alpha, stroke
+ * weight and label weight/brightness all change, so the active control stays
+ * identifiable for colour-blind players (AC — colour is never the sole
+ * carrier of meaning).
+ */
+function paintLogFilterButton(button: Phaser.GameObjects.Container, active: boolean): void {
+  const bg = button.list.find((c) => c.type === 'Rectangle') as
+    | Phaser.GameObjects.Rectangle
+    | undefined;
+  const label = button.list.find((c) => c.type === 'Text') as
+    | Phaser.GameObjects.Text
+    | undefined;
+  if (!bg || !label) return;
+  if (active) {
+    bg.setFillStyle(FILTER_ACTIVE_FILL, FILTER_ACTIVE_ALPHA);
+    bg.setStrokeStyle(FILTER_ACTIVE_STROKE_W, FILTER_ACTIVE_STROKE);
+    label.setFontStyle('bold').setColor(FILTER_ACTIVE_LABEL);
+  } else {
+    bg.setFillStyle(FILTER_INACTIVE_FILL, FILTER_INACTIVE_ALPHA);
+    bg.setStrokeStyle(FILTER_INACTIVE_STROKE_W, FILTER_INACTIVE_STROKE);
+    label.setFontStyle('normal').setColor(FILTER_INACTIVE_LABEL);
+  }
 }
 
 /**

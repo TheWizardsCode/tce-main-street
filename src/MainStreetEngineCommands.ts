@@ -22,12 +22,13 @@ import {
   type TakeLoanOptions,
 } from './MainStreetLoans';
 import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
+import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
-import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
-import { deserializeSkillIds, assignSkillsToApplicant, serializeSkillIds } from './MainStreetStaffSkills';
+import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
-import { addLog, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
+import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
 
 /**
  * Places a card from the player's hand onto an empty tableau slot.
@@ -75,8 +76,10 @@ export function placeFromHand(
   // Cost-at-play (CG-0MSTOATDT009BRX2): moving a card to hand is free, but
   // placing it on the street pays its listed cost (or the optional premium
   // price for same-week composite buy-and-play when no action is available,
-  // CG-0MSTOF1N5005PK2R / CG-0MT24X0SX007RLHN).
-  const price = premiumCost ?? card.cost;
+  // CG-0MSTOF1N5005PK2R / CG-0MT24X0SX007RLHN). The listed path applies the
+  // placement-scoped Delivery Driver adjacency discount (GDD D.4.3 /
+  // MS-0MW3JXF6U00753LB); a caller-supplied premium is already net of it.
+  const price = premiumCost ?? computeEffectiveBusinessPurchaseCost(state, card.cost, slotIndex);
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
   }
@@ -241,8 +244,10 @@ export function canPlaceFromHand(
     return { legal: false, reason: `Slot ${slotIndex} is already occupied.` };
   }
 
-  // Check coin sufficiency against the applicable price (listed or premium)
-  const price = premiumCost ?? card.cost;
+  // Check coin sufficiency against the applicable price (listed or premium).
+  // The listed path applies the placement-scoped Delivery Driver adjacency
+  // discount (GDD D.4.3 / MS-0MW3JXF6U00753LB).
+  const price = premiumCost ?? computeEffectiveBusinessPurchaseCost(state, card.cost, slotIndex);
   if (state.resourceBank.coins < price) {
     return { legal: false, reason: `Insufficient coins to place ${card.name}: need ${price}, have ${state.resourceBank.coins}.` };
   }
@@ -381,9 +386,10 @@ export function applyStaffOngoingCosts(state: MainStreetState, opts?: { apply?: 
 
   let totalCost = 0;
   for (const card of staffCards) {
-    // Operations Manager: -50 of THIS member's own salary (computeStaffSalaryCost).
-    const memberSkills = Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [];
-    totalCost += computeStaffSalaryCost(memberSkills, card.ongoingCost);
+    // Operations Manager: -50 of THIS member's own salary, gated to business
+    // staff — a management-company member's cross-type Operations Manager is
+    // inert (MS-0MW4MSNWR00123OZ AC3).
+    totalCost += computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
   }
   totalCost = roundInt(totalCost * (1 - streetReduction));
 
@@ -394,14 +400,15 @@ export function applyStaffOngoingCosts(state: MainStreetState, opts?: { apply?: 
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      // Turn-level economy row: the per-owner competitive rows carry seat data.
+      addLogShared(
         state,
         `Staff costs: -${actualDeduction} coins (${staffCards.length} staff) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for staff costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -455,14 +462,14 @@ export function applyCommunitySpaceOngoingCosts(state: MainStreetState, opts?: {
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      addLogShared(
         state,
         `Community space costs: -${actualDeduction} coins (${spaceCount} spaces) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for community space costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -521,14 +528,14 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
     }
     if (actualDeduction > 0) {
       // Enriched with the effective deduction delta (CG-0MT5W7UJJ0065MEZ).
-      addLog(
+      addLogShared(
         state,
         `Business costs: -${actualDeduction} coins (${bizCount} businesses) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
     if (actualDeduction < totalCost) {
-      addLog(
+      addLogShared(
         state,
         `Insufficient coins for business costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
@@ -560,31 +567,38 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
  * applyCommunitySpaceOngoingCosts} / {@link applyBusinessOngoingCosts}.
  * Consumes no RNG (deterministic replay, AC3).
  *
+ * Returns the per-owner expense breakdown the closing deducted
+ * (MS-0MVRNVHJ50095N9Y): a `Map` keyed by owner id whose values are the signed
+ * (zero-or-negative) amounts actually charged per category. It is reporting
+ * data only — the wallets, the log lines, the iteration order and the
+ * insufficiency handling are unchanged for every existing caller.
+ *
  * @param state  Competitive game state (players[] wallets mutated in-place).
+ * @returns Per-owner ongoing-cost breakdown (empty for N < 2).
  */
-export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
-  if (!state.players || state.players.length < 2) return;
+export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number, OwnerOngoingCosts> {
+  const breakdown = new Map<number, OwnerOngoingCosts>();
+  if (!state.players || state.players.length < 2) return breakdown;
   const hostReduction = computeStreetOngoingCostReductionPct(getEmployedSpecializationSkills(state));
 
   // Staff salary: charge each owner their own staff's salaries.
   for (const player of state.players) {
     const staffCards = player.staffCards ?? [];
     if (staffCards.length === 0) continue;
-    const ownerSkills = staffCards.flatMap((card) =>
-      Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [],
-    );
+    const ownerSkills = getStreetScopeSkills(staffCards);
     let totalCost = 0;
     for (const card of staffCards) {
-      const memberSkills = Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [];
-      totalCost += computeStaffSalaryCost(memberSkills, card.ongoingCost);
+      totalCost += computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
     }
     totalCost = roundInt(totalCost * (1 - computeStreetOngoingCostReductionPct(ownerSkills)));
     if (totalCost <= 0) continue;
     const actualDeduction = Math.min(totalCost, player.coins);
     player.coins -= actualDeduction;
+    recordOngoingCost(breakdown, player.playerId, 'staff', actualDeduction);
     if (actualDeduction > 0) {
       addLog(
         state,
+        player.playerId,
         `P${player.playerId} Staff costs: -${actualDeduction} coins (${staffCards.length} staff) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -592,6 +606,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     if (actualDeduction < totalCost) {
       addLog(
         state,
+        player.playerId,
         `P${player.playerId} Insufficient coins for staff costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -603,6 +618,11 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
   const grid = state.streetGrid;
   const ownerCosts = new Map<number, number>();
   const ownerCounts = new Map<number, { businesses: number; spaces: number }>();
+  // Raw (pre-reduction) cost per family, per owner — reporting only
+  // (MS-0MVRNVHJ50095N9Y). The combined pass below keeps the deduction and its
+  // single log line byte-identical; the per-family split is derived from these
+  // shares when the breakdown is recorded.
+  const ownerFamilyCosts = new Map<number, { community: number; business: number }>();
   for (let i = 0; i < grid.length; i++) {
     const slot = grid[i];
     if (!slot) continue;
@@ -613,9 +633,16 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     const ownerId = getSlotOwnerId(state, i);
     ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + cost);
     const counts = ownerCounts.get(ownerId) ?? { businesses: 0, spaces: 0 };
-    if (slot.family === 'community-space') counts.spaces += 1;
-    else counts.businesses += 1;
+    const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
+    if (slot.family === 'community-space') {
+      counts.spaces += 1;
+      familyCosts.community += cost;
+    } else {
+      counts.businesses += 1;
+      familyCosts.business += cost;
+    }
     ownerCounts.set(ownerId, counts);
+    ownerFamilyCosts.set(ownerId, familyCosts);
   }
   for (const [ownerId, rawCost] of ownerCosts) {
     const player = state.players[ownerId];
@@ -628,6 +655,18 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     const actualDeduction = Math.min(totalCost, player.coins);
     player.coins -= actualDeduction;
     const counts = ownerCounts.get(ownerId)!;
+    // Split the seat's single deduction across the two families by their raw
+    // cost shares (MS-0MVRNVHJ50095N9Y). The aggregate charge, its clamp and
+    // its log line are unchanged; only the reporting attribution is derived,
+    // with the rounding residual left on the business share so the two parts
+    // always sum to the coins actually deducted.
+    const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
+    const rawTotal = familyCosts.community + familyCosts.business;
+    const communityShare = familyCosts.community > 0 && rawTotal > 0
+      ? Math.min(actualDeduction, roundInt((actualDeduction * familyCosts.community) / rawTotal))
+      : 0;
+    recordOngoingCost(breakdown, ownerId, 'community', communityShare);
+    recordOngoingCost(breakdown, ownerId, 'business', actualDeduction - communityShare);
     const label =
       counts.businesses > 0 && counts.spaces > 0
         ? `${counts.businesses} businesses, ${counts.spaces} spaces`
@@ -637,6 +676,7 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     if (actualDeduction > 0) {
       addLog(
         state,
+        ownerId,
         `P${ownerId} Ongoing costs: -${actualDeduction} coins (${label}) (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
@@ -644,11 +684,38 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): void {
     if (actualDeduction < totalCost) {
       addLog(
         state,
+        ownerId,
         `P${ownerId} Insufficient coins for ongoing costs: owed ${totalCost}, paid ${actualDeduction} (${describeEventEffects(-actualDeduction, 0)})`,
         classifyEffect(-actualDeduction, 0),
       );
     }
   }
+  return breakdown;
+}
+
+/**
+ * Adds one signed ongoing-cost amount to an owner's breakdown entry
+ * (MS-0MVRNVHJ50095N9Y).
+ *
+ * Amounts arrive as the positive coins deducted; the stored value is negated
+ * to match the single-player ledger's signed (zero-or-negative) convention.
+ * `-0` is normalised to `0` so the recorded value compares and serialises
+ * like the single-player rows.
+ *
+ * @param breakdown Per-owner accumulator (mutated).
+ * @param ownerId   Owner / seat the cost was charged to.
+ * @param category  Expense category being recorded.
+ * @param deducted  Coins actually deducted for this category (>= 0).
+ */
+function recordOngoingCost(
+  breakdown: Map<number, OwnerOngoingCosts>,
+  ownerId: number,
+  category: keyof OwnerOngoingCosts,
+  deducted: number,
+): void {
+  const entry = breakdown.get(ownerId) ?? { staff: 0, community: 0, business: 0 };
+  entry[category] += deducted === 0 ? 0 : -deducted;
+  breakdown.set(ownerId, entry);
 }
 
 /**
@@ -756,14 +823,16 @@ export function buyAndPlaceBusiness(
     throw new Error(`Slot ${slotIndex} is already occupied.`);
   }
 
-  // Delivery Driver purchaseCostDiscount (CG-0MUMCVH3N007KT1M): discount the
-  // base cost first, then apply the +50% premium (discount-first rule,
-  // CG-0MTKMGL66004I0PC). When a `priceOverride` is supplied for GM parity it
-  // is the LISTED price, so the street-wide purchase discount still applies
-  // (the override replaces the premium, not the discount).
-  const premiumCost = computeBusinessPurchasePremium(state, card.cost);
+  // Delivery Driver adjacency discount (GDD D.4.3 / MS-0MW3JXF6U00753LB):
+  // discount the base cost first, then apply the +50% premium (discount-first
+  // rule, CG-0MTKMGL66004I0PC). The discount is resolved against the
+  // DESTINATION slot, so it never leaks street-wide. When a `priceOverride`
+  // is supplied for GM parity it is the LISTED price, so the placement's
+  // purchase discount still applies (the override replaces the premium, not
+  // the discount).
+  const premiumCost = computeBusinessPurchasePremium(state, card.cost, slotIndex);
   const price = priceOverride !== undefined
-    ? computeEffectiveBusinessPurchaseCost(state, priceOverride)
+    ? computeEffectiveBusinessPurchaseCost(state, priceOverride, slotIndex)
     : premiumCost;
   if (state.resourceBank.coins < price) {
     throw new Error(`Not enough coins to buy-and-place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
@@ -853,6 +922,9 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  * Validates whether the hired staff member may be placed at the given
  * street-grid slot (CG-0MU3BTSQ8006ZRCU AC3/AC4):
  * - the member must be a hired staff card (present in `state.staffCards`);
+ * - the member must be **business staff**: management-company staff are
+ *   employed by the player and never take a business destination
+ *   (GDD D.4.2, MS-0MW3JXF6U00753LB);
  * - the slot must hold a business/community-space card;
  * - the business name or one of its synergy types must match the staff's
  *   `allowedBusinessTypes` (`staffMatchesBusiness`; absent field = generalist);
@@ -874,6 +946,18 @@ export function canPlaceStaffOnBusiness(
   }
   if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
     return { legal: false, reason: `Invalid slot index: ${slotIndex}.` };
+  }
+  // Type = assignment (GDD D.4.2/D.4.8 §1): management-company staff are
+  // employed by the player and never carry a destination business, so an
+  // attempt to place one is rejected (MS-0MW3JXF6U00753LB). The type comes
+  // from the card's shipped marker (`handSlotsAdded` / `actionsPerTurn`) for
+  // an unplaced member, and from its existing assignment otherwise.
+  const member = state.staffCards[staffIndex]!;
+  if (staffCardScope(member) === 'management-company') {
+    return {
+      legal: false,
+      reason: `${member.name} is management-company staff and cannot be employed at a business.`,
+    };
   }
   const business = state.streetGrid[slotIndex];
   if (!business) {
@@ -1220,7 +1304,7 @@ export function resolveStaffApplicant(state: MainStreetState): void {
   // Assign specialization skills if not already present
   if (!Array.isArray(card.specializationSkillIds)) {
     card.specializationSkillIds = serializeSkillIds(
-      assignSkillsToApplicant(state.rng),
+      assignSkillsToApplicant(state.rng, staffCardScope(card)),
     );
   }
 
@@ -1303,9 +1387,7 @@ export function letGoStaffMember(state: MainStreetState, idx: number): void {
   }
 
   const member = state.staffCards[idx];
-  const skills = Array.isArray((member as any).specializationSkillIds)
-    ? deserializeSkillIds((member as any).specializationSkillIds)
-    : [];
+  const skills = getSalaryScopeSkills(member);
   const salary = computeStaffSalaryCost(skills, member.ongoingCost);
 
   // Deduct salary (clamped at 0) and 1 reputation

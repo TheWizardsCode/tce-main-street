@@ -111,9 +111,29 @@ give **every** unique card name a mapping:
 | Family | Rule | Example |
 |--------|------|---------|
 | `business`, `community-space`, `staff` | Direct name match | `Bakery` → `Bakery` |
-| `upgrade` | `targetBusiness` art (duplicated under the upgrade's `newDisplayName`) | `Upgrade to Patisserie` → `Bakery` |
+| `upgrade` | Its **own** copy of the `targetBusiness` art, named `<newDisplayName>_upgrade_level<#>` (`#` = the row's `requiredLevel`, 0-based); falls back to the target's sprite until the copy exists | `Upgrade to Patisserie` → `Patisserie_upgrade_level0` |
 | `event` | Its exact-name sprite when one exists, otherwise the `(trigger, targetSynergy)` category sprite `<trigger>__<synergy>` | `Tax Audit` → `Tax Audit`; `Rainy Day` → `Incident__Food` |
 | any | Pre-existing spelling alias is preserved | `Labor Shortage` → `Labour Shortage` |
+
+**Per-upgrade art copies (Q11, producer decision 2026-10-27).** Each of the 39
+upgrade cards owns a source sprite `src/sprites/<newDisplayName>_upgrade_level<#>_1024_x_1024.png`,
+a literal copy of the `targetBusiness` art, so an artist can differentiate one
+upgrade without touching the business it enhances. Create or refresh the copies
+with `node src/scripts/generate-main-street-card-art.mjs --copy-upgrades`
+(`--dry-run` to preview); existing files are never overwritten. While a copy is
+byte-for-byte identical to its target it is embedded **once**: the generator
+records `<copy> → <canonical sprite>` in the map's `spriteAliases` table and
+both consumers follow that one-step redirect before the art lookup, so the
+shared bitmap is not duplicated in `card-art-map.json` (~0.4 MB saved).
+Replacing a copy's bytes with bespoke art retires its `spriteAliases` entry on
+the next regeneration, with no hand-editing of the generated map.
+
+The copies add **no new licensed material**: each is a byte-identical duplicate
+of the project-owned CC0 art it enhances, so the licence/attribution recorded
+for the base sprites also covers them. `public/assets/CREDITS.md` documents the
+Main Street card art; it is a symlink into the `core` engine submodule, so the
+credits line for these copies is tracked in the engine repository
+(`MS-0MW5DRGVF001AWZ8`) rather than hand-edited here.
 
 Genuinely-unknown/future cards still fall back to `Fallback` via
 `resolveCardArtName()`, and the `Fallback` sprite stays in the map.

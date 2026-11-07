@@ -9,10 +9,20 @@ import { describe, it, expect } from 'vitest';
 import {
   generateBusinessCardSvg,
   generateCardSvgFromCsvRow,
+  generateUpgradeCardSvg,
   replaceCardTitleInSvg,
 } from '../../src/scenes/MainStreetCardSvgGenerator';
-import { CARD_FACE_PALETTE, cardFaceBackground } from '../../src/MainStreetCards';
-import type { BusinessCard, CommunitySpaceCard, SynergyType } from '../../src/MainStreetCards';
+import {
+  CARD_FACE_PALETTE,
+  UPGRADE_FACE_BASE_COLOUR,
+  cardFaceBackground,
+  getBusinessTemplates,
+  getCommunitySpaceTemplates,
+  getUpgradeTemplates,
+  resolveUpgradeFaceColours,
+  synergyColor,
+} from '../../src/MainStreetCards';
+import type { BusinessCard, CommunitySpaceCard, SynergyType, UpgradeCard } from '../../src/MainStreetCards';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -385,5 +395,202 @@ describe('replaceCardTitleInSvg - display-name variant faces (CG-0MT24MHGZ0025O2
 
   it('returns the input unchanged when empty', () => {
     expect(replaceCardTitleInSvg('', 'Patisserie')).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MS-0MW1ZSC7U000V5MW — Service colour + checkerboard upgrade faces
+// ---------------------------------------------------------------------------
+
+function makeUpgrade(overrides: Partial<UpgradeCard> = {}): UpgradeCard {
+  return {
+    family: 'upgrade',
+    id: 'upg-test',
+    name: 'Upgrade to Test',
+    targetBusiness: 'Bakery',
+    cost: 300,
+    incomeBonus: 100,
+    synergyRangeBonus: 1,
+    description: 'A test upgrade',
+    ...overrides,
+  };
+}
+
+/** Extract the upgrade checkerboard `<g>` markup from a generated SVG. */
+function extractCheckerMarkup(svg: string): string {
+  const match = svg.match(
+    /<g clip-path="url\(#ms-face-clip-[^"]*\)" class="ms-upgrade-checker">[\s\S]*?<\/g>/,
+  );
+  return match ? match[0] : '';
+}
+
+/** Distinct fill colours used by the checkerboard group (empty when absent). */
+function checkerColours(svg: string): string[] {
+  const markup = extractCheckerMarkup(svg);
+  const fills = [...markup.matchAll(/fill="(#[0-9a-fA-F]{6})"/g)].map((m) => m[1].toLowerCase());
+  return [...new Set(fills)];
+}
+
+describe('MS-0MW1ZSC7U000V5MW — Service is a pink / magenta card family', () => {
+  it('uses a pink/magenta face colour no other synergy type uses', () => {
+    const service = CARD_FACE_PALETTE.Service;
+    expect(service).toBe('#AD1457');
+    const others = Object.entries(CARD_FACE_PALETTE)
+      .filter(([key]) => key !== 'Service' && key !== 'default')
+      .map(([, colour]) => colour);
+    expect(others).not.toContain(service);
+  });
+
+  it('uses the matching pink/magenta bright accent (synergyColor)', () => {
+    expect(synergyColor('Service')).toBe(0xC2185B);
+  });
+
+  it('renders a Service business face in the new pink/magenta', () => {
+    const svg = generateBusinessCardSvg(makeBiz({ synergyTypes: ['Service'] }));
+    expect(svg).toContain('rx="6" ry="6" fill="#AD1457"');
+  });
+
+  it('no longer renders Service in the upgrade-family purple', () => {
+    const svg = generateBusinessCardSvg(makeBiz({ synergyTypes: ['Service'] }));
+    expect(svg).not.toContain('fill="#6A1B9A"');
+    expect(svg).not.toContain('fill="#6B4C9A"');
+  });
+});
+
+describe('MS-0MW1ZSC7U000V5MW — resolveUpgradeFaceColours', () => {
+  const cards = [...getBusinessTemplates(), ...getCommunitySpaceTemplates()];
+
+  it('returns violet + the single synergy colour for a single-synergy target', () => {
+    expect(resolveUpgradeFaceColours('Bakery', cards)).toEqual([
+      UPGRADE_FACE_BASE_COLOUR,
+      CARD_FACE_PALETTE.Food,
+    ]);
+  });
+
+  it('returns violet + both synergy colours for a bridge target', () => {
+    expect(resolveUpgradeFaceColours('Cafe', cards)).toEqual([
+      UPGRADE_FACE_BASE_COLOUR,
+      CARD_FACE_PALETTE.Food,
+      CARD_FACE_PALETTE.Culture,
+    ]);
+  });
+
+  it('resolves community-space targets too', () => {
+    expect(resolveUpgradeFaceColours('Town Fountain', cards)).toEqual([
+      UPGRADE_FACE_BASE_COLOUR,
+      CARD_FACE_PALETTE.Culture,
+    ]);
+  });
+
+  it('matches the target name case-insensitively and trims whitespace', () => {
+    expect(resolveUpgradeFaceColours('  bakery  ', cards)).toEqual(
+      resolveUpgradeFaceColours('Bakery', cards),
+    );
+  });
+
+  it('returns no colours for an unknown, empty or missing target', () => {
+    expect(resolveUpgradeFaceColours('Nonexistent Business', cards)).toEqual([]);
+    expect(resolveUpgradeFaceColours('', cards)).toEqual([]);
+    expect(resolveUpgradeFaceColours(undefined, cards)).toEqual([]);
+    expect(resolveUpgradeFaceColours(null, cards)).toEqual([]);
+  });
+
+  it('resolves every shipped upgrade target (no silent fallbacks in the data)', () => {
+    for (const upgrade of getUpgradeTemplates()) {
+      const colours = resolveUpgradeFaceColours(upgrade.targetBusiness, cards);
+      expect(colours.length, `${upgrade.id} (${upgrade.targetBusiness})`).toBeGreaterThanOrEqual(2);
+      expect(colours[0], upgrade.id).toBe(UPGRADE_FACE_BASE_COLOUR);
+    }
+  });
+});
+
+describe('MS-0MW1ZSC7U000V5MW — checkerboard upgrade card faces', () => {
+  it('renders a two-colour checkerboard for a single-synergy target', () => {
+    const svg = generateUpgradeCardSvg(makeUpgrade({ targetBusiness: 'Bakery' }));
+    expect(extractCheckerMarkup(svg)).not.toBe('');
+    expect(checkerColours(svg)).toEqual(
+      expect.arrayContaining([
+        UPGRADE_FACE_BASE_COLOUR.toLowerCase(),
+        CARD_FACE_PALETTE.Food.toLowerCase(),
+      ]),
+    );
+    expect(checkerColours(svg)).toHaveLength(2);
+  });
+
+  it('renders all three colours for a bridge target (violet + both synergies)', () => {
+    const svg = generateUpgradeCardSvg(makeUpgrade({ targetBusiness: 'Cafe' }));
+    expect(checkerColours(svg)).toHaveLength(3);
+    expect(checkerColours(svg)).toEqual(
+      expect.arrayContaining([
+        UPGRADE_FACE_BASE_COLOUR.toLowerCase(),
+        CARD_FACE_PALETTE.Food.toLowerCase(),
+        CARD_FACE_PALETTE.Culture.toLowerCase(),
+      ]),
+    );
+  });
+
+  it('clips the checkerboard to the rounded card face', () => {
+    const svg = generateUpgradeCardSvg(makeUpgrade({ id: 'upg-patisserie' }));
+    expect(svg).toContain('ms-face-clip-upg-patisserie');
+    expect(svg).toContain('clip-path="url(#ms-face-clip-upg-patisserie)"');
+  });
+
+  it('degrades to the flat violet face for an unresolvable target without throwing', () => {
+    const svg = generateUpgradeCardSvg(
+      makeUpgrade({ targetBusiness: 'Nonexistent Business' }),
+    );
+    expect(extractCheckerMarkup(svg)).toBe('');
+    expect(svg).toContain(`rx="6" ry="6" fill="${UPGRADE_FACE_BASE_COLOUR}"`);
+    expect(svg).toContain('for Nonexistent Business');
+  });
+
+  it('degrades to the flat violet face when the target is missing', () => {
+    const svg = generateUpgradeCardSvg(
+      makeUpgrade({ targetBusiness: '' }),
+    );
+    expect(extractCheckerMarkup(svg)).toBe('');
+    expect(svg).toContain(`rx="6" ry="6" fill="${UPGRADE_FACE_BASE_COLOUR}"`);
+  });
+
+  it('keeps the title, target line and cost badge legible above the pattern', () => {
+    const svg = generateUpgradeCardSvg(makeUpgrade({ name: 'Upgrade to Patisserie', cost: 300 }));
+    expect(svg).toContain('>Upgrade to Patisserie</text>');
+    expect(svg).toContain('>for Bakery</text>');
+    expect(svg).toContain('<circle cx="124" cy="64" r="12"');
+    // The face sits behind the overlays and text (document order).
+    expect(svg.indexOf('ms-upgrade-checker')).toBeLessThan(svg.indexOf('>Upgrade to Patisserie</text>'));
+    expect(svg.indexOf('ms-upgrade-checker')).toBeLessThan(svg.indexOf('for Bakery'));
+  });
+
+  it('still embeds the card art above the checkerboard', () => {
+    const svg = generateUpgradeCardSvg(makeUpgrade());
+    expect(svg).toContain('<image');
+    expect(svg.indexOf('ms-upgrade-checker')).toBeLessThan(svg.indexOf('<image'));
+  });
+
+  it('renders the same checkerboard from the CSV-row path as the runtime path', () => {
+    const runtime = generateUpgradeCardSvg(
+      makeUpgrade({ id: 'upg-agreement', targetBusiness: 'Cafe' }),
+    );
+    const csvRow = generateCardSvgFromCsvRow({
+      id: 'upg-agreement',
+      name: 'Upgrade to Test',
+      family: 'upgrade',
+      cost: '300',
+      targetBusiness: 'Cafe',
+    });
+    expect(extractCheckerMarkup(csvRow)).toBe(extractCheckerMarkup(runtime));
+  });
+
+  it('falls back to the flat violet face from the CSV-row path too', () => {
+    const csvRow = generateCardSvgFromCsvRow({
+      id: 'upg-unknown',
+      name: 'Upgrade to Test',
+      family: 'upgrade',
+      cost: '300',
+      targetBusiness: 'Nonexistent Business',
+    });
+    expect(extractCheckerMarkup(csvRow)).toBe('');
+    expect(csvRow).toContain(`rx="6" ry="6" fill="${UPGRADE_FACE_BASE_COLOUR}"`);
   });
 });

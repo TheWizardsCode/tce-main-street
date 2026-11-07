@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   addLog,
+  addLogShared,
   createCompetitiveState,
   deserializeMainStreetState,
   resolveLogSeatColour,
@@ -117,10 +118,14 @@ describe('addLog seat prefixes', () => {
     expect(entry.seatColour).toBe(human.colour);
   });
 
-  it('leaves the seat fields undefined for a plain (shared) entry', () => {
+  it('leaves the seat fields undefined for a shared (opted-out) entry', () => {
     const state = competitive();
 
-    addLog(state, 'Turn 1 totals: 10 coins', 'neutral');
+    // The attribution decision is explicit at the call site: shared /
+    // turn-level entries opt out through the named helper
+    // (MS-0MW3PFQ4L0046Q3K AC4); the plain overload attributes to the acting
+    // seat.
+    addLogShared(state, 'Turn 1 totals: 10 coins', 'neutral');
 
     const entry = state.activityLog[state.activityLog.length - 1]!;
     expect(entry.text).toBe('Turn 1 totals: 10 coins');

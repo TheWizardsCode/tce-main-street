@@ -27,6 +27,16 @@
  *   (-50 rep), skill-risk-manager (-15% probability), skill-security-
  *   consultant (theft/loss immunity on the home business).
  *
+ * **Staff-type scope gate (MS-0MW4MSNWR00123OZ):** every skill takes effect
+ * only from a member whose type matches the skill's scope. Business staff
+ * (an `employedAtSlot` link) realise business-scope skills, scoped to their
+ * business; management-company staff (no `employedAtSlot`) realise
+ * management-company-scope skills, scoped to the player/street. The gate is
+ * applied by the aggregation helpers ({@link getEmployedSpecializationSkills},
+ * {@link getEmployedSpecializationSkillsForBusiness},
+ * {@link getSalaryScopeSkills}), so a skill held cross-type is inert in every
+ * consumer without per-consumer special-casing.
+ *
  * @module
  */
 
@@ -35,6 +45,8 @@ import type { SpecializationSkill } from './MainStreetStaffSkills';
 import { deserializeSkillIds } from './MainStreetStaffSkills';
 import { roundInt } from './MainStreetDifficulty';
 import type { MainStreetState } from './MainStreetState';
+import type { GridDims } from './MainStreetAdjacencyGeometry';
+import { resolveNeighbors } from './MainStreetAdjacencyGeometry';
 
 // ── Buff Profiles ───────────────────────────────────────────
 
@@ -127,6 +139,12 @@ export const TAX_AUDIT_ACCOUNTANT_RATE = 0.25;
  * Computes the per-business buff bundle for one business from the employed
  * skill set. Pure: never mutates `profile` or any game state.
  *
+ * Callers pass the gated per-business pool
+ * ({@link getEmployedSpecializationSkillsForBusiness}), which carries only
+ * business-scope skills from members employed at the business, so a
+ * management-company-scope skill can never reach this fold
+ * (MS-0MW4MSNWR00123OZ AC2/AC4).
+ *
  * @param skills  Employed specialization skills (one or more staff members).
  * @param profile Immutable per-business inputs.
  * @returns The buff bundle to fold into income/reputation/cost computations.
@@ -193,54 +211,385 @@ export function computePerBusinessSkillBuffs(
   return { income, reputation, ongoingCosts, incidents };
 }
 
-// ── Street / engine-level buff helpers ──────────────────────
+// ── Staff-type scope gate (MS-0MW4MSNWR00123OZ) ─────────────
+//
+// The two-type model (GDD D.4.2/D.4.8) makes a specialization skill take
+// effect ONLY from a member whose type matches the skill's scope:
+//   - business staff (an `employedAtSlot` link) realise business-scope skills,
+//     scoped to the employing business;
+//   - management-company staff (no `employedAtSlot`) realise
+//     management-company-scope skills, scoped to the player/street.
+// The gate is applied in the aggregation helpers below — the single place
+// every consumer reads skills from — so no consumer needs special-casing
+// (AC4). A skill assigned cross-type (existing save / hand-built fixture) is
+// therefore inert. Type is derived from `employedAtSlot` presence, so no new
+// persisted field is needed (AC5).
 
 /**
- * Flattens the specialization skills of every currently employed staff
- * member (hired cards in `state.staffCards`) into one skill list — the
- * STREET-WIDE aggregation used for buffs that are not business-scoped
- * (cost-cutter, incident mitigation, brand-ambassador, negotiator,
- * ops-manager salary, networker, tech-guru). Skills are read from the
- * card's locked `specializationSkillIds` (I3); members without the field
- * (legacy saves / hand-built fixtures) contribute nothing.
+ * Resolves a staff card's locked skill roster, tolerating legacy/unknown ids.
  *
- * Per-business income/reputation buffs use
- * {@link getEmployedSpecializationSkillsForBusiness} instead, so hand-slot
- * staff (no `employedAtSlot`) never leak income/rep buffs onto the street
- * (CG-0MSTOATDU006UGAX).
+ * A stale/unknown skill id on a saved member must not break the income phase;
+ * the member's skills are skipped (documented forward-compat path).
  */
-export function getEmployedSpecializationSkills(state: MainStreetState): SpecializationSkill[] {
-  return (state.staffCards ?? []).flatMap(card => {
-    const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
-    try {
-      return deserializeSkillIds(ids);
-    } catch {
-      // A stale/unknown skill id on a saved member must not break the income
-      // phase; skip the member's skills (documented forward-compat path).
-      return [];
-    }
-  });
+function resolveCardSkills(card: StaffCard): SpecializationSkill[] {
+  const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
+  try {
+    return deserializeSkillIds(ids);
+  } catch {
+    return [];
+  }
 }
 
 /**
- * Flattens the specialization skills of ONLY the staff member(s) employed at
- * the given street-grid slot (`employedAtSlot === slotIndex`). Per-business
+ * True when a staff card is business staff: it carries an `employedAtSlot`
+ * link. Management-company staff have no slot (the two-type model's runtime
+ * determinant — GDD D.4.2/D.4.8; no persisted type field).
+ */
+export function isBusinessStaffCard(card: StaffCard): boolean {
+  return card.employedAtSlot !== undefined;
+}
+
+/**
+ * Management-company-scope (player/street-scope) skills the given members can
+ * realise. A skill takes effect only from a management-company member, i.e.
+ * one with no `employedAtSlot`: a management-company-scope skill held by
+ * business staff is inert (Cost Cutter, Negotiator, Brand Ambassador, the
+ * four incident-mitigation skills and the Town Gossip baseline), and a
+ * business-scope skill is never street-wide (MS-0MW4MSNWR00123OZ AC1).
+ *
+ * @param cards Staff members to aggregate (e.g. `state.staffCards`).
+ * @returns The realisable management-company-scope skills, in card order.
+ */
+export function getStreetScopeSkills(cards: readonly StaffCard[]): SpecializationSkill[] {
+  return cards.flatMap(card =>
+    isBusinessStaffCard(card)
+      ? []
+      : resolveCardSkills(card).filter(skill => skill.scope === 'management-company'),
+  );
+}
+
+/**
+ * Business-scope skills of the given members. Callers pass the members
+ * employed at ONE business (the per-business `employedStaff` source of truth,
+ * falling back to `employedAtSlot` links), so membership itself establishes
+ * the business-staff type; the gate here is the skill's scope — a
+ * management-company-scope skill held by business staff is filtered out and
+ * produces no per-business income, reputation or ongoing-cost buff
+ * (MS-0MW4MSNWR00123OZ AC2).
+ *
+ * @param cards Members employed at one business.
+ * @returns The realisable business-scope skills, in member order.
+ */
+export function getBusinessScopeSkills(cards: readonly StaffCard[]): SpecializationSkill[] {
+  return cards.flatMap(card => resolveCardSkills(card).filter(skill => skill.scope === 'business'));
+}
+
+/**
+ * Business-scope skills a member can realise for its own salary (the
+ * Operations Manager discount): only business staff (an `employedAtSlot`
+ * link) discount a business staffing cost, so a management-company member's
+ * cross-type Operations Manager is inert (MS-0MW4MSNWR00123OZ AC3).
+ *
+ * @param card The member whose salary is being charged.
+ * @returns The realisable business-scope skills (empty for company staff).
+ */
+export function getSalaryScopeSkills(card: StaffCard): SpecializationSkill[] {
+  return isBusinessStaffCard(card) ? getBusinessScopeSkills([card]) : [];
+}
+
+// ── Business-staff per-business card buffs (GDD D.4.3/D.4.8) ─
+//
+// The card-level business-staff abilities (Baker, Chef, Barista, Florist,
+// Mechanic, Event Planner, PR Officer, Marketing Consultant, Customer Service
+// Rep, IT Specialist, Delivery Driver and the three incident roles) resolve
+// **per business**: an effect either lands on the employing business (`own`)
+// or on each of its 8-way neighbours (`adjacent`) — never street-wide
+// (GDD D.4.8 §2). They are folded in at income/incident/purchase time and are
+// never written into a card's cached `currentIncome` / `synergyRangeBonus`,
+// so hiring or moving staff never leaves a stale cache
+// (MS-0MW3JXF6U00753LB).
+
+/** The grid dimensions the adjacency resolver should use for this state. */
+function stateGridDims(state: MainStreetState): GridDims | undefined {
+  return state.streetGridCols && state.streetGridRows
+    ? { cols: state.streetGridCols, rows: state.streetGridRows }
+    : undefined;
+}
+
+/**
+ * The staff members employed at one street-grid slot.
+ *
+ * Reads the per-business `employedStaff` source of truth
+ * (CG-0MTIOLY2A0092OT1) and falls back to `employedAtSlot` links for legacy
+ * in-memory states / hand-built fixtures — the same semantics as
+ * `getEmployedStaffForBusiness` and
+ * {@link getEmployedSpecializationSkillsForBusiness}.
+ */
+function getMembersAtSlot(state: MainStreetState, slotIndex: number): StaffCard[] {
+  const business = state.streetGrid[slotIndex];
+  if (business && Array.isArray((business as { employedStaff?: unknown }).employedStaff)) {
+    return (business as { employedStaff: StaffCard[] }).employedStaff;
+  }
+  return (state.staffCards ?? []).filter(card => card.employedAtSlot === slotIndex);
+}
+
+/** The 8-way neighbouring slot indices of `slotIndex` in this state's grid. */
+function adjacentSlotIndices(state: MainStreetState, slotIndex: number): number[] {
+  return resolveNeighbors(slotIndex, 1, stateGridDims(state));
+}
+
+/**
+ * True when a business matches a staff effect's type filter.
+ *
+ * Both specific business names (e.g. `Flower Shop`) and synergy types (e.g.
+ * `Commerce`) are valid filter tokens, matching `allowedBusinessTypes`
+ * semantics. An empty/absent filter matches every business.
+ */
+function businessMatchesTypes(
+  business: { readonly name?: string; readonly synergyTypes?: readonly string[] } | null | undefined,
+  types: readonly string[] | undefined,
+): boolean {
+  if (!types || types.length === 0) return true;
+  if (!business) return false;
+  const wanted = types.map(t => t.toLowerCase());
+  if (business.name && wanted.includes(business.name.toLowerCase())) return true;
+  return (business.synergyTypes ?? []).some(synergy => wanted.includes(String(synergy).toLowerCase()));
+}
+
+/**
+ * Per-business card buffs contributed by staff employed at (and around) one
+ * street-grid slot (MS-0MW3JXF6U00753LB).
+ *
+ * `incomeFlat` / `reputationFlat` already include both sources:
+ *  - the slot's own business-staff `own`-targeted effects, and
+ *  - the `adjacent`-targeted effects of staff employed at the 8 neighbours,
+ *    filtered by the effect's type list.
+ */
+export interface BusinessStaffBuffs {
+  /** Flat coins per turn added to this business's income. */
+  readonly incomeFlat: number;
+  /** Fractional income boost (0.2 = +20%) on this business's cached income. */
+  readonly incomePercent: number;
+  /** Flat reputation per turn added to this business. */
+  readonly reputationFlat: number;
+  /** Fraction of this business's reputation per turn added (0.1 = +10%). */
+  readonly reputationPercent: number;
+  /** Extra synergy range (slots) for this business (IT Specialist +1). */
+  readonly synergyRangeBonus: number;
+}
+
+/** One business's incident mitigation contributed by its local cluster. */
+export interface BusinessIncidentMitigation {
+  /** Share of incident coin damage removed (0.1 = -10%). */
+  readonly coinDamageReductionPct: number;
+  /** Flat incident reputation damage removed (floored at 0 by the consumer). */
+  readonly reputationDamageReductionFlat: number;
+  /** Share of the incident draw averted for this business (0.1 = -10%). */
+  readonly frequencyReductionPct: number;
+}
+
+/** A fresh zero-valued buff bundle (a slot with no business staff). */
+function emptyBusinessStaffBuffs(): BusinessStaffBuffs {
+  return {
+    incomeFlat: 0,
+    incomePercent: 0,
+    reputationFlat: 0,
+    reputationPercent: 0,
+    synergyRangeBonus: 0,
+  };
+}
+
+/**
+ * Computes the per-business card buffs for one street-grid slot
+ * (MS-0MW3JXF6U00753LB).
+ *
+ * Reads `own`-targeted buffs from the slot's employees and `adjacent`-targeted
+ * buffs from the 8 neighbours' employees (filtered by the effect's type list),
+ * so a Barista employed next door adds coins to THIS business while a Barista
+ * elsewhere on the street does not (GDD D.4.8 §2).
+ *
+ * Pure: never mutates state and consumes no RNG, so the income phase can
+ * recompute it on demand without invalidating adjacency caches.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index of the receiving business.
+ * @returns The per-business buff bundle (zeroed when no staff contribute).
+ */
+export function computeBusinessStaffBuffs(
+  state: MainStreetState,
+  slotIndex: number,
+): BusinessStaffBuffs {
+  const self = state.streetGrid[slotIndex];
+  let incomeFlat = 0;
+  let incomePercent = 0;
+  let reputationFlat = 0;
+  let reputationPercent = 0;
+  let synergyRangeBonus = 0;
+  let hasAny = false;
+
+  for (const member of getMembersAtSlot(state, slotIndex)) {
+    if ((member.incomeBonusTarget ?? 'own') === 'own') {
+      if (member.incomeBonus) {
+        incomeFlat += member.incomeBonus;
+        hasAny = true;
+      }
+    }
+    if (member.incomePercent) {
+      incomePercent += member.incomePercent;
+      hasAny = true;
+    }
+    if ((member.reputationBonusTarget ?? 'own') === 'own') {
+      if (member.reputationBonus) {
+        reputationFlat += member.reputationBonus;
+        hasAny = true;
+      }
+    }
+    if (member.reputationPercent) {
+      reputationPercent += member.reputationPercent;
+      hasAny = true;
+    }
+    if (member.synergyRangeBonus) {
+      synergyRangeBonus += member.synergyRangeBonus;
+      hasAny = true;
+    }
+  }
+
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      if (member.incomeBonus && member.incomeBonusTarget === 'adjacent') {
+        if (businessMatchesTypes(self, member.incomeBonusTypes)) {
+          incomeFlat += member.incomeBonus;
+          hasAny = true;
+        }
+      }
+      if (member.reputationBonus && member.reputationBonusTarget === 'adjacent') {
+        reputationFlat += member.reputationBonus;
+        hasAny = true;
+      }
+    }
+  }
+
+  if (!hasAny) return emptyBusinessStaffBuffs();
+  return { incomeFlat, incomePercent, reputationFlat, reputationPercent, synergyRangeBonus };
+}
+
+/**
+ * Incident mitigation contributed to one business by business staff
+ * (Security Guard, Maintenance Worker, Health & Safety Inspector — GDD D.4.3).
+ *
+ * `own`-scoped effects apply only from the business's OWN employees;
+ * `cluster`-scoped effects also apply from staff employed at its 8-way
+ * neighbours. Management-company incident skills are a separate (street-wide)
+ * fold and are not included here.
+ *
+ * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index of the protected business.
+ * @returns The mitigation bundle (zeroed when no staff protect the business).
+ */
+export function computeBusinessIncidentMitigation(
+  state: MainStreetState,
+  slotIndex: number,
+): BusinessIncidentMitigation {
+  let coinDamageReductionPct = 0;
+  let reputationDamageReductionFlat = 0;
+  let frequencyReductionPct = 0;
+
+  const apply = (member: StaffCard): void => {
+    const effect = member.incidentEffect;
+    if (!effect) return;
+    if (effect.kind === 'coin') coinDamageReductionPct += effect.amount;
+    else if (effect.kind === 'reputation') reputationDamageReductionFlat += effect.amount;
+    else frequencyReductionPct += effect.amount;
+  };
+
+  for (const member of getMembersAtSlot(state, slotIndex)) apply(member);
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      if (member.incidentEffect?.target === 'cluster') apply(member);
+    }
+  }
+
+  return { coinDamageReductionPct, reputationDamageReductionFlat, frequencyReductionPct };
+}
+
+/**
+ * Strongest per-business incident-frequency reduction among `slotIndices`
+ * (the Health & Safety Inspector's -10%, GDD D.4.3).
+ *
+ * The incident resolver draws ONE avert roll per turn, so the strongest
+ * protector among the incident's candidate businesses decides it — several
+ * inspectors never stack into multiple rolls. Pure; consumes no RNG.
+ *
+ * @param state       Current game state (read-only).
+ * @param slotIndices Candidate businesses the incident could hit.
+ * @returns Fraction of the draw averted (`0` when no business protects itself).
+ */
+export function computeIncidentFrequencyReduction(
+  state: MainStreetState,
+  slotIndices: readonly number[],
+): number {
+  return slotIndices.reduce(
+    (max, slot) => Math.max(max, computeBusinessIncidentMitigation(state, slot).frequencyReductionPct),
+    0,
+  );
+}
+
+/**
+ * Flat purchase discount for placing a business at `slotIndex`, contributed by
+ * Delivery Drivers employed at the 8 neighbouring businesses
+ * (GDD D.4.3: "-50 coins on the purchase cost of any business placed adjacent
+ * to its own business").
+ *
+ * Clamped at 0, mirroring the legacy street-wide aggregation it replaces.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot receiving the new business.
+ * @returns Non-negative flat coin discount for this placement.
+ */
+export function computeAdjacentPurchaseDiscount(
+  state: MainStreetState,
+  slotIndex: number,
+): number {
+  let total = 0;
+  for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
+    for (const member of getMembersAtSlot(state, neighbourIndex)) {
+      total += member.adjacencyPurchaseDiscount ?? 0;
+    }
+  }
+  return Math.max(0, total);
+}
+
+// ── Street / engine-level buff helpers ──────────────────────
+
+/**
+ * Flattens the management-company-scope specialization skills of every
+ * management-company staff member (hired cards in `state.staffCards` with no
+ * `employedAtSlot`) into one skill list — the STREET-WIDE aggregation used for
+ * buffs that are not business-scoped (cost-cutter, incident mitigation,
+ * brand-ambassador, negotiator). Skills are read from the card's locked
+ * `specializationSkillIds` (I3); members without the field (legacy saves /
+ * hand-built fixtures) contribute nothing.
+ *
+ * The staff-type gate lives here (see {@link getStreetScopeSkills}), so a
+ * business-staff member's management-company-scope skill never leaks a
+ * player/street effect, and per-business buffs use
+ * {@link getEmployedSpecializationSkillsForBusiness} instead
+ * (MS-0MW4MSNWR00123OZ AC1/AC4).
+ */
+export function getEmployedSpecializationSkills(state: MainStreetState): SpecializationSkill[] {
+  return getStreetScopeSkills(state.staffCards ?? []);
+}
+
+/**
+ * Flattens the business-scope specialization skills of ONLY the staff
+ * member(s) employed at the given street-grid slot. Per-business
  * income/reputation buffs in `applyIncome` are derived from this per-slot
  * pool, so a Chef employed at one Food business never buffs another Food
- * business elsewhere on the street, and hand-slot staff (no `employedAtSlot`)
- * contribute no per-business buffs (CG-0MSTOATDU006UGAX).
- *
- * @param state     Current game state.
- * @param slotIndex Street-grid slot index of the target business.
- * @returns The employed specialization skills at that slot (empty when none).
- */
-/**
- * Flattens the specialization skills of ONLY the staff member(s) employed at
- * the given street-grid slot. Per-business income/reputation buffs in
- * `applyIncome` are derived from this per-slot pool, so a Chef employed at
- * one Food business never buffs another Food business elsewhere on the
- * street, and hand-slot staff contribute no per-business buffs
- * (CG-0MSTOATDU006UGAX / CG-0MU3BTTWT0025VPL).
+ * business elsewhere on the street, and management-company-scope skills held
+ * by business staff are filtered out (CG-0MSTOATDU006UGAX /
+ * CG-0MU3BTTWT0025VPL / MS-0MW4MSNWR00123OZ AC2).
  *
  * Reads the per-business employed-staff source of truth
  * (`business.employedStaff`, CG-0MTIOLY2A0092OT1 AC2) and falls back to
@@ -250,7 +599,7 @@ export function getEmployedSpecializationSkills(state: MainStreetState): Special
  *
  * @param state     Current game state.
  * @param slotIndex Street-grid slot index of the target business.
- * @returns The employed specialization skills at that slot (empty when none).
+ * @returns The realisable business-scope skills at that slot (empty when none).
  */
 export function getEmployedSpecializationSkillsForBusiness(
   state: MainStreetState,
@@ -261,16 +610,7 @@ export function getEmployedSpecializationSkillsForBusiness(
     business && Array.isArray((business as { employedStaff?: unknown }).employedStaff)
       ? (business as { employedStaff: StaffCard[] }).employedStaff
       : (state.staffCards ?? []).filter(card => card.employedAtSlot === slotIndex);
-  return members.flatMap(card => {
-    const ids = Array.isArray(card.specializationSkillIds) ? card.specializationSkillIds : [];
-    try {
-      return deserializeSkillIds(ids);
-    } catch {
-      // Stale/unknown skill ids are skipped (same forward-compat path as the
-      // street-wide aggregator).
-      return [];
-    }
-  });
+  return getBusinessScopeSkills(members);
 }
 
 /**
@@ -322,57 +662,76 @@ export function computeRefreshCostDiscount(skills: readonly SpecializationSkill[
 }
 
 /**
- * Flat coin discount on business-card purchases, summed street-wide across
- * every hired staff member (e.g. the Delivery Driver's "purchase costs 50
- * less" ability — CG-0MUMCVH3N007KT1M).
+ * Flat coin discount on business-card purchases for a placement at
+ * `slotIndex`.
  *
- * Summates the `purchaseCostDiscount` field of every card in `state.staffCards`
- * and floors at 0 — the same aggregation and clamp semantics as the
- * `refreshMarketCost` staff discount path.
+ * Two sources, both clamped at 0:
+ *  1. the placement-scoped {@link computeAdjacentPurchaseDiscount} — the
+ *     two-type delivery effect (a Delivery Driver discounts businesses placed
+ *     next to its own business, GDD D.4.3);
+ *  2. the legacy street-wide `purchaseCostDiscount` sum, retained only for
+ *     legacy saves/fixtures that still carry the deprecated field. No shipped
+ *     card sets it any more (MS-0MW3JXF6U00753LB).
+ *
+ * Callers that do not know the destination slot (pure affordability
+ * projections) omit `slotIndex`; they then see only the legacy discount, so
+ * they never promise a discount the placement path will not grant.
  *
  * Pure: never mutates state and consumes no RNG.
  *
- * @param state Current game state.
+ * @param state     Current game state.
+ * @param slotIndex Optional target placement slot (enables the adjacency
+ *                  discount).
  * @returns Non-negative flat coin discount for a business-card purchase.
  */
-export function computePurchaseCostDiscount(state: MainStreetState): number {
-  const total = (state.staffCards ?? []).reduce(
+export function computePurchaseCostDiscount(state: MainStreetState, slotIndex?: number): number {
+  const legacy = (state.staffCards ?? []).reduce(
     (sum, card) => sum + (card.purchaseCostDiscount ?? 0),
     0,
   );
-  return Math.max(0, total);
+  const adjacent = slotIndex === undefined ? 0 : computeAdjacentPurchaseDiscount(state, slotIndex);
+  return Math.max(0, legacy + adjacent);
 }
 
 /**
  * Effective base coin cost of acquiring/placing a business or
- * community-space card, after the street-wide `purchaseCostDiscount`
- * (CG-0MUMCVH3N007KT1M). The result is floored at 0. This is the single
- * shared source of truth for the click (`purchaseBusiness`), drag
- * (`buyAndPlaceBusiness`) and deferred from-hand (`playBusinessFromHand`)
- * acquisition paths, including the UI affordability pre-gates.
+ * community-space card at `slotIndex`, after the placement's purchase
+ * discount (GDD D.4.3 / MS-0MW3JXF6U00753LB). The result is floored at 0.
+ *
+ * This is the single shared source of truth for the click (`purchaseBusiness`),
+ * drag (`buyAndPlaceBusiness`) and deferred from-hand
+ * (`playBusinessFromHand`) acquisition paths, including the UI affordability
+ * pre-gates, so every path charges the same price.
  *
  * Pure: never mutates state and consumes no RNG.
+ *
+ * @param state      Current game state.
+ * @param listedCost Listed card cost.
+ * @param slotIndex  Optional target placement slot (enables the adjacency
+ *                   discount).
  */
 export function computeEffectiveBusinessPurchaseCost(
   state: MainStreetState,
   listedCost: number,
+  slotIndex?: number,
 ): number {
-  return Math.max(0, listedCost - computePurchaseCostDiscount(state));
+  return Math.max(0, listedCost - computePurchaseCostDiscount(state, slotIndex));
 }
 
 /**
  * Effective +50% drag/composite premium on a business or community-space
- * card, after the street-wide `purchaseCostDiscount` (CG-0MUMCVH3N007KT1M).
- * Per the discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is
- * applied to the base cost BEFORE the premium.
+ * card placed at `slotIndex`, after the purchase discount. Per the
+ * discount-first ordering rule (CG-0MTKMGL66004I0PC), the discount is applied
+ * to the base cost BEFORE the premium.
  *
  * Pure: never mutates state and consumes no RNG.
  */
 export function computeBusinessPurchasePremium(
   state: MainStreetState,
   listedCost: number,
+  slotIndex?: number,
 ): number {
-  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost) * 1.5 * 2) / 2;
+  return Math.ceil(computeEffectiveBusinessPurchaseCost(state, listedCost, slotIndex) * 1.5 * 2) / 2;
 }
 
 /**
@@ -450,12 +809,23 @@ export function computeProportionalCoinLoss(coins: number, rate: number): number
   return Math.min(coins, roundInt(coins * effectiveRate));
 }
 
-/** Flat salary discount for THIS employed staff member (Operations Manager, -50). */
+/**
+ * Flat salary discount for THIS employed staff member (Operations Manager, -50).
+ *
+ * The caller supplies the member's realisable skills — use
+ * {@link getSalaryScopeSkills} to gate them by staff type: the discount is a
+ * business-staff effect and never applies from a management-company member
+ * (MS-0MW4MSNWR00123OZ AC3).
+ */
 export function computeStaffSalaryDiscount(skills: readonly SpecializationSkill[]): number {
   return skills.filter(s => s.id === 'skill-operations-manager').length * OPERATIONS_MANAGER_SALARY_DISCOUNT;
 }
 
-/** A staff member's ongoing salary after the Operations Manager discount (clamped at 0). */
+/**
+ * A staff member's ongoing salary after the Operations Manager discount
+ * (clamped at 0). Pass {@link getSalaryScopeSkills}' output so a cross-type
+ * Operations Manager is inert (MS-0MW4MSNWR00123OZ AC3).
+ */
 export function computeStaffSalaryCost(
   skills: readonly SpecializationSkill[],
   baseSalary: number,

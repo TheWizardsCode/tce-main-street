@@ -20,6 +20,8 @@ import type {
   DurationEventCard,
   UpgradeCard,
   StaffCard,
+  StaffBuffTarget,
+  StaffIncidentEffect,
   SynergyType,
   EventTrigger,
   EventTarget,
@@ -338,7 +340,9 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       refreshCostDiscount: r.refreshCostDiscount ? Number(r.refreshCostDiscount) : undefined,
       // Per-business upgrade discount (Financial Advisor, CG-0MTKMGL66004I0PC).
       upgradeCostDiscount: r.upgradeCostDiscount ? Number(r.upgradeCostDiscount) : undefined,
-      // Street-wide purchase discount (Delivery Driver, CG-0MUMCVH3N007KT1M).
+      // Legacy street-wide purchase discount (Delivery Driver, CG-0MUMCVH3N007KT1M).
+      // Shipped cards use the placement-scoped `staffAdjacentPurchaseDiscount`
+      // instead (MS-0MW3JXF6U00753LB); kept for legacy saves/fixtures.
       purchaseCostDiscount: r.purchaseCostDiscount ? Number(r.purchaseCostDiscount) : undefined,
       taxAuditRate: r.taxAuditRate !== undefined && r.taxAuditRate !== '' ? Number(r.taxAuditRate) : undefined,
       actionsPerTurn: r.actionsPerTurn ? Number(r.actionsPerTurn) : undefined,
@@ -350,7 +354,109 @@ function rebuildTemplateArrays(rows: Record<string, string>[]): void {
       marketRelevanceBias: r.marketRelevanceBias !== undefined && r.marketRelevanceBias !== ''
         ? Number(r.marketRelevanceBias)
         : undefined,
+      // Per-business staff card effect (GDD D.4.3/D.4.8, MS-0MW3JXF6U00753LB).
+      // The machine-readable spec rides in the row's `effect` column (staff
+      // rows carry no human-readable event effect text), so the base CSV keeps
+      // its existing column set — card packs are validated against that exact
+      // header (core CardPackMerge), so adding columns would reject every pack.
+      ...parseStaffEffect(r.effect),
     });
+  }
+}
+
+// ── Staff per-business card-effect spec ─────────────────────
+
+/** The per-business card buffs parsed out of a staff row's `effect` spec. */
+interface ParsedStaffEffect {
+  incomeBonus?: number;
+  incomeBonusTarget?: StaffBuffTarget;
+  incomeBonusTypes?: string[];
+  incomePercent?: number;
+  reputationBonus?: number;
+  reputationBonusTarget?: StaffBuffTarget;
+  reputationPercent?: number;
+  synergyRangeBonus?: number;
+  adjacencyPurchaseDiscount?: number;
+  incidentEffect?: StaffIncidentEffect;
+}
+
+/** Parses a pipe-separated business/synergy type list (`Commerce|Culture`). */
+function parseStaffTypeList(raw: string | undefined): string[] | undefined {
+  const types = (raw ?? '').split('|').map(part => part.trim()).filter(Boolean);
+  return types.length > 0 ? types : undefined;
+}
+
+/** Converts a spec percentage (`20`) into a fraction (`0.2`). */
+function staffFraction(percent: number): number {
+  return percent / 100;
+}
+
+/**
+ * Parses a staff card's per-business effect spec from the row's `effect`
+ * column (GDD D.4.3/D.4.8, MS-0MW3JXF6U00753LB).
+ *
+ * Grammar — `dimension:<scope>:<amount>[:<types>]`, percentages written as
+ * whole numbers for readability:
+ *
+ * | spec | meaning |
+ * |------|---------|
+ * | `income:own:25` | +25 coins/turn to the employing business |
+ * | `income:adjacent:20:Food` | +20 coins/turn to each adjacent Food business |
+ * | `income:percent:20` | +20% income to the employing business |
+ * | `reputation:own:15` | +15 reputation/turn to the employing business |
+ * | `reputation:adjacent:10` | +10 reputation/turn to each adjacent business |
+ * | `reputation:percent:10` | +10% reputation for the employing business |
+ * | `synergy-range:1` | +1 synergy range for the employing business |
+ * | `purchase-discount:adjacent:50` | −50 coins on businesses placed adjacent |
+ * | `incident-coin:<own\|cluster>:10` | −10% incident coin damage |
+ * | `incident-reputation:<own\|cluster>:50` | −50 incident reputation damage |
+ * | `incident-frequency:<own\|cluster>:10` | −10% incident frequency |
+ *
+ * A blank or malformed spec yields no buffs (the safe default) rather than
+ * throwing: a bad data cell must never break the income/incident phase. The
+ * two-type test suite asserts every shipped card's parsed effect, so a
+ * malformed spec fails the build rather than silently doing nothing.
+ */
+function parseStaffEffect(raw: string | undefined): ParsedStaffEffect {
+  const parts = (raw ?? '').split(':').map(part => part.trim());
+  if (parts.length < 2) return {};
+  const [kind, scope] = parts;
+
+  if (kind === 'synergy-range') {
+    const range = Number(scope);
+    return Number.isFinite(range) ? { synergyRangeBonus: range } : {};
+  }
+
+  const amount = Number(parts[2]);
+  if (!Number.isFinite(amount) || amount < 0) return {};
+
+  switch (kind) {
+    case 'income':
+      if (scope === 'percent') return { incomePercent: staffFraction(amount) };
+      if (scope !== 'own' && scope !== 'adjacent') return {};
+      return {
+        incomeBonus: amount,
+        incomeBonusTarget: scope,
+        incomeBonusTypes: scope === 'adjacent' ? parseStaffTypeList(parts[3]) : undefined,
+      };
+    case 'reputation':
+      if (scope === 'percent') return { reputationPercent: staffFraction(amount) };
+      if (scope !== 'own' && scope !== 'adjacent') return {};
+      return { reputationBonus: amount, reputationBonusTarget: scope };
+    case 'purchase-discount':
+      return scope === 'adjacent' ? { adjacencyPurchaseDiscount: amount } : {};
+    case 'incident-coin':
+    case 'incident-reputation':
+    case 'incident-frequency': {
+      if (scope !== 'own' && scope !== 'cluster') return {};
+      const incidentKind = kind === 'incident-coin'
+        ? 'coin'
+        : kind === 'incident-reputation' ? 'reputation' : 'frequency';
+      const magnitude = incidentKind === 'reputation' ? amount : staffFraction(amount);
+      return { incidentEffect: { kind: incidentKind, amount: magnitude, target: scope } };
+    }
+    default:
+      return {};
   }
 }
 

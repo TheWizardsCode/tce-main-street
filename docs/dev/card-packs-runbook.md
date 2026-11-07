@@ -201,6 +201,86 @@ already includes pack cards. The inlined pack assets are registered into
 `src/MainStreetCardPackArt.ts` at the same point (see
 [Pack art (self-contained)](#pack-art-self-contained)).
 
+## 3a. Serve a catalogue remotely (signed)
+
+The browser build can add a **remote** catalogue alongside the bundled packs:
+the operator hosts a signed `packs/` tree at a URL, and players' builds
+discover it at boot. It is off by default (an unconfigured build performs no
+remote request).
+
+The full operator contract lives in
+[remote-pack-hosting.md](remote-pack-hosting.md) — this section is the
+runbook-level summary.
+
+### Configuration (build-time)
+
+| Variable | Meaning |
+|----------|---------|
+| `VITE_REMOTE_PACK_URL` | Base URL of the remote `packs/` tree, e.g. `https://packs.example.com/main-street`. The catalogue is read from `<base>/packs/manifest.json`, pack files from `<base>/packs/<gameId>/<packId>/…`. |
+| `VITE_REMOTE_PACK_PUBLIC_KEY` | The **pinned** Ed25519 public key (raw 32-byte key, base64) every remote manifest signature must verify against. |
+| `VITE_REMOTE_PACK_SOURCES` | Optional ordered JSON array of `{ "url", "publicKey" }` entries for several catalogues; declared order is precedence (first wins a conflict between remote sources). A malformed entry is skipped and reported. |
+
+Both single-catalogue variables must be set and valid; only the configured host
+(same scheme and port) is ever requested. Configuration is **build-time**, so
+changing a URL, key or the catalogue list requires a rebuild and redeploy —
+changing the hosted catalogue content does not. The private signing key is held
+by the distribution operator and never ships in the game. Parsing lives in
+`src/MainStreetRemotePackConfig.ts`; composition in
+`createConfiguredPackSourceRegistry` (`src/MainStreetPackSources.ts`) registers
+the bundled source **first** and the remote sources after it, so a bundled pack
+always wins a pack-id conflict.
+
+### Signed manifest
+
+The remote `packs/manifest.json` is a **signed envelope**, not the bare
+manifest:
+
+```json
+{
+  "manifest": { "version": 1, "packs": [ … ] },
+  "signature": "<base64 Ed25519 signature>"
+}
+```
+
+The signature covers the manifest's **canonical payload**: JSON with object
+keys sorted recursively and no insignificant whitespace
+(`canonicalPackManifestPayload`, `src/MainStreetRemotePackManifest.ts`). An
+operator reproduces the signed bytes by canonicalising the same document, so
+reordering keys never invalidates a signature. Once verified, the enveloped
+document must also pass the core `parseCardPackManifest` contract (same fields
+as any pack manifest) and declare `version: 1`.
+
+A complete, reproducible signing example and the full canonical-payload rules
+are in [remote-pack-hosting.md](remote-pack-hosting.md#3-signing-contract).
+
+### Failure modes
+
+Discovery is **fetch and refuse only**, and every failure rejects the whole
+source with **one** console warning and no packs from it — never a crash, nor a
+blocked boot. Bundled packs and base content always remain available.
+
+| Failure | Behaviour |
+|---------|-----------|
+| Unset / blank / invalid configuration | No remote source composed, no request made, one warning. |
+| Host not on the allow-list | Refused **before** any request, one warning. |
+| Slow or hung host | Hard ~3 s timeout (`AbortController`); the source contributes nothing, one warning. |
+| Non-2xx response, transport rejection or body-read failure | Source rejected, one warning. |
+| Missing or blank signature | Source rejected (`missing-signature`), one warning. |
+| Signature invalid, or produced by a key other than the pinned one | Source rejected (`invalid-signature`), one warning. |
+| Non-JSON envelope, wrong envelope shape, or a signed but malformed manifest | Source rejected (`malformed-envelope` / malformed manifest), one warning. |
+| WebCrypto Ed25519 unavailable, or unusable pinned key | Source rejected (`unavailable`), one warning. |
+
+See [the verification-outcome
+table](remote-pack-hosting.md#4-verification-outcomes) for what each status
+means and the operator action it implies.
+
+Verification is memoised per source instance: one manifest fetch and one
+verification per boot. Remote files are only served for pack roots the verified
+catalogue declares. There is **no client-side caching** in this iteration — a
+remote pack needs its host at load time, while bundled packs remain the offline
+story (caching is a recorded follow-up). Remotely hosted content must be
+licence-clean on the same terms as bundled pack content.
+
 ## 4. Gate a pack (optional)
 
 A pack is **free** when its manifest entry declares no `entitlement`. Main

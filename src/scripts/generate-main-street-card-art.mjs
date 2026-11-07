@@ -17,8 +17,16 @@
  * `card-data.csv` and applies the following mapping rules so that **every
  * unique card name** resolves to a non-`Fallback` sprite:
  *
- * 1. **Upgrades** — each upgrade's `newDisplayName` is aliased to its
- *    `targetBusiness` sprite (e.g. "Upgrade to Patisserie" → "Bakery").
+ * 1. **Upgrades** — each upgrade gets its **own** source sprite: a literal
+ *    copy of its `targetBusiness` art named
+ *    `<newDisplayName>_upgrade_level<requiredLevel>` (e.g. "Upgrade to
+ *    Patisserie" → `Patisserie_upgrade_level0_1024_x_1024.png`). Until the
+ *    copy exists the upgrade falls back to the target's sprite
+ *    ("Upgrade to Patisserie" → "Bakery"). Copies that are still byte-for-byte
+ *    identical to another sprite are embedded **once**: the generator records
+ *    them in the map's `spriteAliases` table so the shared bitmap is not
+ *    duplicated in `card-art-map.json`. Replacing a copy with bespoke art
+ *    silently retires its `spriteAliases` entry on the next regeneration.
  * 2. **Events** — each event is aliased to a category sprite keyed by
  *    `(trigger, targetSynergy)` (e.g. "Rainy Day" → `Incident__None`).
  *    The generator expects a sprite named `<Trigger>__<Synergy>` for each
@@ -61,7 +69,8 @@
  *   src/card-art-map.json
  *
  * Usage:
- *   node scripts/generate-main-street-card-art.mjs
+ *   node src/scripts/generate-main-street-card-art.mjs
+ *   node src/scripts/generate-main-street-card-art.mjs --copy-upgrades [--dry-run]
  *
  * @module
  */
@@ -69,6 +78,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import sharp from 'sharp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +133,21 @@ export const CARD_ART_ALIASES = {
 /** Sprite used when a card has no dedicated art. */
 export const CARD_ART_FALLBACK = 'Fallback';
 
+/**
+ * Marker that distinguishes a per-upgrade art copy from a base sprite.
+ *
+ * Producer decision Q11 (2026-10-27, recorded on CG-0MUBVL4H80061B1E): each of
+ * the 39 upgrade cards gets its **own** source sprite — a literal copy of its
+ * `targetBusiness` art named `<newDisplayName>_upgrade_level<#>` — so an artist
+ * can later replace or differentiate an individual upgrade without touching the
+ * business it enhances. `#` is the upgrade's `requiredLevel` from
+ * `card-data.csv` (0-based, the only level column the upgrade rows carry).
+ */
+export const UPGRADE_ART_MARKER = '_upgrade_level';
+
+/** Matches a sprite base name that marks an upgrade art copy. */
+const UPGRADE_COPY_RE = /_upgrade_level\d+$/;
+
 // ---------------------------------------------------------------------------
 // CSV helpers (CG-0MUBVL4H80061B1E)
 // ---------------------------------------------------------------------------
@@ -169,11 +194,30 @@ function readCsvRows(csvPath) {
 }
 
 /**
+ * Sprite base name of an upgrade's own (duplicated) art.
+ *
+ * Q11: `<newDisplayName>_upgrade_level<requiredLevel>`, e.g.
+ * `Patisserie_upgrade_level0`. Returns an empty string when the row carries no
+ * `newDisplayName` (nothing to name the copy after).
+ *
+ * @param {Record<string, string>} row - A `card-data.csv` upgrade row.
+ * @returns {string} The copy's sprite base name (no `_1024_x_1024.png` suffix).
+ */
+export function upgradeArtSpriteName(row) {
+  const displayName = (row.newDisplayName || '').trim();
+  if (!displayName) return '';
+  const level = (row.requiredLevel || '').trim() || '0';
+  return `${displayName}${UPGRADE_ART_MARKER}${level}`;
+}
+
+/**
  * Build the complete CSV card-name -> sprite base-name mapping from
  * `card-data.csv`, with **no** filtering by which sprites exist.
  *
  * CG-0MUBVL4H80061B1E rules:
- * - Upgrades: `name` → `targetBusiness` (duplicate the target's art).
+ * - Upgrades: `name` → its own `<newDisplayName>_upgrade_level<#>` copy when
+ *   one exists, else `<newDisplayName>` when that sprite exists, else
+ *   `targetBusiness` (the target's art is the copy's source).
  * - Events: `name` → `<trigger>__<targetSynergy>` category sprite.
  * - Staff / business / community-space: `name` → `name` (direct).
  * - Pre-existing spelling aliases are preserved.
@@ -184,10 +228,11 @@ function readCsvRows(csvPath) {
  * @param {string} csvPath - Absolute path to `card-data.csv`.
  * @param {Set<string>} [knownSprites] - Sprite base names present on disk. When
  *   supplied, a card that already has dedicated art keeps it: upgrades prefer an
- *   existing `newDisplayName` sprite over the `targetBusiness` fallback, and
- *   events prefer their exact-name sprite over the `<trigger>__<synergy>`
- *   category sprite. This preserves the 35 existing dedicated event sprites
- *   (CG-0MUBVL4H80061B1E: "existing dedicated event art is retained").
+ *   own-copy sprite, then an existing `newDisplayName` sprite, over the
+ *   `targetBusiness` fallback, and events prefer their exact-name sprite over
+ *   the `<trigger>__<synergy>` category sprite. This preserves the 35 existing
+ *   dedicated event sprites (CG-0MUBVL4H80061B1E: "existing dedicated event art
+ *   is retained").
  * @returns {Record<string, string>} card name -> intended sprite base name.
  */
 export function buildMappingsFromCsv(csvPath, knownSprites) {
@@ -210,11 +255,15 @@ export function buildMappingsFromCsv(csvPath, knownSprites) {
       }
 
       if (family === 'upgrade') {
-        // CG-0MUBVL4H80061B1E: prefer the upgrade's own display-name sprite
-        // (a duplicate of the target's art); fall back to the target's art.
-        const displayName = row.newDisplayName;
-        const target = row.targetBusiness;
-        if (displayName && has(displayName)) {
+        // CG-0MUBVL4H80061B1E / Q11: prefer the upgrade's own duplicated art
+        // (`<newDisplayName>_upgrade_level<#>`), then a `newDisplayName`
+        // sprite, and only then the target business's art.
+        const ownCopy = upgradeArtSpriteName(row);
+        const displayName = (row.newDisplayName || '').trim();
+        const target = (row.targetBusiness || '').trim();
+        if (ownCopy && has(ownCopy)) {
+          mappings[name] = ownCopy;
+        } else if (displayName && has(displayName)) {
           mappings[name] = displayName;
         } else if (target) {
           mappings[name] = target;
@@ -270,12 +319,55 @@ const SPELLING_ALIASES = {
 };
 
 /** Base names of every committed 1024×1024 sprite, sorted for deterministic output. */
-export function listSpriteNames() {
+export function listSpriteNames(spritesDir = SPRITES_DIR) {
   return fs
-    .readdirSync(SPRITES_DIR)
+    .readdirSync(spritesDir)
     .filter((f) => f.endsWith(SOURCE_SUFFIX))
     .map((f) => f.slice(0, -SOURCE_SUFFIX.length))
     .sort();
+}
+
+/**
+ * Map every sprite whose source bytes duplicate another sprite's onto the
+ * canonical sprite that is embedded in `card-art-map.json`.
+ *
+ * Q11 duplicates each upgrade's `targetBusiness` art into a per-upgrade file.
+ * Those copies are byte-for-byte identical until an artist differentiates
+ * them, so embedding each one separately would inflate the map by ~0.4 MB of
+ * duplicate base64 for no visual change. Instead the generator embeds the
+ * **canonical** sprite once and records `{"<copy>": "<canonical>"}` here; both
+ * consumers apply the same one-step redirect before the art lookup. Replacing
+ * a copy with bespoke art changes its bytes, so the entry disappears on the
+ * next regeneration and the card embeds its own bitmap — no hand-editing.
+ *
+ * The canonical sprite of a duplicate group is chosen deterministically: a
+ * base sprite (one whose name does not carry the upgrade-copy marker) wins
+ * over an upgrade copy, then the lexicographically first name wins.
+ *
+ * @param {string} [spritesDir] - Directory holding `<Name>_1024_x_1024.png`.
+ * @returns {Record<string, string>} duplicate sprite base name -> canonical.
+ */
+export function buildDuplicateSpriteAliases(spritesDir = SPRITES_DIR) {
+  const groups = new Map();
+  for (const name of listSpriteNames(spritesDir)) {
+    const bytes = fs.readFileSync(path.join(spritesDir, `${name}${SOURCE_SUFFIX}`));
+    const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+    const members = groups.get(digest);
+    if (members) members.push(name);
+    else groups.set(digest, [name]);
+  }
+
+  const aliases = {};
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const ordered = [...members].sort((a, b) => {
+      const rank = (name) => (UPGRADE_COPY_RE.test(name) ? 1 : 0);
+      return rank(a) - rank(b) || a.localeCompare(b);
+    });
+    const [canonical, ...duplicates] = ordered;
+    for (const duplicate of duplicates) aliases[duplicate] = canonical;
+  }
+  return aliases;
 }
 
 /**
@@ -297,15 +389,23 @@ export async function encodeArt(filePath) {
  * `card-data.csv`.
  *
  * CG-0MUBVL4H80061B1E: the generator reads the CSV to build aliases for
- * upgrades (target-dup), events (category), and staff/business/community-space
- * (direct). The alias map is merged with any pre-existing spelling aliases
- * defined in {@link SPELLING_ALIASES}.
+ * upgrades (own copy / target-dup), events (category), and
+ * staff/business/community-space (direct), and records `spriteAliases` for
+ * source sprites that duplicate another sprite's bytes (the Q11 upgrade copies)
+ * so a shared bitmap is embedded once.
  *
  * @returns {Promise<{ sprites: number, mapPath: string, totalBytes: number }>}
  */
 export async function regenerateCardArt() {
   const names = listSpriteNames();
   const knownSprites = new Set(names);
+  // Q11: per-upgrade copies are byte-identical to their target's art, so the
+  // map embeds the canonical sprite once and redirects the copy to it.
+  const spriteAliases = buildDuplicateSpriteAliases();
+  /** The sprite whose bitmap is embedded for `name`. */
+  const embeddedKey = (name) => spriteAliases[name] ?? name;
+  /** Whether `name` renders dedicated art (directly or via a redirect). */
+  const rendersArt = (name) => knownSprites.has(embeddedKey(name));
 
   // CG-0MUBVL4H80061B1E: build aliases from the base pool CSV only (upgrades,
   // events, staff, etc.).
@@ -321,11 +421,13 @@ export async function regenerateCardArt() {
   // Any other committed sprite (e.g. a pack's bespoke source art) is
   // deliberately excluded, so the base map is not a hidden pack dependency.
   const embeddedSpriteNames = [
-    ...new Set([
-      ...Object.values(csvMappings),
-      ...Object.values(csvAliases),
-      CARD_ART_FALLBACK,
-    ]),
+    ...new Set(
+      [
+        ...Object.values(csvMappings),
+        ...Object.values(csvAliases),
+        CARD_ART_FALLBACK,
+      ].map(embeddedKey),
+    ),
   ].filter((target) => knownSprites.has(target));
 
   const art = {};
@@ -346,12 +448,13 @@ export async function regenerateCardArt() {
   }
 
   const map = {
-    version: 3,
+    version: 4,
     artSize: ART_SIZE,
     artResolution: ART_RESOLUTION,
     format: 'webp',
     fallback: CARD_ART_FALLBACK,
     aliases: mergedAliases,
+    spriteAliases,
     art,
   };
 
@@ -360,11 +463,12 @@ export async function regenerateCardArt() {
   const totalBytes = Object.values(art).reduce((n, uri) => n + uri.length, 0);
 
   // Log coverage summary. "Coverage" counts unique card names whose intended
-  // mapping target has committed art; the remainder are pending producer art.
+  // mapping target renders art (directly or through a spriteAliases redirect);
+  // the remainder are pending producer art.
   const allNames = new Set(Object.keys(csvMappings));
-  const coveredNames = Object.keys(csvMappings).filter((n) => knownSprites.has(csvMappings[n]));
+  const coveredNames = Object.keys(csvMappings).filter((n) => rendersArt(csvMappings[n]));
   const missingTargets = new Set(
-    Object.values(csvMappings).filter((target) => !knownSprites.has(target)),
+    Object.values(csvMappings).filter((target) => !rendersArt(target)),
   );
   console.log(
     `Generated art map for ${embeddedSpriteNames.length} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +
@@ -383,9 +487,99 @@ export async function regenerateCardArt() {
   return { sprites: embeddedSpriteNames.length, mapPath: MAP_PATH, totalBytes };
 }
 
+/**
+ * Plan the per-upgrade art copies (Q11).
+ *
+ * Every upgrade gets its own source sprite — a literal copy of its
+ * `targetBusiness` art named `<newDisplayName>_upgrade_level<requiredLevel>` —
+ * so an artist can later differentiate that individual upgrade. An upgrade
+ * whose target art is still pending from the producer cannot be copied yet; it
+ * keeps mapping to the (art-less) target and is reported as `targetMissing`.
+ *
+ * The plan is derived from `card-data.csv`, so it is deterministic and is the
+ * single source of truth for both {@link createUpgradeArtCopies} and the drift
+ * guard in `tests/main-street/card-art.test.ts`.
+ *
+ * @param {string} [csvPath] - Absolute path to `card-data.csv`.
+ * @param {string} [spritesDir] - Directory holding `<Name>_1024_x_1024.png`.
+ * @returns {Array<{ cardName: string, sprite: string, target: string,
+ *   targetMissing: boolean, exists: boolean }>} One entry per upgrade row.
+ */
+export function planUpgradeArtCopies(csvPath = CSV_PATH, spritesDir = SPRITES_DIR) {
+  const known = new Set(listSpriteNames(spritesDir));
+  return readCsvRows(csvPath)
+    .filter((row) => row.family === 'upgrade')
+    .map((row) => {
+      const sprite = upgradeArtSpriteName(row);
+      const target = (row.targetBusiness || '').trim();
+      return {
+        cardName: row.name,
+        sprite,
+        target,
+        targetMissing: !known.has(target),
+        exists: Boolean(sprite) && known.has(sprite),
+      };
+    });
+}
+
+/**
+ * Create the missing per-upgrade art copies (Q11) from their target's art.
+ *
+ * A copy is a **byte-for-byte** duplicate of `<targetBusiness>_1024_x_1024.png`
+ * so git stores the bytes once and {@link buildDuplicateSpriteAliases} keeps the
+ * embedded map free of duplicate base64. Existing files are never overwritten —
+ * a copy that an artist has already differentiated is left alone.
+ *
+ * @param {{ csvPath?: string, spritesDir?: string, dryRun?: boolean }} [options]
+ * @returns {{ created: string[], skipped: string[], pending: string[] }} Sprite
+ *   names created, copies already present, and upgrades whose target art is
+ *   still pending from the producer.
+ */
+export function createUpgradeArtCopies(
+  { csvPath = CSV_PATH, spritesDir = SPRITES_DIR, dryRun = false } = {},
+) {
+  const created = [];
+  const skipped = [];
+  const pending = [];
+  for (const plan of planUpgradeArtCopies(csvPath, spritesDir)) {
+    if (plan.targetMissing) {
+      pending.push(`${plan.cardName} (target ${plan.target})`);
+      continue;
+    }
+    if (plan.exists) {
+      skipped.push(plan.sprite);
+      continue;
+    }
+    if (!dryRun) {
+      fs.copyFileSync(
+        path.join(spritesDir, `${plan.target}${SOURCE_SUFFIX}`),
+        path.join(spritesDir, `${plan.sprite}${SOURCE_SUFFIX}`),
+      );
+    }
+    created.push(plan.sprite);
+  }
+  return { created, skipped, pending };
+}
+
 const isMain = process.argv[1] && import.meta.url === `file://${path.resolve(process.argv[1])}`;
 if (isMain) {
-  regenerateCardArt()
+  const copyUpgrades = process.argv.includes('--copy-upgrades');
+  Promise.resolve()
+    .then(() => {
+      if (!copyUpgrades) return null;
+      const dryRun = process.argv.includes('--dry-run');
+      const result = createUpgradeArtCopies({ dryRun });
+      console.log(
+        `Upgrade art copies${dryRun ? ' (dry run)' : ''}: ${result.created.length} ` +
+          `${dryRun ? 'to create' : 'created'}, ${result.skipped.length} already present, ` +
+          `${result.pending.length} pending producer art`,
+      );
+      if (result.pending.length > 0) {
+        console.log(`  pending: ${result.pending.join(', ')}`);
+      }
+      return null;
+    })
+    .then(() => regenerateCardArt())
     .then((r) => {
       console.log(
         `Generated art map for ${r.sprites} sprites at ${ART_RESOLUTION}x${ART_RESOLUTION} ` +

@@ -12,16 +12,107 @@ import { applyCompetitiveIncome, getSlotOwnerId } from './MainStreetAdjacency';
 import type { EventCard, SpecializationSkill, DurationEventCard } from './MainStreetCards';
 import { isDurationEventCard } from './MainStreetCards';
 import { applyReputationMultiplier, roundInt } from './MainStreetDifficulty';
-import { computeIncidentSkillBuffs, computeReputationGainMultiplier, getEmployedSpecializationSkills, computeTaxAuditRate, computeProportionalCoinLoss } from './MainStreetStaffBuffs';
-import { deserializeSkillIds } from './MainStreetStaffSkills';
+import {
+  computeBusinessIncidentMitigation,
+  computeIncidentSkillBuffs,
+  computeProportionalCoinLoss,
+  computeReputationGainMultiplier,
+  computeTaxAuditRate,
+  getEmployedSpecializationSkills,
+  getStreetScopeSkills,
+} from './MainStreetStaffBuffs';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
-import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
+import { addLog, addLogShared, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
 // Re-exported so the projection/AI/attribution consumers share ONE resolver
 // (MS-0MVCS8A0L0000H7X AC5) without importing this heavy resolution module.
 export { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
+
+/**
+ * Grid slots of the businesses an event's effect is attributable to.
+ *
+ * `SpecificSynergy` resolves to every placed business matching the event's
+ * synergy targets; `All` and `RandomBusiness` are not attributable to a
+ * business cluster (`RandomBusiness` callers know their chosen slot and pass
+ * it explicitly). Used to scope business-staff incident mitigation to the
+ * local cluster (GDD D.4.3/D.4.8 §2, MS-0MW3JXF6U00753LB).
+ */
+function eventTargetSlotIndices(state: MainStreetState, event: EventCard): number[] {
+  if (event.target !== 'SpecificSynergy') return [];
+  const targets = eventSynergyTargets(state, event);
+  const slots: number[] = [];
+  for (let i = 0; i < state.streetGrid.length; i++) {
+    const business = state.streetGrid[i];
+    if (business && matchesEventSynergyTargets(business, targets)) slots.push(i);
+  }
+  return slots;
+}
+
+/** Staff context shared by the event-mitigation closures. */
+interface EventMitigationContext {
+  incidentBuffs: ReturnType<typeof computeIncidentSkillBuffs> | null;
+  repGainMultiplier: number;
+  theftNeutralized: boolean;
+}
+
+/**
+ * Builds the coin/reputation mitigation closures an event resolution uses.
+ *
+ * Two mitigation layers compose additively and are capped at 100%:
+ *  - **management-company** skills (street-wide, from
+ *    `computeIncidentSkillBuffs`), and
+ *  - **business staff** incident effects, scoped to the business cluster the
+ *    effect lands on (`computeBusinessIncidentMitigation` for the target slot).
+ *
+ * A slot-less call expresses a street-wide / unattributable effect (`All`
+ * targets): only the management-company layer applies, because a business-local
+ * buff cannot be attributed to the whole street (GDD D.4.8 §2).
+ */
+function makeEventMitigation(
+  state: MainStreetState,
+  ctx: EventMitigationContext,
+): {
+  coin: (effect: number, slotIndex?: number) => number;
+  rep: (effect: number, slotIndices?: readonly number[]) => number;
+} {
+  const isIncident = ctx.incidentBuffs !== null;
+  const streetCoinPct = ctx.incidentBuffs?.coinDamageReductionPct ?? 0;
+  const streetRepFlat = ctx.incidentBuffs?.reputationDamageReductionFlat ?? 0;
+
+  /** Coin delta after theft immunity + street + cluster mitigation. */
+  const coin = (effect: number, slotIndex?: number): number => {
+    if (ctx.theftNeutralized && effect < 0) return 0;
+    if (!isIncident || effect >= 0) return roundInt(effect);
+    const slotPct = slotIndex === undefined
+      ? 0
+      : computeBusinessIncidentMitigation(state, slotIndex).coinDamageReductionPct;
+    const pct = Math.min(1, streetCoinPct + slotPct);
+    return roundInt(effect + Math.abs(effect) * pct);
+  };
+
+  /**
+   * Reputation delta after the gain multiplier / street + cluster mitigation.
+   * The strongest cluster mitigation among the target slots applies ONCE (an
+   * incident's reputation delta is not multiplied per matching business).
+   */
+  const rep = (effect: number, slotIndices: readonly number[] = []): number => {
+    if (effect > 0) return roundInt(effect * ctx.repGainMultiplier);
+    const slotFlat = slotIndices.reduce(
+      (max, slot) => Math.max(
+        max,
+        computeBusinessIncidentMitigation(state, slot).reputationDamageReductionFlat,
+      ),
+      0,
+    );
+    const flat = (isIncident ? streetRepFlat : 0) + slotFlat;
+    if (flat <= 0) return roundInt(effect);
+    return roundInt(Math.min(0, effect + flat));
+  };
+
+  return { coin, rep };
+}
 
 /**
  * Resolves a single event card's effects on the game state.
@@ -56,7 +147,7 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
     const logText = effectiveDuration > 0
       ? `${dEvent.name}: ${what} multiplier ${multiplierLabel}% for ${effectiveDuration} turns`
       : `${dEvent.name}: Resolved with no effect (fully neutralized)`;
-    addLog(state, logText, 'loss');
+    addLogShared(state, logText, 'loss');
 
     // Record transcript event
     recordMainStreetEvent({
@@ -82,18 +173,12 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
   const incidentBuffs = event.trigger === 'Incident' ? computeIncidentSkillBuffs(employedSkills) : null;
   const theftNeutralized =
     incidentBuffs !== null && incidentBuffs.immuneToTheftLoss && isTheftLossIncident(event);
-  /** Effective coin delta after quality-inspector / security-consultant mitigation (integer). */
-  const cDelta = (effect: number): number => {
-    if (theftNeutralized && effect < 0) return 0; // theft immunity: no coin loss
-    if (incidentBuffs === null || effect >= 0) return roundInt(effect);
-    return roundInt(effect + Math.abs(effect) * incidentBuffs.coinDamageReductionPct);
-  };
-  /** Effective reputation delta after brand-ambassador / compliance mitigation (integer). */
-  const rDelta = (effect: number): number => {
-    if (effect > 0) return roundInt(effect * repGainMultiplier);
-    if (incidentBuffs === null) return roundInt(effect);
-    return roundInt(Math.min(0, effect + incidentBuffs.reputationDamageReductionFlat));
-  };
+  const { coin: cDelta, rep: rDelta } = makeEventMitigation(state, {
+    incidentBuffs,
+    repGainMultiplier,
+    theftNeutralized,
+  });
+  const targetSlots = eventTargetSlotIndices(state, event);
   const rep = state.resourceBank.reputation;
   const cfg = state.config;
   // Event's own coin delta before staff mitigation / reputation scaling:
@@ -103,37 +188,45 @@ export function resolveEvent(state: MainStreetState, event: EventCard): void {
 
   switch (event.target) {
     case 'SpecificSynergy': {
-      // Count matching businesses and apply coinDelta per match. A
-      // proportional event is a whole-balance effect, so its loss is applied
-      // once rather than per match.
-      const targets = eventSynergyTargets(state, event);
-      const matchCount = state.streetGrid.filter(
-        b => matchesEventSynergyTargets(b, targets),
-      ).length;
-      const rawDelta = event.coinPercentDelta !== undefined
-        ? baseCoinDelta
-        : baseCoinDelta * matchCount;
-      state.resourceBank.coins += applyReputationMultiplier(cDelta(rawDelta), rep, cfg);
-      state.resourceBank.reputation += rDelta(event.reputationDelta);
+      // Apply the coin delta per matching business. Each match is mitigated by
+      // ITS OWN cluster's business staff (Security Guard / Maintenance Worker
+      // damage reduction), so a guarded business takes less than an unguarded
+      // one (GDD D.4.3/D.4.8 §2). A proportional event is a whole-balance
+      // effect, so its loss is applied once rather than per match.
+      const coinDelta = event.coinPercentDelta !== undefined
+        ? cDelta(baseCoinDelta)
+        : targetSlots.reduce((sum, slot) => sum + cDelta(baseCoinDelta, slot), 0);
+      state.resourceBank.coins += applyReputationMultiplier(coinDelta, rep, cfg);
+      state.resourceBank.reputation += rDelta(event.reputationDelta, targetSlots);
       break;
     }
     case 'All': {
-      // Apply to all -- direct delta on resource bank
+      // Apply to all -- direct delta on resource bank. A street-wide effect is
+      // not attributable to one business cluster, so only management-company
+      // (street-scope) staff mitigation applies here.
       state.resourceBank.coins += applyReputationMultiplier(cDelta(baseCoinDelta), rep, cfg);
       state.resourceBank.reputation += rDelta(event.reputationDelta);
       break;
     }
     case 'RandomBusiness': {
-      // Pick a random placed business and apply effect
-      const placed = state.streetGrid.filter(b => b !== null);
-      if (placed.length > 0) {
-        // Use RNG for deterministic random selection
-        // Consume RNG for deterministic selection (used in future milestones)
-        const _targetIdx = Math.floor(state.rng() * placed.length);
-        void _targetIdx;
-        state.resourceBank.coins += applyReputationMultiplier(cDelta(baseCoinDelta), rep, cfg);
+      // Pick a random placed business and apply effect. The draw is unchanged
+      // (deterministic RNG stream); the chosen slot now also decides which
+      // business cluster's staff mitigate the damage.
+      const placedSlots = state.streetGrid.reduce<number[]>((slots, card, index) => {
+        if (card !== null) slots.push(index);
+        return slots;
+      }, []);
+      if (placedSlots.length > 0) {
+        const targetSlot = placedSlots[Math.floor(state.rng() * placedSlots.length)];
+        state.resourceBank.coins += applyReputationMultiplier(
+          cDelta(baseCoinDelta, targetSlot),
+          rep,
+          cfg,
+        );
+        state.resourceBank.reputation += rDelta(event.reputationDelta, [targetSlot]);
+      } else {
+        state.resourceBank.reputation += rDelta(event.reputationDelta);
       }
-      state.resourceBank.reputation += rDelta(event.reputationDelta);
       break;
     }
   }
@@ -285,16 +378,12 @@ export function computeEventDeltas(
   const incidentBuffs = event.trigger === 'Incident' ? computeIncidentSkillBuffs(employedSkills) : null;
   const theftNeutralized =
     incidentBuffs !== null && incidentBuffs.immuneToTheftLoss && isTheftLossIncident(event);
-  const cDelta = (effect: number): number => {
-    if (theftNeutralized && effect < 0) return 0;
-    if (incidentBuffs === null || effect >= 0) return roundInt(effect);
-    return roundInt(effect + Math.abs(effect) * incidentBuffs.coinDamageReductionPct);
-  };
-  const rDelta = (effect: number): number => {
-    if (effect > 0) return roundInt(effect * repGainMultiplier);
-    if (incidentBuffs === null) return roundInt(effect);
-    return roundInt(Math.min(0, effect + incidentBuffs.reputationDamageReductionFlat));
-  };
+  const { coin: cDelta, rep: rDelta } = makeEventMitigation(state, {
+    incidentBuffs,
+    repGainMultiplier,
+    theftNeutralized,
+  });
+  const targetSlots = eventTargetSlotIndices(state, event);
   const rep = repOverride ?? state.resourceBank.reputation;
   const cfg = state.config;
   // Proportional events collect from the current banked balance (same helper
@@ -305,16 +394,12 @@ export function computeEventDeltas(
 
   switch (event.target) {
     case 'SpecificSynergy': {
-      const targets = eventSynergyTargets(state, event);
-      const matchCount = state.streetGrid.filter(
-        b => matchesEventSynergyTargets(b, targets),
-      ).length;
-      const rawDelta = event.coinPercentDelta !== undefined
-        ? baseCoinDelta
-        : baseCoinDelta * matchCount;
+      const coinDelta = event.coinPercentDelta !== undefined
+        ? cDelta(baseCoinDelta)
+        : targetSlots.reduce((sum, slot) => sum + cDelta(baseCoinDelta, slot), 0);
       return {
-        coinDelta: applyReputationMultiplier(cDelta(rawDelta), rep, cfg),
-        repDelta: rDelta(event.reputationDelta),
+        coinDelta: applyReputationMultiplier(coinDelta, rep, cfg),
+        repDelta: rDelta(event.reputationDelta, targetSlots),
       };
     }
     case 'All':
@@ -323,13 +408,16 @@ export function computeEventDeltas(
         repDelta: rDelta(event.reputationDelta),
       };
     case 'RandomBusiness': {
-      const placed = state.streetGrid.filter(b => b !== null);
-      if (placed.length > 0) {
+      const placedSlots = state.streetGrid.reduce<number[]>((slots, card, index) => {
+        if (card !== null) slots.push(index);
+        return slots;
+      }, []);
+      if (placedSlots.length > 0) {
         // Consume RNG exactly as resolveEvent does (deterministic selection).
-        void Math.floor(state.rng() * placed.length);
+        const targetSlot = placedSlots[Math.floor(state.rng() * placedSlots.length)];
         return {
-          coinDelta: applyReputationMultiplier(cDelta(baseCoinDelta), rep, cfg),
-          repDelta: rDelta(event.reputationDelta),
+          coinDelta: applyReputationMultiplier(cDelta(baseCoinDelta, targetSlot), rep, cfg),
+          repDelta: rDelta(event.reputationDelta, [targetSlot]),
         };
       }
       return {
@@ -408,9 +496,10 @@ function buildOwnerEventContext(
   player: PlayerRecord,
 ): OwnerEventContext {
   const ownerId = player.playerId;
-  const skills = (player.staffCards ?? []).flatMap((card) =>
-    Array.isArray(card.specializationSkillIds) ? deserializeSkillIds(card.specializationSkillIds) : [],
-  );
+  // Street-wide (management-company-scope) skills only, gated by staff type —
+  // a business-staff member's cross-type skill is inert here too
+  // (MS-0MW4MSNWR00123OZ AC1/AC4).
+  const skills = getStreetScopeSkills(player.staffCards ?? []);
   const incidentBuffs =
     event.trigger === 'Incident' ? computeIncidentSkillBuffs(skills) : null;
   const theftNeutralized =
@@ -487,18 +576,27 @@ function computeOwnerEventDeltas(
   switch (event.target) {
     case 'SpecificSynergy': {
       const targets = eventSynergyTargets(state, event);
+      const matchSlots: number[] = [];
       for (let i = 0; i < state.streetGrid.length; i++) {
         const b = state.streetGrid[i];
         if (!b || !b.synergyTypes) continue;
         if (getSlotOwnerId(state, i) !== ctx.ownerId) continue;
-        if (matchesEventSynergyTargets(b, targets)) matchCount += 1;
+        if (matchesEventSynergyTargets(b, targets)) matchSlots.push(i);
       }
+      matchCount = matchSlots.length;
       if (matchCount > 0) {
-        const rawDelta = event.coinPercentDelta !== undefined
-          ? baseCoinDelta
-          : baseCoinDelta * matchCount;
-        coins = applyReputationMultiplier(ownerCoinDelta(ctx, rawDelta), ctx.player.reputation, cfg);
-        reputation = ownerRepDelta(ctx, event.reputationDelta);
+        // Per-managed-cluster mitigation (GDD D.4.3/D.4.8 §2): each matching
+        // business's own cluster staff reduce that business's share.
+        const mitigation = makeEventMitigation(state, {
+          incidentBuffs: ctx.incidentBuffs,
+          repGainMultiplier: computeReputationGainMultiplier(ctx.skills),
+          theftNeutralized: ctx.theftNeutralized,
+        });
+        const coinDelta = event.coinPercentDelta !== undefined
+          ? ownerCoinDelta(ctx, baseCoinDelta)
+          : matchSlots.reduce((sum, slot) => sum + mitigation.coin(baseCoinDelta, slot), 0);
+        coins = applyReputationMultiplier(coinDelta, ctx.player.reputation, cfg);
+        reputation = mitigation.rep(event.reputationDelta, matchSlots);
       }
       break;
     }
@@ -511,6 +609,23 @@ function computeOwnerEventDeltas(
       break;
   }
   return { coins, reputation, matchCount };
+}
+
+/**
+ * One owner's routed deltas from a shared event
+ * (MS-0MVRNW26W0070CP0).
+ *
+ * Reporting-only: it mirrors the wallet movement `applyCompetitiveEventEffects`
+ * just applied to that owner's `PlayerRecord`, so the competitive round ledger
+ * can report each seat's share of the resolved incident without re-deriving
+ * the per-owner staff mitigation / reputation-multiplier maths.
+ */
+export interface OwnerEventEffectChange {
+  ownerId: number;
+  /** Coins routed to this owner (negative = loss). */
+  coins: number;
+  /** Reputation routed to this owner (negative = loss). */
+  reputation: number;
 }
 
 /**
@@ -550,19 +665,22 @@ function computeOwnerEventDeltas(
  * @param event           The already-resolved shared event card to route.
  * @param actingPlayerId  Owner index of the player who played the event
  *                        (Investment trigger). Omit for shared incidents.
+ * @returns The per-owner deltas actually routed (one entry per owner whose
+ *          wallet moved; `[]` when nothing was routed). Reporting data for the
+ *          competitive round ledger — callers may ignore it.
  */
 export function applyCompetitiveEventEffects(
   state: MainStreetState,
   event: EventCard,
   actingPlayerId?: number,
-): void {
-  if (!state.players || state.players.length < 2) return;
-  if (isDurationEventCard(event)) return; // board-wide effect, host-applied only
+): OwnerEventEffectChange[] {
+  if (!state.players || state.players.length < 2) return [];
+  if (isDurationEventCard(event)) return []; // board-wide effect, host-applied only
 
   const target = event.target;
   const actingId = event.trigger === 'Investment' ? actingPlayerId ?? 0 : undefined;
 
-  const changed: { ownerId: number; coins: number; rep: number }[] = [];
+  const changed: OwnerEventEffectChange[] = [];
   for (const player of state.players) {
     // Investment `All`/`RandomBusiness` benefits the acting player only;
     // incidents and per-owner `SpecificSynergy` events route to every owner.
@@ -572,7 +690,7 @@ export function applyCompetitiveEventEffects(
     if (delta.coins !== 0 || delta.reputation !== 0) {
       player.coins += delta.coins;
       player.reputation += delta.reputation;
-      changed.push({ ownerId: player.playerId, coins: delta.coins, rep: delta.reputation });
+      changed.push({ ownerId: player.playerId, coins: delta.coins, reputation: delta.reputation });
     }
   }
 
@@ -580,10 +698,11 @@ export function applyCompetitiveEventEffects(
     addLog(
       state,
       c.ownerId,
-      `${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.rep)})`,
-      classifyEffect(c.coins, c.rep),
+      `${event.trigger}: ${event.name} (${describeEventEffects(c.coins, c.reputation)})`,
+      classifyEffect(c.coins, c.reputation),
     );
   }
+  return changed;
 }
 
 // ── Piggyback rewards (epic MS-0MUYC47EL005Z69H, F2 engine helpers) ──
@@ -885,7 +1004,7 @@ export function raisePiggybackDecisions(
     }),
   );
   state.pendingPiggyback = { actingSeatId, event, paidCost, decisions };
-  addLog(
+  addLogShared(
     state,
     `Piggyback: ${event.name} — ${decisions.length} seat(s) invited to join fully.`,
     'neutral',

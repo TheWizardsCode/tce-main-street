@@ -140,6 +140,12 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
           try {
             (s.msLifecycleManager as any).onTutorialActionComplete?.('place-business' as TutorialActionType);
           } catch (_) { /* ignore */ }
+
+          // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the
+          // placement transfer animation and audio have completed (runs on
+          // success, failure and premium-dialog cancel alike — the trigger's
+          // own guards decide).
+          tcCtx.scene.maybeRunOutOfActionsTrigger?.();
         };
 
         const doPlace = (): void => {
@@ -255,6 +261,10 @@ export function onSlotClick(tcCtx: MainStreetTurnControllerContext, slotIndex: n
       // Synergy-formation animation for any new pairs (non-blocking).
       tcCtx.animateNewSynergyPairs(beforePairs);
       (s.msLifecycleManager as any).onTutorialActionComplete?.('place-business' as TutorialActionType);
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): legacy direct
+      // buy-to-grid completion (kept for backward compatibility).
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     if (typeof sourceIndex === 'number' && sourceIndex >= 0) {
@@ -414,6 +424,10 @@ export function applyHandUpgradeToSlot(tcCtx: MainStreetTurnControllerContext, h
 
       // Tutorial: mark apply-upgrade step complete if active
       (s.msLifecycleManager as any).onTutorialActionComplete?.('apply-upgrade' as TutorialActionType);
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the upgrade
+      // transfer animation and audio have completed.
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     void s.animateTransferFromMarket({

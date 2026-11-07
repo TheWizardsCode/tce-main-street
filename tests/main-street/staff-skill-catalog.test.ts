@@ -22,10 +22,12 @@ import {
   STAFF_SKILL_CATALOG,
   BASELINE_SKILL_ID,
   getSkill,
+  getSkillScope,
   serializeSkillIds,
   deserializeSkillIds,
   assignSkillsToApplicants,
   type SkillCategory,
+  type SkillScope,
 } from '../../src/MainStreetStaffSkills';
 import { createSeededRng } from '@core-engine/SeededRng';
 
@@ -37,10 +39,12 @@ describe('SpecializationSkill type lives in MainStreetCards (AC1)', () => {
       id: 'skill-chef',
       name: 'Chef de Cuisine',
       category: 'income-boost',
+      scope: 'business',
       description: '+20% income from Food businesses.',
       effect: 'income-percent-food',
     };
     expect(chef.category).toBe('income-boost');
+    expect(chef.scope).toBe('business');
     expect(chef.effect.length).toBeGreaterThan(0);
   });
 
@@ -103,6 +107,55 @@ describe('catalog composition (AC2)', () => {
   });
 });
 
+// ── AC: skill scope classification (MS-0MW4MSNMJ006E9JH) ────
+
+describe('skill scope classification (8 business / 8 management-company)', () => {
+  const BUSINESS_IDS = [
+    'skill-networker',
+    'skill-chef',
+    'skill-dj',
+    'skill-sales-champion',
+    'skill-tech-guru',
+    'skill-community-builder',
+    'skill-pr-strategist',
+    'skill-operations-manager',
+  ].sort();
+  const MANAGEMENT_COMPANY_IDS = [
+    'skill-town-gossip',
+    'skill-brand-ambassador',
+    'skill-cost-cutter',
+    'skill-negotiator',
+    'skill-quality-inspector',
+    'skill-risk-manager',
+    'skill-security-consultant',
+    'skill-compliance',
+  ].sort();
+
+  const idsFor = (scope: SkillScope) =>
+    STAFF_SKILL_CATALOG.filter(s => s.scope === scope).map(s => s.id).sort();
+
+  it('classifies exactly the documented eight business-scope skills', () => {
+    expect(idsFor('business')).toEqual(BUSINESS_IDS);
+  });
+
+  it('classifies exactly the documented eight management-company-scope skills', () => {
+    expect(idsFor('management-company')).toEqual(MANAGEMENT_COMPANY_IDS);
+  });
+
+  it('every catalog entry has a scope and the lookup helper agrees with the entry', () => {
+    for (const skill of STAFF_SKILL_CATALOG) {
+      expect(['business', 'management-company'], skill.id).toContain(skill.scope);
+      expect(getSkillScope(skill.id), skill.id).toBe(skill.scope);
+    }
+    expect(STAFF_SKILL_CATALOG.filter(s => s.scope === 'business')).toHaveLength(8);
+    expect(STAFF_SKILL_CATALOG.filter(s => s.scope === 'management-company')).toHaveLength(8);
+  });
+
+  it('Town Gossip is the management-company baseline, never business scope', () => {
+    expect(getSkillScope(BASELINE_SKILL_ID)).toBe('management-company');
+  });
+});
+
 // ── AC: stacking metadata exposed for the max-1 constraint ──
 
 describe('stacking metadata (max 1 income + 1 reputation per staff)', () => {
@@ -146,7 +199,7 @@ describe('serialization support for saved state', () => {
 
   it('assigned rosters survive a serialize -> deserialize round-trip', () => {
     for (let seed = 0; seed < 30; seed += 1) {
-      const roster = assignSkillsToApplicants(createSeededRng(seed), 8);
+      const roster = assignSkillsToApplicants(createSeededRng(seed), 8, 'management-company');
       for (const member of roster) {
         const ids = serializeSkillIds(member);
         expect(deserializeSkillIds(ids).map(s => s.id)).toEqual(ids);

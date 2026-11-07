@@ -794,16 +794,21 @@ export function hireApplicantCommand(state: MainStreetState) {
  *                    the loan entry point while the deferred closing is paused
  *                    outside `MarketPhase` (MS-0MVXYCIU00053HL1); every other
  *                    caller keeps the `MarketPhase`-only rule by omitting it.
+ * @param ownerId     Borrowing seat (defaults to the acting seat). Competitive
+ *                    takes forward the human seat id explicitly (AC2 of
+ *                    MS-0MW4YUHOU00474HZ), so the take books to the human seat
+ *                    rather than the transient round-robin `activePlayerId`.
  */
 export function takeLoanCommand(
   state: MainStreetState,
   optionIndex: number,
   opts?: TakeLoanOptions,
+  ownerId?: number,
 ) {
   return toCommand(
     state,
     snapshotAction(
-      (s) => takeLoan(s, optionIndex, undefined, opts),
+      (s) => takeLoan(s, optionIndex, ownerId, opts),
       `TakeLoan option ${optionIndex}`,
     ),
   );

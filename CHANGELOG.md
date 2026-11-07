@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.1.25 (2026-11-07)
+> **Release focus:** This release focuses on deepening the hiring and financial strategy: staff are split into business specialists and company-wide management roles with clearer, correctly scoped skills, and competitive players can now take bank loans and compare every player in a new per-player profit/loss turn summary. It also adds quality-of-life improvements like Activity Log filters, auto-end turn options, and turn-over-turn tracking of cash, reputation, businesses, and staff, alongside behind-the-scenes build and tooling fixes.
+### Features
+- Staff now come in two clear types—business specialists and company-wide hires—so every hiring choice is a meaningful trade-off. (MS-0MW20VBSZ003A01O)
+- Competitive players can now take bank loans from the Turn Summary, just like the AI. (MS-0MW4XQXY6005YG72)
+- Your end-of-turn summary is now a clear profit/loss statement, with a tab per player. (MS-0MW4XULA90002OEY)
+- You'll now get a congratulatory pop-up when you pay off a loan, showing how much you're saving each week. (MS-0MW1ZJDVE000MUID)
+- You can now filter the Activity Log to show only your actions, only AI actions, or everything. (MS-0MW1ZGM1F0010DQW)
+- Activity Log now runs through the game's event feed, so it stays consistent with no visible changes. (MS-0MW1ZHBPK006M8YS)
+- You can now auto-end your turn when you run out of actions, or get a helpful prompt explaining what to do next. (MS-0MW1ZDI8Z006GPFY)
+- Service businesses are now pink, and upgrade cards show a checkered pattern of the colours they upgrade. (MS-0MW1ZSC7U000V5MW)
+- Staff cards now have clearer roles: business staff boost only their own or nearby businesses, while management staff benefit your whole street. (MS-0MW3JXF6U00753LB)
+- Staff skills now only affect the right business type, so hiring choices work as expected. (MS-0MW3LTMHT001PRDT)
+- Card packs can now be hosted online and updated without a game rebuild. (MS-0MV26X8T200852AC)
+- See how your cash, reputation, businesses and staff changed each turn to learn from every run. (MS-0MVAMU6OM008GJPV)
+- Competitive games now show a turn summary so you can compare every player before the next day. (MS-0MVO1SFCM000ZLBI)
+- Browse all game and dev docs in one local site, with sidebar navigation and diagrams rendered. (MS-0MUYK064P0032374)
+### Bug Fixes
+- Reduced-motion players now see the end-of-turn summary instead of skipping it. (MS-0MW20KSEG001DH1X)
+- Releases now ship with a matching engine version, so builds are reproducible and releases no longer fail at the final step. (MS-0MW6KN7T1002UCCI)
+- Build failures now clearly show when an outdated engine version caused them, so you can tell it apart from a real code error. (MS-0MVZZ767V009KG3F)
+- Removed broken scaffold commands so listed scripts no longer fail with errors. (MS-0MVO30VXS002A1Z0)
+- Dev servers and tests no longer crash when many worktree checkouts exist. (MS-0MVBEQ6MC004WRI0)
+### Other
+- Worklog data is now fully upgraded, so tools stop patching things on every run. (MS-0MW1VJT7F004LRG8)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
+## v0.1.25 (2026-11-07)
+> **Release focus:** This release focuses on deepening competitive play with meaningful staff hiring trade-offs, bank loans for human players, and clearer end-of-turn profit/loss summaries with player comparisons. It also improves the Activity Log with filtering and a unified event feed, adds automatic turn ending, and polishes staff cards, business colours, and the Game Over breakdown.
+### Features
+- Staff now come in two clear types — business specialists and company-wide hires — so every hiring choice is a meaningful trade-off. (MS-0MW20VBSZ003A01O)
+- You can now take bank loans in competitive play, just like the AI opponents. (MS-0MW4XQXY6005YG72)
+- The end-of-turn summary now shows a clear profit/loss statement for your company, with tabs to compare players. (MS-0MW4XULA90002OEY)
+- Get a congratulatory popup when you pay off a loan, showing your weekly savings and total repaid. (MS-0MW1ZJDVE000MUID)
+- Filter the Activity Log by All, You, or AI to follow your own moves or study an opponent. (MS-0MW1ZGM1F0010DQW)
+- Activity Log entries now come from the same event feed as the dev overlay, so nothing drifts. (MS-0MW1ZHBPK006M8YS)
+- Turns now end automatically when you run out of actions, or explain how to continue. (MS-0MW1ZDI8Z006GPFY)
+- Service businesses are now pink, and upgrade cards show a checkered pattern of the colours they upgrade. (MS-0MW1ZSC7U000V5MW)
+- Staff cards now have clearer, more focused roles and effects. (MS-0MW3JXF6U00753LB)
+- Staff skills now only affect the right staff type, so hiring choices work as expected. (MS-0MW3LTMHT001PRDT)
+- New card packs can now be delivered online without reinstalling the game. (MS-0MV26X8T200852AC)
+- See how your cash, reputation, businesses and staff changed each turn on the Game Over screen. (MS-0MVAMU6OM008GJPV)
+- Competitive games now show a turn summary so you can compare standings before the next day. (MS-0MVO1SFCM000ZLBI)
+- Browse all game and dev docs in one searchable site, with diagrams rendered right on the page. (MS-0MUYK064P0032374)
+### Bug Fixes
+- Reduced-motion players now see the end-of-turn summary instead of skipping it. (MS-0MW20KSEG001DH1X)
+- Build failures caused by an outdated engine version are now clearly labeled, so you can tell them apart from real code errors. (MS-0MVZZ767V009KG3F)
+- Removed broken scaffold commands so listed scripts no longer fail with errors. (MS-0MVO30VXS002A1Z0)
+- Dev servers and tests no longer crash when extra worktree folders exist. (MS-0MVBEQ6MC004WRI0)
+### Other
+- Worklog updates now apply cleanly, so tools stop warning and behave reliably. (MS-0MW1VJT7F004LRG8)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.24 (2026-11-04)
 > **Release focus:** This release focuses on strengthening the game's underlying engine and development workflow while refining core gameplay balance. It improves economy mechanics like duplicate business penalties, Park reputation, and bank loan clarity, and adds Steam achievement support for Main Street challenges.
 ### Features

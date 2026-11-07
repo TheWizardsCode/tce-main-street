@@ -25,7 +25,7 @@ import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, can
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
 import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
-import { addLog } from '../MainStreetState';
+import { addLogShared } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
 import { getCurrentStep } from '../TutorialFlow';
 import type { TutorialActionType } from '../TutorialFlow';
@@ -143,6 +143,11 @@ export function onBusinessCardClick(tcCtx: MainStreetTurnControllerContext, card
       try {
         (s.msLifecycleManager as any).onTutorialActionComplete?.('select-business' as TutorialActionType);
       } catch (_) { /* ignore */ }
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the transfer
+      // animation and audio have completed — if this action spent the last
+      // action point, fire the auto-advance / dialog trigger.
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     if (sourceIndex >= 0) {
@@ -245,6 +250,10 @@ export function onEventCardClick(tcCtx: MainStreetTurnControllerContext, card: E
       try {
         (s.msLifecycleManager as any).onTutorialActionComplete?.('buy-event' as TutorialActionType);
       } catch (_) { /* ignore */ }
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): fired now that
+      // the event transfer animation and audio have completed.
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     if (sourceIndex >= 0) {
@@ -290,7 +299,7 @@ export function onRefreshMarketClick(tcCtx: MainStreetTurnControllerContext): vo
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
       try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'refresh-market' }, description: cmd.description }); } catch (_) {}
       flashConfirmation(s, 'Market researched');
-      addLog(s.state, 'Researched market (via UI)', 'neutral');
+      addLogShared(s.state, 'Researched market (via UI)', 'neutral');
       refreshed = true;
     } catch (e) {
       console.error('[MS] RefreshMarket failed', e);
@@ -406,6 +415,11 @@ export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerConte
     s.refreshAll();
     if (moved) s.refreshStreetGrid();
     s.refreshActionButtons();
+
+    // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the move
+    // completes synchronously (no transfer animation) — if it spent the last
+    // action point, fire the auto-advance / dialog trigger.
+    tcCtx.scene.maybeRunOutOfActionsTrigger?.();
   
 }
 
@@ -659,6 +673,10 @@ export function onUpgradeCardClick(tcCtx: MainStreetTurnControllerContext, card:
       s.refreshAll();
       s.refreshStreetGrid();
       s.refreshActionButtons();
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the upgrade
+      // transfer animation and audio have completed.
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     if (sourceIndex >= 0) {
@@ -833,6 +851,10 @@ export function onStaffCardClick(tcCtx: MainStreetTurnControllerContext, card: S
           (s.msLifecycleManager as any).onTutorialActionComplete?.('hire-staff' as TutorialActionType);
         } catch (_) {}
       }
+
+      // Post-action out-of-actions hook (MS-0MW3O2NBM001CLKW): the hire
+      // transfer animation and audio have completed.
+      tcCtx.scene.maybeRunOutOfActionsTrigger?.();
     };
 
     if (sourceIndex >= 0) {

@@ -288,13 +288,20 @@ the design notes.
 ## Game-over panel and win celebration / loss sting
 
 `MainStreetOverlayContent.showGameOverOverlay()` renders the final panel as a
-two-column summary (top band title + plain-language end-reason headline;
+three-column summary (top band title + plain-language end-reason headline;
 left **Game State** column of per-player rows with failure/elimination badges
-and the run's challenges met; right **Summary** column with the retained score
-breakdown, challenge details, tier/campaign stats, difficulty selector and the
-Play Again / Menu buttons). The content is derived from committed state by the
-pure `src/scenes/MainStreetGameOverSummary.ts` model (no Phaser import), read
-from each `PlayerRecord` in competitive mode. Overlay conventions: elements
+and the run's challenges met; middle **Summary** column with the retained score
+breakdown, the `Cash at end of turn` line, a `[ View detailed stats ]` link,
+challenge details, tier/campaign stats, difficulty selector and the Play Again /
+Menu buttons; right **Stats** column with five end-of-game graphs — profit per
+turn and cash, businesses, staff and reputation at end of turn). The content is
+derived from committed state by the pure
+`src/scenes/MainStreetGameOverSummary.ts` model (no Phaser import) — including
+`buildGameOverStatSeries` for the graphs and the final cash figure — read from
+each `PlayerRecord` in competitive mode. The graphs render through
+`src/scenes/MainStreetStatsChart.ts`, a thin Chart.js wrapper (dynamically
+imported, skipped in replay/headless mode) that positions a DOM canvas over the
+Phaser canvas and is torn down with the overlay. Overlay conventions: elements
 parented into `scene.hudContainer` at depths 199 backdrop / 200 box / 201
 interactive; read-only and reduced-motion safe.
 

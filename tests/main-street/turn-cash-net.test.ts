@@ -236,9 +236,11 @@ describe('Turn net row and activity log ordering', () => {
       });
       state.streetGrid[0] = arcade;
 
-      // Employ a Risk Manager (probabilityReductionPct = 0.15)
+      // Hire a Risk Manager (probabilityReductionPct = 0.15). Incident
+      // mitigation is a management-company-scope effect, so the holder is
+      // management-company staff (no employedAtSlot) under the two-type model
+      // (MS-0MW4MSNWR00123OZ).
       const riskManager = createRiskManager();
-      riskManager.employedAtSlot = 0;
       state.staffCards = [riskManager];
 
       // Force a Noise Complaint into the incident deck
@@ -293,7 +295,6 @@ describe('Turn net row and activity log ordering', () => {
       state.streetGrid[0] = arcade;
 
       const riskManager = createRiskManager();
-      riskManager.employedAtSlot = 0;
       state.staffCards = [riskManager];
 
       state.incidentDeck = [makeNoiseComplaint()];

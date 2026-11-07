@@ -1,4 +1,5 @@
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
+import type { LogFilter } from '../MainStreetStateTypes';
 import type { DifficultyName } from '../MainStreetDifficulty';
 import type { BusinessCard } from '../MainStreetCards';
 import {
@@ -12,9 +13,12 @@ import type { DragDropManager } from '@ui';
 import type { MainStreetSerializedState, PendingApplicant } from '../MainStreetState';
 import { setStreetGridLattice } from '../MainStreetState';
 import { hireStaffApplicant, declineStaffApplicant } from '../MainStreetEngine';
+import { isAutoAdvanceTurnEnabled, setAutoAdvanceTurnEnabled } from '../MainStreetPrefs';
 import { MainStreetRenderer } from './MainStreetRenderer';
 import { MainStreetAnimator } from './MainStreetAnimator';
 import { MainStreetTurnController } from './MainStreetTurnController';
+import { canHumanSeatAct } from './MainStreetTurnControllerCompetitive';
+import { runPostActionOutOfActionsHook } from './MainStreetOutOfActions';
 import { MainStreetOverlayContent } from './MainStreetOverlayContent';
 import { MainStreetInputManager } from './MainStreetInputManager';
 import { MainStreetSvgTextureManager } from './MainStreetSvgTextureManager';
@@ -71,15 +75,24 @@ export class MainStreetScene extends CardGameScene {
     // Escape cancels an in-progress hand-card targeting phase before it opens
     // the settings panel (CG-0MT3IYSRL001VVUP).
     const vetoToggle = () => this.settingsToggleAllowed();
+    // Game-supplied Auto advance turn toggle (MS-0MW3O2OR2005QGPH): the
+    // engine stays game-agnostic and renders the entry through the generic
+    // `extraToggles` hook; Main Street owns the label and the persisted
+    // preference backing it.
+    const autoAdvanceToggle: import('@ui/SettingsPanel').ExtraToggleConfig = {
+      label: 'Auto advance turn',
+      get: () => isAutoAdvanceTurnEnabled(),
+      set: (value: boolean) => setAutoAdvanceTurnEnabled(value),
+    };
     if (debugTools !== undefined) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle, [autoAdvanceToggle]);
       return;
     }
     if (import.meta.env.DEV) {
-      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle);
+      super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, buildMainStreetDebugTools(true, this.soundManager), vetoToggle, [autoAdvanceToggle]);
       return;
     }
-    super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle);
+    super.initSettingsPanel(difficultyNames, defaultDifficulty, hasTooltips, skillRating, debugTools, vetoToggle, [autoAdvanceToggle]);
   }
 
   /**
@@ -106,6 +119,14 @@ export class MainStreetScene extends CardGameScene {
   // Game state
   public state!: MainStreetState;
   public uiPhase: UIPhase = 'idle';
+
+  /**
+   * Once-per-turn latch for the post-action out-of-actions trigger
+   * (MS-0MW3O2NBM001CLKW): set the first time the trigger fires in a turn,
+   * reset at turn start (`startTurnPhase`). Guarantees the trigger fires at
+   * most once per turn — no double advance, no re-entrant end-turn.
+   */
+  public outOfActionsLatchFired = false;
 
   // Campaign / meta-progression
   public campaign: MainStreetCampaignProgress | null = null;
@@ -280,6 +301,37 @@ export class MainStreetScene extends CardGameScene {
    * `MainStreetRenderer.refreshLog` and `MainStreetInputManager.handleLogWheel`). */
   public logAutoScroll = true;
   public logPrevEntryCount = 0;
+  /**
+   * Active Activity Log view filter (`'all' | 'human' | 'ai'`), presentation-
+   * only (epic MS-0MW1ZGM1F0010DQW). Defaults to `'all'`; reset to `'all'` on
+   * scene creation / new game (never persisted to save data — see the
+   * lifecycle reset block). The controls-row child mutates it via the shared
+   * `createActionButton` controls; the renderer reads it through the pure
+   * predicate (`filterLogEntries`).
+   */
+  public logFilter: LogFilter = 'all';
+  /**
+   * The filter-controls row container (All / You / AI), built in
+   * `createContainers` beneath the title bar (MS-0MW3PFSMB002EIY6). Always
+   * present after containers exist; `refreshLogFilterRow` hides it when
+   * `shouldShowLogFilterControls` is false (single-player / tutorial).
+   */
+  public logFilterRow?: Phaser.GameObjects.Container | undefined;
+  /**
+   * The three filter buttons with the filter value each selects, used by
+   * `refreshLogFilterRow` to repaint the active/inactive treatment. Built
+   * alongside {@link logFilterRow}.
+   */
+  public logFilterControls?: ReadonlyArray<{ filter: LogFilter; button: Phaser.GameObjects.Container }> | undefined;
+  /**
+   * The filter the log was last rendered with. A change to `logFilter` is a
+   * re-render trigger even when the entry count is unchanged (tracked
+   * alongside `logPrevEntryCount`), so selecting a filter re-renders a
+   * same-length log. Not updated while the deferral gate is set, so a filter
+   * change made during end-of-turn deferral applies on the next render
+   * (MS-0MW3PFRV6003LJLD).
+   */
+  public logPrevFilter: LogFilter = 'all';
   /** When true, `refreshLog` suppresses rendering of new entries so they
    * only appear after the upcoming/phase UI has been displayed to the player.
    * Cleared in `finalizeTurn` after `startTurnPhase` completes.
@@ -538,6 +590,38 @@ export class MainStreetScene extends CardGameScene {
   }
   public endTurn(...args: any[]): any {
     return (this.msTurnController as any).endTurn.apply(this.msTurnController, args);
+  }
+
+  /**
+   * Post-action out-of-actions trigger (MS-0MW3O2NBM001CLKW).
+   *
+   * Called by every action-completion site — the market / drag-drop /
+   * placement / event-play handlers — once the triggering action's
+   * animations and audio have completed. Resolves the live trigger state
+   * from the scene and dispatches through the shared trigger: auto-advance
+   * via `this.endTurn()` (the identical code path the **End Turn** button
+   * handler uses) or, when the setting is off, the out-of-actions explainer
+   * dialog seam. Sets the once-per-turn latch when the trigger fires.
+   *
+   * Presentation-only: it never throws into an action completion and never
+   * blocks the market phase.
+   */
+  public maybeRunOutOfActionsTrigger(): void {
+    try {
+      const fired = runPostActionOutOfActionsHook({
+        latchFired: this.outOfActionsLatchFired,
+        actionsRemaining: this.state?.actionsRemaining ?? 0,
+        uiPhase: this.uiPhase,
+        autoAdvanceEnabled: isAutoAdvanceTurnEnabled(),
+        endTurnAllowed: (this.msLifecycleManager as any)?.isTutorialActionAllowed?.('end-turn') ?? null,
+        humanSeatTurn: canHumanSeatAct(this.state),
+        endTurn: () => this.endTurn(),
+        showDialog: () => this.showOutOfActionsDialog(),
+      });
+      if (fired) this.outOfActionsLatchFired = true;
+    } catch {
+      // presentation-only — the trigger must never stall an action completion.
+    }
   }
 
   // ── Refresh display ─────────────────────────────────────
@@ -1354,6 +1438,22 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Presents the out-of-actions explainer dialog (setting off,
+   * MS-0MW3O2O0V00042E5).
+   *
+   * The trigger's dialog seam (`hooks.showDialog`): the explainer overlay
+   * content — copy, End Turn / Dismiss buttons and the auto-advance
+   * checkbox — is delivered by the dialog work item on the overlay manager;
+   * until it lands, this delegation is a safe no-op that leaves the player
+   * in the market phase with End Turn still available.
+   */
+  public showOutOfActionsDialog(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showOutOfActionsDialog === 'function') {
+      (this.msOverlayManager as any).showOutOfActionsDialog();
+    }
+  }
+
+  /**
    * Shows the undo-challenge warning dialog (CG-0MU37CKRR008252I). Presented
    * by `performUndo` when undoing would revoke a challenge completion.
    *
@@ -1449,9 +1549,43 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
-   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): businesses owned,
-   * per-phase income, per-category ongoing expenses, incident and one-off
-   * deltas, the net change and the closing balances, with a primary
+   * Shows the loan payoff congratulation dialog (MS-0MW3SN2LK00537GN, parent
+   * MS-0MW1ZJDVE000MUID): the seat's final scheduled repayment retired a loan,
+   * so the player is congratulated on clearing the debt and told the weekly
+   * deduction has stopped. Delegates to the overlay manager's
+   * showLoanPayoffDialog; the overlay derives its context from this scene
+   * (`replayMode`, the payoff's own `ownerId`, `state.players` and
+   * `state.gameResult`) and the copy model's gate decides presentation.
+   *
+   * With no overlay surface (headless/tests) nothing is presented and the
+   * continuation is never invoked: the caller resumes the flow itself, which
+   * can never strand. The returned flag is the single source of that decision.
+   *
+   * @param payoff    The retired loan, as reported on `TurnResult.loanPayoffs`.
+   * @param onDismiss Called exactly once when the player dismisses the dialog.
+   * @returns Whether the dialog was presented; `false` means nothing was
+   *          drawn and the caller must continue the flow (the copy model's gate
+   *          suppressed it, or there is no overlay surface).
+   */
+  public showLoanPayoffDialog(
+    payoff: import('../MainStreetLoans').LoanPayoff,
+    onDismiss: () => void,
+  ): boolean {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showLoanPayoffDialog === 'function') {
+      return (this.msOverlayManager as any).showLoanPayoffDialog(payoff, onDismiss) === true;
+    }
+    // No overlay manager (headless/tests): nothing can be shown, and
+    // `onDismiss` is not invoked — the caller continues via the `false` result.
+    return false;
+  }
+
+  /**
+   * Shows the Turn Summary dialog (MS-0MVP46AMO002SZUT): the unified tabbed
+   * profit/loss statement for the selected player (parent MS-0MW4XULA90002OEY,
+   * child MS-0MW5EQHFK005NXXM) — Income and Less: Operating expenses sections
+   * with their totals, the Incident and One-off adjustments, an emphasised Net
+   * profit/loss bottom line and the supplementary context (reputation/score
+   * change, closing balances, businesses owned) — with a primary
    * [ Next Turn ] action and a [ Bank Loan ] affordance whose availability
    * comes from the loans descriptor (MS-0MVXYCICT0051LU7).
    * Delegates to the overlay manager's showTurnSummaryDialog.
@@ -1488,6 +1622,44 @@ export class MainStreetScene extends CardGameScene {
     } else {
       // No overlay manager (headless/tests): continue the closing rather than
       // strand the turn.
+      onNextTurn();
+    }
+  }
+
+  /**
+   * Shows the competitive Turn Summary panel (MS-0MVRNV9Y8008IKGK): the same
+   * unified tabbed profit/loss statement as {@link showTurnSummaryDialog}, with
+   * one interactive tab per non-eliminated seat (the human `You` tab selected
+   * by default) plus a primary [ Next Turn ] action and a descriptor-driven
+   * [ Bank Loan ] affordance keyed to the human seat (MS-0MW4YUHOU00474HZ).
+   * Delegates to the overlay manager's showCompetitiveTurnSummaryDialog.
+   *
+   * @param summary          The per-seat model built from the round ledger
+   *                          (its `humanSeatId`/`loanDescriptor` drive the
+   *                          button).
+   * @param onNextTurn       Called when the player clicks [ Next Turn ] — the
+   *                          shared day advances only then.
+   * @param onBankLoanAction Per-seat loans seam, invoked with the human seat
+   *                          id per press of the enabled [ Bank Loan ].
+   * @param result           The closed round's result, so the panel can
+   *                          re-render the same `TurnResult` after a take.
+   */
+  public showCompetitiveTurnSummaryDialog(
+    summary: import('./MainStreetTurnSummary').CompetitiveTurnSummary,
+    onNextTurn: () => void,
+    onBankLoanAction?: (seatId?: number) => void,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'>,
+  ): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog === 'function') {
+      (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog(
+        summary,
+        onNextTurn,
+        onBankLoanAction,
+        result,
+      );
+    } else {
+      // No overlay manager (headless/tests): continue the shared day rather
+      // than strand it.
       onNextTurn();
     }
   }
