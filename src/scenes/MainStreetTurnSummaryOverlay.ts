@@ -43,6 +43,7 @@
 
 import {
   FONT_FAMILY,
+  attachHudTooltipZone,
   createOverlayBackground,
   createOverlayButton,
   dismissOverlay,
@@ -70,6 +71,15 @@ import {
   type LoanSelectorModel,
   type TurnSummaryLoanDescriptor,
 } from './MainStreetLoanSelectorModel';
+import {
+  buildContextLineTooltip,
+  buildExpenseLineTooltip,
+  buildIncidentLineTooltip,
+  buildIncomeLineTooltip,
+  buildNetLineTooltip,
+  buildOneOffLineTooltip,
+  buildTotalLineTooltip,
+} from './MainStreetTurnSummaryTooltips';
 import { showLoanSelectorDialog } from './MainStreetLoanOverlay';
 
 /** Panel geometry (fits the 1280×720 scene with the action row and hint). */
@@ -447,12 +457,21 @@ export function presentTurnSummaryPanel(
       style: Record<string, unknown>,
       originX = 0,
       originY = 0,
+      tooltip?: () => string,
     ): Phaser.GameObjects.Text => {
       const obj = s.add.text(x, y, text, style)
         .setOrigin(originX, originY)
         .setDepth(201);
       if (s.hudContainer) s.hudContainer.add(obj);
       s.overlayObjects.push(obj);
+      // Ledger tooltips (MS-0MW6GZKZZ006PLLO): attach the shared hover/tap
+      // tooltip zone to a row when a lazy content builder is supplied. The
+      // builder runs only on hover/tap, so no tooltip strings are computed for
+      // rows the player never inspects. The object is already tracked in
+      // `s.overlayObjects`, so `dismissOverlay` releases the zone with the
+      // panel. Rows are inert text, so `tapToggle` (the default) is safe: a
+      // second tap dismisses, and the panel's buttons are separate objects.
+      if (tooltip) attachHudTooltipZone(s, obj, text, tooltip);
       return obj;
     };
 
@@ -512,10 +531,11 @@ export function presentTurnSummaryPanel(
     const addLine = (
       text: string,
       style: Record<string, unknown> = {},
+      tooltip?: () => string,
     ): void => {
       addText(leftX, y, text, {
         fontSize: '13px', color: '#ddccbb', fontFamily: FONT_FAMILY, ...style,
-      });
+      }, 0, 0, tooltip);
       y += 20;
     };
 
@@ -530,26 +550,44 @@ export function presentTurnSummaryPanel(
 
     addHeading(pl.income.label);
     for (const line of pl.income.lines) {
-      addLine(`${line.label}: ${formatSigned(line.coins)}`, {
-        color: line.coins < 0 ? LOSS_COLOUR : '#ddccbb',
-      });
+      addLine(
+        `${line.label}: ${formatSigned(line.coins)}`,
+        { color: line.coins < 0 ? LOSS_COLOUR : '#ddccbb' },
+        () => buildIncomeLineTooltip(line),
+      );
     }
-    addLine(`${pl.income.totalLabel}: ${formatSigned(pl.income.total)}`, {
-      fontStyle: 'bold',
-    });
+    addLine(
+      `${pl.income.totalLabel}: ${formatSigned(pl.income.total)}`,
+      { fontStyle: 'bold' },
+      () => buildTotalLineTooltip(pl.income.totalLabel, pl.income.total),
+    );
 
     addHeading(pl.expenses.label);
     for (const line of pl.expenses.lines) {
       // Ongoing costs are signed (zero or negative) — render them as-is.
-      addLine(`${line.label}: ${formatSigned(line.coins)}`, { color: LOSS_COLOUR });
+      addLine(
+        `${line.label}: ${formatSigned(line.coins)}`,
+        { color: LOSS_COLOUR },
+        () => buildExpenseLineTooltip(line),
+      );
     }
-    addLine(`${pl.expenses.totalLabel}: ${formatSigned(pl.expenses.total)}`, {
-      fontStyle: 'bold',
-    });
+    addLine(
+      `${pl.expenses.totalLabel}: ${formatSigned(pl.expenses.total)}`,
+      { fontStyle: 'bold' },
+      () => buildTotalLineTooltip(pl.expenses.totalLabel, pl.expenses.total),
+    );
 
     y += 8;
-    addLine(`${pl.incident.label}: Coins ${formatSigned(pl.incident.coins)}, Rep ${formatSigned(pl.incident.reputation)}`);
-    addLine(`${pl.oneOff.label}: Coins ${formatSigned(pl.oneOff.coins)}, Rep ${formatSigned(pl.oneOff.reputation)}`);
+    addLine(
+      `${pl.incident.label}: Coins ${formatSigned(pl.incident.coins)}, Rep ${formatSigned(pl.incident.reputation)}`,
+      {},
+      () => buildIncidentLineTooltip(pl.incident, view.incidentName),
+    );
+    addLine(
+      `${pl.oneOff.label}: Coins ${formatSigned(pl.oneOff.coins)}, Rep ${formatSigned(pl.oneOff.reputation)}`,
+      {},
+      () => buildOneOffLineTooltip(pl),
+    );
 
     // ── Emphasised bottom line ──────────────────────────────────
     y += 10;
@@ -558,21 +596,34 @@ export function presentTurnSummaryPanel(
       fontStyle: 'bold',
       color: pl.net.coins < 0 ? LOSS_COLOUR : PROFIT_COLOUR,
       fontFamily: FONT_FAMILY,
-    });
+    }, 0, 0, () => buildNetLineTooltip(pl));
     y += 32;
 
     // ── Supplementary context (never P&L lines) ─────────────────
     addLine(
       `Reputation change: ${formatSigned(pl.context.reputationChange)} · Score change: ${formatSigned(pl.context.scoreChange)}`,
       { fontSize: '12px' },
+      () => [
+        buildContextLineTooltip('reputationChange', pl.context),
+        buildContextLineTooltip('scoreChange', pl.context),
+      ].join('\n\n'),
     );
     addLine(
       `Closing coins: ${view.closing.coins} · Closing Rep ${view.closing.reputation} · Score ${view.closing.score}`,
       { fontSize: '12px' },
+      () => buildContextLineTooltip('closingCoins', pl.context),
     );
-    addLine(`Businesses owned: ${pl.context.businessesOwned}`, { fontSize: '12px' });
+    addLine(
+      `Businesses owned: ${pl.context.businessesOwned}`,
+      { fontSize: '12px' },
+      () => buildContextLineTooltip('businessesOwned', pl.context),
+    );
     if (view.incidentName !== null) {
-      addLine(`Incident drawn: ${view.incidentName}`, { fontSize: '12px' });
+      addLine(
+        `Incident drawn: ${view.incidentName}`,
+        { fontSize: '12px' },
+        () => buildIncidentLineTooltip(pl.incident, view.incidentName),
+      );
     }
 
     // ── Actions ─────────────────────────────────────────────────

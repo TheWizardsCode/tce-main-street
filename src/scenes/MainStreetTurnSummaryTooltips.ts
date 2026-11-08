@@ -61,6 +61,7 @@ export const LEDGER_TOOLTIP_I18N_KEYS = {
   reductionLine: 'ledger.tooltip.expenses.reduction',
   clampLine: 'ledger.tooltip.expenses.clamp',
   totalLine: 'ledger.tooltip.total',
+  totalLineNote: 'ledger.tooltip.total.note',
   // Incident/one-off/net
   incidentTitle: 'ledger.tooltip.incident.title',
   incidentNoEvent: 'ledger.tooltip.incident.noEvent',
@@ -91,6 +92,7 @@ export const LEDGER_TOOLTIP_STRINGS = {
   reductionLine: 'Street-wide reduction: {amount}',
   clampLine: 'Limited by available coins: {amount}',
   totalLine: 'Total: {amount}',
+  totalLineNote: 'The sum of the lines above.',
   incidentTitle: 'Incident',
   incidentNoEvent: 'No incident was resolved this turn.',
   incidentEffect: '{name}: Coins {coins}, Rep {reputation}',
@@ -210,6 +212,24 @@ export function buildExpenseLineTooltip(line: PLStatementLine): string {
     amount: formatSigned(line.coins),
   }));
   return lines.join('\n');
+}
+
+/**
+ * Builds a tooltip for a section total row (`Total income` /
+ * `Total operating expenses`).
+ *
+ * The total is the committed subtotal (never a re-sum of the displayed lines),
+ * so this explains that it aggregates the lines above without inventing a
+ * figure.
+ *
+ * @param label The total row's label.
+ * @param coins The committed subtotal.
+ */
+export function buildTotalLineTooltip(label: string, coins: number): string {
+  return [
+    `${label}: ${formatSigned(coins)}`,
+    t(LEDGER_TOOLTIP_I18N_KEYS.totalLineNote),
+  ].join('\n');
 }
 
 /**

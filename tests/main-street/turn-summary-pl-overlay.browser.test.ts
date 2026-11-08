@@ -770,4 +770,98 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect(nextTurnCalls).toBe(1);
     expect((s.overlayObjects ?? []).length).toBe(0);
   }, 30_000);
+
+  it('attaches hover/tap tooltips to every ledger row and dismisses them cleanly (MS-0MW6GZKZZ006PLLO)', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    // A state with one business + one staff card, so the expense breakdowns
+    // derive per-item costs, and an income result with a per-business breakdown.
+    const state = singlePlayerState();
+    state.streetGrid[0] = {
+      family: 'business', id: 'biz-bakery', name: 'Bakery', ongoingCost: 10,
+    } as any;
+    state.staffCards = [
+      { family: 'staff', id: 'stf-clerk', name: 'Clerk', ongoingCost: 50 } as any,
+    ];
+    const income = {
+      total: 140,
+      breakdown: [{ slotIndex: 0, businessName: 'Bakery', baseIncome: 120, synergyBonus: 30, total: 150 }],
+      handSynergyTotal: 0,
+      phaseBreakdown: {
+        perSlotBreakdown: [{
+          slotIndex: 0, businessName: 'Bakery', baseIncome: 120, synergyBonus: 30,
+          repBonus: 10, eventDeltas: [], upcomingDeltas: [],
+        }],
+        handSynergyTotal: 0,
+      },
+    };
+    const summary = buildTurnSummary(state, {
+      turnLedger: makeLedger(),
+      incident: { name: 'Test Incident' } as EventCard,
+      income,
+    })!;
+    expect(summary).not.toBeNull();
+
+    const show = vi.spyOn(s.tooltipManager!, 'show');
+    const hide = vi.spyOn(s.tooltipManager!, 'hide');
+    let nextTurnCalls = 0;
+
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, buildTurnSummaryLoanDescriptor(s.state));
+
+    const lastShown = (): string => {
+      const calls = show.mock.calls;
+      return String(calls[calls.length - 1]?.[0] ?? '');
+    };
+
+    // Every monetary line and context row carries a tooltip listener.
+    const rows = [
+      'Base income: +120',
+      'Synergy income: +30',
+      'Reputation income: +10',
+      'Event income: -20',
+      'Total income: +140',
+      'Staff wages: -50',
+      'Community spaces: -20',
+      'Business costs: -10',
+      'Total operating expenses: -80',
+      'Incident: Coins -40, Rep -2',
+      'One-off: Coins -30, Rep +4',
+      'Net profit/loss: -10',
+      'Reputation change: +2 · Score change: +14',
+      'Closing coins: 990 · Closing Rep 12 · Score 34',
+      'Businesses owned: 3',
+      'Incident drawn: Test Incident',
+    ];
+    for (const label of rows) {
+      const row = overlayText(s, label);
+      expect(row, `missing row \u201c${label}\u201d`).toBeDefined();
+      expect(row!.listenerCount('pointerover'), `no tooltip on \u201c${label}\u201d`).toBeGreaterThan(0);
+      expect(row!.listenerCount('pointerout'), `no dismiss on \u201c${label}\u201d`).toBeGreaterThan(0);
+    }
+
+    // Hovering an income row surfaces the per-business breakdown lazily.
+    const baseRow = overlayText(s, 'Base income: +120')!;
+    baseRow.emit('pointerover');
+    expect(show).toHaveBeenCalled();
+    expect(lastShown()).toContain('Bakery: +120');
+    baseRow.emit('pointerout');
+    expect(hide).toHaveBeenCalled();
+
+    // Hovering a cost row surfaces the per-card breakdown.
+    const staffRow = overlayText(s, 'Staff wages: -50')!;
+    staffRow.emit('pointerover');
+    expect(lastShown()).toContain('Clerk: -50');
+
+    // The net and one-off rows explain their reconciliation formulas.
+    overlayText(s, 'Net profit/loss: -10')!.emit('pointerover');
+    expect(lastShown()).toContain('Net =');
+    overlayText(s, 'One-off: Coins -30, Rep +4')!.emit('pointerover');
+    expect(lastShown()).toContain('One-off =');
+
+    // [ Next Turn ] still works — the tooltip zones never block the buttons.
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect(nextTurnCalls).toBe(1);
+    expect((s.overlayObjects ?? []).length).toBe(0);
+  }, 30_000);
 });
