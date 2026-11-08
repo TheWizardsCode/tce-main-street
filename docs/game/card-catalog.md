@@ -606,7 +606,7 @@ This writes per-run and aggregate metrics to:
 
 ## Staff Cards
 
-> **Staff effect audit:** the full audit of every staff card's backing data and engine consumer is recorded in [staff-effect-audit.md](./staff-effect-audit.md). Of the 27 shipped staff templates, 26 are fully implemented; the Bookkeeper's −20% ongoing-cost effect is tracked as MS-0MW7D0LGL007PAUY.
+> **Staff effect audit:** the full audit of every staff card's backing data and engine consumer is recorded in [staff-effect-audit.md](./staff-effect-audit.md). Of the shipped roster (26 base staff plus the residential pack staff), all but the Bookkeeper are fully implemented; the Bookkeeper's −20% ongoing-cost effect is tracked as MS-0MW7D0LGL007PAUY.
 
 Staff cards are a separate card family (`family: 'staff'`). Every staff member belongs to exactly one of **two types**, and the type decides what the member may affect, where it is assigned and how the player interacts with it — the full model, its example roles and its gameplay outcomes are in [the-build-gdd.md](the-build-gdd.md) (Appendix D.4):
 
