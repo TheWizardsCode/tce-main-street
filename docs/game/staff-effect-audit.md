@@ -3,7 +3,7 @@
 > **Tracking epic:** [MS-0MW6HEBP80070YND](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW6HEBP80070YND) — *Staff effects are not implemented*
 > **Audit child:** MS-0MW8AG3VS009GBDP — *Refresh and record the 26-card staff effect audit*
 > **Date:** 2026-11-08
-> **Status:** All 26 base staff cards are fully implemented end-to-end (the Bookkeeper's −20% ongoing-cost effect landed in MS-0MW7D0LGL007PAUY). The card-level `unitTestStatus` column is currently vacuous for business staff because `verifyStaffCard` does not assert their per-business buffs (tracked as [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J)).
+> **Status:** All 26 base staff cards are fully implemented end-to-end (the Bookkeeper's −20% ongoing-cost effect landed in MS-0MW7D0LGL007PAUY), and the card-level `unitTestStatus` is now honest: `verifyStaffCard` asserts every declared effect field, so a card whose effect is absent or mis-parsed cannot report `pass` (MS-0MW8AG48V005OX8J).
 
 ## Summary
 
@@ -85,9 +85,11 @@ Fixed by MS-0MW7D0LGL007PAUY: `staff-bookkeeper` now ships `effect=ongoing-cost:
 
 **Tracked as:** [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) — **resolved** (see above). The Bookkeeper per-card child MS-0MW8AHNBK008FMA1 records the per-card verification.
 
-### G2 — Card-level `unitTestStatus` is vacuous for business staff (verification gap)
+### G2 — Card-level `unitTestStatus` was vacuous for business staff (verification gap) — **CLOSED**
 
-`verifyStaffCard` (`tests/main-street/cards/definitions/runners.ts`) asserts hire cost, hand slots, the legacy street-wide purchase discount, the refresh discount, the tax rate, actions per turn, the upgrade discount and the peek flag. It does **not** assert:
+Fixed by MS-0MW8AG48V005OX8J: `verifyStaffCard` now places each business-staff card on a real business and asserts every declared effect field through the engine — `incomeBonus` (+`incomeBonusTarget`/`incomeBonusTypes`), `incomePercent`, `reputationBonus` (+`reputationBonusTarget`), `reputationPercent`, `synergyRangeBonus`, `adjacencyPurchaseDiscount`, `ongoingCostReduction`, `incidentEffect`, `upgradeCostDiscount`, `freeMarketRerollPerTurn`/`marketRelevanceBias`, and `reputationPerTurn`. A raw-row honesty guard additionally fails the card when `card-data.csv` declares an effect the parsed template does not carry, so a parser gap cannot report `pass`. Meta-tests in `tests/main-street/cards/unit/CardTestFramework.test.ts` prove a card with an unasserted effect yields `fail` and all 26 staff rows still pass. The original gap is recorded below for history.
+
+`verifyStaffCard` (`tests/main-street/cards/definitions/runners.ts`) used to assert hire cost, hand slots, the legacy street-wide purchase discount, the refresh discount, the tax rate, actions per turn, the upgrade discount and the peek flag — but **not**:
 
 - `incomeBonus` / `incomeBonusTarget` / `incomeBonusTypes` (Barista, Florist, Event Planner, Baker, Mechanic),
 - `incomePercent` (Chef),
@@ -98,9 +100,9 @@ Fixed by MS-0MW7D0LGL007PAUY: `staff-bookkeeper` now ships `effect=ongoing-cost:
 - `freeMarketRerollPerTurn` / `marketRelevanceBias` (Investor),
 - the Bookkeeper's ongoing-cost reduction (once implemented).
 
-Because the card integration runner writes `unitTestStatus = pass` from `verifyStaffCard`, a business-staff card whose per-business effect was removed could still report `pass`. The separate behavioural tests (`staff-two-type-redesign.test.ts` etc.) do catch such a regression, but the **CSV-level** status column does not reflect it. Closing this gap makes a card unable to report `pass` vacuously.
+Because the card integration runner writes `unitTestStatus = pass` from `verifyStaffCard`, a business-staff card whose per-business effect was removed could previously still report `pass`. The **CSV-level** status column now reflects the behavioural assertion.
 
-**Tracked as:** [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J) — *Harden verifyStaffCard to assert all staff effect fields*.
+**Tracked as:** [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J) — **resolved**.
 
 ### G3 — Behavioural coverage depth
 

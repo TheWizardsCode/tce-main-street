@@ -11,9 +11,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { CARD_DATA_RAW } from '../../../../src/MainStreetCards';
-import type { CardRow } from '../CardTestTypes';
+import { CARD_DATA_RAW, getCsvRows, getStaffCardTemplates, type StaffCard } from '../../../../src/MainStreetCards';
+import type { CardRow, CardTestContext } from '../CardTestTypes';
 import { CardTestRegistry, createDefaultRegistry } from '../CardTestRegistry';
+import { verifyStaffCard } from '../definitions/runners';
+import { newGame } from '../helpers/stateBuilders';
 import {
   RESULT_COLUMNS,
   applyResultsToCsv,
@@ -47,8 +49,7 @@ describe('CardTestRegistry discovery', () => {
   });
 });
 
-describe('CardTestRegistry failure modes (green-but-useless guards)', () => {
-  it('reports a card with no definition as a failure, never a skip', () => {
+describe('CardTestRegistry failure modes (green-but-useless guards)', () => {  it('reports a card with no definition as a failure, never a skip', () => {
     const registry = new CardTestRegistry();
     const row = makeRow('biz-unregistered');
     expect(registry.missingDefinitions([row])).toEqual(['biz-unregistered']);
@@ -83,6 +84,42 @@ describe('CardTestRegistry failure modes (green-but-useless guards)', () => {
     const result = registry.runCard(makeRow('biz-bakery'));
     expect(result.status).toBe('pass');
     expect(result.failReason).toBe('');
+  });
+});
+
+describe('verifyStaffCard honesty (unitTestStatus cannot pass vacuously)', () => {
+  it('fails when a raw row declares an effect the parsed template does not carry', () => {
+    const baker = getStaffCardTemplates().find(card => card.id === 'staff-baker');
+    expect(baker, 'staff-baker template missing').toBeDefined();
+    const rawRow = getCsvRows().find(row => row.id === 'staff-baker');
+    expect(rawRow, 'staff-baker CSV row missing').toBeDefined();
+
+    // Simulate a parser gap: the CSV declares income:own:25 but the typed
+    // template dropped the field (the pre-fix Bookkeeper situation).
+    const context: CardTestContext = {
+      row: {
+        id: 'staff-baker',
+        family: 'staff',
+        name: 'Baker',
+        row: { ...rawRow!, effect: 'income:own:25' },
+      },
+      card: { ...baker, incomeBonus: undefined } as StaffCard,
+      createState: newGame,
+    };
+
+    expect(() => verifyStaffCard(context)).toThrow(
+      /declared effect 'incomeBonus' from card-data.csv was not parsed\/asserted/,
+    );
+  });
+
+  it('still reports pass for all 26 staff rows after hardening (no regression)', () => {
+    const registry = createDefaultRegistry();
+    const staffRows = registry.discoverCards().filter(row => row.family === 'staff');
+    expect(staffRows.length).toBe(26);
+    const failures = staffRows
+      .map(row => registry.runCard(row))
+      .filter(result => result.status !== 'pass');
+    expect(failures, JSON.stringify(failures)).toEqual([]);
   });
 });
 
