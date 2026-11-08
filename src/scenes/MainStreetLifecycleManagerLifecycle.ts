@@ -222,6 +222,12 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
+    // Bump the restart generation first: async callbacks captured by the
+    // previous generation (game-over stats charts, the campaign-progress
+    // presentation path) compare against it to detect the restart and discard
+    // their result, so they cannot resurrect stale overlay content
+    // (MS-0MW6H5R340033GJJ).
+    s.sceneRestartGeneration = (s.sceneRestartGeneration ?? 0) + 1;
     s.uiPhase = 'idle';
     s.pendingBusinessCard = null;
     // Reset new-game selection flag so the mode selector reappears on

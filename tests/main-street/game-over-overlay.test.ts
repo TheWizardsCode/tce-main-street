@@ -61,16 +61,21 @@ vi.mock('@ui', () => ({
   dismissOverlay: vi.fn(),
 }));
 
-const chartMock = vi.hoisted(() => ({ calls: [] as Array<{ geometry: unknown; spec: unknown }> }));
+const chartMock = vi.hoisted(() => ({
+  calls: [] as Array<{ geometry: unknown; spec: unknown }>,
+  deferred: null as null | (() => Promise<{ canvas: object; destroy: () => void }>),
+}));
 vi.mock('../../src/scenes/MainStreetStatsChart', () => ({
   createStatsChart: vi.fn((_scene: unknown, geometry: unknown, spec: unknown) => {
     chartMock.calls.push({ geometry, spec });
+    if (chartMock.deferred) return chartMock.deferred();
     return Promise.resolve({ canvas: {}, destroy: vi.fn() });
   }),
   destroyStatsChart: vi.fn(),
 }));
 
-import { createOverlayBackground, createOverlayButton } from '@ui';
+import { createOverlayBackground, createOverlayButton, dismissOverlay } from '@ui';
+import { destroyStatsChart } from '../../src/scenes/MainStreetStatsChart';
 import { MainStreetOverlayContent } from '../../src/scenes/MainStreetOverlayContent';
 import type { TurnResult } from '../../src/MainStreetEngine';
 
@@ -140,6 +145,8 @@ function makeScene(state: Record<string, unknown>) {
     selectedDifficulty: 'Medium',
     campaign: undefined,
     refreshAll: vi.fn(),
+    scene: { restart: vi.fn() },
+    sceneRestartGeneration: 0,
     msAnimator: { animateGameOver: vi.fn() },
     hudContainer: { add: vi.fn((o: unknown) => hudAdded.push(o)) },
     add: {
@@ -207,6 +214,7 @@ describe('MainStreetOverlayContent.showGameOverOverlay (three-column)', () => {
     ui.buttons.length = 0;
     ui.backgrounds.length = 0;
     chartMock.calls.length = 0;
+    chartMock.deferred = null;
   });
 
   it('renders the two labelled columns, title and headline in single-player', () => {
@@ -553,5 +561,101 @@ describe('MainStreetOverlayContent.showGameOverOverlay (three-column)', () => {
       new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
       expect(ui.buttons.map((b) => b.label)).not.toContain('[ Enter Endless Mode ]');
     }
+  });
+
+  // ── Play Again teardown (MS-0MW6H5R340033GJJ) ──────────────
+
+  it('tears down the full overlay array exactly once, clears it, then restarts', () => {
+    const { scene } = makeScene({ endReason: 'score_threshold' });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+
+    const playAgain = ui.buttons.find((b) => b.label === '[ Play Again ]');
+    expect(playAgain).toBeDefined();
+
+    const overlayArrayRef = (scene as any).overlayObjects as unknown[];
+    const overlayCountBefore = overlayArrayRef.length;
+    expect(overlayCountBefore).toBeGreaterThan(0);
+
+    // Capture the overlay array exactly as `dismissOverlay` sees it, and the
+    // array length at the moment `restart()` is requested.
+    let arrayAtDismiss: unknown[] = [];
+    vi.mocked(dismissOverlay).mockImplementationOnce((objects: unknown[]) => {
+      arrayAtDismiss = objects;
+    });
+    let overlayCountAtRestart = -1;
+    vi.mocked((scene as any).scene.restart).mockImplementationOnce(() => {
+      overlayCountAtRestart = ((scene as any).overlayObjects as unknown[]).length;
+    });
+
+    playAgain!.emit('pointerdown');
+
+    // AC3: dismissOverlay received the full overlay-object array...
+    const dismissed = arrayAtDismiss;
+    expect(dismissed).toBe(overlayArrayRef);
+    expect(dismissed).toHaveLength(overlayCountBefore);
+    // ...with no duplicate object (so each is destroyed exactly once).
+    expect(new Set(dismissed).size).toBe(overlayCountBefore);
+    // The bookkeeping array is emptied before the restart is requested.
+    expect(overlayCountAtRestart).toBe(0);
+    expect((scene as any).overlayObjects).toEqual([]);
+    expect((scene as any).scene.restart).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not double-destroy when the shared destroy loop throws mid-teardown', () => {
+    const { scene } = makeScene({ endReason: 'score_threshold' });
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+    const playAgain = ui.buttons.find((b) => b.label === '[ Play Again ]');
+
+    // Simulate a partially failed shared loop (e.g. one object was already
+    // destroyed by a late callback).
+    vi.mocked(dismissOverlay).mockImplementationOnce(() => {
+      throw new Error('already destroyed');
+    });
+
+    expect(() => playAgain!.emit('pointerdown')).not.toThrow();
+    expect((scene as any).overlayObjects).toEqual([]);
+    expect((scene as any).scene.restart).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a stats-chart handle that resolves after a scene restart', async () => {
+    const { scene } = makeScene({ endReason: 'score_threshold' });
+    const resolvers: Array<(handle: { canvas: object; destroy: () => void }) => void> = [];
+    chartMock.deferred = () =>
+      new Promise<{ canvas: object; destroy: () => void }>((resolve) => {
+        resolvers.push(resolve);
+      });
+
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+    expect(resolvers).toHaveLength(5);
+
+    // Simulate `scene.restart()`: createScene bumps the generation and clears
+    // the overlay bookkeeping before the pending charts resolve.
+    (scene as any).sceneRestartGeneration += 1;
+    (scene as any).overlayObjects = [];
+
+    for (const resolve of resolvers) resolve({ canvas: {}, destroy: vi.fn() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // AC2: every late handle is destroyed instead of attached to the new scene.
+    expect(vi.mocked(destroyStatsChart)).toHaveBeenCalledTimes(5);
+    expect((scene as any).overlayObjects).toHaveLength(0);
+  });
+
+  it('attaches stats-chart handles when the scene has not restarted (control)', async () => {
+    const { scene } = makeScene({ endReason: 'score_threshold' });
+    const resolvers: Array<(handle: { canvas: object; destroy: () => void }) => void> = [];
+    chartMock.deferred = () =>
+      new Promise<{ canvas: object; destroy: () => void }>((resolve) => {
+        resolvers.push(resolve);
+      });
+
+    new MainStreetOverlayContent(scene).showGameOverOverlay(winResult());
+    const before = ((scene as any).overlayObjects as unknown[]).length;
+
+    for (const resolve of resolvers) resolve({ canvas: {}, destroy: vi.fn() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(((scene as any).overlayObjects as unknown[]).length).toBe(before + 5);
+    expect(vi.mocked(destroyStatsChart)).not.toHaveBeenCalled();
   });
 });

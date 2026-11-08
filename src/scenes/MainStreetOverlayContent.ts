@@ -68,6 +68,60 @@ import {
 // other Main Street 'en' bundles).
 registerLocale('en', UNDO_CHALLENGE_EN_BUNDLE);
 
+/**
+ * Tears down the game-over overlay immediately before `scene.restart()`.
+ *
+ * `dismissOverlay` already destroys every object (which detaches it from
+ * `hudContainer`), but `scene.restart()` rebuilds the HUD container and Phaser
+ * reuses the scene instance, so the restart must not depend on a partially
+ * failed destroy loop. This helper:
+ *
+ * 1. detaches each object from its parent container first, so a restart that
+ *    rebuilds `hudContainer` can never strand an orphaned child;
+ * 2. calls the shared {@link dismissOverlay} with the full overlay-object
+ *    array (each object is destroyed exactly once on the happy path);
+ * 3. falls back to a per-object, idempotent destroy if the shared loop throws,
+ *    so one already-destroyed object cannot block the restart;
+ * 4. clears the bookkeeping array before the restart.
+ *
+ * Kept game-over-local (rather than changing the shared `dismissOverlay`) so
+ * every other overlay keeps its existing teardown semantics
+ * (MS-0MW6H5R340033GJJ).
+ */
+function teardownGameOverOverlay(scene: any): void {
+  const objects = Array.isArray(scene.overlayObjects) ? scene.overlayObjects : [];
+
+  // 1. Detach first: destroying an object normally removes it from its parent,
+  //    but detaching explicitly makes the teardown independent of that detail.
+  for (const obj of objects) {
+    try {
+      const parent = (obj as any)?.parentContainer;
+      if (parent && typeof parent.remove === 'function') {
+        parent.remove(obj, false);
+      }
+    } catch (_) {
+      /* presentation-only teardown */
+    }
+  }
+
+  // 2. Shared destroy loop over the full array (the contract AC3 pins).
+  try {
+    dismissOverlay(objects);
+  } catch (_) {
+    // 3. Idempotent fallback: a double-destroy must never block the restart.
+    for (const obj of objects) {
+      try {
+        (obj as any)?.destroy?.();
+      } catch (_) {
+        /* already destroyed */
+      }
+    }
+  }
+
+  // 4. Clear bookkeeping before the restart.
+  scene.overlayObjects = [];
+}
+
 export class MainStreetOverlayContent {
   constructor(private readonly scene: any) {}
 
@@ -108,6 +162,11 @@ export class MainStreetOverlayContent {
   ): void {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
+
+    // Capture the scene generation so a lazy stats-chart handle that resolves
+    // after a restart is destroyed rather than attached to the fresh run
+    // (MS-0MW6H5R340033GJJ).
+    const generationAtOpen: number = s.sceneRestartGeneration;
 
     s.uiPhase = 'game-over';
     s.refreshAll();
@@ -535,8 +594,11 @@ export class MainStreetOverlayContent {
       '[ Play Again ]', 201,
     );
     playAgainBtn.on('pointerdown', () => {
-      dismissOverlay(s.overlayObjects);
-      s.overlayObjects = [];
+      // Restart-safe teardown (MS-0MW6H5R340033GJJ): detach + destroy every
+      // game-over object, clear the bookkeeping array, then restart. A late
+      // stats-chart or campaign-progress callback is discarded by the
+      // scene-generation guard instead of being attached to the fresh run.
+      teardownGameOverOverlay(s);
       s.scene.restart();
     });
     if (s.hudContainer) s.hudContainer.add(playAgainBtn);
@@ -587,6 +649,13 @@ export class MainStreetOverlayContent {
         },
       ).then((handle) => {
         if (!handle) return;
+        // A late resolution belongs to the previous scene generation once the
+        // scene has restarted: destroy the handle instead of attaching it to
+        // the new scene (MS-0MW6H5R340033GJJ).
+        if (s.sceneRestartGeneration !== generationAtOpen) {
+          destroyStatsChart(handle);
+          return;
+        }
         if (s.overlayObjects === statsObjectsAtOpen) statsObjectsAtOpen.push(handle);
         else destroyStatsChart(handle);
       }).catch((error) => {

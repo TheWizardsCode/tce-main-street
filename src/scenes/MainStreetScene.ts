@@ -349,6 +349,15 @@ export class MainStreetScene extends CardGameScene {
   // Overlay objects
   public overlayObjects: Phaser.GameObjects.GameObject[] = [];
 
+  /**
+   * Monotonic generation counter, incremented on every `createScene` (initial
+   * boot and every `scene.restart()`). Async overlay callbacks capture the
+   * value at presentation time and discard their result when the scene has
+   * restarted since, so a late game-over presentation or stats-chart handle can
+   * never add content to a fresh run (MS-0MW6H5R340033GJJ).
+   */
+  public sceneRestartGeneration = 0;
+
   // HUD animation state
   public previousCoins: number | null = null;
   public previousReputation: number | null = null;

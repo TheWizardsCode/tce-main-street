@@ -913,7 +913,13 @@ export function handleGameOver(tcCtx: MainStreetTurnControllerContext, result: T
 
     // Clear checkpoint on game end
     try { tcCtx.onGameEnd?.(); } catch (e) { /* ignore */ }
+    // Capture the scene generation before the async campaign write. If the
+    // scene restarts while progress is persisting (e.g. a fast [ Play Again ]),
+    // the presentation path below must not resurrect the finished run's
+    // game-over overlay on the fresh scene (MS-0MW6H5R340033GJJ).
+    const generationAtEnd = s.sceneRestartGeneration;
     s.updateCampaignProgress().then(() => {
+      if (s.sceneRestartGeneration !== generationAtEnd) return;
       const tiersAfter = s.campaign
         ? s.campaign.unlockedTiers
         : [];
