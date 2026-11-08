@@ -55,6 +55,13 @@ const STAFF_COST_TEXT_CONTRACTS: readonly StaffCostTextContract[] = [
     descriptionPattern: /upgrade\s+cost\s+by\s+(\d+)/i,
     expectedAmount: 100,
   },
+  {
+    id: 'staff-bookkeeper',
+    column: null,
+    descriptionPattern: /ongoing\s+cost\s+by\s+(\d+)%/i,
+    expectedAmount: 20,
+    note: `${UNIMPLEMENTED_NOTE} — tracked as MS-0MW7D0LGL007PAUY`,
+  },
   // The IT Specialist and the Delivery Driver no longer advertise a
   // street-wide cost reduction: the two-type redesign moves the IT Specialist
   // to +1 synergy range and the Delivery Driver to a placement-scoped
@@ -68,7 +75,15 @@ const STAFF_COST_TEXT_CONTRACTS: readonly StaffCostTextContract[] = [
  * Used to ensure every such phrase is registered above.
  */
 const UNREGISTERED_COST_REDUCTION_RE =
-  /(?:refresh(?:es)?|upgrade|purchase|business\s+card\s+purchase|ongoing)\s+cost\s+(?:by\s+)?\d+(?!\d)(?!\s*%)/i;
+  /(?:refresh(?:es)?|upgrade|purchase|business\s+card\s+purchase)\s+cost\s+(?:by\s+)?\d+(?!\d)(?!\s*%)/i;
+
+/**
+ * Detector for percentage-based staff cost-reduction descriptions.
+ * Catches patterns like "ongoing cost by 20%" that the coin-amount
+ * detector (UNREGISTERED_COST_REDUCTION_RE) deliberately excludes.
+ */
+const UNREGISTERED_PERCENTAGE_COST_REDUCTION_RE =
+  /(?:ongoing)\s+cost\s+by\s+(\d+)%/i;
 
 const rows = getCsvRows();
 const staffRows = rows.filter(r => r.family === 'staff');
@@ -98,6 +113,14 @@ describe('staff cost-text guard registry', () => {
     for (const row of staffRows) {
       const description = row.description ?? '';
       if (!UNREGISTERED_COST_REDUCTION_RE.test(description)) continue;
+      if (!STAFF_COST_TEXT_CONTRACTS.some(c => c.id === row.id)) {
+        unregistered.push(`${row.id}: "${description}"`);
+      }
+    }
+    // Also check percentage-based cost reductions
+    for (const row of staffRows) {
+      const description = row.description ?? '';
+      if (!UNREGISTERED_PERCENTAGE_COST_REDUCTION_RE.test(description)) continue;
       if (!STAFF_COST_TEXT_CONTRACTS.some(c => c.id === row.id)) {
         unregistered.push(`${row.id}: "${description}"`);
       }
@@ -147,9 +170,8 @@ describe('staff cost-reduction text matches data (×100 rule)', () => {
 
     if (!contract.column) {
       it(`${contract.id}: is documented as description-only`, () => {
-        expect(contract.note, `${contract.id} must document its unimplemented-effect gap`).toBe(
-          UNIMPLEMENTED_NOTE,
-        );
+        expect(contract.note, `${contract.id} must document its unimplemented-effect gap`).toBeDefined();
+        expect(contract.note).toContain(UNIMPLEMENTED_NOTE);
       });
     }
   }
