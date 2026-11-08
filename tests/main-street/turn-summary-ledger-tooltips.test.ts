@@ -23,16 +23,25 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { MainStreetState } from '../../src/MainStreetState';
-import { setupMainStreetGame } from '../../src/MainStreetState';
+import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
 import type {
   BusinessCard,
   CommunitySpaceCard,
   EventCard,
   StaffCard,
 } from '../../src/MainStreetCards';
-import type { TurnLedger, TurnResult } from '../../src/MainStreetEngineTypes';
+import type {
+  CompetitiveRoundLedger,
+  TurnLedger,
+  TurnResult,
+} from '../../src/MainStreetEngineTypes';
 import type { IncomeResult, SlotIncome, SlotPhaseBreakdown } from '../../src/MainStreetAdjacency';
-import { buildPLProjection, buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
+import {
+  buildCompetitiveTurnSummary,
+  buildPLFromCompetitiveRow,
+  buildPLProjection,
+  buildTurnSummary,
+} from '../../src/scenes/MainStreetTurnSummary';
 import {
   LEDGER_TOOLTIP_I18N_KEYS,
   buildContextLineTooltip,
@@ -432,5 +441,127 @@ describe('ledger tooltip localisation (MS-0MW7QQ5BX002KGS0)', () => {
     const tooltip = buildNetLineTooltip(projection!);
     expect(tooltip).toContain('Nettoverlust');
     expect(tooltip).toContain('Netto = Einnahmen');
+  });
+});
+
+// ── Competitive per-seat parity ──────────────────────────────
+
+/** A two-seat competitive state. */
+function twoSeatState(): MainStreetState {
+  return createCompetitiveState({
+    seed: 'turn-summary-ledger-tooltips-cmp',
+    playerCount: 2,
+    difficulty: 'Easy',
+    loansEnabled: false,
+  });
+}
+
+/** A two-seat round ledger whose seats each reconcile exactly. */
+function competitiveLedger(): CompetitiveRoundLedger {
+  const seat = (ownerId: number, base: number, net: number) => ({
+    ownerId,
+    businessesOwned: ownerId + 1,
+    incomeByPhase: { base, synergy: 0, reputation: 0, events: 0 },
+    incomeTotal: base,
+    ongoingCosts: { staff: 0, community: 0, business: 0 },
+    dayStart: { coins: 10, reputation: 0, score: 0 },
+    closing: { coins: 10 + net, reputation: 0, score: 0 },
+    netCoinChange: net,
+    netRepChange: 0,
+    netScoreChange: 0,
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    oneOffDeltas: { coins: 0, reputation: 0 },
+  });
+  return { turn: 7, seats: [seat(0, 10, 10), seat(1, 20, 20)] };
+}
+
+/** A per-seat income result naming that seat's business. */
+function seatIncome(ownerId: number, businessName: string, base: number): {
+  ownerId: number;
+  income: IncomeResult;
+} {
+  return {
+    ownerId,
+    income: {
+      total: base,
+      breakdown: [{ slotIndex: 0, businessName, baseIncome: base, synergyBonus: 0, total: base }],
+      handSynergyTotal: 0,
+      phaseBreakdown: {
+        perSlotBreakdown: [{
+          slotIndex: 0, businessName, baseIncome: base, synergyBonus: 0,
+          repBonus: 0, eventDeltas: [], upcomingDeltas: [],
+        }],
+        handSynergyTotal: 0,
+      },
+    },
+  };
+}
+
+describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
+  it('each seat’s income lines carry that seat’s own breakdown', () => {
+    const state = twoSeatState();
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: competitiveLedger(),
+      playerIncome: [
+        seatIncome(0, 'Human Bakery', 10),
+        seatIncome(1, 'AI Cafe', 20),
+      ],
+    });
+    expect(summary).not.toBeNull();
+
+    const human = summary!.rows.find((row) => row.ownerId === 0)!;
+    expect(human.income.find((line) => line.phase === 'base')?.breakdown?.items).toEqual([
+      { name: 'Human Bakery', coins: 10 },
+    ]);
+
+    const ai = summary!.rows.find((row) => row.ownerId === 1)!;
+    expect(ai.income.find((line) => line.phase === 'base')?.breakdown?.items).toEqual([
+      { name: 'AI Cafe', coins: 20 },
+    ]);
+  });
+
+  it('switching tabs switches the tooltip content to the selected seat', () => {
+    const state = twoSeatState();
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: competitiveLedger(),
+      playerIncome: [
+        seatIncome(0, 'Human Bakery', 10),
+        seatIncome(1, 'AI Cafe', 20),
+      ],
+    });
+    const humanBase = buildPLFromCompetitiveRow(summary!.rows[0])
+      .income.lines.find((line) => line.key === 'base')!;
+    const aiBase = buildPLFromCompetitiveRow(summary!.rows[1])
+      .income.lines.find((line) => line.key === 'base')!;
+    expect(buildIncomeLineTooltip(humanBase)).toContain('Human Bakery: +10');
+    expect(buildIncomeLineTooltip(aiBase)).toContain('AI Cafe: +20');
+  });
+
+  it('a seat ledger with no per-item income degrades to the category total', () => {
+    const state = twoSeatState();
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: competitiveLedger(),
+    });
+    expect(summary).not.toBeNull();
+    const human = summary!.rows.find((row) => row.ownerId === 0)!;
+    const base = buildPLFromCompetitiveRow(human).income.lines.find((line) => line.key === 'base')!;
+    expect(base.breakdown).toBeUndefined();
+    const tooltip = buildIncomeLineTooltip(base);
+    // The committed total is still shown, with an explanatory note.
+    expect(tooltip).toContain('Base income: +10');
+    expect(tooltip).not.toContain('Per business');
+  });
+
+  it('competitive expense lines stay category-total only (no invented per-item costs)', () => {
+    const state = twoSeatState();
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: competitiveLedger(),
+      playerIncome: [seatIncome(0, 'Human Bakery', 10)],
+    });
+    const human = summary!.rows.find((row) => row.ownerId === 0)!;
+    for (const line of human.expenses) {
+      expect(line.breakdown).toBeUndefined();
+    }
   });
 });

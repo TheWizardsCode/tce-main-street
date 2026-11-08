@@ -508,7 +508,10 @@ function competitiveClosing(
  */
 export function buildCompetitiveTurnSummary(
   state: MainStreetState,
-  result: Pick<TurnResult, 'playerRoundLedger'>,
+  result: Pick<TurnResult, 'playerRoundLedger'> & {
+    /** Optional per-seat income detail for tooltip breakdowns (absent-safe). */
+    playerIncome?: TurnResult['playerIncome'];
+  },
 ): CompetitiveTurnSummary | null {
   const ledger = result.playerRoundLedger;
   if (!ledger || ledger.seats.length === 0) return null;
@@ -520,6 +523,16 @@ export function buildCompetitiveTurnSummary(
   const seatsById = new Map(
     buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
   );
+
+  // Per-seat income detail for tooltip breakdowns (MS-0MW7QQ65P006N3KA):
+  // `OwnerIncomeResult.income` carries the same per-business breakdown the
+  // single-player `IncomeResult` does, so a seat's income tooltips can name its
+  // own businesses. Absent for older/hand-built ledgers — the tooltip then
+  // degrades to the category total with an explanatory note.
+  const incomeByOwner = new Map<number, TurnResult['income']>();
+  for (const entry of result.playerIncome ?? []) {
+    incomeByOwner.set(entry.ownerId, entry.income);
+  }
 
   // The human seat the panel's loan affordance keys to (MS-0MW4YUHOU00474HZ
   // AC1): resolved from the scoreboard's `isHuman` rows — the same
@@ -557,6 +570,7 @@ export function buildCompetitiveTurnSummary(
           phase,
           label: INCOME_LABELS[phase],
           coins: seat.incomeByPhase[phase],
+          ...incomeLineBreakdown(phase, incomeByOwner.get(ownerId)),
         })),
         incomeTotal: seat.incomeTotal,
         expenses,
@@ -757,6 +771,8 @@ type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLe
    * statement, just without per-business breakdowns.
    */
   income?: TurnResult['income'];
+  /** Optional per-seat income detail for competitive tooltip breakdowns. */
+  playerIncome?: TurnResult['playerIncome'];
 };
 
 /**
@@ -956,14 +972,24 @@ export function buildPLFromCompetitiveRow(
       'income',
       PL_LABELS.income,
       PL_LABELS.incomeTotal,
-      row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      row.income.map((line) => ({
+        key: line.phase,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       row.incomeTotal,
     ),
     expenses: plSection(
       'expenses',
       PL_LABELS.expenses,
       PL_LABELS.expensesTotal,
-      row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
+      row.expenses.map((line) => ({
+        key: line.category,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       row.expensesTotal,
     ),
     incident: {

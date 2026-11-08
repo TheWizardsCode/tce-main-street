@@ -241,7 +241,10 @@ export function showCompetitiveTurnSummaryDialog(
   summary: CompetitiveTurnSummary,
   onNextTurn: () => void,
   onBankLoanAction?: (seatId?: number) => void,
-  result?: Pick<TurnResult, 'playerRoundLedger'>,
+  result?: Pick<TurnResult, 'playerRoundLedger'> & {
+    /** Per-seat income detail so the panel keeps its breakdowns after a take. */
+    playerIncome?: TurnResult['playerIncome'];
+  },
 ): void {
   if (s.replayMode) return; // headless/replay: never present UI
 
