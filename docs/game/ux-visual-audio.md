@@ -1936,6 +1936,62 @@ owner-keyed, so the whole panel is testable without a browser.
   seat's** trajectory only. Per-seat series are a separate producer-confirmed
   decision (Open Question on MS-0MVAMU6OM008GJPV).
 
+### Game-over overlay teardown and restart contract (MS-0MW6H5R340033GJJ)
+
+Pressing `[ Play Again ]` after a game over must leave a clean restarted scene —
+no result title, headline, columns, cash/score text, difficulty control,
+buttons or chart canvases may survive. The teardown is a three-part contract;
+keep all three in step when changing the game-over overlay.
+
+1. **Tracking.** Every object the overlay creates — the 199 backdrop, the 200
+   box, every text/rectangle/button, and each lazily-created stats-chart
+   handle — is pushed into `s.overlayObjects` and parented into
+   `s.hudContainer`. `s.overlayObjects` is the single authoritative teardown
+   list.
+2. **Game-over-local teardown.** `teardownGameOverOverlay(scene)` (in
+   `src/scenes/MainStreetOverlayContent.ts`) runs immediately before
+   `scene.restart()`:
+   - it detaches every tracked object from its parent container (via
+     `parentContainer.remove(obj, false)`) so a restart that rebuilds
+     `hudContainer` cannot strand an orphaned child;
+   - it calls the shared `dismissOverlay(objects)` with the **full**
+     `overlayObjects` array, so each object is destroyed exactly once on the
+     happy path;
+   - if that shared loop throws (e.g. an object was already destroyed by a
+     late callback), it falls back to a per-object `destroy()` so one stale
+     handle can never block the restart;
+   - it then reassigns `scene.overlayObjects = []` **before** `scene.restart()`.
+   The shared `dismissOverlay` (`core/src/ui/Overlay.ts`, a pinned submodule) is
+   deliberately a thin `for (const obj of objects) obj.destroy()` loop: it is
+   not null-guarded and does not explicitly clear parent references. Destroying
+   a Phaser object detaches it from its container as a side effect, so the
+   helper is correct for well-formed arrays; the game-over path adds the
+   detachment + idempotent fallback locally rather than changing shared
+   semantics for every other overlay.
+3. **Generation guard against late callbacks.** Phaser reuses the scene
+   instance across `scene.restart()`, so a pending promise can still resolve
+   against the new run. `MainStreetScene.sceneRestartGeneration` is a monotonic
+   counter incremented first thing in `createScene()`
+   (`src/scenes/MainStreetLifecycleManagerLifecycle.ts`) on every boot and
+   restart. Two async paths capture it and discard their result when it has
+   changed:
+   - `showGameOverOverlay()` captures the generation at presentation. Each
+     lazy stats-chart `.then(handle)` destroys the handle instead of attaching
+     it when the generation moved on; the existing `overlayObjects` identity
+     check remains as a second guard.
+   - `handleGameOver()` (`src/scenes/MainStreetTurnControllerTurnFlow.ts`)
+     captures the generation before the async `updateCampaignProgress()`
+     write and skips the game-over presentation entirely if the scene
+     restarted meanwhile — otherwise the finished run's overlay would be
+     re-presented over a fresh run.
+
+The contract is pinned by unit tests
+(`tests/main-street/game-over-overlay.test.ts`,
+`tests/main-street/game-over-play-again-async.test.ts`) and by a browser test
+that drives the real `[ Play Again ]` `pointerdown` handler and asserts the new
+HUD is free of every game-over marker
+(`tests/main-street/MainStreetOverlay.browser.test.ts`).
+
 ### Game-over celebration / loss sting
 
 - Helper: `MainStreetAnimator.animateGameOver()`.
