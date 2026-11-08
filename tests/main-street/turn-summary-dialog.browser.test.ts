@@ -37,6 +37,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
+import { dismissBootModals } from './helpers/bootModals';
 import { findTurnSummaryNextTurnButton } from './helpers/turn-summary-dialog';
 import {
   getBusinessTemplates,
@@ -78,6 +79,85 @@ function destroyGame(game: Phaser.Game | null): void {
   if (game) game.destroy(true, false);
   const container = document.getElementById('game-container');
   if (container) container.remove();
+}
+
+/**
+ * Dismisses the boot-flow overlays that a previous test in this file can leave
+ * behind and whose full-screen interactive backdrops would swallow a genuine
+ * DOM pointer release aimed at the scene:
+ *
+ * 1. the "Resume Saved Game?" checkpoint overlay (depth 2000) — dismissed via
+ *    its `[ New Game ]` button; and
+ * 2. the tutorial offer modal (depth 1001) — dismissed via its skip button.
+ */
+async function dismissBootOverlays(s: SceneWithHud): Promise<void> {
+  const findButton = (predicate: (text: string) => boolean): Phaser.GameObjects.Text | undefined =>
+    (s.children?.list ?? []).find(
+      (o: Phaser.GameObjects.GameObject): o is Phaser.GameObjects.Text =>
+        o instanceof Phaser.GameObjects.Text && predicate(o.text),
+    );
+
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const resume = findButton((text) => text === '[ New Game ]');
+    if (resume) {
+      resume.emit('pointerdown');
+      await wait(150);
+      break;
+    }
+    await wait(50);
+  }
+
+  const tutorialDeadline = Date.now() + 5_000;
+  while (Date.now() < tutorialDeadline) {
+    const skip = findButton((text) => /skip/i.test(text));
+    if (skip) {
+      skip.emit('pointerdown');
+      await wait(150);
+      return;
+    }
+    await wait(50);
+  }
+}
+
+const GAME_W = 1280;
+const GAME_H = 720;
+
+/**
+ * Dispatch a native DOM MouseEvent at canvas (game-world) coordinates.
+ *
+ * `emit('pointerdown')` bypasses Phaser's input manager entirely, so it would
+ * never exercise the real hit-testing that causes the click-through defect
+ * (MS-0MW6GPRL6001DFCF). This helper feeds a genuine DOM event through the
+ * canvas, which Phaser's MouseManager translates into a pointer event and
+ * hit-tests against the top-most interactive object.
+ */
+function dispatchMouse(type: string, worldX: number, worldY: number): void {
+  const canvas = document.querySelector('#game-container canvas') as HTMLCanvasElement;
+  expect(canvas).toBeTruthy();
+  const rect = canvas.getBoundingClientRect();
+  const clientX = rect.x + (worldX / GAME_W) * rect.width;
+  const clientY = rect.y + (worldY / GAME_H) * rect.height;
+  canvas.dispatchEvent(
+    new MouseEvent(type, {
+      clientX,
+      clientY,
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+    }),
+  );
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The world-space centre of an overlay text (buttons are centre-origin). */
+function centreOf(obj: Phaser.GameObjects.Text): { x: number; y: number } {
+  const matrix = obj.getWorldTransformMatrix();
+  return { x: matrix.tx, y: matrix.ty };
 }
 
 type SceneWithHud = Phaser.Scene & Record<string, any>;
@@ -549,4 +629,148 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     const hudCoins = hudTexts(s).find((t) => t.text.startsWith('Coins: '));
     expect(hudCoins?.text).toBe(`Coins: ${state.resourceBank.coins}`);
   }, 60_000);
+
+  /**
+   * MS-0MW6GPRL6001DFCF — pressing [ Next Turn ] (which sits directly over the
+   * middle hand card) must never select a hand card.  The button's real
+   * pointerdown / pointerup cycle must leave the hand untouched: the leaked
+   * release must not reach the hand card's click handler, `pendingHandIndex`
+   * stays `null`, and `uiPhase` never enters `placing-from-hand`.
+   */
+  it('[ Next Turn ] press/release never selects a hand card beneath the button', async () => {
+    game = await bootGame();
+    makeIncidentsNone(game);
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    // A previous test in this file can leave a run checkpoint behind, so the
+    // boot flow may present the "Resume Saved Game?" overlay — a full-screen
+    // depth-2000 backdrop that would swallow this test's genuine DOM pointer
+    // release. Dismiss it via its own [ New Game ] button when present.
+    await dismissBootOverlays(s);
+    await dismissBootModals(s);
+
+    // Prewarm the SVG textures and let the street settle.
+    await (s as unknown as { prewarmVisibleCardTextures: () => Promise<unknown> })
+      .prewarmVisibleCardTextures();
+    await waitForStableStreet(s);
+
+    const state = s.state as unknown as { hand: BusinessCard[] };
+    // Three business cards in the hand so the middle card sits in the centre
+    // slot — directly under the [ Next Turn ] button (which is at ~520,618,
+    // while the hand's fixed 3-slot template puts slot 1 at handCenterX=467).
+    state.hand = [
+      makeProducingBiz('hand-card-left'),
+      makeProducingBiz('hand-card-under-button'),
+      makeProducingBiz('hand-card-right'),
+    ];
+    s.refreshAll();
+
+    const hand = s.state.hand;
+    expect(hand).toBeDefined();
+    expect(hand!.length).toBe(3);
+    // The middle card is the business card directly under the button.
+    expect(hand![1].family).toBe('business');
+
+    // Count hand-card click-handler invocations manually (a `vi.spyOn` on a
+    // scene method captures the whole scene in `mock.instances`, which Vitest
+    // cannot serialise across the browser boundary). If the leaked pointerup
+    // reaches the hand card, the container's pointerup handler calls this,
+    // regardless of the current `uiPhase`.
+    const originalHandClick = (s.onHandBusinessCardClick as (...a: unknown[]) => unknown)
+      .bind(s);
+    let handClickCalls = 0;
+    (s as SceneWithHud).onHandBusinessCardClick = (...args: unknown[]) => {
+      handClickCalls += 1;
+      return originalHandClick(...args);
+    };
+
+    // Present the Turn Summary directly (the same renderer the end-of-turn
+    // gate uses) — the defect is in the dialog's action buttons, not in the
+    // closing that presents it.
+    let nextTurnCalls = 0;
+    s.showTurnSummaryDialog(
+      makeSummary(s),
+      () => { nextTurnCalls += 1; },
+      buildTurnSummaryLoanDescriptor(s.state),
+    );
+
+    const button = overlayText(s, '[ Next Turn ]')!;
+    expect(button !== undefined, 'the [ Next Turn ] button must be rendered').toBe(true);
+
+    // Precondition: the hand card is genuinely beneath the [ Next Turn ]
+    // button (otherwise this test proves nothing).
+    const handCard = (s.msRenderer?.handView as any)?.getSpriteAt?.(1) as
+      | Phaser.GameObjects.Container
+      | undefined;
+    expect(handCard !== undefined, 'the middle hand card must be rendered').toBe(true);
+    const handMatrix = handCard!.getWorldTransformMatrix();
+    const handPos = { x: handMatrix.tx, y: handMatrix.ty };
+    const buttonPos = centreOf(button);
+    expect(
+      Math.abs(handPos.x - buttonPos.x) < 140,
+      `the [ Next Turn ] button (${buttonPos.x},${buttonPos.y}) must overlap `
+        + `the hand card (${handPos.x},${handPos.y}) horizontally`,
+    ).toBe(true);
+    expect(
+      Math.abs(handPos.y - buttonPos.y) < 80,
+      `the [ Next Turn ] button (${buttonPos.x},${buttonPos.y}) must overlap `
+        + `the hand card (${handPos.x},${handPos.y}) vertically`,
+    ).toBe(true);
+
+    expect(s.pendingHandIndex).toBeNull();
+    expect(s.uiPhase).not.toBe('placing-from-hand');
+    expect(s.uiPhase).not.toBe('event-selected');
+
+    // A genuine DOM pointer press/release at the button's centre.
+    //
+    // The press is driven through the button's own `pointerdown` seam (the
+    // way the existing dialog tests drive it, and the way the bug report
+    // describes it: the button *does* dismiss the ledger).  The matching
+    // DOM `mousedown`/`mouseup` pair at the same spot supplies the pointer's
+    // down-position (so the hand card's drag-vs-click threshold sees a click)
+    // and is the release that, without the blocker, falls through to the hand
+    // card beneath and selects it (AC1/AC2 of MS-0MW6GPRL6001DFCF).
+    const clickX = buttonPos.x + 12;
+    const clickY = buttonPos.y + 5;
+    let buttonDowns = 0;
+    button.on('pointerdown', () => { buttonDowns += 1; });
+    dispatchMouse('mousedown', clickX, clickY);
+    await wait(30);
+    // If the DOM press landed on the button itself, it already dismissed the
+    // panel; otherwise drive the same seam explicitly.
+    if (overlayText(s, 'Turn Summary') !== undefined) {
+      button.emit('pointerdown');
+    }
+    expect(buttonDowns, 'the press must dismiss the ledger').toBe(1);
+    expect(nextTurnCalls, 'the press must resume the closing').toBe(1);
+
+    // The overlay is dismissed immediately.
+    expect(
+      overlayText(s, 'Turn Summary') === undefined,
+      `the dialog must be dismissed (buttonDowns=${buttonDowns})`,
+    ).toBe(true);
+    expect(findTurnSummaryNextTurnButton(s) === null, 'the [ Next Turn ] button must be gone').toBe(true);
+
+    // The genuine release at the (now uncovered) button position: without the
+    // blocker this lands on the hand card beneath and selects it.
+    await waitForCondition(
+      () => (s.cameras.main.renderList as Phaser.GameObjects.GameObject[]).includes(handCard!),
+      { label: 'the hand card to render beneath the dismissed ledger' },
+    );
+    // Let the blocker (queued for input insertion by the press handler) enter
+    // the input list before the release is dispatched.
+    await wait(100);
+    dispatchMouse('mouseup', clickX, clickY);
+    await wait(60);
+
+    // The hand card's click handler was never invoked — the leaked release
+    // was consumed by the pointer blocker.
+    expect(handClickCalls, 'the hand card click handler must not fire').toBe(0);
+    // And the selection state is untouched.
+    expect(s.pendingHandIndex).toBeNull();
+    expect(s.uiPhase).not.toBe('placing-from-hand');
+    expect(s.uiPhase).not.toBe('event-selected');
+
+    (s as SceneWithHud).onHandBusinessCardClick = originalHandClick;
+  }, 30_000);
 });

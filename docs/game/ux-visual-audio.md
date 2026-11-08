@@ -1395,6 +1395,20 @@ condensed text-only summary.
   known. `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with
   no overlay manager (headless), continues the closing instead of stranding
   the turn.
+  **Pointer isolation (MS-0MW6GPRL6001DFCF):** the action row sits directly
+  over the middle hand card, and the buttons act on `pointerdown` — dismissing
+  the panel (and its input-blocking backdrop) before the matching `pointerup`
+  arrives. Without a guard, that release hit-tests against the now-uncovered
+  hand card beneath and selects it (entering "placing from hand"). Both
+  **[ Next Turn ]** and the enabled **[ Bank Loan ]** therefore place a
+  full-screen, transparent, interactive **pointer blocker** at depth 9999
+  when they dismiss the panel. It absorbs the release — and destroys itself on
+  it, with a 1.5 s safety timeout — so the ledger's action can never be
+  interpreted as a hand-card click, even when the button geometrically
+  overlaps a card, for mouse and touch alike. The blocker is anchored
+  top-left at (0, 0) because Phaser derives an interactive rectangle's hit
+  area in the object's origin space, so a centre-origin full-screen rectangle
+  would only be hit-testable in its bottom-right quadrant.
 - When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
   `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
   every closing animation (phased income show + incident reveal) has finished
@@ -1438,8 +1452,9 @@ condensed text-only summary.
   `endTurn` closing-path selection, `onNextTurn` continuation, delta
   ordering/idempotence, banking-hint ordering),
   `tests/main-street/turn-summary-dialog.browser.test.ts` (overlay rendering in
-  a real Phaser scene, plus the reduced-motion end-of-turn presenting the
-  dialog) and `tests/main-street/turn-summary-pl-overlay.browser.test.ts` (the
+  a real Phaser scene, the reduced-motion end-of-turn presenting the dialog,
+  and the `[ Next Turn ]` pointer blocker leaving a hand card beneath the
+  button unselected) and `tests/main-street/turn-summary-pl-overlay.browser.test.ts` (the
   tabbed P&L body, the default and per-seat tabs, tab switching by pointer and
   Left/Right keys, the single non-interactive `You` tab and the selected tab
   surviving the post-loan-take re-render).

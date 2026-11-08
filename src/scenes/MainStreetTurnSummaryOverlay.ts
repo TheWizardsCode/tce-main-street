@@ -356,6 +356,36 @@ export function presentTurnSummaryPanel(
   let model = initial;
   let detachKeyboard: (() => void) | null = null;
 
+  /**
+   * Places an invisible, interactive blocker that absorbs pointerup events
+   * after the overlay's backdrop has been destroyed.
+   *
+   * MS-0MW6GPRL6001DFCF — clicking [ Next Turn ] (which sits directly over the
+   * middle hand card) must never select a hand card.  `dismissPanel()` removes
+   * the backdrop, so the pointer's release falls through to the card beneath.
+   * A depth-9999 transparent rectangle soaks the release; it is destroyed by
+   * the release it absorbs (with a safety timeout for a release that never
+   * arrives, e.g. the pointer leaving the canvas).
+   *
+   * The rectangle is anchored top-left at (0, 0): Phaser derives an
+   * interactive rectangle's hit area as `Rectangle(0, 0, w, h)` in the
+   * object's origin space, so a centre-origin full-screen rectangle would only
+   * be hit-testable in its bottom-right quadrant.
+   */
+  function placePointerBlocker(): void {
+    const w = s.layout.gameW;
+    const h = s.layout.gameH;
+    const blocker = s.add.rectangle(0, 0, w, h, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setDepth(9999);
+    blocker.setInteractive();
+    if (s.hudContainer) s.hudContainer.add(blocker);
+    // The release this blocker exists for destroys it; the safety timeout
+    // covers a release that never arrives.
+    blocker.once('pointerup', () => { try { blocker.destroy(); } catch { /* gone */ } });
+    s.time.delayedCall(1500, () => { try { blocker.destroy(); } catch { /* gone */ } });
+  }
+
   /** Destroys everything this panel owns and releases the tracked objects. */
   function dismissPanel(): void {
     if (detachKeyboard) {
@@ -549,11 +579,17 @@ export function presentTurnSummaryPanel(
     const btnY = panelY + panelH - 62;
 
     // Primary action: resumes the deferred closing flow via onNextTurn.
+    // MS-0MW6GPRL6001DFCF: the button sits directly over the middle hand card.
+    // After `dismissPanel()` destroys the backdrop, the pointerup event can
+    // fall through to that card.  We place an invisible, interactive blocker
+    // at a very high depth to absorb the release, then remove it once the next
+    // turn's rendering starts.
     const nextTurnBtn = createOverlayButton(s, centerX - 120, btnY, '[ Next Turn ]', 201);
     if (s.hudContainer) s.hudContainer.add(nextTurnBtn);
     nextTurnBtn.on('pointerdown', () => {
       safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
       dismissPanel();
+      placePointerBlocker();
       handlers.onNextTurn();
     });
     s.overlayObjects.push(nextTurnBtn);
@@ -669,7 +705,10 @@ export function presentTurnSummaryPanel(
 
         // One modal at a time: dismiss this panel before the selector appears,
         // so no Turn Summary control can be pressed behind its backdrop.
+        // MS-0MW6GPRL6001DFCF: also place a pointer blocker so pointerup
+        // after dismissal never reaches a hand card.
         dismissPanel();
+        placePointerBlocker();
         openSelector();
       });
     } else {
