@@ -1395,6 +1395,11 @@ condensed text-only summary.
 - **Non-blocking** — tooltips are pure presentation (no state mutation, no RNG)
   and are attached to already-inert text rows, so tab switching and the
   `[ Next Turn ]` / `[ Bank Loan ]` buttons are unaffected.
+- **Styling** — the tooltips reuse the scene's shared `TooltipManager` rendering
+  (dark background, readable font size) so they read consistently with the rest
+  of the HUD; the tooltip's first line is the row heading and the following
+  lines are the per-item list / formula. Content is built lazily on hover/tap,
+  so unhovered rows cost nothing.
 
 ### Turn Summary dialog and the closing gate
 

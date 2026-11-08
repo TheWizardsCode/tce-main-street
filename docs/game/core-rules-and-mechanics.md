@@ -912,6 +912,90 @@ The Game Over overlay's stats graphs are fed by a persisted per-turn series, kep
 
 ---
 
+## End-of-Turn Turn Summary Ledger and Tooltips
+
+When a closing's presentation finishes, the **Turn Summary** panel renders one
+player's committed end-of-turn figures as a profit/loss statement
+(MS-0MW6GZKZZ006PLLO). Every line is a presentation of data the engine already
+committed — building or reading the summary mutates no state, consumes no RNG
+and changes no save ordering.
+
+### Where the ledger comes from
+
+- **Single player** projects `TurnResult.turnLedger`, built by `buildTurnLedger`
+  in `src/MainStreetEngineTurnClosing.ts`.
+- **Competitive** projects `TurnResult.playerRoundLedger`
+  (`CompetitiveRoundLedger`), whose per-seat `OwnerRoundLedger` rows carry the
+  same income/expense subtotals.
+- The Phaser-free projection lives in `src/scenes/MainStreetTurnSummary.ts`
+  (`buildPLProjection`, `buildPLTabs`); the tooltip copy lives in
+  `src/scenes/MainStreetTurnSummaryTooltips.ts`.
+
+### How each row is calculated
+
+| Row | Committed value | Per-item detail (tooltip breakdown) |
+| --- | --- | --- |
+| Base income | `TurnLedger.incomeByPhase.base` | `IncomeResult.breakdown[].baseIncome` (`SlotIncome`) |
+| Synergy income | `TurnLedger.incomeByPhase.synergy` | `IncomeResult.breakdown[].synergyBonus` |
+| Reputation income | `TurnLedger.incomeByPhase.reputation` | `IncomeResult.phaseBreakdown.perSlotBreakdown[].repBonus` |
+| Event income | `TurnLedger.incomeByPhase.events` | `phaseBreakdown.perSlotBreakdown[].eventDeltas` summed per slot |
+| Staff wages | `TurnLedger.ongoingCosts.staff` | each `state.staffCards` member's `computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost)` |
+| Community costs | `TurnLedger.ongoingCosts.community` | each placed, unsold community space's `ongoingCost` |
+| Business costs | `TurnLedger.ongoingCosts.business` | each placed, unsold business card's `ongoingCost` (hand cards are not charged; sold cards are excluded) |
+| Incident | `TurnLedger.incidentCoinChange` / `incidentRepChange` | the resolved `TurnResult.incident.name` and its coin/reputation effect |
+| One-off | `TurnLedger.oneOffDeltas` | **residual only** — see the fallback below |
+| Net profit/loss | `netCoinChange` / `netRepChange` / `netScoreChange` | the reconciliation identity below |
+| Reputation / score change | the net rows | explanatory context |
+| Closing coins / rep / score | `day-start snapshot + net` | explanatory context |
+| Businesses owned | `TurnLedger.businessesOwned` | explanatory context |
+
+The per-card ongoing-cost breakdowns are derived from the committed
+`streetGrid` / `staffCards` with the **same** helpers the engine uses, including
+the street-wide Cost Cutter reduction, so the tooltip lists each card's own
+charge and reconciles the list to the committed category total (a
+`Street-wide reduction` line, plus a `Limited by available coins` line when the
+engine clamped the deduction to the wallet).
+
+### The reconciliation identities
+
+- Statement: `income.total + expenses.total + incident.coins + oneOff.coins ==
+  net.coins` — the ledger's own identity.
+- One-off: `oneOff = net − income − expenses − incident`.
+
+### One-off fallback (documented choice)
+
+The ledger stores the one-off adjustment only as the **residual** above: there is
+no per-source breakdown (market purchases/sales, event plays, Community Favour,
+loan effects) threaded through the closing. Rather than invent attribution, the
+one-off tooltip presents the reconciliation formula that produces the residual
+— the fallback explicitly permitted by the parent item. A true per-source
+breakdown would require engine-level attribution in `buildTurnLedger` and is
+deliberately out of scope here.
+
+### Tooltip interaction and styling
+
+Each statement row and each supplementary context row carries an explanation
+tooltip attached with the shared `attachHudTooltipZone` helper
+(`core/src/ui/Renderer/index.ts`), so it shows on **hover** (desktop) and on
+**tap** (touch), and dismisses on mouse-out or a second tap. Content is built
+**lazily** from the projection on hover/tap, so unhovered rows cost nothing. The
+tooltips reuse the scene's `TooltipManager` styling (dark background, readable
+font) and never attach to the panel's tabs, `[ Next Turn ]` or `[ Bank Loan ]`,
+so they cannot intercept a control press. All copy resolves through the shared
+`t()` / `registerLocale` i18n system, with English defaults registered at module
+load and overridable by any registered locale.
+
+Competitive closings render the same tooltips for the selected seat's tab: each
+seat's income breakdown comes from its own `TurnResult.playerIncome` entry, and
+switching tabs redraws the whole statement with that seat's content. Where a
+seat's ledger carries no per-item income detail (an older or hand-built
+`CompetitiveRoundLedger`), the tooltip shows the committed category total with
+an explanatory note instead of a wrong or empty breakdown; competitive expense
+lines stay category-total only, because `OwnerRoundLedger` carries no per-card
+cost detail.
+
+---
+
 ## Flowchart Summary
 
 Below is a high‑level flowchart that captures the complete game loop, useful for documentation and onboarding of new developers.

@@ -114,7 +114,15 @@ When that presentation finishes, a **Turn Summary** panel summarises the
 completed round — **one owner-keyed row per seat** showing businesses owned,
 income phases, ongoing expenses, the seat's incident and one-off deltas, net
 coin/reputation/score change and its closing coins, reputation and score — and
-the next shared day starts only when the player clicks **[ Next Turn ]**. A
+the next shared day starts only when the player clicks **[ Next Turn ]**. Every
+statement line (and each supplementary context row) explains itself on **hover**
+(desktop) or **tap** (touch): the business-income lines name each business and
+its contribution, the staff / community / business cost lines name each card and
+its charge, and the Incident, One-off and Net lines spell out the effect and the
+reconciliation formula (`income + expenses + incident + one-off = net`). The
+one-off delta is stored only as a residual, so its tooltip shows that formula
+rather than inventing per-source detail. Tooltips are presentation-only (no
+state or RNG) and never block the panel's tabs or buttons. A 
 round is one completed shared day: every non-eliminated seat has taken its
 MarketPhase and the shared closing has run. **[ Bank Loan ]** is shown disabled
 with its hint, behind the seam that will enable per-seat loans.
