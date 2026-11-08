@@ -53,6 +53,20 @@ The change is undoable and shown in the activity log, and the AI factors the
 reputation cost into its close decisions. See
 [docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
 
+## Effective card income and reputation
+
+Every card face and hover tooltip shows the coins and reputation that card
+**actually generates each turn** for its current board state — base income plus
+any upgrade bonus, adjacency synergy, the duplicate/saturation factor and
+employed-staff bonuses — rather than its static printed values. The card face
+shows the effective total; the tooltip breaks the total into base plus each
+modifier, so placement, upgrade and staffing decisions are informed by the real
+numbers. The display is read-only and shares the engine's computation path, so
+it can never disagree with the amount credited. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
 ## Challenges
 
 Each run presents a seeded pool of **3 challenge goals** (13 templates across 6

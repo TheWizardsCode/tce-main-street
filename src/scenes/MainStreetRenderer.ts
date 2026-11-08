@@ -12,6 +12,7 @@
 import Phaser from 'phaser';
 import type { HandView } from '@ui';
 import type { BusinessCard, CommunitySpaceCard, EventCard, UpgradeCard, StaffCard } from '../MainStreetCards';
+import type { EffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import type { SceneLayout } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
@@ -186,8 +187,9 @@ export class MainStreetRenderer implements MainStreetRendererContext {
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
     height: number,
+    effective?: EffectiveCardValues,
   ): void {
-    applyUpgradeOverlays(this, container, biz, width, height);
+    applyUpgradeOverlays(this, container, biz, width, height, effective);
   }
 
   public updateBusinessHandSelection(index: number | null): void {

@@ -11,6 +11,7 @@
 import Phaser from 'phaser';
 import type { HandView } from '@ui';
 import type { BusinessCard, CommunitySpaceCard, EventCard, UpgradeCard, StaffCard } from '../MainStreetCards';
+import type { EffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import type { SceneLayout } from './MainStreetConstants';
 
@@ -73,6 +74,7 @@ export interface MainStreetRendererContext {
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
     height: number,
+    effective?: EffectiveCardValues,
   ): void;
   updateBusinessHandSelection(index: number | null): void;
   drawEmptySlot(x: number, y: number, index: number): void;

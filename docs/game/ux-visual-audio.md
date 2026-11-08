@@ -1118,6 +1118,37 @@ condensed text-only summary.
 - Reuse: `popTextOrIcon` + `getStreetSlotCenter`; no new engine
   infrastructure.
 
+### Effective card income and reputation display (MS-0MW6H9A47001B1QT)
+
+- **Rule.** A card's face and every hover tooltip show the income and
+  reputation the engine actually credits for that instance — never the static
+  `baseIncome + incomeBonus` / `reputationPerTurn + reputationBonus` figures.
+  The card face shows the effective **total**; the tooltip shows the total plus
+  a **base + modifier breakdown** (upgrade, synergy, duplicate factor, staff).
+- **Source of truth.** The read-only `computeEffectiveCardValues(state, card,
+  slotIndex?)` helper (`src/MainStreetAdjacencyScoring.ts`) resolves both the
+  totals and their additive components (whose parts sum exactly to the total)
+  from the same primitives `applyIncome` uses — `computeBusinessIncomeParts`,
+  `computeBusinessStaffBuffs` and `computePerBusinessSkillBuffs` — so display
+  and credit cannot diverge. It never mutates the `currentIncome` /
+  `currentReputationPerTurn` caches; staff buffs are recomputed on demand.
+- **Consumers.** `buildUpgradeOverlaySpec()` takes an optional
+  `EffectiveCardValues` argument (production call sites always pass it; the
+  base + upgrade fallback is a test-only seam). `buildCardTooltipInfo()` takes
+  an optional `CardTooltipContext` (`{ state, slotIndex }`) and, when given,
+  renders `formatEffectiveIncomeLine()` / `formatEffectiveReputationLine()`.
+  The street inline tooltip in `MainStreetRendererStreet.ts` uses the same
+  two formatters, so the street, hand and market surfaces read identically.
+- **Every location.** The street, hand and market call sites all pass their
+  effective values. A hand/market instance has no board position, so
+  position-dependent modifiers (adjacency synergy, the adjacent same-type
+  penalty, slot-bound staff buffs) are zero, while the upgrade bonus and the
+  duplicate/saturation factor for its business type still apply (the instance
+  counts itself once, never twice).
+- **No stale base-only surfaces.** The overlay/current-income values are passed
+  on every production render path; the only base + upgrade output left is the
+  explicit fallback used by pure-card unit tests that supply no context.
+
 ### Card upgrade shader effect
 
 - Spec/renderer: the pure `shaderEffect` field in `buildUpgradeOverlaySpec()`

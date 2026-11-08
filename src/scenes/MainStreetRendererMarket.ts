@@ -22,6 +22,7 @@ import { BOX_RADIUS, BOX_STROKE, CARD_BACK_TEMPLATE, PANEL_FILL, PANEL_FILL_ALPH
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import { buildUpgradeOverlaySpec } from './UpgradeOverlaySpec';
 import type { UpgradeOverlaySpec } from './UpgradeOverlaySpec';
+import { computeEffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import { createActionButton } from '@ui/Renderer';
 import Phaser from 'phaser';
 
@@ -312,7 +313,13 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
 
     // Apply income/reputation overlays for business and community-space cards
     if (card.family === 'business' || card.family === 'community-space') {
-      renderer.applyUpgradeOverlays(container, card as BusinessCard | CommunitySpaceCard, renderW, renderH);
+      renderer.applyUpgradeOverlays(
+        container,
+        card as BusinessCard | CommunitySpaceCard,
+        renderW,
+        renderH,
+        computeEffectiveCardValues(s.state, card as BusinessCard | CommunitySpaceCard, null),
+      );
 
       // Note: drag-and-drop premium cost text was removed per producer audit
       // — the badge conveyed no actionability and was confusing to players.
@@ -461,7 +468,7 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
         });
         container.on('pointerover', () => {
           selection.setHovered(true);
-          const info = buildCardTooltipInfo(card, s.state.config, { includeEventDetail: true });
+          const info = buildCardTooltipInfo(card, s.state.config, { includeEventDetail: true }, { state: s.state });
           s.tooltipManager?.show(info, container.x, container.y);
         });
         container.on('pointerout', () => {
@@ -488,7 +495,7 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
         hitArea.on('pointerover', () => {
           selection.setHovered(true);
           if (!s.replayMode) {
-            const info = buildCardTooltipInfo(card, s.state.config, { includeEventDetail: true });
+            const info = buildCardTooltipInfo(card, s.state.config, { includeEventDetail: true }, { state: s.state });
             s.tooltipManager?.show(info, container.x, container.y);
           }
         });
@@ -527,7 +534,7 @@ export function drawMarketCard(renderer: MainStreetRendererContext,
           const info = buildCardTooltipInfo(card, s.state.config, {
             includeEventDetail: true,
             noActionsRemaining: card.family === 'upgrade',
-          });
+          }, { state: s.state });
           s.tooltipManager?.show(info, container.x, container.y);
         });
         hover.on('pointerout', () => s.tooltipManager?.hide());

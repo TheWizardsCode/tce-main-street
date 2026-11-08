@@ -93,7 +93,7 @@ export function drawHeldEventCard(renderer: MainStreetRendererContext,
       const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
       hover.setInteractive({ useHandCursor: s.uiPhase === 'market' });
       hover.on('pointerover', () => {
-        const info = buildCardTooltipInfo(card, s.state.config);
+        const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
         s.tooltipManager?.show(info, container.x, container.y);
       });
       hover.on('pointerout', () => s.tooltipManager?.hide());

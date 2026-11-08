@@ -232,6 +232,8 @@ stateDiagram-v2
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
 
+   > **Card display shows the effective totals (MS-0MW6H9A47001B1QT).** Every card face and hover tooltip shows the per-turn income and reputation the engine actually credits for that instance — base + upgrade bonus + adjacent synergy + duplicate factor + staff bonuses — resolved through the shared read-only `computeEffectiveCardValues()`. The tooltip also breaks the total into its components, so a placed card can never display stale base-only figures. Staff bonuses are folded in read-only (the adjacency caches `currentIncome` / `currentReputationPerTurn` are never mutated). A hand/market instance has no board position, so position-dependent modifiers (synergy, the same-type penalty, slot-bound staff buffs) are zero, while its upgrade bonus and duplicate/saturation factor still apply — the instance counts itself once when deriving its own saturation factor.
+
 ### Market Saturation (Duplicate Businesses)
 
 When two or more businesses of the same base type occupy the **same street**, each earns a reduced share of its usual coin income:
