@@ -501,6 +501,7 @@ describe('buff aggregation reads only the local cluster', () => {
       reputationFlat: 0,
       reputationPercent: 0,
       synergyRangeBonus: 0,
+      ongoingCostReductionPct: 0,
     });
   });
 

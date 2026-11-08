@@ -376,6 +376,12 @@ export interface BusinessStaffBuffs {
   readonly reputationPercent: number;
   /** Extra synergy range (slots) for this business (IT Specialist +1). */
   readonly synergyRangeBonus: number;
+  /**
+   * Fraction of this business's ongoing cost removed (0.2 = −20%, the
+   * Bookkeeper). Business-scope only: contributed by the slot's own
+   * employees, never by a neighbour's staff (GDD D.4.3/D.4.8).
+   */
+  readonly ongoingCostReductionPct: number;
 }
 
 /** One business's incident mitigation contributed by its local cluster. */
@@ -396,6 +402,7 @@ function emptyBusinessStaffBuffs(): BusinessStaffBuffs {
     reputationFlat: 0,
     reputationPercent: 0,
     synergyRangeBonus: 0,
+    ongoingCostReductionPct: 0,
   };
 }
 
@@ -425,6 +432,7 @@ export function computeBusinessStaffBuffs(
   let reputationFlat = 0;
   let reputationPercent = 0;
   let synergyRangeBonus = 0;
+  let ongoingCostReductionPct = 0;
   let hasAny = false;
 
   for (const member of getMembersAtSlot(state, slotIndex)) {
@@ -452,6 +460,10 @@ export function computeBusinessStaffBuffs(
       synergyRangeBonus += member.synergyRangeBonus;
       hasAny = true;
     }
+    if (member.ongoingCostReduction) {
+      ongoingCostReductionPct += member.ongoingCostReduction;
+      hasAny = true;
+    }
   }
 
   for (const neighbourIndex of adjacentSlotIndices(state, slotIndex)) {
@@ -470,7 +482,34 @@ export function computeBusinessStaffBuffs(
   }
 
   if (!hasAny) return emptyBusinessStaffBuffs();
-  return { incomeFlat, incomePercent, reputationFlat, reputationPercent, synergyRangeBonus };
+  return { incomeFlat, incomePercent, reputationFlat, reputationPercent, synergyRangeBonus, ongoingCostReductionPct };
+}
+
+/**
+ * Fraction of one business's ongoing cost removed by the business staff
+ * employed **at that business** (the Bookkeeper's −20%, GDD D.4.3).
+ *
+ * Own-business scope only: staff employed at the 8-way neighbours never reduce
+ * this business's running cost, so hiring a Bookkeeper next door does not help.
+ * The returned fraction is clamped to `[0, 1]` so it can be composed with the
+ * street-wide Cost Cutter reduction without driving a cost negative.
+ *
+ * Pure: never mutates state and consumes no RNG, so the ongoing-cost phase can
+ * call it on demand.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index of the business paying the cost.
+ * @returns Fraction of that business's ongoing cost removed (`0` when none).
+ */
+export function computeBusinessOngoingCostReductionPct(
+  state: MainStreetState,
+  slotIndex: number,
+): number {
+  const total = getMembersAtSlot(state, slotIndex).reduce(
+    (sum, member) => sum + (member.ongoingCostReduction ?? 0),
+    0,
+  );
+  return Math.max(0, Math.min(1, total));
 }
 
 /**

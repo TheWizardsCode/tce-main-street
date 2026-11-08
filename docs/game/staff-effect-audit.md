@@ -3,7 +3,7 @@
 > **Tracking epic:** [MS-0MW6HEBP80070YND](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW6HEBP80070YND) — *Staff effects are not implemented*
 > **Audit child:** MS-0MW8AG3VS009GBDP — *Refresh and record the 26-card staff effect audit*
 > **Date:** 2026-11-08
-> **Status:** 25 of the 26 base staff cards are fully implemented end-to-end; one gap remains — the Bookkeeper's −20% ongoing-cost effect (tracked as [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY)). The card-level `unitTestStatus` column is currently vacuous for business staff because `verifyStaffCard` does not assert their per-business buffs (tracked as [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J)).
+> **Status:** All 26 base staff cards are fully implemented end-to-end (the Bookkeeper's −20% ongoing-cost effect landed in MS-0MW7D0LGL007PAUY). The card-level `unitTestStatus` column is currently vacuous for business staff because `verifyStaffCard` does not assert their per-business buffs (tracked as [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J)).
 
 ## Summary
 
@@ -15,7 +15,7 @@ Every staff card advertises an ability. This audit verifies, card by card, that 
 4. **consumed by the engine** — a named function folds the typed field into income, reputation, ongoing cost, incident, purchase or turn behaviour;
 5. **covered behaviourally** — at least one automated test exercises the effect through real engine state and asserts the documented magnitude **and scope** (own business vs. 8-way neighbours vs. player/street), not merely that the card can be hired.
 
-Of the **26 base staff templates shipped in `src/card-data.csv`** (17 business staff, 9 management-company staff), **25 are fully implemented and behaviourally tested** and **1 (the Bookkeeper) is a functional gap**. A 27th staff template lives in the residential pack (`packs/main-street/main-street-residential-pack/cards.csv`, `stf-ms-residential-community-gardener`) and is implemented; it is outside the 26-card base roster audited here.
+Of the **26 base staff templates shipped in `src/card-data.csv`** (17 business staff, 9 management-company staff), **all 26 are fully implemented and behaviourally tested**. A 27th staff template lives in the residential pack (`packs/main-street/main-street-residential-pack/cards.csv`, `stf-ms-residential-community-gardener`) and is implemented; it is outside the 26-card base roster audited here.
 
 ## Verdict legend
 
@@ -50,7 +50,7 @@ Business staff are employed at a single business (`employedAtSlot`) and their ab
 | 10 | `staff-barista` | Barista | +20 coins/turn to each adjacent Food business | `effect=income:adjacent:20:Food` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='adjacent'` + `incomeBonusTypes=['Food']` | `computeBusinessStaffBuffs` (`MainStreetStaffBuffs`) → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacency income, own vs. 8-way scope) | ✅ |
 | 11 | `staff-security` | Security Guard | −10% incident coin damage for its own business and adjacent businesses (rounded down) | `effect=incident-coin:cluster:10` | `parseStaffEffect` → `incidentEffect {kind:'coin', amount:0.1, target:'cluster'}` | `computeBusinessIncidentMitigation` → incident resolution (`MainStreetEngineEvents`) | `tests/main-street/staff-two-type-redesign.test.ts` (cluster mitigation + out-of-cluster negative) | ✅ |
 | 12 | `staff-marketing` | Marketing Consultant | +10% reputation from all sources for its own business | `effect=reputation:percent:10` | `parseStaffEffect` → `reputationPercent=0.1` | `computeBusinessStaffBuffs` → reputation phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own-business reputation percent) | ✅ |
-| 13 | `staff-bookkeeper` | Bookkeeper | −20% ongoing cost of its own business (rounded up, floored at 0) | **none** — `effect` cell empty | **none** — `parseStaffEffect` has no `ongoing-cost` dimension | **none** — `applyBusinessOngoingCosts` / `applyCompetitiveOngoingCosts` apply only the street-wide Cost Cutter reduction | **none** — only registered as description-only in `tests/main-street/staff-cost-text-data-consistency.test.ts` | ❌ — tracked as [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) |
+| 13 | `staff-bookkeeper` | Bookkeeper | −20% ongoing cost of its own business (rounded up, floored at 0) | `effect=ongoing-cost:percent:20` | `parseStaffEffect` → `ongoingCostReduction=0.2` | `computeBusinessOngoingCostReductionPct` → `applyBusinessOngoingCosts` / `applyCompetitiveOngoingCosts` (per business, before the street-wide Cost Cutter, floored at 0) | `tests/main-street/staff-bookkeeper-ongoing-cost.test.ts`; `tests/main-street/staff-cost-text-data-consistency.test.ts` | ✅ (MS-0MW7D0LGL007PAUY) |
 | 14 | `staff-customer-rep` | Customer Service Rep | +10 reputation/turn to each adjacent business | `effect=reputation:adjacent:10` | `parseStaffEffect` → `reputationBonus` + `reputationBonusTarget='adjacent'` | `computeBusinessStaffBuffs` → reputation phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacency reputation, never the employing business) | ✅ |
 | 15 | `staff-it` | IT Specialist | +1 synergy range for its own business (links up to 2 slots away) | `effect=synergy-range:1` | `parseStaffEffect` → `synergyRangeBonus=1` | `computeBusinessStaffBuffs` → adjacency scoring (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (2-slot synergy link) | ✅ |
 | 16 | `staff-health-safety` | Health & Safety Inspector | −10% incident frequency for its own business (deterministic per-turn avert) | `effect=incident-frequency:own:10` | `parseStaffEffect` → `incidentEffect {kind:'frequency', amount:0.1, target:'own'}` | `computeIncidentFrequencyReduction` → incident resolver (`MainStreetEngineEvents`) | `tests/main-street/staff-two-type-redesign.test.ts` (own business only + avert path) | ✅ |
@@ -71,9 +71,11 @@ Business staff are employed at a single business (`employedAtSlot`) and their ab
 
 Every gap found by the audit, stated explicitly.
 
-### G1 — Bookkeeper −20% ongoing cost is not implemented (functional gap)
+### G1 — Bookkeeper −20% ongoing cost is not implemented (functional gap) — **CLOSED**
 
-| Layer | Current state | Required |
+Fixed by MS-0MW7D0LGL007PAUY: `staff-bookkeeper` now ships `effect=ongoing-cost:percent:20`, `parseStaffEffect` parses it into `StaffCard.ongoingCostReduction`, `computeBusinessOngoingCostReductionPct` aggregates the employing business's staff, and both `applyBusinessOngoingCosts` and `applyCompetitiveOngoingCosts` apply the reduction per business (before the street-wide Cost Cutter, floored at 0). Behavioural coverage lives in `tests/main-street/staff-bookkeeper-ongoing-cost.test.ts` and the guard in `tests/main-street/staff-cost-text-data-consistency.test.ts`. The original gap and its required state are recorded below for history.
+
+| Layer | Was | Required |
 |---|---|---|
 | Card data | `staff-bookkeeper`'s `effect` cell is empty. | `effect=ongoing-cost:percent:20` (existing `effect` grammar — no new CSV column, because card packs are validated against the exact header). |
 | Type | `StaffCard` has no per-business ongoing-cost field. | A typed field (e.g. `ongoingCostReduction` as a fraction) documented as business-scope only. |
@@ -81,7 +83,7 @@ Every gap found by the audit, stated explicitly.
 | Engine | `applyBusinessOngoingCosts` / `applyCompetitiveOngoingCosts` apply only the street-wide Cost Cutter reduction. | Apply the employing business's Bookkeeper reduction per business during the ongoing-cost phase, floored at 0. |
 | Test | No behavioural test asserts the reduction or its own-business scope. | A behavioural test asserting the −20% own-business reduction and no street leakage. |
 
-**Tracked as:** [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) (implementation) and MS-0MW8AHNBK008FMA1 (per-card verification). The Bookkeeper per-card child depends on the implementation child.
+**Tracked as:** [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) — **resolved** (see above). The Bookkeeper per-card child MS-0MW8AHNBK008FMA1 records the per-card verification.
 
 ### G2 — Card-level `unitTestStatus` is vacuous for business staff (verification gap)
 
@@ -106,7 +108,7 @@ Every staff card except the Bookkeeper has at least one behavioural test that ex
 
 - Management-company cards are asserted by `verifyStaffCard` and, where the ability is richer than a hand-slot grant, by a dedicated behavioural test (`group-f-staff-abilities-expansion.test.ts` for the Socialite reputation and Accountant refresh; `financial-advisor-upgrade-discount.test.ts` for the Financial Advisor; `investor-*.test.ts` for the Investor).
 - The Apprentice and General Manager are currently asserted only by the shared `verifyStaffCard` verifier (marked ✅\* above). Their abilities (a hand-slot grant; hand slots + one action) **are** asserted against engine state, so coverage is real but relies solely on the shared verifier. The per-card verification children (MS-0MW8AHK5S00077TH, MS-0MW8AHLKE003X9TO) may tighten this.
-- The Bookkeeper is the only card with **no** behavioural test (see G1).
+- The Bookkeeper is covered by `tests/main-street/staff-bookkeeper-ongoing-cost.test.ts` (the −20% reduction, own-business scope, clamp and Cost Cutter stacking), on top of the guard in `staff-cost-text-data-consistency.test.ts`.
 
 ## How the verdicts were determined
 

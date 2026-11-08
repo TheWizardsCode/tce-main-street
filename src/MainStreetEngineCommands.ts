@@ -25,7 +25,7 @@ import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
-import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, computeBusinessOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
 import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
@@ -481,6 +481,25 @@ export function applyCommunitySpaceOngoingCosts(state: MainStreetState, opts?: {
 }
 
 /**
+ * Effective per-business ongoing cost after a business-staff reduction
+ * (the Bookkeeper's −20%, GDD D.4.3).
+ *
+ * The reduction is scoped to the employing business (own-business only), so a
+ * Bookkeeper next door never discounts this slot. The reduced cost is
+ * integer-rounded with the shared primitive and floored at 0, then the
+ * street-wide Cost Cutter reduction is applied to the aggregate by the caller.
+ * Pure; consumes no RNG.
+ */
+function effectiveBusinessOngoingCost(
+  state: MainStreetState,
+  slotIndex: number,
+  ongoingCost: number,
+): number {
+  const reduction = computeBusinessOngoingCostReductionPct(state, slotIndex);
+  return reduction > 0 ? Math.max(0, roundInt(ongoingCost * (1 - reduction))) : ongoingCost;
+}
+
+/**
  * Applies ongoing costs for business cards each turn.
  * Deducts each business card's `ongoingCost` (e.g. 50 coins/turn) from coins,
  * for every business card held in hand OR placed on the street grid.
@@ -511,7 +530,7 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
     if (state.soldSlots[i]) continue; // Sold cards do not incur ongoing costs
     const cost = (slot as BusinessCard).ongoingCost ?? 0;
     if (cost > 0) {
-      totalCost += cost;
+      totalCost += effectiveBusinessOngoingCost(state, i, cost);
       bizCount += 1;
     }
   }
@@ -630,16 +649,21 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (state.soldSlots[i]) continue; // Sold cards do not incur ongoing costs
     const cost = (slot as BusinessCard).ongoingCost ?? 0;
     if (cost <= 0) continue;
+    // The Bookkeeper's per-business reduction applies to business slots only
+    // (community spaces cannot employ business staff); it lands before the
+    // street-wide Cost Cutter aggregate reduction below (GDD D.4.3).
+    const effectiveCost =
+      slot.family === 'business' ? effectiveBusinessOngoingCost(state, i, cost) : cost;
     const ownerId = getSlotOwnerId(state, i);
-    ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + cost);
+    ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + effectiveCost);
     const counts = ownerCounts.get(ownerId) ?? { businesses: 0, spaces: 0 };
     const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
     if (slot.family === 'community-space') {
       counts.spaces += 1;
-      familyCosts.community += cost;
+      familyCosts.community += effectiveCost;
     } else {
       counts.businesses += 1;
-      familyCosts.business += cost;
+      familyCosts.business += effectiveCost;
     }
     ownerCounts.set(ownerId, counts);
     ownerFamilyCosts.set(ownerId, familyCosts);

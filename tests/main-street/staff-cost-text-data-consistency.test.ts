@@ -29,8 +29,11 @@ import { getCsvRows } from '../../src/MainStreetCards';
 
 interface StaffCostTextContract {
   id: string;
-  /** Data column the description must agree with, or null for description-only cards. */
-  column: 'refreshCostDiscount' | 'upgradeCostDiscount' | 'purchaseCostDiscount' | null;
+  /**
+   * Data source the description must agree with: a numeric CSV column, the
+   * machine-readable `effect` spec column, or null for description-only cards.
+   */
+  column: 'refreshCostDiscount' | 'upgradeCostDiscount' | 'purchaseCostDiscount' | 'effect' | null;
   /** Captures the amount stated in the description. */
   descriptionPattern: RegExp;
   /** The ×100-scale amount the description must state. */
@@ -57,10 +60,9 @@ const STAFF_COST_TEXT_CONTRACTS: readonly StaffCostTextContract[] = [
   },
   {
     id: 'staff-bookkeeper',
-    column: null,
+    column: 'effect',
     descriptionPattern: /ongoing\s+cost\s+by\s+(\d+)%/i,
     expectedAmount: 20,
-    note: `${UNIMPLEMENTED_NOTE} — tracked as MS-0MW7D0LGL007PAUY`,
   },
   // The IT Specialist and the Delivery Driver no longer advertise a
   // street-wide cost reduction: the two-type redesign moves the IT Specialist
@@ -100,6 +102,25 @@ function describedAmount(
   return match ? Number(match[1]) : null;
 }
 
+/**
+ * The amount carried by a contract's backing data source. Numeric columns map
+ * straight through; the `effect` column's `ongoing-cost:percent:<n>` dimension
+ * yields `<n>`. Returns null when the backing data is absent or unparseable, so
+ * a description with no data fails loudly.
+ */
+function backingAmount(
+  contract: StaffCostTextContract,
+  row: Record<string, string>,
+): number | null {
+  if (!contract.column) return null;
+  if (contract.column === 'effect') {
+    const match = /ongoing-cost:percent:(\d+)/.exec(row.effect ?? '');
+    return match ? Number(match[1]) : null;
+  }
+  const raw = row[contract.column];
+  return raw ? Number(raw) : 0;
+}
+
 // ── Contract registry sanity ─────────────────────────────────
 
 describe('staff cost-text guard registry', () => {
@@ -130,6 +151,25 @@ describe('staff cost-text guard registry', () => {
       `Staff cost-reduction descriptions without a registered contract:\n${unregistered.join('\n')}`,
     ).toEqual([]);
   });
+
+  it('every ongoing-cost percentage description is backed by data (Bookkeeper guard)', () => {
+    const unbacked: string[] = [];
+    for (const row of staffRows) {
+      if (!UNREGISTERED_PERCENTAGE_COST_REDUCTION_RE.test(row.description ?? '')) continue;
+      const contract = STAFF_COST_TEXT_CONTRACTS.find(c => c.id === row.id);
+      if (!contract || !contract.column) {
+        unbacked.push(`${row.id}: percentage description has no backing data source`);
+        continue;
+      }
+      if (backingAmount(contract, row) === null) {
+        unbacked.push(`${row.id}: percentage description has no parseable ${contract.column} data`);
+      }
+    }
+    expect(
+      unbacked,
+      `Ongoing-cost percentage descriptions without backing data:\n${unbacked.join('\n')}`,
+    ).toEqual([]);
+  });
 });
 
 // ── Description ↔ data consistency ───────────────────────────
@@ -152,15 +192,19 @@ describe('staff cost-reduction text matches data (×100 rule)', () => {
       ).toBe(contract.expectedAmount);
     });
 
-    if (contract.column) {
-      const column = contract.column;
-      it(`${contract.id}: description amount equals ${column} data column`, () => {
+    const column = contract.column;
+    if (column) {
+      it(`${contract.id}: description amount equals ${column} backing data`, () => {
         const row = findStaff(contract.id);
         expect(row, `${contract.id} missing from card-data.csv`).toBeDefined();
         if (!row) return;
 
         const amount = describedAmount(contract, row.description ?? '');
-        const dataValue = row[column] ? Number(row[column]) : 0;
+        const dataValue = backingAmount(contract, row);
+        expect(
+          dataValue,
+          `${contract.id}: description says '${amount}' but ${column} is absent/unparseable (${row[column]})`,
+        ).not.toBeNull();
         expect(
           dataValue,
           `${contract.id}: description says '${amount}' but ${column} = ${row[column]}`,

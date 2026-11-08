@@ -550,6 +550,15 @@ export interface StaffCard {
    */
   readonly adjacencyPurchaseDiscount?: number;
   /**
+   * Fraction of the employing business's ongoing per-turn cost removed
+   * (0.2 = −20%, the Bookkeeper — GDD D.4.3). Business-scope only: the
+   * reduction applies to the employing business's own `ongoingCost` and never
+   * leaks street-wide, and it is inert for a member held but not employed.
+   * Applied per business during the ongoing-cost phase before the street-wide
+   * Cost Cutter reduction, with the effective cost floored at 0.
+   */
+  readonly ongoingCostReduction?: number;
+  /**
    * Optional incident-mitigation effect scoped to the employing business (or
    * its local cluster). At most one per card: every staff role states one
    * unique benefit (GDD D.4.3).
