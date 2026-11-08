@@ -1,87 +1,205 @@
 # Staff Effect Audit
 
-> **Generated for:** MS-0MW4YAV24001Z7C6 — *Ensure all staff effects are implemented*
+> **Tracking epic:** [MS-0MW6HEBP80070YND](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW6HEBP80070YND) — *Staff effects are not implemented*
+> **Audit child:** MS-0MW8AG3VS009GBDP — *Refresh and record the 26-card staff effect audit*
 > **Date:** 2026-11-08
-> **Status:** All shipped staff effects are backed by data and engine consumers, except the Bookkeeper (tracked as MS-0MW7D0LGL007PAUY).
+> **Status:** 25 of the 26 base staff cards are fully implemented end-to-end; one gap remains — the Bookkeeper's −20% ongoing-cost effect (tracked as [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY)). The card-level `unitTestStatus` column is currently vacuous for business staff because `verifyStaffCard` does not assert their per-business buffs (tracked as [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J)).
 
 ## Summary
 
-Every staff card advertises an ability. This audit verifies that each ability is backed by card data **and** applied by the engine. Of the 27 shipped staff templates (26 base + 1 pack staff), 26 are fully implemented and one (the Bookkeeper) is not.
+Every staff card advertises an ability. This audit verifies, card by card, that each ability is:
 
-| # | Staff ID | Advertised ability | Backing data | Engine consumer | Status |
-|---|----------|-------------------|--------------|-----------------|--------|
-| 1 | `staff-assistant` | +2 hand slots | `handSlotsAdded=2` | `maxHandSize` (WeekStart / AiStrategy) | ✅ |
-| 2 | `staff-manager` | +1 hand slot, +1 action | `handSlotsAdded=1`, `actionsPerTurn=1` | WeekStart / CompetitiveTurn | ✅ |
-| 3 | `staff-director` | +3 hand slots, +1 action | `handSlotsAdded=3`, `actionsPerTurn=1` | WeekStart / CompetitiveTurn | ✅ |
-| 4 | `staff-apprentice` | +1 hand slot | `handSlotsAdded=1` | `maxHandSize` | ✅ |
-| 5 | `staff-executive` | +2 actions | `actionsPerTurn=2` | WeekStart / CompetitiveTurn | ✅ |
-| 6 | `staff-socialite` | +1 hand slot, +10 rep/turn | `handSlotsAdded=1`, `reputationPerTurn=10` | `applyIncome` (AdjacencyScoring) | ✅ |
-| 7 | `staff-accountant` | +1 hand slot, refresh −100, Tax 25% | `handSlotsAdded=1`, `refreshCostDiscount=100`, `taxAuditRate=0.25` | `refreshMarketCost`, `computeTaxAuditRate` | ✅ |
-| 8 | `staff-general-manager` | +1 action, +4 hand slots | `actionsPerTurn=1`, `handSlotsAdded=4` | WeekStart / CompetitiveTurn | ✅ |
-| 9 | `staff-lookout` | peek once/turn | `peekOncePerTurn=1` | `hasPeekCapableStaff` / EngineActions | ✅ |
-| 10 | `staff-barista` | +20 coins each adjacent Food | `effect=income:adjacent:20:Food` | `computeBusinessStaffBuffs` | ✅ |
-| 11 | `staff-security` | −10% incident coin (own+adjacent) | `effect=incident-coin:cluster:10` | `computeBusinessIncidentMitigation` | ✅ |
-| 12 | `staff-marketing` | +10% reputation own business | `effect=reputation:percent:10` | `computeBusinessStaffBuffs` | ✅ |
-| 13 | `staff-bookkeeper` | −20% ongoing cost own business | **none** | **none** | ❌ — tracked as [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) |
-| 14 | `staff-customer-rep` | +10 rep each adjacent business | `effect=reputation:adjacent:10` | `computeBusinessStaffBuffs` | ✅ |
-| 15 | `staff-it` | +1 synergy range | `effect=synergy-range:1` | `computeBusinessStaffBuffs` | ✅ |
-| 16 | `staff-health-safety` | −10% incident frequency own | `effect=incident-frequency:own:10` | `computeIncidentFrequencyReduction` | ✅ |
-| 17 | `staff-event-planner` | +100 coins each adjacent Entertainment | `effect=income:adjacent:100:Entertainment` | `computeBusinessStaffBuffs` | ✅ |
-| 18 | `staff-delivery` | −50 adjacent purchases | `effect=purchase-discount:adjacent:50` | `computeAdjacentPurchaseDiscount` | ✅ |
-| 19 | `staff-pr` | +15 rep own business | `effect=reputation:own:15` | `computeBusinessStaffBuffs` | ✅ |
-| 20 | `staff-financial` | −100 upgrade cost own business | `upgradeCostDiscount=100` | `computeUpgradeCostDiscount` | ✅ |
-| 21 | `staff-maintenance` | −50 incident rep (cluster) | `effect=incident-reputation:cluster:50` | `computeBusinessIncidentMitigation` | ✅ |
-| 22 | `staff-investor` | free reroll/turn, 75% bias | `freeMarketRerollPerTurn=1`, `marketRelevanceBias=0.75` | `MainStreetMarketRefill` | ✅ |
-| 23 | `staff-florist` | +30 coins adjacent Commerce/Culture | `effect=income:adjacent:30:Commerce\|Culture` | `computeBusinessStaffBuffs` | ✅ |
-| 24 | `staff-baker` | +25 coins own business | `effect=income:own:25` | `computeBusinessStaffBuffs` | ✅ |
-| 25 | `staff-chef` | +20% income own business | `effect=income:percent:20` | `computeBusinessStaffBuffs` | ✅ |
-| 26 | `staff-mechanic` | +30 coins own business | `effect=income:own:30` | `computeBusinessStaffBuffs` | ✅ |
-| 27 | `stf-ms-residential-community-gardener` (pack) | +1 hand slot | `handSlotsAdded=1` | `maxHandSize` | ✅ |
+1. **documented** — stated in GDD Appendix D.4.3 (business staff) or D.4.4 (management-company staff) and mirrored in `docs/game/card-catalog.md`;
+2. **backed by card data** — carried in a column of the card's `src/card-data.csv` row (an `effect`-column dimension, or a dedicated column);
+3. **parsed into a typed `StaffCard` field** — by `parseStaffEffect` (for the `effect` column) or the dedicated-column mapping in `src/MainStreetCardsTemplates.ts`;
+4. **consumed by the engine** — a named function folds the typed field into income, reputation, ongoing cost, incident, purchase or turn behaviour;
+5. **covered behaviourally** — at least one automated test exercises the effect through real engine state and asserts the documented magnitude **and scope** (own business vs. 8-way neighbours vs. player/street), not merely that the card can be hired.
 
-**Result:** 26/27 fully implemented. One gap: the Bookkeeper's −20% ongoing-cost effect has no backing data column, no parser support, and no engine consumer. This is tracked as a high-priority work item: **MS-0MW7D0LGL007PAUY** — *Bookkeeper -20% ongoing-cost staff effect is not implemented*.
+Of the **26 base staff templates shipped in `src/card-data.csv`** (17 business staff, 9 management-company staff), **25 are fully implemented and behaviourally tested** and **1 (the Bookkeeper) is a functional gap**. A 27th staff template lives in the residential pack (`packs/main-street/main-street-residential-pack/cards.csv`, `stf-ms-residential-community-gardener`) and is implemented; it is outside the 26-card base roster audited here.
+
+## Verdict legend
+
+| Symbol | Meaning |
+|---|---|
+| ✅ | Documented, backed by data, parsed, consumed by the engine, and asserted by a behavioural test. |
+| ✅\* | Implemented and behaviourally exercised, but its only effect assertion is the shared `verifyStaffCard` hire verifier (still a real engine assertion for hand slots / actions / market / peek). |
+| ❌ | Documented but **not** implemented (missing data, parser dimension or engine consumer) and/or **not** behaviourally tested. |
+
+## Card-by-card audit — management-company staff (9)
+
+Management-company staff are employed by the player (no `employedAtSlot`) and carry a player/turn-scoped ability. `handSlotsAdded` and `actionsPerTurn` are read at week start; `refreshCostDiscount` at market refresh; `taxAuditRate` on a proportional Tax Audit; `peekOncePerTurn` on the incident peek action; `reputationPerTurn` in the income (reputation) phase; and `freeMarketRerollPerTurn` / `marketRelevanceBias` on the free market re-roll.
+
+| # | Card ID | Role | Documented effect (GDD D.4.4) | Backing data | Parser path | Engine consumer | Behavioural test file(s) | Status |
+|---|---------|------|-------------------------------|--------------|-------------|-----------------|--------------------------|--------|
+| 1 | `staff-apprentice` | Apprentice | +1 hand slot | `handSlotsAdded=1` | dedicated column → `StaffCard.handSlotsAdded` | `maxHandSize` (WeekStart) | `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` | ✅\* |
+| 2 | `staff-assistant` | Assistant | +2 hand slots | `handSlotsAdded=2` | dedicated column → `StaffCard.handSlotsAdded` | `maxHandSize` (WeekStart) | `tests/main-street/staff-two-type-redesign.test.ts`; `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` | ✅ |
+| 3 | `staff-manager` | Manager | +1 hand slot and +1 action/turn | `handSlotsAdded=1`, `actionsPerTurn=1` | dedicated columns → `StaffCard.handSlotsAdded` / `actionsPerTurn` | `maxHandSize` (WeekStart), `actionsRemaining` (WeekStart / CompetitiveTurn) | `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` | ✅ |
+| 4 | `staff-director` | Director | +3 hand slots and +1 action/turn | `handSlotsAdded=3`, `actionsPerTurn=1` | dedicated columns | `maxHandSize` (WeekStart), `actionsRemaining` (WeekStart / CompetitiveTurn) | `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` | ✅ |
+| 5 | `staff-executive` | Executive | +2 actions/turn (0 hand slots) | `handSlotsAdded=0`, `actionsPerTurn=2` | dedicated columns | `actionsRemaining` (WeekStart / CompetitiveTurn) | `tests/main-street/staff-two-type-redesign.test.ts`; `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` | ✅ |
+| 6 | `staff-general-manager` | General Manager | +4 hand slots and +1 action/turn | `handSlotsAdded=4`, `actionsPerTurn=1` | dedicated columns | `maxHandSize` (WeekStart), `actionsRemaining` (WeekStart / CompetitiveTurn) | `verifyStaffCard` (hand slots + action); `tests/main-street/staff-business-type-matching.test.ts` | ✅\* |
+| 7 | `staff-socialite` | Socialite | +1 hand slot and +10 reputation/turn | `reputationPerTurn=10`, `handSlotsAdded=1` | dedicated columns → `StaffCard.reputationPerTurn` / `handSlotsAdded` | `maxHandSize` (WeekStart); `reputationPerTurn` folded in the income/reputation phase (`MainStreetAdjacencyScoring.applyIncome`) | `tests/main-street/group-f-staff-abilities-expansion.test.ts` (Socialite reputation ability, behavioural); `verifyStaffCard` | ✅ |
+| 8 | `staff-accountant` | Accountant | +1 hand slot, −100 coins on every market refresh, Tax Audit losses capped at 25% | `handSlotsAdded=1`, `refreshCostDiscount=100`, `taxAuditRate=0.25` | dedicated columns → `StaffCard.refreshCostDiscount` / `taxAuditRate` | `refreshMarketCost` (`MainStreetMarketRefill`); `computeTaxAuditRate` (`MainStreetEngineEvents`) | `tests/main-street/group-f-staff-abilities-expansion.test.ts` (refresh discount, behavioural); `verifyStaffCard` (hand slots, refresh, tax) | ✅ |
+| 9 | `staff-lookout` | Lookout | +1 hand slot and reveal the top incident card once per turn (peek) | `handSlotsAdded=1`, `peekOncePerTurn=1` | dedicated columns → `StaffCard.handSlotsAdded` / `peekOncePerTurn` | `maxHandSize` (WeekStart); `hasPeekCapableStaff` (`MainStreetStaffSkills`) → `MainStreetEngineActions` | `tests/main-street/group-f-staff-abilities-expansion.test.ts`; `verifyStaffCard` (peek) | ✅ |
+
+## Card-by-card audit — business staff (17)
+
+Business staff are employed at a single business (`employedAtSlot`) and their ability resolves **per business** — against the employing business (`own`) or its 8-way neighbours (`adjacent`), and for incident effects against the local `cluster` (own + neighbours). Business-staff effects ride in the row's `effect` column and are parsed by `parseStaffEffect`; the Financial Advisor uses the dedicated `upgradeCostDiscount` column and the Investor uses the dedicated `freeMarketRerollPerTurn` / `marketRelevanceBias` columns.
+
+| # | Card ID | Role | Documented effect (GDD D.4.3) | Backing data | Parser path | Engine consumer | Behavioural test file(s) | Status |
+|---|---------|------|-------------------------------|--------------|-------------|-----------------|--------------------------|--------|
+| 10 | `staff-barista` | Barista | +20 coins/turn to each adjacent Food business | `effect=income:adjacent:20:Food` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='adjacent'` + `incomeBonusTypes=['Food']` | `computeBusinessStaffBuffs` (`MainStreetStaffBuffs`) → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacency income, own vs. 8-way scope) | ✅ |
+| 11 | `staff-security` | Security Guard | −10% incident coin damage for its own business and adjacent businesses (rounded down) | `effect=incident-coin:cluster:10` | `parseStaffEffect` → `incidentEffect {kind:'coin', amount:0.1, target:'cluster'}` | `computeBusinessIncidentMitigation` → incident resolution (`MainStreetEngineEvents`) | `tests/main-street/staff-two-type-redesign.test.ts` (cluster mitigation + out-of-cluster negative) | ✅ |
+| 12 | `staff-marketing` | Marketing Consultant | +10% reputation from all sources for its own business | `effect=reputation:percent:10` | `parseStaffEffect` → `reputationPercent=0.1` | `computeBusinessStaffBuffs` → reputation phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own-business reputation percent) | ✅ |
+| 13 | `staff-bookkeeper` | Bookkeeper | −20% ongoing cost of its own business (rounded up, floored at 0) | **none** — `effect` cell empty | **none** — `parseStaffEffect` has no `ongoing-cost` dimension | **none** — `applyBusinessOngoingCosts` / `applyCompetitiveOngoingCosts` apply only the street-wide Cost Cutter reduction | **none** — only registered as description-only in `tests/main-street/staff-cost-text-data-consistency.test.ts` | ❌ — tracked as [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) |
+| 14 | `staff-customer-rep` | Customer Service Rep | +10 reputation/turn to each adjacent business | `effect=reputation:adjacent:10` | `parseStaffEffect` → `reputationBonus` + `reputationBonusTarget='adjacent'` | `computeBusinessStaffBuffs` → reputation phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacency reputation, never the employing business) | ✅ |
+| 15 | `staff-it` | IT Specialist | +1 synergy range for its own business (links up to 2 slots away) | `effect=synergy-range:1` | `parseStaffEffect` → `synergyRangeBonus=1` | `computeBusinessStaffBuffs` → adjacency scoring (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (2-slot synergy link) | ✅ |
+| 16 | `staff-health-safety` | Health & Safety Inspector | −10% incident frequency for its own business (deterministic per-turn avert) | `effect=incident-frequency:own:10` | `parseStaffEffect` → `incidentEffect {kind:'frequency', amount:0.1, target:'own'}` | `computeIncidentFrequencyReduction` → incident resolver (`MainStreetEngineEvents`) | `tests/main-street/staff-two-type-redesign.test.ts` (own business only + avert path) | ✅ |
+| 17 | `staff-event-planner` | Event Planner | +100 coins/turn from each adjacent Entertainment business | `effect=income:adjacent:100:Entertainment` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='adjacent'` + `incomeBonusTypes=['Entertainment']` | `computeBusinessStaffBuffs` → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacent Entertainment income) | ✅ |
+| 18 | `staff-delivery` | Delivery Driver | −50 coins on the purchase cost of any business placed adjacent to its own business | `effect=purchase-discount:adjacent:50` | `parseStaffEffect` → `adjacencyPurchaseDiscount=50` | `computeAdjacentPurchaseDiscount` → purchase paths (`MainStreetMarketPurchase`, click/drag/play-from-hand) | `tests/main-street/staff-two-type-redesign.test.ts` (placement-scoped discount + no street-wide leak) | ✅ |
+| 19 | `staff-pr` | PR Officer | +15 reputation/turn to its own business | `effect=reputation:own:15` | `parseStaffEffect` → `reputationBonus` + `reputationBonusTarget='own'` | `computeBusinessStaffBuffs` → reputation phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own business only, once) | ✅ |
+| 20 | `staff-financial` | Financial Advisor | −100 coins on each upgrade purchased for its own business (floored at 0) | `upgradeCostDiscount=100` | dedicated column → `StaffCard.upgradeCostDiscount` | `computeUpgradeCostDiscount` → market / hand / drag upgrade purchase paths | `tests/main-street/financial-advisor-upgrade-discount.test.ts`; `verifyStaffCard` | ✅ |
+| 21 | `staff-maintenance` | Maintenance Worker | −50 reputation damage from Incidents for its own business and adjacent businesses | `effect=incident-reputation:cluster:50` | `parseStaffEffect` → `incidentEffect {kind:'reputation', amount:50, target:'cluster'}` | `computeBusinessIncidentMitigation` → incident resolution (`MainStreetEngineEvents`) | `tests/main-street/staff-two-type-redesign.test.ts` (cluster reputation mitigation) | ✅ |
+| 22 | `staff-investor` | Investor | One coin-free, action-free market re-roll per turn, 75% biased toward its own business's synergy types | `freeMarketRerollPerTurn=1`, `marketRelevanceBias=0.75` | dedicated columns → `StaffCard.freeMarketRerollPerTurn` / `marketRelevanceBias` | `MainStreetMarketRefill` (free re-roll draw + relevance bias) | `tests/main-street/investor-staff.test.ts`; `tests/main-street/investor-free-reroll-engine.test.ts` | ✅ |
+| 23 | `staff-florist` | Florist | +30 coins/turn to each adjacent Commerce or Culture business | `effect=income:adjacent:30:Commerce\|Culture` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='adjacent'` + `incomeBonusTypes=['Commerce','Culture']` | `computeBusinessStaffBuffs` → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (adjacent Commerce/Culture only) | ✅ |
+| 24 | `staff-baker` | Baker | +25 coins/turn to its own business | `effect=income:own:25` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='own'` | `computeBusinessStaffBuffs` → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own business only) | ✅ |
+| 25 | `staff-chef` | Chef | +20% coin income to its own business (after synergy, before market saturation) | `effect=income:percent:20` | `parseStaffEffect` → `incomePercent=0.2` | `computeBusinessStaffBuffs` → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own business only, percent) | ✅ |
+| 26 | `staff-mechanic` | Mechanic | +30 coins/turn to its own (Service) business | `effect=income:own:30` | `parseStaffEffect` → `incomeBonus` + `incomeBonusTarget='own'` | `computeBusinessStaffBuffs` → income phase (`MainStreetAdjacencyScoring`) | `tests/main-street/staff-two-type-redesign.test.ts` (own Service business only) | ✅ |
+
+**Pack staff (outside the 26 base roster).** `stf-ms-residential-community-gardener` (residential pack) ships `handSlotsAdded=1` and is consumed by `maxHandSize` like any management-company card — implemented.
+
+## Gap register
+
+Every gap found by the audit, stated explicitly.
+
+### G1 — Bookkeeper −20% ongoing cost is not implemented (functional gap)
+
+| Layer | Current state | Required |
+|---|---|---|
+| Card data | `staff-bookkeeper`'s `effect` cell is empty. | `effect=ongoing-cost:percent:20` (existing `effect` grammar — no new CSV column, because card packs are validated against the exact header). |
+| Type | `StaffCard` has no per-business ongoing-cost field. | A typed field (e.g. `ongoingCostReduction` as a fraction) documented as business-scope only. |
+| Parser | `parseStaffEffect` has no `ongoing-cost` dimension. | Parse `ongoing-cost:percent:20` → the typed field. |
+| Engine | `applyBusinessOngoingCosts` / `applyCompetitiveOngoingCosts` apply only the street-wide Cost Cutter reduction. | Apply the employing business's Bookkeeper reduction per business during the ongoing-cost phase, floored at 0. |
+| Test | No behavioural test asserts the reduction or its own-business scope. | A behavioural test asserting the −20% own-business reduction and no street leakage. |
+
+**Tracked as:** [MS-0MW7D0LGL007PAUY](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW7D0LGL007PAUY) (implementation) and MS-0MW8AHNBK008FMA1 (per-card verification). The Bookkeeper per-card child depends on the implementation child.
+
+### G2 — Card-level `unitTestStatus` is vacuous for business staff (verification gap)
+
+`verifyStaffCard` (`tests/main-street/cards/definitions/runners.ts`) asserts hire cost, hand slots, the legacy street-wide purchase discount, the refresh discount, the tax rate, actions per turn, the upgrade discount and the peek flag. It does **not** assert:
+
+- `incomeBonus` / `incomeBonusTarget` / `incomeBonusTypes` (Barista, Florist, Event Planner, Baker, Mechanic),
+- `incomePercent` (Chef),
+- `reputationBonus` / `reputationBonusTarget` (Customer Service Rep, PR Officer),
+- `reputationPercent` (Marketing Consultant),
+- `synergyRangeBonus` (IT Specialist),
+- `adjacencyPurchaseDiscount` (Delivery Driver),
+- `freeMarketRerollPerTurn` / `marketRelevanceBias` (Investor),
+- the Bookkeeper's ongoing-cost reduction (once implemented).
+
+Because the card integration runner writes `unitTestStatus = pass` from `verifyStaffCard`, a business-staff card whose per-business effect was removed could still report `pass`. The separate behavioural tests (`staff-two-type-redesign.test.ts` etc.) do catch such a regression, but the **CSV-level** status column does not reflect it. Closing this gap makes a card unable to report `pass` vacuously.
+
+**Tracked as:** [MS-0MW8AG48V005OX8J](https://github.com/TheWizardsCode/tce-main-street/issues/MS-0MW8AG48V005OX8J) — *Harden verifyStaffCard to assert all staff effect fields*.
+
+### G3 — Behavioural coverage depth
+
+Every staff card except the Bookkeeper has at least one behavioural test that exercises its documented effect through real engine state. Bookmarks:
+
+- Management-company cards are asserted by `verifyStaffCard` and, where the ability is richer than a hand-slot grant, by a dedicated behavioural test (`group-f-staff-abilities-expansion.test.ts` for the Socialite reputation and Accountant refresh; `financial-advisor-upgrade-discount.test.ts` for the Financial Advisor; `investor-*.test.ts` for the Investor).
+- The Apprentice and General Manager are currently asserted only by the shared `verifyStaffCard` verifier (marked ✅\* above). Their abilities (a hand-slot grant; hand slots + one action) **are** asserted against engine state, so coverage is real but relies solely on the shared verifier. The per-card verification children (MS-0MW8AHK5S00077TH, MS-0MW8AHLKE003X9TO) may tighten this.
+- The Bookkeeper is the only card with **no** behavioural test (see G1).
 
 ## How the verdicts were determined
 
-Each staff card was inspected for three things:
+Each staff card was inspected for five things:
 
-1. **Description text** — extracted from `src/card-data.csv` column `description`.
-2. **Backing data** — checked for a corresponding data column in the same CSV row (e.g. `effect=…`, `handSlotsAdded`, `reputationPerTurn`, etc.).
-3. **Engine consumer** — traced to the parser/buff/consumer that applies the effect at runtime:
-   - `src/MainStreetCardsTemplates.ts` — `parseStaffEffect()` (effect spec parser)
-   - `src/MainStreetStaffBuffs.ts` — `computeBusinessStaffBuffs()`, `computeBusinessIncidentMitigation()`, `computeIncidentFrequencyReduction()`, `computeAdjacentPurchaseDiscount()`, `computeUpgradeCostDiscount()` etc.
-   - `src/MainStreetEngineCommands.ts` / `src/EngineActions.ts` — WeekStart, CompetitiveTurn, AdjacencyScoring, MainStreetMarketRefill, etc.
-
-A staff card is **✅ implemented** when it has both a backing data column *and* a named engine consumer. It is **❌ gap** when neither exists.
-
-## Regression guard
-
-The guard in `tests/main-street/staff-cost-text-data-consistency.test.ts` (CG-0MTKMGL66004I0PC) ensures that every staff cost-reduction description is registered in a contract table. Cards with no backing data are registered with `column: null` and a note linking to their gap work item. This prevents future staff cards from silently introducing cost-reduction descriptions that do nothing.
+1. **Documented effect and scope** — read from GDD Appendix D.4.3 / D.4.4 and cross-checked against `docs/game/card-catalog.md` and the row's `description`.
+2. **Backing data** — a non-empty column in the card's `src/card-data.csv` row (`effect`-column dimension or dedicated column).
+3. **Parser path** — the code that turns the raw column into a typed `StaffCard` field:
+   - `src/MainStreetCardsTemplates.ts::parseStaffEffect()` — the `effect`-column grammar;
+   - the dedicated-column mapping in the same file — `handSlotsAdded`, `actionsPerTurn`, `refreshCostDiscount`, `taxAuditRate`, `peekOncePerTurn`, `reputationPerTurn`, `upgradeCostDiscount`, `freeMarketRerollPerTurn`, `marketRelevanceBias`.
+4. **Engine consumer** — the named function that folds the typed field into gameplay:
+   - `src/MainStreetStaffBuffs.ts` — `computeBusinessStaffBuffs`, `computeBusinessIncidentMitigation`, `computeIncidentFrequencyReduction`, `computeAdjacentPurchaseDiscount`, `computeUpgradeCostDiscount`;
+   - `src/MainStreetAdjacencyScoring.ts` — income / reputation phase fold-in;
+   - `src/MainStreetEngineCommands.ts` — ongoing-cost deduction (business, staff, community), `computeTaxAuditRate`;
+   - `src/MainStreetEngineEvents.ts` — incident resolution (coin/reputation damage, tax rate);
+   - `src/MainStreetMarketRefill.ts` — refresh discount, free re-roll and relevance bias;
+   - `src/MainStreetEngineActions.ts` / `src/MainStreetStaffSkills.ts` — peek ability;
+   - week-start / competitive-turn code — hand slots and actions per turn.
+5. **Behavioural test** — a test file that drives the effect through real engine state (not just a template/CSV assertion) and checks magnitude **and scope**.
 
 ## Reproducible re-run procedure
 
 To re-run this audit against the current card data:
 
-1. **Check CSV rows** — list all staff cards:
+1. **List every base staff row and its effect-relevant columns.**
    ```bash
-   grep '^staff,' src/card-data.csv
+   python3 - <<'PY'
+   import csv
+   with open('src/card-data.csv') as f:
+       rows = list(csv.DictReader(f))
+   staff = [r for r in rows if r['family'] == 'staff']
+   cols = ['effect', 'handSlotsAdded', 'actionsPerTurn', 'refreshCostDiscount',
+           'taxAuditRate', 'peekOncePerTurn', 'reputationPerTurn',
+           'upgradeCostDiscount', 'freeMarketRerollPerTurn', 'marketRelevanceBias']
+   print(f'{len(staff)} base staff rows')
+   for r in staff:
+       print(r['id'], {c: r[c] for c in cols if r.get(c)})
+   PY
    ```
-2. **Inspect backing data** — for each staff card, verify a data column exists in the same row:
+   Confirm there are exactly **26** base staff rows and that every row except `staff-bookkeeper` carries at least one non-empty effect column.
+
+2. **Check the `effect` spec parser covers every shipped dimension.**
    ```bash
-   # Example: check the Bookkeeper specifically
-   grep '^staff,staff-bookkeeper,' src/card-data.csv
+   grep -n "parseStaffEffect\|case 'income'\|case 'reputation'\|case 'purchase-discount'\|case 'incident-\|ongoing-cost" src/MainStreetCardsTemplates.ts
    ```
-3. **Check effect spec parser** — verify `src/MainStreetCardsTemplates.ts::parseStaffEffect` handles the effect type:
+   A documented effect whose dimension has no `case` in `parseStaffEffect` is a gap (this is how G1 was found).
+
+3. **Check each buff consumer exists.**
    ```bash
-   grep -n "parseStaffEffect" src/MainStreetCardsTemplates.ts
-   ```
-4. **Check buff consumers** — verify `src/MainStreetStaffBuffs.ts` contains the effect handler:
-   ```bash
-   grep -n "computeBusinessStaffBuffs\|computeBusinessIncidentMitigation\|computeIncidentFrequencyReduction\|computeAdjacentPurchaseDiscount\|computeUpgradeCostDiscount" src/MainStreetStaffBuffs.ts
-   ```
-5. **Check engine commands** — verify the relevant engine command files (e.g. `EngineActions.ts`, `MainStreetEngineCommands.ts`) consume the effect.
-6. **Run the guard** — the automated guard will catch any new unregistered cost-reduction descriptions:
-   ```bash
-   npx vitest run tests/main-street/staff-cost-text-data-consistency.test.ts
+   grep -n "export function computeBusinessStaffBuffs\|computeBusinessIncidentMitigation\|computeIncidentFrequencyReduction\|computeAdjacentPurchaseDiscount\|computeUpgradeCostDiscount" src/MainStreetStaffBuffs.ts
    ```
 
-If step 6 reports an unregistered cost-reduction description, that staff card is a new gap that should be investigated.
+4. **Check the ongoing-cost path applies per-business reductions.**
+   ```bash
+   grep -n "applyBusinessOngoingCosts\|applyCompetitiveOngoingCosts" src/MainStreetEngineCommands.ts
+   ```
+   Inspect whether each business's `ongoingCost` is reduced by its employed staff (the Bookkeeper), not only by the street-wide Cost Cutter.
+
+5. **Check the card-level verifier asserts each effect field.**
+   ```bash
+   grep -n "incomeBonus\|reputationBonus\|reputationPercent\|incomePercent\|synergyRangeBonus\|adjacencyPurchaseDiscount\|freeMarketRerollPerTurn\|ongoingCostReduction" tests/main-street/cards/definitions/runners.ts
+   ```
+   A field absent from `verifyStaffCard` is a `unitTestStatus` honesty gap (G2).
+
+6. **Check the behavioural suite references each card.**
+   ```bash
+   for id in $(python3 - <<'PY'
+   import csv
+   with open('src/card-data.csv') as f:
+       print('\n'.join(r['id'] for r in csv.DictReader(f) if r['family'] == 'staff'))
+   PY
+   ); do
+     echo "== $id =="
+     grep -rl "$id" tests/main-street --include='*.test.ts' | grep -v 'cards/definitions'
+   done
+   ```
+   A card with no referencing behavioural test (other than the shared verifier) is a behavioural-coverage gap.
+
+7. **Run the guard and the shared card verifier.**
+   ```bash
+   npx vitest run tests/main-street/staff-cost-text-data-consistency.test.ts
+   npx vitest run --project unit tests/main-street/cards/unit/CardIntegration.test.ts
+   ```
+   `staff-cost-text-data-consistency.test.ts` fails if a cost-reduction description is unregistered; the card integration run re-writes `unitTestStatus` in `src/card-data.csv`.
+
+## Regression guard
+
+`tests/main-street/staff-cost-text-data-consistency.test.ts` (CG-0MTKMGL66004I0PC) ensures every staff cost-reduction description is registered in a contract table and that the stated amount matches the backing data column (the ×100 consistency rule). Cards with no backing data are registered with `column: null` and a note linking to their gap work item — the Bookkeeper is currently registered that way. This prevents a future staff card from silently introducing a cost-reduction description that does nothing.
+
+The broader implementation is additionally guarded by:
+
+- `tests/main-street/staff-two-type-redesign.test.ts` — card-data values, per-business income/reputation buffs, incident mitigation and employment scoping.
+- `tests/main-street/group-f-staff-abilities-expansion.test.ts` — management-company abilities (Socialite, Accountant, action economy, peek, Investor flag).
+- `tests/main-street/financial-advisor-upgrade-discount.test.ts` — per-business upgrade discount.
+- `tests/main-street/investor-staff.test.ts` / `investor-free-reroll-engine.test.ts` — Investor free re-roll, bias and lifecycle.
+- `tests/main-street/gdd-staff-consistency.test.ts` + `npm run validate:gdd` — roster count/type/tier/salary consistency between the GDD and `src/card-data.csv`.
