@@ -1319,8 +1319,32 @@ condensed text-only summary.
     `buildPLTabsFromCompetitiveSummary`, `buildPLFromTurnSummary` /
     `buildPLFromCompetitiveRow`) project the same tabs and statement from the
     already-built summary it holds, so the two can never drift.
-- Read-only: never mutates state, consumes no RNG, and never touches the
-  save-point ordering (the checkpoint stays in `finalizeTurn`).
+  - **Per-item tooltip breakdowns (MS-0MW6GZKZZ006PLLO)** — each income line
+    carries an optional `breakdown` listing each owned business and its
+    individual coin contribution (projected from `IncomeResult.breakdown` for
+    base / synergy and `phaseBreakdown.perSlotBreakdown` for reputation /
+    events), and each ongoing-expense line carries an optional `breakdown`
+    listing each staff card / community space / business card and its running
+    cost. The per-card costs are derived from the committed `streetGrid` /
+    `staffCards` using the engine's own helpers (`computeStaffSalaryCost`,
+    `getSalaryScopeSkills`), never invented by the UI, and sold slots are
+    excluded. Both breakdowns are absent-safe: a hand-built or legacy result
+    renders the statement with generic per-line tooltips instead. See the
+    [ledger tooltips](#ledger-tooltips-in-the-turn-summary-ms-0mw6gzkzz006pllo)
+    section below.
+  - **Tooltip content and the documented one-off fallback** —
+    `src/scenes/MainStreetTurnSummaryTooltips.ts` builds the localisable
+    per-line tooltip copy (headings + per-item lists + reconciliation notes).
+    The ledger stores one-off only as a **residual**
+    (`netCoinChange - income - expenses - incident`) with no per-source
+    breakdown, so its tooltip presents that reconciliation formula rather than
+    inventing per-source attribution — the documented fallback permitted by the
+    parent item (parent AC7). The same module builds the incident name/effect
+    tooltip, the net reconciliation-identity tooltip
+    (`income + expenses + incident + one-off = net`), and the explanatory
+    supplementary-context tooltips.
+  - **Read-only** — never mutates state, consumes no RNG, and never touches the
+    save-point ordering (the checkpoint stays in `finalizeTurn`).
 - Competitive closings carry no `turnLedger`, so `buildTurnSummary` returns
   `null` and the single-player summary is not presented (parent AC4). They
   carry `TurnResult.playerRoundLedger` instead, rendered by the competitive
@@ -1335,6 +1359,42 @@ condensed text-only summary.
   profitable / loss / zero days, the tab model and its default, and the
   supplementary context); engine ledger coverage lives in
   `tests/main-street/end-of-turn-ledger.test.ts`.
+
+### Ledger tooltips in the Turn Summary (MS-0MW6GZKZZ006PLLO)
+
+- Every P&L row in the Turn Summary — each income line, each expense line, the
+  `Incident` and `One-off` adjustments, the `Net profit/loss` bottom line and
+  the supplementary context rows — shows an explanation tooltip on hover
+  (desktop) and on tap (touch), through the shared `attachHudTooltipZone` /
+  `tooltipManager` helper. The seed-level entries below are implemented by
+  `src/scenes/MainStreetTurnSummaryTooltips.ts` and wired into the overlay by
+  `src/scenes/MainStreetTurnSummaryOverlay.ts`.
+- **Per-business income** — the base / synergy / reputation / events tooltips
+  list each owned business and its individual coin contribution, from the
+  projection's per-line `breakdown` (projected from `IncomeResult`).
+- **Per-card expenses** — the staff / community / business tooltips list each
+  individual card and its running cost. The per-card figures mirror the
+  engine's own `applyStaffOngoingCosts` / `applyCommunitySpaceOngoingCosts` /
+  `applyBusinessOngoingCosts` scans (sold slots excluded), and the tooltip
+  reconciles their sum to the committed category total with a street-wide
+  reduction line (`Cost Cutter`) or a coins-limited note where applicable.
+- **Incident** — names the resolved incident card and describes its coin and
+  reputation effect.
+- **One-off** — no per-source breakdown is stored in the ledger, so the
+  tooltip presents the reconciliation formula that produces the residual
+  (parent AC7's documented fallback; see the TSDoc on
+  `MainStreetTurnSummaryTooltips.ts`).
+- **Net profit/loss** — explains the reconciliation identity
+  `income + expenses + incident + one-off = net`.
+- **Supplementary context** — the reputation/score change, closing coins and
+  businesses-owned rows carry explanatory tooltips.
+- **i18n** — all copy resolves through the shared `t()` / `registerLocale`
+  system; English defaults for every key are registered at module load, so the
+  tooltips work without an explicit locale setup and can be overridden by any
+  registered locale.
+- **Non-blocking** — tooltips are pure presentation (no state mutation, no RNG)
+  and are attached to already-inert text rows, so tab switching and the
+  `[ Next Turn ]` / `[ Bank Loan ]` buttons are unaffected.
 
 ### Turn Summary dialog and the closing gate
 

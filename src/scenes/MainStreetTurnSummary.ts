@@ -64,7 +64,10 @@
 
 import type { MainStreetState } from '../MainStreetState';
 import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
+import { computeStaffSalaryCost, getEmployedSpecializationSkills, getSalaryScopeSkills, computeStreetOngoingCostReductionPct } from '../MainStreetStaffBuffs';
+import { roundInt } from '../MainStreetDifficulty';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 import {
   buildTurnSummaryLoanDescriptor,
@@ -86,6 +89,8 @@ export interface TurnSummaryIncomeRow {
   label: string;
   /** Coins credited in this phase (may be negative for event effects). */
   coins: number;
+  /** Optional per-business breakdown for the tooltip (absent-safe). */
+  breakdown?: PLLineBreakdown;
 }
 
 /** One ongoing-expense row (`staff` / `community` / `business`). */
@@ -95,6 +100,8 @@ export interface TurnSummaryExpenseRow {
   label: string;
   /** Signed coin delta for the category (zero or negative). */
   coins: number;
+  /** Optional per-card breakdown for the tooltip (absent-safe). */
+  breakdown?: PLLineBreakdown;
 }
 
 /**
@@ -215,12 +222,14 @@ const EXPENSE_CATEGORIES: readonly TurnSummaryExpenseCategory[] = [
  * `TurnResult.playerRoundLedger` through
  * {@link buildCompetitiveTurnSummary}), so the caller renders nothing.
  *
- * @param state  Committed game state after the closing deltas landed.
- * @param result The closed turn's result (ledger plus resolved incident).
+ * @param state     Committed game state after the closing deltas landed.
+ * @param result    The closed turn's result (ledger plus resolved incident).
+ * @param incomeResult Optional income breakdown for per-business tooltip data;
+ *                     when absent the tooltip shows a generic explanation.
  */
 export function buildTurnSummary(
   state: MainStreetState,
-  result: Pick<TurnResult, 'turnLedger' | 'incident'>,
+  result: Pick<TurnResult, 'turnLedger' | 'incident'> & { income?: TurnResult['income'] },
 ): TurnSummary | null {
   const ledger = result.turnLedger;
   if (!ledger) return null;
@@ -229,11 +238,13 @@ export function buildTurnSummary(
     phase,
     label: INCOME_LABELS[phase],
     coins: ledger.incomeByPhase[phase],
+    ...incomeLineBreakdown(phase, result.income),
   }));
   const expenses = EXPENSE_CATEGORIES.map((category) => ({
     category,
     label: EXPENSE_LABELS[category],
     coins: ledger.ongoingCosts[category],
+    ...expenseLineBreakdown(state, category),
   }));
 
   const closing = closingBalances(state, ledger);
@@ -584,6 +595,23 @@ export interface PLStatementLine {
   label: string;
   /** Signed coin amount: credited for income, zero-or-negative for expenses. */
   coins: number;
+  /**
+   * Optional per-item breakdown for tooltip rendering (per-business income,
+   * per-card costs). Absent-safe: legacy/hand-built ledgers render without a
+   * breakdown tooltip (the overlay falls back to a generic explanation).
+   *
+   * Note `key` here is shared with the ledger's phase (`base`/`synergy`/`events`)
+   * or category (`staff`/`community`/`business`), but the breakdown groups
+   * per business for income phases and per card for expense categories.
+   */
+  breakdown?: PLLineBreakdown;
+  /**
+   * Optional tooltip content string. When absent the overlay builds row
+   * content from the model via {@link module:scenes/MainStreetTurnSummaryTooltips}
+   * (the reconciliation formula for one-off/net rows, generic explanations for
+   * context rows).
+   */
+  tooltipContent?: string;
 }
 
 /**
@@ -610,6 +638,8 @@ export interface PLAdjustmentLine {
   label: string;
   coins: number;
   reputation: number;
+  /** Optional tooltip content (incident name/effect; one-off reconciliation). */
+  tooltipContent?: string;
 }
 
 /**
@@ -625,6 +655,14 @@ export interface PLSupplementaryContext {
   closingCoins: number;
   /** Businesses standing on the street at closing for that player. */
   businessesOwned: number;
+  /**
+   * Optional tooltip content for each context row, keyed by row. Absent-safe:
+   * the overlay falls back to a generic explanation when a key is missing.
+   */
+  tooltips?: Partial<Record<
+    'reputationChange' | 'scoreChange' | 'closingCoins' | 'businessesOwned',
+    string
+  >>;
 }
 
 /**
@@ -682,8 +720,44 @@ const PL_LABELS = {
   net: 'Net profit/loss',
 } as const;
 
+/**
+ * A single item in a per-item breakdown (business name → coins, staff card →
+ * cost, etc.). Used by tooltip content builders.
+ */
+export interface PLBreakdownItem {
+  /** Display name of the item (business name, staff name, etc.). */
+  name: string;
+  /** Coin contribution of this item (positive for income, negative for cost). */
+  coins: number;
+}
+
+/**
+ * Optional per-item breakdown attached to a P&L line for tooltip rendering.
+ *
+ * When present the overlay attaches a tooltip that lists each item; when absent
+ * the row shows a generic explanation (the reconciliation formula, etc.).
+ */
+export interface PLLineBreakdown {
+  /** Ordered list of named items with their coin contribution. */
+  items: PLBreakdownItem[];
+  /**
+   * Optional street-wide ongoing-cost reduction (Cost Cutter) applied to this
+   * family, as a positive coin amount. Stored so the tooltip can attribute the
+   * gap between the per-item base sum and the committed total to the reduction
+   * rather than to a coins-limited shortfall. Absent when no reduction applies.
+   */
+  streetReduction?: number;
+}
+
 /** The result fields the P&L projection reads (both ledger shapes). */
-type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'>;
+type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'> & {
+  /**
+   * Optional per-business income detail for tooltip breakdowns. Absent-safe: a
+   * caller that omits it (hand-built results, legacy call sites) still gets a
+   * statement, just without per-business breakdowns.
+   */
+  income?: TurnResult['income'];
+};
 
 /**
  * Builds the tab model of the unified Turn Summary dialog: one tab per player,
@@ -819,7 +893,12 @@ export function buildPLFromTurnSummary(
       'income',
       PL_LABELS.income,
       PL_LABELS.incomeTotal,
-      summary.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      summary.income.map((line) => ({
+        key: line.phase,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       summary.incomeTotal,
     ),
     expenses: plSection(
@@ -830,6 +909,7 @@ export function buildPLFromTurnSummary(
         key: line.category,
         label: line.label,
         coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
       })),
       summary.expensesTotal,
     ),
@@ -917,6 +997,140 @@ export function buildPLFromCompetitiveRow(
 function selectPlayerKey(tabs: readonly PLTab[], playerKey?: string | number): string {
   if (playerKey !== undefined) return String(playerKey);
   return (tabs.find((tab) => tab.isDefault) ?? tabs[0])?.id ?? '';
+}
+
+/**
+ * Builds the optional per-business breakdown for one income phase.
+ *
+ * The engine's `IncomeResult` carries per-slot income in `breakdown`
+ * (`baseIncome` + `synergyBonus`) and per-slot phase data in
+ * `phaseBreakdown.perSlotBreakdown` (`repBonus`, `eventDeltas`). We project the
+ * phase-specific per-business contribution so the "Business income" tooltip can
+ * name each business.
+ *
+ * Absent-safe: an absent `incomeResult` or empty breakdown → no breakdown (the
+ * overlay falls back to a generic explanation tooltip).
+ *
+ * @param phase        The income phase to break down.
+ * @param incomeResult The closed turn's `IncomeResult` (per-business detail).
+ */
+function incomeLineBreakdown(
+  phase: TurnSummaryIncomePhase,
+  income: TurnResult['income'] | null | undefined,
+): { breakdown?: PLLineBreakdown } {
+  if (!income) return {};
+
+  if (phase === 'base' || phase === 'synergy') {
+    const items = (income.breakdown ?? [])
+      .map((slot) => ({
+        name: slot.businessName,
+        coins: phase === 'base' ? slot.baseIncome : slot.synergyBonus,
+      }))
+      .filter((item) => item.coins !== 0);
+    return items.length > 0 ? { breakdown: { items } } : {};
+  }
+
+  // Reputation and event phases come from the per-slot phase breakdown.
+  const phaseSlots = income.phaseBreakdown?.perSlotBreakdown ?? [];
+  const items = phaseSlots
+    .map((slot) => ({
+      name: slot.businessName,
+      coins:
+        phase === 'reputation'
+          ? slot.repBonus
+          : (slot.eventDeltas ?? []).reduce((total, delta) => total + delta.delta, 0),
+    }))
+    .filter((item) => item.coins !== 0);
+  return items.length > 0 ? { breakdown: { items } } : {};
+}
+
+/**
+ * Builds the optional per-item breakdown for one ongoing-expense category.
+ *
+ * Derives per-card costs from the committed state the same way the engine's
+ * `applyStaffOngoingCosts` / `applyCommunitySpaceOngoingCosts` /
+ * `applyBusinessOngoingCosts` helpers compute them, so the tooltip's per-item
+ * figures are the engine's own per-card charges — never invented by the UI.
+ *
+ * Items hold the **base** per-card charge (before the street-wide Cost Cutter
+ * reduction and before any available-coins clamp). The tooltip builder
+ * reconciles them to the committed category total with a reduction/clamp line
+ * (see {@link module:scenes/MainStreetTurnSummaryTooltips}).
+ *
+ * Costs are stored as negative coin deltas, matching the expense row
+ * convention. Absent-safe: a missing/empty source → no breakdown.
+ *
+ * @param state    Committed game state after the closing (read-only).
+ * @param category The ongoing-expense category to break down.
+ */
+function expenseLineBreakdown(
+  state: MainStreetState,
+  category: TurnSummaryExpenseCategory,
+): { breakdown?: PLLineBreakdown } {
+  const soldSlots = state.soldSlots ?? [];
+
+  if (category === 'staff') {
+    const items = (state.staffCards ?? [])
+      .map((card) => ({
+        name: card.name,
+        coins: -computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost),
+      }))
+      .filter((item) => item.coins !== 0);
+    return items.length > 0
+      ? { breakdown: { items, ...streetReduction(state, items) } }
+      : {};
+  }
+
+  if (category === 'community') {
+    const items: PLBreakdownItem[] = [];
+    const grid = state.streetGrid ?? [];
+    for (let i = 0; i < grid.length; i++) {
+      const slot = grid[i];
+      if (!slot || slot.family !== 'community-space') continue;
+      if (soldSlots[i]) continue;
+      const cost = slot.ongoingCost ?? 0;
+      if (cost > 0) items.push({ name: slot.name, coins: -cost });
+    }
+    return items.length > 0
+      ? { breakdown: { items, ...streetReduction(state, items) } }
+      : {};
+  }
+
+  // category === 'business'
+  const items: PLBreakdownItem[] = [];
+  const grid = state.streetGrid ?? [];
+  for (let i = 0; i < grid.length; i++) {
+    const slot = grid[i];
+    if (!slot || slot.family !== 'business') continue;
+    if (soldSlots[i]) continue;
+    const cost = (slot as BusinessCard).ongoingCost ?? 0;
+    if (cost > 0) items.push({ name: slot.name, coins: -cost });
+  }
+  return items.length > 0
+    ? { breakdown: { items, ...streetReduction(state, items) } }
+    : {};
+}
+
+/**
+ * Computes the street-wide Cost Cutter reduction for a family's base per-item
+ * sum, mirroring the engine (`roundInt(totalCost * (1 - reductionPct))`).
+ *
+ * Returns `{ streetReduction }` (a positive coin amount) only when the reduction
+ * actually moves the family total; an unreduced family returns `{}` so the
+ * breakdown stays absent-safe.
+ */
+function streetReduction(
+  state: MainStreetState,
+  items: readonly PLBreakdownItem[],
+): { streetReduction?: number } {
+  const reductionPct = computeStreetOngoingCostReductionPct(
+    getEmployedSpecializationSkills(state),
+  );
+  if (reductionPct <= 0) return {};
+  const absSum = items.reduce((total, item) => total - item.coins, 0);
+  const afterReduction = roundInt(absSum * (1 - reductionPct));
+  const amount = absSum - afterReduction;
+  return amount > 0 ? { streetReduction: amount } : {};
 }
 
 /** Assembles one titled statement section. */
