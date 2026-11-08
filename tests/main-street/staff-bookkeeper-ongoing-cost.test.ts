@@ -105,6 +105,20 @@ describe('Bookkeeper effect data and parsing', () => {
     employBookkeeper(state, 0);
     expect(computeBusinessStaffBuffs(state, 0).ongoingCostReductionPct).toBeCloseTo(0.2, 10);
   });
+
+  it('is defined as a business-staff card for Commerce/Food/Service businesses', () => {
+    // GDD D.4.3: "Employed at: Commerce, Food or Service business".
+    expect(bookkeeperTemplate().handSlotsAdded).toBe(0);
+    expect(bookkeeperTemplate().allowedBusinessTypes).toEqual(
+      expect.arrayContaining(['Commerce', 'Food', 'Service']),
+    );
+  });
+
+  it('states the same magnitude in its description as in its data', () => {
+    // ×100 consistency rule: description says "20%", data says 0.2.
+    expect(bookkeeperTemplate().description).toMatch(/ongoing\s+cost\s+by\s+20%/i);
+    expect(bookkeeperTemplate().ongoingCostReduction).toBe(0.2);
+  });
 });
 
 // ── Single-player path ──────────────────────────────────────
