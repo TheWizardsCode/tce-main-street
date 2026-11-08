@@ -1,8 +1,10 @@
 /**
  * Turn Summary — ledger tooltip model and content — MS-0MW6GZKZZ006PLLO
- * (child MS-0MW7QQ5BX002KGS0).
+ * (feature MS-0MW7QQ5BX002KGS0, verification MS-0MW7QQ1FD000RCA3).
  *
- * Pins the data-and-copy half of the ledger-tooltip work:
+ * The canonical unit suite for the data-and-copy half of the ledger-tooltip
+ * work. It proves that every figure a player can hover has a correct, localised
+ * explanation derived from committed engine data.
  *
  *  - the P&L projection threads **per-business income** breakdowns from
  *    `IncomeResult.breakdown` / `phaseBreakdown.perSlotBreakdown`;
@@ -15,10 +17,15 @@
  *  - supplementary context rows carry explanatory tooltips;
  *  - all copy is localisable through the shared `t()` / `registerLocale`
  *    system with English defaults registered at module load;
+ *  - competitive per-seat income uses each seat's own breakdown and degrades
+ *    gracefully when absent;
  *  - every addition is absent-safe (legacy/hand-built ledgers render) and
  *    touches no state and no RNG.
  *
- * @module tests/main-street/turn-summary-ledger-tooltips
+ * The overlay wiring (`attachHudTooltipZone` attachment and interaction) is
+ * verified by the browser suite (`turn-summary-pl-overlay.browser.test.ts`).
+ *
+ * @module tests/main-street/turn-summary-tooltips
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -563,5 +570,43 @@ describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
     for (const line of human.expenses) {
       expect(line.breakdown).toBeUndefined();
     }
+  });
+});
+
+// ── Exact content strings (verification MS-0MW7QQ1FD000RCA3) ──
+
+describe('ledger tooltip exact content strings (MS-0MW7QQ1FD000RCA3)', () => {
+  function projection() {
+    return buildPLProjection(tooltipState(), plInput(tooltipLedger()))!;
+  }
+
+  it('business-income tooltip is exactly the label, amount and per-business list', () => {
+    const base = projection().income.lines.find((line) => line.key === 'base')!;
+    expect(buildIncomeLineTooltip(base)).toBe(
+      'Base income: +80\nPer business: Bakery: +50, Cafe: +30',
+    );
+  });
+
+  it('staff-costs tooltip is exactly the label, per-card list and total', () => {
+    const staff = projection().expenses.lines.find((line) => line.key === 'staff')!;
+    expect(buildExpenseLineTooltip(staff)).toBe(
+      'Staff wages: -150\nPer item: Clerk: -100, Manager: -50\nTotal: -150',
+    );
+  });
+
+  it('incident tooltip is exactly the title and the name/effect line', () => {
+    const p = projection();
+    expect(buildIncidentLineTooltip(p.incident, 'Flu Outbreak')).toBe(
+      'Incident\nFlu Outbreak: Coins -20, Rep -1',
+    );
+    expect(buildIncidentLineTooltip(p.incident, null)).toBe(
+      'Incident\nNo incident was resolved this turn.',
+    );
+  });
+
+  it('net tooltip is exactly the reconciliation identity', () => {
+    expect(buildNetLineTooltip(projection())).toBe(
+      'Net profit/loss\nNet = income (+89) + expenses (-185) + incident (-20) + one-off (-4) = -120',
+    );
   });
 });
