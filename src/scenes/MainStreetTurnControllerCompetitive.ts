@@ -745,11 +745,26 @@ export function presentCompetitiveDayTail(
   closing: TurnResult,
 ): void {
   const state: MainStreetState = tcCtx.scene.state;
+  // Carried paused-closing retirements (MS-0MW8FXE3D0041KEG). Stashed when a
+  // bailout offer pauses the tail, consumed exactly once on the resume.
+  const carryScene = tcCtx.scene as {
+    pausedCompetitiveLoanPayoffs?: TurnResult['loanPayoffs'] | null;
+  };
   // Competitive seat bailout pause (MS-0MVPWSAMH005LV9R): while a seat's offer
   // is open the shared day has NOT closed — present the dialog and wait. The
   // resumed closing re-enters this tail (accept continues the day, decline
   // produces today's bankruptcy outcome).
   if (closing.pendingLoanOffer === true || hasOpenBailoutOffer(state)) {
+    // Carry the paused closing's retirements across the offer pause so the
+    // resumed closing can still present the debt-free congratulation. The
+    // pause is taken *after* the day's repayment pass, so the paused result
+    // already reports them; the resumed closing re-runs only the
+    // failure/end-check tail with `skipLoanRepayments: true` and therefore
+    // carries none. Stash before presenting the offer (the synchronous
+    // headless fallback resolves inside `presentLoanOfferDialog`) and consume
+    // it once on the resume below — mirroring the single-player
+    // `pausedLoanPayoffs` carry (MS-0MW4887R4007XPGJ).
+    carryScene.pausedCompetitiveLoanPayoffs = closing.loanPayoffs ?? null;
     if (typeof tcCtx.presentLoanOfferDialog === 'function' && tcCtx.presentLoanOfferDialog(closing)) {
       return;
     }
@@ -760,8 +775,19 @@ export function presentCompetitiveDayTail(
       return;
     }
   }
+  // Consume the carry exactly once: the resumed closing is the only delivery,
+  // and clearing it here means a re-entry (double callback / F5 piggyback
+  // continuation) cannot replay the congratulation (AC1). A resumed closing
+  // that already reports its own retirements (pre-income pause) keeps them —
+  // the carry is a no-op there, never a double report.
+  const pausedPayoffs = carryScene.pausedCompetitiveLoanPayoffs;
+  carryScene.pausedCompetitiveLoanPayoffs = null;
+  const effectiveClosing: TurnResult =
+    pausedPayoffs && pausedPayoffs.length > 0 && !(closing.loanPayoffs && closing.loanPayoffs.length > 0)
+      ? { ...closing, loanPayoffs: pausedPayoffs }
+      : closing;
   if (state.gameResult !== 'playing') {
-    tcCtx.handleGameOver(closing);
+    tcCtx.handleGameOver(effectiveClosing);
     return;
   }
   // Competitive turn-boundary checkpoint (MS-0MUTU8JKV003UQFG): the closing
@@ -776,16 +802,16 @@ export function presentCompetitiveDayTail(
   // starts only on **[ Next Turn ]**. Reduced motion, replay and headless keep
   // the existing auto-advance pacing, so the day can never stall.
   const nextDay = (): void => tcCtx.startTurnPhase();
-  const afterClosing = shouldGateCompetitiveTurnSummary(tcCtx, closing)
-    ? () => presentCompetitiveTurnSummaryGate(tcCtx, closing, nextDay)
+  const afterClosing = shouldGateCompetitiveTurnSummary(tcCtx, effectiveClosing)
+    ? () => presentCompetitiveTurnSummaryGate(tcCtx, effectiveClosing, nextDay)
     : nextDay;
   // Loan payoff congratulation (MS-0MW3SN58E009HC84, parent AC3/AC6): the same
   // one-dialog-per-payoff sequencing as single-player, presented once the
   // closing animations finish and ahead of the Turn Summary panel / next day.
   // The model gate keeps an AI seat's payoff invisible to the player, and a
   // run that has already ended returns above — the game-over overlay wins.
-  presentCompetitiveClosing(tcCtx, closing, () =>
-    presentLoanPayoffDialogs(tcCtx.scene, closing.loanPayoffs, afterClosing),
+  presentCompetitiveClosing(tcCtx, effectiveClosing, () =>
+    presentLoanPayoffDialogs(tcCtx.scene, effectiveClosing.loanPayoffs, afterClosing),
   );
 }
 
