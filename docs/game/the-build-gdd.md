@@ -568,10 +568,10 @@ Business staff are the **specialists**: each is employed at one business and pay
 |---|---|---|---|---|---|---|
 | `staff-barista` | Barista | 2 | 50 | Any Cafe, or any Food-type business | **+20 coins/turn** to **each adjacent Food business** (flat synergy coin) | — |
 | `staff-baker` | Baker | 2 | 80 | Any Bakery, or any Food-type business | **+25 coins/turn** to **its own business** | Narrowed from adjacent Food businesses to its own business |
-| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy, before market saturation) | Narrowed from nearby Food businesses to its own business |
+| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy and after the duplicate-business market-saturation reduction) | Narrowed from nearby Food businesses to its own business |
 | `staff-florist` | Florist | 2 | 75 | Any Flower Shop, or any Commerce/Culture business | **+30 coins/turn** to **each adjacent Commerce or Culture business** | — |
 | `staff-mechanic` | Mechanic | 3 | 90 | Hardware Store, or any Service business | **+30 coins/turn** to **its own Service business** | — |
-| `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded up, floored at 0) | — |
+| `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded to the nearest integer, floored at 0) | — |
 | `staff-financial` | Financial Advisor | 5 | 125 | Commerce business | **−100 coins** on **each upgrade** purchased for **its own business** (floored at 0) | — |
 | `staff-it` | IT Specialist | 4 | 100 | Commerce, Entertainment or Service business | **+1 synergy range** for **its own business** (it links with businesses up to 2 slots away) | Was a street-wide −100 market-refresh discount (player-scoped; did not fit the business-staff scope) |
 | `staff-delivery` | Delivery Driver | 2 | 50 | Food or Commerce business | **−50 coins** on the purchase cost of **any business placed adjacent to its own business** | Was a street-wide purchase discount |

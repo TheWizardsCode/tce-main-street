@@ -25,7 +25,7 @@ import { describe, it, expect } from 'vitest';
 
 import { executeWeekStart } from '../../src/MainStreetEngine';
 import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
-import { applyIncome } from '../../src/MainStreetAdjacency';
+import { applyIncome, recalculateCard } from '../../src/MainStreetAdjacency';
 import {
   getEventTemplates,
   getStaffCardTemplates,
@@ -234,6 +234,25 @@ describe('AC2: own-business income buffs', () => {
     expect(income.get(2)).toBeCloseTo(10);
   });
 
+  it('Chef applies +20% after synergy and after the market-saturation reduction', () => {
+    const state = freshState('chef-ordering');
+    placeBusiness(state, 0, 'Cafe', ['Food'], 10); // employer
+    placeBusiness(state, 1, 'Diner', ['Food'], 10); // adjacent synergy link
+    placeBusiness(state, 2, 'Cafe', ['Food'], 10); // duplicate 2 of 3
+    placeBusiness(state, 4, 'Cafe', ['Food'], 10); // duplicate 3 of 3
+    // Resolve the engine's own synergy + saturation numbers into the caches:
+    // round((10 base + 2 synergy) × 0.5 saturation factor) = 6.
+    for (const slot of [0, 1, 2, 4]) recalculateCard(state, slot);
+    expect(state.streetGrid[0]!.currentIncome).toBe(6);
+
+    employ(state, 0, 'staff-chef');
+    const income = incomeBySlot(state);
+    // The +20% scales the whole credited (post-synergy, post-saturation)
+    // income, so 6 × 1.2 = 7.2 rather than applying it before the saturation
+    // factor, which would credit round((10 × 1.2 + 2) × 0.5) = 7.
+    expect(income.get(0)).toBeCloseTo(7.2);
+  });
+
   it('Mechanic adds +30 to its own Service business only', () => {
     const state = freshState('mechanic-own');
     placeBusiness(state, 0, 'Hardware Store', ['Service'], 5);
@@ -260,18 +279,24 @@ describe('AC2: adjacency income buffs (employing business + 8-way neighbours)', 
     expect(income.get(1)).toBeCloseTo(22);
     expect(income.get(5)).toBeCloseTo(22);
     expect(income.get(3)).toBeCloseTo(2);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(0)).toBeCloseTo(2);
   });
 
-  it('Florist adds +30 only to adjacent Commerce/Culture businesses', () => {
+  it('Florist adds +30 only to adjacent Commerce/Culture businesses (8-way)', () => {
     const state = freshState('florist-adjacent');
     placeBusiness(state, 0, 'Flower Shop', ['Commerce', 'Culture']);
     placeBusiness(state, 1, 'Bookshop', ['Culture']);
     placeBusiness(state, 2, 'Gym', ['Health']);
+    placeBusiness(state, 5, 'Gallery', ['Culture']); // directly below slot 0 (8-way)
     employ(state, 0, 'staff-florist');
 
     const income = incomeBySlot(state);
     expect(income.get(1)).toBeCloseTo(32);
     expect(income.get(2)).toBeCloseTo(2);
+    expect(income.get(5)).toBeCloseTo(32);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(0)).toBeCloseTo(2);
   });
 
   it('Event Planner adds +100 from each adjacent Entertainment business', () => {
@@ -284,6 +309,8 @@ describe('AC2: adjacency income buffs (employing business + 8-way neighbours)', 
     const income = incomeBySlot(state);
     expect(income.get(1)).toBeCloseTo(102);
     expect(income.get(2)).toBeCloseTo(2);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(0)).toBeCloseTo(2);
   });
 
   it('Customer Service Rep adds +10 reputation per adjacent business', () => {
@@ -418,6 +445,27 @@ describe('AC2: incident mitigation resolves per business cluster', () => {
     const repBefore = state.resourceBank.reputation;
     resolveEvent(state, eventTemplate('evt-noise-complaint')); // -100 rep
     expect(repBefore - state.resourceBank.reputation).toBe(50);
+  });
+
+  it('Maintenance Worker protects an adjacent business (cluster scope, not own-only)', () => {
+    const state = freshState('maintenance-neighbour');
+    placeBusiness(state, 0, 'Bakery', ['Food']); // employer (not the incident target)
+    placeBusiness(state, 1, 'Arcade', ['Entertainment']); // adjacent victim
+    employ(state, 0, 'staff-maintenance');
+    const repBefore = state.resourceBank.reputation;
+    resolveEvent(state, eventTemplate('evt-noise-complaint')); // -100 rep
+    // The cluster mitigation covers the neighbour's business.
+    expect(repBefore - state.resourceBank.reputation).toBe(50);
+  });
+
+  it('Maintenance Worker does not protect a business outside its cluster', () => {
+    const state = freshState('maintenance-outside');
+    placeBusiness(state, 0, 'Bakery', ['Food']); // employer (not the incident target)
+    placeBusiness(state, 7, 'Arcade', ['Entertainment']); // far from slot 0
+    employ(state, 0, 'staff-maintenance');
+    const repBefore = state.resourceBank.reputation;
+    resolveEvent(state, eventTemplate('evt-noise-complaint')); // -100 rep
+    expect(repBefore - state.resourceBank.reputation).toBe(100);
   });
 
   it('Health & Safety Inspector protects only its own business', () => {

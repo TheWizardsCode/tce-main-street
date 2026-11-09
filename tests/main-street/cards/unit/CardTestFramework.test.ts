@@ -112,6 +112,94 @@ describe('verifyStaffCard honesty (unitTestStatus cannot pass vacuously)', () =>
     );
   });
 
+  /**
+   * Builds a context whose typed template has `field` dropped (the parser-gap
+   * simulation) while the raw CSV row still declares it.
+   */
+  function droppedDedicatedColumnContext(
+    cardId: string,
+    field: keyof StaffCard,
+    droppedValue: unknown,
+  ): CardTestContext {
+    const template = getStaffCardTemplates().find(card => card.id === cardId);
+    expect(template, `${cardId} template missing`).toBeDefined();
+    const rawRow = getCsvRows().find(row => row.id === cardId);
+    expect(rawRow, `${cardId} CSV row missing`).toBeDefined();
+    return {
+      row: {
+        id: cardId,
+        family: 'staff',
+        name: template!.name,
+        row: { ...rawRow! },
+      },
+      card: { ...template!, [field]: droppedValue } as StaffCard,
+      createState: newGame,
+    };
+  }
+
+  const droppedDedicatedColumns: ReadonlyArray<{
+    cardId: string;
+    field: keyof StaffCard;
+    droppedValue: unknown;
+    declared: string;
+    expectation: RegExp;
+  }> = [
+    {
+      cardId: 'staff-director',
+      field: 'handSlotsAdded',
+      droppedValue: 0,
+      declared: 'handSlotsAdded',
+      // Hand slots are asserted from the parsed value itself, so the presence
+      // guard passes and the value guard must catch the dropped column.
+      expectation: /declares handSlotsAdded=3 but the parsed template carries 0/,
+    },
+    {
+      cardId: 'staff-manager',
+      field: 'actionsPerTurn',
+      droppedValue: undefined,
+      declared: 'actionsPerTurn',
+      expectation: /declared effect 'actionsPerTurn' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-accountant',
+      field: 'refreshCostDiscount',
+      droppedValue: undefined,
+      declared: 'refreshCostDiscount',
+      expectation: /declared effect 'refreshCostDiscount' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-accountant',
+      field: 'taxAuditRate',
+      droppedValue: undefined,
+      declared: 'taxAuditRate',
+      expectation: /declared effect 'taxAuditRate' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-lookout',
+      field: 'peekOncePerTurn',
+      droppedValue: undefined,
+      declared: 'peekOncePerTurn',
+      expectation: /declared effect 'peekOncePerTurn' from card-data.csv was not parsed\/asserted/,
+    },
+  ];
+
+  for (const { cardId, field, droppedValue, declared, expectation } of droppedDedicatedColumns) {
+    it(`fails when the parser drops the ${declared} dedicated column (${cardId})`, () => {
+      const context = droppedDedicatedColumnContext(cardId, field, droppedValue);
+      expect(() => verifyStaffCard(context)).toThrow(expectation);
+    });
+  }
+
+  it('fails when a dedicated column is parsed to the wrong value', () => {
+    // A mis-mapped parser (e.g. reading the hand-slot column for actions) must
+    // not slip through the presence guard: the value guard compares the typed
+    // field with the raw CSV number.
+    const context = droppedDedicatedColumnContext('staff-manager', 'actionsPerTurn', 2);
+    expect(() => verifyStaffCard(context)).toThrow(
+      /declares actionsPerTurn=1 but the parsed template carries 2/,
+    );
+  });
+
   it('still reports pass for all 26 staff rows after hardening (no regression)', () => {
     const registry = createDefaultRegistry();
     const staffRows = registry.discoverCards().filter(row => row.family === 'staff');

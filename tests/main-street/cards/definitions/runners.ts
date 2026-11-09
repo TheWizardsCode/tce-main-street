@@ -296,7 +296,47 @@ function declaredEffectFields(row: Record<string, string>): string[] {
   if (row.freeMarketRerollPerTurn) fields.push('freeMarketRerollPerTurn');
   if (row.marketRelevanceBias) fields.push('marketRelevanceBias');
   if (row.upgradeCostDiscount) fields.push('upgradeCostDiscount');
+  if (row.purchaseCostDiscount) fields.push('purchaseCostDiscount');
+  // Dedicated management-company columns (GDD D.4.4). Every one of these must
+  // be carried by the parsed template AND asserted, so a parser that silently
+  // drops e.g. `actionsPerTurn` cannot leave the card reporting `pass`.
+  if (row.handSlotsAdded) fields.push('handSlotsAdded');
+  if (row.actionsPerTurn) fields.push('actionsPerTurn');
+  if (row.refreshCostDiscount) fields.push('refreshCostDiscount');
+  if (row.taxAuditRate) fields.push('taxAuditRate');
+  if (row.peekOncePerTurn) fields.push('peekOncePerTurn');
   return fields;
+}
+
+/**
+ * Compares each dedicated numeric column the raw row declares with the value
+ * the parsed template carries. The presence guard above cannot catch a field
+ * that is asserted from the *parsed* value itself (hand slots), or a field the
+ * parser maps to the wrong number; this value guard closes both gaps (AC4).
+ */
+function assertDedicatedColumnValues(card: StaffCard, row: Record<string, string>): void {
+  const columns: ReadonlyArray<[string, number | boolean | undefined]> = [
+    ['handSlotsAdded', card.handSlotsAdded],
+    ['actionsPerTurn', card.actionsPerTurn],
+    ['refreshCostDiscount', card.refreshCostDiscount],
+    ['taxAuditRate', card.taxAuditRate],
+    ['peekOncePerTurn', card.peekOncePerTurn],
+    ['reputationPerTurn', card.reputationPerTurn],
+    ['upgradeCostDiscount', card.upgradeCostDiscount],
+    ['purchaseCostDiscount', card.purchaseCostDiscount],
+    ['freeMarketRerollPerTurn', card.freeMarketRerollPerTurn],
+    ['marketRelevanceBias', card.marketRelevanceBias],
+  ];
+  for (const [column, parsed] of columns) {
+    const raw = row[column];
+    if (raw == null || raw === '') continue;
+    const expected = Number(raw);
+    const actual = typeof parsed === 'boolean' ? Number(parsed) : parsed;
+    check(
+      actual != null && Math.abs(actual - expected) <= 1e-9,
+      `${card.name}: card-data.csv declares ${column}=${raw} but the parsed template carries ${String(parsed)}.`,
+    );
+  }
 }
 
 /**
@@ -326,6 +366,7 @@ export function verifyStaffCard(context: CardTestContext): void {
     handBefore + card.handSlotsAdded,
     `${card.name} hand slots added`,
   );
+  asserted.add('handSlotsAdded');
 
   if (card.purchaseCostDiscount != null) {
     expectEqual(
@@ -333,11 +374,13 @@ export function verifyStaffCard(context: CardTestContext): void {
       card.purchaseCostDiscount,
       `${card.name} purchaseCostDiscount`,
     );
+    asserted.add('purchaseCostDiscount');
   }
 
   if (card.refreshCostDiscount != null) {
     const expected = Math.max(0, REFRESH_MARKET_COST - card.refreshCostDiscount);
     expectEqual(refreshMarketCost(state), expected, `${card.name} refreshCostDiscount`);
+    asserted.add('refreshCostDiscount');
   }
 
   if (card.taxAuditRate != null) {
@@ -346,6 +389,7 @@ export function verifyStaffCard(context: CardTestContext): void {
       card.taxAuditRate,
       `${card.name} taxAuditRate`,
     );
+    asserted.add('taxAuditRate');
   }
 
   if (card.actionsPerTurn != null) {
@@ -355,6 +399,7 @@ export function verifyStaffCard(context: CardTestContext): void {
       1 + card.actionsPerTurn,
       `${card.name} actionsPerTurn`,
     );
+    asserted.add('actionsPerTurn');
   }
 
   if (card.reputationPerTurn != null) {
@@ -372,6 +417,7 @@ export function verifyStaffCard(context: CardTestContext): void {
 
   if (card.peekOncePerTurn) {
     check(hasPeekCapableStaff(state), `${card.name} did not register as peek-capable.`);
+    asserted.add('peekOncePerTurn');
   }
 
   if (hasPerBusinessEffect(card)) {
@@ -491,6 +537,7 @@ export function verifyStaffCard(context: CardTestContext): void {
       `${card.name}: declared effect '${field}' from card-data.csv was not parsed/asserted (unitTestStatus cannot pass vacuously).`,
     );
   }
+  assertDedicatedColumnValues(card, context.row.row);
 }
 
 // ── Event ───────────────────────────────────────────────────
