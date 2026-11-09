@@ -1854,6 +1854,19 @@ owner-keyed, so the whole panel is testable without a browser.
   a resumed/deferred closing carries its payoffs without re-running the
   repayment pass, so a payoff is never announced twice. A closing that ends
   the run presents the game-over overlay instead.
+- Paused closings: the presentation slot sits **after** the event-choice and
+  bankruptcy-bailout pauses, so a closing that pauses there never reaches it on
+  the first pass (MS-0MW4887R4007XPGJ). The paused closing's `loanPayoffs` are
+  carried across the pause — stashed on the scene alongside the
+  `pendingBankingHint` arm for an event choice and consumed exactly once by
+  `onEventChoice`, and carried through the paused result for a bailout — then
+  presented on the **continuing** resume: `finishTurnPresentation` for the
+  resumed event-choice closing and `completeDeferredClosingTail` for an
+  accepted bailout. A declined bailout ends the run, so the game-over branch
+  wins and no congratulation is shown. The deferred closing's presentation slot
+  remains the single delivery point for an unpaused closing: its payoffs are
+  stripped from the result handed to the deferred tail so a bailout raised
+  there cannot replay them.
 - Overlay pattern: `createOverlayBackground` / `createOverlayButton` from
   `@ui`, every element parented into `s.hudContainer`, depths 199/200/201,
   every created object tracked in `s.overlayObjects` for dismissal, and

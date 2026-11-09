@@ -366,7 +366,9 @@ and the **total repaid** over the term (MS-0MW1ZJDVE000MUID). It is **presentati
 nothing about it is written to or read from a save, and it changes no wallet, activity-log
 row, ledger entry or RNG draw — no state mutation and no RNG consumption — so a no-loan or
 `loansEnabled: false` turn is unchanged, and a resumed/deferred closing never announces the
-same payoff twice. The dialog is suppressed
+same payoff twice. A closing that pauses first on an event-choice dialog or on a bankruptcy
+bailout offer still delivers the congratulation once the pause resolves and the run
+continues (MS-0MW4887R4007XPGJ); a declined bailout ends the run, so game over wins. The dialog is suppressed
 in `replayMode` / headless runs, and in competitive play only the **human seat** sees it —
 an AI seat's payoff changes nothing on screen. A closing that ends the run in a win or a
 loss presents the game-over overlay instead, so a congratulation never pre-empts the final

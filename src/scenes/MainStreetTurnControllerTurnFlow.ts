@@ -30,6 +30,7 @@ import {
   buildTurnSummaryLoanDescriptor,
   type TurnSummaryLoanDescriptor,
 } from './MainStreetLoanSelectorModel';
+import type { LoanPayoff } from '../MainStreetLoans';
 import { buildLoanOfferModel } from './MainStreetLoanOverlayModel';
 import { hasOpenBailoutOffer } from './MainStreetGameOverSummary';
 import { initDisplayedTotals } from './MainStreetAnimatorContext';
@@ -78,6 +79,10 @@ export function startTurnPhase(tcCtx: MainStreetTurnControllerContext, skipMarke
     // presentation window; a hint left armed by a game-over closing must not
     // leak into the next playthrough (MS-0MV79JQ4H003E6BH).
     (s as any).pendingBankingHint = false;
+    // A new day also clears any loan payoff carried across a previous paused
+    // closing: it can only ever be consumed by that closing's own resume
+    // (MS-0MW4887R4007XPGJ).
+    (s as any).pausedLoanPayoffs = null;
 
     // A new day begins: release the once-per-turn out-of-actions latch so
     // the post-action trigger can fire again this turn
@@ -359,6 +364,12 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
           s.endOfTurnDeltasApplied = true;
         } catch { /* presentation-only */ }
       }
+      // Carry the paused closing's retirements across the pause so the resumed
+      // closing can still present the debt-free congratulation
+      // (MS-0MW4887R4007XPGJ). Mirrors the `pendingBankingHint` carry: stashed
+      // when the pause is taken (the presentation slot below is never
+      // reached), consumed exactly once by `onEventChoice`.
+      (s as any).pausedLoanPayoffs = result.loanPayoffs ?? null;
       tcCtx.presentEventChoiceDialog();
       return;
     }
@@ -479,11 +490,13 @@ export function finishTurnPresentation(tcCtx: MainStreetTurnControllerContext,
         }
         let finalResult: TurnResult;
         try {
-          finalResult = finishDeferredTurnClosing(s.state, result);
+          finalResult = finishDeferredTurnClosing(s.state, { ...result, loanPayoffs: undefined });
         } catch (e) {
-          // Defensive: never hang the turn on a closing failure.
+          // Defensive: never hang the turn on a closing failure. The payoffs
+          // were already handled by the presentation slot, so strip them from
+          // the fallback too (MS-0MW4887R4007XPGJ).
           console.error('[MainStreet] deferred closing failed:', e);
-          finalResult = result;
+          finalResult = { ...result, loanPayoffs: undefined };
         }
         completeDeferredClosingTail(tcCtx, finalResult);
       } else {
@@ -735,10 +748,21 @@ function completeDeferredClosingTail(
   // end-of-turn path skips the earlier endTurn save so the checkpoint always
   // reflects a complete, applied turn).
   try { tcCtx.onSaveCheckpoint?.(); } catch { /* ignore */ }
-  tcCtx.startTurnPhase();
-  // Log entries accumulated during closing now render after the phase UI has
-  // been displayed (MS-0MURBOD2E009SOM2).
-  flushDeferredLog();
+  // Continue the run: present the resume's carried payoffs first, then start
+  // the next week (MS-0MW4887R4007XPGJ). A bailout-paused closing that retired
+  // a loan must still congratulate the seat once an accepted offer continues
+  // the run; a declined offer ends the run and returned at the game-over
+  // branch above (game over wins). One modal at a time: the next week starts
+  // only once the dialog is dismissed. `presentLoanPayoffDialogs` runs
+  // `continueDay` synchronously when there is nothing to present, so a closing
+  // without a retirement behaves exactly as before.
+  const continueDay = (): void => {
+    tcCtx.startTurnPhase();
+    // Log entries accumulated during closing now render after the phase UI has
+    // been displayed (MS-0MURBOD2E009SOM2).
+    flushDeferredLog();
+  };
+  presentLoanPayoffDialogs(s, finalResult.loanPayoffs, continueDay);
 }
 
 /**
@@ -1009,6 +1033,16 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: st
       );
       // Complete the deferred closing (EndCheck → next week) and present it.
       const finalResult = finishDeferredEndOfTurn(s.state);
+      // Carry the paused closing's retirements into the resumed closing so the
+      // debt-free congratulation is not lost across the pause
+      // (MS-0MW4887R4007XPGJ). The stash is consumed exactly once, so a
+      // re-entrant/double callback cannot replay the dialog.
+      const pausedLoanPayoffs = (s as any).pausedLoanPayoffs as LoanPayoff[] | null | undefined;
+      (s as any).pausedLoanPayoffs = null;
+      const resumedResult: TurnResult =
+        pausedLoanPayoffs && pausedLoanPayoffs.length > 0
+          ? { ...finalResult, loanPayoffs: pausedLoanPayoffs }
+          : finalResult;
       // The turn is now closed — the undo stack is cleared (mirrors the
       // normal end-of-turn clear) so a choice cannot be undone after the day
       // advanced (undo would resurrect the pending choice mid-market).
@@ -1026,7 +1060,7 @@ export function onEventChoice(tcCtx: MainStreetTurnControllerContext, option: st
         // closing so it is not silently swallowed (MS-0MV79JQ4H003E6BH).
         const pendingHint = (s as any).pendingBankingHint === true;
         (s as any).pendingBankingHint = false;
-        tcCtx.finishTurnPresentation(finalResult, pendingHint);
+        tcCtx.finishTurnPresentation(resumedResult, pendingHint);
       };
       if (coinChange !== 0 || repChange !== 0) {
         try {
