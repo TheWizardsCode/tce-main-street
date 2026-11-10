@@ -299,18 +299,26 @@ describe('AC2: adjacency income buffs (employing business + 8-way neighbours)', 
     expect(income.get(0)).toBeCloseTo(2);
   });
 
-  it('Event Planner adds +100 from each adjacent Entertainment business', () => {
+  it('Event Planner adds +100 from each adjacent Entertainment business (8-way, type-filtered)', () => {
     const state = freshState('planner-adjacent');
-    placeBusiness(state, 0, 'Comedy Club', ['Entertainment']);
-    placeBusiness(state, 1, 'Cinema', ['Entertainment']);
-    placeBusiness(state, 2, 'Arcade', ['Entertainment']);
-    employ(state, 0, 'staff-event-planner');
+    // 5-wide, 2-row grid: slot 1's neighbours are 0, 2, 5, 6 and 7.
+    placeBusiness(state, 1, 'Comedy Club', ['Entertainment']); // employer
+    placeBusiness(state, 0, 'Cinema', ['Entertainment']); // left, orthogonal (8-way)
+    placeBusiness(state, 6, 'Arcade', ['Entertainment']); // below-left, diagonal (8-way)
+    placeBusiness(state, 2, 'Bookshop', ['Culture']); // right, adjacent but wrong type
+    placeBusiness(state, 3, 'Theatre', ['Entertainment']); // distance 2: not adjacent
+    employ(state, 1, 'staff-event-planner');
 
     const income = incomeBySlot(state);
-    expect(income.get(1)).toBeCloseTo(102);
+    // Each adjacent Entertainment business gains exactly +100 (base 2 + 100).
+    expect(income.get(0)).toBeCloseTo(102);
+    expect(income.get(6)).toBeCloseTo(102);
+    // An adjacent business outside the Entertainment filter gains nothing.
     expect(income.get(2)).toBeCloseTo(2);
+    // A non-adjacent Entertainment business gains nothing (scope is adjacency).
+    expect(income.get(3)).toBeCloseTo(2);
     // The employing business itself never receives the adjacency buff.
-    expect(income.get(0)).toBeCloseTo(2);
+    expect(income.get(1)).toBeCloseTo(2);
   });
 
   it('Customer Service Rep adds +10 reputation per adjacent business', () => {
