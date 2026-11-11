@@ -45,10 +45,20 @@ function destroyGame(game: Phaser.Game | null): void {
 
 /** The subset of MainStreetScene state/fields this suite touches. */
 interface RosterScene extends Phaser.Scene {
-  state: { staffCards: StaffCard[] };
+  state: {
+    staffCards: StaffCard[];
+    resourceBank: { coins: number; reputation: number };
+    activityLog: Array<{ text: string }>;
+  };
   overlayObjects: Phaser.GameObjects.GameObject[];
   hudContainer?: Phaser.GameObjects.Container;
   replayMode?: boolean;
+  undoManager: {
+    execute: (cmd: unknown) => void;
+    undo: () => void;
+    canUndo: () => boolean;
+    canRedo: () => boolean;
+  };
   showCompanyRoster: () => void;
   refreshAll: () => void;
 }
@@ -168,5 +178,110 @@ describe('Company Roster overlay', () => {
     findOverlayButton(scene, '[ Close ]').emit('pointerdown');
 
     expect(scene.overlayObjects).toHaveLength(0);
+  });
+});
+
+describe('Company Roster overlay — lay off confirm step', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  /** Boots a scene with one salary-250 member and rich resources, then opens the roster. */
+  async function openWithDirector(): Promise<RosterScene> {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as RosterScene;
+    scene.state.staffCards = [managementMember('mgmt-bo', 'Bo Director', 250)];
+    scene.state.resourceBank.coins = 1000;
+    scene.state.resourceBank.reputation = 500;
+    scene.showCompanyRoster();
+    return scene;
+  }
+
+  it('the confirm step quotes the model name, coin cost and reputation cost', async () => {
+    const scene = await openWithDirector();
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+
+    const texts = overlayTexts(scene).map((o) => o.text);
+    expect(texts).toContain('Lay off Bo Director?');
+    const cost = texts.find((t) => t.includes("One turn's salary"));
+    expect(cost).toBeDefined();
+    // Salary 250 → coins €250, reputation max(100, ceil(250/100)*100) = 300.
+    expect(cost!).toContain('€250');
+    expect(cost!).toContain('−300');
+    // Confirm/Cancel are offered.
+    expect(texts).toContain('[ Confirm ]');
+    expect(texts).toContain('[ Cancel ]');
+  });
+
+  it('[ Cancel ] changes nothing and restores the rows', async () => {
+    const scene = await openWithDirector();
+    const coinsBefore = scene.state.resourceBank.coins;
+    const reputationBefore = scene.state.resourceBank.reputation;
+    const staffBefore = scene.state.staffCards.map((m) => m.id);
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Cancel ]').emit('pointerdown');
+
+    expect(scene.state.resourceBank.coins).toBe(coinsBefore);
+    expect(scene.state.resourceBank.reputation).toBe(reputationBefore);
+    expect(scene.state.staffCards.map((m) => m.id)).toEqual(staffBefore);
+    // Rows and the lay-off affordance are back.
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Bo Director');
+    expect(overlayTexts(scene).some((o) => o.text === '[ Lay off ]')).toBe(true);
+  });
+
+  it('[ Confirm ] lays off the member, charges the quoted cost and refreshes in place', async () => {
+    const scene = await openWithDirector();
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
+    // Member removed, quoted costs charged.
+    expect(scene.state.staffCards).toHaveLength(0);
+    expect(scene.state.resourceBank.coins).toBe(1000 - 250);
+    expect(scene.state.resourceBank.reputation).toBe(500 - 300);
+
+    // The dialog stayed open and refreshed: row gone, empty state shown,
+    // footer reports zero.
+    const texts = overlayTexts(scene).map((o) => o.text);
+    expect(texts).toContain('No management-company staff employed.');
+    expect(texts).not.toContain('Bo Director');
+    expect(texts.some((t) => t.includes('0 management-company staff'))).toBe(true);
+    // [ Close ] still available (no reopen needed).
+    expect(texts).toContain('[ Close ]');
+  });
+
+  it('after the final lay-off the empty state replaces the row list', async () => {
+    const scene = await openWithDirector();
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
+    expect(overlayTexts(scene).map((o) => o.text)).toContain(
+      'No management-company staff employed.',
+    );
+  });
+
+  it('a confirmed lay-off is undoable: undo restores member, coins and reputation', async () => {
+    const scene = await openWithDirector();
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+    expect(scene.state.staffCards).toHaveLength(0);
+
+    scene.undoManager.undo();
+
+    expect(scene.state.staffCards.map((m) => m.id)).toEqual(['mgmt-bo']);
+    expect(scene.state.resourceBank.coins).toBe(1000);
+    expect(scene.state.resourceBank.reputation).toBe(500);
+
+    // Reopening the roster shows the restored row.
+    findOverlayButton(scene, '[ Close ]').emit('pointerdown');
+    scene.showCompanyRoster();
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Bo Director');
   });
 });

@@ -52,7 +52,7 @@ import { showLoanPayoffDialog as renderLoanPayoffDialog } from './MainStreetLoan
 import type { LoanPayoff } from '../MainStreetLoans';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance, HUD_TOOLTIP_I18N_KEYS } from './MainStreetHudTooltips';
-import { buildCompanyRoster } from '../MainStreetRoster';
+import { buildCompanyRoster, type CompanyRosterRow } from '../MainStreetRoster';
 import { formatCoins } from './MainStreetLoanRowModel';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
@@ -1738,6 +1738,13 @@ export class MainStreetOverlayContent {
    * {@link buildCompanyRoster}, so the overlay never does its own salary
    * arithmetic, and an explicit empty state replaces an empty panel.
    *
+   * Each row offers `[ Lay off ]`, which opens a confirm step quoting the
+   * model's coin and reputation cost for that member (never recomputed here).
+   * `[ Confirm ]` runs {@link letGoStaffCommand} through the scene's undo
+   * manager (so the lay-off stays undoable) and rebuilds the rows + footer in
+   * place; `[ Cancel ]` changes nothing. The dialog stays open across a
+   * lay-off and shows the empty state when the last member leaves.
+   *
    * Overlay pattern compliance: `createOverlayBackground` +
    * `createOverlayButton` from @ui; ALL elements parented into `s.hudContainer`;
    * depths 199 (backdrop) / 200 (box) / 201 (interactive). No animations
@@ -1749,17 +1756,19 @@ export class MainStreetOverlayContent {
     const s = this.scene;
     if (s.replayMode) return; // headless/replay: never present UI
 
-    const roster = buildCompanyRoster(s.state);
-    const empty = roster.count === 0;
-    const maxRows = 10;
-    const rowH = 40;
-    const shown = roster.rows.slice(0, maxRows);
+    const MAX_ROWS = 10;
+    const ROW_H = 42;
     const panelW = 560;
-    const contentRows = empty ? 1 : Math.max(1, shown.length);
-    const panelH = Math.max(240, 64 + contentRows * rowH + 108);
     const centerX = s.layout.gameW / 2;
     const panelLeft = centerX - panelW / 2;
     const panelRight = centerX + panelW / 2;
+
+    // Size the panel for the initial roster (at least one content row so the
+    // empty state has room). The height stays fixed so an in-place refresh
+    // after a lay-off never resizes the panel under the player's pointer.
+    const initial = buildCompanyRoster(s.state);
+    const contentRows = Math.max(1, Math.min(initial.count, MAX_ROWS) + (initial.count > MAX_ROWS ? 1 : 0));
+    const panelH = Math.max(260, 64 + contentRows * ROW_H + 122);
     const panelY = s.layout.gameH / 2 - panelH / 2;
 
     const boxConfig = { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 };
@@ -1773,58 +1782,171 @@ export class MainStreetOverlayContent {
     if (s.hudContainer) s.hudContainer.add(titleText);
     s.overlayObjects.push(titleText);
 
-    if (empty) {
-      const emptyText = s.add.text(
-        centerX, panelY + 100, t(HUD_TOOLTIP_I18N_KEYS.companyRosterEmpty),
-        { fontSize: '14px', color: '#bbaa88', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
-      ).setOrigin(0.5, 0).setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(emptyText);
-      s.overlayObjects.push(emptyText);
-    } else {
-      shown.forEach((row, index) => {
-        const y = panelY + 64 + index * rowH;
-        const nameText = s.add.text(panelLeft + 24, y, row.name, {
-          fontSize: '14px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
-          wordWrap: { width: 150 },
-        }).setOrigin(0, 0).setDepth(201);
-        if (s.hudContainer) s.hudContainer.add(nameText);
-        s.overlayObjects.push(nameText);
+    // Dynamic objects (rows, footer, confirm step) are tracked so a lay-off can
+    // rebuild the roster in place while the static frame (backdrop, title,
+    // [ Close ]) stays put.
+    let dynamic: Phaser.GameObjects.GameObject[] = [];
+    const clearDynamic = () => {
+      const set = new Set(dynamic);
+      s.overlayObjects = s.overlayObjects.filter((obj: any) => !set.has(obj));
+      dynamic.forEach((obj) => obj.destroy());
+      dynamic = [];
+    };
+    const addDynamic = (obj: Phaser.GameObjects.GameObject) => {
+      dynamic.push(obj);
+      s.overlayObjects.push(obj);
+    };
 
-        const roleText = s.add.text(panelLeft + 182, y, row.roleSummary, {
-          fontSize: '12px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-          wordWrap: { width: panelW - 320 },
-        }).setOrigin(0, 0).setDepth(201);
-        if (s.hudContainer) s.hudContainer.add(roleText);
-        s.overlayObjects.push(roleText);
+    // ── Confirm step (Q2: real coins + reputation, so quote before firing) ──
+    let confirm: Phaser.GameObjects.GameObject[] = [];
+    const clearConfirm = () => {
+      const set = new Set(confirm);
+      s.overlayObjects = s.overlayObjects.filter((obj: any) => !set.has(obj));
+      confirm.forEach((obj) => obj.destroy());
+      confirm = [];
+    };
+    const addConfirm = (obj: Phaser.GameObjects.GameObject) => {
+      confirm.push(obj);
+      s.overlayObjects.push(obj);
+    };
 
-        const salaryText = s.add.text(panelRight - 24, y, `${formatCoins(row.salary)}/turn`, {
-          fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
-        }).setOrigin(1, 0).setDepth(201);
-        if (s.hudContainer) s.hudContainer.add(salaryText);
-        s.overlayObjects.push(salaryText);
+    const showConfirm = (row: CompanyRosterRow) => {
+      clearConfirm();
+      clearDynamic(); // hide the roster rows behind the confirm step
+
+      const cW = 440;
+      const cH = 210;
+      const cX = centerX;
+      const cY = s.layout.gameH / 2 - cH / 2;
+      const cOverlay = createOverlayBackground(
+        s, { depth: 202, alpha: 0.5 }, { width: cW, height: cH, color: 0x000000, alpha: 1.0, depth: 203 },
+      );
+      for (const obj of cOverlay.objects) addConfirm(obj);
+
+      const confirmTitle = s.add.text(cX, cY + 26, `Lay off ${row.name}?`, {
+        fontSize: '18px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+        align: 'center', wordWrap: { width: cW - 60 },
+      }).setOrigin(0.5).setDepth(204);
+      if (s.hudContainer) s.hudContainer.add(confirmTitle);
+      addConfirm(confirmTitle);
+
+      const costLine = s.add.text(
+        cX, cY + 78,
+        `One turn's salary: ${formatCoins(row.layOffCoins)}\nReputation: −${row.layOffReputation}`,
+        { fontSize: '14px', color: '#ddccbb', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 6 },
+      ).setOrigin(0.5, 0).setDepth(204);
+      if (s.hudContainer) s.hudContainer.add(costLine);
+      addConfirm(costLine);
+
+      const confirmBtn = createOverlayButton(s, cX - 90, cY + cH - 44, '[ Confirm ]', 204);
+      if (s.hudContainer) s.hudContainer.add(confirmBtn);
+      addConfirm(confirmBtn);
+      confirmBtn.on('pointerdown', () => {
+        safePlaySound(s, SFX_KEYS.DISCARD);
+        try {
+          const cmd = letGoStaffCommand(s.state, row.staffIndex);
+          if (s.undoManager) {
+            s.undoManager.execute(cmd);
+          } else {
+            cmd.execute();
+          }
+          addLog(
+            s.state,
+            `Laid off ${row.name} (−${formatCoins(row.layOffCoins)} salary, −${row.layOffReputation} reputation)`,
+            'loss',
+          );
+          flashConfirmation(s, `Laid off ${row.name}`);
+        } catch (e) {
+          console.error('[CompanyRoster] Lay-off failed:', e);
+          flashError(s, `Error laying off: ${(e as Error).message}`);
+        }
+        clearConfirm();
+        // Refresh the world (Staff Pile stack/count) and rebuild the rows in
+        // place — the dialog stays open (AC3).
+        s.refreshAll();
+        s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
+        renderContent();
       });
-      if (roster.rows.length > maxRows) {
-        const moreText = s.add.text(
-          centerX, panelY + 64 + maxRows * rowH,
-          `…and ${roster.rows.length - maxRows} more`, {
-            fontSize: '12px', fontStyle: 'italic', color: '#998877', fontFamily: FONT_FAMILY,
-          },
-        ).setOrigin(0.5, 0).setDepth(201);
-        if (s.hudContainer) s.hudContainer.add(moreText);
-        s.overlayObjects.push(moreText);
-      }
-    }
 
-    const footer = s.add.text(
-      centerX, panelY + panelH - 84,
-      t(HUD_TOOLTIP_I18N_KEYS.companyRosterFooter, {
-        count: roster.count,
-        total: formatCoins(roster.totalSalary),
-      }),
-      { fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'center', wordWrap: { width: panelW - 60 } },
-    ).setOrigin(0.5, 0).setDepth(201);
-    if (s.hudContainer) s.hudContainer.add(footer);
-    s.overlayObjects.push(footer);
+      const cancelBtn = createOverlayButton(s, cX + 90, cY + cH - 44, '[ Cancel ]', 204);
+      if (s.hudContainer) s.hudContainer.add(cancelBtn);
+      addConfirm(cancelBtn);
+      cancelBtn.on('pointerdown', () => {
+        safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+        clearConfirm();
+        renderContent(); // no state change — rows simply reappear
+      });
+    };
+
+    const renderContent = () => {
+      clearDynamic();
+      const roster = buildCompanyRoster(s.state);
+
+      if (roster.count === 0) {
+        const emptyText = s.add.text(
+          centerX, panelY + 100, t(HUD_TOOLTIP_I18N_KEYS.companyRosterEmpty),
+          { fontSize: '14px', color: '#bbaa88', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
+        ).setOrigin(0.5, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(emptyText);
+        addDynamic(emptyText);
+      } else {
+        roster.rows.slice(0, MAX_ROWS).forEach((row, index) => {
+          const y = panelY + 64 + index * ROW_H;
+
+          const nameText = s.add.text(panelLeft + 20, y, row.name, {
+            fontSize: '14px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
+            wordWrap: { width: 120 },
+          }).setOrigin(0, 0).setDepth(201);
+          if (s.hudContainer) s.hudContainer.add(nameText);
+          addDynamic(nameText);
+
+          const roleText = s.add.text(panelLeft + 146, y, row.roleSummary, {
+            fontSize: '11px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+            wordWrap: { width: 190 },
+          }).setOrigin(0, 0).setDepth(201);
+          if (s.hudContainer) s.hudContainer.add(roleText);
+          addDynamic(roleText);
+
+          const salaryText = s.add.text(panelRight - 118, y, `${formatCoins(row.salary)}/turn`, {
+            fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
+          }).setOrigin(1, 0).setDepth(201);
+          if (s.hudContainer) s.hudContainer.add(salaryText);
+          addDynamic(salaryText);
+
+          const layOffBtn = createOverlayButton(s, panelRight - 56, y + 8, '[ Lay off ]', 201);
+          if (s.hudContainer) s.hudContainer.add(layOffBtn);
+          addDynamic(layOffBtn);
+          layOffBtn.on('pointerdown', () => {
+            safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+            showConfirm(row);
+          });
+        });
+
+        if (roster.rows.length > MAX_ROWS) {
+          const moreText = s.add.text(
+            centerX, panelY + 64 + MAX_ROWS * ROW_H,
+            `…and ${roster.rows.length - MAX_ROWS} more`, {
+              fontSize: '12px', fontStyle: 'italic', color: '#998877', fontFamily: FONT_FAMILY,
+            },
+          ).setOrigin(0.5, 0).setDepth(201);
+          if (s.hudContainer) s.hudContainer.add(moreText);
+          addDynamic(moreText);
+        }
+      }
+
+      const footer = s.add.text(
+        centerX, panelY + panelH - 84,
+        t(HUD_TOOLTIP_I18N_KEYS.companyRosterFooter, {
+          count: roster.count,
+          total: formatCoins(roster.totalSalary),
+        }),
+        { fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'center', wordWrap: { width: panelW - 60 } },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(footer);
+      addDynamic(footer);
+    };
+
+    renderContent();
 
     const closeBtn = createOverlayButton(
       s, centerX, panelY + panelH - 40, '[ Close ]', 201,
