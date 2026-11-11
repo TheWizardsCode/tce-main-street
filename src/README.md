@@ -266,6 +266,38 @@ and the HUD strip share the same treatment through
 `PANEL_FILL`/`PANEL_FILL_ALPHA`/`PANEL_STROKE_ALPHA` in
 `src/scenes/MainStreetConstants.ts`.
 
+### Staff Pile — management-company staff (MS-0MWBWKZ1G006IBH2)
+
+The management company's own staff (no `employedAtSlot` link) are surfaced on a
+**Staff Pile** in `src/scenes/MainStreetRendererStaffPile.ts`, drawn by
+`drawStaffPile()` from the `refreshPlayerHand()` path:
+
+- **Layout zone** — `staffPile` in `src/layouts/main-street.layout.json`
+  (tutorial parity in `main-street-tutorial.layout.json`), resolved by
+  `MainStreetLayoutAdapter` into `SceneLayout.staffPileX/Y/W/H`
+  (`src/scenes/MainStreetConstants.ts` also holds the presentation constants:
+  `STAFF_PILE_STACK_SIZE`, `STAFF_PILE_CARD_W/H`, `STAFF_PILE_PORTRAIT_W/H`,
+  `STAFF_PILE_*_OFFSET_*`, `STAFF_PILE_PANEL_PAD`, `STAFF_PILE_DEPTH`).
+- **Contents** — a fanned card-face stack (newest hire on top, capped), a count
+  badge reporting the whole roster and a portrait row beneath, all rendered
+  with `mainStreetRenderCardSvg`.
+- **Membership** — `selectManagementCompanyStaff()` in
+  `src/MainStreetStaffBuffs.ts` (`!isBusinessStaffCard`), derived from
+  `state.staffCards` on every refresh. Hidden entirely when the roster has no
+  management-company members.
+- **Depth and input** — `STAFF_PILE_DEPTH` (−200) sits below `HAND_PANEL_DEPTH`
+  (−100), so a wide hand covers the pile rather than the pile covering a card;
+  the hover hit area is clamped to the free band left of the capacity row so it
+  never intercepts a hand-card click or drag. No click action: lay-off lives in
+  the company roster overlay (MS-0MWC1T8K2000DWZA).
+- **Tooltip** — `buildStaffPileTooltip()` in
+  `src/scenes/MainStreetHudTooltips.ts` (management-company-only summary, i18n
+  strings via `HUD_TOOLTIP_I18N_KEYS`/`HUD_TOOLTIP_STRINGS`, per-member lines
+  from `formatStaffMemberLine()` in `src/MainStreetFormatting.ts`).
+- **Tests** — `tests/main-street/staff-pile.test.ts`,
+  `tests/main-street/staff-pile-renderer.test.ts`, and the `Staff Pile` cases in
+  `tests/main-street/MainStreetScene.browser.test.ts`.
+
 These symbols no longer exist — do not reference them in new code or docs:
 
 | Removed symbol | Replaced by |

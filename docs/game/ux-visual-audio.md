@@ -141,6 +141,68 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   `tests/main-street/hand-outlines.browser.test.ts` (including the
   slot/card-position stability assertion).
 
+## Staff Pile (management-company staff, MS-0MWBWKZ1G006IBH2)
+
+Hired staff come in two types: **business staff** (an `employedAtSlot` link,
+buffed onto one business and surfaced by that slot's corner count badge) and
+**management-company staff** (no slot; hand-slot, action, market and incident
+effects scoped to the player). Until this feature the management-company half
+of the roster had no surface of its own — it was only inferable from hand size
+and action counts. The **Staff Pile** gives it one.
+
+- **Position — SLL-first.** The pile is drawn from the `staffPile` zone in
+  `src/layouts/main-street.layout.json` (tutorial parity in
+  `main-street-tutorial.layout.json`), resolved by `MainStreetLayoutAdapter`
+  into `SceneLayout.staffPileX/Y/W/H` — 20,565 → 240,667 at the 1280×720 base
+  viewport, i.e. against the left edge in the band left of the hand capacity
+  row. No pixel offset is hard-coded in the renderer. The tutorial layout
+  declares the same zone so tutorial highlights cannot drift; `staffPile` is a
+  documented intentional tutorial override zone
+  (`src/scenes/tutorialLayoutIssues.ts`), keeping the tutorial composition
+  console-clean.
+- **Contents.** A fanned stack of small card faces (56×80) capped at
+  `STAFF_PILE_STACK_SIZE` (3), oldest of the shown slice first and the
+  **newest hire on top**; a count badge (top-right of the stack) reporting the
+  **whole** roster even when the stack is capped; and a portrait row (40×56)
+  beneath the stack showing one portrait per member that fits the zone width.
+  Card faces and portraits both come from the shared SVG renderer
+  (`mainStreetRenderCardSvg`), so no new art assets exist for this surface.
+- **Membership is derived, never persisted.** The pile is rebuilt from
+  `state.staffCards` on every hand refresh
+  (`refreshPlayerHand()` → `drawStaffPile()`), filtered by the two-type
+  model's own test (`!isBusinessStaffCard`, via `selectManagementCompanyStaff`).
+  Business staff never appear on the pile. There is no save field, engine
+  command or gameplay rule behind it: hiring, laying off or changing
+  `maxHandSize` is reflected on the next refresh.
+- **Hover tooltip.** Hovering the pile — its stack or its portrait row — shows
+  a management-company-only summary built by `buildStaffPileTooltip()`: a title,
+  the member count, one line per member (name, served business types, effect,
+  salary) reusing `formatStaffMemberLine()` — the same per-member formatter the
+  business-slot tooltip uses — and the team's total salary per turn. Strings
+  come from the `HUD_TOOLTIP_I18N_KEYS` / `HUD_TOOLTIP_STRINGS` English bundle,
+  never hard-coded. Leaving the pile hides it; nothing is shown in replay mode.
+- **Empty state.** No management-company staff ⇒ no pile at all (no placeholder
+  tile, no hit area).
+- **Overlap budget and z-order.** The pile sits at `STAFF_PILE_DEPTH` (-200),
+  **below** the hand panel (`HAND_PANEL_DEPTH` -100) and every hand card, so a
+  hand wider than the free band covers the pile's right edge rather than the
+  pile covering a playable card. The free band left of the capacity row is
+  245 px at the starting hand (3 slots), 171 px at 4, 97 px at 5 and gone from
+  7 slots — so the pile (220 px wide) fits the band at the starting hand and is
+  progressively covered as `maxHandSize` grows. The pile's **hover hit area is
+  additionally clamped** to the free band (`staffPileHitBounds()`), so it can
+  never sit over a capacity slot: at 8 slots it is dropped entirely while the
+  pile itself still renders. Hand-card clicks, hand→street drags and
+  market→hand drops are unaffected.
+- **Presentation-only.** The pile carries **no** click action and no lay-off
+  control — letting management-company staff go belongs to the company roster
+  overlay (`MS-0MWC1T8K2000DWZA`), whose entry point will be this pile.
+- **Tests.** `tests/main-street/staff-pile.test.ts` (membership + tooltip
+  content), `tests/main-street/staff-pile-renderer.test.ts` (stub-scene render
+  contract) and the `Staff Pile` cases in
+  `tests/main-street/MainStreetScene.browser.test.ts` (placement, count badge,
+  hover tooltip, empty state, refresh and the capacity case at 4 and 8 slots).
+
 ## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 
 The persistent instruction line under the board is gone. Messages that used to
