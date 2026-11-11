@@ -194,14 +194,56 @@ and action counts. The **Staff Pile** gives it one.
   never sit over a capacity slot: at 8 slots it is dropped entirely while the
   pile itself still renders. Hand-card clicks, hand→street drags and
   market→hand drops are unaffected.
-- **Presentation-only.** The pile carries **no** click action and no lay-off
-  control — letting management-company staff go belongs to the company roster
-  overlay (`MS-0MWC1T8K2000DWZA`), whose entry point will be this pile.
+- **Click → Company Roster.** Pointer-down on the pile — its card-face stack
+  or its portrait row — opens the **Company Roster** overlay (see below). The
+  pile hands the click off through `renderer.onOpenCompanyRoster` to
+  `MainStreetScene.showCompanyRoster()`; it carries **no** roster, salary or
+  lay-off logic of its own. Hovering still shows the tooltip, and the hit area
+  stays clamped to the free band, so hand-card clicks, hand→street drags and
+  market→hand drops are unaffected.
 - **Tests.** `tests/main-street/staff-pile.test.ts` (membership + tooltip
   content), `tests/main-street/staff-pile-renderer.test.ts` (stub-scene render
   contract) and the `Staff Pile` cases in
   `tests/main-street/MainStreetScene.browser.test.ts` (placement, count badge,
   hover tooltip, empty state, refresh and the capacity case at 4 and 8 slots).
+
+## Company Roster overlay (MS-0MWC1T8K2000DWZA)
+
+The **Company Roster** is the management-company team's own surface: it lists
+every management-company staff member with their role, effective per-turn
+salary and the exact cost of letting them go, and it is the only place a
+management-company member can be dismissed.
+
+- **Entry point — the Staff Pile.** Clicking the pile — its card-face stack or
+  its portrait row — opens the roster (see the Staff Pile section above). The
+  pile hands the click off to `MainStreetScene.showCompanyRoster()`; the roster
+  and all lay-off wiring live in `src/MainStreetRoster.ts` and
+  `MainStreetOverlayContent.showCompanyRosterDialog()`.
+- **Rows.** One row per management-company member (`!isBusinessStaffCard`,
+  staff-hire order, oldest first): the member's name, its role/benefit summary
+  (the shared `formatStaffRoleSummary()` text the tooltips also use), its
+  effective per-turn salary resolved through
+  `computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost)`, and
+  a `[ Lay off ]` button. Business staff never appear. Rows are capped at 10 with
+  an "…and N more" overflow line; the footer always reports the whole team.
+- **Footer.** States the member count and the team's total per-turn salary, both
+  from `buildCompanyRoster()`, and both update in place after a lay-off.
+- **Lay-off confirm step.** `[ Lay off ]` opens a confirm step quoting the
+  member's name, one turn's salary in coins (clamped at 0) and the reputation
+  cost — both read from the roster model, never recomputed in the overlay.
+  `[ Confirm ]` runs `letGoStaffCommand()` through the scene's undo manager, so
+  the lay-off stays undoable; `[ Cancel ]` changes nothing. After a confirm the
+  dialog stays open and rebuilds its rows and footer in place: the fired row
+  disappears and the Staff Pile's stack/count update on the same refresh.
+- **Empty state.** When the last member leaves, the panel shows the explicit
+  text "No management-company staff employed." rather than an empty list.
+- **Replay/headless.** Suppressed entirely in `replayMode`, like every other
+  overlay — it draws nothing and adds no overlay objects.
+- **Tests.** `tests/main-street/company-roster.test.ts` (model: membership,
+  ordering, salaries, totals and the reputation cost), and
+  `tests/main-street/company-roster.browser.test.ts` (open from the pile click,
+  rows, footer, confirm/cancel, post-lay-off refresh, empty state, replay
+  suppression and hand-input pass-through).
 
 ## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 

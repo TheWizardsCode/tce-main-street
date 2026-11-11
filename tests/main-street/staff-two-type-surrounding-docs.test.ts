@@ -195,8 +195,9 @@ describe('prd-multi-use-card-economy.md staff section', () => {
     expect(section).toContain('the-build-gdd.md');
     expect(section).toContain('Appendix D.4');
     expect(section).toContain('card-catalog.md');
-    // The superseded lay-off rule stays visible, but only behind the note.
-    expect(section).toMatch(/lay-off costs one turn's salary plus 1 reputation/i);
+    // The superseded lay-off rule stays visible, but only behind the note, and
+    // now states the shipped salary-scaled reputation penalty.
+    expect(section).toMatch(/lay-off costs one turn's salary plus a salary-scaled reputation penalty/i);
     // The original design text survives as an explicitly historical section.
     expect(section).toMatch(/historical, superseded/i);
   });

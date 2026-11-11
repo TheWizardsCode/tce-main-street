@@ -287,9 +287,12 @@ The management company's own staff (no `employedAtSlot` link) are surfaced on a
   management-company members.
 - **Depth and input** — `STAFF_PILE_DEPTH` (−200) sits below `HAND_PANEL_DEPTH`
   (−100), so a wide hand covers the pile rather than the pile covering a card;
-  the hover hit area is clamped to the free band left of the capacity row so it
-  never intercepts a hand-card click or drag. No click action: lay-off lives in
-  the company roster overlay (MS-0MWC1T8K2000DWZA).
+  the hit area is clamped to the free band left of the capacity row so it
+  never intercepts a hand-card click or drag.
+- **Click hand-off** — pointer-down on the pile (card-face stack or portrait
+  row) calls `renderer.onOpenCompanyRoster`, wired by the scene composition
+  root to `MainStreetScene.showCompanyRoster()`; the pile carries no roster
+  logic. Opening the Company Roster (below) is the pile's only click action.
 - **Tooltip** — `buildStaffPileTooltip()` in
   `src/scenes/MainStreetHudTooltips.ts` (management-company-only summary, i18n
   strings via `HUD_TOOLTIP_I18N_KEYS`/`HUD_TOOLTIP_STRINGS`, per-member lines
@@ -297,6 +300,27 @@ The management company's own staff (no `employedAtSlot` link) are surfaced on a
 - **Tests** — `tests/main-street/staff-pile.test.ts`,
   `tests/main-street/staff-pile-renderer.test.ts`, and the `Staff Pile` cases in
   `tests/main-street/MainStreetScene.browser.test.ts`.
+
+### Company Roster overlay — management-company team (MS-0MWC1T8K2000DWZA)
+
+`src/MainStreetRoster.ts` is a pure, Phaser-free model. `buildCompanyRoster(state)`
+returns the management-company rows (`!isBusinessStaffCard`, staff-hire order)
+with the member's name, a shared role/benefit summary (`formatStaffRoleSummary` in
+`src/MainStreetFormatting.ts`), the effective salary resolved through
+`computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost)`, and
+the lay-off coins/reputation; `companyRosterIsEmpty(state)` reports the empty
+team; `layOffReputationCost(salary)` is the `max(100, ceil(salary / 100) × 100)`
+reputation rule `letGoStaffMember()` charges (×100 units — the GDD's pre-scale
+"1 reputation" is the 100 floor).
+
+`showCompanyRosterDialog()` in `src/scenes/MainStreetOverlayContent.ts` renders
+one row per member with `[ Lay off ]`, a confirm step quoting the model's coin
+and reputation cost, a footer member-count/total-salary, the explicit empty
+state, and rebuilds in place after a lay-off (via `letGoStaffCommand()` through
+the undo manager). Entry point: `MainStreetScene.showCompanyRoster()`, invoked by
+the Staff Pile click hand-off. Tests:
+`tests/main-street/company-roster.test.ts` (model) and
+`tests/main-street/company-roster.browser.test.ts` (render + confirm + pile click).
 
 These symbols no longer exist — do not reference them in new code or docs:
 

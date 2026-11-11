@@ -557,7 +557,7 @@ Every staff card does **not** occupy a hand slot. Salaries are ongoing per-turn 
    - Hiring management-company staff **never** asks for a destination, and an attempt to place one on a business is rejected.
    - Only business staff may be relocated; relocation costs 1 action and is atomic with a successful move (an illegal attempt spends nothing) and is undoable. Relocation inherits the placement rules above, so in competitive play a member may only be moved to a business the acting seat owns.
 4. **Salaries.** Every employed member — of either type — adds its ongoing cost to the IncomePhase deduction. The deduction is clamped at 0 coins (the player is never driven negative) and logged.
-5. **Lay-off.** Letting a member go is available from the Manage Card dialog of the business that employs it (business staff) or from the company roster (management-company staff). Lay-off costs one turn's salary (clamped at 0) and 1 reputation; the member's buffs stop applying from the next IncomePhase.
+5. **Lay-off.** Letting a member go is available from the Manage Card dialog of the business that employs it (business staff) or from the company roster (management-company staff). Lay-off costs one turn's salary (clamped at 0) plus a reputation penalty of `max(100, ceil(salary / 100) × 100)` — reputation ships in ×100 units, so the GDD's original flat "1 reputation" equals this formula's 100-unit floor (MS-0MWC1T8K2000DWZA). The rule is applied uniformly to every lay-off, management-company and business staff alike; the member's buffs stop applying from the next IncomePhase.
 6. **Applicants.** The per-turn walk-on applicant flow hires at 0 coins and consumes no action. The applicant's type decides the flow: a business-staff applicant targets a business with a free slot (drawn from the acting seat's own deployed businesses — in competitive play an opponent's businesses are never candidates, MS-0MWBCWVYC007F6VJ), a management-company applicant joins the company.
 
 #### D.4.3 Business staff — roles and impacts
@@ -627,7 +627,7 @@ The three-tier model that previously occupied this appendix (Assistant / Manager
 
 - It described staff as a single lever (**hand slots**) with three magnitudes; the roster now has **two types and 26 distinct roles**, and 17 of the 26 grant **no hand capacity at all**.
 - It had no notion of *where* a staff member works, so it could not express business-scoped effects.
-- Its lay-off rule ("removing random hand cards equal to slots provided") contradicted the implemented lay-off: one turn's salary plus 1 reputation.
+- Its lay-off rule ("removing random hand cards equal to slots provided") contradicted the implemented lay-off: one turn's salary plus a salary-scaled reputation penalty (see D.4.2 §5).
 
 | Old tier (superseded) | Old benefit and cost | Replaced by |
 |---|---|---|
