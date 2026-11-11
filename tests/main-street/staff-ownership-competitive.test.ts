@@ -174,7 +174,7 @@ function soloState(seed: string): MainStreetState {
 // ── Applicant targeting ─────────────────────────────────────
 
 describe('applicant targeting: only the acting seat’s own businesses', () => {
-  it.fails(
+  it(
     'competitive: a triggered applicant targets a slot the acting seat owns',
     () => {
       const state = competitiveState('staff-own-target');
@@ -195,7 +195,7 @@ describe('applicant targeting: only the acting seat’s own businesses', () => {
     },
   );
 
-  it.fails(
+  it(
     'competitive: no applicant appears when the acting seat owns no business with a free slot',
     () => {
       const state = competitiveState('staff-own-target-none');
@@ -232,7 +232,7 @@ describe('applicant targeting: only the acting seat’s own businesses', () => {
 // ── Applicant chance ────────────────────────────────────────
 
 describe('applicant chance: opponent businesses do not raise the acting seat’s odds', () => {
-  it.fails(
+  it(
     'competitive: computeApplicantChance sums only the acting seat’s own businesses',
     () => {
       const state = competitiveState('staff-own-chance');
@@ -256,7 +256,7 @@ describe('applicant chance: opponent businesses do not raise the acting seat’s
 // ── Applicant type-match pool ───────────────────────────────
 
 describe('applicant type pool: opponent businesses do not unlock an unusable specialist', () => {
-  it.fails(
+  it(
     'competitive: only specialists the acting seat can employ stay in the pool',
     () => {
       const state = competitiveState('staff-own-pool');
@@ -275,7 +275,7 @@ describe('applicant type pool: opponent businesses do not unlock an unusable spe
     },
   );
 
-  it.fails(
+  it(
     'competitive: no applicant appears when only an opponent business matches the deck',
     () => {
       const state = competitiveState('staff-own-pool-empty');

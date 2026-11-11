@@ -1254,10 +1254,30 @@ export function hasFreeEmploymentSlot(state: MainStreetState, slotIndex: number)
 const APPLICANT_CHANCE_CAP = 15;
 
 /**
+ * Predicate: is this street slot owned by the acting seat?
+ *
+ * Reuses the single canonical ownership resolver {@link getSlotOwnerId}, whose
+ * untagged fallback is the active player, so single-player states (no
+ * `ownerTaggedGrid`) always compare equal and the filter is a no-op there. In
+ * competitive play an opponent-owned slot is excluded, so applicant
+ * eligibility never reaches across seats.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index.
+ * @returns True when the acting seat owns the slot (always true single-player).
+ */
+function isActingSeatOwnedSlot(state: MainStreetState, slotIndex: number): boolean {
+  return getSlotOwnerId(state, slotIndex) === (state.activePlayerId ?? 0);
+}
+
+/**
  * Computes the staff-applicant trigger chance: min(income + reputation, 15).
  *
- * Sum of baseIncome from all placed businesses
- * plus all reputationPerTurn (business + staff) on the street.
+ * Sum of baseIncome from the acting seat's own placed businesses plus their
+ * reputationPerTurn (business + staff) on the street. In competitive play an
+ * opponent's businesses contribute nothing, so they never raise the player's
+ * applicant odds; single-player states (no `ownerTaggedGrid`) sum every placed
+ * business exactly as before.
  *
  * @param state     Current game state.
  * @returns Effective income+reputation sum (before the 15% cap).
@@ -1267,14 +1287,14 @@ export function computeApplicantChance(state: MainStreetState): number {
   let totalIncome = 0;
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
-    if (card && (card.family === 'business' || card.family === 'community-space')) {
+    if (card && (card.family === 'business' || card.family === 'community-space') && isActingSeatOwnedSlot(state, i)) {
       totalIncome += card.baseIncome;
     }
   }
   // Add reputationPerTurn from businesses
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
-    if (card && (card.family === 'business' || card.family === 'community-space')) {
+    if (card && (card.family === 'business' || card.family === 'community-space') && isActingSeatOwnedSlot(state, i)) {
       totalIncome += card.reputationPerTurn ?? 0;
     }
   }
@@ -1282,7 +1302,13 @@ export function computeApplicantChance(state: MainStreetState): number {
 }
 
 /**
- * Checks whether there is at least one business with a free employment slot.
+ * Checks whether the acting seat has at least one business with a free
+ * employment slot.
+ *
+ * In competitive play only the acting seat's own businesses count (reusing
+ * {@link isActingSeatOwnedSlot}); an opponent business with a free slot no
+ * longer makes an applicant eligible. Single-player states (no
+ * `ownerTaggedGrid`) are unchanged.
  *
  * @param state     Current game state.
  * @returns True when at least one eligible business exists.
@@ -1291,15 +1317,19 @@ function hasEligibleBusiness(state: MainStreetState): boolean {
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
     if (card && (card.family === 'business' || card.family === 'community-space')) {
-      if (hasFreeEmploymentSlot(state, i)) return true;
+      if (isActingSeatOwnedSlot(state, i) && hasFreeEmploymentSlot(state, i)) return true;
     }
   }
   return false;
 }
 
 /**
- * Picks a random eligible business slot (one with a free employment slot),
- * weighted uniformly across eligible slots.
+ * Picks a random eligible business slot — one owned by the acting seat that
+ * has a free employment slot — weighted uniformly across eligible slots.
+ *
+ * In competitive play opponent-owned businesses are never candidates, so a
+ * walk-on is only ever targeted at the acting seat's own street. Single-player
+ * states (no `ownerTaggedGrid`) are unchanged.
  *
  * @param state     Current game state.
  * @returns The chosen slot index, or -1 when no eligible slot exists.
@@ -1309,7 +1339,7 @@ function pickTargetSlot(state: MainStreetState): number {
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
     if (card && (card.family === 'business' || card.family === 'community-space')) {
-      if (hasFreeEmploymentSlot(state, i)) eligible.push(i);
+      if (isActingSeatOwnedSlot(state, i) && hasFreeEmploymentSlot(state, i)) eligible.push(i);
     }
   }
   if (eligible.length === 0) return -1;
@@ -1321,16 +1351,26 @@ function pickTargetSlot(state: MainStreetState): number {
  * Resolves whether a staff applicant appears at day start. Uses the seeded
  * `state.rng` for determinism. Chance = min(income+rep, 15)%.
  *
+ * In competitive play eligibility — the target slot, the chance sum and the
+ * type-gate pool — is restricted to the acting seat's own businesses, so an AI
+ * opponent's street presence neither raises the player's applicant rate nor
+ * unlocks a specialist the player cannot employ. Single-player states (no
+ * `ownerTaggedGrid`) are unchanged because the ownership predicate is a no-op
+ * there.
+ *
  * When triggered:
- * - Picks a random business with a free employment slot as the target.
+ * - Picks a random business owned by the acting seat with a free employment
+ *   slot as the target.
  * - Draws a random StaffCard **with a business-type match** from the staff
  *   deck (CG-0MU3BTRGY0086CM9): only staff whose `allowedBusinessTypes`
- *   match at least one deployed business may walk on; generalist staff
- *   remain eligible (fallback). With no matching business at all, no
- *   applicant appears (the roll is consumed).
+ *   match at least one of the acting seat's own deployed businesses may walk
+ *   on; generalist staff remain eligible (fallback). With no matching business
+ *   at all, no applicant appears (the roll is consumed).
  * - Sets `pendingApplicant = { card, targetSlotIndex }`.
  *
- * When no eligible business exists or the RNG roll fails, nothing happens.
+ * When the acting seat owns no eligible business or the RNG roll fails,
+ * nothing happens (the day's trigger is consumed exactly as the existing
+ * "no eligible business" behaviour).
  *
  * @param state     Current game state (mutated — sets pendingApplicant).
  */
@@ -1370,7 +1410,8 @@ export function resolveStaffApplicant(state: MainStreetState): void {
   let pool: readonly StaffCard[] = staffDeck;
   if (!state.forcedStaffApplicant) {
     const deployed = state.streetGrid.filter(
-      (c): c is BusinessCard | CommunitySpaceCard => c != null,
+      (c, i): c is BusinessCard | CommunitySpaceCard =>
+        c != null && isActingSeatOwnedSlot(state, i),
     );
     pool = staffDeck.filter((c) => deployed.some((b) => staffMatchesBusiness(c, b)));
     if (pool.length === 0) return;
