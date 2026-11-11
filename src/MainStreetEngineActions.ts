@@ -421,6 +421,7 @@ export function executeCommunityFavour(
       state,
       `Community Favour: spent ${cost} coins for 1 reputation (${describeEventEffects(coinDelta, repDelta)})`,
       classifyEffect(coinDelta, repDelta),
+      'other-action',
     );
   } else {
     // rep-to-coins
@@ -440,6 +441,7 @@ export function executeCommunityFavour(
       state,
       `Community Favour: spent ${repCost} reputation for ${coinGain} coins (${describeEventEffects(coinDelta, repDelta)})`,
       classifyEffect(coinDelta, repDelta),
+      'other-action',
     );
   }
 
@@ -498,7 +500,7 @@ export function peekIncidentDeck(state: MainStreetState): EventCard | null {
 
   consumeAction(state);
   state.peekUsedThisTurn = true;
-  addLog(state, 'Peeked at the top card of the incident deck.', 'neutral');
+  addLog(state, 'Peeked at the top card of the incident deck.', 'neutral', 'other-action');
 
   // Reveal-only: expose the top card to the scene via `revealedPeekedCard`
   // (AC2) and return it without removing it from the deck. The scene

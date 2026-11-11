@@ -100,6 +100,7 @@ export function placeFromHand(
       ? `Placed ${card.name} from hand in slot ${slotIndex} (-€${price}, 50% premium, ${describeEventEffects(-price, 0)})`
       : `Placed ${card.name} from hand in slot ${slotIndex} (-€${price}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 }
 
@@ -141,7 +142,7 @@ export function sellFromHand(
   // Add to discard pile
   state.discardPile.push(card as any);
 
-  addLog(state, `Sold ${card.name} from hand for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0));
+  addLog(state, `Sold ${card.name} from hand for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0), 'sell');
 }
 
 /**
@@ -194,7 +195,7 @@ export function sellFromTableau(
   // Add to discard pile
   state.discardPile.push(card as any);
 
-  addLog(state, `Sold ${card.name} from slot ${slotIndex} for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0));
+  addLog(state, `Sold ${card.name} from slot ${slotIndex} for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0), 'sell');
 }
 
 /**
@@ -797,9 +798,9 @@ export function layoffStaffCard(
       hand.splice(idx, 1);
     }
 
-    addLog(state, `Laid off ${card.name}: removed ${cardsToRemove} hand card(s) (${removedCards.join(', ')})`, 'loss');
+    addLog(state, `Laid off ${card.name}: removed ${cardsToRemove} hand card(s) (${removedCards.join(', ')})`, 'loss', 'lay-off');
   } else {
-    addLog(state, `Laid off ${card.name}: no hand cards to remove`, 'neutral');
+    addLog(state, `Laid off ${card.name}: no hand cards to remove`, 'neutral', 'lay-off');
   }
 
   // Return the staff card to discards.staff for the general market pipeline (CG-0MT3KZNQB0053K55).
@@ -883,6 +884,7 @@ export function buyAndPlaceBusiness(
     state,
     `Bought & placed ${card.name} in slot ${slotIndex} (-€${price}, ${price === premiumCost ? '50% premium' : 'listed'}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 
   return { card, cost: price, refilled: false };
@@ -1638,6 +1640,7 @@ function recordLoan(
       `${loan.termTurns} turns (€${loan.totalRepayment} total) ` +
       `(${describeEventEffects(loan.principal, 0)})`,
     classifyEffect(loan.principal, 0),
+    'take-loan',
   );
 
   return loan;

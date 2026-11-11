@@ -75,7 +75,7 @@ export function moveToHand(state: MainStreetState, cardId: string): PurchaseResu
     state.justMovedUpgradeCardId = card.id;
   }
 
-  addLog(state, `Moved ${card.name} to hand (1 action, pay on play)`, 'neutral');
+  addLog(state, `Moved ${card.name} to hand (1 action, pay on play)`, 'neutral', 'move-to-hand');
 
   return { card, cost: 0, refilled: false };
 }
@@ -158,6 +158,7 @@ export function playBusinessFromHand(
       ? `Played ${card.name} from hand into slot ${slotIndex} (-€${price}, 50% premium, ${describeEventEffects(-price, 0)})`
       : `Played ${card.name} from hand into slot ${slotIndex} (-€${price}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 
   return { card, cost: price, refilled: false };
@@ -190,6 +191,7 @@ export function discardFromHand(state: MainStreetState, handIndex: number): void
       ? `Discarded ${card.name} from hand (-${repCost} rep)`
       : `Discarded ${card.name} from hand (no cost)`,
     'neutral',
+    'other-action',
   );
 }
 

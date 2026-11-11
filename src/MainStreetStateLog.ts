@@ -36,7 +36,7 @@
  * @module
  */
 
-import type { MainStreetState, LogEntry, LogEntryType } from './MainStreetStateTypes';
+import type { MainStreetState, LogEntry, LogEntryType, LogEntryActionType } from './MainStreetStateTypes';
 import { getSeatDisplayLabel } from './MainStreetAdjacencyOwner';
 import { getActivityLogEmitter } from './MainStreetGameEvents';
 import type { GameEventEmitter } from '@core-engine/GameEventEmitter';
@@ -228,21 +228,31 @@ function resolveActingSeatId(state: MainStreetState): number | null {
  *    ambient acting seat is not the entry's seat. Same single-player rules.
  *  - `addLogShared(state, text, type)` — the named opt-out for genuinely
  *    shared / turn-level entries; never stamps seat fields.
+ *
+ * Optional `actionType` — set on every player- or AI-initiated action
+ * so the Summary tab can filter by category (MS-0MWBWRITL0089GGJ).
  */
-export function addLog(state: MainStreetState, text: string, type: LogEntryType): void;
+export function addLog(
+  state: MainStreetState,
+  text: string,
+  type: LogEntryType,
+  actionType?: LogEntryActionType,
+): void;
 export function addLog(
   state: MainStreetState,
   seatId: number,
   text: string,
   type: LogEntryType,
+  actionType?: LogEntryActionType,
 ): void;
 export function addLog(
   state: MainStreetState,
   seatIdOrText: number | string,
   textOrType: string | LogEntryType,
-  maybeType?: LogEntryType,
+  maybeType?: LogEntryType | LogEntryActionType,
+  maybeActionType?: LogEntryActionType,
 ): void {
-  // Explicit-seat overload: `addLog(state, seatId, text, type)`.
+  // Explicit-seat overload: `addLog(state, seatId, text, type, actionType?)`.
   if (typeof seatIdOrText === 'number') {
     const seatId = seatIdOrText;
     const entry: LogEntry = {
@@ -250,6 +260,7 @@ export function addLog(
       text: textOrType as string,
       type: maybeType as LogEntryType,
     };
+    if (maybeActionType) entry.actionType = maybeActionType;
     const seat = state.players?.find((player) => player.playerId === seatId);
     // Only competitive multi-seat games get a prefix: single-player (no roster
     // or one seat) and legacy seats without a persisted colour stay unchanged.
@@ -262,13 +273,16 @@ export function addLog(
     return;
   }
 
-  // Default overload `addLog(state, text, type)`: attribute to the acting
-  // seat derived from the engine source, opt out via `addLogShared`.
+  // Default overload `addLog(state, text, type, actionType?)`: attribute to
+  // the acting seat derived from the engine source, opt out via `addLogShared`.
   const entry: LogEntry = {
     turn: state.turn,
     text: seatIdOrText,
     type: textOrType as LogEntryType,
   };
+  // In this overload the 4th positional argument (`maybeType`) is the action
+  // marker; the 5th is unused.
+  if (maybeType) entry.actionType = maybeType as LogEntryActionType;
   const actingSeatId = resolveActingSeatId(state);
   if (actingSeatId != null) {
     entry.seatId = actingSeatId;
@@ -286,8 +300,15 @@ export function addLog(
  * market refresh/deal-in, week start, game over and tutorial/help lines use
  * this form so a You/AI filter never mislabels them as a seat's action.
  */
-export function addLogShared(state: MainStreetState, text: string, type: LogEntryType): void {
-  publishActivityLogEntry(state, { turn: state.turn, text, type });
+export function addLogShared(
+  state: MainStreetState,
+  text: string,
+  type: LogEntryType,
+  actionType?: LogEntryActionType,
+): void {
+  const entry: LogEntry = { turn: state.turn, text, type };
+  if (actionType) entry.actionType = actionType;
+  publishActivityLogEntry(state, entry);
 }
 
 // ── Single write path / Game Events feed ────────────────────

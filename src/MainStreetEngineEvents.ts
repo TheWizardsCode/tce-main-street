@@ -306,6 +306,7 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
     state.activePlayerId ?? 0,
     `Investment: ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
+    'play-event',
   );
   hand.splice(index, 1);
 }
@@ -336,6 +337,7 @@ export function resolveHeldInvestment(state: MainStreetState): EventCard | null 
     state.activePlayerId ?? 0,
     `Investment (auto): ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
+    'play-event',
   );
   hand.splice(index, 1);
   return event;
@@ -863,6 +865,7 @@ export function applyPiggybackJoinFully(
     piggybackerOwnerId,
     `Piggyback: joined ${event.name} fully (${describeEventEffects(reward.coins - charge, reward.reputation)})`,
     classifyEffect(reward.coins - charge, reward.reputation),
+    'play-event',
   );
   return { applied: true, charge, reward };
 }
@@ -894,6 +897,7 @@ export function applyPiggybackFreeRide(
     piggybackerOwnerId,
     `Piggyback: ${event.name} free-ride (${describeEventEffects(reward.coins, reward.reputation)})`,
     classifyEffect(reward.coins, reward.reputation),
+    'play-event',
   );
   return reward;
 }

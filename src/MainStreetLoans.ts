@@ -691,6 +691,7 @@ export function applyLoanRepayments(
         : `Loan repayment: -${amount} coins — loan repaid in full ` +
           `(${loan.totalRepayment} total) (${describeEventEffects(-amount, 0)})`,
       'loss',
+      'repay-loan',
     );
   }
 

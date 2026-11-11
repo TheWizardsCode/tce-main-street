@@ -332,3 +332,90 @@ export function buildContextLineTooltip(
       return String(key);
   }
 }
+
+// ── Summary-tab row tooltips ─────────────────────────────────
+
+/**
+ * The metrics a Summary-tab figure can annotate.
+ *
+ * Mirrors `SummaryMetricKey` in the model module; redeclared here so the
+ * tooltip builder stays importable without pulling the whole model in.
+ */
+export type SummaryTooltipMetricKey = 'income' | 'reputation' | 'score';
+
+/** Extra i18n keys used by the Summary-tab figure tooltips. */
+export const SUMMARY_TOOLTIP_I18N_KEYS = {
+  incomeTitle: 'ledger.summary.income.title',
+  reputationTitle: 'ledger.summary.reputation.title',
+  reputationFormula: 'ledger.summary.reputation.formula',
+  scoreTitle: 'ledger.summary.score.title',
+} as const;
+
+/** Default English strings for the Summary-tab figure tooltips. */
+export const SUMMARY_TOOLTIP_STRINGS = {
+  incomeTitle: 'Income — the day’s full profit/loss breakdown.',
+  reputationTitle: 'Reputation change',
+  reputationFormula:
+    'Reputation = incident ({incident}) + one-off ({oneOff}) = {total}',
+  scoreTitle: 'Score change',
+} as const;
+
+// Register the extra strings into the English bundle (module-load time).
+const summaryEnBundle: Record<string, string> = {};
+for (const [k, v] of Object.entries(SUMMARY_TOOLTIP_STRINGS)) {
+  summaryEnBundle[SUMMARY_TOOLTIP_I18N_KEYS[k as keyof typeof SUMMARY_TOOLTIP_STRINGS]] = v;
+}
+registerLocale('en', summaryEnBundle);
+
+/**
+ * Builds the tooltip for one seat's figure on the Summary tab, reusing the
+ * existing per-line builders so the breakdown matches that seat's per-player
+ * tab exactly.
+ *
+ *  - **income** — the full P&L breakdown (income phases, expense categories,
+ *    incident, one-off and the net reconciliation) that produces the figure.
+ *  - **reputation** — the day's reputation change with its incident/one-off
+ *    reconciliation.
+ *  - **score** — the day's score change explanation.
+ *
+ * Every figure in the returned string comes from the seat's `PLProjection`, so
+ * the tooltip reconciles to the headline figure it annotates.
+ *
+ * @param key          The metric the figure belongs to.
+ * @param projection   The seat's P&L projection (the tooltip source).
+ * @param incidentName The resolved incident's name, when known.
+ */
+export function buildSummaryMetricTooltip(
+  key: SummaryTooltipMetricKey,
+  projection: PLProjection,
+  incidentName: string | null = null,
+): string {
+  if (key === 'reputation') {
+    return [
+      t(SUMMARY_TOOLTIP_I18N_KEYS.reputationTitle),
+      t(SUMMARY_TOOLTIP_I18N_KEYS.reputationFormula, {
+        incident: formatSigned(projection.incident.reputation),
+        oneOff: formatSigned(projection.oneOff.reputation),
+        total: formatSigned(projection.net.reputation),
+      }),
+    ].join('\n');
+  }
+  if (key === 'score') {
+    return [
+      t(SUMMARY_TOOLTIP_I18N_KEYS.scoreTitle),
+      t(LEDGER_TOOLTIP_I18N_KEYS.scoreChangeBody),
+    ].join('\n');
+  }
+
+  // income: the whole statement, reusing the per-line builders so the
+  // Summary tooltip and the per-player tab can never drift.
+  const parts: string[] = [t(SUMMARY_TOOLTIP_I18N_KEYS.incomeTitle)];
+  for (const line of projection.income.lines) parts.push(buildIncomeLineTooltip(line));
+  parts.push(buildTotalLineTooltip(projection.income.totalLabel, projection.income.total));
+  for (const line of projection.expenses.lines) parts.push(buildExpenseLineTooltip(line));
+  parts.push(buildTotalLineTooltip(projection.expenses.totalLabel, projection.expenses.total));
+  parts.push(buildIncidentLineTooltip(projection.incident, incidentName));
+  parts.push(buildOneOffLineTooltip(projection));
+  parts.push(buildNetLineTooltip(projection));
+  return parts.join('\n\n');
+}

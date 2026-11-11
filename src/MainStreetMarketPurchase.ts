@@ -528,7 +528,7 @@ export function purchaseBusiness(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0));
+  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0), 'place-business');
 
   return { card, cost: effectiveCost, refilled };
 }
@@ -659,7 +659,7 @@ export function playUpgradeFromHand(
   business.displayName = upgrade.newDisplayName || business.displayName;
   updateNeighborsOnPlacement(state, businessIndex);
 
-  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0), 'play-upgrade');
 
   return { card: upgrade, cost, refilled: false };
 }
@@ -707,6 +707,7 @@ export function playEventFromHand(
     state,
     `Played event ${event.name} from hand (-€${event.cost}, ${describeEventEffects(coinDelta, repDelta)})`,
     classifyEffect(coinDelta, repDelta),
+    'play-event',
   );
 
   // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raises one
@@ -801,7 +802,7 @@ export function purchaseUpgrade(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0), 'play-upgrade');
 
   return { card, cost, refilled };
 }
@@ -971,6 +972,7 @@ export function buyAndPlaceUpgrade(
     state,
     `Bought and placed upgrade ${card.name} on ${business.name} (-€${price}, ${price === premiumCost ? '50% premium' : 'listed'}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'play-upgrade',
   );
 
   return { card, cost: price, refilled };
@@ -1022,7 +1024,7 @@ export function purchaseEvent(
 
   (state as any).justMovedEventCardId = card.id;
 
-  addLog(state, `Moved event ${card.name} to hand (1 action, pay on play)`, 'neutral');
+  addLog(state, `Moved event ${card.name} to hand (1 action, pay on play)`, 'neutral', 'move-to-hand');
 
   return { card, cost: 0, refilled };
 }
@@ -1085,7 +1087,7 @@ export function purchaseStaffCard(
   // Increase max hand size
   state.maxHandSize += card.handSlotsAdded;
 
-  addLog(state, `Hired ${card.name} (+${card.handSlotsAdded} hand slots, -€${card.cost}, ongoing €${card.ongoingCost}/turn) (${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0));
+  addLog(state, `Hired ${card.name} (+${card.handSlotsAdded} hand slots, -€${card.cost}, ongoing €${card.ongoingCost}/turn) (${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0), 'hire-staff');
 }
 
 // ── Sell Business (Street Grid) ──────────────────────────────

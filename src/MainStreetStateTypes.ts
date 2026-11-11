@@ -33,6 +33,29 @@ import type { OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTyp
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
 
 /**
+ * Structural action category used by the Summary tab to distinguish
+ * player/AI-initiated actions from monetary summary rows and turn headers
+ * (MS-0MWBWRITL0089GGJ).
+ *
+ * Every player- or AI-initiated action site sets this to a category name;
+ * shared/turn-level entries leave it unset so the Summary tab's actions
+ * section never picks them up.
+ */
+export type LogEntryActionType =
+  | 'place-business'
+  | 'hire-staff'
+  | 'play-upgrade'
+  | 'play-event'
+  | 'move-to-hand'
+  | 'sell'
+  | 'lay-off'
+  | 'close-card'
+  | 'take-loan'
+  | 'repay-loan'
+  | 'complete-challenge'
+  | 'other-action';
+
+/**
  * A single entry in the game activity log.
  *
  * Stored in `MainStreetState.activityLog` and rendered by the UI
@@ -45,6 +68,13 @@ export interface LogEntry {
   text: string;
   /** Classification for UI color coding. */
   type: LogEntryType;
+  /**
+   * Structural action category — set on every player- or AI-initiated action
+   * so the Summary tab's actions section can select by type rather than by
+   * text matching (MS-0MWBWRITL0089GGJ). Absent for shared/turn-level entries
+   * (headers, monetary summary rows, incident draw, market refresh, etc.).
+   */
+  actionType?: LogEntryActionType;
   /**
    * Acting seat's `playerId`, when the entry is attributable to a seat
    * (competitive mode). Absent for shared/turn-level entries and in

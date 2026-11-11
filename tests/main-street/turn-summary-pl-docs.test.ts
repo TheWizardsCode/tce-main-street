@@ -130,19 +130,35 @@ describe('Unified tabbed overlay documentation — ux-visual-audio.md', () => {
     expect(dialog).not.toContain('two columns');
   });
 
-  it('documents the tab strip: human default, single non-interactive You tab', () => {
+  it('documents the tab strip: Summary default, per-player tabs selectable', () => {
     const dialog = section(DIALOG_SECTION);
     expect(dialog).toContain('tab strip');
-    expect(dialog).toContain('human (you) tab is selected by default');
-    expect(dialog).toContain('non-interactive');
+    // The Summary tab is first and default (MS-0MWBWRITL0089GGJ).
+    expect(dialog).toContain('[ summary ]');
+    expect(dialog).toContain('first and selected by default');
     expect(dialog).toContain('you');
-    // Switching a tab redraws the whole statement, not just the tab chrome.
+    // Switching a tab redraws the whole body, not just the tab chrome.
     expect(dialog).toContain('whole');
     // Every tab keeps the button form in both states, so the player always has
     // a visible button back to their own statement (MS-0MW4XULA90002OEY).
     expect(dialog).toContain('every tab is drawn in the dialog\'s button form');
     expect(dialog).toContain('[ label ]');
     expect(dialog).toContain('bold');
+  });
+
+  it('documents the Summary tab sections in the confirmed order', () => {
+    const dialog = section(DIALOG_SECTION);
+    expect(dialog).toContain('summary tab');
+    // Major actions → Events → Income / Reputation / Score (producer Q1=A).
+    expect(dialog).toContain('major actions');
+    expect(dialog).toContain('events');
+    expect(dialog).toContain('income / reputation / score');
+    const order = ['major actions', 'events', 'income / reputation / score']
+      .map((phrase) => dialog.indexOf(phrase));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Structural action classification (producer Q2).
+    expect(dialog).toContain('actiontype');
   });
 
   it('documents keyboard tab switching', () => {

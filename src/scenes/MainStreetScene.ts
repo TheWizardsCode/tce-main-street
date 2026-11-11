@@ -1657,7 +1657,9 @@ export class MainStreetScene extends CardGameScene {
     summary: import('./MainStreetTurnSummary').CompetitiveTurnSummary,
     onNextTurn: () => void,
     onBankLoanAction?: (seatId?: number) => void,
-    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'>,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'> & {
+      incident?: import('../MainStreetEngine').TurnResult['incident'];
+    },
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog === 'function') {
       (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog(

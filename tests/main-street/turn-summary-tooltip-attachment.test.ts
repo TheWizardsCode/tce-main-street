@@ -34,6 +34,7 @@ const builders = vi.hoisted(() => ({
   oneOff: vi.fn(() => 'oneoff-tip'),
   net: vi.fn(() => 'net-tip'),
   context: vi.fn(() => 'context-tip'),
+  summaryMetric: vi.fn(() => 'summary-tip'),
 }));
 
 vi.mock('../../src/scenes/MainStreetTurnSummaryTooltips', () => ({
@@ -44,6 +45,7 @@ vi.mock('../../src/scenes/MainStreetTurnSummaryTooltips', () => ({
   buildOneOffLineTooltip: builders.oneOff,
   buildNetLineTooltip: builders.net,
   buildContextLineTooltip: builders.context,
+  buildSummaryMetricTooltip: builders.summaryMetric,
 }));
 
 // ── Mock the `@ui` overlay helpers and the shared tooltip helper ──
@@ -274,6 +276,18 @@ function attachedTexts(): string[] {
   return ui.attachments.map((a) => a.obj.text);
 }
 
+/**
+ * Selects the player's `[ You ]` tab.
+ *
+ * The panel opens on the Summary tab (MS-0MWBWRITL0089GGJ), so the P&L rows
+ * are only drawn after switching to the per-player tab.
+ */
+function selectPlayerTab(): void {
+  const youTab = ui.buttons.find((b) => b.label === '[ You ]');
+  expect(youTab, 'no [ You ] tab').toBeDefined();
+  youTab!.emit('pointerdown');
+}
+
 describe('Turn Summary overlay — tooltip attachment (MS-0MW7QQ1TV009I4G9)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -290,6 +304,9 @@ describe('Turn Summary overlay — tooltip attachment (MS-0MW7QQ1TV009I4G9)', ()
     const { scene } = makeScene(state);
 
     showTurnSummaryDialog(scene as any, summary, () => {});
+
+    // The panel opens on the Summary tab; switch to the player's statement.
+    selectPlayerTab();
 
     // Every row in the statement carries an attachment, with its own text as
     // the aria label.
@@ -313,6 +330,9 @@ describe('Turn Summary overlay — tooltip attachment (MS-0MW7QQ1TV009I4G9)', ()
 
     showTurnSummaryDialog(scene as any, summary, () => {});
 
+    // Switch to the player's statement (the panel opens on the Summary tab).
+    selectPlayerTab();
+
     // No builder has run yet: content is only built on hover/tap.
     expect(builders.income).not.toHaveBeenCalled();
     expect(builders.expense).not.toHaveBeenCalled();
@@ -334,6 +354,9 @@ describe('Turn Summary overlay — tooltip attachment (MS-0MW7QQ1TV009I4G9)', ()
     })!;
     const { scene } = makeScene(state);
     showTurnSummaryDialog(scene as any, summary, () => {});
+
+    // Switch to the player's statement (the panel opens on the Summary tab).
+    selectPlayerTab();
 
     const row = ui.attachments.find((a) => a.obj.text.startsWith('Net profit'))!;
     row.obj.emit('pointerover');

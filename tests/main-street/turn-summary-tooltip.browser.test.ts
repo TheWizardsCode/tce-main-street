@@ -217,6 +217,9 @@ describe('Turn Summary ledger tooltip behaviour (browser, MS-0MW7QQ286007L4J3)',
 
     s.showTurnSummaryDialog(summary, () => {});
 
+    // The panel opens on the Summary tab; select the player's statement.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
+
     for (const label of SINGLE_ROWS) {
       const row = overlayText(s, label);
       expect(row, `missing row \u201c${label}\u201d`).toBeDefined();
@@ -246,6 +249,9 @@ describe('Turn Summary ledger tooltip behaviour (browser, MS-0MW7QQ286007L4J3)',
     const hide = vi.spyOn(s.tooltipManager, 'hide');
 
     s.showTurnSummaryDialog(summary, () => {});
+
+    // The panel opens on the Summary tab; select the player's statement.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
     const row = overlayText(s, 'Staff wages: -50')!;
 
     row.emit('pointerdown');
@@ -264,6 +270,9 @@ describe('Turn Summary ledger tooltip behaviour (browser, MS-0MW7QQ286007L4J3)',
 
     let nextTurnCalls = 0;
     s.showCompetitiveTurnSummaryDialog(summary, () => { nextTurnCalls += 1; });
+
+    // The panel opens on the Summary tab; select the human seat's statement.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
 
     // Open a tooltip, then switch tabs — the tooltip zones never capture the
     // tab press.
@@ -288,6 +297,9 @@ describe('Turn Summary ledger tooltip behaviour (browser, MS-0MW7QQ286007L4J3)',
     const show = vi.spyOn(s.tooltipManager, 'show');
 
     s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    // The panel opens on the Summary tab; select the human seat's statement.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
 
     // The human tab's income tooltip names the human's business.
     overlayText(s, 'Base income: +10')!.emit('pointerover');

@@ -1627,7 +1627,7 @@ export class MainStreetOverlayContent {
     summary: CompetitiveTurnSummary,
     onNextTurn: () => void,
     onBankLoanAction?: (seatId?: number) => void,
-    result?: Pick<TurnResult, 'playerRoundLedger'>,
+    result?: Pick<TurnResult, 'playerRoundLedger'> & { incident?: TurnResult['incident'] },
   ): void {
     showTabbedCompetitiveTurnSummaryDialog(
       this.scene,

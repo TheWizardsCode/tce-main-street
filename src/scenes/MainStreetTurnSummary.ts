@@ -63,6 +63,7 @@
  */
 
 import type { MainStreetState } from '../MainStreetState';
+import type { LogEntryActionType } from '../MainStreetStateTypes';
 import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
@@ -1168,4 +1169,327 @@ function plSection(
   total: number,
 ): PLStatementSection {
   return { key, label, lines, totalLabel, total };
+}
+
+// ── Summary tab (headline view) ──────────────────────────────
+
+/**
+ * Stable id of the Summary tab.
+ *
+ * Distinct from the numeric seat keys (`'0'`, `'1'`, …) so the overlay can
+ * recognise the headline tab without inspecting its label, and so the
+ * selected-tab preservation after a loan take never confuses it with a seat.
+ */
+export const SUMMARY_TAB_ID = 'summary';
+
+/** Display label of the Summary tab (`[ Summary ]`). */
+export const SUMMARY_TAB_LABEL = 'Summary';
+
+/** One seat's presentation (owner key / label / colour / human) on the Summary tab. */
+export interface SummarySeat {
+  /** Ledger owner key (`String(playerId)`; `'0'` in single-player). */
+  ownerId: string;
+  /** Display label: `You` for the human seat, `AI n` for AI seats. */
+  label: string;
+  /** True when this seat is controlled by the human. */
+  isHuman: boolean;
+  /** Seat colour-blind-safe hex colour; `undefined` in single-player. */
+  colour?: string;
+}
+
+/**
+ * One player- or AI-initiated action row in the Summary tab.
+ *
+ * Selected structurally from `state.activityLog` by the entry's `actionType`
+ * marker — never by matching message text — so turn headers and the per-turn
+ * monetary summary rows (which carry no marker) can never appear here.
+ */
+export interface SummaryActionRow extends SummarySeat {
+  /** Structural action category (from `LogEntry.actionType`). */
+  actionType: LogEntryActionType;
+  /** The action's committed activity-log text. */
+  text: string;
+}
+
+/** One seat's share of a resolved event's effect. */
+export interface SummaryEventSeatEffect extends SummarySeat {
+  /** Signed coin delta applied to this seat. */
+  coins: number;
+  /** Signed reputation delta applied to this seat. */
+  reputation: number;
+}
+
+/**
+ * One resolved event (the turn's incident) and the effect it applied.
+ *
+ * Played event cards surface through {@link SummaryActionRow} as
+ * player-initiated actions rather than a second events list; this section is
+ * the incident the closing resolved.
+ */
+export interface SummaryEventRow {
+  /** Incident card name (or a generic `Incident` label when unnamed). */
+  name: string;
+  /** Total signed coin delta across the seats. */
+  coins: number;
+  /** Total signed reputation delta across the seats. */
+  reputation: number;
+  /** Per-seat effect of the event. */
+  seats: SummaryEventSeatEffect[];
+}
+
+/** The metrics the Summary tab presents, one row each. */
+export type SummaryMetricKey = 'income' | 'reputation' | 'score';
+
+/** One seat's figure on a metric row. */
+export interface SummaryMetricFigure extends SummarySeat {
+  /** Signed change for the day (`+N` / `-N` / `0`). */
+  change: number;
+  /** Resulting closing balance. */
+  balance: number;
+  /**
+   * The seat's P&L projection — the tooltip breakdown source, so the figure's
+   * tooltip can never drift from that seat's per-player tab.
+   */
+  projection: PLProjection;
+}
+
+/** One metric row (Income / Reputation / Score) with every seat's figure. */
+export interface SummaryMetricRow {
+  key: SummaryMetricKey;
+  label: string;
+  figures: SummaryMetricFigure[];
+}
+
+/** The Summary tab's whole model (sections in confirmed order). */
+export interface SummaryTabModel {
+  /** Shared day / turn the closing belongs to. */
+  turn: number;
+  /** The Summary tab descriptor (first tab, selected by default). */
+  tab: PLTab;
+  /** Major actions (player- and AI-initiated), in activity-log order. */
+  actions: SummaryActionRow[];
+  /** The resolved incident(s) and the effect applied. */
+  events: SummaryEventRow[];
+  /** One row per metric, each carrying every seat's change and balance. */
+  metrics: SummaryMetricRow[];
+}
+
+/** Fixed metric order and labels for the Summary tab. */
+const SUMMARY_METRIC_ORDER: readonly SummaryMetricKey[] = ['income', 'reputation', 'score'];
+
+const SUMMARY_METRIC_LABELS: Record<SummaryMetricKey, string> = {
+  income: 'Income',
+  reputation: 'Reputation',
+  score: 'Score',
+};
+
+/**
+ * Builds the Summary tab descriptor: the first tab, selected by default.
+ *
+ * `isHuman: false` because it belongs to no seat — selection is signalled by
+ * the overlay's bold weight, not by seat colour.
+ */
+export function buildSummaryTab(): PLTab {
+  return {
+    id: SUMMARY_TAB_ID,
+    label: SUMMARY_TAB_LABEL,
+    colour: undefined,
+    isHuman: false,
+    isDefault: true,
+  };
+}
+
+/** One seat's built projection plus its closing balances (internal). */
+interface SummarySeatEntry {
+  seat: SummarySeat;
+  projection: PLProjection;
+  closing: TurnSummaryClosing;
+}
+
+/**
+ * Builds the Summary tab model for the closed turn, or `null` when the result
+ * carries no ledger of either shape (nothing to summarise).
+ *
+ * Sections render in the confirmed order **Major actions → Events →
+ * Income/Reputation/Score** (producer answer Q1 = A). Every figure is
+ * projected from the same committed ledger the per-player tabs use, so the
+ * Summary and per-player views can never drift:
+ *
+ *  - **Major actions** — selected structurally from `state.activityLog` for the
+ *    closed turn by the entry's `actionType` marker (producer answer Q2), so
+ *    turn headers and the per-turn monetary summary rows never appear;
+ *  - **Events** — the resolved incident and the effect it applied, per seat;
+ *  - **Income / Reputation / Score** — one row per metric, every seat's signed
+ *    change and closing balance on that row (producer answer Q3 = A), each
+ *    figure paired with its `PLProjection` for the tooltip breakdown.
+ *
+ * Absent-safe: a turn record with no marked actions or no incident yields empty
+ * sections rather than throwing, and the caller advances the closing normally.
+ *
+ * @param state  Committed game state after the closing (read-only).
+ * @param result The closed turn's result (either ledger shape).
+ */
+export function buildSummaryTabModel(
+  state: MainStreetState,
+  result: PLResultInput,
+): SummaryTabModel | null {
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  const single = competitive ? null : buildTurnSummary(state, result);
+  return buildSummaryTabModelFromSummary(
+    state,
+    single,
+    competitive,
+    result.incident?.name ?? null,
+  );
+}
+
+/**
+ * Builds the Summary tab model from an already-built single-player or
+ * competitive summary, or `null` when neither carries a statement.
+ *
+ * The tabbed dialog holds the built summary (not the raw result), so this is
+ * the same projection {@link buildSummaryTabModel} produces without
+ * re-deriving it. `state` is read only for the closed turn's activity log (the
+ * actions section) — never mutated.
+ *
+ * @param state        Committed game state after the closing (read-only).
+ * @param single       The built single-player summary, or `null`.
+ * @param competitive  The built competitive summary, or `null`.
+ * @param incidentName The resolved incident's name, when known.
+ */
+export function buildSummaryTabModelFromSummary(
+  state: MainStreetState | null,
+  single: TurnSummary | null,
+  competitive: CompetitiveTurnSummary | null,
+  incidentName: string | null,
+): SummaryTabModel | null {
+  if (!competitive && !single) return null;
+
+  const entries: SummarySeatEntry[] = [];
+  if (competitive) {
+    for (const row of competitive.rows) {
+      entries.push({
+        seat: {
+          ownerId: String(row.ownerId),
+          label: row.label,
+          isHuman: row.isHuman,
+          colour: row.colour,
+        },
+        projection: buildPLFromCompetitiveRow(row),
+        closing: { ...row.closing },
+      });
+    }
+  } else if (single) {
+    for (const tab of buildPLTabsFromTurnSummary(single)) {
+      const projection = buildPLFromTurnSummary(single, tab.id);
+      if (!projection) continue;
+      const owner = single.owners.find((candidate) => candidate.ownerId === tab.id);
+      entries.push({
+        seat: {
+          ownerId: tab.id,
+          label: tab.label,
+          isHuman: tab.isHuman,
+          colour: tab.colour,
+        },
+        projection,
+        closing: owner
+          ? { coins: owner.coins, reputation: owner.reputation, score: owner.score }
+          : { ...single.closing },
+      });
+    }
+  }
+  if (entries.length === 0) return null;
+
+  const turn = competitive ? competitive.turn : single!.turn;
+  const metrics: SummaryMetricRow[] = SUMMARY_METRIC_ORDER.map((key) => ({
+    key,
+    label: SUMMARY_METRIC_LABELS[key],
+    figures: entries.map(({ seat, projection, closing }) => ({
+      ...seat,
+      change:
+        key === 'income'
+          ? projection.net.coins
+          : key === 'reputation'
+            ? projection.net.reputation
+            : projection.net.score,
+      balance:
+        key === 'income'
+          ? closing.coins
+          : key === 'reputation'
+            ? closing.reputation
+            : closing.score,
+      projection,
+    })),
+  }));
+
+  return {
+    turn,
+    tab: buildSummaryTab(),
+    actions: buildSummaryActions(state, turn, entries),
+    events: buildSummaryEvents(incidentName, entries),
+    metrics,
+  };
+}
+
+/**
+ * Selects the closed turn's player- and AI-initiated actions from the activity
+ * log by their structural `actionType` marker (never by message text).
+ *
+ * Entries carrying no marker (turn headers, per-turn income/reputation summary
+ * rows, incident draws, market refreshes, …) are skipped. An entry with no
+ * `seatId` (single-player, where the log does not attribute) is credited to the
+ * panel's human seat.
+ */
+function buildSummaryActions(
+  state: MainStreetState | null,
+  turn: number,
+  entries: readonly SummarySeatEntry[],
+): SummaryActionRow[] {
+  const byOwner = new Map(entries.map(({ seat }) => [seat.ownerId, seat]));
+  const human = entries.find(({ seat }) => seat.isHuman)?.seat ?? entries[0]?.seat;
+  const rows: SummaryActionRow[] = [];
+
+  for (const entry of state?.activityLog ?? []) {
+    if (entry.turn !== turn) continue;
+    if (!entry.actionType) continue;
+    const seat =
+      entry.seatId != null
+        ? byOwner.get(String(entry.seatId))
+        : human;
+    if (!seat) continue;
+    rows.push({ ...seat, actionType: entry.actionType, text: entry.text });
+  }
+  return rows;
+}
+
+/**
+ * Builds the Events section: the resolved incident and its per-seat effect.
+ *
+ * The per-seat effect comes from each seat's `PLProjection.incident`, so the
+ * Summary's event figures reconcile with that seat's per-player Incident row.
+ * Returns an empty list when no incident was resolved and no seat carries an
+ * incident delta (absent-safe).
+ */
+function buildSummaryEvents(
+  incidentName: string | null,
+  entries: readonly SummarySeatEntry[],
+): SummaryEventRow[] {
+  const incident = incidentName;
+  const effects = entries.map(({ seat, projection }) => ({
+    ...seat,
+    coins: projection.incident.coins,
+    reputation: projection.incident.reputation,
+  }));
+  const nonZero = effects.filter((effect) => effect.coins !== 0 || effect.reputation !== 0);
+
+  // No incident name and no per-seat delta: nothing happened, render nothing.
+  if (!incident && nonZero.length === 0) return [];
+
+  const seats = incident ? effects : nonZero;
+  return [{
+    name: incident ?? 'Incident',
+    coins: seats.reduce((total, effect) => total + effect.coins, 0),
+    reputation: seats.reduce((total, effect) => total + effect.reputation, 0),
+    seats,
+  }];
 }

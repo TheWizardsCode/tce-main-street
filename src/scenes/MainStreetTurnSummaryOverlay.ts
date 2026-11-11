@@ -5,11 +5,17 @@
  * One **tabbed profit/loss statement** replaces the previous flat single-player
  * dialog (`showTurnSummaryDialog`) and the competitive per-seat panel
  * (`showCompetitiveTurnSummaryDialog`). Both entry points below render through
- * the same panel: a tab strip (one tab per player, human `You` tab selected by
- * default, a single non-interactive `You` tab in single-player) plus the
- * selected player's management-company P&L statement.
+ * the same panel: a **Summary** tab (first, selected by default) followed by a
+ * tab per player, then the selected tab's body.
  *
- * The statement body is the Phaser-free projection from
+ * The **Summary** tab (MS-0MWBWRITL0089GGJ) is the headline view: the closed
+ * turn's major player/AI actions, the resolved incident and the effect it
+ * applied, and one row per metric (Income / Reputation / Score) carrying every
+ * seat's signed change and closing balance. Each figure carries a hover/tap
+ * tooltip that breaks it down the way that seat's per-player tab does, so the
+ * player sees "who did what, what happened and how everyone moved" at a glance.
+ *
+ * Each per-player tab's body is the Phaser-free projection from
  * {@link module:scenes/MainStreetTurnSummary}: an **Income** section (base /
  * synergy / reputation / events) with its total, a **Less: Operating expenses**
  * section (staff / community / business) with its total, the **Incident** and
@@ -52,16 +58,19 @@ import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 
 import { takeLoanCommand } from '../MainStreetCommands';
 import type { TurnResult } from '../MainStreetEngine';
+import type { MainStreetState } from '../MainStreetState';
 import {
   buildCompetitiveTurnSummary,
   buildPLFromCompetitiveRow,
   buildPLFromTurnSummary,
   buildPLTabsFromCompetitiveSummary,
   buildPLTabsFromTurnSummary,
+  buildSummaryTabModelFromSummary,
   buildTurnSummary,
   type CompetitiveTurnSummary,
   type PLTab,
   type PLProjection,
+  type SummaryTabModel,
   type TurnSummary,
   type TurnSummaryClosing,
 } from './MainStreetTurnSummary';
@@ -78,6 +87,7 @@ import {
   buildIncomeLineTooltip,
   buildNetLineTooltip,
   buildOneOffLineTooltip,
+  buildSummaryMetricTooltip,
   buildTotalLineTooltip,
 } from './MainStreetTurnSummaryTooltips';
 import { showLoanSelectorDialog } from './MainStreetLoanOverlay';
@@ -143,11 +153,18 @@ export interface TurnSummaryOverlayTab {
 export interface TurnSummaryOverlayModel {
   /** Shared day / turn the closing belongs to. */
   turn: number;
-  /** One tab per player, in seat order. */
+  /**
+   * The Summary tab descriptor (first tab, selected by default). Its body is
+   * rendered from {@link summary}.
+   */
+  summaryTab: PLTab;
+  /** The Summary-tab model (actions → events → metrics). */
+  summary: SummaryTabModel;
+  /** One per-player tab, in seat order (the `You` / `AI n` tabs). */
   tabs: TurnSummaryOverlayTab[];
   /** The tab whose statement body is shown. */
   selectedTabId: string;
-  /** False in single-player: the sole `You` tab is not interactive. */
+  /** False when there is only one selectable tab (nothing to switch to). */
   tabsInteractive: boolean;
   /** Loans availability for the acting seat (absent → disabled, no hint). */
   loanDescriptor?: TurnSummaryLoanDescriptor;
@@ -203,7 +220,7 @@ export function showTurnSummaryDialog(
   let descriptor = loanDescriptor;
 
   const build = (selectedTabId?: string): TurnSummaryOverlayModel =>
-    singlePlayerPanelModel(current, descriptor, selectedTabId);
+    singlePlayerPanelModel(current, descriptor, selectedTabId, s.state, result);
 
   presentTurnSummaryPanel(s, build(), {
     onNextTurn,
@@ -242,6 +259,8 @@ export function showCompetitiveTurnSummaryDialog(
   onNextTurn: () => void,
   onBankLoanAction?: (seatId?: number) => void,
   result?: Pick<TurnResult, 'playerRoundLedger'> & {
+    /** The resolved incident, so the Summary tab's Events section can name it. */
+    incident?: TurnResult['incident'];
     /** Per-seat income detail so the panel keeps its breakdowns after a take. */
     playerIncome?: TurnResult['playerIncome'];
   },
@@ -251,7 +270,7 @@ export function showCompetitiveTurnSummaryDialog(
   let current = summary;
 
   const build = (selectedTabId?: string): TurnSummaryOverlayModel =>
-    competitivePanelModel(current, selectedTabId);
+    competitivePanelModel(current, selectedTabId, s.state, result);
 
   presentTurnSummaryPanel(s, build(), {
     onNextTurn,
@@ -277,6 +296,8 @@ function singlePlayerPanelModel(
   summary: TurnSummary,
   loanDescriptor: TurnSummaryLoanDescriptor | undefined,
   selectedTabId?: string,
+  state?: MainStreetState,
+  _result?: Pick<TurnResult, 'turnLedger' | 'incident'>,
 ): TurnSummaryOverlayModel {
   const tabs = buildPLTabsFromTurnSummary(summary);
   const views: TurnSummaryOverlayTab[] = [];
@@ -293,11 +314,14 @@ function singlePlayerPanelModel(
       incidentName: summary.incidentName ?? 'No incident',
     });
   }
+  const summaryModel = summaryOverlayModel(state, summary, null, summary.incidentName ?? null);
   return {
     turn: summary.turn,
+    summaryTab: summaryModel.tab,
+    summary: summaryModel,
     tabs: views,
-    selectedTabId: resolveSelectedTabId(views, selectedTabId),
-    tabsInteractive: views.length > 1,
+    selectedTabId: resolveSelectedTabId(summaryModel, views, selectedTabId),
+    tabsInteractive: views.length + 1 > 1,
     loanDescriptor,
   };
 }
@@ -306,6 +330,8 @@ function singlePlayerPanelModel(
 function competitivePanelModel(
   summary: CompetitiveTurnSummary,
   selectedTabId?: string,
+  state?: MainStreetState,
+  result?: Pick<TurnResult, 'playerRoundLedger'> & { incident?: TurnResult['incident'] },
 ): TurnSummaryOverlayModel {
   const tabs = buildPLTabsFromCompetitiveSummary(summary);
   const views: TurnSummaryOverlayTab[] = [];
@@ -319,27 +345,61 @@ function competitivePanelModel(
       incidentName: null,
     });
   }
+  const summaryModel = summaryOverlayModel(
+    state,
+    null,
+    summary,
+    result?.incident?.name ?? null,
+  );
   return {
     turn: summary.turn,
+    summaryTab: summaryModel.tab,
+    summary: summaryModel,
     tabs: views,
-    selectedTabId: resolveSelectedTabId(views, selectedTabId),
-    tabsInteractive: views.length > 1,
+    selectedTabId: resolveSelectedTabId(summaryModel, views, selectedTabId),
+    tabsInteractive: views.length + 1 > 1,
     loanDescriptor: summary.humanSeatId >= 0 ? summary.loanDescriptor : undefined,
     loanOwnerId: summary.humanSeatId >= 0 ? summary.humanSeatId : undefined,
   };
 }
 
 /**
+ * Builds the Summary-tab model for a panel from its built statement.
+ *
+ * The panel's built summary (single-player or competitive) is the single
+ * source of truth, so the Summary tab and the per-player tabs project the same
+ * figures. `state` is read only for the closed turn's activity log; when it is
+ * absent (a hand-built/legacy call) the actions section is simply empty.
+ */
+function summaryOverlayModel(
+  state: MainStreetState | undefined,
+  single: TurnSummary | null,
+  competitive: CompetitiveTurnSummary | null,
+  incidentName: string | null,
+): SummaryTabModel {
+  const built = buildSummaryTabModelFromSummary(
+    state ?? null,
+    single,
+    competitive,
+    incidentName,
+  );
+  // The panel is only presented when a statement exists, so a null here is
+  // unreachable; the assertion keeps the return type honest.
+  return built!;
+}
+
+/**
  * Keeps the selected tab across a re-render when it still exists, otherwise
- * falls back to the model's default tab (the human seat).
+ * falls back to the Summary tab (the panel's default view).
  */
 function resolveSelectedTabId(
+  summary: SummaryTabModel,
   views: readonly TurnSummaryOverlayTab[],
   requested?: string,
 ): string {
-  if (requested && views.some((view) => view.tab.id === requested)) return requested;
-  const fallback = views.find((view) => view.tab.isDefault) ?? views[0];
-  return fallback?.tab.id ?? '';
+  const ids = [summary.tab.id, ...views.map((view) => view.tab.id)];
+  if (requested && ids.includes(requested)) return requested;
+  return summary.tab.id;
 }
 
 // ── Renderer ──────────────────────────────────────────────────
@@ -409,10 +469,15 @@ export function presentTurnSummaryPanel(
     s.overlayObjects = [];
   }
 
+  /** All selectable tabs: the Summary tab first, then the per-player tabs. */
+  function allTabs(): PLTab[] {
+    return [model.summaryTab, ...model.tabs.map((view) => view.tab)];
+  }
+
   /** Selects a tab and redraws the whole statement body for it. */
   function selectTab(tabId: string): void {
     if (tabId === model.selectedTabId) return;
-    if (!model.tabs.some((view) => view.tab.id === tabId)) return;
+    if (!allTabs().some((tab) => tab.id === tabId)) return;
     model = { ...model, selectedTabId: tabId };
     safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
     draw();
@@ -420,7 +485,7 @@ export function presentTurnSummaryPanel(
 
   /** Cycles the selected tab by `step` (keyboard navigation, wraps around). */
   function selectTabByOffset(step: number): void {
-    const ids = model.tabs.map((view) => view.tab.id);
+    const ids = allTabs().map((tab) => tab.id);
     if (ids.length < 2) return;
     const index = Math.max(0, ids.indexOf(model.selectedTabId));
     selectTab(ids[(index + step + ids.length) % ids.length]);
@@ -494,18 +559,19 @@ export function presentTurnSummaryPanel(
     // the other tabs read as plain labels rather than buttons). Selection is
     // signalled by weight, and hovering any tab brightens it.
     const tabY = panelY + 100;
-    const tabsClickable = model.tabsInteractive && model.tabs.length > 1;
+    const tabs = allTabs();
+    const tabsClickable = model.tabsInteractive && tabs.length > 1;
     let cursor = leftX;
-    for (const view of model.tabs) {
-      const selected = view.tab.id === model.selectedTabId;
+    for (const tabModel of tabs) {
+      const selected = tabModel.id === model.selectedTabId;
       // Each tab keeps its seat's own colour (the shared `resolveSeatColour`
-      // value); selection is signalled by the bold weight. A panel with no seat
-      // colour (single-player) uses the dialog's gold.
-      const tabColour = view.tab.colour
+      // value); selection is signalled by the bold weight. The Summary tab and
+      // a panel with no seat colour (single-player) use the dialog's gold.
+      const tabColour = tabModel.colour
         ?? (selected ? SELECTED_TAB_COLOUR : TAB_COLOUR);
       const tab = createOverlayButton(
         s, 0, tabY,
-        `[ ${view.tab.label} ]`,
+        `[ ${tabModel.label} ]`,
         201,
         { fontSize: '15px', color: tabColour, hoverColor: TAB_HOVER_COLOUR },
       );
@@ -516,21 +582,18 @@ export function presentTurnSummaryPanel(
       if (s.hudContainer) s.hudContainer.add(tab);
       s.overlayObjects.push(tab);
       if (tabsClickable) {
-        tab.on('pointerdown', () => selectTab(view.tab.id));
+        tab.on('pointerdown', () => selectTab(tabModel.id));
       } else {
-        // Single-player (and any single-tab panel): shown, never interactive.
+        // A single-tab panel is shown, never interactive.
         tab.disableInteractive();
       }
       cursor += tab.width + 18;
     }
 
-    // ── Statement body for the selected tab ─────────────────────
-    const view = model.tabs.find((candidate) => candidate.tab.id === model.selectedTabId)
-      ?? model.tabs[0];
-    const pl = view.projection;
+    // ── Body: the Summary tab, or the selected player's statement ─
     let y = panelY + 136;
 
-    /** One monetary statement line. */
+    /** One statement line. */
     const addLine = (
       text: string,
       style: Record<string, unknown> = {},
@@ -551,82 +614,164 @@ export function presentTurnSummaryPanel(
       y += 24;
     };
 
-    addHeading(pl.income.label);
-    for (const line of pl.income.lines) {
-      addLine(
-        `${line.label}: ${formatSigned(line.coins)}`,
-        { color: line.coins < 0 ? LOSS_COLOUR : '#ddccbb' },
-        () => buildIncomeLineTooltip(line),
-      );
+    /**
+     * Renders the Summary tab in the confirmed order Major actions → Events →
+     * Income/Reputation/Score (producer answer Q1 = A).
+     *
+     * Every metric figure is its own text object with a per-seat tooltip zone,
+     * so hovering a seat's figure shows that seat's breakdown — reusing the
+     * per-player tab's own builders so the two can never drift. Figures lay out
+     * horizontally and wrap to a new line rather than overflow the panel.
+     */
+    function drawSummaryBody(): void {
+      const summary = model.summary;
+      const incidentName = summary.events[0]?.name ?? null;
+
+      // ── Major actions (player- and AI-initiated only) ──
+      addHeading('Major actions');
+      const MAX_ACTIONS = 6;
+      const actions = summary.actions.slice(0, MAX_ACTIONS);
+      if (actions.length === 0) {
+        addLine('No player actions this day.', { color: '#998877', fontSize: '12px' });
+      } else {
+        for (const action of actions) {
+          addLine(`${action.label}: ${action.text}`, {
+            color: action.isHuman ? '#ffcc44' : '#ddccbb',
+            fontSize: '12px',
+          });
+        }
+        if (summary.actions.length > MAX_ACTIONS) {
+          addLine(`…and ${summary.actions.length - MAX_ACTIONS} more`, {
+            color: '#998877', fontSize: '12px',
+          });
+        }
+      }
+
+      // ── Events (the resolved incident and its effect) ──
+      addHeading('Events');
+      if (summary.events.length === 0) {
+        addLine('No incident this day.', { color: '#998877', fontSize: '12px' });
+      } else {
+        for (const event of summary.events) {
+          const effect = event.seats
+            .map((seat) =>
+              `${seat.label} ${formatSigned(seat.coins)} coins / ${formatSigned(seat.reputation)} rep`)
+            .join(' · ');
+          addLine(`${event.name}: ${effect}`, { fontSize: '12px' });
+        }
+      }
+
+      // ── Income / Reputation / Score (one row per metric) ──
+      addHeading('Income / Reputation / Score');
+      for (const metric of summary.metrics) {
+        addText(leftX, y, `${metric.label}:`, {
+          fontSize: '13px', fontStyle: 'bold', color: '#ddccbb', fontFamily: FONT_FAMILY,
+        });
+        let figureX = leftX + 92;
+        for (const figure of metric.figures) {
+          const label = `${figure.label} ${formatSigned(figure.change)} (${figure.balance})`;
+          const obj = addText(figureX, y, label, {
+            fontSize: '12px',
+            color: figure.change < 0 ? LOSS_COLOUR : figure.change > 0 ? PROFIT_COLOUR : '#ddccbb',
+            fontFamily: FONT_FAMILY,
+          }, 0, 0, () => buildSummaryMetricTooltip(metric.key, figure.projection, incidentName));
+          // Wrap rather than overflow the fixed panel width.
+          if (figureX > leftX + 92 && figureX + obj.width > leftX + panelW - 40) {
+            y += 20;
+            figureX = leftX + 92;
+            obj.setY(y);
+            obj.setX(figureX);
+          }
+          figureX += obj.width + 16;
+        }
+        y += 22;
+      }
     }
-    addLine(
-      `${pl.income.totalLabel}: ${formatSigned(pl.income.total)}`,
-      { fontStyle: 'bold' },
-      () => buildTotalLineTooltip(pl.income.totalLabel, pl.income.total),
-    );
 
-    addHeading(pl.expenses.label);
-    for (const line of pl.expenses.lines) {
-      // Ongoing costs are signed (zero or negative) — render them as-is.
+    if (model.selectedTabId === model.summaryTab.id) {
+      drawSummaryBody();
+    } else {
+      const view = model.tabs.find((candidate) => candidate.tab.id === model.selectedTabId)
+        ?? model.tabs[0];
+      const pl = view.projection;
+
+      addHeading(pl.income.label);
+      for (const line of pl.income.lines) {
+        addLine(
+          `${line.label}: ${formatSigned(line.coins)}`,
+          { color: line.coins < 0 ? LOSS_COLOUR : '#ddccbb' },
+          () => buildIncomeLineTooltip(line),
+        );
+      }
       addLine(
-        `${line.label}: ${formatSigned(line.coins)}`,
-        { color: LOSS_COLOUR },
-        () => buildExpenseLineTooltip(line),
+        `${pl.income.totalLabel}: ${formatSigned(pl.income.total)}`,
+        { fontStyle: 'bold' },
+        () => buildTotalLineTooltip(pl.income.totalLabel, pl.income.total),
       );
-    }
-    addLine(
-      `${pl.expenses.totalLabel}: ${formatSigned(pl.expenses.total)}`,
-      { fontStyle: 'bold' },
-      () => buildTotalLineTooltip(pl.expenses.totalLabel, pl.expenses.total),
-    );
 
-    y += 8;
-    addLine(
-      `${pl.incident.label}: Coins ${formatSigned(pl.incident.coins)}, Rep ${formatSigned(pl.incident.reputation)}`,
-      {},
-      () => buildIncidentLineTooltip(pl.incident, view.incidentName),
-    );
-    addLine(
-      `${pl.oneOff.label}: Coins ${formatSigned(pl.oneOff.coins)}, Rep ${formatSigned(pl.oneOff.reputation)}`,
-      {},
-      () => buildOneOffLineTooltip(pl),
-    );
-
-    // ── Emphasised bottom line ──────────────────────────────────
-    y += 10;
-    addText(leftX, y, `${pl.net.label}: ${formatSigned(pl.net.coins)}`, {
-      fontSize: '18px',
-      fontStyle: 'bold',
-      color: pl.net.coins < 0 ? LOSS_COLOUR : PROFIT_COLOUR,
-      fontFamily: FONT_FAMILY,
-    }, 0, 0, () => buildNetLineTooltip(pl));
-    y += 32;
-
-    // ── Supplementary context (never P&L lines) ─────────────────
-    addLine(
-      `Reputation change: ${formatSigned(pl.context.reputationChange)} · Score change: ${formatSigned(pl.context.scoreChange)}`,
-      { fontSize: '12px' },
-      () => [
-        buildContextLineTooltip('reputationChange', pl.context),
-        buildContextLineTooltip('scoreChange', pl.context),
-      ].join('\n\n'),
-    );
-    addLine(
-      `Closing coins: ${view.closing.coins} · Closing Rep ${view.closing.reputation} · Score ${view.closing.score}`,
-      { fontSize: '12px' },
-      () => buildContextLineTooltip('closingCoins', pl.context),
-    );
-    addLine(
-      `Businesses owned: ${pl.context.businessesOwned}`,
-      { fontSize: '12px' },
-      () => buildContextLineTooltip('businessesOwned', pl.context),
-    );
-    if (view.incidentName !== null) {
+      addHeading(pl.expenses.label);
+      for (const line of pl.expenses.lines) {
+        // Ongoing costs are signed (zero or negative) — render them as-is.
+        addLine(
+          `${line.label}: ${formatSigned(line.coins)}`,
+          { color: LOSS_COLOUR },
+          () => buildExpenseLineTooltip(line),
+        );
+      }
       addLine(
-        `Incident drawn: ${view.incidentName}`,
-        { fontSize: '12px' },
+        `${pl.expenses.totalLabel}: ${formatSigned(pl.expenses.total)}`,
+        { fontStyle: 'bold' },
+        () => buildTotalLineTooltip(pl.expenses.totalLabel, pl.expenses.total),
+      );
+
+      y += 8;
+      addLine(
+        `${pl.incident.label}: Coins ${formatSigned(pl.incident.coins)}, Rep ${formatSigned(pl.incident.reputation)}`,
+        {},
         () => buildIncidentLineTooltip(pl.incident, view.incidentName),
       );
+      addLine(
+        `${pl.oneOff.label}: Coins ${formatSigned(pl.oneOff.coins)}, Rep ${formatSigned(pl.oneOff.reputation)}`,
+        {},
+        () => buildOneOffLineTooltip(pl),
+      );
+
+      // ── Emphasised bottom line ──────────────────────────────────
+      y += 10;
+      addText(leftX, y, `${pl.net.label}: ${formatSigned(pl.net.coins)}`, {
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: pl.net.coins < 0 ? LOSS_COLOUR : PROFIT_COLOUR,
+        fontFamily: FONT_FAMILY,
+      }, 0, 0, () => buildNetLineTooltip(pl));
+      y += 32;
+
+      // ── Supplementary context (never P&L lines) ─────────────────
+      addLine(
+        `Reputation change: ${formatSigned(pl.context.reputationChange)} · Score change: ${formatSigned(pl.context.scoreChange)}`,
+        { fontSize: '12px' },
+        () => [
+          buildContextLineTooltip('reputationChange', pl.context),
+          buildContextLineTooltip('scoreChange', pl.context),
+        ].join('\n\n'),
+      );
+      addLine(
+        `Closing coins: ${view.closing.coins} · Closing Rep ${view.closing.reputation} · Score ${view.closing.score}`,
+        { fontSize: '12px' },
+        () => buildContextLineTooltip('closingCoins', pl.context),
+      );
+      addLine(
+        `Businesses owned: ${pl.context.businessesOwned}`,
+        { fontSize: '12px' },
+        () => buildContextLineTooltip('businessesOwned', pl.context),
+      );
+      if (view.incidentName !== null) {
+        addLine(
+          `Incident drawn: ${view.incidentName}`,
+          { fontSize: '12px' },
+          () => buildIncidentLineTooltip(pl.incident, view.incidentName),
+        );
+      }
     }
 
     // ── Actions ─────────────────────────────────────────────────
@@ -787,7 +932,7 @@ export function presentTurnSummaryPanel(
 
   /** Keyboard navigation: Left/Right arrows cycle the players' tabs. */
   function attachKeyboard(): void {
-    if (!model.tabsInteractive || model.tabs.length < 2) return;
+    if (!model.tabsInteractive || allTabs().length < 2) return;
     const handler = (ev: KeyboardEvent): void => {
       if (!ev) return;
       if (ev.key === 'ArrowRight') selectTabByOffset(1);

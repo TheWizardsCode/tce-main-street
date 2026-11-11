@@ -1443,21 +1443,42 @@ condensed text-only summary.
   drift. It is instant (no fade-in, so it is reduced-motion safe) and
   overlay-pattern compliant (`hudContainer` parenting, depths 199/200/201,
   dismissal via `s.overlayObjects`).
-  - **Tab strip** — a `Turn Summary` / `Day <n>` title, then one tab per
-    player, each in its seat colour where one exists (single-player uses the
-    dialog gold). **Every** tab is drawn in the dialog's button form —
+  - **Tab strip** — a `Turn Summary` / `Day <n>` title, then a **`[ Summary ]`**
+    tab (first and selected by default, MS-0MWBWRITL0089GGJ) followed by one
+    tab per player, each in its seat colour where one exists (single-player
+    uses the dialog gold). **Every** tab is drawn in the dialog's button form —
     `[ Label ]` — whether or not it is selected, so the player's own statement
     is always a visible button to switch back to
     (MS-0MW4XULA90002OEY: a rejected review found no button to return to the
     player's own tab). The selected tab is the **bold** one; the others keep
     their seat colour and brighten on hover, so every tab reads as a control.
-    The human (`You`) tab is selected by
-    default; selecting any other player's tab redraws the **whole** statement
-    body from that player's figures. Single-player renders one
-    **non-interactive** `You` tab (shown, never clickable); competitive renders
-    one interactive tab per non-eliminated seat. Tabs are operable by pointer
-    **and** keyboard — the Left/Right arrow keys cycle the players' tabs with
-    wrap-around — and a tab press plays `UI_CLICK` through `safePlaySound`.
+    Selecting any tab redraws the **whole** body (the Summary headline view or
+    that player's statement) from the committed figures. Single-player renders
+    an interactive `[ Summary ]` and `[ You ]` tab; competitive renders the
+    `[ Summary ]` tab plus one interactive tab per non-eliminated seat. Tabs
+    are operable by pointer **and** keyboard — the Left/Right arrow keys cycle
+    Summary and the players' tabs with wrap-around — and a tab press plays
+    `UI_CLICK` through `safePlaySound`.
+  - **Summary tab (the default view)** — the closed turn's headline recap
+    (MS-0MWBWRITL0089GGJ), in the confirmed section order **Major actions →
+    Events → Income / Reputation / Score**:
+    - **Major actions** — the turn's player- and AI-initiated actions
+      (placing a business, hiring staff, playing an upgrade/event, moving a
+      card to hand, selling, laying off, closing a street card, loans,
+      challenge completions), attributed per seat (`You` / `AI n`). Selected
+      structurally from `state.activityLog` by the new optional
+      `LogEntry.actionType` marker, so turn headers and the per-turn monetary
+      summary rows (which carry no marker) never appear. Bounded to six rows
+      with an `…and N more` affordance.
+    - **Events** — the resolved incident and the effect it applied, per seat
+      (the competitive ledger does not name the incident, so it renders as a
+      generic `Incident` label there).
+    - **Income / Reputation / Score** — one row per metric, carrying **every**
+      seat's signed change and closing balance (`+N` / `-N` / `0`). Each figure
+      is its own hover/tap tooltip zone whose breakdown is built from that
+      seat's `PLProjection` (the same source the per-player tab renders), so
+      the two can never drift; figures wrap rather than overflow the fixed
+      panel.
   - **Statement body** — the selected player's P&L projection: the **Income**
     section (base / synergy / reputation / events) with its `Total income`
     row, **Less: Operating expenses** (staff / community / business) with its
@@ -1612,13 +1633,23 @@ owner-keyed, so the whole panel is testable without a browser.
   `buildPLFromCompetitiveRow` projects each one as that seat's P&L statement,
   so competitive and single-player share one statement shape. It returns `null`
   when the result carries no round ledger, so browser and single-player callers
-  are unaffected.
+  are unaffected. `buildSummaryTabModel` / `buildSummaryTabModelFromSummary`
+  build the shared **Summary** tab from the same projections — actions from
+  `state.activityLog` selected by the structural `LogEntry.actionType` marker,
+  the incident's per-seat effect, and one metric row (Income / Reputation /
+  Score) per seat — so the headline view and the per-player tabs never drift
+  (MS-0MWBWRITL0089GGJ).
 - **Dialog.** `MainStreetOverlayContent.showCompetitiveTurnSummaryDialog()`
   (delegated by `MainStreetScene.showCompetitiveTurnSummaryDialog()`) renders
   the competitive side of the unified tabbed panel
-  (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a tab per
-  non-eliminated seat in its own colour with the human (`You`) tab selected by
-  default, and the selected seat's P&L statement — Income (base / synergy /
+  (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a
+  **`[ Summary ]`** tab (first and selected by default, MS-0MWBWRITL0089GGJ)
+  followed by a tab per non-eliminated seat in its own colour, and the selected
+  tab's body. The **Summary** tab is the shared headline view — the day's major
+  player/AI actions per seat, the resolved incident and its effect, and one row
+  per metric (Income / Reputation / Score) carrying every seat's signed change
+  and closing balance, each figure a hover/tap breakdown — and the per-seat
+  tabs render that seat's P&L statement — Income (base / synergy /
   reputation / events) with its total, Less: Operating expenses (staff /
   community / business) with its total, the Incident and One-off adjustments,
   the emphasised net profit/loss, and the supplementary context (reputation /

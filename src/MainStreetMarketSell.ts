@@ -157,6 +157,7 @@ export function sellBusiness(
     state,
     `Sold ${card.name} from slot ${slotIndex} for +${refund} coins (€${breakdown.baseRefund} base + ${breakdown.synergyIncomeComponent} synergy income + ${breakdown.synergyRepComponent} synergy rep) (${describeEventEffects(refund, 0)})`,
     classifyEffect(refund, 0),
+    'sell',
   );
 
   return { card, refund, slotIndex };
@@ -407,6 +408,7 @@ export function closeBusiness(
     state,
     `Closed ${card.name} from slot ${slotIndex} (no refund, 1 action, ${describeEventEffects(0, reputationDelta)})`,
     classifyEffect(0, reputationDelta),
+    'close-card',
   );
 
   return { card, slotIndex, reputationDelta };

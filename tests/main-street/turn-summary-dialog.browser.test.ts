@@ -355,6 +355,9 @@ describe('Main Street turn-summary dialog overlay (browser)', () => {
     expect(title!.depth).toBe(201);
     expect(overlayText(s, `Day ${summary.turn}`)).toBeDefined();
 
+    // The panel opens on the Summary tab; select the player's statement.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
+
     // ── Income per phase + total ──────────────────────────────
     expect(overlayText(s, 'Income')).toBeDefined();
     expect(overlayText(s, 'Base income: +120')).toBeDefined();
