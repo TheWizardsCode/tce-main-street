@@ -26,6 +26,8 @@ import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
 import { createStaffDeck, getBusinessTemplates, type BusinessCard, type StaffCard } from '../../src/MainStreetCards';
+import { computeStaffSalaryCost, getSalaryScopeSkills } from '../../src/MainStreetStaffBuffs';
+import { layOffReputationCost } from '../../src/MainStreetRoster';
 
 // ── Boot helpers (mirrors sell-demolition.browser.test.ts) ──
 
@@ -267,7 +269,7 @@ describe('MainStreet Manage Card dialog', () => {
     expect(labels.some((t) => t.includes('Employed here'))).toBe(false);
   }, 30_000);
 
-  it('[ Lay off ] lists employed staff and lets the member go for 1 salary + 1 reputation', async () => {
+  it('[ Lay off ] lists employed staff and lets the member go for 1 salary + salary-scaled reputation', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as ManageScene;
     placeCard(scene, 0);
@@ -281,7 +283,7 @@ describe('MainStreet Manage Card dialog', () => {
       employedAtSlot: 0,
     };
     scene.state.staffCards = [member];
-    scene.state.resourceBank.reputation = 5;
+    scene.state.resourceBank.reputation = 500;
     scene.state.resourceBank.coins = 0;
     scene.refreshAll();
 
@@ -292,12 +294,19 @@ describe('MainStreet Manage Card dialog', () => {
     expect(listing?.text).toContain('Test Applicant');
     const logBefore = scene.state.activityLog.length;
 
+    // The employed member is the tier-1 Assistant (salary 100); the lay-off
+    // reputation cost is max(100, ceil(100/100)*100) = 100.
+    const salary = computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost);
+    const expectedRepCost = layOffReputationCost(salary);
+    expect(expectedRepCost).toBe(100);
+    const reputationBefore = scene.state.resourceBank.reputation;
+
     findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
 
-    // Member removed, 1 reputation spent, salary clamped at 0 coins, logged,
-    // and the overlay dismissed.
+    // Member removed, the new salary-scaled reputation cost charged, salary
+    // clamped at 0 coins, logged, and the overlay dismissed.
     expect(scene.state.staffCards).toHaveLength(0);
-    expect(scene.state.resourceBank.reputation).toBe(4);
+    expect(scene.state.resourceBank.reputation).toBe(reputationBefore - expectedRepCost);
     expect(scene.state.resourceBank.coins).toBe(0);
     expect(scene.overlayObjects).toHaveLength(0);
     expect(scene.state.activityLog).toHaveLength(logBefore + 1);

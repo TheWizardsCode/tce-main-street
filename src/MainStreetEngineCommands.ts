@@ -26,6 +26,7 @@ import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, computeBusinessOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { layOffReputationCost } from './MainStreetRoster';
 import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
@@ -1503,9 +1504,16 @@ export function declineStaffApplicant(state: MainStreetState): void {
 
 /**
  * Lets go a staff member at the given index: removes from staffCards,
- * deducts 1 turn's salary (clamped at 0) from coins, and deducts 1
- * reputation. Buffs from this member stop applying from the next income
- * phase (handled automatically — the member is removed before income).
+ * deducts 1 turn's salary (clamped at 0) from coins, and deducts the
+ * salary-scaled lay-off reputation cost (clamped at 0). Buffs from this
+ * member stop applying from the next income phase (handled automatically —
+ * the member is removed before income).
+ *
+ * The reputation charge is `max(100, ceil(salary / 100) × 100)` — see
+ * {@link layOffReputationCost}. Reputation ships in ×100 display units, so the
+ * GDD D.4.2 §5 "1 reputation" rule (written before the rescale) is this
+ * formula's 100-unit floor. The rule is applied uniformly to every lay-off
+ * door because they all funnel through this function (MS-0MWC1T8K2000DWZA).
  *
  * @param state     Current game state (mutated).
  * @param idx       Index of the staff member to let go.
@@ -1519,9 +1527,13 @@ export function letGoStaffMember(state: MainStreetState, idx: number): void {
   const skills = getSalaryScopeSkills(member);
   const salary = computeStaffSalaryCost(skills, member.ongoingCost);
 
-  // Deduct salary (clamped at 0) and 1 reputation
+  // Deduct salary (clamped at 0) and the salary-scaled reputation cost
+  // (×100 units, clamped at 0) — MS-0MWC1T8K2000DWZA.
   state.resourceBank.coins = Math.max(0, state.resourceBank.coins - salary);
-  state.resourceBank.reputation = Math.max(0, state.resourceBank.reputation - 1);
+  state.resourceBank.reputation = Math.max(
+    0,
+    state.resourceBank.reputation - layOffReputationCost(salary),
+  );
 
   // Remove from staffCards
   state.staffCards.splice(idx, 1);
