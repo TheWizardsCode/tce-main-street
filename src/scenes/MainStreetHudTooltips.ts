@@ -602,6 +602,11 @@ export interface MoveStaffAffordance {
  * omitted the first employed member is targeted (the Manage-Card dialog
  * passes the member the player chose).
  *
+ * Destinations are derived from `canMoveStaffOnBusiness`, which inherits the
+ * shared competitive ownership gate, so an opponent-owned business is never
+ * offered as a relocation destination — no extra UI logic is required
+ * (MS-0MWBCWLZY001EA3W).
+ *
  * @param state   Current game state (read-only).
  * @param staffId Optional employed member to target; defaults to the first.
  */

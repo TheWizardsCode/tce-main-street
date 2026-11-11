@@ -308,7 +308,7 @@ describe('applicant type pool: opponent businesses do not unlock an unusable spe
 // ── Placement ───────────────────────────────────────────────
 
 describe('placement: opponent-owned destinations are rejected', () => {
-  it.fails(
+  it(
     'competitive: canPlaceStaffOnBusiness rejects an opponent-owned destination with the owner-naming reason',
     () => {
       const state = competitiveState('staff-own-place');
@@ -325,7 +325,7 @@ describe('placement: opponent-owned destinations are rejected', () => {
     },
   );
 
-  it.fails(
+  it(
     'competitive: placeStaffOnBusiness throws and persists no employment at an opponent-owned business',
     () => {
       const state = competitiveState('staff-own-place-write');
@@ -357,7 +357,7 @@ describe('placement: opponent-owned destinations are rejected', () => {
 // ── Relocation ──────────────────────────────────────────────
 
 describe('relocation: opponent-owned destinations are rejected and never offered', () => {
-  it.fails(
+  it(
     'competitive: canMoveStaffOnBusiness rejects an opponent-owned destination',
     () => {
       const state = competitiveState('staff-own-move');
@@ -375,7 +375,7 @@ describe('relocation: opponent-owned destinations are rejected and never offered
     },
   );
 
-  it.fails(
+  it(
     'competitive: moveStaffOnBusiness throws and keeps the member at its own business',
     () => {
       const state = competitiveState('staff-own-move-write');
@@ -393,7 +393,7 @@ describe('relocation: opponent-owned destinations are rejected and never offered
     },
   );
 
-  it.fails(
+  it(
     'competitive: buildMoveStaffAffordance excludes opponent-owned destinations but keeps the acting seat’s own',
     () => {
       const state = competitiveState('staff-own-affordance');
@@ -427,7 +427,7 @@ describe('relocation: opponent-owned destinations are rejected and never offered
 // ── Write-path guard ────────────────────────────────────────
 
 describe('write-path guard: the applicant hire path names the real owner', () => {
-  it.fails(
+  it(
     'competitive: hireStaffApplicant refuses an applicant targeted at an opponent-owned business',
     () => {
       const state = competitiveState('staff-own-hire-guard');

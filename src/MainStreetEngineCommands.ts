@@ -943,6 +943,33 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
 }
 
 /**
+ * Defensive ownership assertion for the employment write paths
+ * (MS-0MWBCWLZY001EA3W).
+ *
+ * Every path that makes a staff member employed calls this immediately before
+ * mutating `business.employedStaff` / `staff.employedAtSlot`, so a UI, AI or
+ * headless caller can never persist an employment at a business the acting
+ * seat does not own — even if it bypassed `canPlaceStaffOnBusiness` /
+ * `canMoveStaffOnBusiness`.
+ *
+ * Delegates to {@link canActiveSeatActOnSlot}, the single shared ownership
+ * predicate (it resolves the owner via `getSlotOwnerId` and names it via
+ * `getSeatLabel`), and rethrows its reason so the message is identical to
+ * every other cross-owner rejection (`That business belongs to <seat>.`).
+ * Single-player states carry no `ownerTaggedGrid`, so this is a no-op there.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Employment destination slot.
+ * @throws Error naming the real owner when the acting seat does not own it.
+ */
+function assertActiveSeatOwnsSlot(state: MainStreetState, slotIndex: number): void {
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
+  }
+}
+
+/**
  * Validates whether the hired staff member may be placed at the given
  * street-grid slot (CG-0MU3BTSQ8006ZRCU AC3/AC4):
  * - the member must be a hired staff card (present in `state.staffCards`);
@@ -950,6 +977,8 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  *   employed by the player and never take a business destination
  *   (GDD D.4.2, MS-0MW3JXF6U00753LB);
  * - the slot must hold a business/community-space card;
+ * - in competitive mode the acting seat must own the destination slot (the
+ *   single-player no-op path is unchanged — no `ownerTaggedGrid`);
  * - the business name or one of its synergy types must match the staff's
  *   `allowedBusinessTypes` (`staffMatchesBusiness`; absent field = generalist);
  * - the slot must have a free employment slot (`getEmploymentCapacity`).
@@ -957,7 +986,9 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  * @param state     Current game state.
  * @param staffId   ID of the hired staff card to place.
  * @param slotIndex Street-grid slot index.
- * @returns LegalityResult — legal when the placement may proceed.
+ * @returns LegalityResult — legal when the placement may proceed. In
+ *          competitive mode an opponent-owned destination is rejected with
+ *          the shared ownership reason (`That business belongs to <seat>.`).
  */
 export function canPlaceStaffOnBusiness(
   state: MainStreetState,
@@ -986,6 +1017,15 @@ export function canPlaceStaffOnBusiness(
   const business = state.streetGrid[slotIndex];
   if (!business) {
     return { legal: false, reason: 'Cannot place staff on an empty slot.' };
+  }
+  // Ownership gate (competitive only, MS-0MWBCWLZY001EA3W): a seat may only
+  // employ staff at a business it owns. Placed before the type/capacity checks
+  // so the ownership reason wins for an opponent-owned destination;
+  // single-player carries no `ownerTaggedGrid`, so the gate is a no-op and
+  // the existing reason ordering is unchanged there.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    return ownership;
   }
   if (!staffMatchesBusiness(state.staffCards[staffIndex]!, business)) {
     return {
@@ -1035,6 +1075,11 @@ export function isStaffRelocation(
  * `canPlaceStaffOnBusiness`. The initial placement of a newly-hired member
  * is not a move — use `canPlaceStaffOnBusiness` for that path.
  *
+ * Relocation therefore inherits the competitive ownership gate from
+ * `canPlaceStaffOnBusiness` with no duplicate check: an opponent-owned
+ * destination is rejected with the shared `That business belongs to <seat>.`
+ * reason. Single-player states are unaffected.
+ *
  * @param state     Current game state.
  * @param staffId   ID of the hired staff card to move.
  * @param slotIndex Target street-grid slot index.
@@ -1072,13 +1117,18 @@ export function canMoveStaffOnBusiness(
  * @param staffId   ID of the hired, employed staff card to move.
  * @param slotIndex Destination street-grid slot index.
  * @throws Error when the relocation is illegal (not employed, same slot,
- *         type mismatch, full destination, empty slot).
+ *         type mismatch, full destination, empty slot, or — competitive only —
+ *         an opponent-owned destination).
  */
 export function moveStaffOnBusiness(
   state: MainStreetState,
   staffId: string,
   slotIndex: number,
 ): void {
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): refuse to relocate a
+  // member onto another seat's business even if this write path ever bypassed
+  // `canMoveStaffOnBusiness`.
+  assertActiveSeatOwnsSlot(state, slotIndex);
   const legality = canMoveStaffOnBusiness(state, staffId, slotIndex);
   if (!legality.legal) {
     throw new Error(legality.reason);
@@ -1101,13 +1151,18 @@ export function moveStaffOnBusiness(
  * @param staffId   ID of the hired staff card to place.
  * @param slotIndex Street-grid slot index.
  * @throws Error when the placement is illegal (type mismatch, full slot,
- *         un-hired member, empty slot).
+ *         un-hired member, empty slot, or — competitive only — an
+ *         opponent-owned destination).
  */
 export function placeStaffOnBusiness(
   state: MainStreetState,
   staffId: string,
   slotIndex: number,
 ): void {
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): never persist an
+  // employment at a slot the acting seat does not own, even if this write
+  // path ever bypassed `canPlaceStaffOnBusiness`.
+  assertActiveSeatOwnsSlot(state, slotIndex);
   const legality = canPlaceStaffOnBusiness(state, staffId, slotIndex);
   if (!legality.legal) {
     throw new Error(legality.reason);
@@ -1357,7 +1412,8 @@ export function canHireStaffApplicant(state: MainStreetState): boolean {
  * Salary is deducted in the next income phase via applyStaffOngoingCosts.
  *
  * @param state     Current game state (mutated).
- * @throws Error if no pending applicant or slot is at capacity.
+ * @throws Error if no pending applicant, the slot is at capacity, or — in
+ *         competitive mode — the target business is owned by another seat.
  */
 export function hireStaffApplicant(state: MainStreetState): void {
   const pending = (state as any).pendingApplicant;
@@ -1367,6 +1423,12 @@ export function hireStaffApplicant(state: MainStreetState): void {
   if (!canHireStaffApplicant(state)) {
     throw new Error('Target slot is at employment capacity');
   }
+
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): the applicant-hire
+  // path never runs the placement legality helper, so it guards ownership
+  // itself before adding the member to `staffCards` / the business's
+  // `employedStaff`. No-op single-player.
+  assertActiveSeatOwnsSlot(state, pending.targetSlotIndex as number);
 
   const card = { ...(pending.card as StaffCard), employedAtSlot: pending.targetSlotIndex } as StaffCard;
 
