@@ -152,27 +152,23 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     applicantCenterY = Math.round(ac.y);
   } catch { /* fallback to defaults */ }
 
-  // ── Staff Pile zone (CG-0MSTOATDU006UGAX follow-up) ──────────────
-  // Top-left anchored in the free band left of the hand zone; resolved
-  // from the staffPile SLL zone so the renderer can draw the pile from
-  // layout authority data instead of hard-coded pixel offsets.
+  // ── Staff Pile zone (MS-0MWBWKZ1G006IBH2) ───────────────────────
+  // Top-left anchored in the free band left of the hand capacity row, so the
+  // renderer draws the pile from layout authority data (no hard-coded pixel
+  // offsets). Resolved from the staffPile zone's topLeft/bottomRight anchors;
+  // falls back to an empty rect when the zone is absent (legacy layouts) so
+  // the renderer hides the pile rather than mispositioning it.
   let staffPileX = 0;
   let staffPileY = 0;
   let staffPileW = 0;
   let staffPileH = 0;
   try {
-    const sp = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'topLeft', viewport, 1);
-    staffPileX = Math.round(sp.x);
-    staffPileY = Math.round(sp.y);
-    staffPileW = Math.round(
-      anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'bottomLeft', viewport, 1).y - staffPileY,
-    );
-    // Width: derive from the rect's x + w anchor; use topLeft as origin.
-    const staffPileRect = MAIN_STREET_SLL_LAYOUT.zones['staffPile'];
-    if (staffPileRect) {
-      staffPileW = Math.round(staffPileRect.rect.w! * gameW);
-      staffPileH = Math.round(staffPileRect.rect.h! * gameH);
-    }
+    const topLeft = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'topLeft', viewport, 1);
+    const bottomRight = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'bottomRight', viewport, 1);
+    staffPileX = Math.round(topLeft.x);
+    staffPileY = Math.round(topLeft.y);
+    staffPileW = Math.round(bottomRight.x - topLeft.x);
+    staffPileH = Math.round(bottomRight.y - topLeft.y);
   } catch { /* fallback: 0 — zone absent in legacy layouts */ }
 
   return {
