@@ -95,6 +95,10 @@ export const HUD_TOOLTIP_I18N_KEYS = {
   staffPileCount: 'hud.tooltip.staffPile.count',
   staffPileSalarySuffix: 'hud.tooltip.staffPile.salarySuffix',
   staffPileTotal: 'hud.tooltip.staffPile.total',
+  // Company Roster overlay (MS-0MWC1T8K2000DWZA).
+  companyRosterTitle: 'hud.tooltip.companyRoster.title',
+  companyRosterFooter: 'hud.tooltip.companyRoster.footer',
+  companyRosterEmpty: 'hud.tooltip.companyRoster.empty',
 } as const;
 
 /** ARIA label i18n keys (for screen-reader accessibility). */
@@ -177,6 +181,10 @@ export const HUD_TOOLTIP_STRINGS = {
   staffPileCount: '{count} on the company payroll',
   staffPileSalarySuffix: 'salary {salary}',
   staffPileTotal: 'Total salary: {total} per turn',
+  // Company Roster overlay (MS-0MWC1T8K2000DWZA).
+  companyRosterTitle: 'Company Roster',
+  companyRosterFooter: '{count} management-company staff · total salary {total} per turn',
+  companyRosterEmpty: 'No management-company staff employed.',
 } as const;
 
 /** ARIA label default English strings. Registered as the `en` locale bundle. */

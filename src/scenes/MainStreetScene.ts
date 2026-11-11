@@ -1698,6 +1698,18 @@ export class MainStreetScene extends CardGameScene {
   }
 
   /**
+   * Shows the Company Roster overlay (MS-0MWC1T8K2000DWZA): the management-company
+   * team with each member's role, effective salary and the team total, plus the
+   * lay-off controls. Delegates to the overlay manager's
+   * `showCompanyRosterDialog`.
+   */
+  public showCompanyRoster(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompanyRosterDialog === 'function') {
+      (this.msOverlayManager as any).showCompanyRosterDialog();
+    }
+  }
+
+  /**
    * Shows the Card Packs overlay (F9 / CG-0MUZIS4KZ003R1HP): the installed
    * card packs with their lock state and enable/disable controls. Delegates to
    * the overlay manager's showCardPacksDialog.

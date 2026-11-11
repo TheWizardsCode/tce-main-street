@@ -51,7 +51,9 @@ import type { LoanOfferModel } from './MainStreetLoanOverlayModel';
 import { showLoanPayoffDialog as renderLoanPayoffDialog } from './MainStreetLoanPayoffOverlay';
 import type { LoanPayoff } from '../MainStreetLoans';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
-import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
+import { buildMoveStaffAffordance, HUD_TOOLTIP_I18N_KEYS } from './MainStreetHudTooltips';
+import { buildCompanyRoster } from '../MainStreetRoster';
+import { formatCoins } from './MainStreetLoanRowModel';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
 import {
   isBuyAndPlacePremiumDialogDismissed,
@@ -1716,6 +1718,116 @@ export class MainStreetOverlayContent {
 
     const closeBtn = createOverlayButton(
       s, s.layout.gameW / 2, panelY + panelH - 40, '[ Close ]', 201,
+    );
+    if (s.hudContainer) s.hudContainer.add(closeBtn);
+    closeBtn.on('pointerdown', () => {
+      safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+      dismissOverlay(s.overlayObjects);
+      s.overlayObjects = [];
+      onClose?.();
+    });
+    s.overlayObjects.push(closeBtn);
+  }
+
+  /**
+   * Shows the **Company Roster** overlay (MS-0MWC1T8K2000DWZA).
+   *
+   * Lists every management-company staff member with their role/benefit
+   * summary and effective per-turn salary, plus a footer stating the member
+   * count and the team's total per-turn salary. Rows and totals come only from
+   * {@link buildCompanyRoster}, so the overlay never does its own salary
+   * arithmetic, and an explicit empty state replaces an empty panel.
+   *
+   * Overlay pattern compliance: `createOverlayBackground` +
+   * `createOverlayButton` from @ui; ALL elements parented into `s.hudContainer`;
+   * depths 199 (backdrop) / 200 (box) / 201 (interactive). No animations
+   * (reduced-motion safe). Cleanup on dismissal resets `s.overlayObjects`.
+   *
+   * @param onClose Called after the overlay is dismissed.
+   */
+  public showCompanyRosterDialog(onClose?: () => void): void {
+    const s = this.scene;
+    if (s.replayMode) return; // headless/replay: never present UI
+
+    const roster = buildCompanyRoster(s.state);
+    const empty = roster.count === 0;
+    const maxRows = 10;
+    const rowH = 40;
+    const shown = roster.rows.slice(0, maxRows);
+    const panelW = 560;
+    const contentRows = empty ? 1 : Math.max(1, shown.length);
+    const panelH = Math.max(240, 64 + contentRows * rowH + 108);
+    const centerX = s.layout.gameW / 2;
+    const panelLeft = centerX - panelW / 2;
+    const panelRight = centerX + panelW / 2;
+    const panelY = s.layout.gameH / 2 - panelH / 2;
+
+    const boxConfig = { width: panelW, height: panelH, color: 0x000000, alpha: 1.0, depth: 200 };
+    const overlay = createOverlayBackground(s, { depth: 199, alpha: 0.6 }, boxConfig);
+    s.overlayObjects.push(...overlay.objects);
+
+    const titleText = s.add.text(centerX, panelY + 24, t(HUD_TOOLTIP_I18N_KEYS.companyRosterTitle), {
+      fontSize: '20px', fontStyle: 'bold', color: '#ffcc44', fontFamily: FONT_FAMILY,
+      align: 'center', wordWrap: { width: panelW - 60 },
+    }).setOrigin(0.5).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(titleText);
+    s.overlayObjects.push(titleText);
+
+    if (empty) {
+      const emptyText = s.add.text(
+        centerX, panelY + 100, t(HUD_TOOLTIP_I18N_KEYS.companyRosterEmpty),
+        { fontSize: '14px', color: '#bbaa88', fontFamily: FONT_FAMILY, align: 'center', lineSpacing: 4 },
+      ).setOrigin(0.5, 0).setDepth(201);
+      if (s.hudContainer) s.hudContainer.add(emptyText);
+      s.overlayObjects.push(emptyText);
+    } else {
+      shown.forEach((row, index) => {
+        const y = panelY + 64 + index * rowH;
+        const nameText = s.add.text(panelLeft + 24, y, row.name, {
+          fontSize: '14px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
+          wordWrap: { width: 150 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(nameText);
+        s.overlayObjects.push(nameText);
+
+        const roleText = s.add.text(panelLeft + 182, y, row.roleSummary, {
+          fontSize: '12px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+          wordWrap: { width: panelW - 320 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(roleText);
+        s.overlayObjects.push(roleText);
+
+        const salaryText = s.add.text(panelRight - 24, y, `${formatCoins(row.salary)}/turn`, {
+          fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
+        }).setOrigin(1, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(salaryText);
+        s.overlayObjects.push(salaryText);
+      });
+      if (roster.rows.length > maxRows) {
+        const moreText = s.add.text(
+          centerX, panelY + 64 + maxRows * rowH,
+          `…and ${roster.rows.length - maxRows} more`, {
+            fontSize: '12px', fontStyle: 'italic', color: '#998877', fontFamily: FONT_FAMILY,
+          },
+        ).setOrigin(0.5, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(moreText);
+        s.overlayObjects.push(moreText);
+      }
+    }
+
+    const footer = s.add.text(
+      centerX, panelY + panelH - 84,
+      t(HUD_TOOLTIP_I18N_KEYS.companyRosterFooter, {
+        count: roster.count,
+        total: formatCoins(roster.totalSalary),
+      }),
+      { fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'center', wordWrap: { width: panelW - 60 } },
+    ).setOrigin(0.5, 0).setDepth(201);
+    if (s.hudContainer) s.hudContainer.add(footer);
+    s.overlayObjects.push(footer);
+
+    const closeBtn = createOverlayButton(
+      s, centerX, panelY + panelH - 40, '[ Close ]', 201,
     );
     if (s.hudContainer) s.hudContainer.add(closeBtn);
     closeBtn.on('pointerdown', () => {
