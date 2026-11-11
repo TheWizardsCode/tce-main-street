@@ -45,6 +45,16 @@
  * the source types, so this file still type-checks (and the red-phase cases
  * still compile) before the model children land.
  *
+ * Flip checklist — each implementing child removes its own line once it has
+ * flipped the named `it.fails` cases to plain `it`:
+ *
+ *  - MS-0MWC90QGG0075S8A → `a staff item carries its base salary and each
+ *    named modifier`
+ *  - MS-0MWC90RB7004BC4E → `the Events row enumerates each event effect`
+ *  - MS-0MWC90S6H009EDRD → `exposes the committed deltas plus each applied
+ *    modifier`, `exposes day-start coins, the owning business names and the
+ *    reputation constituents`, `derives a competitive seat’s day-start coins`
+ *
  * @module tests/main-street/turn-summary-pl-model
  */
 import { describe, expect, it } from 'vitest';
