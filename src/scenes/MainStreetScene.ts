@@ -277,6 +277,17 @@ export class MainStreetScene extends CardGameScene {
    */
   public handPanelGraphics?: Phaser.GameObjects.Graphics;
 
+  /**
+   * The management-company Staff Pile container (MS-0MWBWKZ1G006IBH2):
+   * stacked card faces, count badge, portrait row and hover hit area. A
+   * root-level container at `STAFF_PILE_DEPTH` (below the hand layer),
+   * rebuilt by `refreshPlayerHand` and destroyed with the scene.
+   */
+  public staffPileContainer?: Phaser.GameObjects.Container;
+
+  /** The pile's hover hit area (clamped to the free band left of the hand). */
+  public staffPileHitArea?: Phaser.GameObjects.Rectangle;
+
   public actionContainer!: Phaser.GameObjects.Container;
 
   // Activity Log panel

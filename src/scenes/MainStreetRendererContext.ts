@@ -27,6 +27,13 @@ export interface MainStreetRendererContext {
   createContainers(): void;
   /** Draw the persistent opaque panel behind the player hand (AC3). */
   drawHandPanel(): void;
+  /**
+   * Draw (or clear) the management-company Staff Pile — stacked card faces,
+   * count badge, portrait row and hover tooltip (MS-0MWBWKZ1G006IBH2).
+   * Rebuilt from `state.staffCards` on every call; hidden when the company
+   * employs no management-company staff.
+   */
+  drawStaffPile(): void;
   refreshAll(): void;
   refreshAllExceptStreet(): void;
   refreshHud(): void;

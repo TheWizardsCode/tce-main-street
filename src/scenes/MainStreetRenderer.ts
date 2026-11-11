@@ -21,6 +21,7 @@ import { refreshMarket, drawMarketRow, getMarketRowCards, getMarketSlotCenter, d
 import { createHeader, refreshAll, refreshAllExceptStreet, refreshHud, syncHudTotals, refreshChallengeTracker, refreshActionButtons, refreshLog, refreshApplicant, animateUpcomingEffectLine } from './MainStreetRendererHud';
 import { unregisterDragDraggables, unregisterHandDraggables, refreshDragDropZones, showDragHighlights, getDragHighlights, clearDragHighlights, showTargetHighlights, clearTargetHighlights } from './MainStreetRendererDragDrop';
 import { computeLayout, refreshPlayerHand, drawHeldEventCard } from './MainStreetRendererLayout';
+import { drawStaffPile } from './MainStreetRendererStaffPile';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -49,6 +50,10 @@ export class MainStreetRenderer implements MainStreetRendererContext {
 
   public drawHandPanel(): void {
     drawHandPanel(this);
+  }
+
+  public drawStaffPile(): void {
+    drawStaffPile(this);
   }
 
   public refreshAll(): void {
