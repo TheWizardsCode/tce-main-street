@@ -34,18 +34,17 @@
  *   business is repaired on load, keeps the member hired, logs the release,
  *   and is idempotent across repeated load/save round-trips.
  *
- * ## Red phase (`it.fails`)
+ * ## Red → green phase
  *
  * Per the repo's test-first tracer-bullet convention (see
  * `income-owner-flight-routing.test.ts`, `competitive-seat-anchors.test.ts`),
- * the cases that pin the *missing* ownership rules are authored **red-phase**
- * with `it.fails`: they FAIL against today's engine, and a passing `it.fails`
- * is the machine-checked record of that red baseline. The implementation
- * children flip each `it.fails` to a plain `it` as their slice lands — leaving
- * one as `it.fails` afterwards is itself a failure, so the matrix cannot go
- * stale. Cases that already hold today (every single-player regression) are
- * plain `it` so they keep protecting the unchanged behaviour through the
- * change.
+ * the cases pinning the *missing* ownership rules were authored **red-phase**
+ * with `it.fails`: they failed against the pre-fix engine, and a passing
+ * `it.fails` was the machine-checked record of that red baseline. Every case
+ * has since been flipped to a plain `it` as its implementation slice landed —
+ * no `it.fails` remains, so the matrix cannot go stale. Cases that already held
+ * before the change (every single-player regression) were authored as plain
+ * `it` and keep protecting the unchanged behaviour.
  *
  * Determinism: every case uses a fixture seed and/or a stubbed `state.rng`;
  * no wall-clock reads, no unseeded randomness, no sleeps.
@@ -446,7 +445,7 @@ describe('write-path guard: the applicant hire path names the real owner', () =>
 // ── Save repair ─────────────────────────────────────────────
 
 describe('save repair: cross-seat employment is released on load', () => {
-  it.fails(
+  it(
     'competitive: a save carrying player staff at another seat’s business is repaired on load',
     () => {
       const state = competitiveState('staff-own-save-repair');
@@ -474,7 +473,7 @@ describe('save repair: cross-seat employment is released on load', () => {
     },
   );
 
-  it.fails(
+  it(
     'competitive: the load-time repair is idempotent across repeated round-trips',
     () => {
       const state = competitiveState('staff-own-save-repair-idempotent');
@@ -501,6 +500,42 @@ describe('save repair: cross-seat employment is released on load', () => {
       ).toHaveLength(1);
     },
   );
+
+  it('competitive: staff employed at the player’s own business is left untouched', () => {
+    const state = competitiveState('staff-own-save-valid');
+    const playerBusiness = placeBusinessAt(state, 0, 0, 'Bakery', ['Food']);
+    placeBusinessAt(state, 2, 1, 'Diner', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    chef.employedAtSlot = 0;
+    playerBusiness.employedStaff = [chef];
+    const logLengthBefore = state.activityLog.length;
+
+    const restored = deserializeMainStreetState(serializeMainStreetState(state));
+
+    const member = restored.staffCards.find(c => c.id === chef.id)!;
+    expect(member.employedAtSlot).toBe(0);
+    expect(getEmployedStaffCountAt(restored, 0)).toBe(1);
+    expect(restored.activityLog).toHaveLength(logLengthBefore);
+  });
+
+  it('competitive: the repair does not depend on whose turn the save was taken in', () => {
+    const state = competitiveState('staff-own-save-ai-turn');
+    placeBusinessAt(state, 0, 0, 'Bakery', ['Food']);
+    const opponentBusiness = placeBusinessAt(state, 2, 1, 'Diner', ['Food']);
+    const chef = hire(state, 'staff-chef');
+    chef.employedAtSlot = 2;
+    opponentBusiness.employedStaff = [chef];
+    // Save captured mid-AI-turn: the acting seat is the opponent, not the
+    // staff-owning seat, so the repair must key off slot ownership only.
+    state.activePlayerId = 1;
+
+    const restored = deserializeMainStreetState(serializeMainStreetState(state));
+
+    const member = restored.staffCards.find(c => c.id === chef.id)!;
+    expect(member.employedAtSlot).toBeUndefined();
+    expect(getEmployedStaffCountAt(restored, 2)).toBe(0);
+    expect(restored.activityLog.some(entry => entry.text.includes(member.name))).toBe(true);
+  });
 
   it('single-player: employed staff round-trip unchanged (no repair)', () => {
     const state = soloState('staff-own-save-solo');

@@ -44,7 +44,21 @@ import type {
 } from './MainStreetStateTypes';
 import type { StorylineOption } from './MainStreetCardsTypes';
 import { restoreActiveLoans, restorePendingLoanOffer } from './MainStreetLoans';
+import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
+import { addLog } from './MainStreetStateLog';
 import { ALLOWED_START_WEEKS, BASE_HAND_CAPACITY, deriveSeatColours } from './MainStreetStateSetup';
+
+/**
+ * Seat that owns every staff member in competitive play.
+ *
+ * Staff are player-only in competitive mode (the AI plays staff-free,
+ * MS-0MT5X3N79002S038), so every member in the single `staffCards` list —
+ * salaries are charged from it — belongs to the human player's seat, index 0.
+ * A legacy invalid save may record such a member employed at *another* seat's
+ * business; that member is still the player's, which is why the load-time
+ * repair releases rather than deletes it (A3 of MS-0MWBB146L005SU31).
+ */
+const STAFF_OWNING_SEAT_ID = 0;
 
 /**
  * Serializes Main Street runtime state into a JSON-safe checkpoint shape.
@@ -996,10 +1010,75 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     }
   }
 
+  // ── Cross-seat staff employment repair (MS-0MWBCX7MS00960BH) ──────
+  // Saves written before the staff-ownership gate (MS-0MWBB146L005SU31) can
+  // hold a player's staff member employed at another seat's business — the
+  // player paid the salary while the opponent's business gained the buff.
+  repairCrossSeatStaffEmployment(state);
+
   // Restore the persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). The
   // system is a runtime service and is never serialized; re-attach a fresh
   // one so loaded games keep unlocking achievements.
   attachMainStreetAchievements(state);
 
   return state;
+}
+
+/**
+ * Releases player staff that a legacy save recorded as employed at another
+ * seat's business (MS-0MWBCX7MS00960BH).
+ *
+ * Walks `state.staffCards` and, for every member whose `employedAtSlot` points
+ * at a slot the *staff-owning* seat ({@link STAFF_OWNING_SEAT_ID}, the human
+ * seat — staff are player-only in competitive play) does not own, releases the
+ * member instead of leaving the invalid state in place (assumption A3 of
+ * MS-0MWBB146L005SU31):
+ *
+ *  1. clears the member's `employedAtSlot` (the member stays in `staffCards`,
+ *     i.e. remains the player's hired staff — it is not deleted);
+ *  2. drops every reference to it from the businesses' `employedStaff` lists
+ *     (the per-business employment source of truth, CG-0MTIOLY2A0092OT1), so
+ *     the opponent's business immediately stops resolving its buffs; and
+ *  3. appends one seat-attributed activity-log entry naming the member and the
+ *     business, so the player sees why the member became unassigned.
+ *
+ * Ownership is read through {@link getSlotOwnerId} — the single shared
+ * ownership predicate — never through a local owner comparison.
+ *
+ * Single-player is untouched: without `ownerTaggedGrid` the ownership gate is
+ * a no-op everywhere, so there is nothing to repair and no log entry is
+ * written (old saves load byte-identically).
+ *
+ * The repair is idempotent: a repaired state no longer carries an
+ * `employedAtSlot` on the released member, so re-serialising and re-loading it
+ * performs no write and appends no further log entry.
+ *
+ * @param state Loaded state (mutated in place).
+ */
+function repairCrossSeatStaffEmployment(state: MainStreetState): void {
+  if (!state.ownerTaggedGrid) return;
+
+  for (const member of state.staffCards ?? []) {
+    const slotIndex = member.employedAtSlot;
+    if (typeof slotIndex !== 'number') continue;
+    if (getSlotOwnerId(state, slotIndex) === STAFF_OWNING_SEAT_ID) continue;
+
+    const business = state.streetGrid[slotIndex];
+    const businessName = business?.name ?? 'another seat';
+
+    delete member.employedAtSlot;
+    for (const card of state.streetGrid) {
+      if (!card || !Array.isArray(card.employedStaff)) continue;
+      card.employedStaff = card.employedStaff.filter(
+        (employed) => employed.id !== member.id,
+      );
+    }
+
+    addLog(
+      state,
+      STAFF_OWNING_SEAT_ID,
+      `${member.name} was released from ${businessName} — staff cannot work for another seat.`,
+      'neutral',
+    );
+  }
 }
