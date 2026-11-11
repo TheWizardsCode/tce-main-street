@@ -152,6 +152,29 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     applicantCenterY = Math.round(ac.y);
   } catch { /* fallback to defaults */ }
 
+  // ── Staff Pile zone (CG-0MSTOATDU006UGAX follow-up) ──────────────
+  // Top-left anchored in the free band left of the hand zone; resolved
+  // from the staffPile SLL zone so the renderer can draw the pile from
+  // layout authority data instead of hard-coded pixel offsets.
+  let staffPileX = 0;
+  let staffPileY = 0;
+  let staffPileW = 0;
+  let staffPileH = 0;
+  try {
+    const sp = anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'topLeft', viewport, 1);
+    staffPileX = Math.round(sp.x);
+    staffPileY = Math.round(sp.y);
+    staffPileW = Math.round(
+      anchorPoint(MAIN_STREET_SLL_LAYOUT, 'staffPile', 'bottomLeft', viewport, 1).y - staffPileY,
+    );
+    // Width: derive from the rect's x + w anchor; use topLeft as origin.
+    const staffPileRect = MAIN_STREET_SLL_LAYOUT.zones['staffPile'];
+    if (staffPileRect) {
+      staffPileW = Math.round(staffPileRect.rect.w! * gameW);
+      staffPileH = Math.round(staffPileRect.rect.h! * gameH);
+    }
+  } catch { /* fallback: 0 — zone absent in legacy layouts */ }
+
   return {
     gameW,
     gameH,
@@ -199,6 +222,10 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     favourBandRight,
     applicantCenterX,
     applicantCenterY,
+    staffPileX,
+    staffPileY,
+    staffPileW,
+    staffPileH,
     challengeX: Math.round(challengeTopLeft.x),
     challengeY: Math.round(challengeTopLeft.y),
     challengeW,

@@ -187,6 +187,41 @@ export const HAND_SLOT_PITCH_PAD = 8;
 /** Padding (px) between the hand cards and the hand panel's edges. */
 export const HAND_PANEL_PAD = 6;
 
+// ── Staff Pile presentation constants ──────────────────────────
+// Layout authority drives position; these constants control the internal
+// layout of the staff pile (card stack + portrait row) once the zone bounds
+// are known.
+
+/** Display depth of the staff pile panel (below hand panel's −100). */
+export const STAFF_PILE_DEPTH = -200;
+
+/** Number of card slots in the stacked card display of the staff pile. */
+export const STAFF_PILE_STACK_SIZE = 3;
+
+/** Card width (px) inside the staff pile stack display. */
+export const STAFF_PILE_CARD_W = 56;
+
+/** Card height (px) inside the staff pile stack display. */
+export const STAFF_PILE_CARD_H = 80;
+
+/** Horizontal offset (px) between stacked cards in the staff pile. */
+export const STAFF_PILE_STACK_OFFSET_X = 8;
+
+/** Vertical offset (px) between stacked cards in the staff pile. */
+export const STAFF_PILE_STACK_OFFSET_Y = 4;
+
+/** Portrait display width (px) in the staff pile's portrait row. */
+export const STAFF_PILE_PORTRAIT_W = 40;
+
+/** Portrait display height (px) in the staff pile's portrait row. */
+export const STAFF_PILE_PORTRAIT_H = 56;
+
+/** Horizontal padding (px) inside the staff pile panel edges. */
+export const STAFF_PILE_PANEL_PAD = 6;
+
+/** Gap (px) between the card stack and the portrait row. */
+export const STAFF_PILE_GAP_PX = 8;
+
 /**
  * Display depth of the persistent hand panel (MS-0MVPWQIPZ002PHPD AC3).
  *
@@ -374,6 +409,14 @@ export interface SceneLayout {
   /** X/Y of the staff-applicant overlay centre (SLL applicantOverlay zone). */
   applicantCenterX: number;
   applicantCenterY: number;
+  /** Left edge X of the staff pile zone (SLL staffPile zone). */
+  staffPileX: number;
+  /** Top edge Y of the staff pile zone (SLL staffPile zone). */
+  staffPileY: number;
+  /** Width of the staff pile zone (SLL-driven). */
+  staffPileW: number;
+  /** Height of the staff pile zone (SLL-driven). */
+  staffPileH: number;
   challengeX: number;
   challengeY: number;
   challengeW: number;

@@ -93,6 +93,19 @@ describe('Main Street layout anchor bounds', () => {
       expect(endTurnRect.x + endTurnRect.w).toBeLessThanOrEqual(layout.gameW);
       expect(endTurnRect.y + endTurnRect.h).toBeLessThanOrEqual(layout.gameH);
 
+      // Staff Pile: left edge of viewport, y inside the hand band region,
+      // above the hand row but within the lower viewport region.
+      const staffPileRect = {
+        x: layout.staffPileX,
+        y: layout.staffPileY,
+        w: layout.staffPileW,
+        h: layout.staffPileH,
+      };
+      expect(staffPileRect.x).toBeGreaterThanOrEqual(0);
+      expect(staffPileRect.x + staffPileRect.w).toBeLessThanOrEqual(layout.handX);
+      expect(staffPileRect.y).toBeGreaterThanOrEqual(layout.handY);
+      expect(staffPileRect.y + staffPileRect.h).toBeLessThanOrEqual(layout.gameH);
+
       // Explicit pass/fail bound: End Turn stays below Activity Log.
       expect(endTurnRect.y).toBeGreaterThan(logRect.y + logRect.h);
 
