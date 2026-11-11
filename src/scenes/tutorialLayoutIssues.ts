@@ -2,8 +2,8 @@
  * Tutorial layout-composition issue reporting (MS-0MV26MOWT004ZCQC).
  *
  * The tutorial layout (`main-street-tutorial.layout.json`) deliberately
- * overrides three base shell zones — `hand`, `endTurnButton` and
- * `incidentQueue` — under the `sceneWins` policy. This is the documented
+ * overrides four base shell zones — `hand`, `endTurnButton`, `incidentQueue`
+ * and `staffPile` — under the `sceneWins` policy. This is the documented
  * alignment contract in `MainStreetTutorialHints.ts`: the tutorial zone rects
  * are the source of truth for the highlight overlay, and the naming reuse is
  * intentional.
@@ -33,6 +33,10 @@ export const TUTORIAL_INTENTIONAL_OVERRIDE_ZONES: ReadonlySet<string> = new Set(
   'hand',
   'endTurnButton',
   'incidentQueue',
+  // The Staff Pile zone is declared in both layouts so the tutorial layout
+  // stays self-describing (MS-0MWBWKZ1G006IBH2); the rects are identical, so
+  // the tutorial value is the source of truth for the highlight overlay.
+  'staffPile',
 ]);
 
 /**

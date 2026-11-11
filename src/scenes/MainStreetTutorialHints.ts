@@ -54,8 +54,8 @@ import { STANDARD_TUTORIAL_SCENARIO } from '../TutorialScenario';
  * zones with the same name. If the base layout or rendering constants change,
  * update the corresponding tutorial zone rects to match.
  *
- * The three base zones the tutorial intentionally reuses (`hand`,
- * `endTurnButton`, `incidentQueue`) are resolved through
+ * The four base zones the tutorial intentionally reuses (`hand`,
+ * `endTurnButton`, `incidentQueue`, `staffPile`) are resolved through
  * `reportTutorialLayoutIssue` (`./tutorialLayoutIssues.ts`), which keeps those
  * documented `Zone collision …` warnings quiet while still surfacing any
  * unexpected collision (MS-0MV26MOWT004ZCQC).
