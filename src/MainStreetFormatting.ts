@@ -434,6 +434,33 @@ export function buildCardTooltipInfo(
 }
 
 /**
+ * Renders one staff member's role/benefit summary — the business types they
+ * serve (or "Generalist") followed by their effect/ability description, with
+ * no leading name or bullet. Used by the Company Roster row
+ * (MS-0MWC1T8K2000DWZA) and composed into {@link formatStaffMemberLine} for the
+ * tooltip surfaces, so every staff surface describes a member's role
+ * identically.
+ *
+ * @param member The staff member to describe.
+ * @returns The role/benefit summary, e.g. `Generalist — …`.
+ */
+export function formatStaffRoleSummary(member: StaffCard): string {
+  return `${staffBusinessTypes(member)}${staffEffectText(member)}`;
+}
+
+/** The business types a member serves, or "Generalist" when unrestricted. */
+function staffBusinessTypes(member: StaffCard): string {
+  return Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
+    ? member.allowedBusinessTypes.join('/')
+    : 'Generalist';
+}
+
+/** The member's effect/ability description, prefixed with an em-dash. */
+function staffEffectText(member: StaffCard): string {
+  return member.description ? ` — ${member.description}` : '';
+}
+
+/**
  * Renders one staff member's summary bullet: name, the business types they
  * serve (or "Generalist"), their effect/ability description, and — for an
  * Investor — the free-reroll availability plus relevance bias.
@@ -451,17 +478,12 @@ export function formatStaffMemberLine(
   member: StaffCard,
   options?: { freeRerollUsedThisTurn?: boolean },
 ): string {
-  const types =
-    Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
-      ? member.allowedBusinessTypes.join('/')
-      : 'Generalist';
-  const effect = member.description ? ` — ${member.description}` : '';
   // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
   // this turn plus the relevance bias alongside the member's own effect.
   const reroll = member.freeMarketRerollPerTurn
     ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
     : '';
-  return `• ${member.name} (${types})${effect}${reroll}`;
+  return `• ${member.name} (${staffBusinessTypes(member)})${staffEffectText(member)}${reroll}`;
 }
 
 /**
