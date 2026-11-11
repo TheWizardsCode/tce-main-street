@@ -250,6 +250,21 @@ export function isBusinessStaffCard(card: StaffCard): boolean {
 }
 
 /**
+ * The management-company staff among the given members, in card order.
+ *
+ * Membership is the two-type model's own test — `!isBusinessStaffCard(card)`
+ * — so nothing else (a persisted flag, a card-name list) can disagree with
+ * the engine about who belongs to the management company
+ * (MS-0MWBWKZ1G006IBH2).
+ *
+ * @param cards Staff members to filter (e.g. `state.staffCards`).
+ * @returns Members with no `employedAtSlot`, in card order.
+ */
+export function selectManagementCompanyStaff(cards: readonly StaffCard[]): StaffCard[] {
+  return cards.filter(card => !isBusinessStaffCard(card));
+}
+
+/**
  * Management-company-scope (player/street-scope) skills the given members can
  * realise. A skill takes effect only from a management-company member, i.e.
  * one with no `employedAtSlot`: a management-company-scope skill held by

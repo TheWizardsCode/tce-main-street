@@ -30,6 +30,8 @@ import {
   canRefreshMarket,
 } from '../MainStreetMarket';
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
+import { selectManagementCompanyStaff } from '../MainStreetStaffBuffs';
+import { formatStaffMemberLine } from '../MainStreetFormatting';
 import { t, registerLocale } from '@core-engine/I18n';
 
 // ── i18n Keys ───────────────────────────────────────────────
@@ -88,6 +90,11 @@ export const HUD_TOOLTIP_I18N_KEYS = {
   moveStaffNoDestination: 'hud.tooltip.moveStaff.noDestination',
   moveStaffNoStaff: 'hud.tooltip.moveStaff.noStaff',
   moveStaffNoActions: 'hud.tooltip.moveStaff.noActions',
+  // Staff Pile (MS-0MWBWKZ1G006IBH2): management-company team summary.
+  staffPileTitle: 'hud.tooltip.staffPile.title',
+  staffPileCount: 'hud.tooltip.staffPile.count',
+  staffPileSalarySuffix: 'hud.tooltip.staffPile.salarySuffix',
+  staffPileTotal: 'hud.tooltip.staffPile.total',
 } as const;
 
 /** ARIA label i18n keys (for screen-reader accessibility). */
@@ -166,6 +173,10 @@ export const HUD_TOOLTIP_STRINGS = {
   moveStaffNoDestination: 'No matching business has a free employment slot.',
   moveStaffNoStaff: 'No employed staff member can be moved.',
   moveStaffNoActions: 'No actions remaining this week — end your turn first.',
+  staffPileTitle: 'Management Company Staff',
+  staffPileCount: '{count} on the company payroll',
+  staffPileSalarySuffix: 'salary {salary}',
+  staffPileTotal: 'Total salary: {total} per turn',
 } as const;
 
 /** ARIA label default English strings. Registered as the `en` locale bundle. */
@@ -657,6 +668,45 @@ export function buildMoveStaffAffordance(
     staffId: target?.id ?? null,
     destinationSlots,
   };
+}
+
+/**
+ * Builds the Staff Pile tooltip: the management company's own staff, one
+ * line per member (name, served business types, effect, salary) plus the
+ * member count and the team's total weekly salary.
+ *
+ * Membership comes from the two-type model's runtime test
+ * (`selectManagementCompanyStaff` → `!isBusinessStaffCard`), so business
+ * staff never appear here — they are surfaced on their business slots
+ * (MS-0MWBWKZ1G006IBH2). Per-member lines reuse `formatStaffMemberLine`, the
+ * formatter the business-slot tooltip uses, so both surfaces describe a
+ * member identically.
+ *
+ * Salary is the card's `ongoingCost` (per turn). Management-company salary is
+ * never discounted — `getSalaryScopeSkills` is empty for these members — so
+ * the shown figure is exactly what the weekly salary charge is.
+ *
+ * @param state Current game state (read-only).
+ * @returns The tooltip body, or null when the company employs no
+ *          management-company staff (caller hides the tooltip).
+ */
+export function buildStaffPileTooltip(state: MainStreetState): string | null {
+  const members = selectManagementCompanyStaff(state.staffCards ?? []);
+  if (members.length === 0) return null;
+
+  const salaries = members.map(member => Math.max(0, Math.round(member.ongoingCost ?? 0)));
+  const totalSalary = salaries.reduce((sum, salary) => sum + salary, 0);
+
+  const lines = [
+    t(HUD_TOOLTIP_I18N_KEYS.staffPileTitle),
+    t(HUD_TOOLTIP_I18N_KEYS.staffPileCount, { count: members.length }),
+    ...members.map((member, index) =>
+      `${formatStaffMemberLine(member)} — ${t(HUD_TOOLTIP_I18N_KEYS.staffPileSalarySuffix, { salary: salaries[index] })}`,
+    ),
+    t(HUD_TOOLTIP_I18N_KEYS.staffPileTotal, { total: totalSalary }),
+  ];
+
+  return lines.join('\n');
 }
 
 // ── Helpers ───────────────────────────────────────────────────

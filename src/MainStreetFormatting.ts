@@ -434,6 +434,37 @@ export function buildCardTooltipInfo(
 }
 
 /**
+ * Renders one staff member's summary bullet: name, the business types they
+ * serve (or "Generalist"), their effect/ability description, and — for an
+ * Investor — the free-reroll availability plus relevance bias.
+ *
+ * Shared by the business-slot tooltip (`formatEmployedStaffSummary`) and the
+ * Staff Pile tooltip (`buildStaffPileTooltip`), so both surfaces describe a
+ * member identically instead of maintaining two formatters
+ * (MS-0MWBWKZ1G006IBH2).
+ *
+ * @param member  The staff member to describe.
+ * @param options Optional state context (free-reroll availability).
+ * @returns The bulleted line, e.g. `• Manager (Generalist) — …`.
+ */
+export function formatStaffMemberLine(
+  member: StaffCard,
+  options?: { freeRerollUsedThisTurn?: boolean },
+): string {
+  const types =
+    Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
+      ? member.allowedBusinessTypes.join('/')
+      : 'Generalist';
+  const effect = member.description ? ` — ${member.description}` : '';
+  // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
+  // this turn plus the relevance bias alongside the member's own effect.
+  const reroll = member.freeMarketRerollPerTurn
+    ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
+    : '';
+  return `• ${member.name} (${types})${effect}${reroll}`;
+}
+
+/**
  * Renders the employed-staff enumeration for a business/community-space slot
  * tooltip (CG-0MU3BTTCH001E7ZD AC2/AC3): each staff member's name, the
  * business types they serve (or "Generalist"), and their effect/ability
@@ -454,19 +485,7 @@ export function formatEmployedStaffSummary(
   options?: { freeRerollUsedThisTurn?: boolean },
 ): string | null {
   if (!Array.isArray(staff) || staff.length === 0) return null;
-  const lines = staff.map((member) => {
-    const types =
-      Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
-        ? member.allowedBusinessTypes.join('/')
-        : 'Generalist';
-    const effect = member.description ? ` — ${member.description}` : '';
-    // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
-    // this turn plus the relevance bias alongside the member's own effect.
-    const reroll = member.freeMarketRerollPerTurn
-      ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
-      : '';
-    return `• ${member.name} (${types})${effect}${reroll}`;
-  });
+  const lines = staff.map((member) => formatStaffMemberLine(member, options));
   return `\nEmployed staff (${staff.length}):\n${lines.join('\n')}`;
 }
 
