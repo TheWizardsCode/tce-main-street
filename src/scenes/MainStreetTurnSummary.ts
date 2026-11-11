@@ -68,6 +68,7 @@ import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from
 import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import { computeStaffSalaryCost, getEmployedSpecializationSkills, getSalaryScopeSkills, computeStreetOngoingCostReductionPct } from '../MainStreetStaffBuffs';
+import { getSkill } from '../MainStreetStaffSkills';
 import { roundInt } from '../MainStreetDifficulty';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 import {
@@ -736,14 +737,48 @@ const PL_LABELS = {
 } as const;
 
 /**
+ * One named signed modifier applied to a breakdown item's {@link
+ * PLBreakdownItem.base} (e.g. the Operations Manager salary discount).
+ *
+ * `coins` is signed in the item's own convention: positive when the modifier
+ * increases the item (an income bonus, a salary discount on a negative cost),
+ * negative when it reduces it.
+ */
+export interface PLBreakdownModifier {
+  /** Display name of the modifier (a staff skill name, etc.). */
+  name: string;
+  /** Signed coin effect of the modifier on {@link PLBreakdownItem.base}. */
+  coins: number;
+}
+
+/**
  * A single item in a per-item breakdown (business name → coins, staff card →
  * cost, etc.). Used by tooltip content builders.
+ *
+ * `coins` is always the **committed** contribution the item adds to the line
+ * (the engine's own per-card charge, or the ledger's per-business figure).
+ * `base` and `modifiers` only *explain* that figure for the tooltip: they are
+ * optional, and when `base` is present the invariant
+ * `base + sum(modifiers.coins) === coins` holds for every emitted item.
  */
 export interface PLBreakdownItem {
   /** Display name of the item (business name, staff name, etc.). */
   name: string;
   /** Coin contribution of this item (positive for income, negative for cost). */
   coins: number;
+  /**
+   * Unmodified per-item amount, in the same sign convention as {@link coins}
+   * (e.g. a staff member's base salary as a negative expense). Present only
+   * where the committed state carries the unmodified figure; the model never
+   * invents one.
+   */
+  base?: number;
+  /**
+   * Named signed modifiers applied to {@link base}, in application order.
+   * Absent when the item carries no per-item modifier detail (community-space
+   * and business costs); never synthesised.
+   */
+  modifiers?: PLBreakdownModifier[];
 }
 
 /**
@@ -1071,6 +1106,9 @@ function incomeLineBreakdown(
   return items.length > 0 ? { breakdown: { items } } : {};
 }
 
+/** Skill id of the Operations Manager salary-discount modifier. */
+const OPERATIONS_MANAGER_SKILL_ID = 'skill-operations-manager';
+
 /**
  * Builds the optional per-item breakdown for one ongoing-expense category.
  *
@@ -1083,6 +1121,14 @@ function incomeLineBreakdown(
  * reduction and before any available-coins clamp). The tooltip builder
  * reconciles them to the committed category total with a reduction/clamp line
  * (see {@link module:scenes/MainStreetTurnSummaryTooltips}).
+ *
+ * Staff items additionally explain their charge as `base ± modifiers`: `base`
+ * is the card's `ongoingCost` (negative, expense convention) and each naming
+ * `Operations Manager` discount becomes a signed modifier, using the same
+ * {@link getSalaryScopeSkills} + `computeStaffSalaryDiscount` helpers the
+ * engine charges with. Community-space and business items carry `base` only —
+ * their only modifier is street-wide (`streetReduction`), so none is
+ * synthesised per item.
  *
  * Costs are stored as negative coin deltas, matching the expense row
  * convention. Absent-safe: a missing/empty source → no breakdown.
@@ -1097,12 +1143,22 @@ function expenseLineBreakdown(
   const soldSlots = state.soldSlots ?? [];
 
   if (category === 'staff') {
-    const items = (state.staffCards ?? [])
-      .map((card) => ({
-        name: card.name,
-        coins: -computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost),
-      }))
-      .filter((item) => item.coins !== 0);
+    const items: PLBreakdownItem[] = [];
+    for (const card of state.staffCards ?? []) {
+      const base = -card.ongoingCost;
+      const coins = -computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
+      if (coins === 0) continue;
+      // `coins` is the engine's own `computeStaffSalaryCost` charge (it applies
+      // `computeStaffSalaryDiscount` internally), so the applied discount is
+      // exactly `coins - base`: the invariant `base + sum(modifiers) === coins`
+      // holds structurally, including the zero-salary clamp when the discount
+      // would exceed the base salary.
+      const discount = coins - base;
+      const modifiers: PLBreakdownModifier[] = discount !== 0
+        ? [{ name: getSkill(OPERATIONS_MANAGER_SKILL_ID).name, coins: discount }]
+        : [];
+      items.push({ name: card.name, coins, base, modifiers });
+    }
     return items.length > 0
       ? { breakdown: { items, ...streetReduction(state, items) } }
       : {};
@@ -1116,7 +1172,7 @@ function expenseLineBreakdown(
       if (!slot || slot.family !== 'community-space') continue;
       if (soldSlots[i]) continue;
       const cost = slot.ongoingCost ?? 0;
-      if (cost > 0) items.push({ name: slot.name, coins: -cost });
+      if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
     }
     return items.length > 0
       ? { breakdown: { items, ...streetReduction(state, items) } }
@@ -1131,7 +1187,7 @@ function expenseLineBreakdown(
     if (!slot || slot.family !== 'business') continue;
     if (soldSlots[i]) continue;
     const cost = (slot as BusinessCard).ongoingCost ?? 0;
-    if (cost > 0) items.push({ name: slot.name, coins: -cost });
+    if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
   }
   return items.length > 0
     ? { breakdown: { items, ...streetReduction(state, items) } }

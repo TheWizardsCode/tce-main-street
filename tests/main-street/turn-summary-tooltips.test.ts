@@ -266,23 +266,23 @@ describe('P&L model — per-card expense breakdowns (MS-0MW7QQ5BX002KGS0)', () =
     const projection = buildPLProjection(tooltipState(), plInput(tooltipLedger()));
     const staff = projection!.expenses.lines.find((line) => line.key === 'staff');
     expect(staff?.breakdown?.items).toEqual([
-      { name: 'Clerk', coins: -100 },
-      { name: 'Manager', coins: -50 },
+      { name: 'Clerk', coins: -100, base: -100, modifiers: [] },
+      { name: 'Manager', coins: -50, base: -50, modifiers: [] },
     ]);
   });
 
   it('community costs line lists each community space’s charge', () => {
     const projection = buildPLProjection(tooltipState(), plInput(tooltipLedger()));
     const community = projection!.expenses.lines.find((line) => line.key === 'community');
-    expect(community?.breakdown?.items).toEqual([{ name: 'Park', coins: -20 }]);
+    expect(community?.breakdown?.items).toEqual([{ name: 'Park', coins: -20, base: -20 }]);
   });
 
   it('business costs line lists each business card’s running cost', () => {
     const projection = buildPLProjection(tooltipState(), plInput(tooltipLedger()));
     const business = projection!.expenses.lines.find((line) => line.key === 'business');
     expect(business?.breakdown?.items).toEqual([
-      { name: 'Bakery', coins: -10 },
-      { name: 'Cafe', coins: -5 },
+      { name: 'Bakery', coins: -10, base: -10 },
+      { name: 'Cafe', coins: -5, base: -5 },
     ]);
   });
 

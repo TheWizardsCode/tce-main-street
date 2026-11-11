@@ -63,6 +63,7 @@ import type { MainStreetState } from '../../src/MainStreetState';
 import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
 import type {
   BusinessCard,
+  CommunitySpaceCard,
   EventCard,
   StaffCard,
 } from '../../src/MainStreetCards';
@@ -708,6 +709,26 @@ function gridBusiness(name: string): BusinessCard {
   } as BusinessCard;
 }
 
+/** A cost-bearing community space for the grid. */
+function communitySpace(name: string, ongoingCost: number): CommunitySpaceCard {
+  return {
+    family: 'community-space',
+    id: `cs-test-${name.toLowerCase().replace(/[^a-z]+/g, '-')}`,
+    name,
+    cost: 0,
+    baseIncome: 0,
+    ongoingCost,
+    synergyTypes: ['Culture'],
+    maxLevel: 1,
+    description: `Synthetic community space ${name}`,
+    level: 0,
+    incomeBonus: 0,
+    synergyRangeBonus: 0,
+    reputationBonus: 0,
+    reputationPerTurn: 0,
+  } as CommunitySpaceCard;
+}
+
 /** A staff member fixture (`employedAtSlot` present ⇒ business staff). */
 function staffCard(spec: {
   id: string;
@@ -822,7 +843,7 @@ describe('buildPLProjection — staff salary base and modifiers', () => {
     });
   }
 
-  it.fails(
+  it(
     'a staff item carries its base salary and each named modifier, with coins as the committed contribution',
     () => {
       const projection = buildPLProjection(staffState(), plInput(staffLedger()))!;
@@ -846,6 +867,69 @@ describe('buildPLProjection — staff salary base and modifiers', () => {
       expect(items[1].modifiers ?? []).toEqual([]);
     },
   );
+
+  it('reconciles every emitted staff item through base + named modifiers', () => {
+    const projection = buildPLProjection(staffState(), plInput(staffLedger()))!;
+    const items = itemsOf(lineOf(projection, 'staff'));
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      const explained = (item.base ?? 0)
+        + (item.modifiers ?? []).reduce((total, modifier) => total + modifier.coins, 0);
+      expect(explained, `${item.name} reconciles`).toBe(item.coins);
+    }
+  });
+
+  it('drops a member whose discount would exceed the base salary, never emitting a positive charge', () => {
+    const state = singlePlayerState();
+    state.staffCards = [
+      staffCard({
+        id: 'staff-test-over-discounted',
+        name: 'Robin the Manager',
+        ongoingCost: 30,
+        employedAtSlot: 0,
+        specializationSkillIds: ['skill-operations-manager'],
+      }),
+    ];
+    const projection = buildPLProjection(state, plInput(staffLedger()))!;
+    expect(lineOf(projection, 'staff').breakdown).toBeUndefined();
+  });
+
+  it('carries no breakdown when staff cards and the street grid are absent (absent-safe)', () => {
+    const state = singlePlayerState();
+    state.staffCards = [];
+    state.streetGrid = state.streetGrid.map(() => null);
+    const projection = buildPLProjection(state, plInput(staffLedger()))!;
+    expect(projection.expenses.lines.every((line) => line.breakdown === undefined)).toBe(true);
+  });
+});
+
+// ── Community-space and business expense bases ───────────────
+
+describe('buildPLProjection — community-space and business expense bases', () => {
+  it('carries a base cost and no synthesised modifiers for each space and business', () => {
+    const state = singlePlayerState();
+    state.streetGrid[0] = { ...gridBusiness('Bakery'), ongoingCost: 10 } as BusinessCard;
+    state.streetGrid[1] = communitySpace('Park', 20);
+    state.staffCards = [];
+
+    const projection = buildPLProjection(
+      state,
+      plInput(makeLedger({ ongoingCosts: { staff: 0, community: -20, business: -10 } })),
+    )!;
+
+    // `base` states the unmodified charge; no per-item modifier is invented
+    // (the only modifier for these families is street-wide).
+    expect(itemsOf(lineOf(projection, 'community'))).toEqual([
+      { name: 'Park', coins: -20, base: -20 },
+    ]);
+    expect(itemsOf(lineOf(projection, 'business'))).toEqual([
+      { name: 'Bakery', coins: -10, base: -10 },
+    ]);
+    expect(itemsOf(lineOf(projection, 'community')).every((item) => item.modifiers === undefined))
+      .toBe(true);
+    expect(itemsOf(lineOf(projection, 'business')).every((item) => item.modifiers === undefined))
+      .toBe(true);
+  });
 });
 
 // ── Income and event-effect detail ─────────────────
