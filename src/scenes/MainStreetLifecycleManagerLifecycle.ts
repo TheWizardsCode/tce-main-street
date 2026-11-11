@@ -316,6 +316,10 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msAnimator = new MainStreetAnimator(s);
     s.msTurnController = new MainStreetTurnController(s);
     s.msOverlayManager = new MainStreetOverlayContent(s);
+    // Staff Pile click → Company Roster (MS-0MWC9PDQY003O0XQ). The pile hands
+    // off to the scene entry point through the renderer context; it carries no
+    // roster logic of its own.
+    s.msRenderer.onOpenCompanyRoster = () => s.showCompanyRoster();
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
     // Live ambient pedestrian layer (MS-0MUYGFW7T00579Z1): keep this second

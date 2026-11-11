@@ -34,6 +34,12 @@ export interface MainStreetRendererContext {
    * employs no management-company staff.
    */
   drawStaffPile(): void;
+  /**
+   * Staff Pile click hand-off (MS-0MWC9PDQY003O0XQ): invoked when the pile's
+   * hit area is pressed, so the scene can open the Company Roster. The pile
+   * carries no roster logic; this is the only coupling point.
+   */
+  onOpenCompanyRoster?: () => void;
   refreshAll(): void;
   refreshAllExceptStreet(): void;
   refreshHud(): void;

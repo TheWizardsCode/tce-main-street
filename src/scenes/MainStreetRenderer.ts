@@ -33,6 +33,11 @@ export class MainStreetRenderer implements MainStreetRendererContext {
   public dragHighlightRects = new Set<Phaser.GameObjects.Rectangle>();
   public marketRowCards = new Map<string, Phaser.GameObjects.Container[]>();
   public drawnRoadBands: RoadBand[] = [];
+  /**
+   * Staff Pile click hand-off (MS-0MWC9PDQY003O0XQ): opens the Company Roster.
+   * Wired by the scene composition root; the pile carries no roster logic.
+   */
+  public onOpenCompanyRoster?: () => void;
 
   constructor(public readonly scene: any) {}
 

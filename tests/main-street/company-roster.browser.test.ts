@@ -15,7 +15,7 @@
  * @module tests/main-street/company-roster.browser
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Phaser from 'phaser';
 
 import { waitForScene } from '@core-tests/helpers/waitForScene';
@@ -283,5 +283,78 @@ describe('Company Roster overlay — lay off confirm step', () => {
     findOverlayButton(scene, '[ Close ]').emit('pointerdown');
     scene.showCompanyRoster();
     expect(overlayTexts(scene).map((o) => o.text)).toContain('Bo Director');
+  });
+});
+
+describe('Company Roster overlay — Staff Pile entry point', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  /** Boots with the given management staff, refreshes the pile and opens nothing. */
+  async function bootWithPile(): Promise<any> {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    scene.state.staffCards = [
+      managementMember('mgmt-a', 'Ada Assistant', 100),
+      managementMember('mgmt-b', 'Bo Director', 250),
+    ];
+    scene.refreshAll();
+    return scene;
+  }
+
+  it('a pointer-down on the Staff Pile opens the Company Roster', async () => {
+    const scene = await bootWithPile();
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    expect(hit).toBeDefined();
+
+    hit.emit('pointerdown');
+
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Company Roster');
+  });
+
+  it('the hit area spans both the card-face stack and the portrait row', async () => {
+    const scene = await bootWithPile();
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    const { staffPileY, staffPileH } = scene.layout as { staffPileY: number; staffPileH: number };
+    const top = hit.y - hit.height / 2;
+    const bottom = hit.y + hit.height / 2;
+
+    // The catcher covers the whole pile zone top-to-bottom (stack above,
+    // portrait row below), so a press on either region opens the roster.
+    expect(top).toBeLessThanOrEqual(staffPileY + 1);
+    expect(bottom).toBeGreaterThanOrEqual(staffPileY + staffPileH - 1);
+  });
+
+  it('the hover tooltip still appears, and pressing the pile dismisses it', async () => {
+    const scene = await bootWithPile();
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    const show = vi.spyOn(scene.tooltipManager, 'show');
+    const hide = vi.spyOn(scene.tooltipManager, 'hide');
+
+    hit.emit('pointerover');
+    expect(show).toHaveBeenCalledTimes(1);
+
+    hit.emit('pointerdown');
+    expect(hide).toHaveBeenCalled();
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Company Roster');
+  });
+
+  it('does not cover the hand row: the hit area stays left of the capacity slots', async () => {
+    const scene = await bootWithPile();
+    // Widen the hand so the capacity row sweeps left beneath the pile.
+    scene.state.maxHandSize = 4;
+    scene.refreshPlayerHand();
+
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    expect(hit).toBeDefined();
+    const capacityRowLeft =
+      scene.layout.handCenterX - (4 * (scene.layout.handCardW + 8)) / 2;
+    // The pile's clickable region never reaches a hand slot, so a hand-card
+    // click/drag beside it is delivered to the hand, not swallowed here.
+    expect(hit.x + hit.width / 2).toBeLessThanOrEqual(capacityRowLeft + 1);
   });
 });

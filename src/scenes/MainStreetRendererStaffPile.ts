@@ -21,8 +21,9 @@
  * - **One hit area, confined to the free band.** The only interactive object is
  *   a hover hit area clamped to the pile zone *and* to the left of the hand
  *   capacity row, so hand-card clicks, hand→street drags and market→hand drops
- *   are untouched. It carries no `pointerdown` handler: lay-off lives in the
- *   company roster follow-up (MS-0MWC1T8K2000DWZA).
+ *   are untouched. It carries the hover tooltip **and** a pointer-down hand-off
+ *   that calls `renderer.onOpenCompanyRoster` — the pile itself carries no
+ *   roster logic (MS-0MWC9PDQY003O0XQ).
  * - **Rebuilt, not accumulated.** Like `drawHandPanel()`, every call destroys
  *   the previous pile container before drawing, so repeated refreshes cannot
  *   leak game objects.
@@ -209,9 +210,11 @@ export function drawStaffPile(renderer: MainStreetRendererContext): void {
     container.add(portrait);
   });
 
-  // ── Hover tooltip: the pile's only interaction ─────────────────
+  // ── Hover tooltip + click hand-off: the pile's interactions ─────
   // Skipped in replay mode, matching the hand/business card tooltips, so
-  // playback shows no hover affordances.
+  // playback shows no hover or click affordances. Pointer-down hands off to
+  // the Company Roster through the renderer context — the pile carries no
+  // roster logic of its own (MS-0MWC9PDQY003O0XQ).
   const hitBounds = staffPileHitBounds(renderer);
   if (!s.replayMode && hitBounds) {
     const hit = s.add.rectangle(
@@ -231,6 +234,10 @@ export function drawStaffPile(renderer: MainStreetRendererContext): void {
     });
     hit.on('pointerout', () => {
       s.tooltipManager?.hide();
+    });
+    hit.on('pointerdown', () => {
+      s.tooltipManager?.hide();
+      renderer.onOpenCompanyRoster?.();
     });
     container.add(hit);
     s.staffPileHitArea = hit;

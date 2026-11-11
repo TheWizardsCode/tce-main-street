@@ -321,14 +321,30 @@ describe('drawStaffPile — hover tooltip', () => {
     expect(scene.staffPileContainer).toBeDefined();
   });
 
-  it('does not intercept input: the hit area carries no pointerdown handler', () => {
+  it('hands off a pointer-down on the hit area to renderer.onOpenCompanyRoster', () => {
+    const { scene, renderer } = makeScene({ staffCards: [staff('Manager', 120)] });
+    const onOpenCompanyRoster = vi.fn();
+    renderer.onOpenCompanyRoster = onOpenCompanyRoster;
+
+    drawStaffPile(renderer);
+
+    const hit = scene.staffPileHitArea as StubObject;
+    // The hit area carries only hover + click hand-off handlers — no drag.
+    expect(Object.keys(hit.handlers).sort()).toEqual(['pointerdown', 'pointerout', 'pointerover']);
+
+    hit.handlers.pointerdown();
+    expect(onOpenCompanyRoster).toHaveBeenCalledTimes(1);
+    // Pressing the pile also dismisses the hover tooltip.
+    expect(scene.tooltipManager.hide).toHaveBeenCalled();
+  });
+
+  it('a hand-off without a wired callback is a safe no-op', () => {
     const { scene, renderer } = makeScene({ staffCards: [staff('Manager', 120)] });
 
     drawStaffPile(renderer);
 
     const hit = scene.staffPileHitArea as StubObject;
-    expect(hit.handlers.pointerdown).toBeUndefined();
-    expect(Object.keys(hit.handlers).sort()).toEqual(['pointerout', 'pointerover']);
+    expect(() => hit.handlers.pointerdown()).not.toThrow();
   });
 });
 
