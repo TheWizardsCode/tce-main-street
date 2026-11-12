@@ -30,13 +30,12 @@
  * The end-of-turn tooltips are deepened from a single comma-joined
  * `Per item: A: +5, B: +7` line into a **one contributing item per line**
  * layout that shows each item's base value and every named modifier. This suite
- * pins the exact content contract **before** the builder children
- * (MS-0MWC90TUH007CC8T / MS-0MWC90UOM006RAW6) implement it, following the repo
+ * pins the exact content contract the builder children
+ * (MS-0MWC90TUH007CC8T / MS-0MWC90UOM006RAW6) implement, following the repo
  * test-first `it.fails` tracer-bullet convention (see
  * `turn-summary-pl-model.test.ts` and `competitive-per-seat-hand-capacity.test.ts`).
  *
- * Contract the builder children must satisfy, then flip the corresponding
- * `it.fails` to a plain `it`:
+ * Contract the builder children satisfy (the tracers are now plain `it`):
  *
  * 1. **Income rows** — `label: amount` then one `name: signed` line per
  *    contributing business. The Events row additionally lists each committed
@@ -804,7 +803,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
   });
 
   // ── Incident modifiers ──────────────────────────────────
-  it.fails('the incident tooltip shows the base effect and each applied modifier', () => {
+  it('the incident tooltip shows the base effect and each applied modifier', () => {
     const incident = incidentModifierProjection().incident;
     expect(buildIncidentLineTooltip(incident, 'Test Incident')).toBe(
       'Incident\n'
@@ -830,7 +829,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
   });
 
   // ── Total-row enumeration ───────────────────────────────
-  it.fails('the total income tooltip enumerates each contributing line and reconciles', () => {
+  it('the total income tooltip enumerates each contributing line and reconciles', () => {
     // The builder takes the section so it can list the section's own lines.
     const buildTotal = buildTotalLineTooltip as unknown as (section: PLStatementSection) => string;
     const income = contractProjection().income;
@@ -847,7 +846,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     expect(income.lines.reduce((total, line) => total + line.coins, 0)).toBe(income.total);
   });
 
-  it.fails('the total expenses tooltip enumerates each contributing line and reconciles', () => {
+  it('the total expenses tooltip enumerates each contributing line and reconciles', () => {
     const buildTotal = buildTotalLineTooltip as unknown as (section: PLStatementSection) => string;
     const expenses = contractProjection().expenses;
     expect(buildTotal(expenses)).toBe(
@@ -860,7 +859,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
   });
 
   // ── Supplementary context derivations ───────────────────
-  it.fails('closing coins shows day start + net change = closing', () => {
+  it('closing coins shows day start + net change = closing', () => {
     const projection = contractProjection();
     const context = projection.context;
     expect(buildContextLineTooltip('closingCoins', context)).toBe(
@@ -872,7 +871,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     expect(context.dayStartCoins! + projection.net.coins).toBe(context.closingCoins);
   });
 
-  it.fails('reputation change shows its income, incident and one-off constituents', () => {
+  it('reputation change shows its income, incident and one-off constituents', () => {
     const projection = contractProjection();
     const context = projection.context;
     const parts = context.reputationParts!;
@@ -886,7 +885,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     expect(parts.income + parts.incident + parts.oneOff).toBe(context.reputationChange);
   });
 
-  it.fails('businesses owned names the businesses, one per line', () => {
+  it('businesses owned names the businesses, one per line', () => {
     const projection = contractProjection();
     const context = projection.context;
     expect(buildContextLineTooltip('businessesOwned', context)).toBe(

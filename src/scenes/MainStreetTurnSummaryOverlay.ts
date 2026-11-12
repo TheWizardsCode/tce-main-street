@@ -706,7 +706,7 @@ export function presentTurnSummaryPanel(
       addLine(
         `${pl.income.totalLabel}: ${formatSigned(pl.income.total)}`,
         { fontStyle: 'bold' },
-        () => buildTotalLineTooltip(pl.income.totalLabel, pl.income.total),
+        () => buildTotalLineTooltip(pl.income),
       );
 
       addHeading(pl.expenses.label);
@@ -721,7 +721,7 @@ export function presentTurnSummaryPanel(
       addLine(
         `${pl.expenses.totalLabel}: ${formatSigned(pl.expenses.total)}`,
         { fontStyle: 'bold' },
-        () => buildTotalLineTooltip(pl.expenses.totalLabel, pl.expenses.total),
+        () => buildTotalLineTooltip(pl.expenses),
       );
 
       y += 8;

@@ -39,6 +39,7 @@ import type {
   PLAdjustmentLine,
   PLProjection,
   PLStatementLine,
+  PLStatementSection,
   PLSupplementaryContext,
 } from './MainStreetTurnSummary';
 
@@ -69,6 +70,8 @@ export const LEDGER_TOOLTIP_I18N_KEYS = {
   incidentTitle: 'ledger.tooltip.incident.title',
   incidentNoEvent: 'ledger.tooltip.incident.noEvent',
   incidentEffect: 'ledger.tooltip.incident.effect',
+  incidentBase: 'ledger.tooltip.incident.base',
+  incidentModifier: 'ledger.tooltip.incident.modifier',
   oneOffTitle: 'ledger.tooltip.oneOff.title',
   oneOffFormula: 'ledger.tooltip.oneOff.formula',
   netTitle: 'ledger.tooltip.net.title',
@@ -80,8 +83,15 @@ export const LEDGER_TOOLTIP_I18N_KEYS = {
   scoreChangeBody: 'ledger.tooltip.scoreChange.body',
   closingCoinsTitle: 'ledger.tooltip.closingCoins.title',
   closingCoinsBody: 'ledger.tooltip.closingCoins.body',
+  closingDayStart: 'ledger.tooltip.closingCoins.dayStart',
+  closingNetChange: 'ledger.tooltip.closingCoins.netChange',
+  closingClosing: 'ledger.tooltip.closingCoins.closing',
   businessesOwnedTitle: 'ledger.tooltip.businessesOwned.title',
   businessesOwnedBody: 'ledger.tooltip.businessesOwned.body',
+  repIncome: 'ledger.tooltip.repChange.income',
+  repIncident: 'ledger.tooltip.repChange.incident',
+  repOneOff: 'ledger.tooltip.repChange.oneOff',
+  repTotal: 'ledger.tooltip.repChange.total',
 } as const;
 
 // ── Default English strings (registered as the 'en' locale bundle) ──
@@ -101,6 +111,8 @@ export const LEDGER_TOOLTIP_STRINGS = {
   incidentTitle: 'Incident',
   incidentNoEvent: 'No incident was resolved this turn.',
   incidentEffect: '{name}: Coins {coins}, Rep {reputation}',
+  incidentBase: 'Base: Coins {coins}, Rep {reputation}',
+  incidentModifier: '{name}: Coins {coins}, Rep {reputation}',
   oneOffTitle: 'One-off',
   oneOffFormula:
     'One-off = net change ({net}) − income ({income}) − expenses ({expenses}) − incident ({incident}) = {oneOff}',
@@ -113,8 +125,15 @@ export const LEDGER_TOOLTIP_STRINGS = {
   scoreChangeBody: 'The change in your final score this day (coins + reputation + challenges).',
   closingCoinsTitle: 'Closing coins',
   closingCoinsBody: 'Your coin balance at the end of the day (day start + net change).',
+  closingDayStart: 'Day start: {amount}',
+  closingNetChange: 'Net change: {amount}',
+  closingClosing: 'Closing: {amount}',
   businessesOwnedTitle: 'Businesses owned',
   businessesOwnedBody: 'Businesses standing on the street at closing (sold slots excluded).',
+  repIncome: 'Income: {amount}',
+  repIncident: 'Incident: {amount}',
+  repOneOff: 'One-off: {amount}',
+  repTotal: 'Total: {amount}',
 } as const;
 
 // ── Register the English locale bundle ──────────────────────
@@ -265,25 +284,34 @@ export function buildExpenseLineTooltip(line: PLStatementLine): string {
  * Builds a tooltip for a section total row (`Total income` /
  * `Total operating expenses`).
  *
- * The total is the committed subtotal (never a re-sum of the displayed lines),
- * so this explains that it aggregates the lines above without inventing a
- * figure.
+ * The total is the committed subtotal (never a re-sum of the displayed lines).
+ * Every contributing line is then enumerated with its signed amount, so the
+ * tooltip shows the arithmetic instead of the generic "sum of the lines" note.
  *
- * @param label The total row's label.
- * @param coins The committed subtotal.
+ * @param section The statement section whose total row this annotates.
  */
-export function buildTotalLineTooltip(label: string, coins: number): string {
-  return [
-    `${label}: ${formatSigned(coins)}`,
-    t(LEDGER_TOOLTIP_I18N_KEYS.totalLineNote),
-  ].join('\n');
+export function buildTotalLineTooltip(section: PLStatementSection): string {
+  const lines: string[] = [
+    `${section.totalLabel}: ${formatSigned(section.total)}`,
+  ];
+  if (section.lines.length === 0) {
+    lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.totalLineNote));
+    return lines.join('\n');
+  }
+  for (const line of section.lines) {
+    lines.push(`${line.label}: ${formatSigned(line.coins)}`);
+  }
+  return lines.join('\n');
 }
 
 /**
  * Builds the tooltip for the Incident adjustment row.
  *
- * Shows the resolved incident's name and its coin/reputation effect; falls back
- * to a "no incident" note when the closing resolved none.
+ * Shows the resolved incident's name and its committed coin/reputation effect,
+ * then — when the model carries a reconciling `detail` — the incident's base
+ * effect and every named modifier applied to it, so the committed deltas are
+ * reproducible. Falls back to a "no incident" note when the closing resolved
+ * none.
  *
  * @param incident     The incident adjustment line (committed deltas).
  * @param incidentName The resolved incident card name, or `null`.
@@ -296,14 +324,29 @@ export function buildIncidentLineTooltip(
     return [t(LEDGER_TOOLTIP_I18N_KEYS.incidentTitle), t(LEDGER_TOOLTIP_I18N_KEYS.incidentNoEvent)]
       .join('\n');
   }
-  return [
+  const lines: string[] = [
     t(LEDGER_TOOLTIP_I18N_KEYS.incidentTitle),
     t(LEDGER_TOOLTIP_I18N_KEYS.incidentEffect, {
       name: incidentName,
       coins: formatSigned(incident.coins),
       reputation: formatSigned(incident.reputation),
     }),
-  ].join('\n');
+  ];
+  const detail = incident.detail;
+  if (detail) {
+    lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.incidentBase, {
+      coins: formatSigned(detail.base.coins),
+      reputation: formatSigned(detail.base.reputation),
+    }));
+    for (const modifier of detail.modifiers) {
+      lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.incidentModifier, {
+        name: modifier.name,
+        coins: formatSigned(modifier.coins),
+        reputation: formatSigned(modifier.reputation),
+      }));
+    }
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -351,30 +394,61 @@ export function buildNetLineTooltip(projection: PLProjection): string {
 /**
  * Builds the tooltip for a supplementary context row.
  *
- * @param key        The context row key.
- * @param _context   The projection's context figures (reserved for future
- *                   derivation detail; kept in the signature so callers pass
- *                   the same projection the row renders).
+ * Renders the numeric derivation when the projection carries it
+ * (closing coins as day start + net change, reputation change as its income /
+ * incident / one-off constituents, businesses owned by name) and otherwise
+ * keeps the existing explanatory prose (absent-safe). Score change always keeps
+ * its prose because the projection carries no challenge-level detail.
+ *
+ * @param key      The context row key.
+ * @param context  The projection's context figures.
  */
 export function buildContextLineTooltip(
   key: PLSupplementaryContextKey,
-  _context: PLSupplementaryContext,
+  context: PLSupplementaryContext,
 ): string {
   switch (key) {
-    case 'reputationChange':
-      return [t(LEDGER_TOOLTIP_I18N_KEYS.repChangeTitle), t(LEDGER_TOOLTIP_I18N_KEYS.repChangeBody)]
-        .join('\n');
+    case 'reputationChange': {
+      const parts = context.reputationParts;
+      if (!parts) {
+        return [t(LEDGER_TOOLTIP_I18N_KEYS.repChangeTitle), t(LEDGER_TOOLTIP_I18N_KEYS.repChangeBody)]
+          .join('\n');
+      }
+      return [
+        t(LEDGER_TOOLTIP_I18N_KEYS.repChangeTitle),
+        t(LEDGER_TOOLTIP_I18N_KEYS.repIncome, { amount: formatSigned(parts.income) }),
+        t(LEDGER_TOOLTIP_I18N_KEYS.repIncident, { amount: formatSigned(parts.incident) }),
+        t(LEDGER_TOOLTIP_I18N_KEYS.repOneOff, { amount: formatSigned(parts.oneOff) }),
+        t(LEDGER_TOOLTIP_I18N_KEYS.repTotal, { amount: formatSigned(context.reputationChange) }),
+      ].join('\n');
+    }
     case 'scoreChange':
       return [t(LEDGER_TOOLTIP_I18N_KEYS.scoreChangeTitle), t(LEDGER_TOOLTIP_I18N_KEYS.scoreChangeBody)]
         .join('\n');
-    case 'closingCoins':
-      return [t(LEDGER_TOOLTIP_I18N_KEYS.closingCoinsTitle), t(LEDGER_TOOLTIP_I18N_KEYS.closingCoinsBody)]
-        .join('\n');
-    case 'businessesOwned':
+    case 'closingCoins': {
+      if (context.dayStartCoins === undefined) {
+        return [t(LEDGER_TOOLTIP_I18N_KEYS.closingCoinsTitle), t(LEDGER_TOOLTIP_I18N_KEYS.closingCoinsBody)]
+          .join('\n');
+      }
       return [
-        t(LEDGER_TOOLTIP_I18N_KEYS.businessesOwnedTitle),
-        t(LEDGER_TOOLTIP_I18N_KEYS.businessesOwnedBody),
+        t(LEDGER_TOOLTIP_I18N_KEYS.closingCoinsTitle),
+        t(LEDGER_TOOLTIP_I18N_KEYS.closingDayStart, { amount: formatSigned(context.dayStartCoins) }),
+        t(LEDGER_TOOLTIP_I18N_KEYS.closingNetChange, {
+          amount: formatSigned(context.closingCoins - context.dayStartCoins),
+        }),
+        t(LEDGER_TOOLTIP_I18N_KEYS.closingClosing, { amount: formatSigned(context.closingCoins) }),
       ].join('\n');
+    }
+    case 'businessesOwned': {
+      const names = context.businessNames;
+      if (!names || names.length === 0) {
+        return [
+          t(LEDGER_TOOLTIP_I18N_KEYS.businessesOwnedTitle),
+          t(LEDGER_TOOLTIP_I18N_KEYS.businessesOwnedBody),
+        ].join('\n');
+      }
+      return [t(LEDGER_TOOLTIP_I18N_KEYS.businessesOwnedTitle), ...names].join('\n');
+    }
     default:
       return String(key);
   }
@@ -458,9 +532,9 @@ export function buildSummaryMetricTooltip(
   // Summary tooltip and the per-player tab can never drift.
   const parts: string[] = [t(SUMMARY_TOOLTIP_I18N_KEYS.incomeTitle)];
   for (const line of projection.income.lines) parts.push(buildIncomeLineTooltip(line));
-  parts.push(buildTotalLineTooltip(projection.income.totalLabel, projection.income.total));
+  parts.push(buildTotalLineTooltip(projection.income));
   for (const line of projection.expenses.lines) parts.push(buildExpenseLineTooltip(line));
-  parts.push(buildTotalLineTooltip(projection.expenses.totalLabel, projection.expenses.total));
+  parts.push(buildTotalLineTooltip(projection.expenses));
   parts.push(buildIncidentLineTooltip(projection.incident, incidentName));
   parts.push(buildOneOffLineTooltip(projection));
   parts.push(buildNetLineTooltip(projection));
