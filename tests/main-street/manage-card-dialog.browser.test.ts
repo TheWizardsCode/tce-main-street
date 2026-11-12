@@ -111,6 +111,12 @@ interface ManageScene extends Phaser.Scene {
   uiPhase: string;
   beginStaffMove?: (staffId: string) => void;
   refreshAll: () => void;
+  undoManager?: {
+    execute: (cmd: unknown) => void;
+    undo: () => void;
+    canUndo: () => boolean;
+    canRedo: () => boolean;
+  };
   msAnimator: {
     animateClose: (params: { slotIndex: number; cardId: string; family: string }) => Promise<void>;
   };
@@ -130,6 +136,20 @@ function findOverlayButton(scene: ManageScene, label: string): Phaser.GameObject
   if (!btn) {
     throw new Error(
       `Overlay button ${label} not found. Present: ${overlayTexts(scene).map((o) => o.text).join(', ')}`,
+    );
+  }
+  return btn;
+}
+
+/**
+ * Finds an overlay button at an exact depth — e.g. the confirm layer's
+ * `[ Cancel ]` (204) distinct from the dialog's own `[ Cancel ]` (201).
+ */
+function findOverlayButtonAtDepth(scene: ManageScene, label: string, depth: number): Phaser.GameObjects.Text {
+  const btn = overlayTexts(scene).find((o) => o.text === label && o.depth === depth);
+  if (!btn) {
+    throw new Error(
+      `Overlay button ${label} at depth ${depth} not found. Present: ${overlayTexts(scene).map((o) => `${o.text}@${o.depth}`).join(', ')}`,
     );
   }
   return btn;
@@ -284,7 +304,7 @@ describe('MainStreet Manage Card dialog', () => {
     expect(labels.some((t) => t.includes('Employed here'))).toBe(false);
   }, 30_000);
 
-  it('[ Lay off ] still lets the member go for 1 salary + salary-scaled reputation with the rows present', async () => {
+  it('[ Lay off ] → confirm quotes the exact coin/reputation cost, [ Confirm ] lays off (dialog stays open), [ Cancel ] changes nothing', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as ManageScene;
     placeCard(scene, 0);
@@ -299,12 +319,12 @@ describe('MainStreet Manage Card dialog', () => {
 
     scene.msTurnController.onSellCard(0);
 
-    // The dialog lists the member as its own row (with its own [ Move ]).
+    // The dialog lists the member as its own row (with its own [ Move ]
+    // and [ Lay off ]).
     const labels = overlayTexts(scene).map((o) => o.text);
     expect(labels).toContain('Test Applicant');
     expect(labels.filter((t) => t === '[ Move ]')).toHaveLength(1);
-    const listing = overlayTexts(scene).find((o) => o.text === 'Test Applicant');
-    expect(listing?.text).toContain('Test Applicant');
+    expect(labels.filter((t) => t === '[ Lay off ]')).toHaveLength(1);
     const logBefore = scene.state.activityLog.length;
 
     // The employed member is the tier-1 Assistant (salary 100); the lay-off
@@ -314,16 +334,195 @@ describe('MainStreet Manage Card dialog', () => {
     expect(expectedRepCost).toBe(100);
     const reputationBefore = scene.state.resourceBank.reputation;
 
+    // The row's [ Lay off ] opens the confirm step quoting the member, the
+    // coins (one turn's salary, clamped) and the shared reputation cost.
     findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    const confirmTexts = overlayTexts(scene).map((o) => o.text);
+    expect(confirmTexts).toContain('Lay off Test Applicant?');
+    const costLine = confirmTexts.find((t) => t.includes("One turn's salary"));
+    expect(costLine).toBeDefined();
+    expect(costLine!).toContain('€100');
+    expect(costLine!).toContain('−100');
 
-    // Member removed, the new salary-scaled reputation cost charged, salary
-    // clamped at 0 coins, logged, and the overlay dismissed.
+    // [ Cancel ] in the confirm layer changes nothing and returns to the rows.
+    const coinsBefore = scene.state.resourceBank.coins;
+    findOverlayButtonAtDepth(scene, '[ Cancel ]', 204).emit('pointerdown');
+    expect(scene.state.staffCards).toHaveLength(1);
+    expect(scene.state.resourceBank.reputation).toBe(reputationBefore);
+    expect(scene.state.resourceBank.coins).toBe(coinsBefore);
+    expect(scene.state.activityLog).toHaveLength(logBefore);
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Test Applicant');
+    expect(overlayTexts(scene).some((o) => o.text === '[ Lay off ]')).toBe(true);
+
+    // [ Confirm ] executes the lay-off through the command (undoable) and
+    // keeps the dialog open, re-rendered in place.
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
     expect(scene.state.staffCards).toHaveLength(0);
     expect(scene.state.resourceBank.reputation).toBe(reputationBefore - expectedRepCost);
     expect(scene.state.resourceBank.coins).toBe(0);
-    expect(scene.overlayObjects).toHaveLength(0);
     expect(scene.state.activityLog).toHaveLength(logBefore + 1);
     expect(scene.state.activityLog[scene.state.activityLog.length - 1].text).toContain('Laid off');
+    expect(scene.state.activityLog[scene.state.activityLog.length - 1].text).toContain('coins');
+    expect(scene.state.activityLog[scene.state.activityLog.length - 1].text).toContain('−100');
+    // AC: the dialog stayed open after the lay-off and re-rendered in place.
+    expect(scene.overlayObjects.length).toBeGreaterThan(0);
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('[ Sell ]');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('[ Close ]');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('[ Cancel ]');
+  }, 30_000);
+
+  it('two rows render two [ Lay off ] controls; the FIRST row\'s [ Lay off ] lays off the FIRST member (regression)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 }); // employment capacity level + 1 = 2
+
+    const first = staffMember('manage-dialog-first', 'First Hire', 0);
+    const second = staffMember('manage-dialog-second', 'Second Hire', 0);
+    scene.state.staffCards = [first, second];
+    scene.state.resourceBank.coins = 1000;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    scene.msTurnController.onSellCard(0);
+
+    const labels = overlayTexts(scene).map((o) => o.text);
+    expect(labels.filter((t) => t === '[ Lay off ]')).toHaveLength(2);
+    expect(labels.filter((t) => t === '[ Move ]')).toHaveLength(2);
+    expect(labels).toContain('First Hire');
+    expect(labels).toContain('Second Hire');
+
+    // Click the FIRST row's [ Lay off ] (topmost control) — it must open the
+    // confirm step for the FIRST member, never the newest hire.
+    const firstLayOff = overlayTexts(scene)
+      .filter((o) => o.text === '[ Lay off ]')
+      .sort((a, b) => a.y - b.y)[0]!;
+    firstLayOff.emit('pointerdown');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Lay off First Hire?');
+
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
+    expect(scene.state.staffCards.map((m) => m.id)).toEqual(['manage-dialog-second']);
+    // Dialog stays open, re-rendered: first row gone, second row remains.
+    expect(overlayTexts(scene).map((o) => o.text)).not.toContain('First Hire');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Second Hire');
+    expect(overlayTexts(scene).filter((o) => o.text === '[ Lay off ]')).toHaveLength(1);
+  }, 30_000);
+
+  it('after the last lay-off the staff section disappears in place while [ Sell ]/[ Close ]/[ Cancel ] keep working', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 }); // two slots to lay off both members
+
+    const first = staffMember('manage-dialog-last-a', 'Last A', 0);
+    const second = staffMember('manage-dialog-last-b', 'Last B', 0);
+    scene.state.staffCards = [first, second];
+    scene.state.resourceBank.coins = 1000;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    scene.msTurnController.onSellCard(0);
+    // Capture the panel box (depth 200) to assert it shrinks as rows vanish.
+    const readBox = () => (scene.overlayObjects.find(
+      (o) => (o as unknown as { depth?: number }).depth === 200,
+    ) as Phaser.GameObjects.Rectangle | undefined);
+    const boxBefore = readBox();
+    expect(boxBefore).toBeTruthy();
+    const heightBefore = boxBefore!.height;
+    const rowH = 34; // staffRowH from the dialog layout
+
+    // Lay off each member through its row's confirm step.
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+    expect(scene.state.staffCards).toHaveLength(1);
+    // Panel shrank to fit the remaining single row.
+    expect(readBox()!.height).toBe(heightBefore - rowH);
+    // Dialog still open; one row remains.
+    expect(overlayTexts(scene).filter((o) => o.text === '[ Lay off ]')).toHaveLength(1);
+
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+    expect(scene.state.staffCards).toHaveLength(0);
+    // Staff section gone: no rows, no [ Move ], no [ Lay off ], no cost line.
+    const labels = overlayTexts(scene).map((o) => o.text);
+    expect(labels).not.toContain('[ Move ]');
+    expect(labels).not.toContain('[ Lay off ]');
+    expect(labels.some((t) => t.includes('Move: 1 action'))).toBe(false);
+    // The managed card's own controls still work.
+    expect(labels).toContain('[ Sell ]');
+    expect(labels).toContain('[ Close ]');
+    expect(labels).toContain('[ Cancel ]');
+    findOverlayButton(scene, '[ Cancel ]').emit('pointerdown');
+    expect(scene.overlayObjects).toHaveLength(0);
+  }, 30_000);
+
+  it('a confirmed lay-off stays undoable: undo restores member, coins and reputation', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0);
+
+    const member = staffMember('manage-dialog-undo', 'Undo Me', 0);
+    scene.state.staffCards = [member];
+    scene.state.resourceBank.coins = 1000; // enough to pay the salary
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    const salary = computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost);
+    const coinsBefore = scene.state.resourceBank.coins;
+    const reputationBefore = scene.state.resourceBank.reputation;
+
+    scene.msTurnController.onSellCard(0);
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
+    expect(scene.state.staffCards).toHaveLength(0);
+    expect(scene.state.resourceBank.coins).toBe(coinsBefore - salary);
+    expect(scene.state.resourceBank.reputation).toBe(reputationBefore - layOffReputationCost(salary));
+
+    scene.undoManager!.undo();
+
+    expect(scene.state.staffCards.map((m) => m.id)).toEqual(['manage-dialog-undo']);
+    expect(scene.state.resourceBank.coins).toBe(coinsBefore);
+    expect(scene.state.resourceBank.reputation).toBe(reputationBefore);
+  }, 30_000);
+
+  it('a stale row (member already gone) flashes feedback instead of acting on a shifted index', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 });
+
+    const first = staffMember('manage-dialog-stale-a', 'Stale A', 0);
+    const second = staffMember('manage-dialog-stale-b', 'Stale B', 0);
+    scene.state.staffCards = [first, second];
+    scene.state.resourceBank.coins = 1000;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    scene.msTurnController.onSellCard(0);
+    const logBefore = scene.state.activityLog.length;
+
+    // Open the confirm step for the FIRST member's row.
+    const firstLayOff = overlayTexts(scene)
+      .filter((o) => o.text === '[ Lay off ]')
+      .sort((a, b) => a.y - b.y)[0]!;
+    firstLayOff.emit('pointerdown');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Lay off Stale A?');
+
+    // The member is laid off elsewhere (e.g. an undo/command changed state)
+    // while the confirm step is open: the row is now stale.
+    scene.state.staffCards = [second];
+
+    // [ Confirm ] must refuse with feedback (no log entry, no shifted-index
+    // lay-off of Stale B) and re-render the section.
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+
+    expect(scene.state.staffCards.map((m) => m.id)).toEqual(['manage-dialog-stale-b']);
+    expect(scene.state.activityLog).toHaveLength(logBefore);
+    // Dialog stays open; re-rendered rows reflect the live staffCards.
+    expect(overlayTexts(scene).map((o) => o.text)).not.toContain('Stale A');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Stale B');
+    expect(overlayTexts(scene).filter((o) => o.text === '[ Lay off ]')).toHaveLength(1);
   }, 30_000);
 
   it('two employed members render two rows with two [ Move ] controls, in hire order, with both costs stated once', async () => {
