@@ -25,6 +25,45 @@
  * The overlay wiring (`attachHudTooltipZone` attachment and interaction) is
  * verified by the browser suite (`turn-summary-pl-overlay.browser.test.ts`).
  *
+ * ## Enhanced content contract (MS-0MWC90T19000JEA4)
+ *
+ * The end-of-turn tooltips are deepened from a single comma-joined
+ * `Per item: A: +5, B: +7` line into a **one contributing item per line**
+ * layout that shows each item's base value and every named modifier. This suite
+ * pins the exact content contract **before** the builder children
+ * (MS-0MWC90TUH007CC8T / MS-0MWC90UOM006RAW6) implement it, following the repo
+ * test-first `it.fails` tracer-bullet convention (see
+ * `turn-summary-pl-model.test.ts` and `competitive-per-seat-hand-capacity.test.ts`).
+ *
+ * Contract the builder children must satisfy, then flip the corresponding
+ * `it.fails` to a plain `it`:
+ *
+ * 1. **Income rows** — `label: amount` then one `name: signed` line per
+ *    contributing business. The Events row additionally lists each committed
+ *    event effect as an indented `  effect: signed delta` line beneath its
+ *    business.
+ * 2. **Expense rows** — `label: amount` then one `name: signed` line per card.
+ *    A staff item that carries modifiers adds an indented `  Base: signed`
+ *    line and one indented `  <modifier>: signed` line per modifier (e.g.
+ *    `  Operations Manager: +50`), reconciling `base + modifiers === coins`.
+ *    The existing `Street-wide reduction` / `Limited by available coins` /
+ *    `Total` reconciliation lines are kept.
+ * 3. **Incident row** — the resolved incident's `name: Coins signed, Rep signed`
+ *    headline, then `Base: Coins …, Rep …`, one `<modifier>: Coins …, Rep …`
+ *    line per applied modifier, all reconciling to the committed deltas. The
+ *    `null` note is unchanged.
+ * 4. **Total rows** — `buildTotalLineTooltip` takes the section and enumerates
+ *    one `line label: signed amount` per contributing line beneath the
+ *    committed subtotal (replacing "The sum of the lines above").
+ * 5. **Context rows** — closing coins shows `Day start + Net change = Closing`;
+ *    reputation change shows its income/incident/one-off constituents; and
+ *    businesses owned names the businesses (one per line). Score change keeps
+ *    its prose. Every derivation is absent-safe: a context without the new
+ *    fields keeps the existing explanatory prose.
+ *
+ * Guards that already hold today (absent-safe fallback, the incident `null`
+ * note) stay plain `it` so they keep protecting the contract.
+ *
  * @module tests/main-street/turn-summary-tooltips
  */
 import { afterEach, describe, expect, it } from 'vitest';
@@ -48,6 +87,7 @@ import {
   buildPLFromCompetitiveRow,
   buildPLProjection,
   buildTurnSummary,
+  type PLStatementSection,
 } from '../../src/scenes/MainStreetTurnSummary';
 import {
   LEDGER_TOOLTIP_I18N_KEYS,
@@ -57,6 +97,7 @@ import {
   buildIncomeLineTooltip,
   buildNetLineTooltip,
   buildOneOffLineTooltip,
+  buildTotalLineTooltip,
 } from '../../src/scenes/MainStreetTurnSummaryTooltips';
 import { setLocale, registerLocale } from '@core-engine/I18n';
 
@@ -99,7 +140,12 @@ function makeCommunitySpace(name: string, ongoingCost: number): CommunitySpaceCa
   } as CommunitySpaceCard;
 }
 
-function makeStaff(name: string, ongoingCost: number): StaffCard {
+function makeStaff(
+  name: string,
+  ongoingCost: number,
+  specializationSkillIds: string[] = [],
+  employedAtSlot?: number,
+): StaffCard {
   return {
     family: 'staff',
     id: `stf-${name}`,
@@ -108,6 +154,8 @@ function makeStaff(name: string, ongoingCost: number): StaffCard {
     ongoingCost,
     handSlotsAdded: 0,
     description: 'Synthetic test staff',
+    specializationSkillIds,
+    ...(employedAtSlot === undefined ? {} : { employedAtSlot }),
   } as StaffCard;
 }
 
@@ -584,17 +632,20 @@ describe('ledger tooltip exact content strings (MS-0MW7QQ1FD000RCA3)', () => {
     return buildPLProjection(tooltipState(), plInput(tooltipLedger()))!;
   }
 
-  it('business-income tooltip is exactly the label, amount and per-business list', () => {
+  it.fails('business-income tooltip is exactly the label, amount and per-business list', () => {
     const base = projection().income.lines.find((line) => line.key === 'base')!;
+    // One contributing business per line — never a comma-joined
+    // `Per business: Bakery: +50, Cafe: +30` line (MS-0MWC90T19000JEA4).
     expect(buildIncomeLineTooltip(base)).toBe(
-      'Base income: +80\nPer business: Bakery: +50, Cafe: +30',
+      'Base income: +80\nBakery: +50\nCafe: +30',
     );
   });
 
-  it('staff-costs tooltip is exactly the label, per-card list and total', () => {
+  it.fails('staff-costs tooltip is exactly the label, per-card list and total', () => {
     const staff = projection().expenses.lines.find((line) => line.key === 'staff')!;
+    // One staff member per line — never a comma-joined `Per item:` line.
     expect(buildExpenseLineTooltip(staff)).toBe(
-      'Staff wages: -150\nPer item: Clerk: -100, Manager: -50\nTotal: -150',
+      'Staff wages: -150\nClerk: -100\nManager: -50\nTotal: -150',
     );
   });
 
@@ -611,6 +662,280 @@ describe('ledger tooltip exact content strings (MS-0MW7QQ1FD000RCA3)', () => {
   it('net tooltip is exactly the reconciliation identity', () => {
     expect(buildNetLineTooltip(projection())).toBe(
       'Net profit/loss\nNet = income (+89) + expenses (-185) + incident (-20) + one-off (-4) = -120',
+    );
+  });
+});
+
+// ── Enhanced content contract (MS-0MWC90T19000JEA4) ──────────
+
+/** Formats a signed integer exactly as the tooltip builders do (`+N`/`-N`/`0`). */
+function signed(value: number): string {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+/** The main projection the content-contract assertions read. */
+function contractProjection() {
+  return buildPLProjection(tooltipState(), plInput(tooltipLedger()))!;
+}
+
+/**
+ * A projection whose staff member carries the Operations Manager salary
+ * discount, so a staff item explains its charge as `base + modifier`:
+ *
+ *  Pat the Manager: base −100, discount +50 ⇒ charged −50.
+ *  Sam the Clerk:   base −20, no modifier   ⇒ charged −20.
+ *  Category total:  −70.
+ */
+function staffModifierProjection() {
+  const state = tooltipState();
+  state.staffCards = [
+    makeStaff('Pat the Manager', 100, ['skill-operations-manager'], 0),
+    makeStaff('Sam the Clerk', 20, [], 1),
+  ];
+  const ledger: TurnLedger = {
+    ...tooltipLedger(),
+    ongoingCosts: { staff: -70, community: -20, business: -15 },
+    // income 89 + expenses −105 + incident −20 + one-off −4 = −40
+    netCoinChange: -40,
+  };
+  return buildPLProjection(state, plInput(ledger))!;
+}
+
+/**
+ * A projection whose resolved incident is mitigated by two named
+ * management-company skills: Quality Inspector (−30% coin damage) and Brand
+ * Ambassador (+50% reputation gain). Base −100 coins / +4 rep ⇒ committed
+ * −70 coins / +6 rep.
+ */
+function incidentModifierProjection() {
+  const state = tooltipState();
+  state.staffCards = [
+    makeStaff('Quinn the Inspector', 0, ['skill-quality-inspector']),
+    makeStaff('Alex the Ambassador', 0, ['skill-brand-ambassador']),
+  ];
+  const incident = {
+    family: 'event',
+    id: 'evt-test-mitigated-incident',
+    name: 'Test Incident',
+    trigger: 'Incident',
+    cost: 0,
+    effect: 'synthetic test incident',
+    target: 'All',
+    coinDelta: -100,
+    reputationDelta: 4,
+  } as EventCard;
+  const ledger: TurnLedger = {
+    ...tooltipLedger(),
+    // income 89 + expenses −185 + incident −70 + one-off −4 = −170
+    incidentCoinChange: -70,
+    incidentRepChange: 6,
+    netCoinChange: -170,
+    netRepChange: 5,
+  };
+  return buildPLProjection(state, { turnLedger: ledger, incident, income: incomeResult() })!;
+}
+
+describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () => {
+  // ── Multi-line layout: one contributing item per line ──
+  it.fails('every income row lists one contributing business per line', () => {
+    const projection = contractProjection();
+    const expected: Record<string, string> = {
+      base: 'Base income: +80\nBakery: +50\nCafe: +30',
+      synergy: 'Synergy income: +7\nBakery: +5\nCafe: +2',
+      reputation: 'Reputation income: +4\nBakery: +3\nCafe: +1',
+    };
+    for (const [key, want] of Object.entries(expected)) {
+      const line = projection.income.lines.find((candidate) => candidate.key === key)!;
+      const tooltip = buildIncomeLineTooltip(line);
+      expect(tooltip, key).toBe(want);
+      expect(tooltip, key).not.toContain('Per business:');
+    }
+  });
+
+  it.fails('the Events row enumerates each event effect beneath its business', () => {
+    const events = contractProjection().income.lines.find((line) => line.key === 'events')!;
+    expect(buildIncomeLineTooltip(events)).toBe(
+      'Event income: -2\nBakery: -2\n  Flu: -2',
+    );
+    // The effect deltas explain (and sum to) the business's contribution.
+    const item = events.breakdown!.items[0];
+    expect(item.effects!.reduce((total, effect) => total + effect.delta, 0)).toBe(item.coins);
+  });
+
+  it.fails('every expense row lists one contributing card per line', () => {
+    const projection = contractProjection();
+    const staff = projection.expenses.lines.find((line) => line.key === 'staff')!;
+    const community = projection.expenses.lines.find((line) => line.key === 'community')!;
+    const business = projection.expenses.lines.find((line) => line.key === 'business')!;
+    expect(buildExpenseLineTooltip(staff)).toBe(
+      'Staff wages: -150\nClerk: -100\nManager: -50\nTotal: -150',
+    );
+    expect(buildExpenseLineTooltip(community)).toBe(
+      'Community spaces: -20\nPark: -20\nTotal: -20',
+    );
+    expect(buildExpenseLineTooltip(business)).toBe(
+      'Business costs: -15\nBakery: -10\nCafe: -5\nTotal: -15',
+    );
+    for (const line of [staff, community, business]) {
+      expect(buildExpenseLineTooltip(line)).not.toContain('Per item:');
+    }
+  });
+
+  // ── Per-item base ± named modifiers ─────────────────────
+  it.fails('a staff item shows its base salary and each named modifier', () => {
+    const staff = staffModifierProjection().expenses.lines.find((line) => line.key === 'staff')!;
+    expect(buildExpenseLineTooltip(staff)).toBe(
+      'Staff wages: -70\n'
+      + 'Pat the Manager: -50\n'
+      + '  Base: -100\n'
+      + '  Operations Manager: +50\n'
+      + 'Sam the Clerk: -20\n'
+      + 'Total: -70',
+    );
+  });
+
+  it('an item with no base/modifier detail keeps the plain one-line item (absent-safe)', () => {
+    // Community/business items carry `base === coins` and no modifiers, so the
+    // plain `Name: cost` line already states the base ongoing cost.
+    const business = contractProjection().expenses.lines.find((line) => line.key === 'business')!;
+    const items = business.breakdown!.items;
+    expect(items.every((item) => item.base === item.coins)).toBe(true);
+    expect(items.every((item) => (item.modifiers ?? []).length === 0)).toBe(true);
+  });
+
+  // ── Incident modifiers ──────────────────────────────────
+  it.fails('the incident tooltip shows the base effect and each applied modifier', () => {
+    const incident = incidentModifierProjection().incident;
+    expect(buildIncidentLineTooltip(incident, 'Test Incident')).toBe(
+      'Incident\n'
+      + 'Test Incident: Coins -70, Rep +6\n'
+      + 'Base: Coins -100, Rep +4\n'
+      + 'Quality Inspector: Coins +30, Rep 0\n'
+      + 'Brand Ambassador: Coins 0, Rep +2',
+    );
+    // base + every modifier reconciles to the committed incident deltas.
+    const detail = incident.detail!;
+    expect(detail.base.coins + detail.modifiers.reduce((total, modifier) => total + modifier.coins, 0))
+      .toBe(incident.coins);
+    expect(detail.base.reputation
+      + detail.modifiers.reduce((total, modifier) => total + modifier.reputation, 0))
+      .toBe(incident.reputation);
+  });
+
+  it('the incident null note is unchanged', () => {
+    const projection = contractProjection();
+    expect(buildIncidentLineTooltip(projection.incident, null)).toBe(
+      'Incident\nNo incident was resolved this turn.',
+    );
+  });
+
+  // ── Total-row enumeration ───────────────────────────────
+  it.fails('the total income tooltip enumerates each contributing line and reconciles', () => {
+    // The builder takes the section so it can list the section's own lines.
+    const buildTotal = buildTotalLineTooltip as unknown as (section: PLStatementSection) => string;
+    const income = contractProjection().income;
+    const tooltip = buildTotal(income);
+    expect(tooltip).toBe(
+      'Total income: +89\n'
+      + 'Base income: +80\n'
+      + 'Synergy income: +7\n'
+      + 'Reputation income: +4\n'
+      + 'Event income: -2',
+    );
+    expect(tooltip).not.toContain('The sum of the lines above.');
+    // The enumerated lines reconcile to the committed subtotal.
+    expect(income.lines.reduce((total, line) => total + line.coins, 0)).toBe(income.total);
+  });
+
+  it.fails('the total expenses tooltip enumerates each contributing line and reconciles', () => {
+    const buildTotal = buildTotalLineTooltip as unknown as (section: PLStatementSection) => string;
+    const expenses = contractProjection().expenses;
+    expect(buildTotal(expenses)).toBe(
+      'Total operating expenses: -185\n'
+      + 'Staff wages: -150\n'
+      + 'Community spaces: -20\n'
+      + 'Business costs: -15',
+    );
+    expect(expenses.lines.reduce((total, line) => total + line.coins, 0)).toBe(expenses.total);
+  });
+
+  // ── Supplementary context derivations ───────────────────
+  it.fails('closing coins shows day start + net change = closing', () => {
+    const projection = contractProjection();
+    const context = projection.context;
+    expect(buildContextLineTooltip('closingCoins', context)).toBe(
+      'Closing coins\n'
+      + `Day start: ${signed(context.dayStartCoins!)}\n`
+      + `Net change: ${signed(projection.net.coins)}\n`
+      + `Closing: ${signed(context.closingCoins)}`,
+    );
+    expect(context.dayStartCoins! + projection.net.coins).toBe(context.closingCoins);
+  });
+
+  it.fails('reputation change shows its income, incident and one-off constituents', () => {
+    const projection = contractProjection();
+    const context = projection.context;
+    const parts = context.reputationParts!;
+    expect(buildContextLineTooltip('reputationChange', context)).toBe(
+      'Reputation change\n'
+      + `Income: ${signed(parts.income)}\n`
+      + `Incident: ${signed(parts.incident)}\n`
+      + `One-off: ${signed(parts.oneOff)}\n`
+      + `Total: ${signed(context.reputationChange)}`,
+    );
+    expect(parts.income + parts.incident + parts.oneOff).toBe(context.reputationChange);
+  });
+
+  it.fails('businesses owned names the businesses, one per line', () => {
+    const projection = contractProjection();
+    const context = projection.context;
+    expect(buildContextLineTooltip('businessesOwned', context)).toBe(
+      ['Businesses owned', ...context.businessNames!].join('\n'),
+    );
+    expect(context.businessNames!.length).toBe(context.businessesOwned);
+  });
+
+  it('score change keeps its explanatory prose', () => {
+    const tooltip = buildContextLineTooltip('scoreChange', contractProjection().context);
+    expect(tooltip).toContain('Score change');
+    expect(tooltip).toContain('final score');
+  });
+
+  // ── Absent-safe degradation ─────────────────────────────
+  it('an income line with no breakdown degrades to the committed total plus the note', () => {
+    const projection = buildPLProjection(tooltipState(), {
+      turnLedger: tooltipLedger(),
+      incident: { name: 'Flu Outbreak' } as EventCard,
+    })!;
+    const base = projection.income.lines.find((line) => line.key === 'base')!;
+    expect(base.breakdown).toBeUndefined();
+    expect(buildIncomeLineTooltip(base)).toBe(
+      'Base income: +80\nBusiness income — how each owned business contributes.',
+    );
+  });
+
+  it('an expense line with no breakdown degrades to the committed total plus the note', () => {
+    const tooltip = buildExpenseLineTooltip({ key: 'staff', label: 'Staff wages', coins: -150 });
+    expect(tooltip).toBe(
+      'Staff wages: -150\nOperating expenses — what each item costs you.',
+    );
+  });
+
+  it('a context row without derivations keeps its explanatory prose (absent-safe)', () => {
+    const legacyContext = {
+      reputationChange: 1,
+      scoreChange: 14,
+      closingCoins: 880,
+      businessesOwned: 2,
+    };
+    expect(buildContextLineTooltip('closingCoins', legacyContext)).toBe(
+      'Closing coins\nYour coin balance at the end of the day (day start + net change).',
+    );
+    expect(buildContextLineTooltip('reputationChange', legacyContext)).toBe(
+      'Reputation change\nThe day’s net reputation change, after income, incidents and one-offs.',
+    );
+    expect(buildContextLineTooltip('businessesOwned', legacyContext)).toBe(
+      'Businesses owned\nBusinesses standing on the street at closing (sold slots excluded).',
     );
   });
 });
