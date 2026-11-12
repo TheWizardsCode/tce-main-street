@@ -485,11 +485,17 @@ employment).
   unresolved at end-of-turn auto-declines without blocking the turn.
 - **Employment slots:** a business can employ one staff member per level
   (`level + 1` slots, minimum 1).
-- **Let-go:** open the **Manage Card** dialog on a street card (click it to
-  sell/manage) and press **[ Lay off ]** — shown only when somebody is
-  employed there. It lists who is employed and costs **1 turn's salary + 1
-  reputation**; the member's buff stops applying from the next income phase.
-  The lay-off is undoable via the scene's undo stack.
+- **Manage Card staff rows (let-go / move):** open the **Manage Card** dialog
+  on a street card (click it to sell/manage); a card that employs staff lists
+  **one row per employed member**, each with its own `[ Move ]` and
+  `[ Lay off ]`, plus the costs line `Move: 1 action · Lay off: 1 turn's
+  salary + reputation`. `[ Lay off ]` opens a confirm step quoting **that
+  member's** one turn's salary (clamped at 0) and the salary-scaled
+  reputation cost; `[ Confirm ]` runs `letGoStaffCommand` through the undo
+  stack (undoable, charged and logged as `Laid off <name> (−<coins> coins,
+  −<reputation> reputation)`) and re-renders the rows in place, shrinking the
+  panel as members leave. A card that employs nobody shows no staff section.
+  The member's buff stops applying from the next income phase.
 
 Engine functions: `resolveStaffApplicant`, `hireStaffApplicant`,
 `declineStaffApplicant`, `letGoStaffMember`, `getEmploymentCapacity`,

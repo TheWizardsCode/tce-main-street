@@ -1303,7 +1303,7 @@ condensed text-only summary.
      `hudY`) with `SFX_KEYS.COIN_POP` via `moveGameObject`.
   3. A "+€refund" pop lands at the HUD counter (`popTextOrIcon`) and the
      coin SFX pops on landing.
-- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
+- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 520 wide, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
 - Accessibility (reduced motion): demolition + coin flight are skipped; a
   single "+€refund" pop + coin SFX remain (spec AC2).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — the
@@ -1341,6 +1341,52 @@ condensed text-only summary.
   `closeBusinessCommand`.
 - Reuse: `createTransferCardVisual` + `popTextOrIcon` + `SFX_KEYS.DISCARD`; no
   new engine infrastructure.
+
+### Manage Card staff rows — business staff (MS-0MWC952QU000HQ11)
+
+A business that employs staff lists **one row per employed member** at the
+bottom of its **Manage Card** dialog, so releasing or relocating a member
+always acts on the member the player picked — never "the most recently
+hired" member.
+
+- **Rows.** One row per member employed at this slot (`employedAtSlot ===
+  slotIndex`, hire order — oldest first), each showing the member's name, its
+  role/benefit summary (the shared `formatStaffRoleSummary()` text the
+  tooltips also use), its effective per-turn salary and its own `[ Move ]` and
+  `[ Lay off ]` buttons. Rows come from the pure `buildBusinessStaffRows()`
+  model (`src/MainStreetBusinessStaff.ts`), so the row salary and lay-off
+  figures are the engine's own arithmetic. Management-company members never
+  appear here — they belong to the Company Roster overlay.
+- **Panel sizing.** The dialog (520 wide) sizes its own height from the member
+  count — the fixed sell/close/cancel block and costs line plus one 34px row
+  per member — and keeps a flat 360px height when nobody is employed.
+- **Costs line.** Stated once per dialog, under the buttons:
+  `Move: 1 action · Lay off: 1 turn's salary + reputation` — neither cost is
+  hidden behind a tooltip.
+- **[ Move ].** Begins relocating **that** member (`beginStaffMove(memberId)`
+  after dismissing the dialog); its tooltip lists the member's legal
+  destination slots from the shared affordance builder, and the move costs
+  1 action (undone via the undo stack).
+- **[ Lay off ] → confirm step.** Opens a quoted confirm layer over the rows
+  (member name, one turn's salary in coins clamped at 0, and the shared
+  salary-scaled reputation cost — both read from the row model, never
+  recomputed). `[ Confirm ]` runs `letGoStaffCommand()` through the scene's
+  undo manager, so the lay-off stays undoable; `[ Cancel ]` changes nothing.
+  The confirm re-resolves the row's member id against the live `staffCards`,
+  so a stale row (member already gone, e.g. after an undo) flashes feedback
+  and re-renders instead of acting on a shifted index.
+- **In-place refresh.** After a confirm the dialog stays open and rebuilds its
+  rows in place: the fired row disappears and the panel shrinks to fit the
+  remaining members while its top edge stays put; the world and undo buttons
+  refresh on the same cycle. The activity log records the applied charge as
+  `Laid off <name> (−<coins> coins, −<reputation> reputation)`.
+- **Empty state.** A card that employs nobody renders no rows, no buttons and
+  no costs line — the section renders nothing at all and the dialog keeps its
+  flat 360px height; `[ Sell ]`/`[ Close ]`/`[ Cancel ]` keep working.
+- **Tests.** `tests/main-street/manage-card-dialog.browser.test.ts` (rows in
+  hire order, per-row `[ Move ]`/`[ Lay off ]`, quoted confirm, in-place
+  refresh down to the empty state, undo, stale-row guard, panel fit at
+  maximum employment capacity, and coexistence with Sell/Close/Cancel).
 
 ### Week transition banner
 
