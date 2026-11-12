@@ -358,3 +358,59 @@ describe('Company Roster overlay — Staff Pile entry point', () => {
     expect(hit.x + hit.width / 2).toBeLessThanOrEqual(capacityRowLeft + 1);
   });
 });
+
+describe('Company Roster overlay — pile → roster → lay-off end-to-end', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  /** The live Staff Pile count badge, or null when the pile is gone. */
+  function pileCount(scene: any): number | null {
+    const container = scene.staffPileContainer as Phaser.GameObjects.Container | undefined;
+    if (!container) return null;
+    const badge = (container as any).list.find(
+      (o: any) => typeof o.getData === 'function' && o.getData('staffPileCount') !== undefined,
+    );
+    return badge ? badge.getData('staffPileCount') : null;
+  }
+
+  it('pile click opens, lay-offs refresh row/footer/pile, and the empty state closes the loop', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as any;
+    scene.state.staffCards = [
+      managementMember('mgmt-a', 'Ada Assistant', 100),
+      managementMember('mgmt-b', 'Bo Director', 250),
+    ];
+    scene.state.resourceBank.coins = 5000;
+    scene.state.resourceBank.reputation = 5000;
+    scene.refreshAll();
+
+    expect(pileCount(scene)).toBe(2);
+
+    // 1. Open the roster from the Staff Pile.
+    (scene.staffPileHitArea as Phaser.GameObjects.Rectangle).emit('pointerdown');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Company Roster');
+    expect(overlayTexts(scene).map((o) => o.text)).toContain('Ada Assistant');
+
+    // 2. Lay off the first member: row, footer and pile count refresh in place.
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+    expect(scene.state.staffCards.map((m: any) => m.id)).toEqual(['mgmt-b']);
+    expect(overlayTexts(scene).map((o) => o.text)).not.toContain('Ada Assistant');
+    expect(overlayTexts(scene).some((o) => o.text.includes('1 management-company staff'))).toBe(true);
+    expect(pileCount(scene)).toBe(1);
+
+    // 3. Lay off the last member: empty state, pile gone, no lingering hit area.
+    findOverlayButton(scene, '[ Lay off ]').emit('pointerdown');
+    findOverlayButton(scene, '[ Confirm ]').emit('pointerdown');
+    expect(scene.state.staffCards).toHaveLength(0);
+    expect(overlayTexts(scene).map((o) => o.text)).toContain(
+      'No management-company staff employed.',
+    );
+    expect(scene.staffPileContainer).toBeUndefined();
+    expect(scene.staffPileHitArea).toBeUndefined();
+  });
+});
