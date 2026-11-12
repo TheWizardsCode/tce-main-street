@@ -941,26 +941,66 @@ and changes no save ordering.
 
 | Row | Committed value | Per-item detail (tooltip breakdown) |
 | --- | --- | --- |
-| Base income | `TurnLedger.incomeByPhase.base` | `IncomeResult.breakdown[].baseIncome` (`SlotIncome`) |
-| Synergy income | `TurnLedger.incomeByPhase.synergy` | `IncomeResult.breakdown[].synergyBonus` |
-| Reputation income | `TurnLedger.incomeByPhase.reputation` | `IncomeResult.phaseBreakdown.perSlotBreakdown[].repBonus` |
-| Event income | `TurnLedger.incomeByPhase.events` | `phaseBreakdown.perSlotBreakdown[].eventDeltas` summed per slot |
-| Staff wages | `TurnLedger.ongoingCosts.staff` | each `state.staffCards` member's `computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost)` |
-| Community costs | `TurnLedger.ongoingCosts.community` | each placed, unsold community space's `ongoingCost` |
-| Business costs | `TurnLedger.ongoingCosts.business` | each placed, unsold business card's `ongoingCost` (hand cards are not charged; sold cards are excluded) |
-| Incident | `TurnLedger.incidentCoinChange` / `incidentRepChange` | the resolved `TurnResult.incident.name` and its coin/reputation effect |
+| Base income | `TurnLedger.incomeByPhase.base` | one line per contributing business, from `IncomeResult.breakdown[].baseIncome` (`SlotIncome`); zero contributions are omitted |
+| Synergy income | `TurnLedger.incomeByPhase.synergy` | one line per contributing business, from `IncomeResult.breakdown[].synergyBonus`; zero contributions are omitted |
+| Reputation income | `TurnLedger.incomeByPhase.reputation` | one line per contributing business, from `IncomeResult.phaseBreakdown.perSlotBreakdown[].repBonus`; zero contributions are omitted |
+| Event income | `TurnLedger.incomeByPhase.events` | one line per business (its `phaseBreakdown.perSlotBreakdown[].eventDeltas` summed), then one indented `name: ±n` line per committed event effect; a business with no effects and a zero sum is omitted, one whose effects net to zero is kept so its effects stay visible |
+| Staff wages | `TurnLedger.ongoingCosts.staff` | one line per `state.staffCards` member with the engine's `computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost)` charge; where the Operations Manager discount applies, an indented `Base:` line (the card's `ongoingCost`) plus one indented line per named modifier (`Operations Manager: +n`), so `base + sum(modifiers)` equals the charged salary |
+| Community costs | `TurnLedger.ongoingCosts.community` | one line per placed, unsold community space with its base `ongoingCost` (its only modifier is the street-wide reduction) |
+| Business costs | `TurnLedger.ongoingCosts.business` | one line per placed, unsold business card with its base `ongoingCost` (hand cards are not charged; sold cards are excluded) |
+| Total income / Total operating expenses | the section's committed subtotal | one line per contributing section line with its signed amount, reconciling to the committed subtotal (never a re-sum); a section with no lines keeps "The sum of the lines above." |
+| Incident | `TurnLedger.incidentCoinChange` / `incidentRepChange` | the resolved `TurnResult.incident.name` with its committed coin/reputation effect, then an indented `Base:` line and one indented line per named modifier (incident damage reductions, Brand Ambassador reputation multiplier), so `base + sum(modifiers)` equals the committed deltas; a closing with no incident shows "No incident was resolved this turn." |
 | One-off | `TurnLedger.oneOffDeltas` | **residual only** — see the fallback below |
 | Net profit/loss | `netCoinChange` / `netRepChange` / `netScoreChange` | the reconciliation identity below |
-| Reputation / score change | the net rows | explanatory context |
-| Closing coins / rep / score | `day-start snapshot + net` | explanatory context |
-| Businesses owned | `TurnLedger.businessesOwned` | explanatory context |
+| Reputation change | the net reputation row | the income, incident and one-off reputation constituents that sum to the net change |
+| Score change | the net score row | explanatory prose only (the projection carries no challenge-level detail) |
+| Closing coins | `day-start snapshot + net` | day-start balance, net change and closing balance lines |
+| Closing reputation / score | `day-start snapshot + net` | explanatory context |
+| Businesses owned | `TurnLedger.businessesOwned` | the business names (one per line) rather than only the count |
 
 The per-card ongoing-cost breakdowns are derived from the committed
-`streetGrid` / `staffCards` with the **same** helpers the engine uses, including
-the street-wide Cost Cutter reduction, so the tooltip lists each card's own
-charge and reconciles the list to the committed category total (a
-`Street-wide reduction` line, plus a `Limited by available coins` line when the
-engine clamped the deduction to the wallet).
+`streetGrid` / `staffCards` with the **same** helpers the engine uses. Each item
+line carries the card's **base** charge; staff items additionally carry the
+Operations Manager salary discount as a named modifier. The tooltip then
+reconciles the base per-item sum to the committed category total, including the
+street-wide Cost Cutter reduction (a `Street-wide reduction` line) and any
+available-coins clamp (a `Limited by available coins` line), so
+`sum(items) + reduction + clamp == total`.
+
+### Tooltip format (multi-line)
+
+Every tooltip is a **multi-line** block, not a comma-joined summary. The first
+line repeats the row label and its committed signed amount; each contributing
+item then gets its own line, with any explanation indented beneath the item it
+explains:
+
+```text
+Staff wages: -95
+  Ana the Analyst: -70
+    Base: -90
+    Operations Manager: +20
+  Bo the Broker: -45
+    Base: -45
+Street-wide reduction: +15
+Limited by available coins: +5
+Total: -95
+```
+
+- **Item lines** are `Name: ±n` — one contributing business, staff member,
+  community space or business card per line. Amounts are signed in the row's own
+  convention (income positive, costs negative).
+- **Indented explanation lines** sit beneath their item: `Base: ±n` plus one
+  `Modifier: ±n` line per named modifier (staff, incident), or one
+  `Effect: ±n` line per committed event effect (Event income).
+- **Reconciliation lines** close an expense tooltip: `Street-wide reduction:
+  +n` and `Limited by available coins: +n` when they apply, then `Total: ±n`,
+  so the displayed items always add up to the committed category total.
+- **Total rows** enumerate the section's contributing lines instead of "The sum
+  of the lines above"; **incident**, **one-off** and **net** rows show their
+  base-plus-modifier or reconciliation formula; **context rows** show either
+  their numeric derivation or (for score change) the explanatory prose.
+- Multi-line content fits the existing tooltip width; no dialog re-layout is
+  involved.
 
 ### The reconciliation identities
 
@@ -976,7 +1016,7 @@ loan effects) threaded through the closing. Rather than invent attribution, the
 one-off tooltip presents the reconciliation formula that produces the residual
 — the fallback explicitly permitted by the parent item. A true per-source
 breakdown would require engine-level attribution in `buildTurnLedger` and is
-deliberately out of scope here.
+deliberately out of scope here (follow-up `MS-0MWBZDNH3006DXV7`).
 
 ### Tooltip interaction and styling
 
@@ -998,7 +1038,7 @@ seat's ledger carries no per-item income detail (an older or hand-built
 `CompetitiveRoundLedger`), the tooltip shows the committed category total with
 an explanatory note instead of a wrong or empty breakdown; competitive expense
 lines stay category-total only, because `OwnerRoundLedger` carries no per-card
-cost detail.
+cost detail (deliberate scope decision, follow-up `MS-0MWBZDVCH008P8X5`).
 
 ---
 

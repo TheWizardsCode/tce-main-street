@@ -59,6 +59,20 @@
  * the same statement and tabs from it — one source of truth for both entry
  * points.
  *
+ * Tooltip detail (MS-0MWBCACHZ006RTQ9): the projection also carries the data the
+ * row tooltips need to show their arithmetic. A {@link PLBreakdownItem} keeps
+ * the committed `coins` contribution and may add `base`, `modifiers` and
+ * `effects` that only *explain* it (`base + sum(modifiers) === coins`, and
+ * `sum(effects.delta) === coins`). {@link PLStatementLine.breakdown} groups
+ * those items per business (income phases) or per card (expense categories), and
+ * each section carries the lines its total row enumerates.
+ * {@link PLAdjustmentLine.detail} holds the incident's base effect plus each
+ * named modifier, and {@link PLSupplementaryContext} carries the derivable
+ * context figures (`dayStartCoins`, `businessNames`, `reputationParts`). Every
+ * field is optional and absent-safe: a legacy or hand-built ledger keeps the
+ * previous shape, and the tooltip degrades to the committed total plus an
+ * explanatory note rather than inventing an attribution.
+ *
  * @module src/scenes/MainStreetTurnSummary
  */
 

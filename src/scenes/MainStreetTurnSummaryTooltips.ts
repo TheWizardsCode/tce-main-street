@@ -15,6 +15,32 @@
  * the committed ledger or is the engine's own per-card charge threaded through
  * the model.
  *
+ * ## Multi-line breakdown format
+ *
+ * Each tooltip is a multi-line block, never a comma-joined summary:
+ *
+ * - the first line repeats the row label and its committed signed amount;
+ * - every contributing item then gets its own `Name: ±n` line;
+ * - indented lines beneath an item explain it — `Base: ±n` plus one
+ *   `Modifier: ±n` per named modifier (staff wages, incident), or one
+ *   `Effect: ±n` per committed event effect (Event income);
+ * - an expense tooltip closes with the reconciling `Street-wide reduction` /
+ *   `Limited by available coins` lines and its `Total: ±n`, so the displayed
+ *   items always add up to the committed category total;
+ * - total rows enumerate their section's lines, the one-off and net rows show
+ *   their reconciliation formula, and the context rows show their numeric
+ *   derivation where the projection carries it (score change keeps prose).
+ *
+ * Indentation comes from the locale templates (`itemBase`, `itemModifier` and
+ * `itemEffect` are prefixed with two spaces in {@link LEDGER_TOOLTIP_STRINGS}),
+ * so a registered locale can restyle the layout without touching the builders.
+ *
+ * ## Absent-safe degradation
+ *
+ * A legacy or hand-built ledger without per-item data keeps the previous
+ * behaviour: the line tooltip shows the committed total plus a generic
+ * explanatory note rather than a wrong or empty breakdown.
+ *
  * ## i18n integration
  *
  * Every user-facing string is looked up via the core-engine `t()` function
@@ -30,6 +56,10 @@
  * presents the reconciliation formula that produces the value — the documented
  * fallback permitted by parent AC7:
  * `one-off = net - (income + expenses + incident)`.
+ *
+ * Per-source attribution is a deliberate follow-up (`MS-0MWBZDNH3006DXV7`):
+ * it needs engine-level attribution in `buildTurnLedger`, not a UI-side
+ * invention.
  *
  * @module
  */
