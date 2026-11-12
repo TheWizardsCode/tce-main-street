@@ -47,6 +47,13 @@ import {
   buildCompetitiveTurnSummary,
   buildTurnSummary,
 } from '../../src/scenes/MainStreetTurnSummary';
+import {
+  DIALOG_PANEL_BACKGROUND,
+  MIN_SEAT_TEXT_CONTRAST,
+  contrastRatio,
+  ensureReadableSeatColour,
+  parseHexColour,
+} from '../../src/MainStreetSeatColours';
 
 /** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
 const MUTED_BUTTON_COLOUR = '#6b6459';
@@ -1153,6 +1160,72 @@ describe('Turn Summary — Summary tab (MS-0MWBWRITL0089GGJ, browser)', () => {
     for (const label of ['You', 'AI 1', 'AI 2', 'AI 3']) {
       expect(overlayTexts(s).some((t) => t.text.startsWith(`${label} `))).toBe(true);
     }
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  /**
+   * Regression (audit rejection, MS-0MWBWRITL0089GGJ): the tab strip drew each
+   * seat's raw palette colour as *text* on the black panel, so a seat assigned
+   * the Okabe–Ito black (`#000000`) had an invisible label — the producer saw
+   * the `AI n` tabs but no `You` tab at all. The strip must be
+   * `[ Summary ] [ You ] [ AI 1 ] …`, with every seat label legible.
+   */
+  it('keeps the You (and every AI) tab visible when a seat colour is the palette black', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    // This seed hands the human seat (seat 0) the palette black.
+    const state = createCompetitiveState({
+      seed: 'turn-summary-pl-overlay-black-2-6',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    expect(state.players![0].colour).toBe('#000000');
+    pushSummaryAction(state, 7, 'place-business', 'Placed Bakery in slot 0', 0);
+    const summary = makeCompetitiveSummary(state);
+
+    s.state = state;
+    s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    // ── The tab strip is Summary → You → AI 1, the Summary default ──
+    const summaryTab = overlayText(s, '[ Summary ]');
+    const youTab = overlayText(s, '[ You ]');
+    const aiTab = overlayText(s, '[ AI 1 ]');
+    expect(summaryTab).toBeDefined();
+    expect(youTab).toBeDefined();
+    expect(aiTab).toBeDefined();
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(centreOf(summaryTab!).x).toBeLessThan(centreOf(youTab!).x);
+    expect(centreOf(youTab!).x).toBeLessThan(centreOf(aiTab!).x);
+    expect(youTab!.input?.enabled).toBe(true);
+
+    // ── Every seat label clears WCAG AA against the black panel ──
+    const panel = parseHexColour(DIALOG_PANEL_BACKGROUND)!;
+    for (const tab of [youTab!, aiTab!]) {
+      expect(contrastRatio(parseHexColour(tab.style.color)!, panel))
+        .toBeGreaterThanOrEqual(MIN_SEAT_TEXT_CONTRAST);
+    }
+    // The black seat is lightened, never rendered as black-on-black.
+    expect(youTab!.style.color).not.toBe('#000000');
+    expect(youTab!.style.color).toBe(ensureReadableSeatColour('#000000'));
+    // A legible seat keeps its own hue exactly (seat 1 is sky blue here).
+    expect(aiTab!.style.color).toBe(state.players![1].colour);
+
+    // ── The You tab is a real target showing the human's statement ──
+    youTab!.emit('pointerdown');
+    expect(overlayText(s, '[ You ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Businesses owned: 3')).toBeDefined();
+    expect(overlayText(s, 'Total income: +17')).toBeDefined();
+    expect(overlayText(s, 'Net profit/loss: +9')).toBeDefined();
+    // …and the lightened label survives the redraw.
+    expect(overlayText(s, '[ You ]')!.style.color).not.toBe('#000000');
+
+    // ── Back to the Summary tab, then dismiss ──────────────────
+    overlayText(s, '[ Summary ]')!.emit('pointerdown');
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Major actions')).toBeDefined();
+    expect(overlayText(s, 'You: Placed Bakery in slot 0')).toBeDefined();
 
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
   }, 30_000);

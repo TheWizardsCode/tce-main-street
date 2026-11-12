@@ -38,6 +38,13 @@
 
 import type { MainStreetState, LogEntry, LogEntryType, LogEntryActionType } from './MainStreetStateTypes';
 import { getSeatDisplayLabel } from './MainStreetAdjacencyOwner';
+import {
+  contrastRatio,
+  mixTowardWhite,
+  parseHexColour,
+  rgbDistance,
+  toHexColour,
+} from './MainStreetSeatColours';
 import { getActivityLogEmitter } from './MainStreetGameEvents';
 import type { GameEventEmitter } from '@core-engine/GameEventEmitter';
 
@@ -56,57 +63,6 @@ const MIN_SEAT_PREFIX_LINE_DISTANCE = 60;
 
 /** Mixing steps used when lightening a seat colour toward white. */
 const SEAT_PREFIX_LIGHTEN_STEPS = 20;
-
-/** A parsed RGB colour with channels in `[0, 255]`. */
-type RGB = [number, number, number];
-
-/** Parses a `#rrggbb` (or `#rgb`) hex colour, or `null` when malformed. */
-function parseHexColour(hex: string): RGB | null {
-  const value = hex.trim().replace(/^#/, '');
-  if (value.length === 3) {
-    return [
-      parseInt(value[0] + value[0], 16),
-      parseInt(value[1] + value[1], 16),
-      parseInt(value[2] + value[2], 16),
-    ];
-  }
-  if (value.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(value)) return null;
-  return [
-    parseInt(value.slice(0, 2), 16),
-    parseInt(value.slice(2, 4), 16),
-    parseInt(value.slice(4, 6), 16),
-  ];
-}
-
-/** Formats an RGB colour as a lowercase `#rrggbb` string. */
-function toHexColour(rgb: RGB): string {
-  const channel = (value: number): string =>
-    Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
-  return `#${channel(rgb[0])}${channel(rgb[1])}${channel(rgb[2])}`;
-}
-
-/** WCAG relative luminance of an RGB colour (0 = black, 1 = white). */
-function relativeLuminance([r, g, b]: RGB): number {
-  const linear = (channel: number): number => {
-    const c = channel / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-}
-
-/** WCAG contrast ratio between two RGB colours (1 = identical, 21 = max). */
-function contrastRatio(a: RGB, b: RGB): number {
-  const la = relativeLuminance(a);
-  const lb = relativeLuminance(b);
-  const lighter = Math.max(la, lb);
-  const darker = Math.min(la, lb);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-/** Euclidean distance between two RGB colours in the 0–441 range. */
-function rgbDistance(a: RGB, b: RGB): number {
-  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
-}
 
 /**
  * Resolves the colour used to draw a seat's activity-log prefix.
@@ -136,12 +92,7 @@ export function resolveLogSeatColour(seatColour: string, lineColour: string): st
   if (!seat || !line || !panel) return seatColour;
 
   for (let step = 0; step <= SEAT_PREFIX_LIGHTEN_STEPS; step++) {
-    const t = step / SEAT_PREFIX_LIGHTEN_STEPS;
-    const candidate: RGB = [
-      seat[0] + (255 - seat[0]) * t,
-      seat[1] + (255 - seat[1]) * t,
-      seat[2] + (255 - seat[2]) * t,
-    ];
+    const candidate = mixTowardWhite(seat, step / SEAT_PREFIX_LIGHTEN_STEPS);
     if (
       contrastRatio(candidate, panel) >= MIN_SEAT_PREFIX_CONTRAST &&
       rgbDistance(candidate, line) >= MIN_SEAT_PREFIX_LINE_DISTANCE

@@ -41,6 +41,7 @@ import {
 import type { CompetitiveRoundLedger } from '../../src/MainStreetEngineTypes';
 import { formatLoanObligation } from '../../src/MainStreetLoans';
 import { createCompetitiveState } from '../../src/MainStreetState';
+import { ensureReadableSeatColour } from '../../src/MainStreetSeatColours';
 
 /** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
 const MUTED_BUTTON_COLOUR = '#6b6459';
@@ -194,9 +195,13 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(aiTab!.style.fontStyle).not.toBe('bold');
     expect(humanTab!.input?.enabled).toBe(true);
     expect(aiTab!.input?.enabled).toBe(true);
-    // Reused seat colours, not an ad-hoc palette.
-    expect(humanTab!.style.color).toBe(colours[0]);
-    expect(aiTab!.style.color).toBe(colours[1]);
+    // Reused seat colours, not an ad-hoc palette — lightened only when the
+    // raw hue would be unreadable on the black panel (this seed hands AI 1
+    // the Okabe–Ito black), so no tab can disappear (MS-0MWBWRITL0089GGJ).
+    expect(humanTab!.style.color).toBe(ensureReadableSeatColour(colours[0]));
+    expect(aiTab!.style.color).toBe(ensureReadableSeatColour(colours[1]));
+    expect(colours[1].toLowerCase()).toBe('#000000'); // the case being guarded
+    expect(aiTab!.style.color).not.toBe('#000000');
     expect(humanTab!.style.color).not.toBe(aiTab!.style.color);
 
     // ── Selecting the human tab shows the human seat's own P&L ────

@@ -189,3 +189,115 @@ export function seatColourToNumber(hex: string): number {
   const match = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
   return match ? Number.parseInt(match[1], 16) : 0x000000;
 }
+
+// ── Text legibility on dark surfaces ─────────────────────────
+
+/**
+ * Background the Turn Summary tab strip draws on: the overlay's solid black
+ * panel (`createOverlayBackground` fill `0x000000`).
+ */
+export const DIALOG_PANEL_BACKGROUND = '#000000';
+
+/** WCAG AA contrast ratio for normal-size text (`MIN_SEAT_PREFIX_CONTRAST`). */
+export const MIN_SEAT_TEXT_CONTRAST = 4.5;
+
+/** Mixing steps used when lightening a seat colour toward white. */
+const SEAT_TEXT_LIGHTEN_STEPS = 20;
+
+/** A parsed RGB colour with channels in `[0, 255]`. */
+export type Rgb = [number, number, number];
+
+/** Parses a `#rrggbb` (or `#rgb`) hex colour, or `null` when malformed. */
+export function parseHexColour(hex: string): Rgb | null {
+  const value = hex.trim().replace(/^#/, '');
+  if (value.length === 3) {
+    return [
+      parseInt(value[0] + value[0], 16),
+      parseInt(value[1] + value[1], 16),
+      parseInt(value[2] + value[2], 16),
+    ];
+  }
+  if (value.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(value)) return null;
+  return [
+    parseInt(value.slice(0, 2), 16),
+    parseInt(value.slice(2, 4), 16),
+    parseInt(value.slice(4, 6), 16),
+  ];
+}
+
+/** Formats an RGB colour as a lowercase `#rrggbb` string. */
+export function toHexColour([r, g, b]: Rgb): string {
+  const channel = (value: number): string =>
+    Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+  return `#${channel(r)}${channel(g)}${channel(b)}`;
+}
+
+/** WCAG relative luminance of an RGB colour (0 = black, 1 = white). */
+export function relativeLuminance([r, g, b]: Rgb): number {
+  const linear = (channel: number): number => {
+    const c = channel / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** WCAG contrast ratio between two RGB colours (1 = identical, 21 = max). */
+export function contrastRatio(a: Rgb, b: Rgb): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** Euclidean distance between two RGB colours in the 0–441 range. */
+export function rgbDistance(a: Rgb, b: Rgb): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
+/** Mixes an RGB colour `t` (0–1) of the way toward white. */
+export function mixTowardWhite(rgb: Rgb, t: number): Rgb {
+  return [
+    rgb[0] + (255 - rgb[0]) * t,
+    rgb[1] + (255 - rgb[1]) * t,
+    rgb[2] + (255 - rgb[2]) * t,
+  ];
+}
+
+/**
+ * Resolves a seat colour to a text colour that is legible on a dark surface.
+ *
+ * The palette is colour-blind-safe, not background-aware: it includes the
+ * Okabe–Ito **black** (`#000000`), which vanishes on a black panel. A seat
+ * assigned that hue would lose its label — the Turn Summary tab strip drew
+ * exactly that, so a `[ You ]` (or `[ AI n ]`) tab could silently disappear
+ * (MS-0MWBWRITL0089GGJ). This helper lightens a too-dark seat colour toward
+ * white until it clears the WCAG AA contrast ratio, so the label stays
+ * readable while keeping as much of the seat's identity as the palette allows.
+ *
+ * A colour that already clears the ratio is returned **unchanged** (the exact
+ * caller string), so a seat keeps its own hue wherever it is legible. Total
+ * and Phaser-free: malformed input is returned unchanged rather than throwing,
+ * and an unfixable colour falls back to white.
+ *
+ * @param seatColour    The seat's persisted hex colour (`PlayerRecord.colour`).
+ * @param backgroundHex Background the text sits on (default: the dialog panel).
+ * @param minContrast   Minimum WCAG contrast ratio (default: AA, 4.5:1).
+ * @returns A hex colour legible on the background.
+ */
+export function ensureReadableSeatColour(
+  seatColour: string,
+  backgroundHex: string = DIALOG_PANEL_BACKGROUND,
+  minContrast: number = MIN_SEAT_TEXT_CONTRAST,
+): string {
+  const seat = parseHexColour(seatColour);
+  const background = parseHexColour(backgroundHex);
+  if (!seat || !background) return seatColour;
+  if (contrastRatio(seat, background) >= minContrast) return seatColour;
+
+  for (let step = 1; step <= SEAT_TEXT_LIGHTEN_STEPS; step++) {
+    const candidate = mixTowardWhite(seat, step / SEAT_TEXT_LIGHTEN_STEPS);
+    if (contrastRatio(candidate, background) >= minContrast) return toHexColour(candidate);
+  }
+  return '#ffffff';
+}

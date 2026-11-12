@@ -90,6 +90,7 @@ import {
   buildSummaryMetricTooltip,
   buildTotalLineTooltip,
 } from './MainStreetTurnSummaryTooltips';
+import { ensureReadableSeatColour, DIALOG_PANEL_BACKGROUND } from '../MainStreetSeatColours';
 import { showLoanSelectorDialog } from './MainStreetLoanOverlay';
 
 /** Panel geometry (fits the 1280×720 scene with the action row and hint). */
@@ -567,8 +568,16 @@ export function presentTurnSummaryPanel(
       // Each tab keeps its seat's own colour (the shared `resolveSeatColour`
       // value); selection is signalled by the bold weight. The Summary tab and
       // a panel with no seat colour (single-player) use the dialog's gold.
+      //
+      // A seat colour must never become invisible text: the colour-blind-safe
+      // palette includes the Okabe–Ito black (`#000000`), which is unreadable
+      // on this panel's black background — a seat (the human `You` included)
+      // would lose its tab entirely (MS-0MWBWRITL0089GGJ). `ensureReadableSeatColour`
+      // lightens such a hue toward white until it clears WCAG AA, keeping the
+      // seat colour everywhere it is legible.
       const tabColour = tabModel.colour
-        ?? (selected ? SELECTED_TAB_COLOUR : TAB_COLOUR);
+        ? ensureReadableSeatColour(tabModel.colour, DIALOG_PANEL_BACKGROUND)
+        : (selected ? SELECTED_TAB_COLOUR : TAB_COLOUR);
       const tab = createOverlayButton(
         s, 0, tabY,
         `[ ${tabModel.label} ]`,

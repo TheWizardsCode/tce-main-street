@@ -1602,6 +1602,13 @@ hired" member.
     (MS-0MW4XULA90002OEY: a rejected review found no button to return to the
     player's own tab). The selected tab is the **bold** one; the others keep
     their seat colour and brighten on hover, so every tab reads as a control.
+    **Seat colours are used as text, so they are made legible on the black
+    panel**: `ensureReadableSeatColour()` lightens a hue that would fall below
+    the WCAG AA contrast ratio toward white, keeping the seat colour exactly
+    wherever it already clears it. Without this the colour-blind-safe palette's
+    Okabe–Ito black (`#000000`) made a `[ You ]` or `[ AI n ]` label invisible
+    on the black panel — the producer saw the AI tabs but no `You` tab
+    (MS-0MWBWRITL0089GGJ).
     Selecting any tab redraws the **whole** body (the Summary headline view or
     that player's statement) from the committed figures. Single-player renders
     an interactive `[ Summary ]` and `[ You ]` tab; competitive renders the
@@ -1794,7 +1801,9 @@ owner-keyed, so the whole panel is testable without a browser.
   the competitive side of the unified tabbed panel
   (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a
   **`[ Summary ]`** tab (first and selected by default, MS-0MWBWRITL0089GGJ)
-  followed by a tab per non-eliminated seat in its own colour, and the selected
+  followed by a tab per non-eliminated seat in its own colour (lightened toward
+  white when the hue would be unreadable on the black panel, so the human `You`
+  tab can never disappear — `ensureReadableSeatColour()`), and the selected
   tab's body. The **Summary** tab is the shared headline view — the day's major
   player/AI actions per seat, the resolved incident and its effect, and one row
   per metric (Income / Reputation / Score) carrying every seat's signed change

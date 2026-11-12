@@ -161,6 +161,18 @@ describe('Unified tabbed overlay documentation — ux-visual-audio.md', () => {
     expect(dialog).toContain('actiontype');
   });
 
+  it('documents seat-colour legibility in the tab strip', () => {
+    const dialog = section(DIALOG_SECTION);
+    // A dark palette hue must never turn a seat label invisible on the panel
+    // (the audit-rejection regression, MS-0MWBWRITL0089GGJ).
+    expect(dialog).toContain('ensurereadableseatcolour');
+    expect(dialog).toContain('wcag aa');
+    expect(dialog).toContain('black');
+    expect(source('src/scenes/MainStreetTurnSummaryOverlay.ts')).toContain(
+      'ensurereadableseatcolour(',
+    );
+  });
+
   it('documents keyboard tab switching', () => {
     const dialog = section(DIALOG_SECTION);
     expect(dialog).toContain('left/right');

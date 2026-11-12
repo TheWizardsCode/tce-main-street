@@ -9,10 +9,15 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  DIALOG_PANEL_BACKGROUND,
+  MIN_SEAT_TEXT_CONTRAST,
   SEAT_COLOUR_PALETTE,
   InsufficientSeatColoursError,
   assignSeatColours,
+  contrastRatio,
+  ensureReadableSeatColour,
   getSeatColour,
+  parseHexColour,
   seatColourToNumber,
   type SeatInfo,
 } from '../../src/MainStreetSeatColours';
@@ -218,5 +223,56 @@ describe('seatColourToNumber', () => {
     for (const bad of ['', '#12', 'nonsense', '#GGGGGG', 'rgb(1,2,3)']) {
       expect(seatColourToNumber(bad)).toBe(0x000000);
     }
+  });
+});
+
+// ── Legibility on a dark surface ─────────────────────────────
+
+describe('ensureReadableSeatColour', () => {
+  it('returns a legible seat colour unchanged (exactly, including casing)', () => {
+    for (const colour of ['#F0E442', '#56B4E9', '#E69F00', '#CC79A7', '#FFFFFF']) {
+      expect(ensureReadableSeatColour(colour)).toBe(colour);
+    }
+  });
+
+  it('lightens the palette black so it clears WCAG AA on the black panel', () => {
+    const resolved = ensureReadableSeatColour('#000000');
+    const resolvedRgb = parseHexColour(resolved)!;
+    const panelRgb = parseHexColour(DIALOG_PANEL_BACKGROUND)!;
+
+    expect(resolved).not.toBe('#000000');
+    expect(contrastRatio(resolvedRgb, panelRgb)).toBeGreaterThanOrEqual(MIN_SEAT_TEXT_CONTRAST);
+  });
+
+  it('honours an explicit background and a stricter minimum ratio', () => {
+    // The activity-log panel background (dark brown) is used elsewhere.
+    const onLogPanel = ensureReadableSeatColour('#000000', '#1a1408');
+    expect(contrastRatio(parseHexColour(onLogPanel)!, parseHexColour('#1a1408')!))
+      .toBeGreaterThanOrEqual(MIN_SEAT_TEXT_CONTRAST);
+    // Every palette colour must clear a 7:1 (AAA) request on black.
+    for (const colour of SEAT_COLOUR_PALETTE) {
+      const resolved = ensureReadableSeatColour(colour, DIALOG_PANEL_BACKGROUND, 7);
+      expect(contrastRatio(parseHexColour(resolved)!, parseHexColour(DIALOG_PANEL_BACKGROUND)!))
+        .toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it('keeps the seat hue family: a lightened colour stays brighter than the input', () => {
+    const resolved = parseHexColour(ensureReadableSeatColour('#000000'))!;
+    // Black has no hue to keep; the resolved grey carries equal channels.
+    expect(resolved[0]).toBe(resolved[1]);
+    expect(resolved[1]).toBe(resolved[2]);
+    expect(resolved[0]).toBeGreaterThan(0);
+  });
+
+  it('is total: malformed colours and backgrounds are returned unchanged', () => {
+    expect(ensureReadableSeatColour('nonsense')).toBe('nonsense');
+    expect(ensureReadableSeatColour('')).toBe('');
+    expect(ensureReadableSeatColour('#F0E442', 'rgb(0,0,0)')).toBe('#F0E442');
+  });
+
+  it('falls back to white when no lightening step can satisfy the ratio', () => {
+    // 21:1 is the maximum possible ratio, so a 30:1 request is unsatisfiable.
+    expect(ensureReadableSeatColour('#000000', DIALOG_PANEL_BACKGROUND, 30)).toBe('#ffffff');
   });
 });
