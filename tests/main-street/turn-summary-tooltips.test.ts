@@ -243,7 +243,11 @@ describe('P&L model — per-business income breakdown (MS-0MW7QQ5BX002KGS0)', ()
     const summary = buildTurnSummary(state, plInput(tooltipLedger()));
     const events = summary!.income.find((line) => line.phase === 'events');
     // Only the Bakery has an event delta (-2); zero-item businesses are dropped.
-    expect(events?.breakdown?.items).toEqual([{ name: 'Bakery', coins: -2 }]);
+    // The effect is enumerated by name with its signed delta
+    // (MS-0MWC90RB7004BC4E), not only summed per business.
+    expect(events?.breakdown?.items).toEqual([
+      { name: 'Bakery', coins: -2, effects: [{ name: 'Flu', delta: -2 }] },
+    ]);
   });
 
   it('omitting the income result leaves a statement with no income breakdowns (absent-safe)', () => {
