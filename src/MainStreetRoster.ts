@@ -24,6 +24,7 @@ import {
   isBusinessStaffCard,
 } from './MainStreetStaffBuffs';
 import { formatStaffRoleSummary } from './MainStreetFormatting';
+import { formatCoins } from './scenes/MainStreetLoanRowModel';
 
 /**
  * One row of the company roster: a management-company staff member and the
@@ -125,4 +126,42 @@ export function buildCompanyRoster(state: MainStreetState): CompanyRoster {
  */
 export function companyRosterIsEmpty(state: MainStreetState): boolean {
   return !state.staffCards.some((card) => !isBusinessStaffCard(card));
+}
+
+/**
+ * The confirm step's copy for letting a staff member go: a title quoting the
+ * member's name and a body quoting one turn's salary (coins) and the exact
+ * reputation cost.
+ *
+ * Shared by both lay-off doors — the business-staff rows
+ * ({@link module:MainStreetBusinessStaff}) and the Company Roster — so the
+ * quoted figures and the copy are never duplicated, and the arithmetic always
+ * comes from the row the engine will actually charge against
+ * (MS-0MWCB2Z20006R9FA).
+ */
+export interface LayOffConfirmContent {
+  /** Confirm step title, e.g. `Lay off Jane?`. */
+  readonly title: string;
+  /** Body lines quoting one turn's salary in coins and its reputation cost. */
+  readonly body: string;
+}
+
+/**
+ * Builds the confirm step's title and body quoting the member's name, one
+ * turn's salary in coins (already clamped at 0 in the row) and the reputation
+ * cost — read from the row itself, never recomputed here. Both lay-off doors
+ * funnel through this one implementation so their copy cannot drift.
+ *
+ * @param row The member's row (name + exact lay-off figures).
+ * @returns The confirm step's title and body lines.
+ */
+export function buildLayOffConfirmContent(row: {
+  readonly name: string;
+  readonly layOffCoins: number;
+  readonly layOffReputation: number;
+}): LayOffConfirmContent {
+  return {
+    title: `Lay off ${row.name}?`,
+    body: `One turn's salary: ${formatCoins(row.layOffCoins)}\nReputation: −${row.layOffReputation}`,
+  };
 }
