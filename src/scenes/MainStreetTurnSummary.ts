@@ -752,14 +752,27 @@ export interface PLBreakdownModifier {
 }
 
 /**
+ * One named event effect that produced part of a business's event-phase coins
+ * (the committed `SlotEventDelta`), so the Events tooltip can name every
+ * effect rather than only the per-business sum (MS-0MWC90RB7004BC4E).
+ */
+export interface PLBreakdownEffect {
+  /** Human-readable effect name (`SlotEventDelta.name`). */
+  name: string;
+  /** Signed coin delta the effect contributed (negative = reduction). */
+  delta: number;
+}
+
+/**
  * A single item in a per-item breakdown (business name → coins, staff card →
  * cost, etc.). Used by tooltip content builders.
  *
  * `coins` is always the **committed** contribution the item adds to the line
  * (the engine's own per-card charge, or the ledger's per-business figure).
- * `base` and `modifiers` only *explain* that figure for the tooltip: they are
- * optional, and when `base` is present the invariant
- * `base + sum(modifiers.coins) === coins` holds for every emitted item.
+ * `base`, `modifiers` and `effects` only *explain* that figure for the
+ * tooltip: they are optional, and when `base` is present the invariant
+ * `base + sum(modifiers.coins) === coins` holds for every emitted item, as
+ * does `sum(effects.delta) === coins` when `effects` is present.
  */
 export interface PLBreakdownItem {
   /** Display name of the item (business name, staff name, etc.). */
@@ -779,6 +792,13 @@ export interface PLBreakdownItem {
    * and business costs); never synthesised.
    */
   modifiers?: PLBreakdownModifier[];
+  /**
+   * Named event effects that produced this item's {@link coins} (Events row
+   * only). Absent when the committed `SlotPhaseBreakdown` carries no
+   * `eventDeltas` for the business; never synthesised. The deltas sum to
+   * {@link coins}, so the effects explain the item rather than adding to it.
+   */
+  effects?: PLBreakdownEffect[];
 }
 
 /**
@@ -1094,14 +1114,28 @@ function incomeLineBreakdown(
 
   // Reputation and event phases come from the per-slot phase breakdown.
   const phaseSlots = income.phaseBreakdown?.perSlotBreakdown ?? [];
+
+  if (phase === 'events') {
+    // Enumerate each committed `SlotEventDelta` as a named effect on its
+    // business's item, so the tooltip names every effect and not only the
+    // per-business sum (MS-0MWC90RB7004BC4E). A slot whose effects net to
+    // zero is still kept: it carries effects worth explaining, and its zero
+    // `coins` keeps `sum(items) === line coins` intact.
+    const items = phaseSlots
+      .map((slot) => {
+        const effects = (slot.eventDeltas ?? []).map((delta) => ({
+          name: delta.name,
+          delta: delta.delta,
+        }));
+        const coins = effects.reduce((total, effect) => total + effect.delta, 0);
+        return { name: slot.businessName, coins, effects };
+      })
+      .filter((item) => item.coins !== 0 || item.effects.length > 0);
+    return items.length > 0 ? { breakdown: { items } } : {};
+  }
+
   const items = phaseSlots
-    .map((slot) => ({
-      name: slot.businessName,
-      coins:
-        phase === 'reputation'
-          ? slot.repBonus
-          : (slot.eventDeltas ?? []).reduce((total, delta) => total + delta.delta, 0),
-    }))
+    .map((slot) => ({ name: slot.businessName, coins: slot.repBonus }))
     .filter((item) => item.coins !== 0);
   return items.length > 0 ? { breakdown: { items } } : {};
 }

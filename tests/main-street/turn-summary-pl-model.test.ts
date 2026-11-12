@@ -50,7 +50,6 @@
  *
  *  - MS-0MWC90QGG0075S8A → `a staff item carries its base salary and each
  *    named modifier`
- *  - MS-0MWC90RB7004BC4E → `the Events row enumerates each event effect`
  *  - MS-0MWC90S6H009EDRD → `exposes the committed deltas plus each applied
  *    modifier`, `exposes day-start coins, the owning business names and the
  *    reputation constituents`, `derives a competitive seat’s day-start coins`
@@ -951,9 +950,16 @@ describe('buildPLProjection — income and event-effect detail', () => {
       .toEqual([['Bakery', -15], ['Café', -5]]);
     // The row totals still come from the committed ledger, not the items.
     expect(projection.income.total).toBe(140);
+
+    // Every row with a breakdown reconciles: its items sum to the line coins.
+    for (const line of projection.income.lines) {
+      expect(line.breakdown, `${line.key} line carries a breakdown`).toBeDefined();
+      expect(line.breakdown!.items.reduce((total, item) => total + item.coins, 0))
+        .toBe(line.coins);
+    }
   });
 
-  it.fails('the Events row enumerates each event effect as a name and signed delta', () => {
+  it('the Events row enumerates each event effect as a name and signed delta', () => {
     const projection = buildPLProjection(
       twoBusinessState(),
       detailedInput(makeLedger(), twoBusinessIncome()),
@@ -977,6 +983,32 @@ describe('buildPLProjection — income and event-effect detail', () => {
       expect((item.effects ?? []).reduce((total, effect) => total + effect.delta, 0))
         .toBe(item.coins);
     }
+  });
+
+  it('keeps a business whose event effects net to zero, so no effect is dropped', () => {
+    const income = twoBusinessIncome();
+    income.phaseBreakdown!.perSlotBreakdown[1].eventDeltas = [
+      { cardId: 'evt-test-festival', name: 'Street Festival', delta: 5 },
+      { cardId: 'evt-test-flu', name: 'Flu Outbreak', delta: -5 },
+    ];
+    const projection = buildPLProjection(
+      twoBusinessState(),
+      detailedInput(
+        makeLedger({ incomeByPhase: { base: 120, synergy: 30, reputation: 10, events: -15 } }),
+        income,
+      ),
+    )!;
+
+    const events = itemsOf(lineOf(projection, 'events'));
+    // Bakery still contributes; Café's effects cancel out but stay enumerable.
+    expect(events.map((item) => [item.name, item.coins])).toEqual([['Bakery', -15], ['Café', 0]]);
+    expect(events[1].effects).toEqual([
+      { name: 'Street Festival', delta: 5 },
+      { name: 'Flu Outbreak', delta: -5 },
+    ]);
+    // The row still reconciles to the committed ledger figures.
+    expect(events.reduce((total, item) => total + item.coins, 0))
+      .toBe(lineOf(projection, 'events').coins);
   });
 });
 
