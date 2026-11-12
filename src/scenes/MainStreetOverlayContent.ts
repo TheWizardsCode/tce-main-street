@@ -52,6 +52,7 @@ import { showLoanPayoffDialog as renderLoanPayoffDialog } from './MainStreetLoan
 import type { LoanPayoff } from '../MainStreetLoans';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance, HUD_TOOLTIP_I18N_KEYS } from './MainStreetHudTooltips';
+import { buildBusinessStaffRows } from '../MainStreetBusinessStaff';
 import { buildCompanyRoster, type CompanyRosterRow } from '../MainStreetRoster';
 import { formatCoins } from './MainStreetLoanRowModel';
 import { TIER_DEFINITIONS, ORDERED_TIER_DEFINITIONS, highestUnlockedTier } from '../MainStreetTiers';
@@ -706,10 +707,22 @@ export class MainStreetOverlayContent {
       .filter(({ member }) => member.employedAtSlot === slotIndex);
 
     const panelW = 480;
-    // Extra height for the employed-staff row when it is present.
-    const panelH = employedStaff.length > 0 ? 410 : 360;
+    // Row-per-member staff section (MS-0MWCB35QG0030XU6): the panel sizes
+    // itself from the member count — the fixed sell/close/cancel block plus
+    // the cost line, one row per member (rowH each) and the shared
+    // [ Lay off ] beneath them. No member → nothing renders (today's empty
+    // state) and the panel keeps its 360px height.
+    const staffRows = buildBusinessStaffRows(s.state, slotIndex);
+    const staffRowH = 34;            // one member row (name/role/salary + [ Move ])
+    const costLineTop = 300;         // cost line, below the buttons block (bottom ≈ 297)
+    const rowsTop = costLineTop + 24; // first member row top, relative to panelY
+    const panelH = staffRows.length > 0
+      ? rowsTop + staffRows.length * staffRowH + 42 // rows + [ Lay off ] block + pad
+      : 360;
     const panelY = s.layout.gameH / 2 - panelH / 2;
     const centerX = s.layout.gameW / 2;
+    const panelLeft = centerX - panelW / 2;
+    const panelRight = centerX + panelW / 2;
 
     // Overlay background with semi-transparent backdrop
     const boxConfig = {
@@ -906,42 +919,92 @@ export class MainStreetOverlayContent {
     });
     s.overlayObjects.push(cancelBtn);
 
-    // ── Employed staff / lay-off (CG-0MSTOATDU006UGAX) ──────────────
-    // Only rendered when somebody is actually employed here — no empty row
-    // and no button otherwise. Laying off the most recently hired member
-    // costs 1 turn's salary (clamped at 0 coins) + 1 reputation.
-    if (employedStaff.length > 0) {
-      const names = employedStaff.map(({ member }) => member.name).join(', ');
-      const staffLine = s.add.text(
-        centerX, panelY + 305,
-        `Employed here: ${names}\nMove: costs 1 action. Lay off: costs 1 turn's salary + 1 reputation.`,
+    // ── Employed staff section (MS-0MWCB35QG0030XU6) ────────────────
+    // One row per member employed at this slot, in hire order (oldest first),
+    // from the shared model (`buildBusinessStaffRows`) — never the newest
+    // hire. Each row shows the member's name, role/benefit summary, effective
+    // per-turn salary and its own `[ Move ]`; a single cost line states both
+    // affordance costs so neither is hidden behind a tooltip. The section is
+    // built by `renderStaffSection()` so the per-row lay-off item
+    // (MS-0MWCB36A8002NKBX) can tear down and rebuild it in place from the
+    // same code path.
+    let staffObjects: Phaser.GameObjects.GameObject[] = [];
+    const clearStaffSection = () => {
+      const set = new Set(staffObjects);
+      s.overlayObjects = s.overlayObjects.filter((obj: any) => !set.has(obj));
+      staffObjects.forEach((obj) => obj.destroy());
+      staffObjects = [];
+    };
+    const addStaffObject = (obj: Phaser.GameObjects.GameObject) => {
+      staffObjects.push(obj);
+      s.overlayObjects.push(obj);
+    };
+
+    const renderStaffSection = () => {
+      clearStaffSection();
+      const rows = buildBusinessStaffRows(s.state, slotIndex);
+      if (rows.length === 0) return; // nobody employed: render nothing
+
+      // Both affordance costs, stated once (AC4) — Move is 1 action, Lay off
+      // is 1 turn's salary + reputation.
+      const costLine = s.add.text(
+        centerX, panelY + costLineTop,
+        "Move: 1 action · Lay off: 1 turn's salary + reputation",
         { fontSize: '12px', color: '#ffcc88', fontFamily: FONT_FAMILY, align: 'center' },
       ).setOrigin(0.5).setDepth(201);
-      if (s.hudContainer) s.hudContainer.add(staffLine);
-      s.overlayObjects.push(staffLine);
+      if (s.hudContainer) s.hudContainer.add(costLine);
+      addStaffObject(costLine);
 
-      // Move-staff affordance (MS-0MUOSULQ700186PP AC2): begins a relocation
-      // targeting the most recently hired member (same convention as Lay off).
-      // The 1-action cost is stated on the button and in the line above.
-      const moveStaffBtn = createOverlayButton(s, centerX - 110, panelY + 352, '[ Move staff (1 action) ]', 201);
-      if (s.hudContainer) s.hudContainer.add(moveStaffBtn);
-      const moveTarget = employedStaff[employedStaff.length - 1];
-      // Hover tooltip (MS-0MUOSULQ700186PP AC2): states the 1-action cost and
-      // the legal destination businesses, from the pure affordance builder.
-      moveStaffBtn.on('pointerover', () => {
-        const affordance = buildMoveStaffAffordance(s.state, moveTarget.member.id);
-        s.tooltipManager?.show(affordance.tooltip, moveStaffBtn.x, moveStaffBtn.y);
-      });
-      moveStaffBtn.on('pointerout', () => s.tooltipManager?.hide());
-      moveStaffBtn.on('pointerdown', () => {
-        dismissOverlay(s.overlayObjects);
-        s.overlayObjects = [];
-        s.beginStaffMove(moveTarget.member.id);
-      });
-      s.overlayObjects.push(moveStaffBtn);
+      // One row per member, hire order. Each row's [ Move ] targets that
+      // row's member id (AC3) — no implicit "most recently hired" target.
+      rows.forEach((row, index) => {
+        const y = panelY + rowsTop + index * staffRowH;
 
-      const layOffBtn = createOverlayButton(s, centerX + 110, panelY + 352, '[ Lay off ]', 201);
+        const nameText = s.add.text(panelLeft + 20, y, row.name, {
+          fontSize: '14px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
+          wordWrap: { width: 120 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(nameText);
+        addStaffObject(nameText);
+
+        const roleText = s.add.text(panelLeft + 148, y, row.roleSummary, {
+          fontSize: '11px', color: '#ddccbb', fontFamily: FONT_FAMILY,
+          wordWrap: { width: 130 },
+        }).setOrigin(0, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(roleText);
+        addStaffObject(roleText);
+
+        const salaryText = s.add.text(panelRight - 122, y, `${formatCoins(row.salary)}/turn`, {
+          fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
+        }).setOrigin(1, 0).setDepth(201);
+        if (s.hudContainer) s.hudContainer.add(salaryText);
+        addStaffObject(salaryText);
+
+        // Per-row [ Move ] (AC3): begins relocation of *this* member. The
+        // hover tooltip lists that member's legal destinations, from the
+        // shared affordance builder (MS-0MUOSULQ700186PP).
+        const moveBtn = createOverlayButton(s, panelRight - 56, y + 8, '[ Move ]', 201);
+        if (s.hudContainer) s.hudContainer.add(moveBtn);
+        addStaffObject(moveBtn);
+        moveBtn.on('pointerover', () => {
+          const affordance = buildMoveStaffAffordance(s.state, row.memberId);
+          s.tooltipManager?.show(affordance.tooltip, moveBtn.x, moveBtn.y);
+        });
+        moveBtn.on('pointerout', () => s.tooltipManager?.hide());
+        moveBtn.on('pointerdown', () => {
+          dismissOverlay(s.overlayObjects);
+          s.overlayObjects = [];
+          s.beginStaffMove(row.memberId);
+        });
+      });
+
+      // Shared [ Lay off ] (CG-0MSTOATDU006UGAX), anchored beneath the rows.
+      // The per-row [ Lay off ] with quoted confirm step lands in the sibling
+      // item MS-0MWCB36A8002NKBX, which reuses this render helper.
+      const layOffY = panelY + rowsTop + rows.length * staffRowH + 4;
+      const layOffBtn = createOverlayButton(s, centerX, layOffY, '[ Lay off ]', 201);
       if (s.hudContainer) s.hudContainer.add(layOffBtn);
+      addStaffObject(layOffBtn);
       layOffBtn.on('pointerdown', () => {
         const target = employedStaff[employedStaff.length - 1];
         let laidOff = false;
@@ -975,8 +1038,9 @@ export class MainStreetOverlayContent {
         // on failure. Presentation-only — state is already committed above.
         safePlaySound(s, laidOff ? SFX_KEYS.DISCARD : COMMON_SFX_KEYS.ILLEGAL_MOVE);
       });
-      s.overlayObjects.push(layOffBtn);
-    }
+    };
+
+    renderStaffSection();
   }
 
   /**

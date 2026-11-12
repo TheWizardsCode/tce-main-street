@@ -70,17 +70,27 @@ async function waitForCondition(
   throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
 }
 
-function makeBusiness(): BusinessCard {
+function makeBusiness(level = 0): BusinessCard {
   const tpl = getBusinessTemplates()[0];
   return {
     ...tpl,
     id: `manage-dialog-${tpl.id}`,
     family: 'business',
-    level: 0,
+    level,
     incomeBonus: 0,
     synergyRangeBonus: 0,
     reputationBonus: 0,
     appliedUpgrades: [],
+  };
+}
+
+/** A job-applicant member employed at the given slot. */
+function staffMember(id: string, name: string, slot = 0): StaffCard {
+  return {
+    ...createStaffDeck(1)[0]!,
+    id,
+    name,
+    employedAtSlot: slot,
   };
 }
 
@@ -99,6 +109,7 @@ interface ManageScene extends Phaser.Scene {
   overlayObjects: Phaser.GameObjects.GameObject[];
   hudContainer?: Phaser.GameObjects.Container;
   uiPhase: string;
+  beginStaffMove?: (staffId: string) => void;
   refreshAll: () => void;
   msAnimator: {
     animateClose: (params: { slotIndex: number; cardId: string; family: string }) => Promise<void>;
@@ -125,8 +136,8 @@ function findOverlayButton(scene: ManageScene, label: string): Phaser.GameObject
 }
 
 /** Places a fresh business card on the given slot and re-renders. */
-function placeCard(scene: ManageScene, slotIndex: number): BusinessCard {
-  const biz = makeBusiness();
+function placeCard(scene: ManageScene, slotIndex: number, options: { level?: number } = {}): BusinessCard {
+  const biz = makeBusiness(options.level ?? 0);
   scene.state.streetGrid[slotIndex] = biz;
   scene.state.resourceBank.coins = 50;
   scene.state.actionsRemaining = 1;
@@ -255,7 +266,7 @@ describe('MainStreet Manage Card dialog', () => {
     expect(scene.state.discardPile).toHaveLength(discardBefore);
   }, 30_000);
 
-  it('offers no lay-off affordance when the managed card employs nobody', async () => {
+  it('renders no staff section when the managed card employs nobody', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as ManageScene;
     placeCard(scene, 0);
@@ -264,24 +275,23 @@ describe('MainStreet Manage Card dialog', () => {
 
     scene.msTurnController.onSellCard(0);
 
+    // Empty-state behaviour (AC2): no rows, no [ Move ], no [ Lay off ], no
+    // cost line — the section renders nothing at all.
     const labels = overlayTexts(scene).map((o) => o.text);
+    expect(labels).not.toContain('[ Move ]');
     expect(labels).not.toContain('[ Lay off ]');
+    expect(labels.some((t) => t.includes('Move: 1 action'))).toBe(false);
     expect(labels.some((t) => t.includes('Employed here'))).toBe(false);
   }, 30_000);
 
-  it('[ Lay off ] lists employed staff and lets the member go for 1 salary + salary-scaled reputation', async () => {
+  it('[ Lay off ] still lets the member go for 1 salary + salary-scaled reputation with the rows present', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene') as ManageScene;
     placeCard(scene, 0);
 
     // Employ one job applicant at slot 0, with fewer coins than its salary so
     // the salary deduction clamps at 0 (never negative).
-    const member: StaffCard = {
-      ...createStaffDeck(1)[0],
-      id: 'manage-dialog-employed-member',
-      name: 'Test Applicant',
-      employedAtSlot: 0,
-    };
+    const member = staffMember('manage-dialog-employed-member', 'Test Applicant', 0);
     scene.state.staffCards = [member];
     scene.state.resourceBank.reputation = 500;
     scene.state.resourceBank.coins = 0;
@@ -289,8 +299,11 @@ describe('MainStreet Manage Card dialog', () => {
 
     scene.msTurnController.onSellCard(0);
 
-    // The dialog names the employed member and offers the action.
-    const listing = overlayTexts(scene).find((o) => o.text.includes('Employed here'));
+    // The dialog lists the member as its own row (with its own [ Move ]).
+    const labels = overlayTexts(scene).map((o) => o.text);
+    expect(labels).toContain('Test Applicant');
+    expect(labels.filter((t) => t === '[ Move ]')).toHaveLength(1);
+    const listing = overlayTexts(scene).find((o) => o.text === 'Test Applicant');
     expect(listing?.text).toContain('Test Applicant');
     const logBefore = scene.state.activityLog.length;
 
@@ -311,6 +324,151 @@ describe('MainStreet Manage Card dialog', () => {
     expect(scene.overlayObjects).toHaveLength(0);
     expect(scene.state.activityLog).toHaveLength(logBefore + 1);
     expect(scene.state.activityLog[scene.state.activityLog.length - 1].text).toContain('Laid off');
+  }, 30_000);
+
+  it('two employed members render two rows with two [ Move ] controls, in hire order, with both costs stated once', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 }); // employment capacity level + 1 = 2
+
+    const first = staffMember('manage-dialog-first', 'First Hire', 0);
+    const second = staffMember('manage-dialog-second', 'Second Hire', 0);
+    scene.state.staffCards = [first, second];
+    scene.state.resourceBank.coins = 50;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    scene.msTurnController.onSellCard(0);
+
+    const labels = overlayTexts(scene).map((o) => o.text);
+    // Exactly one row per member, one [ Move ] per row, hire order visible.
+    expect(labels.filter((t) => t === '[ Move ]')).toHaveLength(2);
+    expect(labels).toContain('First Hire');
+    expect(labels).toContain('Second Hire');
+    expect(labels.filter((t) => t.endsWith('/turn'))).toHaveLength(2);
+    // Both affordance costs stated once in their own line (AC4).
+    expect(
+      labels.filter((t) => t.includes("Move: 1 action · Lay off: 1 turn's salary + reputation")),
+    ).toHaveLength(1);
+
+    // The rows are stacked in hire order (oldest hire at the top).
+    const firstY = overlayTexts(scene).find((o) => o.text === 'First Hire')?.y ?? -1;
+    const secondY = overlayTexts(scene).find((o) => o.text === 'Second Hire')?.y ?? -1;
+    expect(firstY).toBeGreaterThanOrEqual(0);
+    expect(secondY).toBeGreaterThan(firstY);
+  }, 30_000);
+
+  it("the first row's [ Move ] targets the first member (never the newest hire)", async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 });
+
+    scene.state.staffCards = [
+      staffMember('manage-dialog-first', 'First Hire', 0),
+      staffMember('manage-dialog-second', 'Second Hire', 0),
+    ];
+    scene.state.resourceBank.coins = 50;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    const beginSpy = vi.spyOn(
+      scene as unknown as { beginStaffMove: (staffId: string) => void },
+      'beginStaffMove',
+    );
+    scene.msTurnController.onSellCard(0);
+
+    const moves = overlayTexts(scene).filter((o) => o.text === '[ Move ]');
+    expect(moves).toHaveLength(2);
+    // First rendered [ Move ] belongs to the first (oldest) member.
+    moves[0]!.emit('pointerdown');
+    expect(beginSpy).toHaveBeenCalledWith('manage-dialog-first');
+    // The move choreography dismisses the dialog and begins the relocation.
+    expect(scene.overlayObjects).toHaveLength(0);
+  }, 30_000);
+
+  it('fits every row and button inside the panel at maximum employment capacity (level + 1 = 3)', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 2 }); // employment capacity level + 1 = 3
+
+    scene.state.staffCards = [
+      staffMember('manage-dialog-cap-a', 'Cap A', 0),
+      staffMember('manage-dialog-cap-b', 'Cap B', 0),
+      staffMember('manage-dialog-cap-c', 'Cap C', 0),
+    ];
+    scene.state.resourceBank.coins = 50;
+    scene.state.resourceBank.reputation = 500;
+    scene.state.actionsRemaining = 3;
+    scene.refreshAll();
+
+    scene.msTurnController.onSellCard(0);
+
+    const moves = overlayTexts(scene).filter((o) => o.text === '[ Move ]');
+    expect(moves).toHaveLength(3);
+
+    // Overlay box (depth 200) bounds — the panel is centred at gameH/2.
+    const box = scene.overlayObjects.find(
+      (o) => (o as unknown as { depth?: number }).depth === 200,
+    ) as Phaser.GameObjects.Rectangle | undefined;
+    expect(box).toBeTruthy();
+    const boxTop = box!.y - box!.height / 2;
+    const boxBottom = box!.y + box!.height / 2;
+
+    // Every button — the rows' [ Move ]s, [ Lay off ] and the
+    // sell/close/cancel row — sits fully inside the panel: no clipping.
+    for (const btn of overlayTexts(scene).filter((o) => o.text.startsWith('['))) {
+      expect(btn.y - btn.height / 2).toBeGreaterThanOrEqual(boxTop - 1);
+      expect(btn.y + btn.height / 2).toBeLessThanOrEqual(boxBottom + 1);
+    }
+
+    // Rows stack below the sell/close/cancel row with no overlap: each
+    // [ Move ] is strictly below the previous one.
+    const sellBtn = findOverlayButton(scene, '[ Sell ]');
+    for (const m of moves) {
+      expect(m.y).toBeGreaterThan(sellBtn.y);
+    }
+    const ys = moves.map((m) => m.y);
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i]!).toBeGreaterThan(ys[i - 1]!);
+    }
+  }, 30_000);
+
+  it('[ Sell ], [ Close ] and [ Cancel ] keep working with staff rows present', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as ManageScene;
+    placeCard(scene, 0, { level: 1 });
+    scene.state.staffCards = [staffMember('manage-dialog-rows-card', 'Row Staff', 0)];
+    scene.state.resourceBank.coins = 50;
+    scene.state.resourceBank.reputation = 500;
+    scene.refreshAll();
+
+    // [ Cancel ]: dialog dismisses with no state change.
+    scene.msTurnController.onSellCard(0);
+    expect(overlayTexts(scene).filter((o) => o.text === '[ Move ]')).toHaveLength(1);
+    findOverlayButton(scene, '[ Cancel ]').emit('pointerdown');
+    expect(scene.overlayObjects).toHaveLength(0);
+    expect(scene.state.streetGrid[0]).not.toBeNull();
+    expect(scene.state.staffCards).toHaveLength(1);
+
+    // [ Close ]: card removed, exactly one action spent.
+    scene.msTurnController.onSellCard(0);
+    findOverlayButton(scene, '[ Close ]').emit('pointerdown');
+    expect(scene.state.streetGrid[0]).toBeNull();
+    expect(scene.state.actionsRemaining).toBe(0);
+    expect(scene.overlayObjects).toHaveLength(0);
+
+    // [ Sell ]: card stays as an inert sold marker, refund credited once.
+    placeCard(scene, 0, { level: 1 });
+    scene.state.staffCards = [staffMember('manage-dialog-rows-sell', 'Sell Row Staff', 0)];
+    scene.state.actionsRemaining = 1;
+    scene.refreshAll();
+    const coinsBefore = scene.state.resourceBank.coins;
+    scene.msTurnController.onSellCard(0);
+    findOverlayButton(scene, '[ Sell ]').emit('pointerdown');
+    expect(scene.overlayObjects).toHaveLength(0);
+    expect(scene.state.soldSlots[0]).toBe(true);
+    expect(scene.state.streetGrid[0]).not.toBeNull(); // inert sold marker
+    expect(scene.state.resourceBank.coins).toBeGreaterThan(coinsBefore);
   }, 30_000);
 
   it('sold cards open no dialog; animateClose degrades safely under reduced motion and replay', async () => {
