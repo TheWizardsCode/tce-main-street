@@ -632,7 +632,7 @@ describe('ledger tooltip exact content strings (MS-0MW7QQ1FD000RCA3)', () => {
     return buildPLProjection(tooltipState(), plInput(tooltipLedger()))!;
   }
 
-  it.fails('business-income tooltip is exactly the label, amount and per-business list', () => {
+  it('business-income tooltip is exactly the label, amount and per-business list', () => {
     const base = projection().income.lines.find((line) => line.key === 'base')!;
     // One contributing business per line — never a comma-joined
     // `Per business: Bakery: +50, Cafe: +30` line (MS-0MWC90T19000JEA4).
@@ -641,7 +641,7 @@ describe('ledger tooltip exact content strings (MS-0MW7QQ1FD000RCA3)', () => {
     );
   });
 
-  it.fails('staff-costs tooltip is exactly the label, per-card list and total', () => {
+  it('staff-costs tooltip is exactly the label, per-card list and total', () => {
     const staff = projection().expenses.lines.find((line) => line.key === 'staff')!;
     // One staff member per line — never a comma-joined `Per item:` line.
     expect(buildExpenseLineTooltip(staff)).toBe(
@@ -737,7 +737,7 @@ function incidentModifierProjection() {
 
 describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () => {
   // ── Multi-line layout: one contributing item per line ──
-  it.fails('every income row lists one contributing business per line', () => {
+  it('every income row lists one contributing business per line', () => {
     const projection = contractProjection();
     const expected: Record<string, string> = {
       base: 'Base income: +80\nBakery: +50\nCafe: +30',
@@ -752,7 +752,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     }
   });
 
-  it.fails('the Events row enumerates each event effect beneath its business', () => {
+  it('the Events row enumerates each event effect beneath its business', () => {
     const events = contractProjection().income.lines.find((line) => line.key === 'events')!;
     expect(buildIncomeLineTooltip(events)).toBe(
       'Event income: -2\nBakery: -2\n  Flu: -2',
@@ -762,7 +762,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     expect(item.effects!.reduce((total, effect) => total + effect.delta, 0)).toBe(item.coins);
   });
 
-  it.fails('every expense row lists one contributing card per line', () => {
+  it('every expense row lists one contributing card per line', () => {
     const projection = contractProjection();
     const staff = projection.expenses.lines.find((line) => line.key === 'staff')!;
     const community = projection.expenses.lines.find((line) => line.key === 'community')!;
@@ -782,7 +782,7 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
   });
 
   // ── Per-item base ± named modifiers ─────────────────────
-  it.fails('a staff item shows its base salary and each named modifier', () => {
+  it('a staff item shows its base salary and each named modifier', () => {
     const staff = staffModifierProjection().expenses.lines.find((line) => line.key === 'staff')!;
     expect(buildExpenseLineTooltip(staff)).toBe(
       'Staff wages: -70\n'

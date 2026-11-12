@@ -55,9 +55,12 @@ export type PLSupplementaryContextKey =
 export const LEDGER_TOOLTIP_I18N_KEYS = {
   // Generic per-line headings/notes
   incomeNote: 'ledger.tooltip.income.note',
-  incomePerBusiness: 'ledger.tooltip.income.perBusiness',
   expensesNote: 'ledger.tooltip.expenses.note',
-  expensesPerItem: 'ledger.tooltip.expenses.perItem',
+  // Multi-line per-item layout
+  itemLine: 'ledger.tooltip.item.line',
+  itemBase: 'ledger.tooltip.item.base',
+  itemModifier: 'ledger.tooltip.item.modifier',
+  itemEffect: 'ledger.tooltip.item.effect',
   reductionLine: 'ledger.tooltip.expenses.reduction',
   clampLine: 'ledger.tooltip.expenses.clamp',
   totalLine: 'ledger.tooltip.total',
@@ -86,9 +89,11 @@ export const LEDGER_TOOLTIP_I18N_KEYS = {
 /** Default English string templates for ledger tooltips. */
 export const LEDGER_TOOLTIP_STRINGS = {
   incomeNote: 'Business income — how each owned business contributes.',
-  incomePerBusiness: 'Per business: {breakdown}',
   expensesNote: 'Operating expenses — what each item costs you.',
-  expensesPerItem: 'Per item: {breakdown}',
+  itemLine: '{name}: {amount}',
+  itemBase: '  Base: {amount}',
+  itemModifier: '  {name}: {amount}',
+  itemEffect: '  {name}: {amount}',
   reductionLine: 'Street-wide reduction: {amount}',
   clampLine: 'Limited by available coins: {amount}',
   totalLine: 'Total: {amount}',
@@ -133,13 +138,30 @@ function sum(values: readonly number[]): number {
 }
 
 /**
- * Renders a per-item breakdown as `Name: +N, Name: -M`.
+ * Renders one top-level breakdown item as `Name: signed amount`.
  *
- * Items are shown with their signed coin contribution, matching the row's own
- * signed convention (income positive, costs negative).
+ * One item per line: the comma-joined summary this module used previously has
+ * been replaced with a multi-line layout so every contributing item is visible
+ * on its own line (MS-0MWC90TUH007CC8T). Amounts are signed in the row's own
+ * convention (income positive, costs negative).
  */
-function formatBreakdown(items: readonly { name: string; coins: number }[]): string {
-  return items.map((item) => `${item.name}: ${formatSigned(item.coins)}`).join(', ');
+function formatItemLine(name: string, coins: number): string {
+  return t(LEDGER_TOOLTIP_I18N_KEYS.itemLine, { name, amount: formatSigned(coins) });
+}
+
+/** Renders an indented `Base: signed amount` line beneath an item. */
+function formatItemBase(base: number): string {
+  return t(LEDGER_TOOLTIP_I18N_KEYS.itemBase, { amount: formatSigned(base) });
+}
+
+/** Renders an indented `Name: signed amount` modifier line beneath an item. */
+function formatItemModifier(name: string, coins: number): string {
+  return t(LEDGER_TOOLTIP_I18N_KEYS.itemModifier, { name, amount: formatSigned(coins) });
+}
+
+/** Renders an indented `Name: signed delta` event-effect line beneath its business. */
+function formatItemEffect(name: string, delta: number): string {
+  return t(LEDGER_TOOLTIP_I18N_KEYS.itemEffect, { name, amount: formatSigned(delta) });
 }
 
 // ── Line tooltip builders ───────────────────────────────────
@@ -147,19 +169,29 @@ function formatBreakdown(items: readonly { name: string; coins: number }[]): str
 /**
  * Builds the tooltip for one income line (base / synergy / reputation / events).
  *
- * When the line carries a per-business breakdown the tooltip names each business
- * and its coin contribution; otherwise it explains the line generically.
+ * The line's committed amount is followed by **one contributing business per
+ * line**, each with its signed coin contribution. The Events row additionally
+ * lists each committed event effect as an indented line beneath its business,
+ * so the tooltip names every effect rather than only the per-business sum.
+ *
+ * When the line carries no per-item breakdown the tooltip degrades to the
+ * committed total plus a generic explanatory note (absent-safe).
  *
  * @param line The income statement line.
  */
 export function buildIncomeLineTooltip(line: PLStatementLine): string {
   const lines: string[] = [`${line.label}: ${formatSigned(line.coins)}`];
-  if (line.breakdown && line.breakdown.items.length > 0) {
-    lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.incomePerBusiness, {
-      breakdown: formatBreakdown(line.breakdown.items),
-    }));
-  } else {
+  const items = line.breakdown?.items ?? [];
+  if (items.length === 0) {
     lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.incomeNote));
+    return lines.join('\n');
+  }
+
+  for (const item of items) {
+    lines.push(formatItemLine(item.name, item.coins));
+    for (const effect of item.effects ?? []) {
+      lines.push(formatItemEffect(effect.name, effect.delta));
+    }
   }
   return lines.join('\n');
 }
@@ -168,11 +200,20 @@ export function buildIncomeLineTooltip(line: PLStatementLine): string {
  * Builds the tooltip for one ongoing-expense line (staff / community /
  * business).
  *
- * Lists each card's base charge, then reconciles to the committed category
- * total: a street-wide Cost Cutter reduction is shown separately, and a
- * coin-limited shortfall (the engine clamps each family to the coins
- * available) is shown as a reconciling note. `sum(items) + reduction + clamp`
- * therefore equals the row's committed total.
+ * Lists **one contributing item per line** with its committed signed charge.
+ * A staff item that carries modifiers additionally explains its charge as
+ * `Base:` plus every named modifier on an indented line (e.g. the Operations
+ * Manager salary discount), so `base + sum(modifiers)` reconciles to the item's
+ * charge.
+ *
+ * The item lines are then reconciled to the committed category total: a
+ * street-wide Cost Cutter reduction is shown separately, and a coin-limited
+ * shortfall (the engine clamps each family to the coins available) is shown as
+ * a reconciling note. `sum(items) + reduction + clamp` therefore equals the
+ * row's committed total.
+ *
+ * A line with no per-item breakdown degrades to the committed total plus a
+ * generic explanatory note (absent-safe).
  *
  * @param line The expense statement line.
  */
@@ -184,9 +225,15 @@ export function buildExpenseLineTooltip(line: PLStatementLine): string {
     return lines.join('\n');
   }
 
-  lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.expensesPerItem, {
-    breakdown: formatBreakdown(items),
-  }));
+  for (const item of items) {
+    lines.push(formatItemLine(item.name, item.coins));
+    const modifiers = item.modifiers ?? [];
+    if (modifiers.length === 0) continue;
+    if (item.base !== undefined) lines.push(formatItemBase(item.base));
+    for (const modifier of modifiers) {
+      lines.push(formatItemModifier(modifier.name, modifier.coins));
+    }
+  }
 
   // Reconcile the base per-card sum to the committed total.
   // Both the Cost Cutter reduction and any coins-clamp raise the signed total
