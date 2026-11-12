@@ -67,8 +67,16 @@ import type { LogEntryActionType } from '../MainStreetStateTypes';
 import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
-import { computeStaffSalaryCost, getEmployedSpecializationSkills, getSalaryScopeSkills, computeStreetOngoingCostReductionPct } from '../MainStreetStaffBuffs';
-import { getSkill } from '../MainStreetStaffSkills';
+import {
+  computeIncidentSkillBuffs,
+  computeReputationGainMultiplier,
+  computeStaffSalaryCost,
+  getEmployedSpecializationSkills,
+  getSalaryScopeSkills,
+  computeStreetOngoingCostReductionPct,
+  getStreetScopeSkills,
+} from '../MainStreetStaffBuffs';
+import { getSkill, type SpecializationSkill } from '../MainStreetStaffSkills';
 import { roundInt } from '../MainStreetDifficulty';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 import {
@@ -172,6 +180,14 @@ export interface TurnSummary {
   expensesTotal: number;
   /** Incident coin/reputation delta. */
   incident: TurnSummaryDeltas;
+  /**
+   * Optional derivation of the incident's committed deltas — the resolved
+   * incident's own base effect plus each named staff modifier applied to it
+   * (MS-0MWC90S6H009EDRD). Absent-safe: an unresolved/bare incident, or one
+   * whose modifiers cannot be reconciled exactly to the committed deltas,
+   * leaves this undefined.
+   */
+  incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
   /** Net coin/reputation/score change for the day. */
@@ -270,6 +286,12 @@ export function buildTurnSummary(
       coins: ledger.incidentCoinChange,
       reputation: ledger.incidentRepChange,
     },
+    incidentDetail: buildIncidentDetail(
+      getEmployedSpecializationSkills(state),
+      result.incident,
+      ledger.incidentCoinChange,
+      ledger.incidentRepChange,
+    ),
     oneOff: { ...ledger.oneOffDeltas },
     net: {
       coins: ledger.netCoinChange,
@@ -403,6 +425,14 @@ export interface CompetitiveTurnSummaryRow {
   closing: TurnSummaryClosing;
   /** The seat's share of the resolved incident's coin/reputation delta. */
   incident: TurnSummaryDeltas;
+  /**
+   * Optional derivation of this seat's committed incident deltas — the resolved
+   * incident's own base effect plus each named staff modifier applied to it
+   * (MS-0MWC90S6H009EDRD). Absent-safe: no resolved incident, no recoverable
+   * per-seat skills, or a delta the modifiers cannot reconcile exactly leaves
+   * this undefined.
+   */
+  incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
 }
@@ -511,6 +541,8 @@ function competitiveClosing(
 export function buildCompetitiveTurnSummary(
   state: MainStreetState,
   result: Pick<TurnResult, 'playerRoundLedger'> & {
+    /** The resolved incident, so a seat's incident detail can name its modifiers. */
+    incident?: TurnResult['incident'];
     /** Optional per-seat income detail for tooltip breakdowns (absent-safe). */
     playerIncome?: TurnResult['playerIncome'];
   },
@@ -562,6 +594,10 @@ export function buildCompetitiveTurnSummary(
         reputation: seat.netRepChange ?? 0,
         score: seat.netScoreChange ?? 0,
       };
+      const incident = {
+        coins: seat.incidentCoinChange ?? 0,
+        reputation: seat.incidentRepChange ?? 0,
+      };
       return {
         ownerId,
         label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
@@ -581,10 +617,13 @@ export function buildCompetitiveTurnSummary(
         netRepChange: net.reputation,
         netScoreChange: net.score,
         closing: competitiveClosing(seat, rosterSeat, net),
-        incident: {
-          coins: seat.incidentCoinChange ?? 0,
-          reputation: seat.incidentRepChange ?? 0,
-        },
+        incident,
+        incidentDetail: buildIncidentDetail(
+          getStreetScopeSkills(roster[ownerId]?.staffCards ?? []),
+          result.incident,
+          incident.coins,
+          incident.reputation,
+        ),
         oneOff: {
           coins: seat.oneOffDeltas?.coins ?? 0,
           reputation: seat.oneOffDeltas?.reputation ?? 0,
@@ -648,12 +687,52 @@ export interface PLStatementSection {
   total: number;
 }
 
+/**
+ * One named signed modifier applied to the resolved incident's base effect
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `coins` is a positive reduction of the incident's coin damage and
+ * `reputation` a positive reduction/increase of its reputation delta, so
+ * `base + every modifier` reconciles exactly to the committed incident line.
+ */
+export interface PLIncidentModifier {
+  /** Display name of the modifier (a staff skill name). */
+  name: string;
+  /** Signed coin effect of the modifier on {@link PLIncidentDetail.base}. */
+  coins: number;
+  /** Signed reputation effect of the modifier on {@link PLIncidentDetail.base}. */
+  reputation: number;
+}
+
+/**
+ * Derivation of an incident's committed coin/reputation deltas
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `base` is the resolved incident card's own effect and `modifiers` each named
+ * staff mitigation/gain applied to it, so the identity
+ * `base + sum(modifiers) === incident coins/reputation` holds exactly. The
+ * model only emits it when that identity reconciles; otherwise the detail is
+ * omitted (absent-safe).
+ */
+export interface PLIncidentDetail {
+  /** The resolved incident's own unmodified coin/reputation effect. */
+  base: { coins: number; reputation: number };
+  /** Named modifiers applied to {@link base}, in application order. */
+  modifiers: PLIncidentModifier[];
+}
+
 /** A coin/reputation adjustment row (the incident or one-off delta). */
 export interface PLAdjustmentLine {
   key: 'incident' | 'oneOff';
   label: string;
   coins: number;
   reputation: number;
+  /**
+   * Optional incident derivation for the tooltip (base effect + each named
+   * modifier). Present only on the incident line, and only when it reconciles
+   * exactly to {@link coins} / {@link reputation} (absent-safe).
+   */
+  detail?: PLIncidentDetail;
   /** Optional tooltip content (incident name/effect; one-off reconciliation). */
   tooltipContent?: string;
 }
@@ -671,6 +750,28 @@ export interface PLSupplementaryContext {
   closingCoins: number;
   /** Businesses standing on the street at closing for that player. */
   businessesOwned: number;
+  /**
+   * Day-start coin balance for the player the statement belongs to
+   * (MS-0MWC90S6H009EDRD): `closingCoins - net.coins`, so the context tooltip
+   * can show the arithmetic behind the closing balance. Absent-safe: omitted
+   * where the projection carries no supporting per-item data (a hand-built or
+   * legacy ledger keeps the previous context shape).
+   */
+  dayStartCoins?: number;
+  /**
+   * One display name per business the projection already breaks down, so the
+   * context tooltip can name the businesses owned rather than restating the
+   * count (MS-0MWC90S6H009EDRD). Absent-safe: omitted when the projection
+   * carries no per-business income detail.
+   */
+  businessNames?: string[];
+  /**
+   * The reputation-change constituents that reconcile to
+   * {@link reputationChange}: income reputation plus the committed incident and
+   * one-off reputation deltas (MS-0MWC90S6H009EDRD). Absent-safe: omitted when
+   * the projection carries no per-item income detail.
+   */
+  reputationParts?: { income: number; incident: number; oneOff: number };
   /**
    * Optional tooltip content for each context row, keyed by row. Absent-safe:
    * the overlay falls back to a generic explanation when a key is missing.
@@ -956,6 +1057,9 @@ export function buildPLFromTurnSummary(
   const emptyStreetHuman = summary.owners.length === 0 && key === '0';
   if (!owner && !emptyStreetHuman) return null;
 
+  const closingCoins = owner?.coins ?? summary.closing.coins;
+  const businessNames = incomeBusinessNames(summary.income);
+
   return {
     playerKey: key,
     label: tab.label,
@@ -990,6 +1094,7 @@ export function buildPLFromTurnSummary(
       label: PL_LABELS.incident,
       coins: summary.incident.coins,
       reputation: summary.incident.reputation,
+      ...(summary.incidentDetail ? { detail: summary.incidentDetail } : {}),
     },
     oneOff: {
       key: 'oneOff',
@@ -1001,8 +1106,16 @@ export function buildPLFromTurnSummary(
     context: {
       reputationChange: summary.net.reputation,
       scoreChange: summary.net.score,
-      closingCoins: owner?.coins ?? summary.closing.coins,
+      closingCoins,
       businessesOwned: owner?.businessesOwned ?? 0,
+      ...contextDerivations(
+        closingCoins,
+        summary.net.coins,
+        summary.net.reputation,
+        summary.incident.reputation,
+        summary.oneOff.reputation,
+        businessNames,
+      ),
     },
   };
 }
@@ -1019,6 +1132,7 @@ export function buildPLFromTurnSummary(
 export function buildPLFromCompetitiveRow(
   row: CompetitiveTurnSummaryRow,
 ): PLProjection {
+  const businessNames = incomeBusinessNames(row.income);
   return {
     playerKey: String(row.ownerId),
     label: row.label,
@@ -1053,6 +1167,7 @@ export function buildPLFromCompetitiveRow(
       label: PL_LABELS.incident,
       coins: row.incident.coins,
       reputation: row.incident.reputation,
+      ...(row.incidentDetail ? { detail: row.incidentDetail } : {}),
     },
     oneOff: {
       key: 'oneOff',
@@ -1071,6 +1186,15 @@ export function buildPLFromCompetitiveRow(
       scoreChange: row.netScoreChange,
       closingCoins: row.closing.coins,
       businessesOwned: row.businessesOwned,
+      ...contextDerivations(
+        row.closing.coins,
+        row.netCoinChange,
+        row.netRepChange,
+        row.incident.reputation,
+        row.oneOff.reputation,
+        businessNames,
+        true,
+      ),
     },
   };
 }
@@ -1248,6 +1372,170 @@ function streetReduction(
   const afterReduction = roundInt(absSum * (1 - reductionPct));
   const amount = absSum - afterReduction;
   return amount > 0 ? { streetReduction: amount } : {};
+}
+
+/**
+ * Collects the distinct business names the projection already breaks down, in
+ * first-seen order (MS-0MWC90S6H009EDRD). Empty when the projection carries no
+ * per-business income detail, so the caller can keep today's context shape.
+ *
+ * @param lines Income rows (single-player or competitive) carrying an optional
+ *              per-business breakdown.
+ */
+function incomeBusinessNames(
+  lines: readonly { breakdown?: PLLineBreakdown }[],
+): string[] {
+  const names: string[] = [];
+  for (const line of lines) {
+    for (const item of line.breakdown?.items ?? []) {
+      if (!names.includes(item.name)) names.push(item.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Builds the supplementary-context derivations from already-committed figures
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `dayStartCoins` is `closing - net` (the ledger's own reconciliation
+ * identity). `businessNames` and `reputationParts` are only emitted when the
+ * projection carries per-business income detail, keeping a hand-built/legacy
+ * ledger on today's four-field context shape (absent-safe). The reputation
+ * constituents derive the income part as the residual
+ * `net - incident - oneOff`, so they always reconcile to
+ * {@link PLSupplementaryContext.reputationChange}.
+ *
+ * @param closingCoins       The player's committed closing coin balance.
+ * @param netCoins           The player's committed net coin change.
+ * @param netReputation      The player's committed net reputation change.
+ * @param incidentReputation The committed incident reputation delta.
+ * @param oneOffReputation   The committed one-off reputation delta.
+ * @param businessNames      Names the income breakdown already carries.
+ * @param alwaysDayStart     Competitive rows always carry a committed closing
+ *                           and net, so they emit `dayStartCoins` even without
+ *                           income detail (the figure is still derivable).
+ */
+function contextDerivations(
+  closingCoins: number,
+  netCoins: number,
+  netReputation: number,
+  incidentReputation: number,
+  oneOffReputation: number,
+  businessNames: readonly string[],
+  alwaysDayStart = false,
+): Pick<PLSupplementaryContext, 'dayStartCoins' | 'businessNames' | 'reputationParts'> {
+  const hasIncomeDetail = businessNames.length > 0;
+  if (!hasIncomeDetail && !alwaysDayStart) return {};
+  return {
+    dayStartCoins: closingCoins - netCoins,
+    ...(hasIncomeDetail
+      ? {
+        businessNames: [...businessNames],
+        reputationParts: {
+          income: netReputation - incidentReputation - oneOffReputation,
+          incident: incidentReputation,
+          oneOff: oneOffReputation,
+        },
+      }
+      : {}),
+  };
+}
+
+/** Skill id of the Quality Inspector incident coin-damage modifier. */
+const QUALITY_INSPECTOR_SKILL_ID = 'skill-quality-inspector';
+
+/** Skill id of the Compliance Officer incident reputation-damage modifier. */
+const COMPLIANCE_SKILL_ID = 'skill-compliance';
+
+/** Skill id of the Brand Ambassador reputation-gain multiplier. */
+const BRAND_AMBASSADOR_SKILL_ID = 'skill-brand-ambassador';
+
+/**
+ * Derives the incident's committed deltas as a base effect plus each named
+ * staff modifier applied to it (MS-0MWC90S6H009EDRD).
+ *
+ * Every figure comes from the resolved incident card and the engine's own
+ * mitigation helpers ({@link computeIncidentSkillBuffs},
+ * {@link computeReputationGainMultiplier}), so the detail explains — never
+ * invents — the committed `incidentCoinChange` / `incidentRepChange`. The
+ * identity `base + sum(modifiers) === committed` is verified for both axes; a
+ * delta the named modifiers cannot reproduce exactly (per-business cluster
+ * mitigation, proportional/theft effects, target scaling) yields `undefined`, so
+ * the line stays absent-safe rather than showing misleading arithmetic.
+ *
+ * @param skills             The player's realisable management-company skills.
+ * @param incident           The resolved incident card, if any.
+ * @param committedCoins     The committed incident coin delta.
+ * @param committedReputation The committed incident reputation delta.
+ */
+function buildIncidentDetail(
+  skills: readonly SpecializationSkill[],
+  incident: TurnResult['incident'] | null | undefined,
+  committedCoins: number,
+  committedReputation: number,
+): PLIncidentDetail | undefined {
+  if (!incident) return undefined;
+  const baseCoins = incident.coinDelta;
+  const baseReputation = incident.reputationDelta;
+  if (typeof baseCoins !== 'number' || typeof baseReputation !== 'number') return undefined;
+
+  const buffs = computeIncidentSkillBuffs(skills);
+  const reputationMultiplier = computeReputationGainMultiplier(skills);
+  const modifiers: PLIncidentModifier[] = [];
+
+  // Quality Inspector: proportional reduction of negative coin damage.
+  if (baseCoins < 0 && buffs.coinDamageReductionPct > 0) {
+    const reduction = roundInt(Math.abs(baseCoins) * buffs.coinDamageReductionPct);
+    if (reduction !== 0) {
+      modifiers.push({
+        name: getSkill(QUALITY_INSPECTOR_SKILL_ID).name,
+        coins: reduction,
+        reputation: 0,
+      });
+    }
+  }
+
+  // Compliance Officer: flat reduction of negative reputation damage
+  // (engine semantics: `min(0, effect + flat)`, never below zero).
+  if (baseReputation < 0 && buffs.reputationDamageReductionFlat > 0) {
+    const reduction = Math.min(
+      Math.abs(baseReputation),
+      buffs.reputationDamageReductionFlat,
+    );
+    if (reduction !== 0) {
+      modifiers.push({
+        name: getSkill(COMPLIANCE_SKILL_ID).name,
+        coins: 0,
+        reputation: reduction,
+      });
+    }
+  }
+
+  // Brand Ambassador: multiplier on positive reputation gains.
+  if (baseReputation > 0 && reputationMultiplier !== 1) {
+    const boosted = roundInt(baseReputation * reputationMultiplier) - baseReputation;
+    if (boosted !== 0) {
+      modifiers.push({
+        name: getSkill(BRAND_AMBASSADOR_SKILL_ID).name,
+        coins: 0,
+        reputation: boosted,
+      });
+    }
+  }
+
+  const detail: PLIncidentDetail = {
+    base: { coins: baseCoins, reputation: baseReputation },
+    modifiers,
+  };
+  const coinTotal = detail.base.coins
+    + modifiers.reduce((total, modifier) => total + modifier.coins, 0);
+  const reputationTotal = detail.base.reputation
+    + modifiers.reduce((total, modifier) => total + modifier.reputation, 0);
+  if (coinTotal !== committedCoins || reputationTotal !== committedReputation) {
+    return undefined;
+  }
+  return detail;
 }
 
 /** Assembles one titled statement section. */

@@ -45,14 +45,16 @@
  * the source types, so this file still type-checks (and the red-phase cases
  * still compile) before the model children land.
  *
- * Flip checklist — each implementing child removes its own line once it has
- * flipped the named `it.fails` cases to plain `it`:
+ * Flip checklist — all three model children have flipped their red-phase
+ * cases to plain `it`, so the suite now guards the contract without any
+ * `it.fails` cases:
  *
  *  - MS-0MWC90QGG0075S8A → `a staff item carries its base salary and each
- *    named modifier`
+ *    named modifier` ✓
+ *  - MS-0MWC90RB7004BC4E → income / event-effect detail ✓
  *  - MS-0MWC90S6H009EDRD → `exposes the committed deltas plus each applied
  *    modifier`, `exposes day-start coins, the owning business names and the
- *    reputation constituents`, `derives a competitive seat’s day-start coins`
+ *    reputation constituents`, `derives a competitive seat’s day-start coins` ✓
  *
  * @module tests/main-street/turn-summary-pl-model
  */
@@ -526,6 +528,7 @@ describe('buildPLProjection — competitive seats', () => {
       scoreChange: 3,
       closingCoins: 49,
       businessesOwned: 3,
+      dayStartCoins: 40,
     });
   });
 
@@ -546,6 +549,7 @@ describe('buildPLProjection — competitive seats', () => {
       scoreChange: 5,
       closingCoins: 23,
       businessesOwned: 2,
+      dayStartCoins: 18,
     });
     // The two statements are genuinely different, not a shared object.
     expect(ai.income.lines).not.toEqual(human.income.lines);
@@ -1059,7 +1063,7 @@ describe('buildPLProjection — incident detail', () => {
     netRepChange: 10,
   });
 
-  it.fails('exposes the committed deltas plus each applied modifier, reconciling exactly', () => {
+  it('exposes the committed deltas plus each applied modifier, reconciling exactly', () => {
     const projection = buildPLProjection(incidentSkillsState(), {
       turnLedger: mitigatedLedger,
       incident: resolvedIncident,
@@ -1090,7 +1094,7 @@ describe('buildPLProjection — incident detail', () => {
 // ── Supplementary context derivations ──────────────
 
 describe('buildPLProjection — supplementary context derivations', () => {
-  it.fails('exposes day-start coins, the owning business names and the reputation constituents', () => {
+  it('exposes day-start coins, the owning business names and the reputation constituents', () => {
     const projection = buildPLProjection(
       twoBusinessState(),
       detailedInput(makeLedger({ businessesOwned: { '0': 2 } }), twoBusinessIncome()),
@@ -1113,7 +1117,7 @@ describe('buildPLProjection — supplementary context derivations', () => {
       .toBe(projection.context.reputationChange);
   });
 
-  it.fails('derives a competitive seat’s day-start coins from its committed closing', () => {
+  it('derives a competitive seat’s day-start coins from its committed closing', () => {
     const state = twoSeatState();
     const input = competitiveInput(makeCompetitiveLedger());
 
