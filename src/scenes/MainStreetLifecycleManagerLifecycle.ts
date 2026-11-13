@@ -222,6 +222,12 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msPedestrians = new MainStreetPedestrians(s);
 
     // Reset
+    // Bump the restart generation first: async callbacks captured by the
+    // previous generation (game-over stats charts, the campaign-progress
+    // presentation path) compare against it to detect the restart and discard
+    // their result, so they cannot resurrect stale overlay content
+    // (MS-0MW6H5R340033GJJ).
+    s.sceneRestartGeneration = (s.sceneRestartGeneration ?? 0) + 1;
     s.uiPhase = 'idle';
     s.pendingBusinessCard = null;
     // Reset new-game selection flag so the mode selector reappears on
@@ -310,6 +316,10 @@ function createScene(lmCtx: MainStreetLifecycleManagerContext): void {
     s.msAnimator = new MainStreetAnimator(s);
     s.msTurnController = new MainStreetTurnController(s);
     s.msOverlayManager = new MainStreetOverlayContent(s);
+    // Staff Pile click → Company Roster (MS-0MWC9PDQY003O0XQ). The pile hands
+    // off to the scene entry point through the renderer context; it carries no
+    // roster logic of its own.
+    s.msRenderer.onOpenCompanyRoster = () => s.showCompanyRoster();
     s.msInputManager = new MainStreetInputManager(s);
     s.msSvgTextureManager = new MainStreetSvgTextureManager(s);
     // Live ambient pedestrian layer (MS-0MUYGFW7T00579Z1): keep this second

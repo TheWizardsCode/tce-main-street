@@ -188,6 +188,82 @@ export type PlayerAction =
   | TakeLoanAction
   | EndTurnAction;
 
+// ── One-off attribution (MS-0MWBZDNH3006DXV7) ────────────────
+
+/**
+ * Stable source keys for one-off breakdown entries. The engine stores these
+ * keys as {@link OneOffBreakdownEntry.label}; consumers localise them via the
+ * tooltip module's i18n keys (unknown keys render verbatim — absent-safe).
+ */
+export const ONE_OFF_SOURCE_KEYS = {
+  /** Cards bought/placed during the MarketPhase (market or hand, cost at play). */
+  marketPurchase: 'market-purchase',
+  /** Card sale refunds (business/community-space sold from the grid or hand). */
+  marketSale: 'market-sale',
+  /** Investment event plays (cost + resolved effects, signed). */
+  eventPlay: 'event-play',
+  /** Community Favour exchange (coins → reputation or the reverse). */
+  communityFavour: 'community-favour',
+  /** Bank-loan scheduled repayment (negative; due in the closing). */
+  loanRepayment: 'loan-repayment',
+  /** Bank-loan principal taken during the MarketPhase (positive). */
+  loanTaken: 'loan-taken',
+  /** Bankruptcy bailout loan principal accepted at the closing (positive). */
+  loanBailout: 'loan-bailout',
+} as const;
+
+/** One canonical source key of a one-off breakdown entry. */
+export type OneOffSourceKey = (typeof ONE_OFF_SOURCE_KEYS)[keyof typeof ONE_OFF_SOURCE_KEYS];
+
+/**
+ * One attributed source of the one-off row (MS-0MWBZDNH3006DXV7).
+ *
+ * `coins` is the signed coin delta the source contributed (negative = cost),
+ * `reputation` the signed reputation delta it moved (zero for sources that
+ * only touch coins). The entries of a ledger's {@link TurnLedger.oneOffBreakdown}
+ * sum to the authoritative residual {@link TurnLedger.oneOffDeltas}.coins
+ * within a documented rounding tolerance(alignment A2).
+ */
+export interface OneOffBreakdownEntry {
+  /** A {@link OneOffSourceKey} (or any stable label consumers render verbatim). */
+  label: string;
+  /** Signed coin delta contributed by this source. */
+  coins: number;
+  /** Signed reputation delta contributed by this source (zero when none). */
+  reputation: number;
+}
+
+/**
+ * Per-source one-off deltas captured during the turn
+ * (MS-0MWBZDNH3006DXV7).
+ *
+ * A transient, engine-side accumulator (one per seat in competitive play) that
+ * every MarketPhase and closing source writes to as it moves coins/reputation,
+ * so the one-off row can explain itself instead of being a bare residual. It
+ * never affects game logic — it is presentation data only — and is reset at
+ * each WeekStart.
+ */
+export interface TurnOneOffAttribution {
+  /** Coins spent placing/buying cards during the MarketPhase (negative). */
+  marketPurchaseCost: number;
+  /** Coins received from card sales during the MarketPhase (positive). */
+  marketSaleProceeds: number;
+  /** Signed coin delta from Investment event plays (cost + resolved effects). */
+  eventPlayCoinEffect: number;
+  /** Signed reputation delta from Investment event plays. */
+  eventPlayRepEffect: number;
+  /** Signed coin delta from the Community Favour exchange. */
+  communityFavourCoins: number;
+  /** Signed reputation delta from the Community Favour exchange. */
+  communityFavourRep: number;
+  /** Coins repaid on active bank loans during the closing (negative). */
+  loanRepaid: number;
+  /** Principal credited by a MarketPhase bank loan (positive). */
+  loanTaken: number;
+  /** Principal credited by an accepted bailout loan (positive). */
+  loanBailout: number;
+}
+
 // ── Turn Result ─────────────────────────────────────────────
 
 /**
@@ -303,6 +379,16 @@ export interface OwnerRoundLedger {
     coins: number;
     reputation: number;
   };
+  /**
+   * Optional per-source attribution of this seat's one-off row
+   * (MS-0MWBZDNH3006DXV7): the same shape and contract as
+   * `TurnLedger.oneOffBreakdown`, so the competitive panel renders the same
+   * per-source list as the single-player panel. Absent-safe: an older or
+   * hand-built ledger (or a seat whose captured sources do not reconcile to
+   * {@link oneOffDeltas}) omits it and consumers fall back to the legacy
+   * reconciliation formula.
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
 }
 
 /**
@@ -401,6 +487,19 @@ export interface TurnLedger {
     coins: number;
     reputation: number;
   };
+  /**
+   * Optional per-source attribution of the one-off row
+   * (MS-0MWBZDNH3006DXV7): each entry names one source (market purchase,
+   * market sale, event play, Community Favour, loan repayment / taken /
+   * bailout) with its signed coin delta and any reputation it moved. The
+   * entries sum to {@link oneOffDeltas}.coins within a documented rounding
+   * tolerance (A2 — the last entry absorbs any drift). Present only when
+   * the engine captured per-source deltas during the turn that reconcile to
+   * the residual; absent for legacy / hand-built ledgers and for turns whose
+   * sources cannot be fully attributed (consumers fall back to the
+   * reconciliation formula — never invented attribution).
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
   /** Net coin change for the day (closing coins − day-start coins). */
   netCoinChange: number;
   /** Net reputation change for the day (closing rep − day-start rep). */

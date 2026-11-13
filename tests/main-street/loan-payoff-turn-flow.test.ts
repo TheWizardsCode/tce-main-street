@@ -34,6 +34,8 @@ vi.mock('../../src/MainStreetEngine', async (importOriginal) => {
   return {
     ...actual,
     applyEndOfTurnDeltas: vi.fn(),
+    acceptLoanOffer: vi.fn(),
+    declineLoanOffer: vi.fn(),
     // Faithful stand-in: the deferred closing keeps the reported payoffs and
     // converges to a continuing run (the game-over cases below use the
     // non-deferred path, where the result is already final).
@@ -49,7 +51,35 @@ vi.mock('../../src/MainStreetEngine', async (importOriginal) => {
   };
 });
 
-import { finishTurnPresentation } from '../../src/scenes/MainStreetTurnControllerTurnFlow';
+vi.mock('../../src/MainStreetEngineCompetitiveTurn', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/MainStreetEngineCompetitiveTurn')>();
+  return {
+    ...actual,
+    resolveCompetitiveLoanOffer: vi.fn(),
+  };
+});
+
+// The event-choice resume resolves through the snapshot command; the engine
+// closing it feeds is mocked above, so the command only needs to be a no-op
+// that the scene's (absent) undo manager executes.
+vi.mock('../../src/MainStreetCommands', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/MainStreetCommands')>();
+  return {
+    ...actual,
+    resolveEventChoiceCommand: vi.fn(() => ({ execute: vi.fn(), description: 'test' })),
+  };
+});
+
+import {
+  finishDeferredEndOfTurn,
+  finishDeferredTurnClosing,
+} from '../../src/MainStreetEngine';
+import { resolveCompetitiveLoanOffer } from '../../src/MainStreetEngineCompetitiveTurn';
+import {
+  finishTurnPresentation,
+  onEventChoice,
+  onLoanOfferChoice,
+} from '../../src/scenes/MainStreetTurnControllerTurnFlow';
 import { presentCompetitiveDayTail } from '../../src/scenes/MainStreetTurnControllerCompetitive';
 import type { TurnResult } from '../../src/MainStreetEngine';
 import type { LoanPayoff } from '../../src/MainStreetLoans';
@@ -177,6 +207,7 @@ function makeSinglePlayerHarness(sceneOverrides: Record<string, unknown> = {}) {
     refreshAll: vi.fn(),
     refreshLog: vi.fn(),
     msLifecycleManager: { onTutorialActionComplete: vi.fn() },
+    refreshUndoRedoButtons: vi.fn(),
     // Complete the incident reveal synchronously so the closing presentation
     // reaches the payoff/summary/advance callbacks (mirrors a real animator).
     msAnimator: {
@@ -200,6 +231,9 @@ function makeSinglePlayerHarness(sceneOverrides: Record<string, unknown> = {}) {
     handleGameOver: vi.fn(),
     presentEventChoiceDialog: vi.fn(),
     onSaveCheckpoint: vi.fn(),
+    // `onEventChoice` resumes through the real closing presenter.
+    finishTurnPresentation: (result: TurnResult, hint: boolean) =>
+      finishTurnPresentation(tcCtx, result, hint),
   };
 
   return { scene, tcCtx, dialogs, order };
@@ -249,6 +283,18 @@ function makeCompetitiveHarness(stateOverrides: Record<string, unknown> = {}) {
   };
 
   return { scene, tcCtx, dialogs, order };
+}
+
+/** A scene whose every presentation call is recorded, with an undo surface. */
+function makeEventChoiceHarness() {
+  const harness = makeSinglePlayerHarness();
+  harness.scene.refreshUndoRedoButtons = vi.fn();
+  harness.scene.state.pendingEventChoice = {
+    event: { id: 'ev-choice', name: 'Choice Event' },
+    resolved: false,
+  };
+  harness.scene.state.incidentDeck = [];
+  return harness;
 }
 
 // ── Single-player sequencing (AC1/AC2/AC5) ──────────────────
@@ -472,5 +518,348 @@ describe('competitive closing presents the human seat payoff (AC3)', () => {
     dialogs[0].dismiss();
     expect(dialogs).toHaveLength(1);
     expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Paused closing carry (MS-0MW4887R4007XPGJ) ──────────────
+//
+// The payoff presentation slot lives *after* the event-choice and bailout
+// pauses, so a closing that pauses there never reaches it on the first pass.
+// The paused closing's `loanPayoffs` must be carried across the pause and
+// presented once on the continuing resume — never on a resume that ends the
+// run, and never twice.
+
+describe('paused closing carries the payoff into the resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('event-choice pause presents nothing and resumes with exactly one congratulation', () => {
+    const { scene, tcCtx, dialogs, order } = makeEventChoiceHarness();
+
+    // The closing pauses on the choice dialog before the presentation slot.
+    finishTurnPresentation(
+      tcCtx,
+      makeResult({ choicePending: true, loanPayoffs: [PAYOFF] }),
+      false,
+    );
+
+    // One modal at a time: the pause wins and nothing is drawn yet, but the
+    // payoff is carried on the scene (mirroring `pendingBankingHint`).
+    expect(dialogs).toHaveLength(0);
+    expect(scene.showLoanPayoffDialog).not.toHaveBeenCalled();
+    expect(tcCtx.presentEventChoiceDialog).toHaveBeenCalledTimes(1);
+    expect((scene as any).pausedLoanPayoffs).toEqual([PAYOFF]);
+
+    // The resumed closing (`finishDeferredEndOfTurn`) does NOT carry the
+    // payoffs itself — the carry re-attaches them on the resume seam.
+    vi.mocked(finishDeferredEndOfTurn).mockReturnValueOnce(
+      makeResult({
+        choicePending: false,
+        requiresDeferredClosing: false,
+        income: null,
+        incident: null,
+        loanPayoffs: undefined,
+      }),
+    );
+
+    onEventChoice(tcCtx, 'accept');
+
+    // Exactly one congratulation, and the carry is cleared once consumed.
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0].payoff).toBe(PAYOFF);
+    expect((scene as any).pausedLoanPayoffs).toBeNull();
+
+    dialogs[0].dismiss();
+    expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['payoff:6']);
+  });
+
+  it('never presents two congratulations across an event-choice pause and its resume', () => {
+    const { scene, tcCtx, dialogs } = makeEventChoiceHarness();
+
+    finishTurnPresentation(
+      tcCtx,
+      makeResult({ choicePending: true, loanPayoffs: [PAYOFF] }),
+      false,
+    );
+    vi.mocked(finishDeferredEndOfTurn).mockReturnValueOnce(
+      makeResult({
+        choicePending: false,
+        requiresDeferredClosing: false,
+        income: null,
+        incident: null,
+        loanPayoffs: undefined,
+      }),
+    );
+
+    onEventChoice(tcCtx, 'accept');
+    // A double callback: the engine consumes the pending choice on the first
+    // resume, so the re-entrant call is a no-op and cannot replay the dialog.
+    scene.state.pendingEventChoice = null;
+    onEventChoice(tcCtx, 'accept');
+
+    expect(dialogs).toHaveLength(1);
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('bailout accept continues the run with exactly one congratulation', () => {
+    const { scene, tcCtx, dialogs } = makeSinglePlayerHarness();
+    scene.state.pendingLoanOffer = { options: [{ principal: 300, termTurns: 3 }] };
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      requiresDeferredClosing: true,
+      loanPayoffs: [PAYOFF],
+    });
+    // The real `finishDeferredTurnClosing` spreads the paused result: the offer
+    // is resolved and the carried payoffs survive into the resumed tail.
+    vi.mocked(finishDeferredTurnClosing).mockReturnValueOnce({
+      ...paused,
+      pendingLoanOffer: false,
+      gameResult: 'playing',
+      newlyCompletedChallenges: [],
+      choicePending: false,
+    });
+
+    onLoanOfferChoice(tcCtx, paused, 0);
+
+    // The congratulation holds the next week (one modal at a time).
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0].payoff).toBe(PAYOFF);
+    expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
+
+    dialogs[0].dismiss();
+    expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('bailout decline ends the run: game over wins and no congratulation', () => {
+    const { scene, tcCtx, dialogs } = makeSinglePlayerHarness();
+    scene.state.pendingLoanOffer = { options: [{ principal: 300, termTurns: 3 }] };
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      requiresDeferredClosing: true,
+      loanPayoffs: [PAYOFF],
+    });
+    vi.mocked(finishDeferredTurnClosing).mockReturnValueOnce({
+      ...paused,
+      pendingLoanOffer: false,
+      gameResult: 'loss',
+      newlyCompletedChallenges: [],
+      choicePending: false,
+    });
+
+    onLoanOfferChoice(tcCtx, paused, null);
+
+    expect(dialogs).toHaveLength(0);
+    expect(scene.showLoanPayoffDialog).not.toHaveBeenCalled();
+    expect(tcCtx.handleGameOver).toHaveBeenCalledTimes(1);
+    expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
+  });
+
+  it('does not replay the congratulation when an offer pauses the deferred tail after the slot', () => {
+    const { scene, tcCtx, dialogs } = makeSinglePlayerHarness();
+
+    finishTurnPresentation(tcCtx, makeResult({ loanPayoffs: [PAYOFF] }), false);
+    // The presentation slot handled the payoff exactly once.
+    expect(dialogs).toHaveLength(1);
+
+    // Dismiss into the summary, then [ Next Turn ] runs the deferred tail.
+    dialogs[0].dismiss();
+    const [, onNextTurn] = scene.showTurnSummaryDialog.mock.calls[0];
+    onNextTurn();
+
+    // The tail is handed the closing result with the payoff already consumed,
+    // so a bailout raised there (and its later resume) can never replay it.
+    const [, tailResult] = vi.mocked(finishDeferredTurnClosing).mock.calls[0];
+    expect((tailResult as TurnResult).loanPayoffs).toBeUndefined();
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Competitive bailout pause carry (MS-0MW8FXE3D0041KEG) ────
+//
+// The competitive tail pauses on a seat's bailout offer *after* the day's
+// repayments already ran, so the paused closing carries this day's
+// retirements on `loanPayoffs`. `resolveCompetitiveLoanOffer` re-runs only the
+// failure/end-check tail with `skipLoanRepayments: true`, so the resumed
+// result carries none. The paused list must be carried across the pause and
+// presented exactly once on the continuing resume — never on a decline that
+// ends the run, and never twice.
+
+describe('competitive bailout pause carries the payoff into the resume (MS-0MW8FXE3D0041KEG)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * A competitive scene primed with an open human-seat bailout offer and a
+   * recorded offer dialog surface. Resolving through the recorded callbacks
+   * runs the real `onLoanOfferChoice` resume seam.
+   */
+  function makeCompetitiveBailoutHarness() {
+    const { scene, tcCtx, dialogs } = makeCompetitiveHarness();
+    scene.state.pendingLoanOffer = {
+      ownerId: 0,
+      options: [{ principal: 300, termTurns: 3 }],
+      shortfall: 100,
+      reason: 'bankruptcy',
+    };
+    const offers: Array<() => void> = [];
+    tcCtx.presentLoanOfferDialog = vi.fn((result: TurnResult) => {
+      offers.push(() => onLoanOfferChoice(tcCtx, result, 0));
+      return true;
+    });
+    return { scene, tcCtx, dialogs, offers };
+  }
+
+  it('accept continues the day and presents exactly one congratulation', () => {
+    const { scene, tcCtx, dialogs, offers } = makeCompetitiveBailoutHarness();
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      playerIncome: undefined,
+      loanPayoffs: [PAYOFF],
+    });
+
+    // The closing pauses on the offer: nothing is drawn yet, but the payoff
+    // is carried on the scene (mirroring the single-player carry).
+    presentCompetitiveDayTail(tcCtx, paused);
+    expect(dialogs).toHaveLength(0);
+    expect(offers).toHaveLength(1);
+    expect((scene as any).pausedCompetitiveLoanPayoffs).toEqual([PAYOFF]);
+
+    // The resumed closing re-runs only the failure tail — it carries no
+    // payoffs itself, and the engine clears the offer on resolution.
+    vi.mocked(resolveCompetitiveLoanOffer).mockImplementationOnce((state) => {
+      state.pendingLoanOffer = null;
+      return makeResult({ pendingLoanOffer: false, loanPayoffs: undefined });
+    });
+
+    offers[0]();
+
+    // Exactly one congratulation, and the carry is cleared once consumed.
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0].payoff).toBe(PAYOFF);
+    expect((scene as any).pausedCompetitiveLoanPayoffs).toBeNull();
+
+    // One modal at a time: the next day starts only once it is dismissed.
+    expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
+    dialogs[0].dismiss();
+    expect(tcCtx.startTurnPhase).toHaveBeenCalledTimes(1);
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('decline ends the run: game over wins and no congratulation', () => {
+    const { scene, tcCtx, dialogs, offers } = makeCompetitiveBailoutHarness();
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      playerIncome: undefined,
+      loanPayoffs: [PAYOFF],
+    });
+
+    presentCompetitiveDayTail(tcCtx, paused);
+    expect(dialogs).toHaveLength(0);
+    expect(offers).toHaveLength(1);
+
+    vi.mocked(resolveCompetitiveLoanOffer).mockImplementationOnce((state) => {
+      state.pendingLoanOffer = null;
+      state.gameResult = 'loss';
+      return makeResult({
+        pendingLoanOffer: false,
+        gameResult: 'loss',
+        loanPayoffs: undefined,
+      });
+    });
+
+    // The dialog's decline resolves with `null` (the real engine tail ends the
+    // run); a run that is no longer `playing` presents the game-over overlay.
+    onLoanOfferChoice(tcCtx, paused, null);
+
+    expect(dialogs).toHaveLength(0);
+    expect(scene.showLoanPayoffDialog).not.toHaveBeenCalled();
+    expect(tcCtx.handleGameOver).toHaveBeenCalledTimes(1);
+    expect(tcCtx.startTurnPhase).not.toHaveBeenCalled();
+    // The carry must not survive the ended run.
+    expect((scene as any).pausedCompetitiveLoanPayoffs).toBeNull();
+  });
+
+  it('never presents two congratulations across the pause and a double callback', () => {
+    const { scene, tcCtx, dialogs, offers } = makeCompetitiveBailoutHarness();
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      playerIncome: undefined,
+      loanPayoffs: [PAYOFF],
+    });
+
+    presentCompetitiveDayTail(tcCtx, paused);
+    vi.mocked(resolveCompetitiveLoanOffer).mockImplementationOnce((state) => {
+      state.pendingLoanOffer = null;
+      return makeResult({ pendingLoanOffer: false, loanPayoffs: undefined });
+    });
+
+    offers[0]();
+    // A double callback: the engine consumed the pending offer on the first
+    // resume, so the re-entrant call is a no-op and cannot replay the dialog.
+    scene.state.pendingLoanOffer = null;
+    offers[0]();
+
+    expect(dialogs).toHaveLength(1);
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('headless resume (no offer surface) still presents exactly one congratulation', () => {
+    const { scene, tcCtx, dialogs } = makeCompetitiveHarness();
+    scene.state.pendingLoanOffer = {
+      ownerId: 0,
+      options: [{ principal: 300, termTurns: 3 }],
+      shortfall: 100,
+      reason: 'bankruptcy',
+    };
+    // No `presentLoanOfferDialog` on the context: the tail resolves the offer
+    // deterministically and recurses with the resumed closing.
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      playerIncome: undefined,
+      loanPayoffs: [PAYOFF],
+    });
+    vi.mocked(resolveCompetitiveLoanOffer).mockImplementationOnce((state) => {
+      state.pendingLoanOffer = null;
+      return makeResult({ pendingLoanOffer: false, loanPayoffs: undefined });
+    });
+
+    presentCompetitiveDayTail(tcCtx, paused);
+
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0].payoff).toBe(PAYOFF);
+    // The carry was consumed by the recursive resume.
+    expect((scene as any).pausedCompetitiveLoanPayoffs).toBeNull();
+  });
+
+  it('does not replay when the resumed tail is entered again (F5 continuation)', () => {
+    const { scene, tcCtx, dialogs, offers } = makeCompetitiveBailoutHarness();
+    const paused = makeResult({
+      pendingLoanOffer: true,
+      playerIncome: undefined,
+      loanPayoffs: [PAYOFF],
+    });
+
+    presentCompetitiveDayTail(tcCtx, paused);
+    vi.mocked(resolveCompetitiveLoanOffer).mockImplementationOnce((state) => {
+      state.pendingLoanOffer = null;
+      return makeResult({ pendingLoanOffer: false, loanPayoffs: undefined });
+    });
+    offers[0]();
+    expect(dialogs).toHaveLength(1);
+
+    // A piggyback continuation re-enters the tail with another resumed closing
+    // that (like the real resumed closing) carries no payoffs. The carry was
+    // consumed once, so nothing is replayed.
+    presentCompetitiveDayTail(
+      tcCtx,
+      makeResult({ pendingLoanOffer: false, loanPayoffs: undefined }),
+    );
+
+    expect(dialogs).toHaveLength(1);
+    expect(scene.showLoanPayoffDialog).toHaveBeenCalledTimes(1);
   });
 });

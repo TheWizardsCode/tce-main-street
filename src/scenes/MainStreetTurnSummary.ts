@@ -59,12 +59,45 @@
  * the same statement and tabs from it — one source of truth for both entry
  * points.
  *
+ * Tooltip detail (MS-0MWBCACHZ006RTQ9): the projection also carries the data the
+ * row tooltips need to show their arithmetic. A {@link PLBreakdownItem} keeps
+ * the committed `coins` contribution and may add `base`, `modifiers` and
+ * `effects` that only *explain* it (`base + sum(modifiers) === coins`, and
+ * `sum(effects.delta) === coins`). {@link PLStatementLine.breakdown} groups
+ * those items per business (income phases) or per card (expense categories), and
+ * each section carries the lines its total row enumerates.
+ * {@link PLAdjustmentLine.detail} holds the incident's base effect plus each
+ * named modifier, and {@link PLSupplementaryContext} carries the derivable
+ * context figures (`dayStartCoins`, `businessNames`, `reputationParts`). The
+ * one-off adjustment line additionally carries
+ * {@link PLAdjustmentLine.breakdown} — per-source attribution (market
+ * purchase / sale, event play, Community Favour, loan effects) captured by
+ * the engine during the turn (MS-0MWBZDNH3006DXV7), emitted only when the
+ * entries reconcile to the committed residual `oneOffDeltas.coins` within a
+ * documented rounding tolerance. Every
+ * field is optional and absent-safe: a legacy or hand-built ledger keeps the
+ * previous shape, and the tooltip degrades to the committed total plus an
+ * explanatory note rather than inventing an attribution.
+ *
  * @module src/scenes/MainStreetTurnSummary
  */
 
 import type { MainStreetState } from '../MainStreetState';
-import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { LogEntryActionType } from '../MainStreetStateTypes';
+import type { OneOffBreakdownEntry, OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
+import {
+  computeIncidentSkillBuffs,
+  computeReputationGainMultiplier,
+  computeStaffSalaryCost,
+  getEmployedSpecializationSkills,
+  getSalaryScopeSkills,
+  computeStreetOngoingCostReductionPct,
+  getStreetScopeSkills,
+} from '../MainStreetStaffBuffs';
+import { getSkill, type SpecializationSkill } from '../MainStreetStaffSkills';
+import { roundInt } from '../MainStreetDifficulty';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
 import {
   buildTurnSummaryLoanDescriptor,
@@ -86,6 +119,8 @@ export interface TurnSummaryIncomeRow {
   label: string;
   /** Coins credited in this phase (may be negative for event effects). */
   coins: number;
+  /** Optional per-business breakdown for the tooltip (absent-safe). */
+  breakdown?: PLLineBreakdown;
 }
 
 /** One ongoing-expense row (`staff` / `community` / `business`). */
@@ -95,6 +130,8 @@ export interface TurnSummaryExpenseRow {
   label: string;
   /** Signed coin delta for the category (zero or negative). */
   coins: number;
+  /** Optional per-card breakdown for the tooltip (absent-safe). */
+  breakdown?: PLLineBreakdown;
 }
 
 /**
@@ -163,8 +200,24 @@ export interface TurnSummary {
   expensesTotal: number;
   /** Incident coin/reputation delta. */
   incident: TurnSummaryDeltas;
+  /**
+   * Optional derivation of the incident's committed deltas — the resolved
+   * incident's own base effect plus each named staff modifier applied to it
+   * (MS-0MWC90S6H009EDRD). Absent-safe: an unresolved/bare incident, or one
+   * whose modifiers cannot be reconciled exactly to the committed deltas,
+   * leaves this undefined.
+   */
+  incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
+  /**
+   * Optional per-source attribution of the one-off row
+   * (MS-0MWBZDNH3006DXV7): labelled entries that sum to {@link oneOff}.
+   * Absent-safe — a legacy/hand-built ledger (or one whose sources cannot be
+   * fully attributed) omits it and the tooltip falls back to the
+   * reconciliation formula.
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
   /** Net coin/reputation/score change for the day. */
   net: { coins: number; reputation: number; score: number };
   /** Closing coin/reputation/score balances for the human seat. */
@@ -215,12 +268,14 @@ const EXPENSE_CATEGORIES: readonly TurnSummaryExpenseCategory[] = [
  * `TurnResult.playerRoundLedger` through
  * {@link buildCompetitiveTurnSummary}), so the caller renders nothing.
  *
- * @param state  Committed game state after the closing deltas landed.
- * @param result The closed turn's result (ledger plus resolved incident).
+ * @param state     Committed game state after the closing deltas landed.
+ * @param result    The closed turn's result (ledger plus resolved incident).
+ * @param incomeResult Optional income breakdown for per-business tooltip data;
+ *                     when absent the tooltip shows a generic explanation.
  */
 export function buildTurnSummary(
   state: MainStreetState,
-  result: Pick<TurnResult, 'turnLedger' | 'incident'>,
+  result: Pick<TurnResult, 'turnLedger' | 'incident'> & { income?: TurnResult['income'] },
 ): TurnSummary | null {
   const ledger = result.turnLedger;
   if (!ledger) return null;
@@ -229,11 +284,13 @@ export function buildTurnSummary(
     phase,
     label: INCOME_LABELS[phase],
     coins: ledger.incomeByPhase[phase],
+    ...incomeLineBreakdown(phase, result.income),
   }));
   const expenses = EXPENSE_CATEGORIES.map((category) => ({
     category,
     label: EXPENSE_LABELS[category],
     coins: ledger.ongoingCosts[category],
+    ...expenseLineBreakdown(state, category),
   }));
 
   const closing = closingBalances(state, ledger);
@@ -257,7 +314,14 @@ export function buildTurnSummary(
       coins: ledger.incidentCoinChange,
       reputation: ledger.incidentRepChange,
     },
+    incidentDetail: buildIncidentDetail(
+      getEmployedSpecializationSkills(state),
+      result.incident,
+      ledger.incidentCoinChange,
+      ledger.incidentRepChange,
+    ),
     oneOff: { ...ledger.oneOffDeltas },
+    ...(ledger.oneOffBreakdown ? { oneOffBreakdown: ledger.oneOffBreakdown } : {}),
     net: {
       coins: ledger.netCoinChange,
       reputation: ledger.netRepChange,
@@ -390,8 +454,23 @@ export interface CompetitiveTurnSummaryRow {
   closing: TurnSummaryClosing;
   /** The seat's share of the resolved incident's coin/reputation delta. */
   incident: TurnSummaryDeltas;
+  /**
+   * Optional derivation of this seat's committed incident deltas — the resolved
+   * incident's own base effect plus each named staff modifier applied to it
+   * (MS-0MWC90S6H009EDRD). Absent-safe: no resolved incident, no recoverable
+   * per-seat skills, or a delta the modifiers cannot reconcile exactly leaves
+   * this undefined.
+   */
+  incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
+  /**
+   * Optional per-source attribution of this seat's one-off row
+   * (MS-0MWBZDNH3006DXV7): mirrors `TurnLedger.oneOffBreakdown` so the
+   * competitive panel renders the same per-source list as single-player.
+   * Absent-safe (legacy/hand-built ledgers render the formula).
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
 }
 
 /** Everything the competitive Turn Summary panel surfaces for the round closed. */
@@ -497,7 +576,12 @@ function competitiveClosing(
  */
 export function buildCompetitiveTurnSummary(
   state: MainStreetState,
-  result: Pick<TurnResult, 'playerRoundLedger'>,
+  result: Pick<TurnResult, 'playerRoundLedger'> & {
+    /** The resolved incident, so a seat's incident detail can name its modifiers. */
+    incident?: TurnResult['incident'];
+    /** Optional per-seat income detail for tooltip breakdowns (absent-safe). */
+    playerIncome?: TurnResult['playerIncome'];
+  },
 ): CompetitiveTurnSummary | null {
   const ledger = result.playerRoundLedger;
   if (!ledger || ledger.seats.length === 0) return null;
@@ -509,6 +593,16 @@ export function buildCompetitiveTurnSummary(
   const seatsById = new Map(
     buildCompetitiveScoreboard(state).map((seat) => [String(seat.playerId), seat]),
   );
+
+  // Per-seat income detail for tooltip breakdowns (MS-0MW7QQ65P006N3KA):
+  // `OwnerIncomeResult.income` carries the same per-business breakdown the
+  // single-player `IncomeResult` does, so a seat's income tooltips can name its
+  // own businesses. Absent for older/hand-built ledgers — the tooltip then
+  // degrades to the category total with an explanatory note.
+  const incomeByOwner = new Map<number, TurnResult['income']>();
+  for (const entry of result.playerIncome ?? []) {
+    incomeByOwner.set(entry.ownerId, entry.income);
+  }
 
   // The human seat the panel's loan affordance keys to (MS-0MW4YUHOU00474HZ
   // AC1): resolved from the scoreboard's `isHuman` rows — the same
@@ -536,6 +630,10 @@ export function buildCompetitiveTurnSummary(
         reputation: seat.netRepChange ?? 0,
         score: seat.netScoreChange ?? 0,
       };
+      const incident = {
+        coins: seat.incidentCoinChange ?? 0,
+        reputation: seat.incidentRepChange ?? 0,
+      };
       return {
         ownerId,
         label: rosterSeat?.label ?? getSeatDisplayLabel(ownerId),
@@ -546,6 +644,7 @@ export function buildCompetitiveTurnSummary(
           phase,
           label: INCOME_LABELS[phase],
           coins: seat.incomeByPhase[phase],
+          ...incomeLineBreakdown(phase, incomeByOwner.get(ownerId)),
         })),
         incomeTotal: seat.incomeTotal,
         expenses,
@@ -554,14 +653,18 @@ export function buildCompetitiveTurnSummary(
         netRepChange: net.reputation,
         netScoreChange: net.score,
         closing: competitiveClosing(seat, rosterSeat, net),
-        incident: {
-          coins: seat.incidentCoinChange ?? 0,
-          reputation: seat.incidentRepChange ?? 0,
-        },
+        incident,
+        incidentDetail: buildIncidentDetail(
+          getStreetScopeSkills(roster[ownerId]?.staffCards ?? []),
+          result.incident,
+          incident.coins,
+          incident.reputation,
+        ),
         oneOff: {
           coins: seat.oneOffDeltas?.coins ?? 0,
           reputation: seat.oneOffDeltas?.reputation ?? 0,
         },
+        ...(seat.oneOffBreakdown ? { oneOffBreakdown: seat.oneOffBreakdown } : {}),
       };
     }),
   };
@@ -584,6 +687,23 @@ export interface PLStatementLine {
   label: string;
   /** Signed coin amount: credited for income, zero-or-negative for expenses. */
   coins: number;
+  /**
+   * Optional per-item breakdown for tooltip rendering (per-business income,
+   * per-card costs). Absent-safe: legacy/hand-built ledgers render without a
+   * breakdown tooltip (the overlay falls back to a generic explanation).
+   *
+   * Note `key` here is shared with the ledger's phase (`base`/`synergy`/`events`)
+   * or category (`staff`/`community`/`business`), but the breakdown groups
+   * per business for income phases and per card for expense categories.
+   */
+  breakdown?: PLLineBreakdown;
+  /**
+   * Optional tooltip content string. When absent the overlay builds row
+   * content from the model via {@link module:scenes/MainStreetTurnSummaryTooltips}
+   * (the reconciliation formula for one-off/net rows, generic explanations for
+   * context rows).
+   */
+  tooltipContent?: string;
 }
 
 /**
@@ -604,12 +724,63 @@ export interface PLStatementSection {
   total: number;
 }
 
+/**
+ * One named signed modifier applied to the resolved incident's base effect
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `coins` is a positive reduction of the incident's coin damage and
+ * `reputation` a positive reduction/increase of its reputation delta, so
+ * `base + every modifier` reconciles exactly to the committed incident line.
+ */
+export interface PLIncidentModifier {
+  /** Display name of the modifier (a staff skill name). */
+  name: string;
+  /** Signed coin effect of the modifier on {@link PLIncidentDetail.base}. */
+  coins: number;
+  /** Signed reputation effect of the modifier on {@link PLIncidentDetail.base}. */
+  reputation: number;
+}
+
+/**
+ * Derivation of an incident's committed coin/reputation deltas
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `base` is the resolved incident card's own effect and `modifiers` each named
+ * staff mitigation/gain applied to it, so the identity
+ * `base + sum(modifiers) === incident coins/reputation` holds exactly. The
+ * model only emits it when that identity reconciles; otherwise the detail is
+ * omitted (absent-safe).
+ */
+export interface PLIncidentDetail {
+  /** The resolved incident's own unmodified coin/reputation effect. */
+  base: { coins: number; reputation: number };
+  /** Named modifiers applied to {@link base}, in application order. */
+  modifiers: PLIncidentModifier[];
+}
+
 /** A coin/reputation adjustment row (the incident or one-off delta). */
 export interface PLAdjustmentLine {
   key: 'incident' | 'oneOff';
   label: string;
   coins: number;
   reputation: number;
+  /**
+   * Optional per-source attribution of the one-off row
+   * (MS-0MWBZDNH3006DXV7): labelled entries that sum to {@link coins} within
+   * the documented rounding tolerance. Present only when the projection's
+   * ledger carried it; the tooltip lists one line per source and keeps the
+   * reconciliation formula as a checksum, falling back to the formula alone
+   * when absent.
+   */
+  breakdown?: OneOffBreakdownEntry[];
+  /**
+   * Optional incident derivation for the tooltip (base effect + each named
+   * modifier). Present only on the incident line, and only when it reconciles
+   * exactly to {@link coins} / {@link reputation} (absent-safe).
+   */
+  detail?: PLIncidentDetail;
+  /** Optional tooltip content (incident name/effect; one-off reconciliation). */
+  tooltipContent?: string;
 }
 
 /**
@@ -625,6 +796,36 @@ export interface PLSupplementaryContext {
   closingCoins: number;
   /** Businesses standing on the street at closing for that player. */
   businessesOwned: number;
+  /**
+   * Day-start coin balance for the player the statement belongs to
+   * (MS-0MWC90S6H009EDRD): `closingCoins - net.coins`, so the context tooltip
+   * can show the arithmetic behind the closing balance. Absent-safe: omitted
+   * where the projection carries no supporting per-item data (a hand-built or
+   * legacy ledger keeps the previous context shape).
+   */
+  dayStartCoins?: number;
+  /**
+   * One display name per business the projection already breaks down, so the
+   * context tooltip can name the businesses owned rather than restating the
+   * count (MS-0MWC90S6H009EDRD). Absent-safe: omitted when the projection
+   * carries no per-business income detail.
+   */
+  businessNames?: string[];
+  /**
+   * The reputation-change constituents that reconcile to
+   * {@link reputationChange}: income reputation plus the committed incident and
+   * one-off reputation deltas (MS-0MWC90S6H009EDRD). Absent-safe: omitted when
+   * the projection carries no per-item income detail.
+   */
+  reputationParts?: { income: number; incident: number; oneOff: number };
+  /**
+   * Optional tooltip content for each context row, keyed by row. Absent-safe:
+   * the overlay falls back to a generic explanation when a key is missing.
+   */
+  tooltips?: Partial<Record<
+    'reputationChange' | 'scoreChange' | 'closingCoins' | 'businessesOwned',
+    string
+  >>;
 }
 
 /**
@@ -682,8 +883,100 @@ const PL_LABELS = {
   net: 'Net profit/loss',
 } as const;
 
+/**
+ * One named signed modifier applied to a breakdown item's {@link
+ * PLBreakdownItem.base} (e.g. the Operations Manager salary discount).
+ *
+ * `coins` is signed in the item's own convention: positive when the modifier
+ * increases the item (an income bonus, a salary discount on a negative cost),
+ * negative when it reduces it.
+ */
+export interface PLBreakdownModifier {
+  /** Display name of the modifier (a staff skill name, etc.). */
+  name: string;
+  /** Signed coin effect of the modifier on {@link PLBreakdownItem.base}. */
+  coins: number;
+}
+
+/**
+ * One named event effect that produced part of a business's event-phase coins
+ * (the committed `SlotEventDelta`), so the Events tooltip can name every
+ * effect rather than only the per-business sum (MS-0MWC90RB7004BC4E).
+ */
+export interface PLBreakdownEffect {
+  /** Human-readable effect name (`SlotEventDelta.name`). */
+  name: string;
+  /** Signed coin delta the effect contributed (negative = reduction). */
+  delta: number;
+}
+
+/**
+ * A single item in a per-item breakdown (business name → coins, staff card →
+ * cost, etc.). Used by tooltip content builders.
+ *
+ * `coins` is always the **committed** contribution the item adds to the line
+ * (the engine's own per-card charge, or the ledger's per-business figure).
+ * `base`, `modifiers` and `effects` only *explain* that figure for the
+ * tooltip: they are optional, and when `base` is present the invariant
+ * `base + sum(modifiers.coins) === coins` holds for every emitted item, as
+ * does `sum(effects.delta) === coins` when `effects` is present.
+ */
+export interface PLBreakdownItem {
+  /** Display name of the item (business name, staff name, etc.). */
+  name: string;
+  /** Coin contribution of this item (positive for income, negative for cost). */
+  coins: number;
+  /**
+   * Unmodified per-item amount, in the same sign convention as {@link coins}
+   * (e.g. a staff member's base salary as a negative expense). Present only
+   * where the committed state carries the unmodified figure; the model never
+   * invents one.
+   */
+  base?: number;
+  /**
+   * Named signed modifiers applied to {@link base}, in application order.
+   * Absent when the item carries no per-item modifier detail (community-space
+   * and business costs); never synthesised.
+   */
+  modifiers?: PLBreakdownModifier[];
+  /**
+   * Named event effects that produced this item's {@link coins} (Events row
+   * only). Absent when the committed `SlotPhaseBreakdown` carries no
+   * `eventDeltas` for the business; never synthesised. The deltas sum to
+   * {@link coins}, so the effects explain the item rather than adding to it.
+   */
+  effects?: PLBreakdownEffect[];
+}
+
+/**
+ * Optional per-item breakdown attached to a P&L line for tooltip rendering.
+ *
+ * When present the overlay attaches a tooltip that lists each item; when absent
+ * the row shows a generic explanation (the reconciliation formula, etc.).
+ */
+export interface PLLineBreakdown {
+  /** Ordered list of named items with their coin contribution. */
+  items: PLBreakdownItem[];
+  /**
+   * Optional street-wide ongoing-cost reduction (Cost Cutter) applied to this
+   * family, as a positive coin amount. Stored so the tooltip can attribute the
+   * gap between the per-item base sum and the committed total to the reduction
+   * rather than to a coins-limited shortfall. Absent when no reduction applies.
+   */
+  streetReduction?: number;
+}
+
 /** The result fields the P&L projection reads (both ledger shapes). */
-type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'>;
+type PLResultInput = Pick<TurnResult, 'turnLedger' | 'incident' | 'playerRoundLedger'> & {
+  /**
+   * Optional per-business income detail for tooltip breakdowns. Absent-safe: a
+   * caller that omits it (hand-built results, legacy call sites) still gets a
+   * statement, just without per-business breakdowns.
+   */
+  income?: TurnResult['income'];
+  /** Optional per-seat income detail for competitive tooltip breakdowns. */
+  playerIncome?: TurnResult['playerIncome'];
+};
 
 /**
  * Builds the tab model of the unified Turn Summary dialog: one tab per player,
@@ -810,6 +1103,9 @@ export function buildPLFromTurnSummary(
   const emptyStreetHuman = summary.owners.length === 0 && key === '0';
   if (!owner && !emptyStreetHuman) return null;
 
+  const closingCoins = owner?.coins ?? summary.closing.coins;
+  const businessNames = incomeBusinessNames(summary.income);
+
   return {
     playerKey: key,
     label: tab.label,
@@ -819,7 +1115,12 @@ export function buildPLFromTurnSummary(
       'income',
       PL_LABELS.income,
       PL_LABELS.incomeTotal,
-      summary.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      summary.income.map((line) => ({
+        key: line.phase,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       summary.incomeTotal,
     ),
     expenses: plSection(
@@ -830,6 +1131,7 @@ export function buildPLFromTurnSummary(
         key: line.category,
         label: line.label,
         coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
       })),
       summary.expensesTotal,
     ),
@@ -838,19 +1140,29 @@ export function buildPLFromTurnSummary(
       label: PL_LABELS.incident,
       coins: summary.incident.coins,
       reputation: summary.incident.reputation,
+      ...(summary.incidentDetail ? { detail: summary.incidentDetail } : {}),
     },
     oneOff: {
       key: 'oneOff',
       label: PL_LABELS.oneOff,
       coins: summary.oneOff.coins,
       reputation: summary.oneOff.reputation,
+      ...(summary.oneOffBreakdown ? { breakdown: summary.oneOffBreakdown } : {}),
     },
     net: { label: PL_LABELS.net, ...summary.net },
     context: {
       reputationChange: summary.net.reputation,
       scoreChange: summary.net.score,
-      closingCoins: owner?.coins ?? summary.closing.coins,
+      closingCoins,
       businessesOwned: owner?.businessesOwned ?? 0,
+      ...contextDerivations(
+        closingCoins,
+        summary.net.coins,
+        summary.net.reputation,
+        summary.incident.reputation,
+        summary.oneOff.reputation,
+        businessNames,
+      ),
     },
   };
 }
@@ -867,6 +1179,7 @@ export function buildPLFromTurnSummary(
 export function buildPLFromCompetitiveRow(
   row: CompetitiveTurnSummaryRow,
 ): PLProjection {
+  const businessNames = incomeBusinessNames(row.income);
   return {
     playerKey: String(row.ownerId),
     label: row.label,
@@ -876,14 +1189,24 @@ export function buildPLFromCompetitiveRow(
       'income',
       PL_LABELS.income,
       PL_LABELS.incomeTotal,
-      row.income.map((line) => ({ key: line.phase, label: line.label, coins: line.coins })),
+      row.income.map((line) => ({
+        key: line.phase,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       row.incomeTotal,
     ),
     expenses: plSection(
       'expenses',
       PL_LABELS.expenses,
       PL_LABELS.expensesTotal,
-      row.expenses.map((line) => ({ key: line.category, label: line.label, coins: line.coins })),
+      row.expenses.map((line) => ({
+        key: line.category,
+        label: line.label,
+        coins: line.coins,
+        ...(line.breakdown ? { breakdown: line.breakdown } : {}),
+      })),
       row.expensesTotal,
     ),
     incident: {
@@ -891,12 +1214,14 @@ export function buildPLFromCompetitiveRow(
       label: PL_LABELS.incident,
       coins: row.incident.coins,
       reputation: row.incident.reputation,
+      ...(row.incidentDetail ? { detail: row.incidentDetail } : {}),
     },
     oneOff: {
       key: 'oneOff',
       label: PL_LABELS.oneOff,
       coins: row.oneOff.coins,
       reputation: row.oneOff.reputation,
+      ...(row.oneOffBreakdown ? { breakdown: row.oneOffBreakdown } : {}),
     },
     net: {
       label: PL_LABELS.net,
@@ -909,6 +1234,15 @@ export function buildPLFromCompetitiveRow(
       scoreChange: row.netScoreChange,
       closingCoins: row.closing.coins,
       businessesOwned: row.businessesOwned,
+      ...contextDerivations(
+        row.closing.coins,
+        row.netCoinChange,
+        row.netRepChange,
+        row.incident.reputation,
+        row.oneOff.reputation,
+        businessNames,
+        true,
+      ),
     },
   };
 }
@@ -917,6 +1251,339 @@ export function buildPLFromCompetitiveRow(
 function selectPlayerKey(tabs: readonly PLTab[], playerKey?: string | number): string {
   if (playerKey !== undefined) return String(playerKey);
   return (tabs.find((tab) => tab.isDefault) ?? tabs[0])?.id ?? '';
+}
+
+/**
+ * Builds the optional per-business breakdown for one income phase.
+ *
+ * The engine's `IncomeResult` carries per-slot income in `breakdown`
+ * (`baseIncome` + `synergyBonus`) and per-slot phase data in
+ * `phaseBreakdown.perSlotBreakdown` (`repBonus`, `eventDeltas`). We project the
+ * phase-specific per-business contribution so the "Business income" tooltip can
+ * name each business.
+ *
+ * Absent-safe: an absent `incomeResult` or empty breakdown → no breakdown (the
+ * overlay falls back to a generic explanation tooltip).
+ *
+ * @param phase        The income phase to break down.
+ * @param incomeResult The closed turn's `IncomeResult` (per-business detail).
+ */
+function incomeLineBreakdown(
+  phase: TurnSummaryIncomePhase,
+  income: TurnResult['income'] | null | undefined,
+): { breakdown?: PLLineBreakdown } {
+  if (!income) return {};
+
+  if (phase === 'base' || phase === 'synergy') {
+    const items = (income.breakdown ?? [])
+      .map((slot) => ({
+        name: slot.businessName,
+        coins: phase === 'base' ? slot.baseIncome : slot.synergyBonus,
+      }))
+      .filter((item) => item.coins !== 0);
+    return items.length > 0 ? { breakdown: { items } } : {};
+  }
+
+  // Reputation and event phases come from the per-slot phase breakdown.
+  const phaseSlots = income.phaseBreakdown?.perSlotBreakdown ?? [];
+
+  if (phase === 'events') {
+    // Enumerate each committed `SlotEventDelta` as a named effect on its
+    // business's item, so the tooltip names every effect and not only the
+    // per-business sum (MS-0MWC90RB7004BC4E). A slot whose effects net to
+    // zero is still kept: it carries effects worth explaining, and its zero
+    // `coins` keeps `sum(items) === line coins` intact.
+    const items = phaseSlots
+      .map((slot) => {
+        const effects = (slot.eventDeltas ?? []).map((delta) => ({
+          name: delta.name,
+          delta: delta.delta,
+        }));
+        const coins = effects.reduce((total, effect) => total + effect.delta, 0);
+        return { name: slot.businessName, coins, effects };
+      })
+      .filter((item) => item.coins !== 0 || item.effects.length > 0);
+    return items.length > 0 ? { breakdown: { items } } : {};
+  }
+
+  const items = phaseSlots
+    .map((slot) => ({ name: slot.businessName, coins: slot.repBonus }))
+    .filter((item) => item.coins !== 0);
+  return items.length > 0 ? { breakdown: { items } } : {};
+}
+
+/** Skill id of the Operations Manager salary-discount modifier. */
+const OPERATIONS_MANAGER_SKILL_ID = 'skill-operations-manager';
+
+/**
+ * Builds the optional per-item breakdown for one ongoing-expense category.
+ *
+ * Derives per-card costs from the committed state the same way the engine's
+ * `applyStaffOngoingCosts` / `applyCommunitySpaceOngoingCosts` /
+ * `applyBusinessOngoingCosts` helpers compute them, so the tooltip's per-item
+ * figures are the engine's own per-card charges — never invented by the UI.
+ *
+ * Items hold the **base** per-card charge (before the street-wide Cost Cutter
+ * reduction and before any available-coins clamp). The tooltip builder
+ * reconciles them to the committed category total with a reduction/clamp line
+ * (see {@link module:scenes/MainStreetTurnSummaryTooltips}).
+ *
+ * Staff items additionally explain their charge as `base ± modifiers`: `base`
+ * is the card's `ongoingCost` (negative, expense convention) and each naming
+ * `Operations Manager` discount becomes a signed modifier, using the same
+ * {@link getSalaryScopeSkills} + `computeStaffSalaryDiscount` helpers the
+ * engine charges with. Community-space and business items carry `base` only —
+ * their only modifier is street-wide (`streetReduction`), so none is
+ * synthesised per item.
+ *
+ * Costs are stored as negative coin deltas, matching the expense row
+ * convention. Absent-safe: a missing/empty source → no breakdown.
+ *
+ * @param state    Committed game state after the closing (read-only).
+ * @param category The ongoing-expense category to break down.
+ */
+function expenseLineBreakdown(
+  state: MainStreetState,
+  category: TurnSummaryExpenseCategory,
+): { breakdown?: PLLineBreakdown } {
+  const soldSlots = state.soldSlots ?? [];
+
+  if (category === 'staff') {
+    const items: PLBreakdownItem[] = [];
+    for (const card of state.staffCards ?? []) {
+      const base = -card.ongoingCost;
+      const coins = -computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
+      if (coins === 0) continue;
+      // `coins` is the engine's own `computeStaffSalaryCost` charge (it applies
+      // `computeStaffSalaryDiscount` internally), so the applied discount is
+      // exactly `coins - base`: the invariant `base + sum(modifiers) === coins`
+      // holds structurally, including the zero-salary clamp when the discount
+      // would exceed the base salary.
+      const discount = coins - base;
+      const modifiers: PLBreakdownModifier[] = discount !== 0
+        ? [{ name: getSkill(OPERATIONS_MANAGER_SKILL_ID).name, coins: discount }]
+        : [];
+      items.push({ name: card.name, coins, base, modifiers });
+    }
+    return items.length > 0
+      ? { breakdown: { items, ...streetReduction(state, items) } }
+      : {};
+  }
+
+  if (category === 'community') {
+    const items: PLBreakdownItem[] = [];
+    const grid = state.streetGrid ?? [];
+    for (let i = 0; i < grid.length; i++) {
+      const slot = grid[i];
+      if (!slot || slot.family !== 'community-space') continue;
+      if (soldSlots[i]) continue;
+      const cost = slot.ongoingCost ?? 0;
+      if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
+    }
+    return items.length > 0
+      ? { breakdown: { items, ...streetReduction(state, items) } }
+      : {};
+  }
+
+  // category === 'business'
+  const items: PLBreakdownItem[] = [];
+  const grid = state.streetGrid ?? [];
+  for (let i = 0; i < grid.length; i++) {
+    const slot = grid[i];
+    if (!slot || slot.family !== 'business') continue;
+    if (soldSlots[i]) continue;
+    const cost = (slot as BusinessCard).ongoingCost ?? 0;
+    if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
+  }
+  return items.length > 0
+    ? { breakdown: { items, ...streetReduction(state, items) } }
+    : {};
+}
+
+/**
+ * Computes the street-wide Cost Cutter reduction for a family's base per-item
+ * sum, mirroring the engine (`roundInt(totalCost * (1 - reductionPct))`).
+ *
+ * Returns `{ streetReduction }` (a positive coin amount) only when the reduction
+ * actually moves the family total; an unreduced family returns `{}` so the
+ * breakdown stays absent-safe.
+ */
+function streetReduction(
+  state: MainStreetState,
+  items: readonly PLBreakdownItem[],
+): { streetReduction?: number } {
+  const reductionPct = computeStreetOngoingCostReductionPct(
+    getEmployedSpecializationSkills(state),
+  );
+  if (reductionPct <= 0) return {};
+  const absSum = items.reduce((total, item) => total - item.coins, 0);
+  const afterReduction = roundInt(absSum * (1 - reductionPct));
+  const amount = absSum - afterReduction;
+  return amount > 0 ? { streetReduction: amount } : {};
+}
+
+/**
+ * Collects the distinct business names the projection already breaks down, in
+ * first-seen order (MS-0MWC90S6H009EDRD). Empty when the projection carries no
+ * per-business income detail, so the caller can keep today's context shape.
+ *
+ * @param lines Income rows (single-player or competitive) carrying an optional
+ *              per-business breakdown.
+ */
+function incomeBusinessNames(
+  lines: readonly { breakdown?: PLLineBreakdown }[],
+): string[] {
+  const names: string[] = [];
+  for (const line of lines) {
+    for (const item of line.breakdown?.items ?? []) {
+      if (!names.includes(item.name)) names.push(item.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Builds the supplementary-context derivations from already-committed figures
+ * (MS-0MWC90S6H009EDRD).
+ *
+ * `dayStartCoins` is `closing - net` (the ledger's own reconciliation
+ * identity). `businessNames` and `reputationParts` are only emitted when the
+ * projection carries per-business income detail, keeping a hand-built/legacy
+ * ledger on today's four-field context shape (absent-safe). The reputation
+ * constituents derive the income part as the residual
+ * `net - incident - oneOff`, so they always reconcile to
+ * {@link PLSupplementaryContext.reputationChange}.
+ *
+ * @param closingCoins       The player's committed closing coin balance.
+ * @param netCoins           The player's committed net coin change.
+ * @param netReputation      The player's committed net reputation change.
+ * @param incidentReputation The committed incident reputation delta.
+ * @param oneOffReputation   The committed one-off reputation delta.
+ * @param businessNames      Names the income breakdown already carries.
+ * @param alwaysDayStart     Competitive rows always carry a committed closing
+ *                           and net, so they emit `dayStartCoins` even without
+ *                           income detail (the figure is still derivable).
+ */
+function contextDerivations(
+  closingCoins: number,
+  netCoins: number,
+  netReputation: number,
+  incidentReputation: number,
+  oneOffReputation: number,
+  businessNames: readonly string[],
+  alwaysDayStart = false,
+): Pick<PLSupplementaryContext, 'dayStartCoins' | 'businessNames' | 'reputationParts'> {
+  const hasIncomeDetail = businessNames.length > 0;
+  if (!hasIncomeDetail && !alwaysDayStart) return {};
+  return {
+    dayStartCoins: closingCoins - netCoins,
+    ...(hasIncomeDetail
+      ? {
+        businessNames: [...businessNames],
+        reputationParts: {
+          income: netReputation - incidentReputation - oneOffReputation,
+          incident: incidentReputation,
+          oneOff: oneOffReputation,
+        },
+      }
+      : {}),
+  };
+}
+
+/** Skill id of the Quality Inspector incident coin-damage modifier. */
+const QUALITY_INSPECTOR_SKILL_ID = 'skill-quality-inspector';
+
+/** Skill id of the Compliance Officer incident reputation-damage modifier. */
+const COMPLIANCE_SKILL_ID = 'skill-compliance';
+
+/** Skill id of the Brand Ambassador reputation-gain multiplier. */
+const BRAND_AMBASSADOR_SKILL_ID = 'skill-brand-ambassador';
+
+/**
+ * Derives the incident's committed deltas as a base effect plus each named
+ * staff modifier applied to it (MS-0MWC90S6H009EDRD).
+ *
+ * Every figure comes from the resolved incident card and the engine's own
+ * mitigation helpers ({@link computeIncidentSkillBuffs},
+ * {@link computeReputationGainMultiplier}), so the detail explains — never
+ * invents — the committed `incidentCoinChange` / `incidentRepChange`. The
+ * identity `base + sum(modifiers) === committed` is verified for both axes; a
+ * delta the named modifiers cannot reproduce exactly (per-business cluster
+ * mitigation, proportional/theft effects, target scaling) yields `undefined`, so
+ * the line stays absent-safe rather than showing misleading arithmetic.
+ *
+ * @param skills             The player's realisable management-company skills.
+ * @param incident           The resolved incident card, if any.
+ * @param committedCoins     The committed incident coin delta.
+ * @param committedReputation The committed incident reputation delta.
+ */
+function buildIncidentDetail(
+  skills: readonly SpecializationSkill[],
+  incident: TurnResult['incident'] | null | undefined,
+  committedCoins: number,
+  committedReputation: number,
+): PLIncidentDetail | undefined {
+  if (!incident) return undefined;
+  const baseCoins = incident.coinDelta;
+  const baseReputation = incident.reputationDelta;
+  if (typeof baseCoins !== 'number' || typeof baseReputation !== 'number') return undefined;
+
+  const buffs = computeIncidentSkillBuffs(skills);
+  const reputationMultiplier = computeReputationGainMultiplier(skills);
+  const modifiers: PLIncidentModifier[] = [];
+
+  // Quality Inspector: proportional reduction of negative coin damage.
+  if (baseCoins < 0 && buffs.coinDamageReductionPct > 0) {
+    const reduction = roundInt(Math.abs(baseCoins) * buffs.coinDamageReductionPct);
+    if (reduction !== 0) {
+      modifiers.push({
+        name: getSkill(QUALITY_INSPECTOR_SKILL_ID).name,
+        coins: reduction,
+        reputation: 0,
+      });
+    }
+  }
+
+  // Compliance Officer: flat reduction of negative reputation damage
+  // (engine semantics: `min(0, effect + flat)`, never below zero).
+  if (baseReputation < 0 && buffs.reputationDamageReductionFlat > 0) {
+    const reduction = Math.min(
+      Math.abs(baseReputation),
+      buffs.reputationDamageReductionFlat,
+    );
+    if (reduction !== 0) {
+      modifiers.push({
+        name: getSkill(COMPLIANCE_SKILL_ID).name,
+        coins: 0,
+        reputation: reduction,
+      });
+    }
+  }
+
+  // Brand Ambassador: multiplier on positive reputation gains.
+  if (baseReputation > 0 && reputationMultiplier !== 1) {
+    const boosted = roundInt(baseReputation * reputationMultiplier) - baseReputation;
+    if (boosted !== 0) {
+      modifiers.push({
+        name: getSkill(BRAND_AMBASSADOR_SKILL_ID).name,
+        coins: 0,
+        reputation: boosted,
+      });
+    }
+  }
+
+  const detail: PLIncidentDetail = {
+    base: { coins: baseCoins, reputation: baseReputation },
+    modifiers,
+  };
+  const coinTotal = detail.base.coins
+    + modifiers.reduce((total, modifier) => total + modifier.coins, 0);
+  const reputationTotal = detail.base.reputation
+    + modifiers.reduce((total, modifier) => total + modifier.reputation, 0);
+  if (coinTotal !== committedCoins || reputationTotal !== committedReputation) {
+    return undefined;
+  }
+  return detail;
 }
 
 /** Assembles one titled statement section. */
@@ -928,4 +1595,327 @@ function plSection(
   total: number,
 ): PLStatementSection {
   return { key, label, lines, totalLabel, total };
+}
+
+// ── Summary tab (headline view) ──────────────────────────────
+
+/**
+ * Stable id of the Summary tab.
+ *
+ * Distinct from the numeric seat keys (`'0'`, `'1'`, …) so the overlay can
+ * recognise the headline tab without inspecting its label, and so the
+ * selected-tab preservation after a loan take never confuses it with a seat.
+ */
+export const SUMMARY_TAB_ID = 'summary';
+
+/** Display label of the Summary tab (`[ Summary ]`). */
+export const SUMMARY_TAB_LABEL = 'Summary';
+
+/** One seat's presentation (owner key / label / colour / human) on the Summary tab. */
+export interface SummarySeat {
+  /** Ledger owner key (`String(playerId)`; `'0'` in single-player). */
+  ownerId: string;
+  /** Display label: `You` for the human seat, `AI n` for AI seats. */
+  label: string;
+  /** True when this seat is controlled by the human. */
+  isHuman: boolean;
+  /** Seat colour-blind-safe hex colour; `undefined` in single-player. */
+  colour?: string;
+}
+
+/**
+ * One player- or AI-initiated action row in the Summary tab.
+ *
+ * Selected structurally from `state.activityLog` by the entry's `actionType`
+ * marker — never by matching message text — so turn headers and the per-turn
+ * monetary summary rows (which carry no marker) can never appear here.
+ */
+export interface SummaryActionRow extends SummarySeat {
+  /** Structural action category (from `LogEntry.actionType`). */
+  actionType: LogEntryActionType;
+  /** The action's committed activity-log text. */
+  text: string;
+}
+
+/** One seat's share of a resolved event's effect. */
+export interface SummaryEventSeatEffect extends SummarySeat {
+  /** Signed coin delta applied to this seat. */
+  coins: number;
+  /** Signed reputation delta applied to this seat. */
+  reputation: number;
+}
+
+/**
+ * One resolved event (the turn's incident) and the effect it applied.
+ *
+ * Played event cards surface through {@link SummaryActionRow} as
+ * player-initiated actions rather than a second events list; this section is
+ * the incident the closing resolved.
+ */
+export interface SummaryEventRow {
+  /** Incident card name (or a generic `Incident` label when unnamed). */
+  name: string;
+  /** Total signed coin delta across the seats. */
+  coins: number;
+  /** Total signed reputation delta across the seats. */
+  reputation: number;
+  /** Per-seat effect of the event. */
+  seats: SummaryEventSeatEffect[];
+}
+
+/** The metrics the Summary tab presents, one row each. */
+export type SummaryMetricKey = 'income' | 'reputation' | 'score';
+
+/** One seat's figure on a metric row. */
+export interface SummaryMetricFigure extends SummarySeat {
+  /** Signed change for the day (`+N` / `-N` / `0`). */
+  change: number;
+  /** Resulting closing balance. */
+  balance: number;
+  /**
+   * The seat's P&L projection — the tooltip breakdown source, so the figure's
+   * tooltip can never drift from that seat's per-player tab.
+   */
+  projection: PLProjection;
+}
+
+/** One metric row (Income / Reputation / Score) with every seat's figure. */
+export interface SummaryMetricRow {
+  key: SummaryMetricKey;
+  label: string;
+  figures: SummaryMetricFigure[];
+}
+
+/** The Summary tab's whole model (sections in confirmed order). */
+export interface SummaryTabModel {
+  /** Shared day / turn the closing belongs to. */
+  turn: number;
+  /** The Summary tab descriptor (first tab, selected by default). */
+  tab: PLTab;
+  /** Major actions (player- and AI-initiated), in activity-log order. */
+  actions: SummaryActionRow[];
+  /** The resolved incident(s) and the effect applied. */
+  events: SummaryEventRow[];
+  /** One row per metric, each carrying every seat's change and balance. */
+  metrics: SummaryMetricRow[];
+}
+
+/** Fixed metric order and labels for the Summary tab. */
+const SUMMARY_METRIC_ORDER: readonly SummaryMetricKey[] = ['income', 'reputation', 'score'];
+
+const SUMMARY_METRIC_LABELS: Record<SummaryMetricKey, string> = {
+  income: 'Income',
+  reputation: 'Reputation',
+  score: 'Score',
+};
+
+/**
+ * Builds the Summary tab descriptor: the first tab, selected by default.
+ *
+ * `isHuman: false` because it belongs to no seat — selection is signalled by
+ * the overlay's bold weight, not by seat colour.
+ */
+export function buildSummaryTab(): PLTab {
+  return {
+    id: SUMMARY_TAB_ID,
+    label: SUMMARY_TAB_LABEL,
+    colour: undefined,
+    isHuman: false,
+    isDefault: true,
+  };
+}
+
+/** One seat's built projection plus its closing balances (internal). */
+interface SummarySeatEntry {
+  seat: SummarySeat;
+  projection: PLProjection;
+  closing: TurnSummaryClosing;
+}
+
+/**
+ * Builds the Summary tab model for the closed turn, or `null` when the result
+ * carries no ledger of either shape (nothing to summarise).
+ *
+ * Sections render in the confirmed order **Major actions → Events →
+ * Income/Reputation/Score** (producer answer Q1 = A). Every figure is
+ * projected from the same committed ledger the per-player tabs use, so the
+ * Summary and per-player views can never drift:
+ *
+ *  - **Major actions** — selected structurally from `state.activityLog` for the
+ *    closed turn by the entry's `actionType` marker (producer answer Q2), so
+ *    turn headers and the per-turn monetary summary rows never appear;
+ *  - **Events** — the resolved incident and the effect it applied, per seat;
+ *  - **Income / Reputation / Score** — one row per metric, every seat's signed
+ *    change and closing balance on that row (producer answer Q3 = A), each
+ *    figure paired with its `PLProjection` for the tooltip breakdown.
+ *
+ * Absent-safe: a turn record with no marked actions or no incident yields empty
+ * sections rather than throwing, and the caller advances the closing normally.
+ *
+ * @param state  Committed game state after the closing (read-only).
+ * @param result The closed turn's result (either ledger shape).
+ */
+export function buildSummaryTabModel(
+  state: MainStreetState,
+  result: PLResultInput,
+): SummaryTabModel | null {
+  const competitive = buildCompetitiveTurnSummary(state, result);
+  const single = competitive ? null : buildTurnSummary(state, result);
+  return buildSummaryTabModelFromSummary(
+    state,
+    single,
+    competitive,
+    result.incident?.name ?? null,
+  );
+}
+
+/**
+ * Builds the Summary tab model from an already-built single-player or
+ * competitive summary, or `null` when neither carries a statement.
+ *
+ * The tabbed dialog holds the built summary (not the raw result), so this is
+ * the same projection {@link buildSummaryTabModel} produces without
+ * re-deriving it. `state` is read only for the closed turn's activity log (the
+ * actions section) — never mutated.
+ *
+ * @param state        Committed game state after the closing (read-only).
+ * @param single       The built single-player summary, or `null`.
+ * @param competitive  The built competitive summary, or `null`.
+ * @param incidentName The resolved incident's name, when known.
+ */
+export function buildSummaryTabModelFromSummary(
+  state: MainStreetState | null,
+  single: TurnSummary | null,
+  competitive: CompetitiveTurnSummary | null,
+  incidentName: string | null,
+): SummaryTabModel | null {
+  if (!competitive && !single) return null;
+
+  const entries: SummarySeatEntry[] = [];
+  if (competitive) {
+    for (const row of competitive.rows) {
+      entries.push({
+        seat: {
+          ownerId: String(row.ownerId),
+          label: row.label,
+          isHuman: row.isHuman,
+          colour: row.colour,
+        },
+        projection: buildPLFromCompetitiveRow(row),
+        closing: { ...row.closing },
+      });
+    }
+  } else if (single) {
+    for (const tab of buildPLTabsFromTurnSummary(single)) {
+      const projection = buildPLFromTurnSummary(single, tab.id);
+      if (!projection) continue;
+      const owner = single.owners.find((candidate) => candidate.ownerId === tab.id);
+      entries.push({
+        seat: {
+          ownerId: tab.id,
+          label: tab.label,
+          isHuman: tab.isHuman,
+          colour: tab.colour,
+        },
+        projection,
+        closing: owner
+          ? { coins: owner.coins, reputation: owner.reputation, score: owner.score }
+          : { ...single.closing },
+      });
+    }
+  }
+  if (entries.length === 0) return null;
+
+  const turn = competitive ? competitive.turn : single!.turn;
+  const metrics: SummaryMetricRow[] = SUMMARY_METRIC_ORDER.map((key) => ({
+    key,
+    label: SUMMARY_METRIC_LABELS[key],
+    figures: entries.map(({ seat, projection, closing }) => ({
+      ...seat,
+      change:
+        key === 'income'
+          ? projection.net.coins
+          : key === 'reputation'
+            ? projection.net.reputation
+            : projection.net.score,
+      balance:
+        key === 'income'
+          ? closing.coins
+          : key === 'reputation'
+            ? closing.reputation
+            : closing.score,
+      projection,
+    })),
+  }));
+
+  return {
+    turn,
+    tab: buildSummaryTab(),
+    actions: buildSummaryActions(state, turn, entries),
+    events: buildSummaryEvents(incidentName, entries),
+    metrics,
+  };
+}
+
+/**
+ * Selects the closed turn's player- and AI-initiated actions from the activity
+ * log by their structural `actionType` marker (never by message text).
+ *
+ * Entries carrying no marker (turn headers, per-turn income/reputation summary
+ * rows, incident draws, market refreshes, …) are skipped. An entry with no
+ * `seatId` (single-player, where the log does not attribute) is credited to the
+ * panel's human seat.
+ */
+function buildSummaryActions(
+  state: MainStreetState | null,
+  turn: number,
+  entries: readonly SummarySeatEntry[],
+): SummaryActionRow[] {
+  const byOwner = new Map(entries.map(({ seat }) => [seat.ownerId, seat]));
+  const human = entries.find(({ seat }) => seat.isHuman)?.seat ?? entries[0]?.seat;
+  const rows: SummaryActionRow[] = [];
+
+  for (const entry of state?.activityLog ?? []) {
+    if (entry.turn !== turn) continue;
+    if (!entry.actionType) continue;
+    const seat =
+      entry.seatId != null
+        ? byOwner.get(String(entry.seatId))
+        : human;
+    if (!seat) continue;
+    rows.push({ ...seat, actionType: entry.actionType, text: entry.text });
+  }
+  return rows;
+}
+
+/**
+ * Builds the Events section: the resolved incident and its per-seat effect.
+ *
+ * The per-seat effect comes from each seat's `PLProjection.incident`, so the
+ * Summary's event figures reconcile with that seat's per-player Incident row.
+ * Returns an empty list when no incident was resolved and no seat carries an
+ * incident delta (absent-safe).
+ */
+function buildSummaryEvents(
+  incidentName: string | null,
+  entries: readonly SummarySeatEntry[],
+): SummaryEventRow[] {
+  const incident = incidentName;
+  const effects = entries.map(({ seat, projection }) => ({
+    ...seat,
+    coins: projection.incident.coins,
+    reputation: projection.incident.reputation,
+  }));
+  const nonZero = effects.filter((effect) => effect.coins !== 0 || effect.reputation !== 0);
+
+  // No incident name and no per-seat delta: nothing happened, render nothing.
+  if (!incident && nonZero.length === 0) return [];
+
+  const seats = incident ? effects : nonZero;
+  return [{
+    name: incident ?? 'Incident',
+    coins: seats.reduce((total, effect) => total + effect.coins, 0),
+    reputation: seats.reduce((total, effect) => total + effect.reputation, 0),
+    seats,
+  }];
 }

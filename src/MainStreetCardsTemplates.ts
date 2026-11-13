@@ -377,6 +377,7 @@ interface ParsedStaffEffect {
   reputationPercent?: number;
   synergyRangeBonus?: number;
   adjacencyPurchaseDiscount?: number;
+  ongoingCostReduction?: number;
   incidentEffect?: StaffIncidentEffect;
 }
 
@@ -408,6 +409,7 @@ function staffFraction(percent: number): number {
  * | `reputation:percent:10` | +10% reputation for the employing business |
  * | `synergy-range:1` | +1 synergy range for the employing business |
  * | `purchase-discount:adjacent:50` | −50 coins on businesses placed adjacent |
+ * | `ongoing-cost:percent:20` | −20% ongoing cost for the employing business |
  * | `incident-coin:<own\|cluster>:10` | −10% incident coin damage |
  * | `incident-reputation:<own\|cluster>:50` | −50 incident reputation damage |
  * | `incident-frequency:<own\|cluster>:10` | −10% incident frequency |
@@ -445,6 +447,9 @@ function parseStaffEffect(raw: string | undefined): ParsedStaffEffect {
       return { reputationBonus: amount, reputationBonusTarget: scope };
     case 'purchase-discount':
       return scope === 'adjacent' ? { adjacencyPurchaseDiscount: amount } : {};
+    case 'ongoing-cost':
+      if (scope !== 'percent') return {};
+      return { ongoingCostReduction: staffFraction(amount) };
     case 'incident-coin':
     case 'incident-reputation':
     case 'incident-frequency': {

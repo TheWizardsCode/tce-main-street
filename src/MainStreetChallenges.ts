@@ -521,10 +521,10 @@ export function evaluateChallenges(
         // Competitive: a challenge completed by an acting seat is that seat's
         // outcome (MS-0MW3PFQ4L0046Q3K AC1) — attribute it so the You/AI
         // filter never drops or mislabels it.
-        addLog(state, seatId, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain');
+        addLog(state, seatId, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain', 'complete-challenge');
       } else {
         // Single-player / legacy: no seat context, shared line (unchanged).
-        addLogShared(state, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain');
+        addLogShared(state, `Challenge completed: ${challenge.title} (+${challenge.rewardPoints} pts)`, 'gain', 'complete-challenge');
       }
       // Persistent achievement bridge (F7). Gated to the human seat in
       // competitive mode so an AI completion never unlocks the human's

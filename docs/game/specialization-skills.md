@@ -203,11 +203,11 @@ are assigned.
   interaction terms between skills (purely additive — T3 tests enforce no runaway compounding).
 - **Per-business card abilities (the staff card, not the skill).** A business-staff card may also
   carry a card-level effect spec in its `effect` column (`income`, `reputation`, `synergy-range`,
-  `purchase-discount`, `incident-*`); it resolves per business through
-  `computeBusinessStaffBuffs` / `computeBusinessIncidentMitigation` — `own` effects land on the
-  employing business, `adjacent` effects on its 8-way neighbours, never street-wide (GDD
-  D.4.3/D.4.8, MS-0MW3JXF6U00753LB). Card abilities and specialization skills are independent
-  systems and compose additively.
+  `purchase-discount`, `ongoing-cost`, `incident-*`); it resolves per business through
+  `computeBusinessStaffBuffs` / `computeBusinessIncidentMitigation` / `computeBusinessOngoingCostReductionPct`
+  — `own` effects land on the employing business, `adjacent` effects on its 8-way neighbours,
+  never street-wide (GDD D.4.3/D.4.8, MS-0MW3JXF6U00753LB). Card abilities and specialization
+  skills are independent systems and compose additively.
 - **Street-wide / player folds (management-company staff).** Ongoing-cost reduction, incident
   mitigation, the reputation-gain multiplier and the refresh discount are computed from the
   street-wide skill aggregate (`getEmployedSpecializationSkills`, which applies
@@ -217,12 +217,14 @@ are assigned.
   business-scope skills (`getSalaryScopeSkills`), so it discounts only that member's salary at the
   employing business and a management-company member's cross-type Operations Manager is inert.
 - **Cost reductions:** Cost Cutter applies to **all three** ongoing-cost families
-  (staff/community-space/business) at end of turn; Operations Manager discounts **only its own
-  member's** salary (a business-staff cost effect); Negotiator reduces `refreshMarketCost` in
-  addition to legacy `refreshCostDiscount` staff abilities (Group F); the Financial Advisor's
-  `upgradeCostDiscount` reduces the upgrade cost of its employing business only
-  (CG-0MTKMGL66004I0PC); the Accountant's `refreshCostDiscount` reduces `refreshMarketCost`
-  street-wide, a player-scope field that belongs to management-company staff
+  (staff/community-space/business) at end of turn; the Bookkeeper's card-level
+  `ongoing-cost:percent:20` reduces **only its employing business's** ongoing cost
+  (per-business, applied before the street-wide Cost Cutter and floored at 0); Operations
+  Manager discounts **only its own member's** salary (a business-staff cost effect); Negotiator
+  reduces `refreshMarketCost` in addition to legacy `refreshCostDiscount` staff abilities
+  (Group F); the Financial Advisor's `upgradeCostDiscount` reduces the upgrade cost of its
+  employing business only (CG-0MTKMGL66004I0PC); the Accountant's `refreshCostDiscount` reduces
+  `refreshMarketCost` street-wide, a player-scope field that belongs to management-company staff
   (CG-0MULWEEE8007J2TB). The two business-staff cost cards were re-scoped by the two-type
   redesign: the IT Specialist's former street-wide refresh discount is now +1 synergy range for
   its own business, and the Delivery Driver's former street-wide `purchaseCostDiscount` is now a

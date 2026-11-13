@@ -8,6 +8,7 @@
 
 import { resolveStaffApplicant } from './MainStreetEngineCommands';
 import { refillMarket, cycleMarketCards } from './MainStreetMarket';
+import { resetOneOffAttribution } from './MainStreetOneOffAttribution';
 import type { MainStreetState, TurnPhase } from './MainStreetState';
 import { PHASE_ORDER, addLogShared } from './MainStreetState';
 
@@ -65,6 +66,11 @@ export function executeWeekStart(state: MainStreetState, skipMarketRefill: boole
   // Investor free market re-roll gate (MS-0MTISBYLS009936W): a new turn
   // restores the once-per-turn coin-free re-roll.
   state.investorFreeRerollUsedThisTurn = false;
+
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a new day resets the
+  // per-source accumulator, so last day's market/event/favour/loan sources
+  // can never bleed into this day's one-off row.
+  resetOneOffAttribution(state);
 
   // Day-start snapshot for the per-turn net summary row (CG-0MT5W7UJJ0065MEZ
   // AC3): resources exactly as the player's turn begins. Persisted with the

@@ -255,14 +255,20 @@ describe('AC3: Operations Manager salary discount requires business staff', () =
     const businessStaff = setupMainStreetGame({ seed: 'scope-gate-letgo-business' });
     businessStaff.staffCards.push(staffMember('biz-ops', ['skill-operations-manager'], { employedAtSlot: 0, ongoingCost: 100 }));
     businessStaff.resourceBank.coins = 1000;
+    // Salary 50 (100 − 50 discount) → 100-unit lay-off reputation floor.
+    businessStaff.resourceBank.reputation = 200;
     letGoStaffMember(businessStaff, 0);
     expect(businessStaff.resourceBank.coins).toBe(950);
+    expect(businessStaff.resourceBank.reputation).toBe(100);
 
     const companyStaff = setupMainStreetGame({ seed: 'scope-gate-letgo-company' });
     companyStaff.staffCards.push(staffMember('company-ops', ['skill-operations-manager'], { ongoingCost: 100 }));
     companyStaff.resourceBank.coins = 1000;
+    // Salary 100 (cross-type discount inert) → 100-unit lay-off reputation floor.
+    companyStaff.resourceBank.reputation = 200;
     letGoStaffMember(companyStaff, 0);
     expect(companyStaff.resourceBank.coins).toBe(900);
+    expect(companyStaff.resourceBank.reputation).toBe(100);
   });
 });
 

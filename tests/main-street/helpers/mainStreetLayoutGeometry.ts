@@ -44,6 +44,8 @@ export interface MainStreetLayoutGeometry {
   actionCounter: Rect;
   /** Peek / small button area. */
   peekButton: Rect;
+  /** Staff Pile zone (left edge, above hand row). */
+  staffPile: Rect;
 }
 
 // ── Constants (used by the adapter; imported from constants) ──────
@@ -115,6 +117,22 @@ function deriveFavourButtons(
 }
 
 /**
+ * Derive the staff pile zone geometry.
+ *
+ * The staff pile sits to the left of the hand row, against the left edge
+ * of the viewport. Its bounds come directly from the layout adapter's
+ * resolved `staffPileX/Y/W/H` fields.
+ */
+function deriveStaffPile(layout: ReturnType<typeof computeMainStreetLayoutWithSll>): Rect {
+  return {
+    x: layout.staffPileX,
+    y: layout.staffPileY,
+    width: layout.staffPileW,
+    height: layout.staffPileH,
+  };
+}
+
+/**
  * Derive the action-cluster rectangles.
  *
  * The action cluster is the bottom-right area containing:
@@ -175,6 +193,7 @@ export function computeMainStreetLayoutGeometry(
   const hudStrip = deriveHudStrip(layout);
   const favour = deriveFavourButtons(layout);
   const cluster = deriveActionCluster(layout);
+  const staffPile = deriveStaffPile(layout);
 
   return {
     marketBox,
@@ -184,6 +203,7 @@ export function computeMainStreetLayoutGeometry(
     endTurnButton: cluster.endTurnButton,
     peekButton: cluster.peekButton,
     actionCounter: cluster.actionCounter,
+    staffPile,
   };
 }
 

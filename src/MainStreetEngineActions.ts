@@ -15,6 +15,7 @@ import type { EventCard } from './MainStreetCards';
 import { purchaseBusiness, moveToHand, purchaseUpgrade, buyAndPlaceUpgrade, purchaseEvent, playBusinessFromHand, playUpgradeFromHand, playEventFromHand, discardFromHand, closeBusiness } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { hasPeekCapableStaff } from './MainStreetStaffSkills';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
 
@@ -417,10 +418,17 @@ export function executeCommunityFavour(
     // Enriched with effective deltas (CG-0MT5W7UJJ0065MEZ).
     const coinDelta = -cost;
     const repDelta = 1;
+    // One-off attribution (MS-0MWBZDNH3006DXV7): the exchange moves coins and
+    // reputation outside the closing phases — attributed to Community Favour.
+    recordOneOffAttribution(state, {
+      communityFavourCoins: coinDelta,
+      communityFavourRep: repDelta,
+    });
     addLog(
       state,
       `Community Favour: spent ${cost} coins for 1 reputation (${describeEventEffects(coinDelta, repDelta)})`,
       classifyEffect(coinDelta, repDelta),
+      'other-action',
     );
   } else {
     // rep-to-coins
@@ -436,10 +444,17 @@ export function executeCommunityFavour(
     // Enriched with effective deltas (CG-0MT5W7UJJ0065MEZ).
     const coinDelta = coinGain;
     const repDelta = -repCost;
+    // One-off attribution (MS-0MWBZDNH3006DXV7): the exchange moves coins and
+    // reputation outside the closing phases — attributed to Community Favour.
+    recordOneOffAttribution(state, {
+      communityFavourCoins: coinDelta,
+      communityFavourRep: repDelta,
+    });
     addLog(
       state,
       `Community Favour: spent ${repCost} reputation for ${coinGain} coins (${describeEventEffects(coinDelta, repDelta)})`,
       classifyEffect(coinDelta, repDelta),
+      'other-action',
     );
   }
 
@@ -498,7 +513,7 @@ export function peekIncidentDeck(state: MainStreetState): EventCard | null {
 
   consumeAction(state);
   state.peekUsedThisTurn = true;
-  addLog(state, 'Peeked at the top card of the incident deck.', 'neutral');
+  addLog(state, 'Peeked at the top card of the incident deck.', 'neutral', 'other-action');
 
   // Reveal-only: expose the top card to the scene via `revealedPeekedCard`
   // (AC2) and return it without removing it from the deck. The scene

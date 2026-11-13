@@ -468,9 +468,9 @@ export interface StaffCard {
   readonly taxAuditRate?: number;
   /**
    * Optional additional actions granted per turn.
-   * (e.g. the Manager, Director, Executive and General Manager each grant
-   * +1 action per week — CG-0MSTOF1N5005PK2R, MS-0MTQ7S5EJ008MWD0,
-   * MS-0MUYAEXBN008YC0J).
+   * (e.g. the Manager, Director and General Manager each grant +1 action per
+   * week, while the Executive grants +2 — CG-0MSTOF1N5005PK2R,
+   * MS-0MTQ7S5EJ008MWD0, MS-0MUYAEXBN008YC0J).
    */
   readonly actionsPerTurn?: number;
   /**
@@ -549,6 +549,16 @@ export interface StaffCard {
    * street-wide (GDD D.4.3/D.4.8).
    */
   readonly adjacencyPurchaseDiscount?: number;
+  /**
+   * Fraction of the employing business's ongoing per-turn cost removed
+   * (0.2 = −20%, the Bookkeeper — GDD D.4.3). Business-scope only: the
+   * reduction applies to the employing business's own `ongoingCost` and never
+   * leaks street-wide, and it is inert for a member held but not employed.
+   * Applied per business during the ongoing-cost phase before the street-wide
+   * Cost Cutter reduction, rounded to the nearest integer, with the effective
+   * cost floored at 0.
+   */
+  readonly ongoingCostReduction?: number;
   /**
    * Optional incident-mitigation effect scoped to the employing business (or
    * its local cluster). At most one per card: every staff role states one

@@ -66,7 +66,9 @@ At the end of each **MarketPhase**, all unpurchased market cards move to their r
 > player, effects player/turn-scoped) — so the ladder below is only the
 > management-company subset of the roster, and the lay-off rule it states
 > ("removing random hand cards equal to `handSlotsAdded`") was never implemented:
-> lay-off costs one turn's salary plus 1 reputation. The authoritative model is
+> lay-off costs one turn's salary plus a salary-scaled reputation penalty
+> (`max(100, ceil(salary / 100) × 100)` in ×100 reputation units, where the
+> pre-scale "1 reputation" is the 100-unit floor). The authoritative model is
 > [the-build-gdd.md](../game/the-build-gdd.md) Appendix D.4; the roster of record
 > is [card-catalog.md](../game/card-catalog.md) § *Staff Cards*. The statements
 > below are retained for historical accuracy.

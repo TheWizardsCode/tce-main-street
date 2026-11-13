@@ -11,9 +11,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { CARD_DATA_RAW } from '../../../../src/MainStreetCards';
-import type { CardRow } from '../CardTestTypes';
+import { CARD_DATA_RAW, getCsvRows, getStaffCardTemplates, type StaffCard } from '../../../../src/MainStreetCards';
+import type { CardRow, CardTestContext } from '../CardTestTypes';
 import { CardTestRegistry, createDefaultRegistry } from '../CardTestRegistry';
+import { verifyStaffCard } from '../definitions/runners';
+import { newGame } from '../helpers/stateBuilders';
 import {
   RESULT_COLUMNS,
   applyResultsToCsv,
@@ -47,8 +49,7 @@ describe('CardTestRegistry discovery', () => {
   });
 });
 
-describe('CardTestRegistry failure modes (green-but-useless guards)', () => {
-  it('reports a card with no definition as a failure, never a skip', () => {
+describe('CardTestRegistry failure modes (green-but-useless guards)', () => {  it('reports a card with no definition as a failure, never a skip', () => {
     const registry = new CardTestRegistry();
     const row = makeRow('biz-unregistered');
     expect(registry.missingDefinitions([row])).toEqual(['biz-unregistered']);
@@ -83,6 +84,130 @@ describe('CardTestRegistry failure modes (green-but-useless guards)', () => {
     const result = registry.runCard(makeRow('biz-bakery'));
     expect(result.status).toBe('pass');
     expect(result.failReason).toBe('');
+  });
+});
+
+describe('verifyStaffCard honesty (unitTestStatus cannot pass vacuously)', () => {
+  it('fails when a raw row declares an effect the parsed template does not carry', () => {
+    const baker = getStaffCardTemplates().find(card => card.id === 'staff-baker');
+    expect(baker, 'staff-baker template missing').toBeDefined();
+    const rawRow = getCsvRows().find(row => row.id === 'staff-baker');
+    expect(rawRow, 'staff-baker CSV row missing').toBeDefined();
+
+    // Simulate a parser gap: the CSV declares income:own:25 but the typed
+    // template dropped the field (the pre-fix Bookkeeper situation).
+    const context: CardTestContext = {
+      row: {
+        id: 'staff-baker',
+        family: 'staff',
+        name: 'Baker',
+        row: { ...rawRow!, effect: 'income:own:25' },
+      },
+      card: { ...baker, incomeBonus: undefined } as StaffCard,
+      createState: newGame,
+    };
+
+    expect(() => verifyStaffCard(context)).toThrow(
+      /declared effect 'incomeBonus' from card-data.csv was not parsed\/asserted/,
+    );
+  });
+
+  /**
+   * Builds a context whose typed template has `field` dropped (the parser-gap
+   * simulation) while the raw CSV row still declares it.
+   */
+  function droppedDedicatedColumnContext(
+    cardId: string,
+    field: keyof StaffCard,
+    droppedValue: unknown,
+  ): CardTestContext {
+    const template = getStaffCardTemplates().find(card => card.id === cardId);
+    expect(template, `${cardId} template missing`).toBeDefined();
+    const rawRow = getCsvRows().find(row => row.id === cardId);
+    expect(rawRow, `${cardId} CSV row missing`).toBeDefined();
+    return {
+      row: {
+        id: cardId,
+        family: 'staff',
+        name: template!.name,
+        row: { ...rawRow! },
+      },
+      card: { ...template!, [field]: droppedValue } as StaffCard,
+      createState: newGame,
+    };
+  }
+
+  const droppedDedicatedColumns: ReadonlyArray<{
+    cardId: string;
+    field: keyof StaffCard;
+    droppedValue: unknown;
+    declared: string;
+    expectation: RegExp;
+  }> = [
+    {
+      cardId: 'staff-director',
+      field: 'handSlotsAdded',
+      droppedValue: 0,
+      declared: 'handSlotsAdded',
+      // Hand slots are asserted from the parsed value itself, so the presence
+      // guard passes and the value guard must catch the dropped column.
+      expectation: /declares handSlotsAdded=3 but the parsed template carries 0/,
+    },
+    {
+      cardId: 'staff-manager',
+      field: 'actionsPerTurn',
+      droppedValue: undefined,
+      declared: 'actionsPerTurn',
+      expectation: /declared effect 'actionsPerTurn' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-accountant',
+      field: 'refreshCostDiscount',
+      droppedValue: undefined,
+      declared: 'refreshCostDiscount',
+      expectation: /declared effect 'refreshCostDiscount' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-accountant',
+      field: 'taxAuditRate',
+      droppedValue: undefined,
+      declared: 'taxAuditRate',
+      expectation: /declared effect 'taxAuditRate' from card-data.csv was not parsed\/asserted/,
+    },
+    {
+      cardId: 'staff-lookout',
+      field: 'peekOncePerTurn',
+      droppedValue: undefined,
+      declared: 'peekOncePerTurn',
+      expectation: /declared effect 'peekOncePerTurn' from card-data.csv was not parsed\/asserted/,
+    },
+  ];
+
+  for (const { cardId, field, droppedValue, declared, expectation } of droppedDedicatedColumns) {
+    it(`fails when the parser drops the ${declared} dedicated column (${cardId})`, () => {
+      const context = droppedDedicatedColumnContext(cardId, field, droppedValue);
+      expect(() => verifyStaffCard(context)).toThrow(expectation);
+    });
+  }
+
+  it('fails when a dedicated column is parsed to the wrong value', () => {
+    // A mis-mapped parser (e.g. reading the hand-slot column for actions) must
+    // not slip through the presence guard: the value guard compares the typed
+    // field with the raw CSV number.
+    const context = droppedDedicatedColumnContext('staff-manager', 'actionsPerTurn', 2);
+    expect(() => verifyStaffCard(context)).toThrow(
+      /declares actionsPerTurn=1 but the parsed template carries 2/,
+    );
+  });
+
+  it('still reports pass for all 26 staff rows after hardening (no regression)', () => {
+    const registry = createDefaultRegistry();
+    const staffRows = registry.discoverCards().filter(row => row.family === 'staff');
+    expect(staffRows.length).toBe(26);
+    const failures = staffRows
+      .map(row => registry.runCard(row))
+      .filter(result => result.status !== 'pass');
+    expect(failures, JSON.stringify(failures)).toEqual([]);
   });
 });
 

@@ -53,6 +53,20 @@ The change is undoable and shown in the activity log, and the AI factors the
 reputation cost into its close decisions. See
 [docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md).
 
+## Effective card income and reputation
+
+Every card face and hover tooltip shows the coins and reputation that card
+**actually generates each turn** for its current board state — base income plus
+any upgrade bonus, adjacency synergy, the duplicate/saturation factor and
+employed-staff bonuses — rather than its static printed values. The card face
+shows the effective total; the tooltip breaks the total into base plus each
+modifier, so placement, upgrade and staffing decisions are informed by the real
+numbers. The display is read-only and shares the engine's computation path, so
+it can never disagree with the amount credited. See
+[docs/game/core-rules-and-mechanics.md](docs/game/core-rules-and-mechanics.md)
+and
+[docs/game/ux-visual-audio.md](docs/game/ux-visual-audio.md).
+
 ## Challenges
 
 Each run presents a seeded pool of **3 challenge goals** (13 templates across 6
@@ -114,7 +128,15 @@ When that presentation finishes, a **Turn Summary** panel summarises the
 completed round — **one owner-keyed row per seat** showing businesses owned,
 income phases, ongoing expenses, the seat's incident and one-off deltas, net
 coin/reputation/score change and its closing coins, reputation and score — and
-the next shared day starts only when the player clicks **[ Next Turn ]**. A
+the next shared day starts only when the player clicks **[ Next Turn ]**. Every
+statement line (and each supplementary context row) explains itself on **hover**
+(desktop) or **tap** (touch): the business-income lines name each business and
+its contribution, the staff / community / business cost lines name each card and
+its charge, and the Incident, One-off and Net lines spell out the effect and the
+reconciliation formula (`income + expenses + incident + one-off = net`). The
+one-off delta is stored only as a residual, so its tooltip shows that formula
+rather than inventing per-source detail. Tooltips are presentation-only (no
+state or RNG) and never block the panel's tabs or buttons. A 
 round is one completed shared day: every non-eliminated seat has taken its
 MarketPhase and the shared closing has run. **[ Bank Loan ]** is shown disabled
 with its hint, behind the seam that will enable per-seat loans.

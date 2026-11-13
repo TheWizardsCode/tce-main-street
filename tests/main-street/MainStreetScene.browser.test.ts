@@ -8,7 +8,7 @@ import {
   findTurnSummaryNextTurnButton,
 } from './helpers/turn-summary-dialog';
 import { executeWeekStart, endTurnHeadless } from '../../src/MainStreetEngine';
-import { getEventTemplates } from '../../src/MainStreetCards';
+import { createStaffDeck, getEventTemplates } from '../../src/MainStreetCards';
 import { canPurchaseBusiness, canPurchaseEvent, getEmptySlots } from '../../src/MainStreetMarket';
 import { PREMIUM_DIALOG_DISMISSED_KEY } from '../../src/MainStreetPrefs';
 import { INCOME_COLLECTION_CAP_MS } from '../../src/scenes/MainStreetAnimatorTiming';
@@ -1108,5 +1108,179 @@ describe('MainStreetScene browser tests', () => {
 
     destroyGame(game);
     game = null;
+  });
+});
+
+// ── Staff Pile (MS-0MWBWKZ1G006IBH2) ────────────────────────────────
+//
+// The Staff Pile is the management company's own staff surface: a fanned
+// stack of card faces with a count badge, a portrait row beneath, and a
+// management-company-only summary tooltip on hover. These cases render the
+// real scene so the pile's placement, count, hover tooltip, empty state and
+// max-capacity behaviour are verified against the SLL layout authority.
+describe('Staff Pile (MS-0MWBWKZ1G006IBH2)', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  type StaffTemplate = Record<string, any>;
+
+  /** A staff card instance cloned from the shipped deck template. */
+  function staffCard(name: string, employedAtSlot?: number): StaffTemplate {
+    const deck = createStaffDeck(1) as unknown as StaffTemplate[];
+    const template = deck.find((card: StaffTemplate) => card.name === name) ?? deck[0];
+    return {
+      ...template,
+      id: `staff-pile-${name.toLowerCase().replace(/\s+/g, '-')}${
+        employedAtSlot === undefined ? '' : `-slot-${employedAtSlot}`
+      }`,
+      name,
+      ongoingCost: 100,
+      ...(employedAtSlot === undefined
+        ? { employedAtSlot: undefined }
+        : { employedAtSlot }),
+    };
+  }
+
+  /** Boot the scene and return the scene plus its pile objects. */
+  async function bootWithStaff(staffCards: StaffTemplate[]): Promise<{
+    scene: Phaser.Scene & Record<string, any>;
+    pile: Phaser.GameObjects.Container | undefined;
+  }> {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as Phaser.Scene & Record<string, any>;
+    scene.state.staffCards = staffCards;
+    scene.refreshPlayerHand();
+    return { scene, pile: scene.staffPileContainer as Phaser.GameObjects.Container | undefined };
+  }
+
+  /** The count badge's text (the pile reports the whole roster). */
+  function pileCount(pile: Phaser.GameObjects.Container | undefined): string | undefined {
+    if (!pile) return undefined;
+    const badge = pile.list.find(
+      (child: any) => typeof child.getData === 'function' && child.getData('staffPileCount') !== undefined,
+    ) as Phaser.GameObjects.Text | undefined;
+    return badge?.text;
+  }
+
+  it('renders a pile with a count badge when management-company staff are hired', async () => {
+    const manager = staffCard('Manager');
+    const accountant = staffCard('Accountant');
+    const { pile } = await bootWithStaff([manager, accountant]);
+
+    expect(pile).toBeDefined();
+    expect(pile!.name).toBe('ms-staff-pile');
+    expect(pile!.active).toBe(true);
+    // The badge reports the roster size, not the number of visible card faces.
+    expect(pileCount(pile)).toBe('2');
+  });
+
+  it('draws the pile inside its SLL zone, left of the capacity row and behind the hand panel', async () => {
+    const { scene, pile } = await bootWithStaff([staffCard('Manager')]);
+
+    const layout = scene.layout;
+    const panel = (pile!.list.find(
+      (child: any) => child.name === 'ms-staff-pile-panel',
+    ) as unknown) !== undefined;
+    expect(panel).toBe(true);
+
+    // Placement comes from the SLL `staffPile` zone (no hard-coded offsets).
+    expect(layout.staffPileW).toBeGreaterThan(0);
+    expect(layout.staffPileH).toBeGreaterThan(0);
+    expect(layout.staffPileX).toBeLessThan(layout.handCenterX);
+
+    // Behind the hand panel (so a wide capacity row covers the pile, never the
+    // reverse) and behind every hand card.
+    expect(pile!.depth).toBeLessThan(scene.handPanelGraphics?.depth ?? -100);
+
+    // At the starting hand size the whole pile sits in the free band left of
+    // the capacity row.
+    const capacityRowLeft =
+      layout.handCenterX -
+      (scene.state.maxHandSize * (layout.handCardW + 8)) / 2;
+    expect(layout.staffPileX + layout.staffPileW).toBeLessThanOrEqual(capacityRowLeft);
+  });
+
+  it('shows the management-company summary on hover and hides it on leave', async () => {
+    const { scene } = await bootWithStaff([staffCard('Manager'), staffCard('Accountant')]);
+
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle | undefined;
+    expect(hit).toBeDefined();
+
+    const showSpy = vi.spyOn(scene.tooltipManager, 'show');
+    const hideSpy = vi.spyOn(scene.tooltipManager, 'hide');
+
+    hit!.emit('pointerover');
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    const content = showSpy.mock.calls[0][0] as string;
+    expect(content).toContain('Management Company Staff');
+    expect(content).toContain('2 on the company payroll');
+    expect(content).toContain('• Manager ');
+    expect(content).toContain('• Accountant ');
+    expect(content).toContain('Total salary: 200 per turn');
+
+    hit!.emit('pointerout');
+    expect(hideSpy).toHaveBeenCalled();
+  });
+
+  it('excludes business staff from the pile and its tooltip', async () => {
+    const { scene, pile } = await bootWithStaff([
+      staffCard('Manager'),
+      staffCard('Chef', 0),
+    ]);
+
+    expect(pileCount(pile)).toBe('1');
+
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    const showSpy = vi.spyOn(scene.tooltipManager, 'show');
+    hit.emit('pointerover');
+    const content = showSpy.mock.calls[0][0] as string;
+    expect(content).toContain('• Manager ');
+    expect(content).not.toContain('Chef');
+  });
+
+  it('hides the pile entirely when no management-company staff are employed', async () => {
+    const none = await bootWithStaff([]);
+    expect(none.pile).toBeUndefined();
+    expect(none.scene.staffPileHitArea).toBeUndefined();
+
+    destroyGame(game);
+    game = null;
+
+    const businessOnly = await bootWithStaff([staffCard('Chef', 1), staffCard('Barista', 2)]);
+    expect(businessOnly.pile).toBeUndefined();
+  });
+
+  it('rebuilds the pile when staffing changes and keeps it clear of the hand at capacity', async () => {
+    const { scene, pile: firstPile } = await bootWithStaff([staffCard('Manager')]);
+    expect(pileCount(firstPile)).toBe('1');
+
+    // A second hire is reflected on the next hand refresh.
+    scene.state.staffCards = [staffCard('Manager'), staffCard('Director')];
+    scene.refreshPlayerHand();
+    expect(pileCount(scene.staffPileContainer as Phaser.GameObjects.Container)).toBe('2');
+
+    // Max-capacity case: widen the hand, then re-render. The pile keeps its
+    // zone; the hover hit area shrinks to the free band so it can never cover
+    // a capacity slot and swallow a hand-card click.
+    scene.state.maxHandSize = 4;
+    scene.refreshPlayerHand();
+    const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
+    expect(hit).toBeDefined();
+    const capacityRowLeft =
+      scene.layout.handCenterX -
+      (4 * (scene.layout.handCardW + 8)) / 2;
+    expect(hit.x + hit.width / 2).toBeLessThanOrEqual(capacityRowLeft + 1);
+
+    // Beyond the free band (a hand wider than the band) the pile still renders
+    // but carries no hit area at all — nothing of the pile can intercept the
+    // hand row.
+    scene.state.maxHandSize = 8;
+    scene.refreshPlayerHand();
+    expect(scene.staffPileContainer).toBeDefined();
+    expect(scene.staffPileHitArea).toBeUndefined();
   });
 });

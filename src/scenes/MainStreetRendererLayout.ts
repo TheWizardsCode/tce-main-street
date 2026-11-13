@@ -52,6 +52,14 @@ export function refreshPlayerHand(renderer: MainStreetRendererContext): void {
     // non-interactive so hand clicks/drags are unaffected (AC5).
     renderer.drawHandPanel();
 
+    // Staff Pile (MS-0MWBWKZ1G006IBH2): the management company's own staff,
+    // derived from `state.staffCards` on every hand refresh — so a hire,
+    // a lay-off or a `maxHandSize` change is reflected immediately. The pile
+    // keeps its own container at `STAFF_PILE_DEPTH` (below the hand layer) and
+    // is removed entirely when the company employs no management-company
+    // staff.
+    renderer.drawStaffPile();
+
     // Render the merged hand (any mix of business and event cards) via the
     // single HandView — HandView gracefully handles an empty array.
     const hand = s.state.hand ?? [];
@@ -93,7 +101,7 @@ export function drawHeldEventCard(renderer: MainStreetRendererContext,
       const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
       hover.setInteractive({ useHandCursor: s.uiPhase === 'market' });
       hover.on('pointerover', () => {
-        const info = buildCardTooltipInfo(card, s.state.config);
+        const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
         s.tooltipManager?.show(info, container.x, container.y);
       });
       hover.on('pointerout', () => s.tooltipManager?.hide());

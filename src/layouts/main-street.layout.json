@@ -10,7 +10,8 @@
     "activityLog",
     "street",
     "endTurnButton",
-    "applicantOverlay"
+    "applicantOverlay",
+    "staffPile"
   ],
   "zones": {
     "hudBar": {
@@ -218,6 +219,24 @@
         "centerTop": {
           "x": 0.5,
           "y": 0.33
+        }
+      }
+    },
+    "staffPile": {
+      "rect": {
+        "x": 0.015625,
+        "y": 0.784722,
+        "w": 0.171875,
+        "h": 0.141667
+      },
+      "anchors": {
+        "topLeft": {
+          "x": 0.015625,
+          "y": 0.784722
+        },
+        "bottomRight": {
+          "x": 0.1875,
+          "y": 0.926389
         }
       }
     }

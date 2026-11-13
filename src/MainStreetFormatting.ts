@@ -24,10 +24,14 @@ import type { GameConfig } from './MainStreetDifficulty';
 import type { AnyCard, BusinessCard, CommunitySpaceCard, StaffCard, SynergyType } from './MainStreetCards';
 import type { GridDims } from './MainStreetAdjacencyGeometry';
 import {
+  computeEffectiveCardValues,
   effectiveSynergyCoinBonus,
   effectiveSynergyRepBonus,
   synergyCoinContributionPerNeighbor,
+  type EffectiveIncomeBreakdown,
+  type EffectiveReputationBreakdown,
 } from './MainStreetAdjacencyScoring';
+import type { MainStreetState } from './MainStreetState';
 import { getSkill } from './MainStreetStaffSkills';
 import { formatCurrency } from '@core-engine/I18n';
 
@@ -203,6 +207,100 @@ export function formatPerTurnReputation(totalReputation: number): string {
   return `${rounded > 0 ? '+' : ''}${rounded}/turn`;
 }
 
+// ═══════════════════════════════════════════════════════════
+// Effective (display == credit) tooltip breakdown
+// (MS-0MW6H9A47001B1QT)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Context that lets a tooltip resolve the EFFECTIVE (engine-credited) income /
+ * reputation for the card instance being hovered.
+ *
+ * Pass `state` always; pass `slotIndex` when the instance occupies a street
+ * slot, or omit/null it for a hand/market instance. Without a context the
+ * tooltip falls back to the static base + upgrade figures (kept for legacy
+ * callers and pure-card tests); every production hover path passes one, so no
+ * displayed surface shows base-only figures for a placed card.
+ */
+export interface CardTooltipContext {
+  /** Current game state (read-only). */
+  state: MainStreetState;
+  /** The instance's street slot, or null/omitted for a hand/market instance. */
+  slotIndex?: number | null;
+}
+
+/** Formats a coin/reputation amount like the overlay line (ints plain, else 2dp). */
+function formatBreakdownAmount(n: number): string {
+  if (!Number.isFinite(n)) return String(Math.round(n));
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+/**
+ * Formats the effective per-turn income line for a card tooltip, including
+ * the base + modifier breakdown (MS-0MW6H9A47001B1QT).
+ *
+ * ```
+ * Income: +24/turn (base +12, upgrade +3, synergy +5, duplicate ×2/3, staff +4)
+ * ```
+ *
+ * Zero-valued modifiers are omitted; the base component is always shown and
+ * the first line is always the effective total, so no display surface can
+ * read as a stale base-only figure.
+ */
+export function formatEffectiveIncomeLine(value: EffectiveIncomeBreakdown): string {
+  const parts: string[] = [`base +${formatBreakdownAmount(value.base)}`];
+  if (value.upgradeBonus !== 0) parts.push(`upgrade +${formatBreakdownAmount(value.upgradeBonus)}`);
+  if (value.synergy !== 0) parts.push(`synergy +${formatBreakdownAmount(value.synergy)}`);
+  if (value.duplicateFactor !== 1) parts.push(`duplicate ×${formatDuplicateShare(value.duplicateFactor)}`);
+  if (value.staffFlat !== 0 || value.staffPercent !== 0) {
+    const pct = value.staffPercent !== 0
+      ? ` (+${Math.round(value.staffPercent * 100)}%)`
+      : '';
+    parts.push(`staff +${formatBreakdownAmount(value.staffFlat)}${pct}`);
+  }
+  return `Income: +${formatBreakdownAmount(value.total)}/turn (${parts.join(', ')})`;
+}
+
+/**
+ * Formats the effective per-turn reputation line for a card tooltip, including
+ * the base + modifier breakdown (MS-0MW6H9A47001B1QT).
+ *
+ * ```
+ * Reputation: +8/turn (base +2, upgrade +1, synergy +5, staff +0)
+ * ```
+ *
+ * Zero-valued modifiers are omitted; the base component is always shown.
+ */
+export function formatEffectiveReputationLine(value: EffectiveReputationBreakdown): string {
+  const parts: string[] = [`base +${formatBreakdownAmount(value.base)}`];
+  if (value.upgradeBonus !== 0) parts.push(`upgrade +${formatBreakdownAmount(value.upgradeBonus)}`);
+  if (value.synergy !== 0) parts.push(`synergy +${formatBreakdownAmount(value.synergy)}`);
+  if (value.staffFlat !== 0 || value.staffPercent !== 0) {
+    const pct = value.staffPercent !== 0
+      ? ` (+${Math.round(value.staffPercent * 100)}%)`
+      : '';
+    parts.push(`staff +${formatBreakdownAmount(value.staffFlat)}${pct}`);
+  }
+  return `Reputation: +${formatBreakdownAmount(value.total)}/turn (${parts.join(', ')})`;
+}
+
+/** The built-in effective tooltip lines for a business/community-space card. */
+function effectiveCardTooltipLines(
+  card: BusinessCard | CommunitySpaceCard,
+  context: CardTooltipContext,
+): { incomeLine: string; repLine: string } | null {
+  const values = computeEffectiveCardValues(
+    context.state,
+    card,
+    context.slotIndex ?? null,
+  );
+  const incomeLine = formatEffectiveIncomeLine(values.income);
+  const repLine = values.reputation.total !== 0
+    ? `\n${formatEffectiveReputationLine(values.reputation)}`
+    : '';
+  return { incomeLine, repLine };
+}
+
 /**
  * Build the hover tooltip text for a Main Street card.
  *
@@ -215,16 +313,26 @@ export function formatPerTurnReputation(totalReputation: number): string {
  * @param card    The card to describe.
  * @param config  The active difficulty config (for synergy-rate resolution).
  * @param options  Optional per-call tweaks (event detail lines).
+ * @param context  Optional effective-value context (state + slot). When
+ *   supplied for a business/community-space card, the tooltip shows the
+ *   effective (engine-credited) totals plus a base/modifier breakdown; every
+ *   production hover path supplies it (MS-0MW6H9A47001B1QT).
  * @returns The tooltip text (may be empty for unsupported families).
  */
 export function buildCardTooltipInfo(
   card: AnyCard,
   config: SynergyFormatConfig,
   options: CardTooltipInfoOptions = {},
+  context?: CardTooltipContext,
 ): string {
   switch (card.family) {
     case 'business': {
       const b = card;
+      const effective = context ? effectiveCardTooltipLines(b, context) : null;
+      if (effective) {
+        const bOngoingInfo = `\nOngoing cost: -${b.ongoingCost ?? 0}/turn`;
+        return `Business: ${b.name}\nCost: ${formatCurrency(b.cost)}\n${effective.incomeLine}${bOngoingInfo}${effective.repLine}\nSynergy: ${(b.synergyTypes || []).join('/')}\n${resolveDescription(b.description ?? '', b, config)}`;
+      }
       const bTotalRep = (b.reputationPerTurn ?? 0) + (b.reputationBonus ?? 0);
       const bRepSuffix = formatPerTurnReputation(bTotalRep);
       const bRepInfo = bRepSuffix !== '' ? `\nReputation: ${bRepSuffix}` : '';
@@ -233,6 +341,11 @@ export function buildCardTooltipInfo(
     }
     case 'community-space': {
       const cs = card;
+      const effective = context ? effectiveCardTooltipLines(cs, context) : null;
+      if (effective) {
+        const csOngoingInfo = `\nOngoing cost: -${cs.ongoingCost ?? 0}/turn`;
+        return `Community Space: ${cs.name}\nCost: ${formatCurrency(cs.cost)}\n${effective.incomeLine}${csOngoingInfo}${effective.repLine}\nSynergy: ${(cs.synergyTypes || []).join('/')}\n${resolveDescription(cs.description ?? '', cs, config)}`;
+      }
       const csTotalRep = (cs.reputationPerTurn ?? 0) + (cs.reputationBonus ?? 0);
       const csRepSuffix = formatPerTurnReputation(csTotalRep);
       const csRepInfo = csRepSuffix !== '' ? `\nReputation: ${csRepSuffix}` : '';
@@ -321,6 +434,59 @@ export function buildCardTooltipInfo(
 }
 
 /**
+ * Renders one staff member's role/benefit summary — the business types they
+ * serve (or "Generalist") followed by their effect/ability description, with
+ * no leading name or bullet. Used by the Company Roster row
+ * (MS-0MWC1T8K2000DWZA) and composed into {@link formatStaffMemberLine} for the
+ * tooltip surfaces, so every staff surface describes a member's role
+ * identically.
+ *
+ * @param member The staff member to describe.
+ * @returns The role/benefit summary, e.g. `Generalist — …`.
+ */
+export function formatStaffRoleSummary(member: StaffCard): string {
+  return `${staffBusinessTypes(member)}${staffEffectText(member)}`;
+}
+
+/** The business types a member serves, or "Generalist" when unrestricted. */
+function staffBusinessTypes(member: StaffCard): string {
+  return Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
+    ? member.allowedBusinessTypes.join('/')
+    : 'Generalist';
+}
+
+/** The member's effect/ability description, prefixed with an em-dash. */
+function staffEffectText(member: StaffCard): string {
+  return member.description ? ` — ${member.description}` : '';
+}
+
+/**
+ * Renders one staff member's summary bullet: name, the business types they
+ * serve (or "Generalist"), their effect/ability description, and — for an
+ * Investor — the free-reroll availability plus relevance bias.
+ *
+ * Shared by the business-slot tooltip (`formatEmployedStaffSummary`) and the
+ * Staff Pile tooltip (`buildStaffPileTooltip`), so both surfaces describe a
+ * member identically instead of maintaining two formatters
+ * (MS-0MWBWKZ1G006IBH2).
+ *
+ * @param member  The staff member to describe.
+ * @param options Optional state context (free-reroll availability).
+ * @returns The bulleted line, e.g. `• Manager (Generalist) — …`.
+ */
+export function formatStaffMemberLine(
+  member: StaffCard,
+  options?: { freeRerollUsedThisTurn?: boolean },
+): string {
+  // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
+  // this turn plus the relevance bias alongside the member's own effect.
+  const reroll = member.freeMarketRerollPerTurn
+    ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
+    : '';
+  return `• ${member.name} (${staffBusinessTypes(member)})${staffEffectText(member)}${reroll}`;
+}
+
+/**
  * Renders the employed-staff enumeration for a business/community-space slot
  * tooltip (CG-0MU3BTTCH001E7ZD AC2/AC3): each staff member's name, the
  * business types they serve (or "Generalist"), and their effect/ability
@@ -341,19 +507,7 @@ export function formatEmployedStaffSummary(
   options?: { freeRerollUsedThisTurn?: boolean },
 ): string | null {
   if (!Array.isArray(staff) || staff.length === 0) return null;
-  const lines = staff.map((member) => {
-    const types =
-      Array.isArray(member.allowedBusinessTypes) && member.allowedBusinessTypes.length > 0
-        ? member.allowedBusinessTypes.join('/')
-        : 'Generalist';
-    const effect = member.description ? ` — ${member.description}` : '';
-    // Investor free re-roll (MS-0MUOSULQ700186PP AC1): surface availability
-    // this turn plus the relevance bias alongside the member's own effect.
-    const reroll = member.freeMarketRerollPerTurn
-      ? ` — free re-roll ${options?.freeRerollUsedThisTurn ? 'used' : 'available'} this turn (${Math.round((member.marketRelevanceBias ?? 0.75) * 100)}% relevance bias)`
-      : '';
-    return `• ${member.name} (${types})${effect}${reroll}`;
-  });
+  const lines = staff.map((member) => formatStaffMemberLine(member, options));
   return `\nEmployed staff (${staff.length}):\n${lines.join('\n')}`;
 }
 

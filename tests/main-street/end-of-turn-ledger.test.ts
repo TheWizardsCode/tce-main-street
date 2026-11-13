@@ -20,8 +20,25 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  acceptLoanOffer,
+  applyEndOfTurnDeltas,
+  buyAndPlaceBusiness,
+  endCompetitiveMarketTurn,
+  executeCommunityFavour,
+  executeCompetitiveTurn,
+  executeCompetitiveWeekStart,
+  executeWeekStart,
+  finishDeferredTurnClosing,
+  playHeldEvent,
+  processEndOfTurn,
+  resolveCompetitiveClosingPhases,
+  takeLoan,
+} from '../../src/MainStreetEngine';
+import {
   setupMainStreetGame,
   createCompetitiveState,
+  serializeMainStreetState,
+  deserializeMainStreetState,
   type MainStreetState,
 } from '../../src/MainStreetState';
 import type {
@@ -30,13 +47,10 @@ import type {
   EventCard,
   StaffCard,
 } from '../../src/MainStreetCards';
-import {
-  applyEndOfTurnDeltas,
-  executeCompetitiveTurn,
-  finishDeferredTurnClosing,
-  playHeldEvent,
-  processEndOfTurn,
-} from '../../src/MainStreetEngine';
+import type { TurnLedger } from '../../src/MainStreetEngineTypes';
+import { sellBusiness } from '../../src/MainStreetMarketSell';
+import { playEventFromHand } from '../../src/MainStreetMarket';
+import { bindCompetitiveSeat, restoreCompetitiveSeat } from '../../src/MainStreetAiStrategy';
 import { recalculateCard } from '../../src/MainStreetAdjacency';
 import { createActiveEffect } from '@core-engine';
 
@@ -374,5 +388,163 @@ describe('turnLedger — deferred path and competitive', () => {
     });
     const result = executeCompetitiveTurn(state, [[], []]);
     expect(result.turnLedger).toBeUndefined();
+  });
+});
+
+// ── oneOffBreakdown per-source attribution (MS-0MWBZDNH3006DXV7) ──
+
+describe('turnLedger — oneOffBreakdown per-source attribution (MS-0MWBZDNH3006DXV7)', () => {
+  /** Maps a ledger's breakdown entries by their stable source label. */
+  const bySource = (ledger: TurnLedger): Map<string, { label: string; coins: number; reputation: number }> =>
+    new Map((ledger.oneOffBreakdown ?? []).map((entry) => [entry.label, entry]));
+
+  it('attributes market purchase, market sale, event play and Community Favour, reconciling to the residual', () => {
+    const state = createLedgerState('ledger-one-off-sources');
+
+    // Market purchase: buy-and-place a 120-coin business (180 with the +50% premium).
+    state.market.cards.push(makeBusiness({ id: 'biz-test-purchase', name: 'Test Purchase', cost: 120 }));
+    const purchased = buyAndPlaceBusiness(state, 'biz-test-purchase', 0);
+    expect(purchased.cost).toBe(180);
+
+    // Market sale: a card placed directly on the grid is sold for its 1.5× refund.
+    place(state, 1, makeBusiness({ id: 'biz-test-sell', name: 'Test Sell', cost: 100 }));
+    const sold = sellBusiness(state, 1);
+    expect(sold.refund).toBe(150);
+
+    // Community Favour: 200 coins → 1 reputation (Easy rates).
+    executeCommunityFavour(state, 'coins-to-rep');
+
+    // Event play: a -500-coin / +15-rep Investment with a 50-coin play cost.
+    state.hand.push(makeInvestmentEvent({ cost: 50, coinDelta: -500, reputationDelta: 15 }));
+    playEventFromHand(state, 0);
+
+    const result = processEndOfTurn(state);
+    const ledger = result.turnLedger!;
+    expect(ledger.oneOffBreakdown).toBeDefined();
+
+    const entries = bySource(ledger);
+    expect(entries.get('market-purchase')!.coins).toBe(-180);
+    expect(entries.get('market-sale')!.coins).toBe(150);
+    expect(entries.get('event-play')!.coins).toBe(-550); // -50 play cost + -500 effect
+    expect(entries.get('event-play')!.reputation).toBe(15);
+    expect(entries.get('community-favour')!.coins).toBe(-200);
+    expect(entries.get('community-favour')!.reputation).toBe(1);
+
+    // The breakdown reconciles exactly to the authoritative residual.
+    const sum = ledger.oneOffBreakdown!.reduce((total, entry) => total + entry.coins, 0);
+    expect(sum).toBe(ledger.oneOffDeltas.coins);
+    expect(ledger.oneOffDeltas.coins).toBe(-180 + 150 - 200 - 550);
+  });
+
+  it('attributes a MarketPhase bank loan (principal) and its closing repayment', () => {
+    const state = createLedgerState('ledger-one-off-loan');
+    takeLoan(state, 0); // Easy menu option 0: 300 principal / 3 turns
+    const loan = state.loans![0];
+    expect(loan.principal).toBe(300);
+
+    const result = processEndOfTurn(state);
+    const ledger = result.turnLedger!;
+    expect(ledger.oneOffBreakdown).toBeDefined();
+
+    const entries = bySource(ledger);
+    expect(entries.get('loan-taken')!.coins).toBe(300);
+    expect(entries.get('loan-repayment')!.coins).toBe(-loan.perTurnRepayment);
+
+    const sum = ledger.oneOffBreakdown!.reduce((total, entry) => total + entry.coins, 0);
+    expect(sum).toBe(ledger.oneOffDeltas.coins);
+  });
+
+  it('attributes an accepted bailout loan (positive) and its closing repayment', () => {
+    const state = createLedgerState('ledger-one-off-bailout');
+    // The day "started" at −1 so every later coin movement is attributable:
+    // the closing sees an insolvent wallet and pauses with a bailout offer.
+    state.weekStartCoins = -1;
+    state.resourceBank.coins = -1;
+
+    const paused = processEndOfTurn(state);
+    expect(paused.pendingLoanOffer).toBe(true);
+    expect(state.pendingLoanOffer).toBeTruthy();
+
+    acceptLoanOffer(state); // deterministic policy: the largest option (1000/10)
+    const loan = state.loans![0];
+    expect(loan.principal).toBe(1000);
+
+    const result = processEndOfTurn(state);
+    const ledger = result.turnLedger!;
+    expect(ledger.oneOffBreakdown).toBeDefined();
+
+    const entries = bySource(ledger);
+    expect(entries.get('loan-bailout')!.coins).toBe(1000);
+    expect(entries.get('loan-repayment')!.coins).toBe(-loan.perTurnRepayment);
+
+    const sum = ledger.oneOffBreakdown!.reduce((total, entry) => total + entry.coins, 0);
+    expect(sum).toBe(ledger.oneOffDeltas.coins);
+  });
+
+  it('omits the breakdown when nothing was attributed (absent-safe fallback)', () => {
+    const state = createLedgerState('ledger-one-off-absent');
+    const result = processEndOfTurn(state);
+    const ledger = result.turnLedger!;
+    expect(ledger.oneOffBreakdown).toBeUndefined();
+    expect(ledger.oneOffDeltas).toEqual({ coins: 0, reputation: 0 });
+  });
+
+  it('per-source attribution round-trips through a mid-turn save/load (checkpoint-safe)', () => {
+    const state = createLedgerState('ledger-one-off-saveload');
+    state.market.cards.push(makeBusiness({ id: 'biz-test-purchase', name: 'Test Purchase', cost: 120 }));
+    buyAndPlaceBusiness(state, 'biz-test-purchase', 0);
+
+    const saved = serializeMainStreetState(state);
+    const restored = deserializeMainStreetState(saved);
+    expect(restored._oneOffAttribution?.get(0)?.marketPurchaseCost).toBe(-180);
+
+    // The closing after load attributes the same source as a never-saved run.
+    const ledger = processEndOfTurn(restored).turnLedger!;
+    const entries = bySource(ledger);
+    expect(entries.get('market-purchase')!.coins).toBe(-180);
+    const sum = ledger.oneOffBreakdown!.reduce((total, entry) => total + entry.coins, 0);
+    expect(sum).toBe(ledger.oneOffDeltas.coins);
+  });
+
+  it('reset at WeekStart: a new day starts with an empty per-source accumulator', () => {
+    const state = createLedgerState('ledger-one-off-reset');
+    state.market.cards.push(makeBusiness({ id: 'biz-test-purchase', name: 'Test Purchase', cost: 120 }));
+    buyAndPlaceBusiness(state, 'biz-test-purchase', 0);
+    expect(state._oneOffAttribution?.get(0)?.marketPurchaseCost).toBe(-180);
+
+    state.phase = 'WeekStart';
+    executeWeekStart(state);
+    expect(state._oneOffAttribution ?? null).toBeNull();
+  });
+
+  it('attributes each competitive seat’s own one-off sources (competitive parity)', () => {
+    const state = createCompetitiveState({
+      seed: 'ledger-one-off-cmp',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    executeCompetitiveWeekStart(state);
+    // Seat 0's MarketPhase, bound exactly as the scene binds it: a 120-coin
+    // business bought and placed for the +50% premium (180).
+    bindCompetitiveSeat(state, 0);
+    state.market.cards.push(makeBusiness({ id: 'biz-test-purchase', name: 'Test Purchase', cost: 120 }));
+    buyAndPlaceBusiness(state, 'biz-test-purchase', 0);
+    restoreCompetitiveSeat(state, 0);
+    endCompetitiveMarketTurn(state); // advance to seat 1 (does nothing)
+    endCompetitiveMarketTurn(state); // last seat: phase → InvestmentResolution
+
+    const result = resolveCompetitiveClosingPhases(state);
+    const seats = result.playerRoundLedger!.seats;
+    const seat0 = seats.find((seat) => seat.ownerId === 0)!;
+    expect(seat0.oneOffBreakdown).toEqual([
+      { label: 'market-purchase', coins: -180, reputation: 0 },
+    ]);
+    expect(seat0.oneOffBreakdown!.reduce((total, entry) => total + entry.coins, 0))
+      .toBe(seat0.oneOffDeltas!.coins);
+
+    // Seat 1 did nothing: no attribution, formula-only fallback.
+    const seat1 = seats.find((seat) => seat.ownerId === 1)!;
+    expect(seat1.oneOffBreakdown).toBeUndefined();
   });
 });

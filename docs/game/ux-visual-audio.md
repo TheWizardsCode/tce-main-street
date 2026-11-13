@@ -141,6 +141,110 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
   `tests/main-street/hand-outlines.browser.test.ts` (including the
   slot/card-position stability assertion).
 
+## Staff Pile (management-company staff, MS-0MWBWKZ1G006IBH2)
+
+Hired staff come in two types: **business staff** (an `employedAtSlot` link,
+buffed onto one business and surfaced by that slot's corner count badge) and
+**management-company staff** (no slot; hand-slot, action, market and incident
+effects scoped to the player). Until this feature the management-company half
+of the roster had no surface of its own — it was only inferable from hand size
+and action counts. The **Staff Pile** gives it one.
+
+- **Position — SLL-first.** The pile is drawn from the `staffPile` zone in
+  `src/layouts/main-street.layout.json` (tutorial parity in
+  `main-street-tutorial.layout.json`), resolved by `MainStreetLayoutAdapter`
+  into `SceneLayout.staffPileX/Y/W/H` — 20,565 → 240,667 at the 1280×720 base
+  viewport, i.e. against the left edge in the band left of the hand capacity
+  row. No pixel offset is hard-coded in the renderer. The tutorial layout
+  declares the same zone so tutorial highlights cannot drift; `staffPile` is a
+  documented intentional tutorial override zone
+  (`src/scenes/tutorialLayoutIssues.ts`), keeping the tutorial composition
+  console-clean.
+- **Contents.** A fanned stack of small card faces (56×80) capped at
+  `STAFF_PILE_STACK_SIZE` (3), oldest of the shown slice first and the
+  **newest hire on top**; a count badge (top-right of the stack) reporting the
+  **whole** roster even when the stack is capped; and a portrait row (40×56)
+  beneath the stack showing one portrait per member that fits the zone width.
+  Card faces and portraits both come from the shared SVG renderer
+  (`mainStreetRenderCardSvg`), so no new art assets exist for this surface.
+- **Membership is derived, never persisted.** The pile is rebuilt from
+  `state.staffCards` on every hand refresh
+  (`refreshPlayerHand()` → `drawStaffPile()`), filtered by the two-type
+  model's own test (`!isBusinessStaffCard`, via `selectManagementCompanyStaff`).
+  Business staff never appear on the pile. There is no save field, engine
+  command or gameplay rule behind it: hiring, laying off or changing
+  `maxHandSize` is reflected on the next refresh.
+- **Hover tooltip.** Hovering the pile — its stack or its portrait row — shows
+  a management-company-only summary built by `buildStaffPileTooltip()`: a title,
+  the member count, one line per member (name, served business types, effect,
+  salary) reusing `formatStaffMemberLine()` — the same per-member formatter the
+  business-slot tooltip uses — and the team's total salary per turn. Strings
+  come from the `HUD_TOOLTIP_I18N_KEYS` / `HUD_TOOLTIP_STRINGS` English bundle,
+  never hard-coded. Leaving the pile hides it; nothing is shown in replay mode.
+- **Empty state.** No management-company staff ⇒ no pile at all (no placeholder
+  tile, no hit area).
+- **Overlap budget and z-order.** The pile sits at `STAFF_PILE_DEPTH` (-200),
+  **below** the hand panel (`HAND_PANEL_DEPTH` -100) and every hand card, so a
+  hand wider than the free band covers the pile's right edge rather than the
+  pile covering a playable card. The free band left of the capacity row is
+  245 px at the starting hand (3 slots), 171 px at 4, 97 px at 5 and gone from
+  7 slots — so the pile (220 px wide) fits the band at the starting hand and is
+  progressively covered as `maxHandSize` grows. The pile's **hover hit area is
+  additionally clamped** to the free band (`staffPileHitBounds()`), so it can
+  never sit over a capacity slot: at 8 slots it is dropped entirely while the
+  pile itself still renders. Hand-card clicks, hand→street drags and
+  market→hand drops are unaffected.
+- **Click → Company Roster.** Pointer-down on the pile — its card-face stack
+  or its portrait row — opens the **Company Roster** overlay (see below). The
+  pile hands the click off through `renderer.onOpenCompanyRoster` to
+  `MainStreetScene.showCompanyRoster()`; it carries **no** roster, salary or
+  lay-off logic of its own. Hovering still shows the tooltip, and the hit area
+  stays clamped to the free band, so hand-card clicks, hand→street drags and
+  market→hand drops are unaffected.
+- **Tests.** `tests/main-street/staff-pile.test.ts` (membership + tooltip
+  content), `tests/main-street/staff-pile-renderer.test.ts` (stub-scene render
+  contract) and the `Staff Pile` cases in
+  `tests/main-street/MainStreetScene.browser.test.ts` (placement, count badge,
+  hover tooltip, empty state, refresh and the capacity case at 4 and 8 slots).
+
+## Company Roster overlay (MS-0MWC1T8K2000DWZA)
+
+The **Company Roster** is the management-company team's own surface: it lists
+every management-company staff member with their role, effective per-turn
+salary and the exact cost of letting them go, and it is the only place a
+management-company member can be dismissed.
+
+- **Entry point — the Staff Pile.** Clicking the pile — its card-face stack or
+  its portrait row — opens the roster (see the Staff Pile section above). The
+  pile hands the click off to `MainStreetScene.showCompanyRoster()`; the roster
+  and all lay-off wiring live in `src/MainStreetRoster.ts` and
+  `MainStreetOverlayContent.showCompanyRosterDialog()`.
+- **Rows.** One row per management-company member (`!isBusinessStaffCard`,
+  staff-hire order, oldest first): the member's name, its role/benefit summary
+  (the shared `formatStaffRoleSummary()` text the tooltips also use), its
+  effective per-turn salary resolved through
+  `computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost)`, and
+  a `[ Lay off ]` button. Business staff never appear. Rows are capped at 10 with
+  an "…and N more" overflow line; the footer always reports the whole team.
+- **Footer.** States the member count and the team's total per-turn salary, both
+  from `buildCompanyRoster()`, and both update in place after a lay-off.
+- **Lay-off confirm step.** `[ Lay off ]` opens a confirm step quoting the
+  member's name, one turn's salary in coins (clamped at 0) and the reputation
+  cost — both read from the roster model, never recomputed in the overlay.
+  `[ Confirm ]` runs `letGoStaffCommand()` through the scene's undo manager, so
+  the lay-off stays undoable; `[ Cancel ]` changes nothing. After a confirm the
+  dialog stays open and rebuilds its rows and footer in place: the fired row
+  disappears and the Staff Pile's stack/count update on the same refresh.
+- **Empty state.** When the last member leaves, the panel shows the explicit
+  text "No management-company staff employed." rather than an empty list.
+- **Replay/headless.** Suppressed entirely in `replayMode`, like every other
+  overlay — it draws nothing and adds no overlay objects.
+- **Tests.** `tests/main-street/company-roster.test.ts` (model: membership,
+  ordering, salaries, totals and the reputation cost), and
+  `tests/main-street/company-roster.browser.test.ts` (open from the pile click,
+  rows, footer, confirm/cancel, post-lay-off refresh, empty state, replay
+  suppression and hand-input pass-through).
+
 ## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 
 The persistent instruction line under the board is gone. Messages that used to
@@ -1118,6 +1222,37 @@ condensed text-only summary.
 - Reuse: `popTextOrIcon` + `getStreetSlotCenter`; no new engine
   infrastructure.
 
+### Effective card income and reputation display (MS-0MW6H9A47001B1QT)
+
+- **Rule.** A card's face and every hover tooltip show the income and
+  reputation the engine actually credits for that instance — never the static
+  `baseIncome + incomeBonus` / `reputationPerTurn + reputationBonus` figures.
+  The card face shows the effective **total**; the tooltip shows the total plus
+  a **base + modifier breakdown** (upgrade, synergy, duplicate factor, staff).
+- **Source of truth.** The read-only `computeEffectiveCardValues(state, card,
+  slotIndex?)` helper (`src/MainStreetAdjacencyScoring.ts`) resolves both the
+  totals and their additive components (whose parts sum exactly to the total)
+  from the same primitives `applyIncome` uses — `computeBusinessIncomeParts`,
+  `computeBusinessStaffBuffs` and `computePerBusinessSkillBuffs` — so display
+  and credit cannot diverge. It never mutates the `currentIncome` /
+  `currentReputationPerTurn` caches; staff buffs are recomputed on demand.
+- **Consumers.** `buildUpgradeOverlaySpec()` takes an optional
+  `EffectiveCardValues` argument (production call sites always pass it; the
+  base + upgrade fallback is a test-only seam). `buildCardTooltipInfo()` takes
+  an optional `CardTooltipContext` (`{ state, slotIndex }`) and, when given,
+  renders `formatEffectiveIncomeLine()` / `formatEffectiveReputationLine()`.
+  The street inline tooltip in `MainStreetRendererStreet.ts` uses the same
+  two formatters, so the street, hand and market surfaces read identically.
+- **Every location.** The street, hand and market call sites all pass their
+  effective values. A hand/market instance has no board position, so
+  position-dependent modifiers (adjacency synergy, the adjacent same-type
+  penalty, slot-bound staff buffs) are zero, while the upgrade bonus and the
+  duplicate/saturation factor for its business type still apply (the instance
+  counts itself once, never twice).
+- **No stale base-only surfaces.** The overlay/current-income values are passed
+  on every production render path; the only base + upgrade output left is the
+  explicit fallback used by pure-card unit tests that supply no context.
+
 ### Card upgrade shader effect
 
 - Spec/renderer: the pure `shaderEffect` field in `buildUpgradeOverlaySpec()`
@@ -1168,7 +1303,7 @@ condensed text-only summary.
      `hudY`) with `SFX_KEYS.COIN_POP` via `moveGameObject`.
   3. A "+€refund" pop lands at the HUD counter (`popTextOrIcon`) and the
      coin SFX pops on landing.
-- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 480×360, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
+- Sell-price formula (CG-0MT5XO7DI0066QCT): refund = `ceil((cost + totalUpgradeCost) * 1.5) + max(0, currentIncome − effectiveBase) + max(0, currentRep − (repPerTurn + repBonus))`; `effectiveBase = (baseIncome + incomeBonus) * 0.6` when same-type adjacent, else ×1; applies to business + community-space. `currentIncome` in the refund is the card's cached income **after** the street-wide duplicate (market-saturation) factor, so a saturated type refunds less synergy comp than an unsaturated one — the reduced refund is expected, not a bug (MS-0MVYG50V1007W8BP). The **Manage Card** dialog (`showSellConfirmation`, panel 520 wide, [Sell] [Close] [Cancel]) shows the sell breakdown (base / synergy-income / synergy-rep) plus the explicit Close cost line before confirm; log mirrors the breakdown.
 - Accessibility (reduced motion): demolition + coin flight are skipped; a
   single "+€refund" pop + coin SFX remain (spec AC2).
 - Headless/replay exemption (AGENTS.md rule 8): presentation-only — the
@@ -1206,6 +1341,52 @@ condensed text-only summary.
   `closeBusinessCommand`.
 - Reuse: `createTransferCardVisual` + `popTextOrIcon` + `SFX_KEYS.DISCARD`; no
   new engine infrastructure.
+
+### Manage Card staff rows — business staff (MS-0MWC952QU000HQ11)
+
+A business that employs staff lists **one row per employed member** at the
+bottom of its **Manage Card** dialog, so releasing or relocating a member
+always acts on the member the player picked — never "the most recently
+hired" member.
+
+- **Rows.** One row per member employed at this slot (`employedAtSlot ===
+  slotIndex`, hire order — oldest first), each showing the member's name, its
+  role/benefit summary (the shared `formatStaffRoleSummary()` text the
+  tooltips also use), its effective per-turn salary and its own `[ Move ]` and
+  `[ Lay off ]` buttons. Rows come from the pure `buildBusinessStaffRows()`
+  model (`src/MainStreetBusinessStaff.ts`), so the row salary and lay-off
+  figures are the engine's own arithmetic. Management-company members never
+  appear here — they belong to the Company Roster overlay.
+- **Panel sizing.** The dialog (520 wide) sizes its own height from the member
+  count — the fixed sell/close/cancel block and costs line plus one 34px row
+  per member — and keeps a flat 360px height when nobody is employed.
+- **Costs line.** Stated once per dialog, under the buttons:
+  `Move: 1 action · Lay off: 1 turn's salary + reputation` — neither cost is
+  hidden behind a tooltip.
+- **[ Move ].** Begins relocating **that** member (`beginStaffMove(memberId)`
+  after dismissing the dialog); its tooltip lists the member's legal
+  destination slots from the shared affordance builder, and the move costs
+  1 action (undone via the undo stack).
+- **[ Lay off ] → confirm step.** Opens a quoted confirm layer over the rows
+  (member name, one turn's salary in coins clamped at 0, and the shared
+  salary-scaled reputation cost — both read from the row model, never
+  recomputed). `[ Confirm ]` runs `letGoStaffCommand()` through the scene's
+  undo manager, so the lay-off stays undoable; `[ Cancel ]` changes nothing.
+  The confirm re-resolves the row's member id against the live `staffCards`,
+  so a stale row (member already gone, e.g. after an undo) flashes feedback
+  and re-renders instead of acting on a shifted index.
+- **In-place refresh.** After a confirm the dialog stays open and rebuilds its
+  rows in place: the fired row disappears and the panel shrinks to fit the
+  remaining members while its top edge stays put; the world and undo buttons
+  refresh on the same cycle. The activity log records the applied charge as
+  `Laid off <name> (−<coins> coins, −<reputation> reputation)`.
+- **Empty state.** A card that employs nobody renders no rows, no buttons and
+  no costs line — the section renders nothing at all and the dialog keeps its
+  flat 360px height; `[ Sell ]`/`[ Close ]`/`[ Cancel ]` keep working.
+- **Tests.** `tests/main-street/manage-card-dialog.browser.test.ts` (rows in
+  hire order, per-row `[ Move ]`/`[ Lay off ]`, quoted confirm, in-place
+  refresh down to the empty state, undo, stale-row guard, panel fit at
+  maximum employment capacity, and coexistence with Sell/Close/Cancel).
 
 ### Week transition banner
 
@@ -1319,8 +1500,32 @@ condensed text-only summary.
     `buildPLTabsFromCompetitiveSummary`, `buildPLFromTurnSummary` /
     `buildPLFromCompetitiveRow`) project the same tabs and statement from the
     already-built summary it holds, so the two can never drift.
-- Read-only: never mutates state, consumes no RNG, and never touches the
-  save-point ordering (the checkpoint stays in `finalizeTurn`).
+  - **Per-item tooltip breakdowns (MS-0MW6GZKZZ006PLLO)** — each income line
+    carries an optional `breakdown` listing each owned business and its
+    individual coin contribution (projected from `IncomeResult.breakdown` for
+    base / synergy and `phaseBreakdown.perSlotBreakdown` for reputation /
+    events), and each ongoing-expense line carries an optional `breakdown`
+    listing each staff card / community space / business card and its running
+    cost. The per-card costs are derived from the committed `streetGrid` /
+    `staffCards` using the engine's own helpers (`computeStaffSalaryCost`,
+    `getSalaryScopeSkills`), never invented by the UI, and sold slots are
+    excluded. Both breakdowns are absent-safe: a hand-built or legacy result
+    renders the statement with generic per-line tooltips instead. See the
+    [ledger tooltips](#ledger-tooltips-in-the-turn-summary-ms-0mw6gzkzz006pllo)
+    section below.
+  - **Tooltip content and the documented one-off fallback** —
+    `src/scenes/MainStreetTurnSummaryTooltips.ts` builds the localisable
+    per-line tooltip copy (headings + per-item lists + reconciliation notes).
+    The ledger stores one-off only as a **residual**
+    (`netCoinChange - income - expenses - incident`) with no per-source
+    breakdown, so its tooltip presents that reconciliation formula rather than
+    inventing per-source attribution — the documented fallback permitted by the
+    parent item (parent AC7). The same module builds the incident name/effect
+    tooltip, the net reconciliation-identity tooltip
+    (`income + expenses + incident + one-off = net`), and the explanatory
+    supplementary-context tooltips.
+  - **Read-only** — never mutates state, consumes no RNG, and never touches the
+    save-point ordering (the checkpoint stays in `finalizeTurn`).
 - Competitive closings carry no `turnLedger`, so `buildTurnSummary` returns
   `null` and the single-player summary is not presented (parent AC4). They
   carry `TurnResult.playerRoundLedger` instead, rendered by the competitive
@@ -1336,6 +1541,47 @@ condensed text-only summary.
   supplementary context); engine ledger coverage lives in
   `tests/main-street/end-of-turn-ledger.test.ts`.
 
+### Ledger tooltips in the Turn Summary (MS-0MW6GZKZZ006PLLO)
+
+- Every P&L row in the Turn Summary — each income line, each expense line, the
+  `Incident` and `One-off` adjustments, the `Net profit/loss` bottom line and
+  the supplementary context rows — shows an explanation tooltip on hover
+  (desktop) and on tap (touch), through the shared `attachHudTooltipZone` /
+  `tooltipManager` helper. The seed-level entries below are implemented by
+  `src/scenes/MainStreetTurnSummaryTooltips.ts` and wired into the overlay by
+  `src/scenes/MainStreetTurnSummaryOverlay.ts`.
+- **Per-business income** — the base / synergy / reputation / events tooltips
+  list each owned business and its individual coin contribution, from the
+  projection's per-line `breakdown` (projected from `IncomeResult`).
+- **Per-card expenses** — the staff / community / business tooltips list each
+  individual card and its running cost. The per-card figures mirror the
+  engine's own `applyStaffOngoingCosts` / `applyCommunitySpaceOngoingCosts` /
+  `applyBusinessOngoingCosts` scans (sold slots excluded), and the tooltip
+  reconciles their sum to the committed category total with a street-wide
+  reduction line (`Cost Cutter`) or a coins-limited note where applicable.
+- **Incident** — names the resolved incident card and describes its coin and
+  reputation effect.
+- **One-off** — no per-source breakdown is stored in the ledger, so the
+  tooltip presents the reconciliation formula that produces the residual
+  (parent AC7's documented fallback; see the TSDoc on
+  `MainStreetTurnSummaryTooltips.ts`).
+- **Net profit/loss** — explains the reconciliation identity
+  `income + expenses + incident + one-off = net`.
+- **Supplementary context** — the reputation/score change, closing coins and
+  businesses-owned rows carry explanatory tooltips.
+- **i18n** — all copy resolves through the shared `t()` / `registerLocale`
+  system; English defaults for every key are registered at module load, so the
+  tooltips work without an explicit locale setup and can be overridden by any
+  registered locale.
+- **Non-blocking** — tooltips are pure presentation (no state mutation, no RNG)
+  and are attached to already-inert text rows, so tab switching and the
+  `[ Next Turn ]` / `[ Bank Loan ]` buttons are unaffected.
+- **Styling** — the tooltips reuse the scene's shared `TooltipManager` rendering
+  (dark background, readable font size) so they read consistently with the rest
+  of the HUD; the tooltip's first line is the row heading and the following
+  lines are the per-item list / formula. Content is built lazily on hover/tap,
+  so unhovered rows cost nothing.
+
 ### Turn Summary dialog and the closing gate
 
 - Overlay: one unified tabbed P&L panel (parent MS-0MW4XULA90002OEY, child
@@ -1347,21 +1593,49 @@ condensed text-only summary.
   drift. It is instant (no fade-in, so it is reduced-motion safe) and
   overlay-pattern compliant (`hudContainer` parenting, depths 199/200/201,
   dismissal via `s.overlayObjects`).
-  - **Tab strip** — a `Turn Summary` / `Day <n>` title, then one tab per
-    player, each in its seat colour where one exists (single-player uses the
-    dialog gold). **Every** tab is drawn in the dialog's button form —
+  - **Tab strip** — a `Turn Summary` / `Day <n>` title, then a **`[ Summary ]`**
+    tab (first and selected by default, MS-0MWBWRITL0089GGJ) followed by one
+    tab per player, each in its seat colour where one exists (single-player
+    uses the dialog gold). **Every** tab is drawn in the dialog's button form —
     `[ Label ]` — whether or not it is selected, so the player's own statement
     is always a visible button to switch back to
     (MS-0MW4XULA90002OEY: a rejected review found no button to return to the
     player's own tab). The selected tab is the **bold** one; the others keep
     their seat colour and brighten on hover, so every tab reads as a control.
-    The human (`You`) tab is selected by
-    default; selecting any other player's tab redraws the **whole** statement
-    body from that player's figures. Single-player renders one
-    **non-interactive** `You` tab (shown, never clickable); competitive renders
-    one interactive tab per non-eliminated seat. Tabs are operable by pointer
-    **and** keyboard — the Left/Right arrow keys cycle the players' tabs with
-    wrap-around — and a tab press plays `UI_CLICK` through `safePlaySound`.
+    **Seat colours are used as text, so they are made legible on the black
+    panel**: `ensureReadableSeatColour()` lightens a hue that would fall below
+    the WCAG AA contrast ratio toward white, keeping the seat colour exactly
+    wherever it already clears it. Without this the colour-blind-safe palette's
+    Okabe–Ito black (`#000000`) made a `[ You ]` or `[ AI n ]` label invisible
+    on the black panel — the producer saw the AI tabs but no `You` tab
+    (MS-0MWBWRITL0089GGJ).
+    Selecting any tab redraws the **whole** body (the Summary headline view or
+    that player's statement) from the committed figures. Single-player renders
+    an interactive `[ Summary ]` and `[ You ]` tab; competitive renders the
+    `[ Summary ]` tab plus one interactive tab per non-eliminated seat. Tabs
+    are operable by pointer **and** keyboard — the Left/Right arrow keys cycle
+    Summary and the players' tabs with wrap-around — and a tab press plays
+    `UI_CLICK` through `safePlaySound`.
+  - **Summary tab (the default view)** — the closed turn's headline recap
+    (MS-0MWBWRITL0089GGJ), in the confirmed section order **Major actions →
+    Events → Income / Reputation / Score**:
+    - **Major actions** — the turn's player- and AI-initiated actions
+      (placing a business, hiring staff, playing an upgrade/event, moving a
+      card to hand, selling, laying off, closing a street card, loans,
+      challenge completions), attributed per seat (`You` / `AI n`). Selected
+      structurally from `state.activityLog` by the new optional
+      `LogEntry.actionType` marker, so turn headers and the per-turn monetary
+      summary rows (which carry no marker) never appear. Bounded to six rows
+      with an `…and N more` affordance.
+    - **Events** — the resolved incident and the effect it applied, per seat
+      (the competitive ledger does not name the incident, so it renders as a
+      generic `Incident` label there).
+    - **Income / Reputation / Score** — one row per metric, carrying **every**
+      seat's signed change and closing balance (`+N` / `-N` / `0`). Each figure
+      is its own hover/tap tooltip zone whose breakdown is built from that
+      seat's `PLProjection` (the same source the per-player tab renders), so
+      the two can never drift; figures wrap rather than overflow the fixed
+      panel.
   - **Statement body** — the selected player's P&L projection: the **Income**
     section (base / synergy / reputation / events) with its `Total income`
     row, **Less: Operating expenses** (staff / community / business) with its
@@ -1395,6 +1669,20 @@ condensed text-only summary.
   known. `MainStreetScene.showTurnSummaryDialog()` delegates to it and, with
   no overlay manager (headless), continues the closing instead of stranding
   the turn.
+  **Pointer isolation (MS-0MW6GPRL6001DFCF):** the action row sits directly
+  over the middle hand card, and the buttons act on `pointerdown` — dismissing
+  the panel (and its input-blocking backdrop) before the matching `pointerup`
+  arrives. Without a guard, that release hit-tests against the now-uncovered
+  hand card beneath and selects it (entering "placing from hand"). Both
+  **[ Next Turn ]** and the enabled **[ Bank Loan ]** therefore place a
+  full-screen, transparent, interactive **pointer blocker** at depth 9999
+  when they dismiss the panel. It absorbs the release — and destroys itself on
+  it, with a 1.5 s safety timeout — so the ledger's action can never be
+  interpreted as a hand-card click, even when the button geometrically
+  overlaps a card, for mouse and touch alike. The blocker is anchored
+  top-left at (0, 0) because Phaser derives an interactive rectangle's hit
+  area in the object's origin space, so a centre-origin full-screen rectangle
+  would only be hit-testable in its bottom-right quadrant.
 - When it appears (MS-0MVP46Q8X003419R): `shouldGateTurnSummary()` /
   `presentTurnSummaryGate()` in `MainStreetTurnControllerTurnFlow.ts`, after
   every closing animation (phased income show + incident reveal) has finished
@@ -1438,8 +1726,9 @@ condensed text-only summary.
   `endTurn` closing-path selection, `onNextTurn` continuation, delta
   ordering/idempotence, banking-hint ordering),
   `tests/main-street/turn-summary-dialog.browser.test.ts` (overlay rendering in
-  a real Phaser scene, plus the reduced-motion end-of-turn presenting the
-  dialog) and `tests/main-street/turn-summary-pl-overlay.browser.test.ts` (the
+  a real Phaser scene, the reduced-motion end-of-turn presenting the dialog,
+  and the `[ Next Turn ]` pointer blocker leaving a hand card beneath the
+  button unselected) and `tests/main-street/turn-summary-pl-overlay.browser.test.ts` (the
   tabbed P&L body, the default and per-seat tabs, tab switching by pointer and
   Left/Right keys, the single non-interactive `You` tab and the selected tab
   surviving the post-loan-take re-render).
@@ -1501,13 +1790,25 @@ owner-keyed, so the whole panel is testable without a browser.
   `buildPLFromCompetitiveRow` projects each one as that seat's P&L statement,
   so competitive and single-player share one statement shape. It returns `null`
   when the result carries no round ledger, so browser and single-player callers
-  are unaffected.
+  are unaffected. `buildSummaryTabModel` / `buildSummaryTabModelFromSummary`
+  build the shared **Summary** tab from the same projections — actions from
+  `state.activityLog` selected by the structural `LogEntry.actionType` marker,
+  the incident's per-seat effect, and one metric row (Income / Reputation /
+  Score) per seat — so the headline view and the per-player tabs never drift
+  (MS-0MWBWRITL0089GGJ).
 - **Dialog.** `MainStreetOverlayContent.showCompetitiveTurnSummaryDialog()`
   (delegated by `MainStreetScene.showCompetitiveTurnSummaryDialog()`) renders
   the competitive side of the unified tabbed panel
-  (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a tab per
-  non-eliminated seat in its own colour with the human (`You`) tab selected by
-  default, and the selected seat's P&L statement — Income (base / synergy /
+  (`presentTurnSummaryPanel()`): a `Turn Summary` / `Day <n>` title, a
+  **`[ Summary ]`** tab (first and selected by default, MS-0MWBWRITL0089GGJ)
+  followed by a tab per non-eliminated seat in its own colour (lightened toward
+  white when the hue would be unreadable on the black panel, so the human `You`
+  tab can never disappear — `ensureReadableSeatColour()`), and the selected
+  tab's body. The **Summary** tab is the shared headline view — the day's major
+  player/AI actions per seat, the resolved incident and its effect, and one row
+  per metric (Income / Reputation / Score) carrying every seat's signed change
+  and closing balance, each figure a hover/tap breakdown — and the per-seat
+  tabs render that seat's P&L statement — Income (base / synergy /
   reputation / events) with its total, Less: Operating expenses (staff /
   community / business) with its total, the Incident and One-off adjustments,
   the emphasised net profit/loss, and the supplementary context (reputation /
@@ -1743,6 +2044,19 @@ owner-keyed, so the whole panel is testable without a browser.
   a resumed/deferred closing carries its payoffs without re-running the
   repayment pass, so a payoff is never announced twice. A closing that ends
   the run presents the game-over overlay instead.
+- Paused closings: the presentation slot sits **after** the event-choice and
+  bankruptcy-bailout pauses, so a closing that pauses there never reaches it on
+  the first pass (MS-0MW4887R4007XPGJ). The paused closing's `loanPayoffs` are
+  carried across the pause — stashed on the scene alongside the
+  `pendingBankingHint` arm for an event choice and consumed exactly once by
+  `onEventChoice`, and carried through the paused result for a bailout — then
+  presented on the **continuing** resume: `finishTurnPresentation` for the
+  resumed event-choice closing and `completeDeferredClosingTail` for an
+  accepted bailout. A declined bailout ends the run, so the game-over branch
+  wins and no congratulation is shown. The deferred closing's presentation slot
+  remains the single delivery point for an unpaused closing: its payoffs are
+  stripped from the result handed to the deferred tail so a bailout raised
+  there cannot replay them.
 - Overlay pattern: `createOverlayBackground` / `createOverlayButton` from
   `@ui`, every element parented into `s.hudContainer`, depths 199/200/201,
   every created object tracked in `s.overlayObjects` for dismissal, and
@@ -1855,6 +2169,62 @@ owner-keyed, so the whole panel is testable without a browser.
 - **Competitive scope (working assumption):** the graphs plot the **human
   seat's** trajectory only. Per-seat series are a separate producer-confirmed
   decision (Open Question on MS-0MVAMU6OM008GJPV).
+
+### Game-over overlay teardown and restart contract (MS-0MW6H5R340033GJJ)
+
+Pressing `[ Play Again ]` after a game over must leave a clean restarted scene —
+no result title, headline, columns, cash/score text, difficulty control,
+buttons or chart canvases may survive. The teardown is a three-part contract;
+keep all three in step when changing the game-over overlay.
+
+1. **Tracking.** Every object the overlay creates — the 199 backdrop, the 200
+   box, every text/rectangle/button, and each lazily-created stats-chart
+   handle — is pushed into `s.overlayObjects` and parented into
+   `s.hudContainer`. `s.overlayObjects` is the single authoritative teardown
+   list.
+2. **Game-over-local teardown.** `teardownGameOverOverlay(scene)` (in
+   `src/scenes/MainStreetOverlayContent.ts`) runs immediately before
+   `scene.restart()`:
+   - it detaches every tracked object from its parent container (via
+     `parentContainer.remove(obj, false)`) so a restart that rebuilds
+     `hudContainer` cannot strand an orphaned child;
+   - it calls the shared `dismissOverlay(objects)` with the **full**
+     `overlayObjects` array, so each object is destroyed exactly once on the
+     happy path;
+   - if that shared loop throws (e.g. an object was already destroyed by a
+     late callback), it falls back to a per-object `destroy()` so one stale
+     handle can never block the restart;
+   - it then reassigns `scene.overlayObjects = []` **before** `scene.restart()`.
+   The shared `dismissOverlay` (`core/src/ui/Overlay.ts`, a pinned submodule) is
+   deliberately a thin `for (const obj of objects) obj.destroy()` loop: it is
+   not null-guarded and does not explicitly clear parent references. Destroying
+   a Phaser object detaches it from its container as a side effect, so the
+   helper is correct for well-formed arrays; the game-over path adds the
+   detachment + idempotent fallback locally rather than changing shared
+   semantics for every other overlay.
+3. **Generation guard against late callbacks.** Phaser reuses the scene
+   instance across `scene.restart()`, so a pending promise can still resolve
+   against the new run. `MainStreetScene.sceneRestartGeneration` is a monotonic
+   counter incremented first thing in `createScene()`
+   (`src/scenes/MainStreetLifecycleManagerLifecycle.ts`) on every boot and
+   restart. Two async paths capture it and discard their result when it has
+   changed:
+   - `showGameOverOverlay()` captures the generation at presentation. Each
+     lazy stats-chart `.then(handle)` destroys the handle instead of attaching
+     it when the generation moved on; the existing `overlayObjects` identity
+     check remains as a second guard.
+   - `handleGameOver()` (`src/scenes/MainStreetTurnControllerTurnFlow.ts`)
+     captures the generation before the async `updateCampaignProgress()`
+     write and skips the game-over presentation entirely if the scene
+     restarted meanwhile — otherwise the finished run's overlay would be
+     re-presented over a fresh run.
+
+The contract is pinned by unit tests
+(`tests/main-street/game-over-overlay.test.ts`,
+`tests/main-street/game-over-play-again-async.test.ts`) and by a browser test
+that drives the real `[ Play Again ]` `pointerdown` handler and asserts the new
+HUD is free of every game-over marker
+(`tests/main-street/MainStreetOverlay.browser.test.ts`).
 
 ### Game-over celebration / loss sting
 

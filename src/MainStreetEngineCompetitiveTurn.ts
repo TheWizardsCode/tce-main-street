@@ -11,7 +11,7 @@ import { acceptLoanOffer, applyBusinessOngoingCosts, applyCommunitySpaceOngoingC
 import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { applyCompetitiveEventEffects, hasPendingPiggyback, resolveAllPendingPiggybacks } from './MainStreetEngineEvents';
 import { decideEventChoice, decidePiggybackForSeat, updateCompetitiveScores } from './MainStreetEngineScoring';
-import { appendTurnNetRow, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
+import { appendTurnNetRow, buildOneOffBreakdown, checkCompetitiveEndConditions, findHumanSeatId, resolveCompetitiveSeatFailures, processEndOfTurn, resolveIncident, resolveEventOption, resolvePendingEventChoice } from './MainStreetEngineTurnClosing';
 import { PlayerAction, TurnResult } from './MainStreetEngineTypes';
 import type { CompetitiveRoundLedger, OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
@@ -22,6 +22,7 @@ import type { EventCard } from './MainStreetCards';
 import { getPendingStorylineOptions } from './MainStreetStoryline';
 import { applyLoanRepayments, declineLoanOffer } from './MainStreetLoans';
 import type { LoanPayoff } from './MainStreetLoans';
+import { attributionFor } from './MainStreetOneOffAttribution';
 import { evaluateChallenges } from './MainStreetChallenges';
 import type { MainStreetState } from './MainStreetState';
 import { addLogShared, advanceWeek, type PendingPiggybackDecision } from './MainStreetState';
@@ -413,6 +414,21 @@ function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | un
       const netScoreChange = closing.score - seat.dayStart.score;
       const ongoing = seat.ongoingCosts;
       const ongoingTotal = ongoing.staff + ongoing.community + ongoing.business;
+      // The residual reconciles the row exactly, mirroring
+      // `TurnLedger.oneOffDeltas`: everything not attributable to income,
+      // ongoing costs or the incident (MarketPhase spending/earning, loan
+      // repayments, clamped deductions, …).
+      const oneOffCoins = netCoinChange - seat.incomeTotal - ongoingTotal - seat.incidentCoinChange;
+      // Per-source one-off attribution for this seat (MS-0MWBZDNH3006DXV7):
+      // the same labelled entries the single-player ledger builds, from the
+      // transient `_oneOffAttribution` accumulator the seat's MarketPhase and
+      // loan effects wrote to. Absent-safe: a seat that captured nothing
+      // reconcilable (hand-built/legacy closure) omits it and the panel falls
+      // back to the reconciliation formula.
+      const oneOffBreakdown = buildOneOffBreakdown(
+        attributionFor(state, seat.ownerId),
+        oneOffCoins,
+      );
       return {
         ownerId: seat.ownerId,
         businessesOwned: owned[String(seat.ownerId)] ?? 0,
@@ -426,14 +442,11 @@ function currentRoundLedger(state: MainStreetState): CompetitiveRoundLedger | un
         netScoreChange,
         incidentCoinChange: seat.incidentCoinChange,
         incidentRepChange: seat.incidentRepChange,
-        // The residual reconciles the row exactly, mirroring
-        // `TurnLedger.oneOffDeltas`: everything not attributable to income,
-        // ongoing costs or the incident (MarketPhase spending/earning, loan
-        // repayments, clamped deductions, …).
         oneOffDeltas: {
-          coins: netCoinChange - seat.incomeTotal - ongoingTotal - seat.incidentCoinChange,
+          coins: oneOffCoins,
           reputation: netRepChange - seat.incomeRepDelta - seat.incidentRepChange,
         },
+        ...(oneOffBreakdown ? { oneOffBreakdown } : {}),
       };
     }),
   };

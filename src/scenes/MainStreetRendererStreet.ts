@@ -15,8 +15,8 @@ import { computeSynergyPairs } from '../MainStreetAdjacency';
 import { getSlotOwnerId, resolveSeatColour } from '../MainStreetAdjacencyOwner';
 import type { BusinessCard, CommunitySpaceCard, StaffCard } from '../MainStreetCards';
 import { synergyColor } from '../MainStreetCards';
-import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatDuplicatePenaltyLine, formatEmployedStaffSummary, formatPerTurnReputation, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
-import { duplicateIncomeFactor } from '../MainStreetAdjacencyScoring';
+import { buildCardTooltipInfo, buildSynergyLinkTooltipInfo, formatDuplicatePenaltyLine, formatEffectiveIncomeLine, formatEffectiveReputationLine, formatEmployedStaffSummary, formatSoldCardTooltip, formatSynergyRate } from '../MainStreetFormatting';
+import { duplicateIncomeFactor, computeEffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL, containerTransform, mapRoadBands, streetViewportRect, visibleMapSlots, zoomScale } from '../MainStreetMapView';
 import { BOX_RADIUS, BOX_STROKE, HAND_PANEL_DEPTH, HAND_PANEL_NAME, HAND_PANEL_PAD, HAND_SLOT_PITCH_PAD, LOG_FILTER_BTN_GAP, LOG_FILTER_BTN_H, LOG_FILTER_ROW_H, LOG_FILTER_ROW_PAD_X, LOG_TITLE_H, PANEL_FILL, PANEL_FILL_ALPHA, PANEL_STROKE_ALPHA, ROAD_COLOUR, ROAD_DASH_LENGTH, ROAD_DASH_PERIOD, ROAD_MARKING_COLOUR, ROAD_MARKING_WIDTH, ZOOM_ANIMATION_MS } from './MainStreetConstants';
@@ -126,7 +126,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
             const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
             hover.setInteractive({ useHandCursor: s.uiPhase === 'market' });
             hover.on('pointerover', () => {
-              const info = buildCardTooltipInfo(card, s.state.config);
+              const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
               s.tooltipManager?.show(info, container.x, container.y);
             });
             hover.on('pointerout', () => s.tooltipManager?.hide());
@@ -172,7 +172,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
                 s.onHandUpgradeCardClick(cardIndex);
               });
               container.on('pointerover', () => {
-                const info = buildCardTooltipInfo(card, s.state.config);
+                const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
                 s.tooltipManager?.show(info, container.x, container.y);
               });
               container.on('pointerout', () => s.tooltipManager?.hide());
@@ -180,7 +180,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
               const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
               hover.setInteractive({ useHandCursor: true });
               hover.on('pointerover', () => {
-                const info = buildCardTooltipInfo(card, s.state.config);
+                const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
                 s.tooltipManager?.show(info, container.x, container.y);
               });
               hover.on('pointerout', () => s.tooltipManager?.hide());
@@ -197,7 +197,13 @@ export function createContainers(renderer: MainStreetRendererContext): void {
           // draggable (hand → empty slot, MS-0MV76HVE4007AOO0) with pickup
           // veto-gated by canPickUpHandCard and click-vs-drag coexistence via
           // the same drag-threshold gate the market renderer uses (AC5).
-          renderer.applyUpgradeOverlays(container, card, renderW, renderH);
+          renderer.applyUpgradeOverlays(
+            container,
+            card,
+            renderW,
+            renderH,
+            computeEffectiveCardValues(s.state, card, null),
+          );
 
           if (!s.replayMode) {
             if (s.dragDropManager) {
@@ -224,7 +230,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
                 s.onHandBusinessCardClick(cardIndex);
               });
               container.on('pointerover', () => {
-                const info = buildCardTooltipInfo(card, s.state.config);
+                const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
                 s.tooltipManager?.show(info, container.x, container.y);
               });
               container.on('pointerout', () => s.tooltipManager?.hide());
@@ -236,7 +242,7 @@ export function createContainers(renderer: MainStreetRendererContext): void {
               const hover = s.add.rectangle(0, 0, handCardW, handCardH, 0x000000, 0.001);
               hover.setInteractive({ useHandCursor: true });
               hover.on('pointerover', () => {
-                const info = buildCardTooltipInfo(card, s.state.config);
+                const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
                 s.tooltipManager?.show(info, container.x, container.y);
               });
               hover.on('pointerout', () => s.tooltipManager?.hide());
@@ -1030,8 +1036,16 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
     // pulse the paired cards.
     cardContainer.setData('streetSlotIndex', _index);
 
-    // Apply upgrade overlays (level badge, top-left accent, income, reputation)
-    renderer.applyUpgradeOverlays(cardContainer, biz, renderW, renderH);
+    // Apply upgrade overlays (level badge, top-left accent, income, reputation).
+    // The instance's effective totals are passed so the card face shows the
+    // coins/reputation the engine actually credits (MS-0MW6H9A47001B1QT).
+    renderer.applyUpgradeOverlays(
+      cardContainer,
+      biz,
+      renderW,
+      renderH,
+      computeEffectiveCardValues(s.state, biz, _index),
+    );
 
     // ── Employed-staff count badge (CG-0MU3BTTCH001E7ZD AC1) ────
     // A small corner badge on slots with employed staff; skipped on sold
@@ -1123,9 +1137,14 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
         }
         const isCommunitySpace = (biz as any).family === 'community-space';
         const label = isCommunitySpace ? 'Community Space' : 'Business';
-        const totalRep = (biz.reputationPerTurn ?? 0) + (biz.reputationBonus ?? 0);
-        const repSuffix = formatPerTurnReputation(totalRep);
-        const repInfo = repSuffix !== '' ? `\nReputation: ${repSuffix}` : '';
+        // Effective (engine-credited) income/reputation for THIS slot, with the
+        // base + modifier breakdown, so the hover can never contradict the
+        // card face or the credited amount (MS-0MW6H9A47001B1QT).
+        const effectiveValues = computeEffectiveCardValues(s.state, biz, _index);
+        const incomeLine = formatEffectiveIncomeLine(effectiveValues.income);
+        const repInfo = effectiveValues.reputation.total !== 0
+          ? `\n${formatEffectiveReputationLine(effectiveValues.reputation)}`
+          : '';
         const synergyRate = formatSynergyRate(biz, s.state.config);
         const synergyInfo = synergyRate !== null ? `\nSynergy bonus: ${synergyRate} of base income per adjacent matching business` : '';
         // Duplicate-business (market-saturation) penalty (MS-0MW0UH143003PQAG):
@@ -1145,7 +1164,7 @@ export function drawBusinessSlot(renderer: MainStreetRendererContext, x: number,
           (biz as { employedStaff?: StaffCard[] }).employedStaff ?? [],
           { freeRerollUsedThisTurn: s.state.investorFreeRerollUsedThisTurn },
         ) ?? '';
-        const info = `${label}: ${biz.name}\nIncome: +${biz.baseIncome + biz.incomeBonus}/turn${duplicateInfo}${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
+        const info = `${label}: ${biz.name}\n${incomeLine}${duplicateInfo}${repInfo}\nSynergy: ${biz.synergyTypes.join('/')}${synergyInfo}\nLevel: ${biz.level}\nClick to manage: sell (free) or close (1 action)${staffSummary}`;
         s.tooltipManager?.show(info, tooltipZone.x, tooltipZone.y);
       });
       tooltipZone.on('pointerout', () => {
@@ -1189,9 +1208,10 @@ export function applyUpgradeOverlays(renderer: MainStreetRendererContext,
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
     height: number,
+    effective?: import('../MainStreetAdjacencyScoring').EffectiveCardValues,
   ): void {
 
-    const spec = buildUpgradeOverlaySpec(biz, width, height);
+    const spec = buildUpgradeOverlaySpec(biz, width, height, effective);
 
     // Top-left upgrade accent (F4 of MS-0MUWNTN8W006C7EF). This replaces the
     // former full-card upgrade border: the card's outer frame now carries the

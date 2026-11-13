@@ -217,25 +217,26 @@ describe('decline: pending applicant cleared, no state changes', () => {
 
 // ── Let-go economics ────────────────────────────────────────
 
-describe('let-go: removes member, deducts 1 salary + 1 reputation', () => {
-  it('deducts one turn of salary and 1 reputation and removes the member', () => {
+describe('let-go: removes member, deducts 1 salary + salary-scaled reputation', () => {
+  it('deducts one turn of salary and the 100-unit reputation floor and removes the member', () => {
     const state = createTestState('let-go-penalties');
     placeBusiness(state, 0, { baseIncome: 2 });
     // Town Gossip carries no Operations Manager salary discount, so the cost
     // equals the member's ongoingCost exactly.
     employSynthetic(state, 0, { skillIds: ['skill-town-gossip'], ongoingCost: 1.5 });
     state.resourceBank.coins = 5;
-    state.resourceBank.reputation = 4;
+    // Salary 1.5 → reputation floor of 100 (MS-0MWC1T8K2000DWZA).
+    state.resourceBank.reputation = 200;
 
     letGoStaffMember(state, 0);
 
     expect(state.staffCards).toHaveLength(0);
     expect(state.resourceBank.coins).toBe(3.5);
-    expect(state.resourceBank.reputation).toBe(3);
+    expect(state.resourceBank.reputation).toBe(100);
     expect(getEmployedStaffCountAt(state, 0)).toBe(0);
   });
 
-  it('clamps the salary deduction at 0 coins', () => {
+  it('clamps the salary and reputation deductions at 0', () => {
     const state = createTestState('let-go-clamped');
     placeBusiness(state, 0, { baseIncome: 2 });
     employSynthetic(state, 0, { skillIds: ['skill-town-gossip'], ongoingCost: 2 });
@@ -246,7 +247,8 @@ describe('let-go: removes member, deducts 1 salary + 1 reputation', () => {
 
     expect(state.staffCards).toHaveLength(0);
     expect(state.resourceBank.coins).toBe(0);
-    expect(state.resourceBank.reputation).toBe(1);
+    // Salary 2 → 100 reputation floor > 2, so the deduction clamps at 0.
+    expect(state.resourceBank.reputation).toBe(0);
   });
 });
 

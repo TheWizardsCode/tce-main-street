@@ -3,12 +3,12 @@
  *
  * Verifies the competitive per-seat Turn Summary panel in a real Phaser scene:
  *
- * 1. One tab per seat, in seat order, rendering the panel model's own labels
- *    and seat colours (the competitive scoreboard's `You` / `AI n` +
- *    `resolveSeatColour` values) with the human ("You") tab selected by
- *    default; selecting another seat's tab switches the whole statement body
- *    to that seat's P&L — income and expenses with their totals, the incident
- *    / one-off adjustments, the net profit/loss and the supplementary context
+ * 1. A `[ Summary ]` tab first (selected by default), then one tab per seat in
+ *    seat order, rendering the panel model's own labels and seat colours (the
+ *    competitive scoreboard's `You` / `AI n` + `resolveSeatColour` values);
+ *    selecting a seat's tab switches the whole statement body to that seat's
+ *    P&L — income and expenses with their totals, the incident / one-off
+ *    adjustments, the net profit/loss and the supplementary context
  *    (reputation/score change, closing balances, businesses owned).
  * 2. Overlay pattern compliance — backdrop 199 / box 200 / elements 201, every
  *    element parented into `hudContainer` and pushed into `s.overlayObjects`
@@ -41,6 +41,7 @@ import {
 import type { CompetitiveRoundLedger } from '../../src/MainStreetEngineTypes';
 import { formatLoanObligation } from '../../src/MainStreetLoans';
 import { createCompetitiveState } from '../../src/MainStreetState';
+import { ensureReadableSeatColour } from '../../src/MainStreetSeatColours';
 
 /** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
 const MUTED_BUTTON_COLOUR = '#6b6459';
@@ -176,25 +177,36 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(title!.depth).toBe(201);
     expect(overlayText(s, `Day ${summary.turn}`)).toBeDefined();
 
-    // ── Tab strip: one tab per seat, human ("You") tab selected by default ──
-    // Both tabs are always drawn as `[ Label ]` buttons; the selected one is
-    // bold, so the player can always switch back to their own statement.
+    // ── Tab strip: Summary first, then one tab per seat ──────────
+    // Both seat tabs are always drawn as `[ Label ]` buttons; the selected one
+    // is bold, so the player can always switch back to their own statement.
+    const summaryTab = overlayText(s, '[ Summary ]');
     const humanTab = overlayText(s, '[ You ]');
     const aiTab = overlayText(s, '[ AI 1 ]');
+    expect(summaryTab).toBeDefined();
     expect(humanTab).toBeDefined();
     expect(aiTab).toBeDefined();
+    expect(summaryTab!.depth).toBe(201);
     expect(humanTab!.depth).toBe(201);
     expect(aiTab!.depth).toBe(201);
-    expect(humanTab!.style.fontStyle).toBe('bold');
+    // The Summary tab is first and selected by default (MS-0MWBWRITL0089GGJ).
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(humanTab!.style.fontStyle).not.toBe('bold');
     expect(aiTab!.style.fontStyle).not.toBe('bold');
     expect(humanTab!.input?.enabled).toBe(true);
     expect(aiTab!.input?.enabled).toBe(true);
-    // Reused seat colours, not an ad-hoc palette.
-    expect(humanTab!.style.color).toBe(colours[0]);
-    expect(aiTab!.style.color).toBe(colours[1]);
+    // Reused seat colours, not an ad-hoc palette — lightened only when the
+    // raw hue would be unreadable on the black panel (this seed hands AI 1
+    // the Okabe–Ito black), so no tab can disappear (MS-0MWBWRITL0089GGJ).
+    expect(humanTab!.style.color).toBe(ensureReadableSeatColour(colours[0]));
+    expect(aiTab!.style.color).toBe(ensureReadableSeatColour(colours[1]));
+    expect(colours[1].toLowerCase()).toBe('#000000'); // the case being guarded
+    expect(aiTab!.style.color).not.toBe('#000000');
     expect(humanTab!.style.color).not.toBe(aiTab!.style.color);
 
-    // ── The default statement is the human seat's own P&L ────────
+    // ── Selecting the human tab shows the human seat's own P&L ────
+    humanTab!.emit('pointerdown');
+    expect(overlayText(s, '[ You ]')!.style.fontStyle).toBe('bold');
     expect(overlayText(s, 'Businesses owned: 3')).toBeDefined();
     expect(overlayText(s, 'Base income: +12')).toBeDefined();
     expect(overlayText(s, 'Total income: +17')).toBeDefined();
@@ -207,7 +219,8 @@ describe('Main Street competitive turn-summary dialog overlay (browser)', () => 
     expect(overlayText(s, 'Closing coins: 49 · Closing Rep 3 · Score 13')).toBeDefined();
 
     // ── Selecting the AI tab switches the whole statement body ───
-    aiTab!.emit('pointerdown');
+    // Re-fetch the tab: the human-tab press redrew the panel (new objects).
+    overlayText(s, '[ AI 1 ]')!.emit('pointerdown');
     expect(overlayText(s, '[ AI 1 ]')!.style.fontStyle).toBe('bold');
     // …and the human tab is still a visible, enabled button.
     expect(overlayText(s, '[ You ]')!.style.fontStyle).not.toBe('bold');

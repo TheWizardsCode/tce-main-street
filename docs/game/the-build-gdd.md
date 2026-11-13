@@ -544,7 +544,7 @@ Every staff card does **not** occupy a hand slot. Salaries are ongoing per-turn 
 | **Where assigned** | Employed at **one business slot** (recorded as `employedAtSlot`). Placement is chosen at hire; the member lives on that business. | Employed by the **company itself** — no street slot, no `employedAtSlot`. The member never appears on the grid. |
 | **Who pays the salary** | The business it is employed at; the salary is an operating cost of that business, deducted from the player's coins in the IncomePhase. | The management company; deducted from the player's coins in the IncomePhase. |
 | **Lifetime** | Active only while its business is on the street. Selling the business ends the effect and the salary with it. | Active for as long as the member is employed; independent of the street's composition. |
-| **How the player interacts** | Hire from the market row (**1 action**) and **choose the destination business**. The destination must match `allowedBusinessTypes` and have a free employment slot (`max(1, level + 1)` per business). Relocating an employed member to another business costs **1 action**; the initial placement at hire is free. | Hire from the market row (**1 action**) and the member joins the company immediately — no placement step, no relocation. Its ability applies from the next IncomePhase. |
+| **How the player interacts** | Hire from the market row (**1 action**) and **choose the destination business**. The destination must match `allowedBusinessTypes`, have a free employment slot (`max(1, level + 1)` per business) and, in competitive play, be a business the acting seat **owns**. Relocating an employed member to another business costs **1 action** and is subject to the same ownership restriction; the initial placement at hire is free. | Hire from the market row (**1 action**) and the member joins the company immediately — no placement step, no relocation. Its ability applies from the next IncomePhase. |
 | **Design purpose** | **Business-level efficiency and profit**: raise one business's output, lower its costs, or strengthen its immediate cluster. | **Widen what the player can do in a turn**: capacity, tempo, information and prices. |
 | **Card-data marker** | `handSlotsAdded = 0`; the ability is expressed as a per-business buff. | At least one player-scope ability field (`handSlotsAdded > 0`, `actionsPerTurn`, `peekOncePerTurn`, `refreshCostDiscount` or `taxAuditRate`). |
 
@@ -553,12 +553,12 @@ Every staff card does **not** occupy a hand slot. Salaries are ongoing per-turn 
 1. **The type is a property of the card template.** It is fixed at design time and printed on the card; the player never chooses the type, only (for business staff) the destination business.
 2. **The runtime determinant is assignment.** A staff member is **business staff** if and only if it carries an `employedAtSlot` — the street-grid slot index of the business that employs it. A staff member with no `employedAtSlot` is **management-company staff**. This is the single testable rule the rest of the system derives from.
 3. **Assignment rules.**
-   - Hiring business staff **requires** a destination business: the destination must match the member's `allowedBusinessTypes` (business names and/or synergy types) and have a free employment slot (`max(1, level + 1)`; a level-0 business has one).
+   - Hiring business staff **requires** a destination business: the destination must match the member's `allowedBusinessTypes` (business names and/or synergy types), have a free employment slot (`max(1, level + 1)`; a level-0 business has one) and, in competitive play, belong to the acting seat — an opponent-owned destination is rejected with the shared `That business belongs to <seat>.` reason (MS-0MWBCWLZY001EA3W).
    - Hiring management-company staff **never** asks for a destination, and an attempt to place one on a business is rejected.
-   - Only business staff may be relocated; relocation costs 1 action and is atomic with a successful move (an illegal attempt spends nothing) and is undoable.
+   - Only business staff may be relocated; relocation costs 1 action and is atomic with a successful move (an illegal attempt spends nothing) and is undoable. Relocation inherits the placement rules above, so in competitive play a member may only be moved to a business the acting seat owns.
 4. **Salaries.** Every employed member — of either type — adds its ongoing cost to the IncomePhase deduction. The deduction is clamped at 0 coins (the player is never driven negative) and logged.
-5. **Lay-off.** Letting a member go is available from the Manage Card dialog of the business that employs it (business staff) or from the company roster (management-company staff). Lay-off costs one turn's salary (clamped at 0) and 1 reputation; the member's buffs stop applying from the next IncomePhase.
-6. **Applicants.** The per-turn walk-on applicant flow hires at 0 coins and consumes no action. The applicant's type decides the flow: a business-staff applicant targets a business with a free slot (drawn from the deployed businesses), a management-company applicant joins the company.
+5. **Lay-off.** Letting a member go happens from the Manage Card dialog of the business that employs it (**business staff** — one row per employed member, each with its own `[ Move ]` and `[ Lay off ]`; MS-0MWC952QU000HQ11) or from the company roster (**management-company staff**). Every door names the **member the player picked** and quotes the price in a **confirm step** before any charge is made; the confirmed lay-off costs one turn's salary (clamped at 0) plus a reputation penalty of `max(100, ceil(salary / 100) × 100)` — reputation ships in ×100 units, so the GDD's original flat "1 reputation" equals this formula's 100-unit floor (MS-0MWC1T8K2000DWZA). The rule is applied uniformly to every lay-off, management-company and business staff alike; the member's buffs stop applying from the next IncomePhase.
+6. **Applicants.** The per-turn walk-on applicant flow hires at 0 coins and consumes no action. The applicant's type decides the flow: a business-staff applicant targets a business with a free slot (drawn from the acting seat's own deployed businesses — in competitive play an opponent's businesses are never candidates, MS-0MWBCWVYC007F6VJ), a management-company applicant joins the company.
 
 #### D.4.3 Business staff — roles and impacts
 
@@ -568,10 +568,10 @@ Business staff are the **specialists**: each is employed at one business and pay
 |---|---|---|---|---|---|---|
 | `staff-barista` | Barista | 2 | 50 | Any Cafe, or any Food-type business | **+20 coins/turn** to **each adjacent Food business** (flat synergy coin) | — |
 | `staff-baker` | Baker | 2 | 80 | Any Bakery, or any Food-type business | **+25 coins/turn** to **its own business** | Narrowed from adjacent Food businesses to its own business |
-| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy, before market saturation) | Narrowed from nearby Food businesses to its own business |
+| `staff-chef` | Chef | 3 | 100 | Cafe, Diner, Delicatessen, or any Food business | **+20% coin income** to **its own business** (applied after synergy and after the duplicate-business market-saturation reduction) | Narrowed from nearby Food businesses to its own business |
 | `staff-florist` | Florist | 2 | 75 | Any Flower Shop, or any Commerce/Culture business | **+30 coins/turn** to **each adjacent Commerce or Culture business** | — |
 | `staff-mechanic` | Mechanic | 3 | 90 | Hardware Store, or any Service business | **+30 coins/turn** to **its own Service business** | — |
-| `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded up, floored at 0) | — |
+| `staff-bookkeeper` | Bookkeeper | 2 | 50 | Commerce, Food or Service business | **−20% ongoing cost** of **its own business** (rounded to the nearest integer, floored at 0) | — |
 | `staff-financial` | Financial Advisor | 5 | 125 | Commerce business | **−100 coins** on **each upgrade** purchased for **its own business** (floored at 0) | — |
 | `staff-it` | IT Specialist | 4 | 100 | Commerce, Entertainment or Service business | **+1 synergy range** for **its own business** (it links with businesses up to 2 slots away) | Was a street-wide −100 market-refresh discount (player-scoped; did not fit the business-staff scope) |
 | `staff-delivery` | Delivery Driver | 2 | 50 | Food or Commerce business | **−50 coins** on the purchase cost of **any business placed adjacent to its own business** | Was a street-wide purchase discount |
@@ -627,7 +627,7 @@ The three-tier model that previously occupied this appendix (Assistant / Manager
 
 - It described staff as a single lever (**hand slots**) with three magnitudes; the roster now has **two types and 26 distinct roles**, and 17 of the 26 grant **no hand capacity at all**.
 - It had no notion of *where* a staff member works, so it could not express business-scoped effects.
-- Its lay-off rule ("removing random hand cards equal to slots provided") contradicted the implemented lay-off: one turn's salary plus 1 reputation.
+- Its lay-off rule ("removing random hand cards equal to slots provided") contradicted the implemented lay-off: one turn's salary plus a salary-scaled reputation penalty (see D.4.2 §5).
 
 | Old tier (superseded) | Old benefit and cost | Replaced by |
 |---|---|---|
@@ -654,7 +654,7 @@ The section is deliberately precise enough to drive implementation and audit. Th
 2. **Scope.** A business-staff buff resolves **only** against its `employedAtSlot` business or that business's 8-way neighbours. A management-company buff resolves against the player and must not touch an individual business's income or reputation.
 3. **Capacity marker.** `handSlotsAdded > 0` implies management-company staff; business staff always have `handSlotsAdded = 0`.
 4. **Player-scope fields are management-company-only.** `actionsPerTurn`, `peekOncePerTurn`, `refreshCostDiscount` and `taxAuditRate` must not be set on a business-staff template. Business-staff reputation and cost effects must be modelled as per-business buffs, not through the street-wide `reputationPerTurn` field.
-5. **Employment capacity.** A business holds at most `max(1, level + 1)` staff members, and a member may only be placed at a business matching its `allowedBusinessTypes`.
+5. **Employment capacity and ownership.** A business holds at most `max(1, level + 1)` staff members, and a member may only be placed or relocated to a business matching its `allowedBusinessTypes` that, in competitive play, the acting seat owns (`canActiveSeatActOnSlot`; every employment write path also asserts it).
 6. **Removal is complete.** Selling a business or laying off a member removes the effect and the salary from the same IncomePhase; no buff survives its employment.
 7. **Determinism.** Every staff effect is deterministic given the seeded RNG; the Investor's re-roll bias, the Lookout's peek and the Health & Safety Inspector's incident avert all consume the documented RNG stream only.
 

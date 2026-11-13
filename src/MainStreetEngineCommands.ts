@@ -25,7 +25,9 @@ import type { ActiveLoan, LoanOption } from './MainStreetStateTypes';
 import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
-import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, computeBusinessOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
+import { layOffReputationCost } from './MainStreetRoster';
 import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
 import { addLog, addLogShared, describeEventEffects, classifyEffect, syncResourceBankToLedger } from './MainStreetState';
@@ -84,6 +86,9 @@ export function placeFromHand(
     throw new Error(`Not enough coins to place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
   }
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a paid placement from hand is
+  // a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
 
   // Remove from hand and place on tableau
   hand.splice(handIndex, 1);
@@ -100,6 +105,7 @@ export function placeFromHand(
       ? `Placed ${card.name} from hand in slot ${slotIndex} (-€${price}, 50% premium, ${describeEventEffects(-price, 0)})`
       : `Placed ${card.name} from hand in slot ${slotIndex} (-€${price}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 }
 
@@ -137,11 +143,14 @@ export function sellFromHand(
 
   // Credit coins
   state.resourceBank.coins += sellValue;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a hand-card sale is a market
+  // sale for the one-off row.
+  recordOneOffAttribution(state, { marketSaleProceeds: sellValue });
 
   // Add to discard pile
   state.discardPile.push(card as any);
 
-  addLog(state, `Sold ${card.name} from hand for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0));
+  addLog(state, `Sold ${card.name} from hand for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0), 'sell');
 }
 
 /**
@@ -190,11 +199,14 @@ export function sellFromTableau(
 
   // Credit coins
   state.resourceBank.coins += sellValue;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a tableau sale is a market
+  // sale for the one-off row.
+  recordOneOffAttribution(state, { marketSaleProceeds: sellValue });
 
   // Add to discard pile
   state.discardPile.push(card as any);
 
-  addLog(state, `Sold ${card.name} from slot ${slotIndex} for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0));
+  addLog(state, `Sold ${card.name} from slot ${slotIndex} for +${sellValue} coins (${describeEventEffects(sellValue, 0)})`, classifyEffect(sellValue, 0), 'sell');
 }
 
 /**
@@ -481,6 +493,25 @@ export function applyCommunitySpaceOngoingCosts(state: MainStreetState, opts?: {
 }
 
 /**
+ * Effective per-business ongoing cost after a business-staff reduction
+ * (the Bookkeeper's −20%, GDD D.4.3).
+ *
+ * The reduction is scoped to the employing business (own-business only), so a
+ * Bookkeeper next door never discounts this slot. The reduced cost is
+ * integer-rounded with the shared primitive and floored at 0, then the
+ * street-wide Cost Cutter reduction is applied to the aggregate by the caller.
+ * Pure; consumes no RNG.
+ */
+function effectiveBusinessOngoingCost(
+  state: MainStreetState,
+  slotIndex: number,
+  ongoingCost: number,
+): number {
+  const reduction = computeBusinessOngoingCostReductionPct(state, slotIndex);
+  return reduction > 0 ? Math.max(0, roundInt(ongoingCost * (1 - reduction))) : ongoingCost;
+}
+
+/**
  * Applies ongoing costs for business cards each turn.
  * Deducts each business card's `ongoingCost` (e.g. 50 coins/turn) from coins,
  * for every business card held in hand OR placed on the street grid.
@@ -511,7 +542,7 @@ export function applyBusinessOngoingCosts(state: MainStreetState, opts?: { apply
     if (state.soldSlots[i]) continue; // Sold cards do not incur ongoing costs
     const cost = (slot as BusinessCard).ongoingCost ?? 0;
     if (cost > 0) {
-      totalCost += cost;
+      totalCost += effectiveBusinessOngoingCost(state, i, cost);
       bizCount += 1;
     }
   }
@@ -630,16 +661,21 @@ export function applyCompetitiveOngoingCosts(state: MainStreetState): Map<number
     if (state.soldSlots[i]) continue; // Sold cards do not incur ongoing costs
     const cost = (slot as BusinessCard).ongoingCost ?? 0;
     if (cost <= 0) continue;
+    // The Bookkeeper's per-business reduction applies to business slots only
+    // (community spaces cannot employ business staff); it lands before the
+    // street-wide Cost Cutter aggregate reduction below (GDD D.4.3).
+    const effectiveCost =
+      slot.family === 'business' ? effectiveBusinessOngoingCost(state, i, cost) : cost;
     const ownerId = getSlotOwnerId(state, i);
-    ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + cost);
+    ownerCosts.set(ownerId, (ownerCosts.get(ownerId) ?? 0) + effectiveCost);
     const counts = ownerCounts.get(ownerId) ?? { businesses: 0, spaces: 0 };
     const familyCosts = ownerFamilyCosts.get(ownerId) ?? { community: 0, business: 0 };
     if (slot.family === 'community-space') {
       counts.spaces += 1;
-      familyCosts.community += cost;
+      familyCosts.community += effectiveCost;
     } else {
       counts.businesses += 1;
-      familyCosts.business += cost;
+      familyCosts.business += effectiveCost;
     }
     ownerCounts.set(ownerId, counts);
     ownerFamilyCosts.set(ownerId, familyCosts);
@@ -773,9 +809,9 @@ export function layoffStaffCard(
       hand.splice(idx, 1);
     }
 
-    addLog(state, `Laid off ${card.name}: removed ${cardsToRemove} hand card(s) (${removedCards.join(', ')})`, 'loss');
+    addLog(state, `Laid off ${card.name}: removed ${cardsToRemove} hand card(s) (${removedCards.join(', ')})`, 'loss', 'lay-off');
   } else {
-    addLog(state, `Laid off ${card.name}: no hand cards to remove`, 'neutral');
+    addLog(state, `Laid off ${card.name}: no hand cards to remove`, 'neutral', 'lay-off');
   }
 
   // Return the staff card to discards.staff for the general market pipeline (CG-0MT3KZNQB0053K55).
@@ -839,6 +875,9 @@ export function buyAndPlaceBusiness(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a buy-and-place from the
+  // market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
   state.market.cards.splice(marketIndex, 1);
   state.streetGrid[slotIndex] = card as BusinessCard;
 
@@ -859,6 +898,7 @@ export function buyAndPlaceBusiness(
     state,
     `Bought & placed ${card.name} in slot ${slotIndex} (-€${price}, ${price === premiumCost ? '50% premium' : 'listed'}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 
   return { card, cost: price, refilled: false };
@@ -919,6 +959,33 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
 }
 
 /**
+ * Defensive ownership assertion for the employment write paths
+ * (MS-0MWBCWLZY001EA3W).
+ *
+ * Every path that makes a staff member employed calls this immediately before
+ * mutating `business.employedStaff` / `staff.employedAtSlot`, so a UI, AI or
+ * headless caller can never persist an employment at a business the acting
+ * seat does not own — even if it bypassed `canPlaceStaffOnBusiness` /
+ * `canMoveStaffOnBusiness`.
+ *
+ * Delegates to {@link canActiveSeatActOnSlot}, the single shared ownership
+ * predicate (it resolves the owner via `getSlotOwnerId` and names it via
+ * `getSeatLabel`), and rethrows its reason so the message is identical to
+ * every other cross-owner rejection (`That business belongs to <seat>.`).
+ * Single-player states carry no `ownerTaggedGrid`, so this is a no-op there.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Employment destination slot.
+ * @throws Error naming the real owner when the acting seat does not own it.
+ */
+function assertActiveSeatOwnsSlot(state: MainStreetState, slotIndex: number): void {
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    throw new Error(ownership.reason);
+  }
+}
+
+/**
  * Validates whether the hired staff member may be placed at the given
  * street-grid slot (CG-0MU3BTSQ8006ZRCU AC3/AC4):
  * - the member must be a hired staff card (present in `state.staffCards`);
@@ -926,6 +993,8 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  *   employed by the player and never take a business destination
  *   (GDD D.4.2, MS-0MW3JXF6U00753LB);
  * - the slot must hold a business/community-space card;
+ * - in competitive mode the acting seat must own the destination slot (the
+ *   single-player no-op path is unchanged — no `ownerTaggedGrid`);
  * - the business name or one of its synergy types must match the staff's
  *   `allowedBusinessTypes` (`staffMatchesBusiness`; absent field = generalist);
  * - the slot must have a free employment slot (`getEmploymentCapacity`).
@@ -933,7 +1002,9 @@ export function getEmployedStaffForBusiness(state: MainStreetState, slotIndex: n
  * @param state     Current game state.
  * @param staffId   ID of the hired staff card to place.
  * @param slotIndex Street-grid slot index.
- * @returns LegalityResult — legal when the placement may proceed.
+ * @returns LegalityResult — legal when the placement may proceed. In
+ *          competitive mode an opponent-owned destination is rejected with
+ *          the shared ownership reason (`That business belongs to <seat>.`).
  */
 export function canPlaceStaffOnBusiness(
   state: MainStreetState,
@@ -962,6 +1033,15 @@ export function canPlaceStaffOnBusiness(
   const business = state.streetGrid[slotIndex];
   if (!business) {
     return { legal: false, reason: 'Cannot place staff on an empty slot.' };
+  }
+  // Ownership gate (competitive only, MS-0MWBCWLZY001EA3W): a seat may only
+  // employ staff at a business it owns. Placed before the type/capacity checks
+  // so the ownership reason wins for an opponent-owned destination;
+  // single-player carries no `ownerTaggedGrid`, so the gate is a no-op and
+  // the existing reason ordering is unchanged there.
+  const ownership = canActiveSeatActOnSlot(state, slotIndex);
+  if (!ownership.legal) {
+    return ownership;
   }
   if (!staffMatchesBusiness(state.staffCards[staffIndex]!, business)) {
     return {
@@ -1011,6 +1091,11 @@ export function isStaffRelocation(
  * `canPlaceStaffOnBusiness`. The initial placement of a newly-hired member
  * is not a move — use `canPlaceStaffOnBusiness` for that path.
  *
+ * Relocation therefore inherits the competitive ownership gate from
+ * `canPlaceStaffOnBusiness` with no duplicate check: an opponent-owned
+ * destination is rejected with the shared `That business belongs to <seat>.`
+ * reason. Single-player states are unaffected.
+ *
  * @param state     Current game state.
  * @param staffId   ID of the hired staff card to move.
  * @param slotIndex Target street-grid slot index.
@@ -1048,13 +1133,18 @@ export function canMoveStaffOnBusiness(
  * @param staffId   ID of the hired, employed staff card to move.
  * @param slotIndex Destination street-grid slot index.
  * @throws Error when the relocation is illegal (not employed, same slot,
- *         type mismatch, full destination, empty slot).
+ *         type mismatch, full destination, empty slot, or — competitive only —
+ *         an opponent-owned destination).
  */
 export function moveStaffOnBusiness(
   state: MainStreetState,
   staffId: string,
   slotIndex: number,
 ): void {
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): refuse to relocate a
+  // member onto another seat's business even if this write path ever bypassed
+  // `canMoveStaffOnBusiness`.
+  assertActiveSeatOwnsSlot(state, slotIndex);
   const legality = canMoveStaffOnBusiness(state, staffId, slotIndex);
   if (!legality.legal) {
     throw new Error(legality.reason);
@@ -1077,13 +1167,18 @@ export function moveStaffOnBusiness(
  * @param staffId   ID of the hired staff card to place.
  * @param slotIndex Street-grid slot index.
  * @throws Error when the placement is illegal (type mismatch, full slot,
- *         un-hired member, empty slot).
+ *         un-hired member, empty slot, or — competitive only — an
+ *         opponent-owned destination).
  */
 export function placeStaffOnBusiness(
   state: MainStreetState,
   staffId: string,
   slotIndex: number,
 ): void {
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): never persist an
+  // employment at a slot the acting seat does not own, even if this write
+  // path ever bypassed `canPlaceStaffOnBusiness`.
+  assertActiveSeatOwnsSlot(state, slotIndex);
   const legality = canPlaceStaffOnBusiness(state, staffId, slotIndex);
   if (!legality.legal) {
     throw new Error(legality.reason);
@@ -1175,10 +1270,30 @@ export function hasFreeEmploymentSlot(state: MainStreetState, slotIndex: number)
 const APPLICANT_CHANCE_CAP = 15;
 
 /**
+ * Predicate: is this street slot owned by the acting seat?
+ *
+ * Reuses the single canonical ownership resolver {@link getSlotOwnerId}, whose
+ * untagged fallback is the active player, so single-player states (no
+ * `ownerTaggedGrid`) always compare equal and the filter is a no-op there. In
+ * competitive play an opponent-owned slot is excluded, so applicant
+ * eligibility never reaches across seats.
+ *
+ * @param state     Current game state (read-only).
+ * @param slotIndex Street-grid slot index.
+ * @returns True when the acting seat owns the slot (always true single-player).
+ */
+function isActingSeatOwnedSlot(state: MainStreetState, slotIndex: number): boolean {
+  return getSlotOwnerId(state, slotIndex) === (state.activePlayerId ?? 0);
+}
+
+/**
  * Computes the staff-applicant trigger chance: min(income + reputation, 15).
  *
- * Sum of baseIncome from all placed businesses
- * plus all reputationPerTurn (business + staff) on the street.
+ * Sum of baseIncome from the acting seat's own placed businesses plus their
+ * reputationPerTurn (business + staff) on the street. In competitive play an
+ * opponent's businesses contribute nothing, so they never raise the player's
+ * applicant odds; single-player states (no `ownerTaggedGrid`) sum every placed
+ * business exactly as before.
  *
  * @param state     Current game state.
  * @returns Effective income+reputation sum (before the 15% cap).
@@ -1188,14 +1303,14 @@ export function computeApplicantChance(state: MainStreetState): number {
   let totalIncome = 0;
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
-    if (card && (card.family === 'business' || card.family === 'community-space')) {
+    if (card && (card.family === 'business' || card.family === 'community-space') && isActingSeatOwnedSlot(state, i)) {
       totalIncome += card.baseIncome;
     }
   }
   // Add reputationPerTurn from businesses
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
-    if (card && (card.family === 'business' || card.family === 'community-space')) {
+    if (card && (card.family === 'business' || card.family === 'community-space') && isActingSeatOwnedSlot(state, i)) {
       totalIncome += card.reputationPerTurn ?? 0;
     }
   }
@@ -1203,7 +1318,13 @@ export function computeApplicantChance(state: MainStreetState): number {
 }
 
 /**
- * Checks whether there is at least one business with a free employment slot.
+ * Checks whether the acting seat has at least one business with a free
+ * employment slot.
+ *
+ * In competitive play only the acting seat's own businesses count (reusing
+ * {@link isActingSeatOwnedSlot}); an opponent business with a free slot no
+ * longer makes an applicant eligible. Single-player states (no
+ * `ownerTaggedGrid`) are unchanged.
  *
  * @param state     Current game state.
  * @returns True when at least one eligible business exists.
@@ -1212,15 +1333,19 @@ function hasEligibleBusiness(state: MainStreetState): boolean {
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
     if (card && (card.family === 'business' || card.family === 'community-space')) {
-      if (hasFreeEmploymentSlot(state, i)) return true;
+      if (isActingSeatOwnedSlot(state, i) && hasFreeEmploymentSlot(state, i)) return true;
     }
   }
   return false;
 }
 
 /**
- * Picks a random eligible business slot (one with a free employment slot),
- * weighted uniformly across eligible slots.
+ * Picks a random eligible business slot — one owned by the acting seat that
+ * has a free employment slot — weighted uniformly across eligible slots.
+ *
+ * In competitive play opponent-owned businesses are never candidates, so a
+ * walk-on is only ever targeted at the acting seat's own street. Single-player
+ * states (no `ownerTaggedGrid`) are unchanged.
  *
  * @param state     Current game state.
  * @returns The chosen slot index, or -1 when no eligible slot exists.
@@ -1230,7 +1355,7 @@ function pickTargetSlot(state: MainStreetState): number {
   for (let i = 0; i < state.streetGrid.length; i++) {
     const card = state.streetGrid[i];
     if (card && (card.family === 'business' || card.family === 'community-space')) {
-      if (hasFreeEmploymentSlot(state, i)) eligible.push(i);
+      if (isActingSeatOwnedSlot(state, i) && hasFreeEmploymentSlot(state, i)) eligible.push(i);
     }
   }
   if (eligible.length === 0) return -1;
@@ -1242,16 +1367,26 @@ function pickTargetSlot(state: MainStreetState): number {
  * Resolves whether a staff applicant appears at day start. Uses the seeded
  * `state.rng` for determinism. Chance = min(income+rep, 15)%.
  *
+ * In competitive play eligibility — the target slot, the chance sum and the
+ * type-gate pool — is restricted to the acting seat's own businesses, so an AI
+ * opponent's street presence neither raises the player's applicant rate nor
+ * unlocks a specialist the player cannot employ. Single-player states (no
+ * `ownerTaggedGrid`) are unchanged because the ownership predicate is a no-op
+ * there.
+ *
  * When triggered:
- * - Picks a random business with a free employment slot as the target.
+ * - Picks a random business owned by the acting seat with a free employment
+ *   slot as the target.
  * - Draws a random StaffCard **with a business-type match** from the staff
  *   deck (CG-0MU3BTRGY0086CM9): only staff whose `allowedBusinessTypes`
- *   match at least one deployed business may walk on; generalist staff
- *   remain eligible (fallback). With no matching business at all, no
- *   applicant appears (the roll is consumed).
+ *   match at least one of the acting seat's own deployed businesses may walk
+ *   on; generalist staff remain eligible (fallback). With no matching business
+ *   at all, no applicant appears (the roll is consumed).
  * - Sets `pendingApplicant = { card, targetSlotIndex }`.
  *
- * When no eligible business exists or the RNG roll fails, nothing happens.
+ * When the acting seat owns no eligible business or the RNG roll fails,
+ * nothing happens (the day's trigger is consumed exactly as the existing
+ * "no eligible business" behaviour).
  *
  * @param state     Current game state (mutated — sets pendingApplicant).
  */
@@ -1291,7 +1426,8 @@ export function resolveStaffApplicant(state: MainStreetState): void {
   let pool: readonly StaffCard[] = staffDeck;
   if (!state.forcedStaffApplicant) {
     const deployed = state.streetGrid.filter(
-      (c): c is BusinessCard | CommunitySpaceCard => c != null,
+      (c, i): c is BusinessCard | CommunitySpaceCard =>
+        c != null && isActingSeatOwnedSlot(state, i),
     );
     pool = staffDeck.filter((c) => deployed.some((b) => staffMatchesBusiness(c, b)));
     if (pool.length === 0) return;
@@ -1333,7 +1469,8 @@ export function canHireStaffApplicant(state: MainStreetState): boolean {
  * Salary is deducted in the next income phase via applyStaffOngoingCosts.
  *
  * @param state     Current game state (mutated).
- * @throws Error if no pending applicant or slot is at capacity.
+ * @throws Error if no pending applicant, the slot is at capacity, or — in
+ *         competitive mode — the target business is owned by another seat.
  */
 export function hireStaffApplicant(state: MainStreetState): void {
   const pending = (state as any).pendingApplicant;
@@ -1343,6 +1480,12 @@ export function hireStaffApplicant(state: MainStreetState): void {
   if (!canHireStaffApplicant(state)) {
     throw new Error('Target slot is at employment capacity');
   }
+
+  // Defensive ownership assertion (MS-0MWBCWLZY001EA3W): the applicant-hire
+  // path never runs the placement legality helper, so it guards ownership
+  // itself before adding the member to `staffCards` / the business's
+  // `employedStaff`. No-op single-player.
+  assertActiveSeatOwnsSlot(state, pending.targetSlotIndex as number);
 
   const card = { ...(pending.card as StaffCard), employedAtSlot: pending.targetSlotIndex } as StaffCard;
 
@@ -1374,9 +1517,16 @@ export function declineStaffApplicant(state: MainStreetState): void {
 
 /**
  * Lets go a staff member at the given index: removes from staffCards,
- * deducts 1 turn's salary (clamped at 0) from coins, and deducts 1
- * reputation. Buffs from this member stop applying from the next income
- * phase (handled automatically — the member is removed before income).
+ * deducts 1 turn's salary (clamped at 0) from coins, and deducts the
+ * salary-scaled lay-off reputation cost (clamped at 0). Buffs from this
+ * member stop applying from the next income phase (handled automatically —
+ * the member is removed before income).
+ *
+ * The reputation charge is `max(100, ceil(salary / 100) × 100)` — see
+ * {@link layOffReputationCost}. Reputation ships in ×100 display units, so the
+ * GDD D.4.2 §5 "1 reputation" rule (written before the rescale) is this
+ * formula's 100-unit floor. The rule is applied uniformly to every lay-off
+ * door because they all funnel through this function (MS-0MWC1T8K2000DWZA).
  *
  * @param state     Current game state (mutated).
  * @param idx       Index of the staff member to let go.
@@ -1390,9 +1540,13 @@ export function letGoStaffMember(state: MainStreetState, idx: number): void {
   const skills = getSalaryScopeSkills(member);
   const salary = computeStaffSalaryCost(skills, member.ongoingCost);
 
-  // Deduct salary (clamped at 0) and 1 reputation
+  // Deduct salary (clamped at 0) and the salary-scaled reputation cost
+  // (×100 units, clamped at 0) — MS-0MWC1T8K2000DWZA.
   state.resourceBank.coins = Math.max(0, state.resourceBank.coins - salary);
-  state.resourceBank.reputation = Math.max(0, state.resourceBank.reputation - 1);
+  state.resourceBank.reputation = Math.max(
+    0,
+    state.resourceBank.reputation - layOffReputationCost(salary),
+  );
 
   // Remove from staffCards
   state.staffCards.splice(idx, 1);
@@ -1495,6 +1649,7 @@ function recordLoan(
   state: MainStreetState,
   optionIndex: number,
   ownerId?: number,
+  source: 'taken' | 'bailout' = 'taken',
 ): ActiveLoan {
   const seatId = loanOwnerId(state, ownerId);
   const option = optionsFor(state)[optionIndex];
@@ -1503,6 +1658,14 @@ function recordLoan(
   state.loans = state.loans ?? [];
   state.loans.push(loan);
   creditLoanPrincipal(state, seatId, loan.principal);
+  // One-off attribution (MS-0MWBZDNH3006DXV7): the principal credit lands in
+  // the one-off residual, so it is attributed to the loan source — the
+  // MarketPhase take (`loanTaken`) or an accepted bailout (`loanBailout`).
+  recordOneOffAttribution(
+    state,
+    source === 'bailout' ? { loanBailout: loan.principal } : { loanTaken: loan.principal },
+    seatId,
+  );
 
   addLog(
     state,
@@ -1511,6 +1674,7 @@ function recordLoan(
       `${loan.termTurns} turns (€${loan.totalRepayment} total) ` +
       `(${describeEventEffects(loan.principal, 0)})`,
     classifyEffect(loan.principal, 0),
+    'take-loan',
   );
 
   return loan;
@@ -1564,7 +1728,7 @@ export function acceptLoanOffer(
   // Clear the decision before recording the loan: the offer must not survive
   // as a second decision, and `recordLoan` bypasses the pending-offer gate.
   state.pendingLoanOffer = null;
-  return recordLoan(state, menuIndex, pending.ownerId);
+  return recordLoan(state, menuIndex, pending.ownerId, 'bailout');
 }
 
 /**

@@ -21,6 +21,7 @@ import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
 import { canAddToHand, validateHandIndex } from './MainStreetMarketHand';
 import { computeUpgradeCostDiscount, computePurchaseCostDiscount } from './MainStreetStaffBuffs';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 
 /**
  * Effective coin cost of an upgrade at a specific business, after the
@@ -504,6 +505,10 @@ export function purchaseBusiness(
 
   // Deduct effective (discounted) cost
   state.resourceBank.coins -= effectiveCost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a business bought and placed
+  // is a market purchase — it lands in the one-off residual, so the
+  // breakdown records the spend under Market purchase.
+  recordOneOffAttribution(state, { marketPurchaseCost: -effectiveCost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -528,7 +533,7 @@ export function purchaseBusiness(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0));
+  addLog(state, `Placed ${card.name} in slot ${slotIndex} (-€${effectiveCost}, ${describeEventEffects(-effectiveCost, 0)})`, classifyEffect(-effectiveCost, 0), 'place-business');
 
   return { card, cost: effectiveCost, refilled };
 }
@@ -645,6 +650,9 @@ export function playUpgradeFromHand(
   }
 
   state.resourceBank.coins -= cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade played from hand
+  // at its discounted cost is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -cost });
   state.hand.splice(handIndex, 1);
 
   business.level += 1;
@@ -659,7 +667,7 @@ export function playUpgradeFromHand(
   business.displayName = upgrade.newDisplayName || business.displayName;
   updateNeighborsOnPlacement(state, businessIndex);
 
-  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLog(state, `Played upgrade ${upgrade.name} from hand onto ${business.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0), 'play-upgrade');
 
   return { card: upgrade, cost, refilled: false };
 }
@@ -703,10 +711,18 @@ export function playEventFromHand(
 
   const coinDelta = state.resourceBank.coins - coinsBefore;
   const repDelta = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an Investment event played
+  // during the MarketPhase is a one-off — its NET coin/reputation effect
+  // (listed cost + resolved effects) is attributed to the Event play source.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinDelta,
+    eventPlayRepEffect: repDelta,
+  });
   addLog(
     state,
     `Played event ${event.name} from hand (-€${event.cost}, ${describeEventEffects(coinDelta, repDelta)})`,
     classifyEffect(coinDelta, repDelta),
+    'play-event',
   );
 
   // F3 (epic MS-0MUYC47EL005Z69H): an eligible organiser event raises one
@@ -777,6 +793,9 @@ export function purchaseUpgrade(
   // CG-0MTKMGL66004I0PC). The discount applies to the listed base cost.
   const cost = effectiveUpgradeCost(state, card, businessIndex);
   state.resourceBank.coins -= cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade purchased from the
+  // market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -cost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -801,7 +820,7 @@ export function purchaseUpgrade(
   // Note: market is not refilled immediately. Replenishment occurs at start of next turn.
   const refilled = false;
 
-  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0));
+  addLog(state, `Upgraded ${business.name} with ${card.name} (-€${cost}, ${describeEventEffects(-cost, 0)})`, classifyEffect(-cost, 0), 'play-upgrade');
 
   return { card, cost, refilled };
 }
@@ -943,6 +962,9 @@ export function buyAndPlaceUpgrade(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade bought and applied
+  // from the market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -971,6 +993,7 @@ export function buyAndPlaceUpgrade(
     state,
     `Bought and placed upgrade ${card.name} on ${business.name} (-€${price}, ${price === premiumCost ? '50% premium' : 'listed'}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'play-upgrade',
   );
 
   return { card, cost: price, refilled };
@@ -1022,7 +1045,7 @@ export function purchaseEvent(
 
   (state as any).justMovedEventCardId = card.id;
 
-  addLog(state, `Moved event ${card.name} to hand (1 action, pay on play)`, 'neutral');
+  addLog(state, `Moved event ${card.name} to hand (1 action, pay on play)`, 'neutral', 'move-to-hand');
 
   return { card, cost: 0, refilled };
 }
@@ -1075,6 +1098,9 @@ export function purchaseStaffCard(
 
   // Deduct cost
   state.resourceBank.coins -= card.cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a staff hire from the market
+  // row is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -card.cost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -1085,7 +1111,7 @@ export function purchaseStaffCard(
   // Increase max hand size
   state.maxHandSize += card.handSlotsAdded;
 
-  addLog(state, `Hired ${card.name} (+${card.handSlotsAdded} hand slots, -€${card.cost}, ongoing €${card.ongoingCost}/turn) (${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0));
+  addLog(state, `Hired ${card.name} (+${card.handSlotsAdded} hand slots, -€${card.cost}, ongoing €${card.ongoingCost}/turn) (${describeEventEffects(-card.cost, 0)})`, classifyEffect(-card.cost, 0), 'hire-staff');
 }
 
 // ── Sell Business (Street Grid) ──────────────────────────────
