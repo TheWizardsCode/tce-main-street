@@ -91,6 +91,7 @@ import {
   buildPLFromCompetitiveRow,
   buildPLProjection,
   buildTurnSummary,
+  expenseLineBreakdownForOwner,
   type PLStatementLine,
   type PLStatementSection,
 } from '../../src/scenes/MainStreetTurnSummary';
@@ -1221,6 +1222,145 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
     }
     // The committed category totals themselves are unchanged by the missing detail.
     expect(human.expenses.map((line) => line.coins)).toEqual([-100, -20, -15]);
+  });
+});
+
+// ── Owner-filtered expense breakdown derivation (MS-0MWEGDNAD009QDRO) ──────
+//
+// The model half of the parent epic: `expenseLineBreakdownForOwner` derives
+// ONE owner's per-card breakdown from that owner's own committed cards, and
+// the single-player `expenseLineBreakdown` delegates to it (owner 0), so
+// single-player output is unchanged. These assertions pin the derivation
+// directly at the model level; the threading into competitive rows is the
+// sibling child MS-0MWEGDNP300007WC (whose tracers sit in the block above).
+
+describe('owner-filtered expense breakdown derivation (MS-0MWEGDNAD009QDRO)', () => {
+  it('derives each seat’s staff breakdown from its own staffCards, base + named modifiers', () => {
+    const { state } = competitiveExpenseFixture();
+    expect(expenseLineBreakdownForOwner(state, 0, 'staff')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'Pat the Manager', coins: -50, base: -100, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+          { name: 'Sam the Clerk', coins: -30, base: -30, modifiers: [] },
+        ],
+      },
+    });
+    expect(expenseLineBreakdownForOwner(state, 1, 'staff')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'Moe the Manager', coins: -40, base: -90, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+          { name: 'Ann the Accountant', coins: -30, base: -30, modifiers: [] },
+        ],
+      },
+    });
+  });
+
+  it('derives community and business breakdowns owner-filtered from the street grid', () => {
+    const { state } = competitiveExpenseFixture();
+    expect(expenseLineBreakdownForOwner(state, 0, 'community')).toEqual({
+      breakdown: { items: [{ name: 'Human Park', coins: -20, base: -20 }] },
+    });
+    expect(expenseLineBreakdownForOwner(state, 0, 'business')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'Human Bakery', coins: -10, base: -10 },
+          { name: 'Human Cafe', coins: -5, base: -5 },
+        ],
+      },
+    });
+    expect(expenseLineBreakdownForOwner(state, 1, 'community')).toEqual({
+      breakdown: { items: [{ name: 'AI Museum', coins: -8, base: -8 }] },
+    });
+    expect(expenseLineBreakdownForOwner(state, 1, 'business')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'AI Arcade', coins: -15, base: -15 },
+          { name: 'AI Gym', coins: -12, base: -12 },
+        ],
+      },
+    });
+  });
+
+  it('never lists another seat’s cards or sold slots (no cross-seat leakage)', () => {
+    const { state } = competitiveExpenseFixture();
+    const names = (ownerId: number) =>
+      (['staff', 'community', 'business'] as const).flatMap((category) =>
+        expenseLineBreakdownForOwner(state, ownerId, category).breakdown
+          ?.items.map((item) => item.name) ?? []);
+    expect(names(0)).toEqual([
+      'Pat the Manager', 'Sam the Clerk', 'Human Park', 'Human Bakery', 'Human Cafe',
+    ]);
+    expect(names(1)).toEqual([
+      'Moe the Manager', 'Ann the Accountant', 'AI Museum', 'AI Arcade', 'AI Gym',
+    ]);
+    // Sold slots incur no running cost and never appear in a breakdown.
+    expect(names(0)).not.toContain('Sold Emporium');
+    expect(names(1)).not.toContain('Sold Emporium');
+  });
+
+  it('applies the owner-scoped staff reduction and host-scoped community/business reduction', () => {
+    const { state } = competitiveReductionFixture();
+    // Seat 0's own Cost Cutter (owner scope) reduces only its staff.
+    expect(expenseLineBreakdownForOwner(state, 0, 'staff')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'Pat the Manager', coins: -50, base: -100, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+          { name: 'Sam the Clerk', coins: -30, base: -30, modifiers: [] },
+        ],
+        streetReduction: 12,
+      },
+    });
+    // Seat 1's staff carry no Cost Cutter: the HOST's never reduces staff.
+    expect(expenseLineBreakdownForOwner(state, 1, 'staff')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'Moe the Manager', coins: -40, base: -90, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+          { name: 'Ann the Accountant', coins: -30, base: -30, modifiers: [] },
+        ],
+      },
+    });
+    // Community/business reduce via the shared host staff set for every seat.
+    expect(expenseLineBreakdownForOwner(state, 0, 'community')).toEqual({
+      breakdown: {
+        items: [{ name: 'Human Park', coins: -20, base: -20 }],
+        streetReduction: 3,
+      },
+    });
+    expect(expenseLineBreakdownForOwner(state, 1, 'business')).toEqual({
+      breakdown: {
+        items: [
+          { name: 'AI Arcade', coins: -15, base: -15 },
+          { name: 'AI Gym', coins: -12, base: -12 },
+        ],
+        streetReduction: 4,
+      },
+    });
+  });
+
+  it('the single-player breakdown delegates to the owner-0 derivation unchanged', () => {
+    const state = tooltipState();
+    const projection = buildPLProjection(state, plInput(tooltipLedger()))!;
+    for (const category of ['staff', 'community', 'business'] as const) {
+      const line = projection.expenses.lines.find((candidate) => candidate.key === category)!;
+      expect(expenseLineBreakdownForOwner(state, 0, category)).toEqual({
+        breakdown: line.breakdown,
+      });
+    }
+  });
+
+  it('is absent-safe for an unknown owner and for empty sources', () => {
+    const { state } = competitiveExpenseFixture();
+    // An unknown owner (roster exists, id out of range): no breakdown, never a throw.
+    for (const category of ['staff', 'community', 'business'] as const) {
+      expect(expenseLineBreakdownForOwner(state, 999, category)).toEqual({});
+    }
+    // A roster-less state with no cards and no grid yields no breakdown either.
+    const empty = tooltipState();
+    empty.streetGrid = empty.streetGrid.map(() => null);
+    empty.staffCards = [];
+    for (const category of ['staff', 'community', 'business'] as const) {
+      expect(expenseLineBreakdownForOwner(empty, 0, category)).toEqual({});
+    }
   });
 });
 

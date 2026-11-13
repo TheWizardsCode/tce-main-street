@@ -85,8 +85,7 @@
 import type { MainStreetState } from '../MainStreetState';
 import type { LogEntryActionType } from '../MainStreetStateTypes';
 import type { OneOffBreakdownEntry, OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
-import type { BusinessCard } from '../MainStreetCardsTypes';
-import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
+import { getSeatDisplayLabel, getSlotOwnerId } from '../MainStreetAdjacencyOwner';
 import {
   computeIncidentSkillBuffs,
   computeReputationGainMultiplier,
@@ -1316,12 +1315,21 @@ function incomeLineBreakdown(
 const OPERATIONS_MANAGER_SKILL_ID = 'skill-operations-manager';
 
 /**
- * Builds the optional per-item breakdown for one ongoing-expense category.
+ * Builds the optional per-item breakdown for one ongoing-expense category for
+ * ONE owner (MS-0MWEGDNAD009QDRO).
  *
- * Derives per-card costs from the committed state the same way the engine's
- * `applyStaffOngoingCosts` / `applyCommunitySpaceOngoingCosts` /
- * `applyBusinessOngoingCosts` helpers compute them, so the tooltip's per-item
- * figures are the engine's own per-card charges — never invented by the UI.
+ * Derives per-card costs from the owner's own committed cards the same way the
+ * engine's `applyCompetitiveOngoingCosts` / `applyStaffOngoingCosts` /
+ * `applyCommunitySpaceOngoingCosts` / `applyBusinessOngoingCosts` helpers
+ * compute them, so the tooltip's per-item figures are the engine's own
+ * per-card charges — never invented by the UI.
+ *
+ * Sources mirror the engine per category: staff come from the owner's
+ * `players[ownerId].staffCards` (a roster-less / hand-built state falls back
+ * to the shared `state.staffCards`, so the single-player derivation is the
+ * owner-0 derivation over the shared set); community spaces and businesses
+ * come from the owner-filtered `state.streetGrid` via `getSlotOwnerId`,
+ * with sold slots excluded (a sold business no longer runs on the street).
  *
  * Items hold the **base** per-card charge (before the street-wide Cost Cutter
  * reduction and before any available-coins clamp). The tooltip builder
@@ -1336,21 +1344,38 @@ const OPERATIONS_MANAGER_SKILL_ID = 'skill-operations-manager';
  * their only modifier is street-wide (`streetReduction`), so none is
  * synthesised per item.
  *
+ * The street-wide reduction mirrors `applyCompetitiveOngoingCosts`: staff
+ * salaries reduce with the OWNER's street-wide skills
+ * (`getStreetScopeSkills(players[ownerId].staffCards)` — never the host's),
+ * while community/business reduce with the shared host staff set
+ * (`getEmployedSpecializationSkills(state)`, the `hostReduction`), so a seat's
+ * breakdown reconciles to the same skill set the engine charged it with.
+ *
  * Costs are stored as negative coin deltas, matching the expense row
- * convention. Absent-safe: a missing/empty source → no breakdown.
+ * convention. Absent-safe: an unknown owner, a roster-less or hand-built state
+ * with no cards, or an empty source → no breakdown (`{}`), never a throw.
+ * Pure: mutates no state and consumes no RNG.
  *
  * @param state    Committed game state after the closing (read-only).
+ * @param ownerId  The owner to derive the breakdown for (0 in single-player).
  * @param category The ongoing-expense category to break down.
  */
-function expenseLineBreakdown(
+export function expenseLineBreakdownForOwner(
   state: MainStreetState,
+  ownerId: number,
   category: TurnSummaryExpenseCategory,
 ): { breakdown?: PLLineBreakdown } {
-  const soldSlots = state.soldSlots ?? [];
+  const roster = state.players ?? [];
+  // Staff source: the owner's own staff when a roster exists; a roster-less /
+  // hand-built state (single-player) falls back to the shared `state.staffCards`,
+  // so `expenseLineBreakdown` delegation keeps single-player output unchanged.
+  const staffCards = roster.length > 0
+    ? roster[ownerId]?.staffCards ?? []
+    : state.staffCards ?? [];
 
   if (category === 'staff') {
     const items: PLBreakdownItem[] = [];
-    for (const card of state.staffCards ?? []) {
+    for (const card of staffCards) {
       const base = -card.ongoingCost;
       const coins = -computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost);
       if (coins === 0) continue;
@@ -1365,39 +1390,83 @@ function expenseLineBreakdown(
         : [];
       items.push({ name: card.name, coins, base, modifiers });
     }
-    return items.length > 0
-      ? { breakdown: { items, ...streetReduction(state, items) } }
-      : {};
+    if (items.length === 0) return {};
+    // Owner-scoped staff reduction: the same skill set `applyCompetitiveOngoingCosts`
+    // charges each owner's staff with (the shared host roster never reduces a
+    // seat's own staff).
+    return {
+      breakdown: {
+        items,
+        ...streetReduction(
+          items,
+          computeStreetOngoingCostReductionPct(getStreetScopeSkills(staffCards)),
+        ),
+      },
+    };
   }
 
-  if (category === 'community') {
-    const items: PLBreakdownItem[] = [];
-    const grid = state.streetGrid ?? [];
-    for (let i = 0; i < grid.length; i++) {
-      const slot = grid[i];
-      if (!slot || slot.family !== 'community-space') continue;
-      if (soldSlots[i]) continue;
-      const cost = slot.ongoingCost ?? 0;
-      if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
-    }
-    return items.length > 0
-      ? { breakdown: { items, ...streetReduction(state, items) } }
-      : {};
-  }
+  return category === 'community'
+    ? ownerFamilyBreakdown(state, ownerId, 'community-space')
+    : ownerFamilyBreakdown(state, ownerId, 'business');
+}
 
-  // category === 'business'
+/**
+ * Builds the optional per-item breakdown for one ongoing-expense category in
+ * the single-player panel.
+ *
+ * Delegates to {@link expenseLineBreakdownForOwner} for owner 0 — the
+ * single-player owner key — over the shared `state.staffCards` (roster-less
+ * states) and the untagged grid (all slots belong to the active player), so
+ * single-player output is unchanged by the owner-filtered generalisation.
+ *
+ * @param state    Committed game state after the closing (read-only).
+ * @param category The ongoing-expense category to break down.
+ */
+function expenseLineBreakdown(
+  state: MainStreetState,
+  category: TurnSummaryExpenseCategory,
+): { breakdown?: PLLineBreakdown } {
+  return expenseLineBreakdownForOwner(state, 0, category);
+}
+
+/**
+ * Builds one owner's community-space or business-cost breakdown items from the
+ * owner-filtered street grid (MS-0MWEGDNAD009QDRO).
+ *
+ * Each owned, unsold slot of the family appears on its own line with its base
+ * ongoing cost (`slot.ongoingCost`, expense convention); no per-item modifier
+ * is synthesised — the family's only modifier is the street-wide
+ * {@link streetReduction}, computed with the host skill set. Absent-safe: no
+ * owned slot → `{}`.
+ */
+function ownerFamilyBreakdown(
+  state: MainStreetState,
+  ownerId: number,
+  family: 'community-space' | 'business',
+): { breakdown?: PLLineBreakdown } {
+  const soldSlots = state.soldSlots ?? [];
   const items: PLBreakdownItem[] = [];
   const grid = state.streetGrid ?? [];
   for (let i = 0; i < grid.length; i++) {
     const slot = grid[i];
-    if (!slot || slot.family !== 'business') continue;
+    if (!slot || slot.family !== family) continue;
+    if (getSlotOwnerId(state, i) !== ownerId) continue;
     if (soldSlots[i]) continue;
-    const cost = (slot as BusinessCard).ongoingCost ?? 0;
+    const cost = slot.ongoingCost ?? 0;
     if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
   }
-  return items.length > 0
-    ? { breakdown: { items, ...streetReduction(state, items) } }
-    : {};
+  if (items.length === 0) return {};
+  // Host-scoped reduction (the engine's `hostReduction`): community/business
+  // running costs reduce with the shared host staff set for every seat.
+  return {
+    breakdown: {
+      items,
+      ...streetReduction(
+        items,
+        computeStreetOngoingCostReductionPct(getEmployedSpecializationSkills(state)),
+      ),
+    },
+  };
 }
 
 /**
@@ -1407,14 +1476,19 @@ function expenseLineBreakdown(
  * Returns `{ streetReduction }` (a positive coin amount) only when the reduction
  * actually moves the family total; an unreduced family returns `{}` so the
  * breakdown stays absent-safe.
+ *
+ * @param items        The family's per-card items (the base sum to reduce).
+ * @param reductionPct The street-wide reduction percent to apply — the caller
+ *                     derives it from the same skill set the engine charges
+ *                     with (`getStreetScopeSkills(owner.staffCards)` for staff,
+ *                     `getEmployedSpecializationSkills(state)` for community /
+ *                     business), so the breakdown mirrors
+ *                     `applyCompetitiveOngoingCosts` per category.
  */
 function streetReduction(
-  state: MainStreetState,
   items: readonly PLBreakdownItem[],
+  reductionPct: number,
 ): { streetReduction?: number } {
-  const reductionPct = computeStreetOngoingCostReductionPct(
-    getEmployedSpecializationSkills(state),
-  );
   if (reductionPct <= 0) return {};
   const absSum = items.reduce((total, item) => total - item.coins, 0);
   const afterReduction = roundInt(absSum * (1 - reductionPct));
