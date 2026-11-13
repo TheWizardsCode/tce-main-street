@@ -110,7 +110,10 @@ describe('AC1: canPurchaseStaff legality', () => {
 // ── AC2: purchaseStaffCard unified market path ─────────────────
 
 describe('AC2: purchaseStaffCard on the general market row', () => {
-  it('deducts coins, removes the card from the row, employs it, and grows maxHandSize', () => {
+  // Q1-B (MS-0MWE64C6B002V3SO): the hire joins the staff pool *unassigned*
+  // — no hire-time destination step. The assertion below pins the pool
+  // membership/maxHandSize mechanics, not a placement.
+  it('deducts coins, removes the card from the row, adds it to the staff pool, and grows maxHandSize', () => {
     const state = startState('staff-buy');
     const staff = addStaffToMarket(state);
     state.resourceBank.coins = staff.cost + 10;
