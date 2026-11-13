@@ -502,6 +502,88 @@ describe('ledger tooltip localisation (MS-0MW7QQ5BX002KGS0)', () => {
   });
 });
 
+// ── One-off per-source attribution (MS-0MWBZDNH3006DXV7) ─────
+
+describe('one-off per-source attribution tooltips (MS-0MWBZDNH3006DXV7)', () => {
+  /** A ledger whose one-off residual (-4) is explained by the given sources. */
+  const attributedLedger = (breakdown: TurnLedger['oneOffBreakdown']): TurnLedger => ({
+    ...tooltipLedger(),
+    oneOffBreakdown: breakdown,
+  });
+
+  it('lists each source with its signed amount and keeps the formula as a checksum', () => {
+    const projection = buildPLProjection(
+      tooltipState(),
+      plInput(attributedLedger([
+        { label: 'market-purchase', coins: -124, reputation: 0 },
+        { label: 'market-sale', coins: 120, reputation: 0 },
+      ])),
+    )!;
+    const tooltip = buildOneOffLineTooltip(projection);
+    expect(tooltip).toContain('Market purchase: -124');
+    expect(tooltip).toContain('Market sale: +120');
+    // The reconciliation formula remains as the closing checksum line.
+    expect(tooltip).toContain('One-off =');
+    expect(tooltip).toContain('= -4');
+    expect(tooltip.indexOf('Market purchase')).toBeLessThan(tooltip.indexOf('One-off ='));
+  });
+
+  it('renders reputation alongside coins for rep-bearing sources', () => {
+    const projection = buildPLProjection(
+      tooltipState(),
+      plInput(attributedLedger([
+        { label: 'community-favour', coins: -200, reputation: 1 },
+        { label: 'event-play', coins: 196, reputation: 15 },
+      ])),
+    )!;
+    const tooltip = buildOneOffLineTooltip(projection);
+    expect(tooltip).toContain('Community Favour: Coins -200, Rep +1');
+    expect(tooltip).toContain('Event play: Coins +196, Rep +15');
+  });
+
+  it('localises the source labels through the i18n system', () => {
+    const previous = 'en';
+    registerLocale('xx-oneoff', {
+      [LEDGER_TOOLTIP_I18N_KEYS.oneOffSourcePurchase]: 'Einkauf',
+      [LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceSale]: 'Verkauf',
+      [LEDGER_TOOLTIP_I18N_KEYS.oneOffTitle]: 'Einmalig',
+    });
+    setLocale('xx-oneoff');
+    try {
+      const projection = buildPLProjection(
+        tooltipState(),
+        plInput(attributedLedger([
+          { label: 'market-purchase', coins: -124, reputation: 0 },
+          { label: 'market-sale', coins: 120, reputation: 0 },
+        ])),
+      )!;
+      const tooltip = buildOneOffLineTooltip(projection);
+      expect(tooltip).toContain('Einmalig');
+      expect(tooltip).toContain('Einkauf: -124');
+      expect(tooltip).toContain('Verkauf: +120');
+      expect(tooltip).not.toContain('Market purchase');
+    } finally {
+      setLocale(previous);
+    }
+  });
+
+  it('renders unknown source labels verbatim (hand-built entries stay visible)', () => {
+    const projection = buildPLProjection(
+      tooltipState(),
+      plInput(attributedLedger([{ label: 'custom-source', coins: -4, reputation: 0 }])),
+    )!;
+    const tooltip = buildOneOffLineTooltip(projection);
+    expect(tooltip).toContain('custom-source: -4');
+  });
+
+  it('keeps the formula-only fallback when no breakdown is carried (absent-safe)', () => {
+    const projection = buildPLProjection(tooltipState(), plInput(tooltipLedger()))!;
+    const tooltip = buildOneOffLineTooltip(projection);
+    expect(tooltip).toContain('One-off =');
+    expect(tooltip).not.toContain('Market purchase');
+  });
+});
+
 // ── Competitive per-seat parity ──────────────────────────────
 
 /** A two-seat competitive state. */
@@ -621,6 +703,36 @@ describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
     for (const line of human.expenses) {
       expect(line.breakdown).toBeUndefined();
     }
+  });
+
+  it('a seat’s one-off row carries its own per-source attribution (competitive parity)', () => {
+    const ledger = competitiveLedger();
+    // Seat 0's residual (net 10 − income 10 = 0) is explained by a purchase
+    // and a sale that net to zero; seat 1 keeps no breakdown (absent-safe).
+    ledger.seats[0].oneOffBreakdown = [
+      { label: 'market-purchase', coins: -120, reputation: 0 },
+      { label: 'market-sale', coins: 120, reputation: 0 },
+    ];
+    const state = twoSeatState();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const human = summary.rows.find((row) => row.ownerId === 0)!;
+
+    const projection = buildPLFromCompetitiveRow(human);
+    expect(projection.oneOff.breakdown).toEqual([
+      { label: 'market-purchase', coins: -120, reputation: 0 },
+      { label: 'market-sale', coins: 120, reputation: 0 },
+    ]);
+    const tooltip = buildOneOffLineTooltip(projection);
+    expect(tooltip).toContain('Market purchase: -120');
+    expect(tooltip).toContain('Market sale: +120');
+    // The checksum line reconciles to this seat's committed residual.
+    expect(tooltip).toContain('= 0');
+
+    // Seat 1 carries no breakdown → the formula-only fallback.
+    const ai = summary.rows.find((row) => row.ownerId === 1)!;
+    const aiTooltip = buildOneOffLineTooltip(buildPLFromCompetitiveRow(ai));
+    expect(aiTooltip).not.toContain('Market purchase');
+    expect(aiTooltip).toContain('One-off =');
   });
 });
 

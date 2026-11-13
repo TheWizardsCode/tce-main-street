@@ -20,6 +20,7 @@ import {
   getEmployedSpecializationSkillsForBusiness,
 } from './MainStreetStaffBuffs';
 import type { CloseResult, SellRefundBreakdown, SellResult } from './MainStreetMarketTypes';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 
 /**
  * Computes the sell refund for a card using the new formula (CG-0MT5XO7DI0066QCT).
@@ -143,6 +144,9 @@ export function sellBusiness(
 
   // Credit coins
   state.resourceBank.coins += refund;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a sell refund is a market
+  // sale for the one-off row.
+  recordOneOffAttribution(state, { marketSaleProceeds: refund });
 
   // Mark slot as sold
   state.soldSlots[slotIndex] = true;

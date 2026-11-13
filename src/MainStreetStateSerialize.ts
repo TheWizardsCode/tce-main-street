@@ -42,6 +42,7 @@ import type {
   OwnerTaggedSlot,
   TurnStatSnapshot,
 } from './MainStreetStateTypes';
+import type { TurnOneOffAttribution } from './MainStreetEngineTypes';
 import type { StorylineOption } from './MainStreetCardsTypes';
 import { restoreActiveLoans, restorePendingLoanOffer } from './MainStreetLoans';
 import { getSlotOwnerId } from './MainStreetAdjacencyOwner';
@@ -188,6 +189,18 @@ export function serializeMainStreetState(state: MainStreetState): MainStreetSeri
           },
         }
       : {}),
+    // Per-source one-off attribution (MS-0MWBZDNH3006DXV7): a plain-object
+    // projection of the transient `_oneOffAttribution` map so a mid-turn save
+    // keeps the captured market/event/favour/loan sources for the closing.
+    // Omitted while empty (a fresh day has nothing to attribute) so a
+    // source-free save's payload stays byte-identical to today.
+    ...(state._oneOffAttribution && state._oneOffAttribution.size > 0
+      ? {
+          oneOffAttribution: Object.fromEntries(
+            [...state._oneOffAttribution.entries()].map(([seat, acc]) => [String(seat), { ...acc }]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -211,6 +224,56 @@ function applyLoanFieldDefaults(saved: Record<string, unknown>): void {
   if (!('pendingLoanOffer' in saved)) {
     saved.pendingLoanOffer = null;
   }
+}
+
+/**
+ * Restores the per-source one-off attribution accumulator from a saved
+ * checkpoint (MS-0MWBZDNH3006DXV7).
+ *
+ * The saved shape is a plain object keyed by owner id (`String(seat)`); the
+ * runtime shape is a `Map<number, TurnOneOffAttribution>`. A save is untrusted
+ * data, so every numeric field must be finite — a malformed entry is dropped
+ * rather than poisoning the reconciliation arithmetic, and an absent/empty
+ * field loads with no accumulator (the closing then falls back to the
+ * formula-only one-off tooltip, exactly as a legacy save does).
+ */
+function restoreOneOffAttribution(raw: unknown): Map<number, TurnOneOffAttribution> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const restored = new Map<number, TurnOneOffAttribution>();
+  const FIELDS = [
+    'marketPurchaseCost',
+    'marketSaleProceeds',
+    'eventPlayCoinEffect',
+    'eventPlayRepEffect',
+    'communityFavourCoins',
+    'communityFavourRep',
+    'loanRepaid',
+    'loanTaken',
+    'loanBailout',
+  ] as const;
+  for (const [key, entry] of Object.entries(raw)) {
+    const seat = Number(key);
+    if (!Number.isInteger(seat) || seat < 0) continue;
+    if (!entry || typeof entry !== 'object') continue;
+    const values = entry as Record<string, unknown>;
+    const acc: Record<string, number> = {};
+    let usable = false;
+    for (const field of FIELDS) {
+      const value = values[field];
+      if (value === undefined) {
+        acc[field] = 0;
+        continue;
+      }
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        usable = false;
+        break;
+      }
+      acc[field] = value;
+      usable = true;
+    }
+    if (usable) restored.set(seat, acc as unknown as TurnOneOffAttribution);
+  }
+  return restored.size > 0 ? restored : null;
 }
 
 /**
@@ -953,6 +1016,14 @@ export function deserializeMainStreetState(saved: MainStreetSerializedState): Ma
     loans: restoreActiveLoans((saved as unknown as { loans?: unknown }).loans),
     pendingLoanOffer: restorePendingLoanOffer(
       (saved as unknown as { pendingLoanOffer?: unknown }).pendingLoanOffer,
+    ),
+    // Per-source one-off attribution (MS-0MWBZDNH3006DXV7): restored
+    // defensively — a save is untrusted data, so a malformed entry is dropped
+    // and a missing/empty field loads with no accumulator (the closing then
+    // falls back to the formula-only one-off tooltip). Legacy (pre-field)
+    // saves carry nothing and stay byte-identical.
+    _oneOffAttribution: restoreOneOffAttribution(
+      (saved as unknown as { oneOffAttribution?: unknown }).oneOffAttribution,
     ),
   };
 

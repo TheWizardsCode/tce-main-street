@@ -33,6 +33,7 @@
 import type { MainStreetState } from './MainStreetState';
 import type { ActiveLoan, LoanOption, PendingLoanOffer } from './MainStreetStateTypes';
 import { addLog, describeEventEffects, syncResourceBankToLedger } from './MainStreetStateLog';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 
 /**
  * Default flat interest rate over the loan term (10% of principal). Used by
@@ -668,6 +669,13 @@ export function applyLoanRepayments(
       debitLoanRepayment(state, loan.ownerId, amount);
     }
     totalRepaid += amount;
+    // One-off attribution (MS-0MWBZDNH3006DXV7): the repayment lands in the
+    // one-off residual as a cost — immediately (legacy path) or through the
+    // deferred `pendingCoinDelta` — so it is attributed to the Loan
+    // repayment source for the billed seat on BOTH paths. Recorded here
+    // (once per closing: resume paths pass `skipLoanRepayments`) rather than
+    // inside `debitLoanRepayment`, which the deferred pass never calls.
+    recordOneOffAttribution(state, { loanRepaid: -amount }, loan.ownerId);
 
     const next = applyLoanPayment(loan);
     if (next) {

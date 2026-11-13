@@ -21,6 +21,7 @@ import type { PurchaseResult } from './MainStreetMarketTypes';
 import { findTargetBusinessSlot } from './MainStreetMarketUtils';
 import { canAddToHand, validateHandIndex } from './MainStreetMarketHand';
 import { computeUpgradeCostDiscount, computePurchaseCostDiscount } from './MainStreetStaffBuffs';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 
 /**
  * Effective coin cost of an upgrade at a specific business, after the
@@ -504,6 +505,10 @@ export function purchaseBusiness(
 
   // Deduct effective (discounted) cost
   state.resourceBank.coins -= effectiveCost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a business bought and placed
+  // is a market purchase — it lands in the one-off residual, so the
+  // breakdown records the spend under Market purchase.
+  recordOneOffAttribution(state, { marketPurchaseCost: -effectiveCost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -645,6 +650,9 @@ export function playUpgradeFromHand(
   }
 
   state.resourceBank.coins -= cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade played from hand
+  // at its discounted cost is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -cost });
   state.hand.splice(handIndex, 1);
 
   business.level += 1;
@@ -703,6 +711,13 @@ export function playEventFromHand(
 
   const coinDelta = state.resourceBank.coins - coinsBefore;
   const repDelta = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an Investment event played
+  // during the MarketPhase is a one-off — its NET coin/reputation effect
+  // (listed cost + resolved effects) is attributed to the Event play source.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinDelta,
+    eventPlayRepEffect: repDelta,
+  });
   addLog(
     state,
     `Played event ${event.name} from hand (-€${event.cost}, ${describeEventEffects(coinDelta, repDelta)})`,
@@ -778,6 +793,9 @@ export function purchaseUpgrade(
   // CG-0MTKMGL66004I0PC). The discount applies to the listed base cost.
   const cost = effectiveUpgradeCost(state, card, businessIndex);
   state.resourceBank.coins -= cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade purchased from the
+  // market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -cost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -944,6 +962,9 @@ export function buyAndPlaceUpgrade(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an upgrade bought and applied
+  // from the market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);
@@ -1077,6 +1098,9 @@ export function purchaseStaffCard(
 
   // Deduct cost
   state.resourceBank.coins -= card.cost;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a staff hire from the market
+  // row is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -card.cost });
 
   // Remove from market
   state.market.cards.splice(marketIndex, 1);

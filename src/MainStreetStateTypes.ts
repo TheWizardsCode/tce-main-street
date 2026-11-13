@@ -28,7 +28,7 @@ import type {
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
-import type { OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
+import type { OwnerOngoingCosts, OwnerRoundBalance, TurnOneOffAttribution } from './MainStreetEngineTypes';
 
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
 
@@ -789,6 +789,24 @@ export interface MainStreetState {
     }>;
   } | null;
   /**
+   * Transient per-source one-off attribution accumulator
+   * (MS-0MWBZDNH3006DXV7), keyed by owner id.
+   *
+   * Every MarketPhase / closing source that moves coins or reputation outside
+   * the income, ongoing-cost and incident categories records its own signed
+   * delta here (via `recordOneOffAttribution`), so the one-off row of the
+   * Turn Summary can explain itself per source instead of presenting a bare
+   * residual. Single-player seats use `activePlayerId ?? 0` — the shared
+   * wallet's seat — matching the ledger's own `'0'` owner key.
+   *
+   * Presentation data only: never read by the economy, never writes a wallet,
+   * consumes no RNG. Serialised (checkpoint-safe) so a mid-turn save/load
+   * preserves the captured sources for the closing; reset to `null` at each
+   * WeekStart via `resetOneOffAttribution` so one day's sources can never
+   * leak into the next day's row.
+   */
+  _oneOffAttribution?: Map<number, TurnOneOffAttribution> | null;
+  /**
    * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
    * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
    * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
@@ -1119,6 +1137,15 @@ export interface MainStreetSerializedState {
    * the saved shape: absent on pre-loan saves.
    */
   pendingLoanOffer?: PendingLoanOffer | null;
+  /**
+   * Per-source one-off attribution captured this turn
+   * (MS-0MWBZDNH3006DXV7): plain-object projection (keyed by owner id as a
+   * string) of `MainStreetState._oneOffAttribution`, so a mid-turn save
+   * round-trips the captured market/event/favour/loan sources for the
+   * closing. Absent on legacy saves (loads with no accumulator — the closing
+   * falls back to the formula-only one-off tooltip).
+   */
+  oneOffAttribution?: Record<string, TurnOneOffAttribution> | null;
 }
 
 /** Record of a single milestone (tier unlock) achievement. */

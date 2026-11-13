@@ -68,7 +68,13 @@
  * each section carries the lines its total row enumerates.
  * {@link PLAdjustmentLine.detail} holds the incident's base effect plus each
  * named modifier, and {@link PLSupplementaryContext} carries the derivable
- * context figures (`dayStartCoins`, `businessNames`, `reputationParts`). Every
+ * context figures (`dayStartCoins`, `businessNames`, `reputationParts`). The
+ * one-off adjustment line additionally carries
+ * {@link PLAdjustmentLine.breakdown} — per-source attribution (market
+ * purchase / sale, event play, Community Favour, loan effects) captured by
+ * the engine during the turn (MS-0MWBZDNH3006DXV7), emitted only when the
+ * entries reconcile to the committed residual `oneOffDeltas.coins` within a
+ * documented rounding tolerance. Every
  * field is optional and absent-safe: a legacy or hand-built ledger keeps the
  * previous shape, and the tooltip degrades to the committed total plus an
  * explanatory note rather than inventing an attribution.
@@ -78,7 +84,7 @@
 
 import type { MainStreetState } from '../MainStreetState';
 import type { LogEntryActionType } from '../MainStreetStateTypes';
-import type { OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
+import type { OneOffBreakdownEntry, OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import type { BusinessCard } from '../MainStreetCardsTypes';
 import { getSeatDisplayLabel } from '../MainStreetAdjacencyOwner';
 import {
@@ -204,6 +210,14 @@ export interface TurnSummary {
   incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
+  /**
+   * Optional per-source attribution of the one-off row
+   * (MS-0MWBZDNH3006DXV7): labelled entries that sum to {@link oneOff}.
+   * Absent-safe — a legacy/hand-built ledger (or one whose sources cannot be
+   * fully attributed) omits it and the tooltip falls back to the
+   * reconciliation formula.
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
   /** Net coin/reputation/score change for the day. */
   net: { coins: number; reputation: number; score: number };
   /** Closing coin/reputation/score balances for the human seat. */
@@ -307,6 +321,7 @@ export function buildTurnSummary(
       ledger.incidentRepChange,
     ),
     oneOff: { ...ledger.oneOffDeltas },
+    ...(ledger.oneOffBreakdown ? { oneOffBreakdown: ledger.oneOffBreakdown } : {}),
     net: {
       coins: ledger.netCoinChange,
       reputation: ledger.netRepChange,
@@ -449,6 +464,13 @@ export interface CompetitiveTurnSummaryRow {
   incidentDetail?: PLIncidentDetail;
   /** Non-recurring (market, event-play, other) coin/reputation delta. */
   oneOff: TurnSummaryDeltas;
+  /**
+   * Optional per-source attribution of this seat's one-off row
+   * (MS-0MWBZDNH3006DXV7): mirrors `TurnLedger.oneOffBreakdown` so the
+   * competitive panel renders the same per-source list as single-player.
+   * Absent-safe (legacy/hand-built ledgers render the formula).
+   */
+  oneOffBreakdown?: OneOffBreakdownEntry[];
 }
 
 /** Everything the competitive Turn Summary panel surfaces for the round closed. */
@@ -642,6 +664,7 @@ export function buildCompetitiveTurnSummary(
           coins: seat.oneOffDeltas?.coins ?? 0,
           reputation: seat.oneOffDeltas?.reputation ?? 0,
         },
+        ...(seat.oneOffBreakdown ? { oneOffBreakdown: seat.oneOffBreakdown } : {}),
       };
     }),
   };
@@ -741,6 +764,15 @@ export interface PLAdjustmentLine {
   label: string;
   coins: number;
   reputation: number;
+  /**
+   * Optional per-source attribution of the one-off row
+   * (MS-0MWBZDNH3006DXV7): labelled entries that sum to {@link coins} within
+   * the documented rounding tolerance. Present only when the projection's
+   * ledger carried it; the tooltip lists one line per source and keeps the
+   * reconciliation formula as a checksum, falling back to the formula alone
+   * when absent.
+   */
+  breakdown?: OneOffBreakdownEntry[];
   /**
    * Optional incident derivation for the tooltip (base effect + each named
    * modifier). Present only on the incident line, and only when it reconciles
@@ -1115,6 +1147,7 @@ export function buildPLFromTurnSummary(
       label: PL_LABELS.oneOff,
       coins: summary.oneOff.coins,
       reputation: summary.oneOff.reputation,
+      ...(summary.oneOffBreakdown ? { breakdown: summary.oneOffBreakdown } : {}),
     },
     net: { label: PL_LABELS.net, ...summary.net },
     context: {
@@ -1188,6 +1221,7 @@ export function buildPLFromCompetitiveRow(
       label: PL_LABELS.oneOff,
       coins: row.oneOff.coins,
       reputation: row.oneOff.reputation,
+      ...(row.oneOffBreakdown ? { breakdown: row.oneOffBreakdown } : {}),
     },
     net: {
       label: PL_LABELS.net,

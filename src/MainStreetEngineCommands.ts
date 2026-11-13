@@ -26,6 +26,7 @@ import type { OwnerOngoingCosts } from './MainStreetEngineTypes';
 import { sellBusiness, purchaseStaffCard, canSellBusiness as canSellBusinessFromMarket } from './MainStreetMarket';
 import type { PurchaseResult } from './MainStreetMarket';
 import { computeStaffSalaryCost, computeStreetOngoingCostReductionPct, computeBusinessOngoingCostReductionPct, getEmployedSpecializationSkills, getSalaryScopeSkills, getStreetScopeSkills, computeEffectiveBusinessPurchaseCost, computeBusinessPurchasePremium } from './MainStreetStaffBuffs';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import { layOffReputationCost } from './MainStreetRoster';
 import { assignSkillsToApplicant, serializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import type { MainStreetState } from './MainStreetState';
@@ -85,6 +86,9 @@ export function placeFromHand(
     throw new Error(`Not enough coins to place ${card.name}. Need ${price}, have ${state.resourceBank.coins}.`);
   }
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a paid placement from hand is
+  // a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
 
   // Remove from hand and place on tableau
   hand.splice(handIndex, 1);
@@ -139,6 +143,9 @@ export function sellFromHand(
 
   // Credit coins
   state.resourceBank.coins += sellValue;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a hand-card sale is a market
+  // sale for the one-off row.
+  recordOneOffAttribution(state, { marketSaleProceeds: sellValue });
 
   // Add to discard pile
   state.discardPile.push(card as any);
@@ -192,6 +199,9 @@ export function sellFromTableau(
 
   // Credit coins
   state.resourceBank.coins += sellValue;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a tableau sale is a market
+  // sale for the one-off row.
+  recordOneOffAttribution(state, { marketSaleProceeds: sellValue });
 
   // Add to discard pile
   state.discardPile.push(card as any);
@@ -865,6 +875,9 @@ export function buyAndPlaceBusiness(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a buy-and-place from the
+  // market is a market purchase for the one-off row.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
   state.market.cards.splice(marketIndex, 1);
   state.streetGrid[slotIndex] = card as BusinessCard;
 
@@ -1636,6 +1649,7 @@ function recordLoan(
   state: MainStreetState,
   optionIndex: number,
   ownerId?: number,
+  source: 'taken' | 'bailout' = 'taken',
 ): ActiveLoan {
   const seatId = loanOwnerId(state, ownerId);
   const option = optionsFor(state)[optionIndex];
@@ -1644,6 +1658,14 @@ function recordLoan(
   state.loans = state.loans ?? [];
   state.loans.push(loan);
   creditLoanPrincipal(state, seatId, loan.principal);
+  // One-off attribution (MS-0MWBZDNH3006DXV7): the principal credit lands in
+  // the one-off residual, so it is attributed to the loan source — the
+  // MarketPhase take (`loanTaken`) or an accepted bailout (`loanBailout`).
+  recordOneOffAttribution(
+    state,
+    source === 'bailout' ? { loanBailout: loan.principal } : { loanTaken: loan.principal },
+    seatId,
+  );
 
   addLog(
     state,
@@ -1706,7 +1728,7 @@ export function acceptLoanOffer(
   // Clear the decision before recording the loan: the offer must not survive
   // as a second decision, and `recordLoan` bypasses the pending-offer gate.
   state.pendingLoanOffer = null;
-  return recordLoan(state, menuIndex, pending.ownerId);
+  return recordLoan(state, menuIndex, pending.ownerId, 'bailout');
 }
 
 /**

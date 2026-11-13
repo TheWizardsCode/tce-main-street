@@ -27,7 +27,7 @@ import type { TurnLedger, TurnResult } from '../../src/MainStreetEngineTypes';
 import { processEndOfTurn } from '../../src/MainStreetEngine';
 import type { BusinessCard, EventCard } from '../../src/MainStreetCards';
 import { recalculateCard } from '../../src/MainStreetAdjacency';
-import { buildTurnSummary } from '../../src/scenes/MainStreetTurnSummary';
+import { buildTurnSummary, buildPLProjection } from '../../src/scenes/MainStreetTurnSummary';
 
 // ── Fixtures ─────────────────────────────────────────────────
 
@@ -152,6 +152,38 @@ describe('buildTurnSummary — incident and one-off deltas', () => {
   it('reports the one-off coin and reputation deltas', () => {
     const summary = buildTurnSummary(singlePlayerState(), summaryInput(makeLedger()))!;
     expect(summary.oneOff).toEqual({ coins: -30, reputation: 4 });
+  });
+});
+
+// ── One-off per-source attribution (MS-0MWBZDNH3006DXV7) ─────
+
+describe('buildTurnSummary — one-off per-source attribution (MS-0MWBZDNH3006DXV7)', () => {
+  it('threads ledger.oneOffBreakdown onto the summary and the P&L one-off line', () => {
+    const ledger = makeLedger({
+      oneOffBreakdown: [
+        { label: 'market-purchase', coins: -120, reputation: 0 },
+        { label: 'market-sale', coins: 90, reputation: 0 },
+      ],
+    });
+    const state = singlePlayerState();
+    const summary = buildTurnSummary(state, summaryInput(ledger))!;
+    expect(summary.oneOffBreakdown).toEqual([
+      { label: 'market-purchase', coins: -120, reputation: 0 },
+      { label: 'market-sale', coins: 90, reputation: 0 },
+    ]);
+
+    const projection = buildPLProjection(state, { turnLedger: ledger, incident: null })!;
+    expect(projection.oneOff.breakdown).toEqual([
+      { label: 'market-purchase', coins: -120, reputation: 0 },
+      { label: 'market-sale', coins: 90, reputation: 0 },
+    ]);
+  });
+
+  it('omits the breakdown when the ledger carries none (absent-safe)', () => {
+    const summary = buildTurnSummary(singlePlayerState(), summaryInput(makeLedger()))!;
+    expect(summary.oneOffBreakdown).toBeUndefined();
+    const projection = buildPLProjection(singlePlayerState(), summaryInput(makeLedger()))!;
+    expect(projection.oneOff.breakdown).toBeUndefined();
   });
 });
 

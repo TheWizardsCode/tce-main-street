@@ -15,6 +15,7 @@ import { addLog, describeEventEffects, classifyEffect } from './MainStreetState'
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard, SynergyType } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import type { PurchaseResult } from './MainStreetMarketTypes';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import {
   computeEffectiveBusinessPurchaseCost,
   computeBusinessPurchasePremium,
@@ -141,6 +142,11 @@ export function playBusinessFromHand(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a paid placement from hand is
+  // a market-phase purchase — it lands in the one-off residual, so it must
+  // be attributed to the Market purchase source for the breakdown to
+  // reconcile.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
   state.hand.splice(handIndex, 1);
   state.streetGrid[slotIndex] = card as BusinessCard;
   updateNeighborsOnPlacement(state, slotIndex);

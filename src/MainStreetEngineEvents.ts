@@ -23,6 +23,7 @@ import {
 } from './MainStreetStaffBuffs';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, addLogShared, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
@@ -301,6 +302,13 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
   raisePiggybackDecisions(state, event, state.activePlayerId ?? 0, event.cost);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an Investment event played
+  // during the MarketPhase is a one-off — its NET coin/reputation effect is
+  // attributed to the Event play source.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinChange,
+    eventPlayRepEffect: repChange,
+  });
   addLog(
     state,
     state.activePlayerId ?? 0,
@@ -332,6 +340,12 @@ export function resolveHeldInvestment(state: MainStreetState): EventCard | null 
   resolveEvent(state, event);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): same Event play source as the
+  // live play paths, so a legacy auto-resolve still reconciles.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinChange,
+    eventPlayRepEffect: repChange,
+  });
   addLog(
     state,
     state.activePlayerId ?? 0,

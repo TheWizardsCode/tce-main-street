@@ -48,23 +48,30 @@
  * English defaults are registered at module-load time so they are always
  * available, even without an explicit locale setup.
  *
- * ## One-off fallback (documented choice)
+ * ## One-off attribution (MS-0MWBZDNH3006DXV7)
  *
- * The ledger stores one-off only as a residual
- * (`netCoinChange - incomeCoins - ongoingTotal - incidentCoinChange`), with no
- * per-source breakdown stored. Where per-source data is unavailable the tooltip
- * presents the reconciliation formula that produces the value — the documented
+ * The one-off row now explains itself. The engine captures per-source deltas
+ * during the turn (market purchases, market sales, event plays, Community
+ * Favour exchanges, loan repayments / loans taken / bailouts) and stores them
+ * on `TurnLedger.oneOffBreakdown` / `OwnerRoundLedger.oneOffBreakdown` when
+ * they reconcile to the authoritative residual `oneOffDeltas.coins` within a
+ * documented rounding tolerance. The tooltip then lists one signed amount per
+ * source on its own line, with the reconciliation formula kept beneath as a
+ * checksum.
+ *
+ * Where per-source data is unavailable (legacy/hand-built ledgers, or a turn
+ * whose sources cannot be fully attributed) the tooltip falls back to the
+ * documented reconciliation formula that produces the residual — the
  * fallback permitted by parent AC7:
- * `one-off = net - (income + expenses + incident)`.
- *
- * Per-source attribution is a deliberate follow-up (`MS-0MWBZDNH3006DXV7`):
- * it needs engine-level attribution in `buildTurnLedger`, not a UI-side
- * invention.
+ * `one-off = net - (income + expenses + incident)`. Attribution is never
+ * invented.
  *
  * @module
  */
 
 import { t, registerLocale } from '@core-engine/I18n';
+import { ONE_OFF_SOURCE_KEYS } from '../MainStreetEngineTypes';
+import type { OneOffSourceKey } from '../MainStreetEngineTypes';
 import type {
   PLAdjustmentLine,
   PLProjection,
@@ -104,6 +111,15 @@ export const LEDGER_TOOLTIP_I18N_KEYS = {
   incidentModifier: 'ledger.tooltip.incident.modifier',
   oneOffTitle: 'ledger.tooltip.oneOff.title',
   oneOffFormula: 'ledger.tooltip.oneOff.formula',
+  oneOffEntry: 'ledger.tooltip.oneOff.entry',
+  oneOffEntryRep: 'ledger.tooltip.oneOff.entryRep',
+  oneOffSourcePurchase: 'ledger.tooltip.oneOff.source.purchase',
+  oneOffSourceSale: 'ledger.tooltip.oneOff.source.sale',
+  oneOffSourceEvent: 'ledger.tooltip.oneOff.source.event',
+  oneOffSourceFavour: 'ledger.tooltip.oneOff.source.favour',
+  oneOffSourceLoanRepayment: 'ledger.tooltip.oneOff.source.loanRepayment',
+  oneOffSourceLoanTaken: 'ledger.tooltip.oneOff.source.loanTaken',
+  oneOffSourceLoanBailout: 'ledger.tooltip.oneOff.source.loanBailout',
   netTitle: 'ledger.tooltip.net.title',
   netFormula: 'ledger.tooltip.net.formula',
   // Supplementary context
@@ -146,6 +162,15 @@ export const LEDGER_TOOLTIP_STRINGS = {
   oneOffTitle: 'One-off',
   oneOffFormula:
     'One-off = net change ({net}) − income ({income}) − expenses ({expenses}) − incident ({incident}) = {oneOff}',
+  oneOffEntry: '{label}: {amount}',
+  oneOffEntryRep: '{label}: Coins {coins}, Rep {reputation}',
+  oneOffSourcePurchase: 'Market purchase',
+  oneOffSourceSale: 'Market sale',
+  oneOffSourceEvent: 'Event play',
+  oneOffSourceFavour: 'Community Favour',
+  oneOffSourceLoanRepayment: 'Loan repayment',
+  oneOffSourceLoanTaken: 'Bank loan',
+  oneOffSourceLoanBailout: 'Loan bailout',
   netTitle: 'Net profit/loss',
   netFormula:
     'Net = income ({income}) + expenses ({expenses}) + incident ({incident}) + one-off ({oneOff}) = {net}',
@@ -382,23 +407,81 @@ export function buildIncidentLineTooltip(
 /**
  * Builds the tooltip for the One-off adjustment row.
  *
- * The ledger stores no per-source breakdown, so this presents the documented
- * reconciliation formula that produces the residual (parent AC7).
+ * When the projection carries per-source attribution
+ * ({@link PLAdjustmentLine.breakdown}, MS-0MWBZDNH3006DXV7) the tooltip lists
+ * each source with its signed amount on its own line (e.g.
+ * `Market purchase: −120`, `Market sale: +80`) and keeps the reconciliation
+ * formula at the bottom as a **checksum** line, so the listed sources always
+ * add up to the committed figure.
+ *
+ * When the breakdown is absent (a legacy/hand-built ledger, or a turn whose
+ * sources could not be fully attributed) the tooltip degrades to the
+ * documented reconciliation formula only — attribution is never invented.
+ * Every figure comes from the committed ledger or the engine's own
+ * per-source accumulator, so the tooltip presents, never computes, the game's
+ * numbers.
  *
  * @param projection The player's P&L projection.
  */
 export function buildOneOffLineTooltip(projection: PLProjection): string {
-  return [
-    t(LEDGER_TOOLTIP_I18N_KEYS.oneOffTitle),
-    t(LEDGER_TOOLTIP_I18N_KEYS.oneOffFormula, {
-      net: formatSigned(projection.net.coins),
-      income: formatSigned(projection.income.total),
-      expenses: formatSigned(projection.expenses.total),
-      incident: formatSigned(projection.incident.coins),
-      oneOff: formatSigned(projection.oneOff.coins),
-    }),
-  ].join('\n');
+  const lines: string[] = [t(LEDGER_TOOLTIP_I18N_KEYS.oneOffTitle)];
+  const breakdown = projection.oneOff.breakdown;
+  if (breakdown && breakdown.length > 0) {
+    for (const entry of breakdown) {
+      lines.push(formatOneOffEntry(entry.label, entry.coins, entry.reputation));
+    }
+  }
+  // The reconciliation identity doubles as the checksum beneath the source
+  // list, so `sum(sources) == one-off` is verifiable at a glance.
+  lines.push(t(LEDGER_TOOLTIP_I18N_KEYS.oneOffFormula, {
+    net: formatSigned(projection.net.coins),
+    income: formatSigned(projection.income.total),
+    expenses: formatSigned(projection.expenses.total),
+    incident: formatSigned(projection.incident.coins),
+    oneOff: formatSigned(projection.oneOff.coins),
+  }));
+  return lines.join('\n');
 }
+
+/**
+ * Maps a one-off source key (stored in {@link OneOffBreakdownEntry.label}) to
+ * its localised display label. Unknown/labelled entries render verbatim
+ * (absent-safe for hand-built or future sources).
+ */
+function localiseOneOffSource(label: string): string {
+  const i18nKey = ONE_OFF_SOURCE_LABELS_TO_I18N[label as OneOffSourceKey];
+  return i18nKey ? t(i18nKey) : label;
+}
+
+/**
+ * Renders one attributed one-off source as `Label: signed amount`, appending
+ * `Coins X, Rep Y` when the source also moved reputation.
+ */
+function formatOneOffEntry(label: string, coins: number, reputation: number): string {
+  const resolvedLabel = localiseOneOffSource(label);
+  if (reputation !== 0) {
+    return t(LEDGER_TOOLTIP_I18N_KEYS.oneOffEntryRep, {
+      label: resolvedLabel,
+      coins: formatSigned(coins),
+      reputation: formatSigned(reputation),
+    });
+  }
+  return t(LEDGER_TOOLTIP_I18N_KEYS.oneOffEntry, {
+    label: resolvedLabel,
+    amount: formatSigned(coins),
+  });
+}
+
+/** Maps the engine's one-off source keys to their localised i18n keys. */
+const ONE_OFF_SOURCE_LABELS_TO_I18N: Record<OneOffSourceKey, string> = {
+  [ONE_OFF_SOURCE_KEYS.marketPurchase]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourcePurchase,
+  [ONE_OFF_SOURCE_KEYS.marketSale]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceSale,
+  [ONE_OFF_SOURCE_KEYS.eventPlay]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceEvent,
+  [ONE_OFF_SOURCE_KEYS.communityFavour]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceFavour,
+  [ONE_OFF_SOURCE_KEYS.loanRepayment]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceLoanRepayment,
+  [ONE_OFF_SOURCE_KEYS.loanTaken]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceLoanTaken,
+  [ONE_OFF_SOURCE_KEYS.loanBailout]: LEDGER_TOOLTIP_I18N_KEYS.oneOffSourceLoanBailout,
+};
 
 /**
  * Builds the tooltip for the Net profit/loss bottom line.

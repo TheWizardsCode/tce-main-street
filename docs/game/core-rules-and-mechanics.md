@@ -950,7 +950,7 @@ and changes no save ordering.
 | Business costs | `TurnLedger.ongoingCosts.business` | one line per placed, unsold business card with its base `ongoingCost` (hand cards are not charged; sold cards are excluded) |
 | Total income / Total operating expenses | the section's committed subtotal | one line per contributing section line with its signed amount, reconciling to the committed subtotal (never a re-sum); a section with no lines keeps "The sum of the lines above." |
 | Incident | `TurnLedger.incidentCoinChange` / `incidentRepChange` | the resolved `TurnResult.incident.name` with its committed coin/reputation effect, then an indented `Base:` line and one indented line per named modifier (incident damage reductions, Brand Ambassador reputation multiplier), so `base + sum(modifiers)` equals the committed deltas; a closing with no incident shows "No incident was resolved this turn." |
-| One-off | `TurnLedger.oneOffDeltas` | **residual only** — see the fallback below |
+| One-off | `TurnLedger.oneOffDeltas` | per-source attribution (`TurnLedger.oneOffBreakdown`, MS-0MWBZDNH3006DXV7): one line per source — market purchase, market sale, event play, Community Favour, loan repayment / bank loan / bailout — with its signed amount (and `Coins X, Rep Y` when the source moved reputation); the reconciliation formula stays beneath as a checksum. A legacy/turn without attribution falls back to the formula only (below) |
 | Net profit/loss | `netCoinChange` / `netRepChange` / `netScoreChange` | the reconciliation identity below |
 | Reputation change | the net reputation row | the income, incident and one-off reputation constituents that sum to the net change |
 | Score change | the net score row | explanatory prose only (the projection carries no challenge-level detail) |
@@ -1008,15 +1008,42 @@ Total: -95
   net.coins` — the ledger's own identity.
 - One-off: `oneOff = net − income − expenses − incident`.
 
+### One-off attribution (MS-0MWBZDNH3006DXV7)
+
+The one-off row now explains itself. As the turn plays, the engine captures
+per-source deltas into a transient, checkpoint-safe accumulator
+(`_oneOffAttribution`, reset each WeekStart):
+
+- **market purchases** — businesses / community spaces / upgrades / staff
+  bought or placed during the MarketPhase (cost at play from the market or
+  from hand, +50% premium included);
+- **market sales** — sell refunds (grid or hand);
+- **event plays** — Investment events played during the MarketPhase (net of
+  the play cost, staff mitigation and reputation scaling);
+- **Community Favour** — the exchange's signed coin/reputation effect;
+- **loan effects** — a bank loan taken in the MarketPhase (`loan-taken`), an
+  accepted bailout (`loan-bailout`) and the closing's scheduled repayments
+  (`loan-repayment`).
+
+`buildTurnLedger` maps those sources to labelled entries
+(`TurnLedger.oneOffBreakdown`) and asserts they sum to the authoritative
+residual `oneOffDeltas.coins` **within a 1-coin rounding tolerance** (the
+last entry absorbs any drift). The tooltip lists one signed amount per source
+on its own line (`Market purchase: −120`, `Market sale: +80`) with the
+reconciliation formula kept beneath as a checksum. Competitive seats get the
+same per-source list through `OwnerRoundLedger.oneOffBreakdown` (parity across
+all tabs).
+
 ### One-off fallback (documented choice)
 
-The ledger stores the one-off adjustment only as the **residual** above: there is
-no per-source breakdown (market purchases/sales, event plays, Community Favour,
-loan effects) threaded through the closing. Rather than invent attribution, the
-one-off tooltip presents the reconciliation formula that produces the residual
-— the fallback explicitly permitted by the parent item. A true per-source
-breakdown would require engine-level attribution in `buildTurnLedger` and is
-deliberately out of scope here (follow-up `MS-0MWBZDNH3006DXV7`).
+Where the engine has **no per-source data** — a legacy/hand-built ledger, a
+mid-turn save from before this feature, or a turn whose residual includes coin
+movements outside the tracked sources — the ledger carries no
+`oneOffBreakdown` and the tooltip degrades to the reconciliation formula that
+produces the residual:
+`one-off = net − income − expenses − incident`. Attribution is never invented:
+if the captured sources do not reconcile to the residual within tolerance, the
+breakdown is omitted rather than shown wrong.
 
 ### Tooltip interaction and styling
 
