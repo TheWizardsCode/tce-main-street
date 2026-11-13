@@ -2361,6 +2361,12 @@ seat has one colour everywhere.
   log panel and a minimum RGB distance from the gain/loss/neutral line colour,
   so even the darkest Okabe–Ito hues stay readable beside the body text (see
   [Activity log seat prefixes](#activity-log-seat-prefixes-f3-ms-0muwntn8w006c7ef)).
+  The competitive HUD scoreboard rows resolve their label colour through the
+  same shared `ensureReadableSeatColour()`, using the **HUD bar fill**
+  (`PANEL_FILL` `#1a1408`, not the dialog default) as the backdrop — so a seat
+  dealt the palette's Okabe–Ito black (`#000000`) still renders a readable row
+  on the dark bar (MS-0MWE6IKNP006S835), while every paler hue keeps its exact
+  colour where it already clears WCAG AA.
 - **Ownership without obscuring content.** On the street the colour is carried
   by a stroke-only outer border rather than a fill, so it never hides the card
   face or the synergy two-tone colouring (see

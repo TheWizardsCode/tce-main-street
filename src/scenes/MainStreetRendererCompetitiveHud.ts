@@ -19,13 +19,14 @@
  */
 
 import { FONT_FAMILY, markHudTransient } from '@ui';
-import { HUD_BAR_HEIGHT_PX, HUD_SEAT_ROW_OFFSET_PX } from './MainStreetConstants';
+import { HUD_BAR_HEIGHT_PX, HUD_SEAT_ROW_OFFSET_PX, PANEL_FILL } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
 import {
   buildCompetitiveScoreboard,
   formatCompetitiveScoreboardRow,
   type CompetitiveScoreboardRow,
 } from './MainStreetCompetitiveScoreboard';
+import { ensureReadableSeatColour } from '../MainStreetSeatColours';
 
 export {
   buildCompetitiveScoreboard,
@@ -37,7 +38,10 @@ export {
  * Renders the per-player scoreboard above the HUD strip: one cell per seat,
  * evenly distributed, each drawn in its own persisted seat colour (F5 of
  * MS-0MUWNTN8W006C7EF) so a seat reads as the same colour here, in the
- * activity-log prefix (F3) and on its placed-card border (F4). The active seat
+ * activity-log prefix (F3) and on its placed-card border (F4). The colour is
+ * resolved through {@link ensureReadableSeatColour} against the HUD bar
+ * backdrop (MS-0MWE6IKNP006S835), so a legible seat keeps its exact hue while
+ * a too-dark one (e.g. palette black) is lightened to stay readable. The active seat
  * is additionally bold and prefixed with `▶`, so the indicator uses the active
  * seat's colour without relying on colour alone. Transient HUD objects, so they
  * are removed by `clearTransientHud` on the next refresh.
@@ -58,6 +62,16 @@ export {
  * single-seat roster, so it is deliberately not a seat colour.
  */
 const NEUTRAL_ROW_COLOUR = '#ffffff';
+
+/**
+ * HUD bar background colour as a hex string — the backdrop used by
+ * {@link ensureReadableSeatColour} to decide whether a row label is legible.
+ *
+ * Derived from {@link PANEL_FILL} (`0x1a1408`) so the contrast check matches
+ * the surface the text actually sits on and can never drift from the constant
+ * the HUD bar is drawn with.
+ */
+const HUD_BAR_BACKGROUND_HEX = `#${PANEL_FILL.toString(16).padStart(6, '0')}`;
 export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext): void {
   const s = renderer.scene;
   const rows: CompetitiveScoreboardRow[] = buildCompetitiveScoreboard(s.state);
@@ -76,13 +90,16 @@ export function renderCompetitiveScoreboard(renderer: MainStreetRendererContext)
   rows.forEach((row, index) => {
     const x = hudLeft + colWidth * index + colWidth / 2;
     seatAnchors[row.playerId] = { x, y: rowY };
-    const colour = row.colour ?? NEUTRAL_ROW_COLOUR;
+    const legibleColour = ensureReadableSeatColour(
+      row.colour ?? NEUTRAL_ROW_COLOUR,
+      HUD_BAR_BACKGROUND_HEX,
+    );
     const text = markHudTransient(
       s.add
         .text(x, rowY, formatCompetitiveScoreboardRow(row), {
           fontSize: '13px',
           fontStyle: row.isActive ? 'bold' : 'normal',
-          color: colour,
+          color: legibleColour,
           fontFamily: FONT_FAMILY,
           // The per-seat loan obligation (MS-0MVPWSCRD004A6Z4) lengthens a row,
           // so wrap inside the seat's own cell instead of spilling into the
