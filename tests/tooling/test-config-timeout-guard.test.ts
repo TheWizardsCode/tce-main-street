@@ -68,7 +68,7 @@ describe('the repository config', () => {
     );
   });
 
-  it('keeps the three-command full suite and all fourteen named groups', () => {
+  it('keeps the three-command full suite and all fifteen named groups', () => {
     const config = readConfig();
 
     expect(structuralProblems(config)).toEqual([]);

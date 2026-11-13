@@ -69,6 +69,13 @@ export const EXPECTED_SUITE_COMMANDS = [
  * (MS-0MVRNV9Y8008IKGK): the competitive Turn Summary engine/model/gate suites
  * and their browser overlay sit in no pre-existing group, so without it changed
  * scope would skip them entirely while the panel's own source files change.
+ * `main-street-renderer-hud-layout` (MS-0MWCL3W0O0016P9K) follows the same
+ * route for the five renderer/HUD/layout modules that sat in no group
+ * (`MainStreetRendererStaffPile.ts`, `MainStreetHudTooltips.ts`,
+ * `MainStreetFormatting.ts`, `MainStreetStaffBuffs.ts`,
+ * `MainStreetLayoutAdapter.ts`) plus both layout fixtures (`src/layouts/**`)
+ * and the two layout test files, so the changed-scope gate runs their own
+ * suites instead of an unrelated group or the full suite.
  */
 export const EXPECTED_GROUP_NAMES = [
   'hand-bottom-anchor-browser',
@@ -85,6 +92,7 @@ export const EXPECTED_GROUP_NAMES = [
   'event-choice-dialogs-browser',
   'webgl-clipping-browser',
   'competitive-turn-summary',
+  'main-street-renderer-hud-layout',
 ] as const;
 
 /** The shape of `.pi/test-config.json` this guard inspects. */
@@ -147,7 +155,7 @@ export function evaluateTimeoutPerCommand(config: TestConfigLike): Verdict {
 
 /**
  * Assert the config's structural invariants survive an edit to
- * `timeoutPerCommand`: the three-command full suite and all fourteen named groups.
+ * `timeoutPerCommand`: the three-command full suite and all fifteen named groups.
  *
  * Returns an empty list when everything is present, otherwise one message per
  * problem found.

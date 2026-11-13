@@ -805,6 +805,18 @@ silently shrinking the targeted-scope mechanism (`MS-0MVZGAEF6004Q8XD`).
 (`event-choice-dialog.browser.test.ts`, `event-choice-dialog-slice.browser.test.ts`);
 before that group existed they were in no group at all, so neither the pinned
 full suite nor changed scope ever selected them.
+`main-street-renderer-hud-layout` (added with its pin by `MS-0MWCL3W0O0016P9K`)
+covers the five renderer/HUD/layout modules that previously sat in no group
+(`src/scenes/MainStreetRendererStaffPile.ts`, `src/scenes/MainStreetHudTooltips.ts`,
+`src/MainStreetFormatting.ts`, `src/MainStreetStaffBuffs.ts`,
+`src/scenes/MainStreetLayoutAdapter.ts`), both layout fixtures (`src/layouts/**`,
+so a brand-new fixture is covered without another config change) and the two
+layout test files (`tests/main-street/MainStreetLayoutAnchors.browser.test.ts`,
+`tests/main-street/tutorial-layout-resolution.test.ts`) — before it, a slice
+that touched only `MainStreetHudTooltips.ts` (or `MainStreetFormatting.ts`,
+`MainStreetStaffBuffs.ts` or `MainStreetRendererStaffPile.ts`) fell back to the
+full suite, or was short-circuited onto an unrelated group's single suite by
+the group pick.
 
 ### Queue wait is separate from test time
 
@@ -827,14 +839,45 @@ subset can be selected. Declaring `suiteCommands` no longer disables that
 selection — it defines the **full** suite only (`SA-0MVL7YOMJ006UMDO`, shipped
 in v0.1.25).
 
-Verified against this tree on 2026-11-03 (the installed test skill's
-`changed_scope_selection`):
+Verified against this tree on 2026-11-13 (the installed test skill's
+`changed_scope_selection`; selection only — no suites executed):
 
-| Changed file | Selection | Reported reason |
+| Changed files | Selection | Reported reason |
 |---|---|---|
-| `tests/tooling/test-config-timeout-guard.test.ts` | `node_modules/.bin/vitest run tests/tooling/test-config-timeout-guard.test.ts` | selected 1 affected test file(s) |
+| `tests/tooling/test-config-timeout-guard.test.ts` | `competitive-turn-summary`'s unit + browser commands (its unit command includes `test-config-timeout-guard.test.ts` itself) | matched group `competitive-turn-summary` |
 | `src/scenes/MainStreetScene.ts` | `npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts` | matched group `webgl-clipping-browser` |
+| `src/scenes/MainStreetRendererStaffPile.ts`, `src/scenes/MainStreetHudTooltips.ts`, `src/MainStreetFormatting.ts` or `src/MainStreetStaffBuffs.ts` (each alone) | `main-street-renderer-hud-layout`'s unit + browser commands (staff-pile, HUD-tooltip, formatting, staff-buff and layout suites) | matched group `main-street-renderer-hud-layout` |
+| `src/layouts/main-street.layout.json` + `src/scenes/MainStreetLayoutAdapter.ts` + `tests/main-street/MainStreetLayoutAnchors.browser.test.ts` + `tests/main-street/tutorial-layout-resolution.test.ts` | `main-street-renderer-hud-layout`'s commands, which include **both** changed test files | matched group `main-street-renderer-hud-layout` |
+| `src/scenes/MainStreetScene.ts` + `src/scenes/MainStreetRendererStaffPile.ts` + `tests/main-street/staff-pile-renderer.test.ts` | `npx vitest run --project browser tests/main-street/webgl-renderer-clipping.browser.test.ts` + `node_modules/.bin/vitest run tests/main-street/staff-pile-renderer.test.ts` | matched group `webgl-clipping-browser` + 1 changed test file(s) outside the group |
+| `src/scenes/MainStreetLayoutAdapter.ts` (alone) or a layout fixture alone | `npx vitest run --project browser tests/main-street/hand-bottom-anchor.browser.test.ts` (imports and asserts both layout fixtures) | matched group `hand-bottom-anchor-browser` (tie on one changed file, fewest-commands tie-break) |
 | `docs/dev/testing.md` | full suite | no changed source or test files |
+
+**Group + file-level union (`SA-0MWA7OD8O001945I`, shipped).** A matched
+group no longer silently drops changed test files: any changed file outside
+the winning group's `paths` is unioned back in from the file-level selector
+(the `+ N changed test file(s) outside the group` reason), as the renderer
+slice row shows — `staff-pile-renderer.test.ts` is selected alongside
+`webgl-clipping-browser`'s suite. Before the union shipped, that slice ran
+only `webgl-renderer-clipping.browser.test.ts`, which is exactly how a
+knowingly-wrong layout-anchor assertion once passed the gate
+(`MS-0MWBWKZ1G006IBH2`). The broader union across *all* matching groups at
+once is `SA-0MVEJIHIG003WTH9` (open, medium); today the pick is still one
+group, with only the file-level selector unioned in.
+
+**Group inventory.** `.pi/test-config.json` declares 15 named `groups`
+(pinned by `EXPECTED_GROUP_NAMES` in `tests/tooling/test-config-timeout-guard.ts`,
+so every one of them has a matching entry there):
+
+- `hand-bottom-anchor-browser`, `tutorial-browser`, `main-street-hud-count`,
+  `deselect-toggle-browser`, `hand-drag-post-refresh`, `upgrade-drag-browser`,
+  `main-street-overlay-dialogs`, `hand-panel-browser`,
+  `pedestrians-scene-visibility-browser`, `loan-hud-browser`,
+  `help-settings-panels-browser`, `event-choice-dialogs-browser`,
+  `webgl-clipping-browser`, `competitive-turn-summary`,
+  `main-street-renderer-hud-layout`
+
+the last added by `MS-0MWCL3W0O0016P9K` for the renderer/HUD/layout modules
+(see the config-guard section above).
 
 The fallback states why it fell back ("no changed files", "no changed source
 or test files", "no matching group") rather than giving a generic list, so a

@@ -197,6 +197,24 @@
         "src/scenes/MainStreetScene.ts"
       ]
     },
+    "main-street-renderer-hud-layout": {
+      "commands": [
+        "npx vitest run --project unit tests/main-street/staff-pile-renderer.test.ts tests/main-street/staff-pile.test.ts tests/main-street/hud-tooltips.test.ts tests/main-street/ongoing-cost-tooltips.test.ts tests/main-street/staff-skill-tooltip.test.ts tests/main-street/sold-card-tooltip.test.ts tests/main-street/card-currency-formatting.test.ts tests/main-street/staff-underlay-formatting.test.ts tests/main-street/staff-skill-buffs.test.ts tests/main-street/staff-skill-buff-wiring.test.ts tests/main-street/staff-skill-scope-gate.test.ts tests/main-street/tutorial-layout-resolution.test.ts tests/main-street/layout-adapter.test.ts tests/main-street/hud-anchor-source-contract.test.ts tests/main-street/screen-layout-mapping.test.ts",
+        "npx vitest run --project browser tests/main-street/staff-underlay-rendering.browser.test.ts tests/main-street/MainStreetLayoutAnchors.browser.test.ts"
+      ],
+      "paths": [
+        "src/scenes/MainStreetRendererStaffPile.ts",
+        "src/scenes/MainStreetHudTooltips.ts",
+        "src/MainStreetFormatting.ts",
+        "src/MainStreetStaffBuffs.ts",
+        "src/scenes/MainStreetLayoutAdapter.ts",
+        "src/layouts/main-street.layout.json",
+        "src/layouts/main-street-tutorial.layout.json",
+        "src/layouts/**",
+        "tests/main-street/MainStreetLayoutAnchors.browser.test.ts",
+        "tests/main-street/tutorial-layout-resolution.test.ts"
+      ]
+    },
     "competitive-turn-summary": {
       "commands": [
         "npx vitest run --project unit tests/main-street/competitive-turn-ledger.test.ts tests/main-street/turn-summary-competitive-model.test.ts tests/main-street/competitive-turn-summary-gate.test.ts tests/main-street/turn-summary-gate.test.ts tests/main-street/turn-summary-model.test.ts tests/main-street/turn-summary-pl-model.test.ts tests/main-street/competitive-closing-presentation.test.ts tests/main-street/turn-summary-gate-docs.test.ts tests/main-street/turn-summary-bank-loan-docs.test.ts tests/main-street/competitive-loan-descriptor.test.ts tests/main-street/competitive-loan-active-obligation.test.ts tests/main-street/competitive-loan-disabled-states.test.ts tests/tooling/test-config-timeout-guard.test.ts tests/main-street/turn-summary-pl-docs.test.ts",
