@@ -1685,15 +1685,13 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
 /**
  * The engine charges `effectiveBusinessOngoingCost` (Bookkeeper −20% per
  * business, GDD D.4.3) while `expenseLineBreakdown`'s business branch shows
- * the card's raw `ongoingCost`, so today the residual is mislabelled "limited
+ * the card's raw `ongoingCost`, so the residual was mislabelled "limited
  * to the coins available". These cases pin the corrected contract (parent
- * MS-0MWEGF4V6007ZGRP) and are authored **red-phase** with `it.fails` per the
- * repo's test-first tracer-bullet convention (see `turn-summary-pl-model.test.ts`
- * and `competitive-per-seat-hand-capacity.test.ts`): each body asserts the exact
- * contract and is expected to fail until the implementing child
- * (MS-0MWEQN2R2007GQG0 — and MS-0MWEGDNAD009QDRO for the competitive seat's
- * per-item detail) flips it to a plain `it`. Leaving any as `it.fails` once it
- * passes is itself a failure, so the suite cannot go stale.
+ * MS-0MWEGF4V6007ZGRP). Each body is a plain `it`: the single-player bodies
+ * assert the single-player contract directly, and the competitive body
+ * exercises the same row path the competitive threading item
+ * (MS-0MWEGDNP300007WC) spreads owner-filtered breakdowns through, so once
+ * the shared business branch carries the named modifier both seats show it.
  *
  * The expected post-fix breakdown for the Bookkeeper-reduced Bakery:
  *
@@ -1707,7 +1705,7 @@ describe('Bookkeeper-reduced business expense breakdown (MS-0MWEQLYCH006NQ4M)', 
     buildPLProjection(bookkeeperState(), plInput(bookkeeperLedger()))!
       .expenses.lines.find((line) => line.key === 'business')!;
 
-  it.fails('exposes the Bookkeeper reduction as a named modifier with base + modifier === coins', () => {
+  it('exposes the Bookkeeper reduction as a named modifier with base + modifier === coins', () => {
     const items = businessLine().breakdown!.items;
     expect(items).toHaveLength(2);
     const bakery = items.find((item) => item.name === 'Bakery')!;
@@ -1722,14 +1720,14 @@ describe('Bookkeeper-reduced business expense breakdown (MS-0MWEQLYCH006NQ4M)', 
     }
   });
 
-  it.fails('reconciles exactly to the committed total with no spurious clamp line', () => {
+  it('reconciles exactly to the committed total with no spurious clamp line', () => {
     const line = businessLine();
     const streetReduction = line.breakdown?.streetReduction ?? 0;
     const itemSum = line.breakdown!.items.reduce((total, item) => total + item.coins, 0);
     expect(itemSum + streetReduction).toBe(line.coins);
   });
 
-  it.fails('the tooltip names the Bookkeeper discount and omits the limited-by-coins line', () => {
+  it('the tooltip names the Bookkeeper discount and omits the limited-by-coins line', () => {
     const line = businessLine();
     const tooltip = buildExpenseLineTooltip(line);
     expect(tooltip).toContain('Bakery: -16');
@@ -1738,7 +1736,7 @@ describe('Bookkeeper-reduced business expense breakdown (MS-0MWEQLYCH006NQ4M)', 
     expect(tooltip).toContain('Total: -21');
   });
 
-  it.fails('a competitive seat shows the same Bookkeeper modifier on its business line', () => {
+  it('a competitive seat shows the same Bookkeeper modifier on its business line', () => {
     const state = bookkeeperCompetitiveState();
     const summary = buildCompetitiveTurnSummary(state, {
       playerRoundLedger: bookkeeperCompetitiveLedger(),

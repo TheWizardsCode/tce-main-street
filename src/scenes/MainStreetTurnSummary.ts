@@ -94,6 +94,7 @@ import type { LogEntryActionType } from '../MainStreetStateTypes';
 import type { OneOffBreakdownEntry, OwnerOngoingCosts, OwnerRoundLedger, TurnLedger, TurnResult } from '../MainStreetEngineTypes';
 import { getSeatDisplayLabel, getSlotOwnerId } from '../MainStreetAdjacencyOwner';
 import {
+  computeBusinessOngoingCostReductionPct,
   computeIncidentSkillBuffs,
   computeReputationGainMultiplier,
   computeStaffSalaryCost,
@@ -102,6 +103,7 @@ import {
   computeStreetOngoingCostReductionPct,
   getStreetScopeSkills,
 } from '../MainStreetStaffBuffs';
+import { getEmployedStaffForBusiness } from '../MainStreetEngineCommands';
 import { getSkill, type SpecializationSkill } from '../MainStreetStaffSkills';
 import { roundInt } from '../MainStreetDifficulty';
 import { buildCompetitiveScoreboard } from './MainStreetCompetitiveScoreboard';
@@ -1361,9 +1363,14 @@ const OPERATIONS_MANAGER_SKILL_ID = 'skill-operations-manager';
  * is the card's `ongoingCost` (negative, expense convention) and each naming
  * `Operations Manager` discount becomes a signed modifier, using the same
  * {@link getSalaryScopeSkills} + `computeStaffSalaryDiscount` helpers the
- * engine charges with. Community-space and business items carry `base` only —
- * their only modifier is street-wide (`streetReduction`), so none is
- * synthesised per item.
+ * engine charges with. Business items also carry a named modifier when a
+ * Bookkeeper reduces the business's ongoing cost: `base` is the raw
+ * `ongoingCost` and `coins` mirrors the engine's
+ * `effectiveBusinessOngoingCost` (the Bookkeeper reduction applied per
+ * business, rounded and floored at 0), so the discount is exposed as a signed
+ * modifier rather than a phantom coins clamp. Community-space items carry
+ * `base` only — their only modifier is street-wide (`streetReduction`), so
+ * none is synthesised per item.
  *
  * The street-wide reduction mirrors `applyCompetitiveOngoingCosts`: staff
  * salaries reduce with the OWNER's street-wide skills
@@ -1455,10 +1462,14 @@ function expenseLineBreakdown(
  * owner-filtered street grid (MS-0MWEGDNAD009QDRO).
  *
  * Each owned, unsold slot of the family appears on its own line with its base
- * ongoing cost (`slot.ongoingCost`, expense convention); no per-item modifier
- * is synthesised — the family's only modifier is the street-wide
- * {@link streetReduction}, computed with the host skill set. Absent-safe: no
- * owned slot → `{}`.
+ * ongoing cost (`slot.ongoingCost`, expense convention). Business items
+ * additionally mirror the engine's `effectiveBusinessOngoingCost`: a Bookkeeper
+ * employed at the business reduces its ongoing cost before the street-wide Cost
+ * Cutter reduction, exposed as a named modifier (`base + modifier === coins`)
+ * rather than a phantom coins clamp (MS-0MWEQN2R2007GQG0). Community-space
+ * items carry no per-item modifier — the family's only modifier is the
+ * street-wide {@link streetReduction}, computed with the host skill set.
+ * Absent-safe: no owned slot → `{}`.
  */
 function ownerFamilyBreakdown(
   state: MainStreetState,
@@ -1474,7 +1485,37 @@ function ownerFamilyBreakdown(
     if (getSlotOwnerId(state, i) !== ownerId) continue;
     if (soldSlots[i]) continue;
     const cost = slot.ongoingCost ?? 0;
-    if (cost > 0) items.push({ name: slot.name, coins: -cost, base: -cost });
+    if (cost > 0) {
+      // Business items mirror the engine's `effectiveBusinessOngoingCost`: the
+      // Bookkeeper's per-business reduction (GDD D.4.3) applies to this
+      // business before the street-wide Cost Cutter reduction, rounded to the
+      // nearest integer and floored at 0 (MS-0MWEQN2R2007GQG0). The discount
+      // is exposed as a named modifier rather than a phantom coins clamp, so
+      // `base + sum(modifiers) === coins` holds structurally. Community-space
+      // items keep the raw `ongoingCost` (their only modifier is street-wide).
+      const item: PLBreakdownItem = {
+        name: slot.name,
+        coins: -cost,
+        base: -cost,
+      };
+      if (family === 'business') {
+        const reductionPct = computeBusinessOngoingCostReductionPct(state, i);
+        const effectiveCost = reductionPct > 0
+          ? Math.max(0, roundInt(cost * (1 - reductionPct)))
+          : cost;
+        item.coins = -effectiveCost;
+        const reduction = cost - effectiveCost;
+        if (reduction > 0) {
+          // Name the staff member(s) providing the reduction (the Bookkeeper),
+          // so the tooltip explains the discount instead of a coins clamp.
+          const reducers = getEmployedStaffForBusiness(state, i)
+            .filter((member) => (member.ongoingCostReduction ?? 0) > 0)
+            .map((member) => member.name);
+          item.modifiers = [{ name: reducers.join(', '), coins: reduction }];
+        }
+      }
+      items.push(item);
+    }
   }
   if (items.length === 0) return {};
   // Host-scoped reduction (the engine's `hostReduction`): community/business
