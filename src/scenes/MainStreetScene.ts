@@ -277,6 +277,17 @@ export class MainStreetScene extends CardGameScene {
    */
   public handPanelGraphics?: Phaser.GameObjects.Graphics;
 
+  /**
+   * The management-company Staff Pile container (MS-0MWBWKZ1G006IBH2):
+   * stacked card faces, count badge, portrait row and hover hit area. A
+   * root-level container at `STAFF_PILE_DEPTH` (below the hand layer),
+   * rebuilt by `refreshPlayerHand` and destroyed with the scene.
+   */
+  public staffPileContainer?: Phaser.GameObjects.Container;
+
+  /** The pile's hover hit area (clamped to the free band left of the hand). */
+  public staffPileHitArea?: Phaser.GameObjects.Rectangle;
+
   public actionContainer!: Phaser.GameObjects.Container;
 
   // Activity Log panel
@@ -348,6 +359,15 @@ export class MainStreetScene extends CardGameScene {
 
   // Overlay objects
   public overlayObjects: Phaser.GameObjects.GameObject[] = [];
+
+  /**
+   * Monotonic generation counter, incremented on every `createScene` (initial
+   * boot and every `scene.restart()`). Async overlay callbacks capture the
+   * value at presentation time and discard their result when the scene has
+   * restarted since, so a late game-over presentation or stats-chart handle can
+   * never add content to a fresh run (MS-0MW6H5R340033GJJ).
+   */
+  public sceneRestartGeneration = 0;
 
   // HUD animation state
   public previousCoins: number | null = null;
@@ -1648,7 +1668,9 @@ export class MainStreetScene extends CardGameScene {
     summary: import('./MainStreetTurnSummary').CompetitiveTurnSummary,
     onNextTurn: () => void,
     onBankLoanAction?: (seatId?: number) => void,
-    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'>,
+    result?: Pick<import('../MainStreetEngine').TurnResult, 'playerRoundLedger'> & {
+      incident?: import('../MainStreetEngine').TurnResult['incident'];
+    },
   ): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog === 'function') {
       (this.msOverlayManager as any).showCompetitiveTurnSummaryDialog(
@@ -1672,6 +1694,18 @@ export class MainStreetScene extends CardGameScene {
   public showStorylineJournal(): void {
     if (this.msOverlayManager && typeof (this.msOverlayManager as any).showStorylineJournalDialog === 'function') {
       (this.msOverlayManager as any).showStorylineJournalDialog();
+    }
+  }
+
+  /**
+   * Shows the Company Roster overlay (MS-0MWC1T8K2000DWZA): the management-company
+   * team with each member's role, effective salary and the team total, plus the
+   * lay-off controls. Delegates to the overlay manager's
+   * `showCompanyRosterDialog`.
+   */
+  public showCompanyRoster(): void {
+    if (this.msOverlayManager && typeof (this.msOverlayManager as any).showCompanyRosterDialog === 'function') {
+      (this.msOverlayManager as any).showCompanyRosterDialog();
     }
   }
 

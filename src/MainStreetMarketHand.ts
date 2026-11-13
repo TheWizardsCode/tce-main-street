@@ -15,6 +15,7 @@ import { addLog, describeEventEffects, classifyEffect } from './MainStreetState'
 import type { BusinessCard, CommunitySpaceCard, UpgradeCard, EventCard, AnyCard, SynergyType } from './MainStreetCards';
 import { updateNeighborsOnPlacement, tagSlotOwnerIfCompetitive } from './MainStreetAdjacency';
 import type { PurchaseResult } from './MainStreetMarketTypes';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import {
   computeEffectiveBusinessPurchaseCost,
   computeBusinessPurchasePremium,
@@ -75,7 +76,7 @@ export function moveToHand(state: MainStreetState, cardId: string): PurchaseResu
     state.justMovedUpgradeCardId = card.id;
   }
 
-  addLog(state, `Moved ${card.name} to hand (1 action, pay on play)`, 'neutral');
+  addLog(state, `Moved ${card.name} to hand (1 action, pay on play)`, 'neutral', 'move-to-hand');
 
   return { card, cost: 0, refilled: false };
 }
@@ -141,6 +142,11 @@ export function playBusinessFromHand(
   }
 
   state.resourceBank.coins -= price;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): a paid placement from hand is
+  // a market-phase purchase — it lands in the one-off residual, so it must
+  // be attributed to the Market purchase source for the breakdown to
+  // reconcile.
+  recordOneOffAttribution(state, { marketPurchaseCost: -price });
   state.hand.splice(handIndex, 1);
   state.streetGrid[slotIndex] = card as BusinessCard;
   updateNeighborsOnPlacement(state, slotIndex);
@@ -158,6 +164,7 @@ export function playBusinessFromHand(
       ? `Played ${card.name} from hand into slot ${slotIndex} (-€${price}, 50% premium, ${describeEventEffects(-price, 0)})`
       : `Played ${card.name} from hand into slot ${slotIndex} (-€${price}, ${describeEventEffects(-price, 0)})`,
     classifyEffect(-price, 0),
+    'place-business',
   );
 
   return { card, cost: price, refilled: false };
@@ -190,6 +197,7 @@ export function discardFromHand(state: MainStreetState, handIndex: number): void
       ? `Discarded ${card.name} from hand (-${repCost} rep)`
       : `Discarded ${card.name} from hand (no cost)`,
     'neutral',
+    'other-action',
   );
 }
 

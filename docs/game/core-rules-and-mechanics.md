@@ -232,6 +232,8 @@ stateDiagram-v2
    - `resourceBank.reputation += totalReputationPerTurn`.
    - **Ongoing costs** (staff cards, community-space cards, and business cards **placed on the street grid** with `ongoingCost > 0` — e.g. the Library's 25 coins/turn; business cards held in hand are not charged, CG-0MTC31LN3000UHDY) are deducted from coins after income. Deductions are clamped at 0 coins (the player is never driven below zero) and logged.
 
+   > **Card display shows the effective totals (MS-0MW6H9A47001B1QT).** Every card face and hover tooltip shows the per-turn income and reputation the engine actually credits for that instance — base + upgrade bonus + adjacent synergy + duplicate factor + staff bonuses — resolved through the shared read-only `computeEffectiveCardValues()`. The tooltip also breaks the total into its components, so a placed card can never display stale base-only figures. Staff bonuses are folded in read-only (the adjacency caches `currentIncome` / `currentReputationPerTurn` are never mutated). A hand/market instance has no board position, so position-dependent modifiers (synergy, the same-type penalty, slot-bound staff buffs) are zero, while its upgrade bonus and duplicate/saturation factor still apply — the instance counts itself once when deriving its own saturation factor.
+
 ### Market Saturation (Duplicate Businesses)
 
 When two or more businesses of the same base type occupy the **same street**, each earns a reduced share of its usual coin income:
@@ -364,7 +366,9 @@ and the **total repaid** over the term (MS-0MW1ZJDVE000MUID). It is **presentati
 nothing about it is written to or read from a save, and it changes no wallet, activity-log
 row, ledger entry or RNG draw — no state mutation and no RNG consumption — so a no-loan or
 `loansEnabled: false` turn is unchanged, and a resumed/deferred closing never announces the
-same payoff twice. The dialog is suppressed
+same payoff twice. A closing that pauses first on an event-choice dialog or on a bankruptcy
+bailout offer still delivers the congratulation once the pause resolves and the run
+continues (MS-0MW4887R4007XPGJ); a declined bailout ends the run, so game over wins. The dialog is suppressed
 in `replayMode` / headless runs, and in competitive play only the **human seat** sees it —
 an AI seat's payoff changes nothing on screen. A closing that ends the run in a win or a
 loss presents the game-over overlay instead, so a congratulation never pre-empts the final
@@ -502,11 +506,13 @@ Each week (MarketPhase) the player has a base of **one action**, plus one more p
 | Play a card from hand to the street | 1 action | Pays the card's listed cost at placement. A hand card may be placed by **dragging it onto an empty slot** (the same gesture as the market row — MS-0MV76HVE4007AOO0), which reuses the click-path placement pricing (same-week composite premium applies at 0 actions). |
 | Direct buy-and-place (market→street) | 1–2 actions | Skips the hand; pays **+50%** over the listed cost (`Math.ceil(cost * 1.5 * 2) / 2`) when the move leaves **no action** for the placement (same pricing as the click composite). Triggered by dragging a market card straight onto a street slot. On a Golden Mile 2-action week the placement instead consumes the remaining action at **listed cost** — drag is never cheaper than click. Upgrade cards use the same gesture, dropping onto the business they target (CG-0MT3IYSRL001VVUP): with **2 actions** remaining the upgrade drag charges the **discounted listed cost** and consumes **both** actions (drag + placement, no premium dialog); with **1 action** it charges the discount-first **+50% premium** and consumes 1 action, preceded by the premium explainer dialog. A vetoed or rejected upgrade drag states why in the instruction text (MS-0MVKT3TZF0091IHC). |
 | Apply a hand upgrade to a business | 1 action | Pays the discounted upgrade cost at apply. A held upgrade may be applied by **dragging it onto an eligible business** (MS-0MV76HVE4007AOO0) — same gesture as the market buy-and-play, but priced from hand: a same-week upgrade (just moved to hand this week) applies **free** (no second action); one held from a previous week costs **1 action**. The drag reuses the click path's undoable `playUpgradeFromHandCommand` and level-up burst. |
-| Hire a staff card | 1 action | From the general market row. Hiring **business staff** also chooses the destination business — its **initial placement is free** and part of the hire action (it must match `allowedBusinessTypes` and have a free employment slot). Hiring **management-company staff** joins the company immediately, with no placement step. Both types add their ongoing salary to the IncomePhase deduction. |
+| Hire a staff card | 1 action | From the general market row. Hiring **business staff** also chooses the destination business — its **initial placement is free** and part of the hire action (it must match `allowedBusinessTypes`, have a free employment slot and, in competitive play, be a business the acting seat owns). Hiring **management-company staff** joins the company immediately, with no placement step. Both types add their ongoing salary to the IncomePhase deduction. |
 | Close a business/community-space card | 1 action | **No refund.** Removes the card from the street entirely (slot → `null`, card → discard pile) so the slot can be re-filled in a later week. **Damages reputation** (`−(cardReputationPerTurn × closeReputationMultiplier)`, default multiplier 20, floored at 0; MS-0MURC6XO8005W57D): closing a reputation-positive card is a penalty, closing a nuisance (negative per-turn reputation, e.g. the Pawn Shop) is a boost. Only non-sold cards can be closed. Selling the *same* card is free but leaves an inert sold card occupying the slot (see below). In competitive play the acting seat must own the card (see the ownership note below). |
-| Relocate an employed **business staff** member | 1 action | Moves a hired **business staff** member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes` and employment capacity, is atomic with a successful move, and is undoable. **Management-company staff are never placed or relocated**, so no relocation cost ever applies to them. |
+| Relocate an employed **business staff** member | 1 action | Moves a hired **business staff** member already employed at one business to another business (MS-0MUOSUKUC004G2VO). The **initial placement** at hire time stays free; only relocating an already-employed member costs an action. Respects `allowedBusinessTypes`, employment capacity and (in competitive play) slot ownership, is atomic with a successful move, and is undoable. **Management-company staff are never placed or relocated**, so no relocation cost ever applies to them. |
 
-> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the business-staff card. Only **business staff** can be relocated at all — **management-company staff** are hired into the company and never carry an `employedAtSlot`, so placement and relocation do not apply to them and no action is ever charged for one. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, and it must have a free employment slot (`max(1, level + 1)` capacity, mirroring the engine's `getEmploymentCapacity`) — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
+> **Relocating staff costs exactly one action (MS-0MUOSUKUC004G2VO, parent AC4).** All staff relocation is action-gated: moving an employed member to a different business consumes **1 action point**, whatever the business-staff card. Only **business staff** can be relocated at all — **management-company staff** are hired into the company and never carry an `employedAtSlot`, so placement and relocation do not apply to them and no action is ever charged for one. The move is validated by `canMoveStaffOnBusiness` — the member must already be employed elsewhere, the destination must match `allowedBusinessTypes`, it must have a free employment slot (`max(1, level + 1)` capacity, mirroring the engine's `getEmploymentCapacity`) and, in competitive play, it must be a business the acting seat owns — and is exposed by the player-facing `moveStaffCommand`, which consumes the action atomically with a successful move so an illegal attempt spends nothing. `placeStaffOnBusiness` stays action-free and reusable; the action is charged at the command layer via `isStaffRelocation`. The hire-time initial placement is unchanged and remains action-free (it is part of the hire action). The move is undoable and the previous employment is restored on undo.
+
+> **Competitive ownership gates staff employment (MS-0MWBCWLZY001EA3W, MS-0MWBCWVYC007F6VJ, MS-0MWBCX7MS00960BH).** In competitive play the acting seat may only employ or relocate staff at a business it owns: `canPlaceStaffOnBusiness` (and therefore `canMoveStaffOnBusiness`) rejects an opponent-owned destination with the shared `That business belongs to <seat>.` reason via `canActiveSeatActOnSlot`, and every employment write path (`hireStaffApplicant`, `placeStaffOnBusiness`, `moveStaffOnBusiness`) defensively refuses to persist a cross-seat employment. A walk-on applicant is only ever targeted at one of the acting seat's own businesses that has a free employment slot, and an opponent's businesses never raise the applicant chance (`computeApplicantChance`) or widen the applicant type pool (`resolveStaffApplicant`), so the player is never offered a specialist they cannot employ. A save written before this gate that still records player staff at another seat's business is repaired on load: the member is released (removed from that business's `employedStaff`, kept as the player's hired staff) and the release is logged in the activity log. Single-player play is unchanged because the ownership gate is a no-op without an owner-tagged grid.
 
 > **Hand-drag: click-select then drag (MS-0MVK4E5M00021XEY).** Clicking a hand
 > card arms the placing-from-hand selection; a drag started on **that same
@@ -909,6 +915,157 @@ The Game Over overlay's stats graphs are fed by a persisted per-turn series, kep
 - **UI.** The pure overlay model (`buildGameOverStatSeries`) turns the series into the five end-of-game graphs and the final cash-at-end-of-turn figure (see the UX notes, *Game-over panel*).
 
 **Competitive scope (working assumption):** the recorded series describes the **human seat's** trajectory only. Per-seat multi-series graphs, or a strictly human-owned `businesses` / per-seat `profit` figure, are a separate producer-confirmed decision tracked as an Open Question on MS-0MVAMU6OM008GJPV.
+
+---
+
+## End-of-Turn Turn Summary Ledger and Tooltips
+
+When a closing's presentation finishes, the **Turn Summary** panel renders one
+player's committed end-of-turn figures as a profit/loss statement
+(MS-0MW6GZKZZ006PLLO). Every line is a presentation of data the engine already
+committed — building or reading the summary mutates no state, consumes no RNG
+and changes no save ordering.
+
+### Where the ledger comes from
+
+- **Single player** projects `TurnResult.turnLedger`, built by `buildTurnLedger`
+  in `src/MainStreetEngineTurnClosing.ts`.
+- **Competitive** projects `TurnResult.playerRoundLedger`
+  (`CompetitiveRoundLedger`), whose per-seat `OwnerRoundLedger` rows carry the
+  same income/expense subtotals.
+- The Phaser-free projection lives in `src/scenes/MainStreetTurnSummary.ts`
+  (`buildPLProjection`, `buildPLTabs`); the tooltip copy lives in
+  `src/scenes/MainStreetTurnSummaryTooltips.ts`.
+
+### How each row is calculated
+
+| Row | Committed value | Per-item detail (tooltip breakdown) |
+| --- | --- | --- |
+| Base income | `TurnLedger.incomeByPhase.base` | one line per contributing business, from `IncomeResult.breakdown[].baseIncome` (`SlotIncome`); zero contributions are omitted |
+| Synergy income | `TurnLedger.incomeByPhase.synergy` | one line per contributing business, from `IncomeResult.breakdown[].synergyBonus`; zero contributions are omitted |
+| Reputation income | `TurnLedger.incomeByPhase.reputation` | one line per contributing business, from `IncomeResult.phaseBreakdown.perSlotBreakdown[].repBonus`; zero contributions are omitted |
+| Event income | `TurnLedger.incomeByPhase.events` | one line per business (its `phaseBreakdown.perSlotBreakdown[].eventDeltas` summed), then one indented `name: ±n` line per committed event effect; a business with no effects and a zero sum is omitted, one whose effects net to zero is kept so its effects stay visible |
+| Staff wages | `TurnLedger.ongoingCosts.staff` | one line per `state.staffCards` member with the engine's `computeStaffSalaryCost(getSalaryScopeSkills(card), card.ongoingCost)` charge; where the Operations Manager discount applies, an indented `Base:` line (the card's `ongoingCost`) plus one indented line per named modifier (`Operations Manager: +n`), so `base + sum(modifiers)` equals the charged salary |
+| Community costs | `TurnLedger.ongoingCosts.community` | one line per placed, unsold community space with its base `ongoingCost` (its only modifier is the street-wide reduction) |
+| Business costs | `TurnLedger.ongoingCosts.business` | one line per placed, unsold business card with its base `ongoingCost` (hand cards are not charged; sold cards are excluded) |
+| Total income / Total operating expenses | the section's committed subtotal | one line per contributing section line with its signed amount, reconciling to the committed subtotal (never a re-sum); a section with no lines keeps "The sum of the lines above." |
+| Incident | `TurnLedger.incidentCoinChange` / `incidentRepChange` | the resolved `TurnResult.incident.name` with its committed coin/reputation effect, then an indented `Base:` line and one indented line per named modifier (incident damage reductions, Brand Ambassador reputation multiplier), so `base + sum(modifiers)` equals the committed deltas; a closing with no incident shows "No incident was resolved this turn." |
+| One-off | `TurnLedger.oneOffDeltas` | per-source attribution (`TurnLedger.oneOffBreakdown`, MS-0MWBZDNH3006DXV7): one line per source — market purchase, market sale, event play, Community Favour, loan repayment / bank loan / bailout — with its signed amount (and `Coins X, Rep Y` when the source moved reputation); the reconciliation formula stays beneath as a checksum. A legacy/turn without attribution falls back to the formula only (below) |
+| Net profit/loss | `netCoinChange` / `netRepChange` / `netScoreChange` | the reconciliation identity below |
+| Reputation change | the net reputation row | the income, incident and one-off reputation constituents that sum to the net change |
+| Score change | the net score row | explanatory prose only (the projection carries no challenge-level detail) |
+| Closing coins | `day-start snapshot + net` | day-start balance, net change and closing balance lines |
+| Closing reputation / score | `day-start snapshot + net` | explanatory context |
+| Businesses owned | `TurnLedger.businessesOwned` | the business names (one per line) rather than only the count |
+
+The per-card ongoing-cost breakdowns are derived from the committed
+`streetGrid` / `staffCards` with the **same** helpers the engine uses. Each item
+line carries the card's **base** charge; staff items additionally carry the
+Operations Manager salary discount as a named modifier. The tooltip then
+reconciles the base per-item sum to the committed category total, including the
+street-wide Cost Cutter reduction (a `Street-wide reduction` line) and any
+available-coins clamp (a `Limited by available coins` line), so
+`sum(items) + reduction + clamp == total`.
+
+### Tooltip format (multi-line)
+
+Every tooltip is a **multi-line** block, not a comma-joined summary. The first
+line repeats the row label and its committed signed amount; each contributing
+item then gets its own line, with any explanation indented beneath the item it
+explains:
+
+```text
+Staff wages: -95
+  Ana the Analyst: -70
+    Base: -90
+    Operations Manager: +20
+  Bo the Broker: -45
+    Base: -45
+Street-wide reduction: +15
+Limited by available coins: +5
+Total: -95
+```
+
+- **Item lines** are `Name: ±n` — one contributing business, staff member,
+  community space or business card per line. Amounts are signed in the row's own
+  convention (income positive, costs negative).
+- **Indented explanation lines** sit beneath their item: `Base: ±n` plus one
+  `Modifier: ±n` line per named modifier (staff, incident), or one
+  `Effect: ±n` line per committed event effect (Event income).
+- **Reconciliation lines** close an expense tooltip: `Street-wide reduction:
+  +n` and `Limited by available coins: +n` when they apply, then `Total: ±n`,
+  so the displayed items always add up to the committed category total.
+- **Total rows** enumerate the section's contributing lines instead of "The sum
+  of the lines above"; **incident**, **one-off** and **net** rows show their
+  base-plus-modifier or reconciliation formula; **context rows** show either
+  their numeric derivation or (for score change) the explanatory prose.
+- Multi-line content fits the existing tooltip width; no dialog re-layout is
+  involved.
+
+### The reconciliation identities
+
+- Statement: `income.total + expenses.total + incident.coins + oneOff.coins ==
+  net.coins` — the ledger's own identity.
+- One-off: `oneOff = net − income − expenses − incident`.
+
+### One-off attribution (MS-0MWBZDNH3006DXV7)
+
+The one-off row now explains itself. As the turn plays, the engine captures
+per-source deltas into a transient, checkpoint-safe accumulator
+(`_oneOffAttribution`, reset each WeekStart):
+
+- **market purchases** — businesses / community spaces / upgrades / staff
+  bought or placed during the MarketPhase (cost at play from the market or
+  from hand, +50% premium included);
+- **market sales** — sell refunds (grid or hand);
+- **event plays** — Investment events played during the MarketPhase (net of
+  the play cost, staff mitigation and reputation scaling);
+- **Community Favour** — the exchange's signed coin/reputation effect;
+- **loan effects** — a bank loan taken in the MarketPhase (`loan-taken`), an
+  accepted bailout (`loan-bailout`) and the closing's scheduled repayments
+  (`loan-repayment`).
+
+`buildTurnLedger` maps those sources to labelled entries
+(`TurnLedger.oneOffBreakdown`) and asserts they sum to the authoritative
+residual `oneOffDeltas.coins` **within a 1-coin rounding tolerance** (the
+last entry absorbs any drift). The tooltip lists one signed amount per source
+on its own line (`Market purchase: −120`, `Market sale: +80`) with the
+reconciliation formula kept beneath as a checksum. Competitive seats get the
+same per-source list through `OwnerRoundLedger.oneOffBreakdown` (parity across
+all tabs).
+
+### One-off fallback (documented choice)
+
+Where the engine has **no per-source data** — a legacy/hand-built ledger, a
+mid-turn save from before this feature, or a turn whose residual includes coin
+movements outside the tracked sources — the ledger carries no
+`oneOffBreakdown` and the tooltip degrades to the reconciliation formula that
+produces the residual:
+`one-off = net − income − expenses − incident`. Attribution is never invented:
+if the captured sources do not reconcile to the residual within tolerance, the
+breakdown is omitted rather than shown wrong.
+
+### Tooltip interaction and styling
+
+Each statement row and each supplementary context row carries an explanation
+tooltip attached with the shared `attachHudTooltipZone` helper
+(`core/src/ui/Renderer/index.ts`), so it shows on **hover** (desktop) and on
+**tap** (touch), and dismisses on mouse-out or a second tap. Content is built
+**lazily** from the projection on hover/tap, so unhovered rows cost nothing. The
+tooltips reuse the scene's `TooltipManager` styling (dark background, readable
+font) and never attach to the panel's tabs, `[ Next Turn ]` or `[ Bank Loan ]`,
+so they cannot intercept a control press. All copy resolves through the shared
+`t()` / `registerLocale` i18n system, with English defaults registered at module
+load and overridable by any registered locale.
+
+Competitive closings render the same tooltips for the selected seat's tab: each
+seat's income breakdown comes from its own `TurnResult.playerIncome` entry, and
+switching tabs redraws the whole statement with that seat's content. Where a
+seat's ledger carries no per-item income detail (an older or hand-built
+`CompetitiveRoundLedger`), the tooltip shows the committed category total with
+an explanatory note instead of a wrong or empty breakdown; competitive expense
+lines stay category-total only, because `OwnerRoundLedger` carries no per-card
+cost detail (deliberate scope decision, follow-up `MS-0MWBZDVCH008P8X5`).
 
 ---
 

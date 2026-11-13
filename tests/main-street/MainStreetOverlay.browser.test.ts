@@ -85,6 +85,69 @@ async function waitForCondition(
 }
 
 /**
+ * Clears persisted run checkpoints/campaign progress. The SaveLoadStore lives
+ * in IndexedDB, which is origin-scoped and shared across browser test files;
+ * without this a saved checkpoint from one test can suppress the New Game
+ * selector in a later file (MS-0MV2DNOCG0016INS precedent).
+ */
+async function clearSaveStore(scene: any): Promise<void> {
+  try {
+    await scene?.saveStore?.clear?.();
+  } catch (_) {
+    // ignore in constrained environments
+  }
+}
+
+/**
+ * Collect every text currently rendered in the scene's HUD container.
+ * Phaser 4 containers store children in `.list`.
+ */
+function hudTextLabels(scene: any): string[] {
+  const hud = scene?.hudContainer as { list: Phaser.GameObjects.GameObject[] } | undefined;
+  if (!hud || !Array.isArray(hud.list)) return [];
+  return hud.list
+    .filter((child): child is Phaser.GameObjects.Text => child instanceof Phaser.GameObjects.Text)
+    .map((child) => child.text);
+}
+
+/**
+ * Game-over-specific text. Kept narrow so the assertion cannot be satisfied by
+ * unrelated HUD chrome that legitimately survives a restart (e.g. the live
+ * `Coins:` readout). The multi-line breakdown is identified by its paired
+ * `Final Score:` line.
+ */
+const GAME_OVER_MARKERS = [
+  'Game Over',
+  'You Win!',
+  'Game State',
+  'Summary',
+  'Stats',
+  'Challenges',
+  '[ Play Again ]',
+  '[ Menu ]',
+  '[ Change ]',
+  '[ View detailed stats ]',
+  '[ Continue Solo ]',
+  '[ Enter Endless Mode ]',
+];
+
+/**
+ * Returns the game-over overlay text still present in the HUD. Empty means the
+ * overlay was fully torn down. A multi-line score breakdown is matched by the
+ * conjunction of `Coins:` and `Final Score:` so the live HUD coin readout is
+ * never mistaken for leftover overlay content.
+ */
+function leftoverGameOverText(scene: any): string[] {
+  return hudTextLabels(scene).filter(
+    (text) =>
+      GAME_OVER_MARKERS.includes(text) ||
+      text.startsWith('Difficulty:') ||
+      text.startsWith('Cash at end of turn:') ||
+      (text.includes('Coins:') && text.includes('Final Score:')),
+  );
+}
+
+/**
  * Collect display objects from the HUD container.
  * Phaser 4 containers store children in .list.
  */
@@ -144,7 +207,10 @@ function forceGameOver(scene: Phaser.Scene, isWin = false): void {
 describe('Main Street overlay button tests', () => {
   let game: Phaser.Game | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
+    const scene = game?.scene.getScene('MainStreetScene');
+    await clearSaveStore(scene);
+    try { (window as any).localStorage?.clear(); } catch (_) { /* ignore */ }
     destroyGame(game);
     game = null;
   });
@@ -198,49 +264,48 @@ describe('Main Street overlay button tests', () => {
     expect(changeBtn!.input?.enabled).toBe(true);
   });
 
-  it('should restart the scene when "Play Again" is clicked via DOM pointer event', async () => {
+  it('should clear every game-over overlay element when "[ Play Again ]" is activated through its real handler', async () => {
     game = await bootGame();
     const scene = game.scene.getScene('MainStreetScene')!;
+    await clearSaveStore(scene);
 
-    forceGameOver(scene);
+    forceGameOver(scene, false); // competitive-style loss
     await waitFrames(5);
 
     const hud = (scene as any).hudContainer as { list: Phaser.GameObjects.GameObject[] } | undefined;
     expect(hud).toBeDefined();
 
-    // createOverlayButton returns a Phaser.GameObjects.Text directly
+    // Sanity: the game-over overlay really is on screen before the restart, so
+    // the post-restart assertion below is non-vacuous.
+    expect(leftoverGameOverText(scene)).toEqual(
+      expect.arrayContaining(['Game Over', '[ Play Again ]', '[ Menu ]']),
+    );
+
+    // createOverlayButton returns a Phaser.GameObjects.Text directly. Drive the
+    // real `pointerdown` handler registered by showGameOverOverlay — NOT a
+    // hand-rolled `overlayObjects = []` + `scene.restart()`.
     const playAgainBtn = hud!.list.find(
       (child: Phaser.GameObjects.GameObject) =>
         child instanceof Phaser.GameObjects.Text && child.text === '[ Play Again ]',
     ) as Phaser.GameObjects.Text | undefined;
     expect(playAgainBtn).toBeDefined();
+    playAgainBtn!.emit('pointerdown');
 
-    // Trigger scene restart by calling the handler logic directly.
-    // Phaser DOM click simulation is unreliable in headless browser tests.
-    (scene as any).overlayObjects = [];
-    scene.scene.restart();
-
-    // Wait for restart: scene.restart() destroys the old scene and creates
-    // a new one. We wait for uiPhase to change from 'game-over' to a new state.
+    // Wait for the restart to settle (uiPhase leaves 'game-over' and the new
+    // scene finishes creating).
     await waitForCondition(() => {
       const activeScene = game!.scene.getScene('MainStreetScene');
       return Boolean(activeScene && (activeScene as any).uiPhase !== 'game-over');
     }, 15_000);
     await waitFrames(5);
 
-    // Verify: the game-over buttons no longer exist in the new hudContainer
     const newScene = game!.scene.getScene('MainStreetScene') as any;
-    const newHud = newScene?.hudContainer as { list: Phaser.GameObjects.GameObject[] } | undefined;
-    if (newHud) {
-      const newTexts = newHud.list.filter(
-        (child: Phaser.GameObjects.GameObject) =>
-          child instanceof Phaser.GameObjects.Text,
-      ) as Phaser.GameObjects.Text[];
-      const playAgainAfterRestart = newTexts.find(
-        (t) => t.text === '[ Play Again ]',
-      );
-      expect(playAgainAfterRestart).toBeUndefined();
-    }
+    expect(newScene?.hudContainer).toBeDefined();
+
+    // AC1: no game-over overlay content survives the restart.
+    expect(leftoverGameOverText(newScene)).toEqual([]);
+    // The teardown bookkeeping is clean in the restarted scene.
+    expect(newScene.overlayObjects).toEqual([]);
   });
 
   it('should have all overlay content parented to hudContainer for correct z-ordering', async () => {

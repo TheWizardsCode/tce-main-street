@@ -12,6 +12,7 @@
 import Phaser from 'phaser';
 import type { HandView } from '@ui';
 import type { BusinessCard, CommunitySpaceCard, EventCard, UpgradeCard, StaffCard } from '../MainStreetCards';
+import type { EffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import type { SceneLayout } from './MainStreetConstants';
 import type { MainStreetRendererContext } from './MainStreetRendererContext';
@@ -20,6 +21,7 @@ import { refreshMarket, drawMarketRow, getMarketRowCards, getMarketSlotCenter, d
 import { createHeader, refreshAll, refreshAllExceptStreet, refreshHud, syncHudTotals, refreshChallengeTracker, refreshActionButtons, refreshLog, refreshApplicant, animateUpcomingEffectLine } from './MainStreetRendererHud';
 import { unregisterDragDraggables, unregisterHandDraggables, refreshDragDropZones, showDragHighlights, getDragHighlights, clearDragHighlights, showTargetHighlights, clearTargetHighlights } from './MainStreetRendererDragDrop';
 import { computeLayout, refreshPlayerHand, drawHeldEventCard } from './MainStreetRendererLayout';
+import { drawStaffPile } from './MainStreetRendererStaffPile';
 
 // Re-export for test imports
 export { buildUpgradeOverlaySpec, type UpgradeOverlaySpec } from './UpgradeOverlaySpec';
@@ -31,6 +33,11 @@ export class MainStreetRenderer implements MainStreetRendererContext {
   public dragHighlightRects = new Set<Phaser.GameObjects.Rectangle>();
   public marketRowCards = new Map<string, Phaser.GameObjects.Container[]>();
   public drawnRoadBands: RoadBand[] = [];
+  /**
+   * Staff Pile click hand-off (MS-0MWC9PDQY003O0XQ): opens the Company Roster.
+   * Wired by the scene composition root; the pile carries no roster logic.
+   */
+  public onOpenCompanyRoster?: () => void;
 
   constructor(public readonly scene: any) {}
 
@@ -48,6 +55,10 @@ export class MainStreetRenderer implements MainStreetRendererContext {
 
   public drawHandPanel(): void {
     drawHandPanel(this);
+  }
+
+  public drawStaffPile(): void {
+    drawStaffPile(this);
   }
 
   public refreshAll(): void {
@@ -186,8 +197,9 @@ export class MainStreetRenderer implements MainStreetRendererContext {
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
     height: number,
+    effective?: EffectiveCardValues,
   ): void {
-    applyUpgradeOverlays(this, container, biz, width, height);
+    applyUpgradeOverlays(this, container, biz, width, height, effective);
   }
 
   public updateBusinessHandSelection(index: number | null): void {

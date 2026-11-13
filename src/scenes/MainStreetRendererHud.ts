@@ -1017,7 +1017,7 @@ export function refreshApplicant(renderer: MainStreetRendererContext): boolean {
       const hover = s.add.rectangle(0, 0, cardW, cardH, 0x000000, 0.001);
       hover.setInteractive({ useHandCursor: true, cursor: 'pointer' });
       hover.on('pointerover', () => {
-        const info = buildCardTooltipInfo(card, s.state.config);
+        const info = buildCardTooltipInfo(card, s.state.config, {}, { state: s.state });
         s.tooltipManager?.show(info, container.x, container.y);
       });
       hover.on('pointerout', () => s.tooltipManager?.hide());

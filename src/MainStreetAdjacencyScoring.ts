@@ -439,6 +439,326 @@ export function computeBusinessIncomeParts(
   return { baseIncome, synergyBonus: total - baseIncome, total, factor };
 }
 
+// ── Effective (display == credit) per-card values ───────────
+//
+// The card face and every hover tooltip must show the income/reputation the
+// engine ACTUALLY credits for that card instance, not the static
+// `baseIncome + incomeBonus` / `reputationPerTurn + reputationBonus` figures.
+// These read-only helpers resolve the effective per-turn totals AND a
+// component breakdown from the same primitives `applyIncome` uses
+// (`computeBusinessIncomeParts`, `computeBusinessStaffBuffs`,
+// `computePerBusinessSkillBuffs`), so display and credit can never diverge
+// (MS-0MW6H9A47001B1QT).
+//
+// **Read-only contract.** They never mutate `currentIncome` /
+// `currentReputationPerTurn` (the adjacency caches) and never mutate state:
+// staff buffs are recomputed on demand, exactly as `applyIncome` folds them.
+//
+// **Every instance, every location.** A card occupies at most one street slot;
+// a hand/market instance has no board position. Position-dependent modifiers
+// (adjacency synergy, the adjacent same-type penalty, slot-bound staff buffs)
+// evaluate to zero for a slotless instance, while the upgrade bonus and the
+// duplicate-business (market-saturation) factor for its type still apply. Both
+// cases resolve through these helpers rather than a second formula.
+
+/**
+ * Effective per-turn coin-income breakdown for one card instance
+ * (MS-0MW6H9A47001B1QT).
+ *
+ * The additive components (`base + upgradeBonus + synergy + staffFlat`, each
+ * already scaled by `staffPercent`) sum exactly to `total`, and `total` equals
+ * the per-slot amount `applyIncome` credits for the same instance.
+ */
+export interface EffectiveIncomeBreakdown {
+  /** Base-income share after the adjacent same-type penalty and duplicate factor. */
+  base: number;
+  /** Upgrade income-bonus share after the adjacent same-type penalty and duplicate factor. */
+  upgradeBonus: number;
+  /** Adjacency synergy share (post duplicate factor and staff percent). */
+  synergy: number;
+  /** Duplicate-business (market-saturation) factor applied (1 when not saturated). */
+  duplicateFactor: number;
+  /** Flat staff coin bonus (business-staff card + specialization skill). */
+  staffFlat: number;
+  /** Staff percentage coin boost applied to the coin shares (0.2 = +20%). */
+  staffPercent: number;
+  /** Effective per-turn coin total, equal to the per-slot amount the engine credits. */
+  total: number;
+}
+
+/**
+ * Effective per-turn reputation breakdown for one card instance
+ * (MS-0MW6H9A47001B1QT).
+ *
+ * The additive components (`base + upgradeBonus + synergy + staffFlat`, each
+ * already scaled by `staffPercent`) sum exactly to `total`, and `total` equals
+ * the per-slot reputation `applyIncome` credits for the same instance.
+ */
+export interface EffectiveReputationBreakdown {
+  /** Base reputation share (`reputationPerTurn`). */
+  base: number;
+  /** Upgrade reputation-bonus share (`reputationBonus`). */
+  upgradeBonus: number;
+  /** Adjacency reputation synergy share. */
+  synergy: number;
+  /** Flat staff reputation bonus (business-staff card + specialization skill). */
+  staffFlat: number;
+  /** Staff percentage reputation boost applied to the reputation shares. */
+  staffPercent: number;
+  /** Effective per-turn reputation total, equal to the engine's per-slot credit. */
+  total: number;
+}
+
+/** Effective per-turn values for one card instance (income + reputation). */
+export interface EffectiveCardValues {
+  income: EffectiveIncomeBreakdown;
+  reputation: EffectiveReputationBreakdown;
+}
+
+/** A zeroed effective-value bundle (sold/empty slots, or a missing card). */
+function emptyEffectiveCardValues(): EffectiveCardValues {
+  return {
+    income: {
+      base: 0,
+      upgradeBonus: 0,
+      synergy: 0,
+      duplicateFactor: 1,
+      staffFlat: 0,
+      staffPercent: 0,
+      total: 0,
+    },
+    reputation: {
+      base: 0,
+      upgradeBonus: 0,
+      synergy: 0,
+      staffFlat: 0,
+      staffPercent: 0,
+      total: 0,
+    },
+  };
+}
+
+/** The grid dimensions the adjacency resolver should use for this state. */
+function effectiveStateGridDims(state: MainStreetState): GridDims | undefined {
+  return state.streetGridCols && state.streetGridRows
+    ? { cols: state.streetGridCols, rows: state.streetGridRows }
+    : undefined;
+}
+
+/** Immutable per-business buff profile (mirrors `applyIncome`'s construction). */
+function effectiveBuffProfile(card: BusinessCard | CommunitySpaceCard) {
+  return {
+    synergyTypes: (card as BusinessCard).synergyTypes ?? [],
+    baseIncome: (card as BusinessCard).baseIncome ?? 0,
+    ongoingCost: (card as BusinessCard).ongoingCost ?? 0,
+  };
+}
+
+/**
+ * Counts the business-family copies of a card's base type currently on the
+ * grid (all street cells). Used only to derive the duplicate/saturation factor
+ * for a slotless (hand/market) instance, which counts itself once but is not
+ * present on the grid, so it is not double-counted.
+ */
+function countSameBaseTypeOnGrid(
+  grid: (BusinessCard | CommunitySpaceCard | null)[],
+  card: BusinessCard | CommunitySpaceCard,
+): number {
+  if (card.family !== 'business') return 0;
+  const baseType = getBaseTypeId(card.id);
+  let count = 0;
+  for (const other of grid) {
+    if (!other || other.family !== 'business') continue;
+    if (getBaseTypeId(other.id) === baseType) count++;
+  }
+  return count;
+}
+
+/**
+ * Effective values for a card placed in a street slot. Mirrors `applyIncome`'s
+ * per-slot arithmetic exactly (staff buffs folded read-only) so the displayed
+ * total can never disagree with the credited amount.
+ */
+function computePlacedEffectiveValues(
+  state: MainStreetState,
+  target: BusinessCard | CommunitySpaceCard,
+  index: number,
+  gridDims: GridDims | undefined,
+): EffectiveCardValues {
+  const grid = state.streetGrid;
+  const soldSlots = state.soldSlots ?? [];
+  const bonusPerNeighbor = state.config.synergyBonusPerNeighbor;
+  const profile = effectiveBuffProfile(target);
+
+  const cachedParts = computeBusinessIncomeParts(grid, index, bonusPerNeighbor, soldSlots, gridDims);
+  const staffBuffs = computeBusinessStaffBuffs(state, index);
+  const extraSynergy = staffBuffs.synergyRangeBonus > 0
+    ? computeBusinessIncomeParts(
+        grid,
+        index,
+        bonusPerNeighbor,
+        soldSlots,
+        gridDims,
+        staffBuffs.synergyRangeBonus,
+      ).total - cachedParts.total
+    : 0;
+
+  // Mirror applyIncome: the cached currentIncome is the credited base + upgrade
+  // + synergy + duplicate-factor figure (`?? 0` matches the engine).
+  const cashIncome = target.currentIncome ?? 0;
+  const synergyPre = cachedParts.synergyBonus + extraSynergy;
+  const buffs = computePerBusinessSkillBuffs(
+    getEmployedSpecializationSkillsForBusiness(state, index),
+    profile,
+  );
+  const staffPercent = buffs.income.percent + staffBuffs.incomePercent;
+  const staffFlat = buffs.income.flat + staffBuffs.incomeFlat;
+  const total = (cashIncome + extraSynergy) * (1 + staffPercent) + staffFlat;
+
+  // Split the pre-percent base into the card's own base and its upgrade bonus,
+  // preserving `base + upgrade + synergy + staff = total` exactly.
+  const penalty = hasAdjacentSameType(grid, index, soldSlots, gridDims) ? 0.6 : 1;
+  const factor = cachedParts.factor;
+  const rawBase = target.baseIncome;
+  const basePre = roundInt(rawBase * penalty * factor);
+  const upgradePre = (cashIncome - cachedParts.synergyBonus) - basePre;
+  const income: EffectiveIncomeBreakdown = {
+    base: basePre * (1 + staffPercent),
+    upgradeBonus: upgradePre * (1 + staffPercent),
+    synergy: synergyPre * (1 + staffPercent),
+    duplicateFactor: factor,
+    staffFlat,
+    staffPercent,
+    total,
+  };
+
+  // Reputation mirrors applyIncome's per-slot reputation ledger exactly.
+  const cachedRep = target.currentReputationPerTurn ?? 0;
+  const extraRepSynergy = staffBuffs.synergyRangeBonus > 0
+    ? computeSynergyRepBonus(grid, index, soldSlots, gridDims, staffBuffs.synergyRangeBonus)
+      - computeSynergyRepBonus(grid, index, soldSlots, gridDims)
+    : 0;
+  const repBase = target.reputationPerTurn ?? 0;
+  const repUpgrade = target.reputationBonus ?? 0;
+  // The remainder is the cached adjacency synergy (may be zero).
+  const repSynergy = cachedRep - repBase - repUpgrade + extraRepSynergy;
+  const repPercent = staffBuffs.reputationPercent;
+  const repFlat = buffs.reputation.flat + staffBuffs.reputationFlat;
+  const reputation: EffectiveReputationBreakdown = {
+    base: repBase * (1 + repPercent),
+    upgradeBonus: repUpgrade * (1 + repPercent),
+    synergy: repSynergy * (1 + repPercent),
+    staffFlat: repFlat,
+    staffPercent: repPercent,
+    total: (cachedRep + extraRepSynergy) * (1 + repPercent) + repFlat,
+  };
+
+  return { income, reputation };
+}
+
+/**
+ * Effective values for a card that occupies no street slot (a hand or market
+ * instance).
+ *
+ * Position-dependent modifiers (adjacency synergy, the adjacent same-type
+ * penalty, slot-bound staff buffs) are zero, while the upgrade bonus and the
+ * duplicate/saturation factor for its business type still apply. The instance
+ * counts itself exactly once when deriving its own saturation factor (it is not
+ * on the grid, so it is never double-counted).
+ */
+function computeUnplacedEffectiveValues(
+  state: MainStreetState,
+  card: BusinessCard | CommunitySpaceCard,
+): EffectiveCardValues {
+  const rawBase = card.baseIncome;
+  const upgradeRaw = card.incomeBonus ?? 0;
+  const factor = card.family === 'business'
+    ? duplicateFactorForCount(countSameBaseTypeOnGrid(state.streetGrid, card) + 1)
+    : 1;
+
+  const base = applyDuplicateIncomeFactor(rawBase, factor);
+  const total = applyDuplicateIncomeFactor(rawBase + upgradeRaw, factor);
+  const income: EffectiveIncomeBreakdown = {
+    base,
+    upgradeBonus: total - base,
+    synergy: 0,
+    duplicateFactor: factor,
+    staffFlat: 0,
+    staffPercent: 0,
+    total,
+  };
+
+  const repBase = card.reputationPerTurn ?? 0;
+  const repUpgrade = card.reputationBonus ?? 0;
+  const reputation: EffectiveReputationBreakdown = {
+    base: repBase,
+    upgradeBonus: repUpgrade,
+    synergy: 0,
+    staffFlat: 0,
+    staffPercent: 0,
+    total: repBase + repUpgrade,
+  };
+
+  return { income, reputation };
+}
+
+/**
+ * Resolves the effective per-turn income and reputation (with a component
+ * breakdown) for ANY card instance, wherever it is displayed
+ * (MS-0MW6H9A47001B1QT).
+ *
+ * This is the single read-only source of truth shared by the card-face overlay
+ * (`buildUpgradeOverlaySpec`) and every hover tooltip, so no display surface
+ * shows base-only figures for an instance the engine credits differently.
+ *
+ * - **Placed instance** (`slotIndex` points at an occupied, non-sold slot):
+ *   the total equals the per-slot amount `applyIncome` credits — base + upgrade
+ *   bonus + adjacency synergy + duplicate factor + staff bonuses.
+ * - **Slotless instance** (hand/market, `slotIndex` omitted/null):
+ *   position-dependent modifiers are zero; the upgrade bonus and the
+ *   duplicate/saturation factor for the card's business type still apply.
+ * - **Sold or empty slot**: zeroed totals with factor 1.
+ *
+ * Reads no RNG and never mutates the adjacency caches (`currentIncome` /
+ * `currentReputationPerTurn`) or any state — safe to call per render.
+ *
+ * @param state      Current game state (read-only).
+ * @param card       The card instance being displayed.
+ * @param slotIndex  Its street slot, or omitted/null for a hand/market instance.
+ * @returns The effective income and reputation totals plus their breakdowns.
+ */
+export function computeEffectiveCardValues(
+  state: MainStreetState,
+  card: BusinessCard | CommunitySpaceCard | null | undefined,
+  slotIndex?: number | null,
+): EffectiveCardValues {
+  const grid = state.streetGrid;
+  const soldSlots = state.soldSlots ?? [];
+  // An explicitly supplied in-range slot index means "this instance is on the
+  // street": an empty or sold slot therefore has no effective production
+  // (zero). Only a null/omitted slot index means a slotless hand/market
+  // instance that projects its values.
+  const hasSlot =
+    typeof slotIndex === 'number' &&
+    slotIndex >= 0 &&
+    slotIndex < grid.length;
+
+  if (hasSlot) {
+    if (soldSlots[slotIndex as number]) return emptyEffectiveCardValues();
+    const placedCard = grid[slotIndex as number];
+    if (!placedCard) return emptyEffectiveCardValues();
+    return computePlacedEffectiveValues(
+      state,
+      placedCard,
+      slotIndex as number,
+      effectiveStateGridDims(state),
+    );
+  }
+
+  if (!card) return emptyEffectiveCardValues();
+  return computeUnplacedEffectiveValues(state, card);
+}
+
 /**
  * Computes the per-card reputation contribution at a given grid slot.
  *

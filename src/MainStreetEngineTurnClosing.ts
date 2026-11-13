@@ -14,8 +14,9 @@ import { executeWeekStart } from './MainStreetEngineWeekStart';
 import { computeEventDeltas, hasPendingPiggyback, resolveEvent } from './MainStreetEngineEvents';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 import { decideEventChoice, effectiveWinThreshold, updateCompetitiveScores, updateScore } from './MainStreetEngineScoring';
-import { EndOfTurnOptions, EventChoiceResolution, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnLedger, TurnResult } from './MainStreetEngineTypes';
+import { EndOfTurnOptions, EventChoiceResolution, ONE_OFF_SOURCE_KEYS, OneOffBreakdownEntry, PendingEndOfTurnDeltas, PlayerAction, SinglePlayerTurnClosingContext, TurnLedger, TurnOneOffAttribution, TurnResult } from './MainStreetEngineTypes';
 import { roundInt } from './MainStreetDifficulty';
+import { attributionFor } from './MainStreetOneOffAttribution';
 import { decayActiveEffects } from '@core-engine/ActiveEffect';
 import { applyIncome, attachUpcomingDeltas, updateNeighborsOnClose } from './MainStreetAdjacency';
 import type { IncomeResult } from './MainStreetAdjacency';
@@ -354,6 +355,17 @@ interface TurnLedgerInputs {
   reputation: number;
   /** Score to measure the net change against (closing or projected). */
   score: number;
+  /**
+   * Per-source one-off deltas captured during the turn
+   * (MS-0MWBZDNH3006DXV7): market purchase cost, market sale proceeds,
+   * event-play coin/reputation effect, Community Favour coin/reputation
+   * delta and the loan repayment / taken / bailout effects. Maps to the
+   * labelled {@link TurnLedger.oneOffBreakdown} entries; absent on
+   * legacy/hand-built closings and for turns whose sources cannot be fully
+   * attributed (the breakdown is then omitted and consumers fall back to the
+   * reconciliation formula).
+   */
+  oneOffAttribution?: TurnOneOffAttribution;
 }
 
 /**
@@ -400,6 +412,14 @@ function buildTurnLedger(state: MainStreetState, inputs: TurnLedgerInputs): Turn
     incomeByPhase.base + incomeByPhase.synergy + incomeByPhase.reputation + incomeByPhase.events;
   const ongoingTotal =
     inputs.ongoingCosts.staff + inputs.ongoingCosts.community + inputs.ongoingCosts.business;
+  // The authoritative residual (MS-0MVRNW26W0070CP0 / MS-0MWBZDNH3006DXV7
+  // AC3): the one-off row always reconciles exactly, so a legacy or
+  // hand-built ledger keeps the formula-only tooltip and the numbers never
+  // drift.
+  const oneOffCoins = netCoinChange - incomeCoins - ongoingTotal - inputs.incidentCoinChange;
+  const oneOffRep =
+    netRepChange - (inputs.income?.repDelta ?? 0) - inputs.incidentRepChange;
+  const oneOffBreakdown = buildOneOffBreakdown(inputs.oneOffAttribution, oneOffCoins);
 
   return {
     incomeByPhase,
@@ -407,15 +427,92 @@ function buildTurnLedger(state: MainStreetState, inputs: TurnLedgerInputs): Turn
     incidentCoinChange: inputs.incidentCoinChange,
     incidentRepChange: inputs.incidentRepChange,
     oneOffDeltas: {
-      coins: netCoinChange - incomeCoins - ongoingTotal - inputs.incidentCoinChange,
-      reputation:
-        netRepChange - (inputs.income?.repDelta ?? 0) - inputs.incidentRepChange,
+      coins: oneOffCoins,
+      reputation: oneOffRep,
     },
+    ...(oneOffBreakdown ? { oneOffBreakdown } : {}),
     netCoinChange,
     netRepChange,
     netScoreChange: roundInt(inputs.score - startScore),
     businessesOwned: countBusinessesOwnedByOwner(state),
   };
+}
+
+/**
+ * Rounding tolerance for one-off attribution reconciliation
+ * (MS-0MWBZDNH3006DXV7, assumption A2): the breakdown entries are asserted
+ * against the authoritative residual with a 1-coin tolerance. The economy is
+ * integer-only at every boundary, so in practice the sums agree exactly; the
+ * tolerance absorbs any residual rounding drift, which the last entry
+ * absorbs rather than failing the reconciliation.
+ */
+const ONE_OFF_BREAKDOWN_TOLERANCE = 1;
+
+/**
+ * Builds the labelled per-source breakdown of the one-off row
+ * (MS-0MWBZDNH3006DXV7), or `undefined` when it cannot be attributed.
+ *
+ * Maps the captured per-source deltas to labelled entries (market purchase,
+ * market sale, event play, Community Favour, loan repayment / taken /
+ * bailout — zero-contribution sources are omitted), then asserts the entries
+ * sum to the authoritative residual `oneOffCoins` within
+ * {@link ONE_OFF_BREAKDOWN_TOLERANCE}. A drift within tolerance is absorbed on
+ * the last entry; a drift beyond it (a turn whose residual includes coin
+ * movements the engine has no per-source data for, or a legacy/hand-built
+ * closing without an accumulator) returns `undefined` so consumers fall back
+ * to the reconciliation formula — attribution is never invented.
+ *
+ * Shared by the single-player `buildTurnLedger` and the competitive closing
+ * (MS-0MWBZDNH3006DXV7 A3 parity: competitive seats reuse the same builder so
+ * both panels can never drift).
+ */
+export function buildOneOffBreakdown(
+  attribution: TurnOneOffAttribution | undefined,
+  oneOffCoins: number,
+): OneOffBreakdownEntry[] | undefined {
+  if (!attribution) return undefined;
+  const entries: OneOffBreakdownEntry[] = [];
+  if (attribution.marketPurchaseCost !== 0) {
+    entries.push({ label: ONE_OFF_SOURCE_KEYS.marketPurchase, coins: attribution.marketPurchaseCost, reputation: 0 });
+  }
+  if (attribution.marketSaleProceeds !== 0) {
+    entries.push({ label: ONE_OFF_SOURCE_KEYS.marketSale, coins: attribution.marketSaleProceeds, reputation: 0 });
+  }
+  if (attribution.eventPlayCoinEffect !== 0 || attribution.eventPlayRepEffect !== 0) {
+    entries.push({
+      label: ONE_OFF_SOURCE_KEYS.eventPlay,
+      coins: attribution.eventPlayCoinEffect,
+      reputation: attribution.eventPlayRepEffect,
+    });
+  }
+  if (attribution.communityFavourCoins !== 0 || attribution.communityFavourRep !== 0) {
+    entries.push({
+      label: ONE_OFF_SOURCE_KEYS.communityFavour,
+      coins: attribution.communityFavourCoins,
+      reputation: attribution.communityFavourRep,
+    });
+  }
+  if (attribution.loanRepaid !== 0) {
+    entries.push({ label: ONE_OFF_SOURCE_KEYS.loanRepayment, coins: attribution.loanRepaid, reputation: 0 });
+  }
+  if (attribution.loanTaken !== 0) {
+    entries.push({ label: ONE_OFF_SOURCE_KEYS.loanTaken, coins: attribution.loanTaken, reputation: 0 });
+  }
+  if (attribution.loanBailout !== 0) {
+    entries.push({ label: ONE_OFF_SOURCE_KEYS.loanBailout, coins: attribution.loanBailout, reputation: 0 });
+  }
+  if (entries.length === 0) return undefined;
+
+  const entrySum = entries.reduce((total, entry) => total + entry.coins, 0);
+  const drift = oneOffCoins - entrySum;
+  if (Math.abs(drift) > ONE_OFF_BREAKDOWN_TOLERANCE) return undefined;
+  if (drift !== 0) {
+    // A2: the last entry absorbs any rounding drift so the entries sum to the
+    // residual exactly (reconcile to the residual, not to zero).
+    const last = entries[entries.length - 1];
+    entries[entries.length - 1] = { ...last, coins: last.coins + drift };
+  }
+  return entries;
 }
 
 /**
@@ -440,6 +537,7 @@ function refreshDeferredTurnLedger(state: MainStreetState, result: TurnResult): 
     incidentRepChange: result.incidentRepChange,
     coins: state.resourceBank.coins,
     reputation: state.resourceBank.reputation,
+    oneOffAttribution: attributionFor(state, 0),
     score: state.finalScore,
   });
 }
@@ -529,6 +627,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
       incidentRepChange: 0,
       coins: state.resourceBank.coins,
       reputation: state.resourceBank.reputation,
+      oneOffAttribution: attributionFor(state, 0),
       score: state.finalScore,
     });
 
@@ -749,6 +848,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         incidentRepChange: 0,
         coins: state.resourceBank.coins + pendingCoinDelta,
         reputation: state.resourceBank.reputation + pendingRepDelta,
+        oneOffAttribution: attributionFor(state, 0),
         score: state.finalScore,
       }),
     });
@@ -779,6 +879,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         incidentRepChange,
         coins: projectedCoins,
         reputation: state.resourceBank.reputation + pendingRepDelta,
+        oneOffAttribution: attributionFor(state, 0),
         score: state.finalScore,
       }),
     }));
@@ -813,6 +914,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
         incidentRepChange,
         coins: state.resourceBank.coins + pendingCoinDelta,
         reputation: state.resourceBank.reputation + pendingRepDelta,
+        oneOffAttribution: attributionFor(state, 0),
         score: state.finalScore,
       }),
     });
@@ -839,6 +941,7 @@ export function processEndOfTurn(state: MainStreetState, opts?: EndOfTurnOptions
     incidentRepChange,
     coins: state.resourceBank.coins,
     reputation: state.resourceBank.reputation,
+    oneOffAttribution: attributionFor(state, 0),
     score: state.finalScore,
   });
   return withLoanPayoffs(closed);
@@ -1774,6 +1877,7 @@ export function finishDeferredEndOfTurn(state: MainStreetState): TurnResult {
     incidentRepChange: 0,
     coins: state.resourceBank.coins,
     reputation: state.resourceBank.reputation,
+    oneOffAttribution: attributionFor(state, 0),
     score: state.finalScore,
   });
   return result;

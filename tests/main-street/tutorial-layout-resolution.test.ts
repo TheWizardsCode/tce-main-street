@@ -154,6 +154,17 @@ function computeExpectedZoneBounds(
         h: 28,
       };
     }
+    case 'staffPile': {
+      // Staff Pile: left edge of viewport, y inside the hand band region,
+      // above the hand row. Derived from the staffPile SLL zone.
+      const g = computeMainStreetLayoutGeometry();
+      return {
+        x: g.staffPile.x,
+        y: g.staffPile.y,
+        w: g.staffPile.width,
+        h: g.staffPile.height,
+      };
+    }
     case 'centerModal':
     case 'completionModal':
       return null;
@@ -202,6 +213,7 @@ const TUTORIAL_ZONE_NAMES = [
   'investmentsRow',
   'hand',
   'actionCounter',
+  'staffPile',
 ];
 
 /** Zones that resolveZoneToAnchor() returns null for (no highlight needed). */
@@ -663,6 +675,7 @@ describe('Tutorial layout resolution', () => {
         endTurnButton: computeExpectedZoneBounds('endTurnButton')!,
         investmentsRow: computeExpectedZoneBounds('investmentsRow')!,
         hud: computeExpectedZoneBounds('hud')!,
+        staffPile: computeExpectedZoneBounds('staffPile')!,
       };
 
       for (const [zoneName, expected] of Object.entries(expectedPositions)) {

@@ -28,9 +28,32 @@ import type {
 import type { StorylineOption, ActiveMainStreetPack } from './MainStreetCardsTypes';
 import type { ActiveChallenge } from './MainStreetChallenges';
 import type { GameConfig, DifficultyName } from './MainStreetDifficulty';
-import type { OwnerOngoingCosts, OwnerRoundBalance } from './MainStreetEngineTypes';
+import type { OwnerOngoingCosts, OwnerRoundBalance, TurnOneOffAttribution } from './MainStreetEngineTypes';
 
 export type LogEntryType = 'gain' | 'loss' | 'neutral' | 'turn-header';
+
+/**
+ * Structural action category used by the Summary tab to distinguish
+ * player/AI-initiated actions from monetary summary rows and turn headers
+ * (MS-0MWBWRITL0089GGJ).
+ *
+ * Every player- or AI-initiated action site sets this to a category name;
+ * shared/turn-level entries leave it unset so the Summary tab's actions
+ * section never picks them up.
+ */
+export type LogEntryActionType =
+  | 'place-business'
+  | 'hire-staff'
+  | 'play-upgrade'
+  | 'play-event'
+  | 'move-to-hand'
+  | 'sell'
+  | 'lay-off'
+  | 'close-card'
+  | 'take-loan'
+  | 'repay-loan'
+  | 'complete-challenge'
+  | 'other-action';
 
 /**
  * A single entry in the game activity log.
@@ -45,6 +68,13 @@ export interface LogEntry {
   text: string;
   /** Classification for UI color coding. */
   type: LogEntryType;
+  /**
+   * Structural action category — set on every player- or AI-initiated action
+   * so the Summary tab's actions section can select by type rather than by
+   * text matching (MS-0MWBWRITL0089GGJ). Absent for shared/turn-level entries
+   * (headers, monetary summary rows, incident draw, market refresh, etc.).
+   */
+  actionType?: LogEntryActionType;
   /**
    * Acting seat's `playerId`, when the entry is attributable to a seat
    * (competitive mode). Absent for shared/turn-level entries and in
@@ -759,6 +789,24 @@ export interface MainStreetState {
     }>;
   } | null;
   /**
+   * Transient per-source one-off attribution accumulator
+   * (MS-0MWBZDNH3006DXV7), keyed by owner id.
+   *
+   * Every MarketPhase / closing source that moves coins or reputation outside
+   * the income, ongoing-cost and incident categories records its own signed
+   * delta here (via `recordOneOffAttribution`), so the one-off row of the
+   * Turn Summary can explain itself per source instead of presenting a bare
+   * residual. Single-player seats use `activePlayerId ?? 0` — the shared
+   * wallet's seat — matching the ledger's own `'0'` owner key.
+   *
+   * Presentation data only: never read by the economy, never writes a wallet,
+   * consumes no RNG. Serialised (checkpoint-safe) so a mid-turn save/load
+   * preserves the captured sources for the closing; reset to `null` at each
+   * WeekStart via `resetOneOffAttribution` so one day's sources can never
+   * leak into the next day's row.
+   */
+  _oneOffAttribution?: Map<number, TurnOneOffAttribution> | null;
+  /**
    * Persistent-achievement bridge (F7, CG-0MUNC7FK5001T5CP). When set,
    * `MainStreetChallenges.evaluateChallenges` forwards each newly completed
    * challenge to `onChallengeCompleted(...)`, unlocking the mapped Steam
@@ -1089,6 +1137,15 @@ export interface MainStreetSerializedState {
    * the saved shape: absent on pre-loan saves.
    */
   pendingLoanOffer?: PendingLoanOffer | null;
+  /**
+   * Per-source one-off attribution captured this turn
+   * (MS-0MWBZDNH3006DXV7): plain-object projection (keyed by owner id as a
+   * string) of `MainStreetState._oneOffAttribution`, so a mid-turn save
+   * round-trips the captured market/event/favour/loan sources for the
+   * closing. Absent on legacy saves (loads with no accumulator — the closing
+   * falls back to the formula-only one-off tooltip).
+   */
+  oneOffAttribution?: Record<string, TurnOneOffAttribution> | null;
 }
 
 /** Record of a single milestone (tier unlock) achievement. */

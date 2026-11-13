@@ -25,7 +25,7 @@ import { describe, it, expect } from 'vitest';
 
 import { executeWeekStart } from '../../src/MainStreetEngine';
 import { setupMainStreetGame, type MainStreetState } from '../../src/MainStreetState';
-import { applyIncome } from '../../src/MainStreetAdjacency';
+import { applyIncome, recalculateCard } from '../../src/MainStreetAdjacency';
 import {
   getEventTemplates,
   getStaffCardTemplates,
@@ -234,6 +234,25 @@ describe('AC2: own-business income buffs', () => {
     expect(income.get(2)).toBeCloseTo(10);
   });
 
+  it('Chef applies +20% after synergy and after the market-saturation reduction', () => {
+    const state = freshState('chef-ordering');
+    placeBusiness(state, 0, 'Cafe', ['Food'], 10); // employer
+    placeBusiness(state, 1, 'Diner', ['Food'], 10); // adjacent synergy link
+    placeBusiness(state, 2, 'Cafe', ['Food'], 10); // duplicate 2 of 3
+    placeBusiness(state, 4, 'Cafe', ['Food'], 10); // duplicate 3 of 3
+    // Resolve the engine's own synergy + saturation numbers into the caches:
+    // round((10 base + 2 synergy) × 0.5 saturation factor) = 6.
+    for (const slot of [0, 1, 2, 4]) recalculateCard(state, slot);
+    expect(state.streetGrid[0]!.currentIncome).toBe(6);
+
+    employ(state, 0, 'staff-chef');
+    const income = incomeBySlot(state);
+    // The +20% scales the whole credited (post-synergy, post-saturation)
+    // income, so 6 × 1.2 = 7.2 rather than applying it before the saturation
+    // factor, which would credit round((10 × 1.2 + 2) × 0.5) = 7.
+    expect(income.get(0)).toBeCloseTo(7.2);
+  });
+
   it('Mechanic adds +30 to its own Service business only', () => {
     const state = freshState('mechanic-own');
     placeBusiness(state, 0, 'Hardware Store', ['Service'], 5);
@@ -260,30 +279,46 @@ describe('AC2: adjacency income buffs (employing business + 8-way neighbours)', 
     expect(income.get(1)).toBeCloseTo(22);
     expect(income.get(5)).toBeCloseTo(22);
     expect(income.get(3)).toBeCloseTo(2);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(0)).toBeCloseTo(2);
   });
 
-  it('Florist adds +30 only to adjacent Commerce/Culture businesses', () => {
+  it('Florist adds +30 only to adjacent Commerce/Culture businesses (8-way)', () => {
     const state = freshState('florist-adjacent');
     placeBusiness(state, 0, 'Flower Shop', ['Commerce', 'Culture']);
     placeBusiness(state, 1, 'Bookshop', ['Culture']);
     placeBusiness(state, 2, 'Gym', ['Health']);
+    placeBusiness(state, 5, 'Gallery', ['Culture']); // directly below slot 0 (8-way)
     employ(state, 0, 'staff-florist');
 
     const income = incomeBySlot(state);
     expect(income.get(1)).toBeCloseTo(32);
     expect(income.get(2)).toBeCloseTo(2);
+    expect(income.get(5)).toBeCloseTo(32);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(0)).toBeCloseTo(2);
   });
 
-  it('Event Planner adds +100 from each adjacent Entertainment business', () => {
+  it('Event Planner adds +100 from each adjacent Entertainment business (8-way, type-filtered)', () => {
     const state = freshState('planner-adjacent');
-    placeBusiness(state, 0, 'Comedy Club', ['Entertainment']);
-    placeBusiness(state, 1, 'Cinema', ['Entertainment']);
-    placeBusiness(state, 2, 'Arcade', ['Entertainment']);
-    employ(state, 0, 'staff-event-planner');
+    // 5-wide, 2-row grid: slot 1's neighbours are 0, 2, 5, 6 and 7.
+    placeBusiness(state, 1, 'Comedy Club', ['Entertainment']); // employer
+    placeBusiness(state, 0, 'Cinema', ['Entertainment']); // left, orthogonal (8-way)
+    placeBusiness(state, 6, 'Arcade', ['Entertainment']); // below-left, diagonal (8-way)
+    placeBusiness(state, 2, 'Bookshop', ['Culture']); // right, adjacent but wrong type
+    placeBusiness(state, 3, 'Theatre', ['Entertainment']); // distance 2: not adjacent
+    employ(state, 1, 'staff-event-planner');
 
     const income = incomeBySlot(state);
-    expect(income.get(1)).toBeCloseTo(102);
+    // Each adjacent Entertainment business gains exactly +100 (base 2 + 100).
+    expect(income.get(0)).toBeCloseTo(102);
+    expect(income.get(6)).toBeCloseTo(102);
+    // An adjacent business outside the Entertainment filter gains nothing.
     expect(income.get(2)).toBeCloseTo(2);
+    // A non-adjacent Entertainment business gains nothing (scope is adjacency).
+    expect(income.get(3)).toBeCloseTo(2);
+    // The employing business itself never receives the adjacency buff.
+    expect(income.get(1)).toBeCloseTo(2);
   });
 
   it('Customer Service Rep adds +10 reputation per adjacent business', () => {
@@ -420,6 +455,27 @@ describe('AC2: incident mitigation resolves per business cluster', () => {
     expect(repBefore - state.resourceBank.reputation).toBe(50);
   });
 
+  it('Maintenance Worker protects an adjacent business (cluster scope, not own-only)', () => {
+    const state = freshState('maintenance-neighbour');
+    placeBusiness(state, 0, 'Bakery', ['Food']); // employer (not the incident target)
+    placeBusiness(state, 1, 'Arcade', ['Entertainment']); // adjacent victim
+    employ(state, 0, 'staff-maintenance');
+    const repBefore = state.resourceBank.reputation;
+    resolveEvent(state, eventTemplate('evt-noise-complaint')); // -100 rep
+    // The cluster mitigation covers the neighbour's business.
+    expect(repBefore - state.resourceBank.reputation).toBe(50);
+  });
+
+  it('Maintenance Worker does not protect a business outside its cluster', () => {
+    const state = freshState('maintenance-outside');
+    placeBusiness(state, 0, 'Bakery', ['Food']); // employer (not the incident target)
+    placeBusiness(state, 7, 'Arcade', ['Entertainment']); // far from slot 0
+    employ(state, 0, 'staff-maintenance');
+    const repBefore = state.resourceBank.reputation;
+    resolveEvent(state, eventTemplate('evt-noise-complaint')); // -100 rep
+    expect(repBefore - state.resourceBank.reputation).toBe(100);
+  });
+
   it('Health & Safety Inspector protects only its own business', () => {
     const state = freshState('hse-own');
     placeBusiness(state, 0, 'Clinic', ['Health']);
@@ -501,6 +557,7 @@ describe('buff aggregation reads only the local cluster', () => {
       reputationFlat: 0,
       reputationPercent: 0,
       synergyRangeBonus: 0,
+      ongoingCostReductionPct: 0,
     });
   });
 

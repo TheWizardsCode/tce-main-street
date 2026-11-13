@@ -11,10 +11,11 @@
  *    One-off adjustments and the emphasised Net profit/loss bottom line — with
  *    the non-monetary figures (reputation/score change, closing balances and
  *    businesses owned) as supplementary context outside the P&L lines.
- * 2. The human ("You") tab is selected by default when the dialog opens.
+ * 2. The Summary tab is selected by default when the dialog opens, and the
+ *    human ("You") tab is one press away.
  * 3. Selecting another player's tab switches the **whole** statement body to
  *    that player's figures, and the Left/Right arrow keys cycle the tabs.
- * 4. Single-player shows a single non-interactive "You" tab.
+ * 4. Single-player shows an interactive `[ Summary ]` and `[ You ]` tab.
  * 5. Overlay conventions: backdrop 199 / box 200 / elements 201, every element
  *    parented into `hudContainer` and pushed into `s.overlayObjects`,
  *    dismissal via `[ Next Turn ]`, instant appearance (reduced-motion safe).
@@ -46,6 +47,13 @@ import {
   buildCompetitiveTurnSummary,
   buildTurnSummary,
 } from '../../src/scenes/MainStreetTurnSummary';
+import {
+  DIALOG_PANEL_BACKGROUND,
+  MIN_SEAT_TEXT_CONTRAST,
+  contrastRatio,
+  ensureReadableSeatColour,
+  parseHexColour,
+} from '../../src/MainStreetSeatColours';
 
 /** Muted text colour the unavailable `[ Bank Loan ]` button renders in. */
 const MUTED_BUTTON_COLOUR = '#6b6459';
@@ -424,6 +432,13 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect(title!.depth).toBe(201);
     expect(overlayText(s, 'Day 7')).toBeDefined();
 
+    // The panel opens on the Summary tab (MS-0MWBWRITL0089GGJ); the player's
+    // P&L statement is one tab away.
+    const summaryTab = overlayText(s, '[ Summary ]');
+    expect(summaryTab).toBeDefined();
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    overlayText(s, '[ You ]')!.emit('pointerdown');
+
     // ── The statement's sections, lines and totals ──────────────
     expect(overlayText(s, 'Income')).toBeDefined();
     expect(overlayText(s, 'Less: Operating expenses')).toBeDefined();
@@ -480,7 +495,7 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect((s.overlayObjects ?? []).length).toBe(0);
   }, 30_000);
 
-  it('opens on the human tab in competitive play and switches the whole statement on tab selection', async () => {
+  it('opens on the Summary tab in competitive play and switches the whole statement on tab selection', async () => {
     game = await bootGame();
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
     const state = twoSeatState();
@@ -489,19 +504,19 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
 
     s.showCompetitiveTurnSummaryDialog(summary, () => {});
 
-    // ── Human tab selected by default; a button per seat ────────
+    // ── Summary tab selected by default; a button per seat ──────
+    const summaryTab = overlayText(s, '[ Summary ]');
     const humanTab = overlayText(s, '[ You ]');
     const aiTab = overlayText(s, '[ AI 1 ]');
+    expect(summaryTab).toBeDefined();
     expect(humanTab).toBeDefined();
     expect(aiTab).toBeDefined();
-    // Every tab is drawn in the button form `[ Label ]` in **both** states, so
-    // the way back to the player's own statement is always a visible button
-    // (the gap the producer rejected MS-0MW4XULA90002OEY for). Selection is
-    // signalled by weight, not by being the only bracketed label.
-    expect(overlayText(s, 'You')).toBeUndefined();
-    expect(overlayText(s, 'AI 1')).toBeUndefined();
-    expect(humanTab!.style.fontStyle).toBe('bold');
+    // The Summary tab is first and bold; the seat tabs are bracketed buttons.
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(humanTab!.style.fontStyle).not.toBe('bold');
     expect(aiTab!.style.fontStyle).not.toBe('bold');
+    // The Summary tab sits before the seat tabs.
+    expect(centreOf(summaryTab!).x).toBeLessThan(centreOf(humanTab!).x);
     // Both seat tabs are real pointer targets.
     expect(humanTab!.input?.enabled).toBe(true);
     expect(aiTab!.input?.enabled).toBe(true);
@@ -509,11 +524,10 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect(humanTab!.style.color).toBe(humanColour);
     expect(aiTab!.style.color).toBe(aiColour);
     expect(humanColour).not.toBe(aiColour);
-    // The selected (bold) label's whole width is inside its own hit area.
-    const selectedHitArea = humanTab!.input?.hitArea as { width: number };
-    expect(selectedHitArea.width).toBeGreaterThanOrEqual(humanTab!.width);
 
-    // The default statement is the human seat's own figures.
+    // ── Selecting the human tab shows the human statement ──────
+    await clickOverlayText(s, humanTab!);
+    await waitForSelectedTab(s, '[ You ]');
     expectStatement(s, HUMAN_STATEMENT);
     expect(overlayText(s, 'Net profit/loss: +9')).toBeDefined();
     // …and the AI seat's figures are nowhere on screen yet.
@@ -522,7 +536,8 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     }
 
     // ── Selecting the AI tab (real pointer) switches the whole body ──
-    await clickOverlayText(s, aiTab!);
+    // Re-fetch the tab: the first click redrew the panel (new objects).
+    await clickOverlayText(s, overlayText(s, '[ AI 1 ]')!);
     await waitForSelectedTab(s, '[ AI 1 ]');
     expectStatement(s, AI_STATEMENT);
     expect(overlayText(s, 'Net profit/loss: +5')).toBeDefined();
@@ -565,14 +580,20 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
 
     s.showCompetitiveTurnSummaryDialog(summary, () => {});
 
-    // One button per seat, in seat order, human first and selected.
+    // One button per seat, in seat order, after the Summary tab.
+    const summaryTab = overlayText(s, '[ Summary ]');
     const youTab = overlayText(s, '[ You ]');
     const ai1Tab = overlayText(s, '[ AI 1 ]');
     const ai2Tab = overlayText(s, '[ AI 2 ]');
+    expect(summaryTab).toBeDefined();
     expect(youTab).toBeDefined();
     expect(ai1Tab).toBeDefined();
     expect(ai2Tab).toBeDefined();
-    expect(youTab!.style.fontStyle).toBe('bold');
+    // The panel opens on the Summary tab; the human seat is one press away.
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    await clickOverlayText(s, youTab!);
+    await waitForSelectedTab(s, '[ You ]');
+    expect(overlayText(s, 'Net profit/loss: +10')).toBeDefined();
 
     // Adjacent tab targets never overlap: each neighbour's centre is clear of
     // the other's box, so a press can never land on the wrong management
@@ -584,7 +605,8 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect(ai2Centre.x - ai1Centre.x).toBeGreaterThan(ai1Tab!.width / 2);
 
     // Walk out to the last AI seat by pointer, then back to the player's own.
-    await clickOverlayText(s, ai1Tab!);
+    // Re-fetch the tab: selecting `You` redrew the panel (new objects).
+    await clickOverlayText(s, overlayText(s, '[ AI 1 ]')!);
     await waitForSelectedTab(s, '[ AI 1 ]');
     expect(overlayText(s, 'Net profit/loss: +20')).toBeDefined();
 
@@ -604,31 +626,43 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect((s.overlayObjects ?? []).length).toBe(0);
   }, 30_000);
 
-  it('cycles the players’ tabs with the Left/Right arrow keys', async () => {
+  it('cycles the Summary and players’ tabs with the Left/Right arrow keys', async () => {
     game = await bootGame();
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
     const summary = makeCompetitiveSummary(twoSeatState());
 
     s.showCompetitiveTurnSummaryDialog(summary, () => {});
-    expect(overlayText(s, '[ You ]')).toBeDefined();
+    expect(overlayText(s, '[ Summary ]')).toBeDefined();
+    // The panel opens on the Summary tab, so the first Right selects `You`.
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
 
+    // Dispatch on the scene's own keyboard plugin (not `window`), so a
+    // handler leaked from an earlier scene in the same page cannot cycle this
+    // panel too.
     const press = (key: string): void => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key }));
+      s.input.keyboard.emit('keydown', { key });
     };
 
-    // Right → the AI seat's statement.
-    press('ArrowRight');
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
-    expectStatement(s, AI_STATEMENT);
+    /** The tab strip in draw order, with a `*` marking the bold (selected) tab. */
+    const tabState = (): string[] => overlayTexts(s)
+      .filter((t) => t.text.startsWith('[') && !t.text.startsWith('[ Next Turn ]')
+        && !t.text.startsWith('[ Bank Loan ]'))
+      .map((t) => `${t.style.fontStyle === 'bold' ? '*' : ''}${t.text}`);
 
-    // Left → back to the human seat.
-    press('ArrowLeft');
-    expect(overlayText(s, '[ You ]')).toBeDefined();
-    expectStatement(s, HUMAN_STATEMENT);
+    const trace = [tabState()];
+    press('ArrowRight'); trace.push(tabState());
+    press('ArrowRight'); trace.push(tabState());
+    press('ArrowLeft'); trace.push(tabState());
+    press('ArrowLeft'); trace.push(tabState());
 
-    // Left wraps around to the last tab.
-    press('ArrowLeft');
-    expect(overlayText(s, '[ AI 1 ]')).toBeDefined();
+    // Summary → You → AI 1 → You → Summary (the Summary participates).
+    expect(trace).toEqual([
+      ['*[ Summary ]', '[ You ]', '[ AI 1 ]'],
+      ['[ Summary ]', '*[ You ]', '[ AI 1 ]'],
+      ['[ Summary ]', '[ You ]', '*[ AI 1 ]'],
+      ['[ Summary ]', '*[ You ]', '[ AI 1 ]'],
+      ['*[ Summary ]', '[ You ]', '[ AI 1 ]'],
+    ]);
 
     // The keyboard handler is released with the panel: after dismissal the
     // arrows no longer redraw anything.
@@ -638,25 +672,34 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     expect((s.overlayObjects ?? []).length).toBe(0);
   }, 30_000);
 
-  it('shows a single non-interactive “You” tab in single-player', async () => {
+  it('shows a Summary tab and a selectable “You” tab in single-player', async () => {
     game = await bootGame();
     const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
     const summary = makeSinglePlayerSummary(singlePlayerState());
 
     s.showTurnSummaryDialog(summary, () => {}, buildTurnSummaryLoanDescriptor(s.state));
 
-    // Exactly one tab, rendered as the selected `[ You ]` tab.
-    const tabs = overlayTexts(s).filter((t) => t.text === '[ You ]' || t.text === 'You');
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0].text).toBe('[ You ]');
-    // …and it is presentational only: no pointer input, nothing to switch to.
-    expect(tabs[0].input?.enabled).toBeFalsy();
+    // Two tabs: the Summary tab (first, bold, default) then the `[ You ]` tab.
+    const summaryTab = overlayText(s, '[ Summary ]');
+    const youTab = overlayText(s, '[ You ]');
+    expect(summaryTab).toBeDefined();
+    expect(youTab).toBeDefined();
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(youTab!.style.fontStyle).not.toBe('bold');
+    expect(centreOf(summaryTab!).x).toBeLessThan(centreOf(youTab!).x);
+    // Both are real pointer targets (the summary adds a second tab).
+    expect(summaryTab!.input?.enabled).toBe(true);
+    expect(youTab!.input?.enabled).toBe(true);
 
-    // Arrow keys are inert in single-player (no second tab exists).
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
-    expect(overlayText(s, '[ You ]')).toBeDefined();
-    expect(overlayTexts(s).filter((t) => t.text === '[ You ]')).toHaveLength(1);
+    // Arrow keys cycle Summary ↔ You in single-player too.
+    s.input.keyboard.emit('keydown', { key: 'ArrowRight' });
+    expect(overlayText(s, '[ You ]')!.style.fontStyle).toBe('bold');
     expectStatement(s, ['Total income: +140', 'Net profit/loss: -10']);
+
+    // Pressing the Summary tab returns to the headline view.
+    overlayText(s, '[ Summary ]')!.emit('pointerdown');
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Major actions')).toBeDefined();
 
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
   }, 30_000);
@@ -675,6 +718,8 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
       buildTurnSummaryLoanDescriptor(s.state),
       onBankLoanAction,
     );
+    // Select the player's statement so the re-present preserves it.
+    overlayText(s, '[ You ]')!.emit('pointerdown');
     const bankLoanBtn = overlayText(s, '[ Bank Loan ]')!;
     expect(bankLoanBtn.input?.enabled).toBe(true);
     expect(bankLoanBtn.style.color).not.toBe(MUTED_BUTTON_COLOUR);
@@ -769,5 +814,419 @@ describe('Main Street tabbed P&L Turn Summary overlay (browser)', () => {
     overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
     expect(nextTurnCalls).toBe(1);
     expect((s.overlayObjects ?? []).length).toBe(0);
+  }, 30_000);
+
+  it('attaches hover/tap tooltips to every ledger row and dismisses them cleanly (MS-0MW6GZKZZ006PLLO)', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+
+    // A state with one business + one staff card, so the expense breakdowns
+    // derive per-item costs, and an income result with a per-business breakdown.
+    const state = singlePlayerState();
+    state.streetGrid[0] = {
+      family: 'business', id: 'biz-bakery', name: 'Bakery', ongoingCost: 10,
+    } as any;
+    state.staffCards = [
+      { family: 'staff', id: 'stf-clerk', name: 'Clerk', ongoingCost: 50 } as any,
+    ];
+    const income = {
+      total: 140,
+      breakdown: [{ slotIndex: 0, businessName: 'Bakery', baseIncome: 120, synergyBonus: 30, total: 150 }],
+      handSynergyTotal: 0,
+      phaseBreakdown: {
+        perSlotBreakdown: [{
+          slotIndex: 0, businessName: 'Bakery', baseIncome: 120, synergyBonus: 30,
+          repBonus: 10, eventDeltas: [], upcomingDeltas: [],
+        }],
+        handSynergyTotal: 0,
+      },
+    };
+    const summary = buildTurnSummary(state, {
+      turnLedger: makeLedger(),
+      incident: { name: 'Test Incident' } as EventCard,
+      income,
+    })!;
+    expect(summary).not.toBeNull();
+
+    const show = vi.spyOn(s.tooltipManager!, 'show');
+    const hide = vi.spyOn(s.tooltipManager!, 'hide');
+    let nextTurnCalls = 0;
+
+    s.showTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, buildTurnSummaryLoanDescriptor(s.state));
+
+    // Select the player's statement (the panel opens on the Summary tab).
+    overlayText(s, '[ You ]')!.emit('pointerdown');
+
+    const lastShown = (): string => {
+      const calls = show.mock.calls;
+      return String(calls[calls.length - 1]?.[0] ?? '');
+    };
+
+    // Every monetary line and context row carries a tooltip listener.
+    const rows = [
+      'Base income: +120',
+      'Synergy income: +30',
+      'Reputation income: +10',
+      'Event income: -20',
+      'Total income: +140',
+      'Staff wages: -50',
+      'Community spaces: -20',
+      'Business costs: -10',
+      'Total operating expenses: -80',
+      'Incident: Coins -40, Rep -2',
+      'One-off: Coins -30, Rep +4',
+      'Net profit/loss: -10',
+      'Reputation change: +2 · Score change: +14',
+      'Closing coins: 990 · Closing Rep 12 · Score 34',
+      'Businesses owned: 3',
+      'Incident drawn: Test Incident',
+    ];
+    for (const label of rows) {
+      const row = overlayText(s, label);
+      expect(row, `missing row \u201c${label}\u201d`).toBeDefined();
+      expect(row!.listenerCount('pointerover'), `no tooltip on \u201c${label}\u201d`).toBeGreaterThan(0);
+      expect(row!.listenerCount('pointerout'), `no dismiss on \u201c${label}\u201d`).toBeGreaterThan(0);
+    }
+
+    // Hovering an income row surfaces the per-business breakdown lazily.
+    const baseRow = overlayText(s, 'Base income: +120')!;
+    baseRow.emit('pointerover');
+    expect(show).toHaveBeenCalled();
+    expect(lastShown()).toContain('Bakery: +120');
+    baseRow.emit('pointerout');
+    expect(hide).toHaveBeenCalled();
+
+    // Hovering a cost row surfaces the per-card breakdown.
+    const staffRow = overlayText(s, 'Staff wages: -50')!;
+    staffRow.emit('pointerover');
+    expect(lastShown()).toContain('Clerk: -50');
+
+    // The net and one-off rows explain their reconciliation formulas.
+    overlayText(s, 'Net profit/loss: -10')!.emit('pointerover');
+    expect(lastShown()).toContain('Net =');
+    overlayText(s, 'One-off: Coins -30, Rep +4')!.emit('pointerover');
+    expect(lastShown()).toContain('One-off =');
+
+    // [ Next Turn ] still works — the tooltip zones never block the buttons.
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect(nextTurnCalls).toBe(1);
+    expect((s.overlayObjects ?? []).length).toBe(0);
+  }, 30_000);
+});
+
+// ── Summary tab (MS-0MWBWRITL0089GGJ) ───────────────────────
+
+/** Appends one structurally-marked action to the activity log. */
+function pushSummaryAction(
+  state: MainStreetState,
+  turn: number,
+  actionType: NonNullable<import('../../src/MainStreetStateTypes').LogEntry['actionType']>,
+  text: string,
+  seatId?: number,
+): void {
+  state.activityLog.push({
+    turn,
+    text,
+    type: 'neutral',
+    actionType,
+    ...(seatId != null ? { seatId } : {}),
+  });
+}
+
+/** A four-seat competitive ledger (the maximum supported roster). */
+function fourSeatLedger(): CompetitiveRoundLedger {
+  const seat = (ownerId: number, net: number) => ({
+    ownerId,
+    businessesOwned: 1,
+    incomeByPhase: { base: net, synergy: 0, reputation: 0, events: 0 },
+    incomeTotal: net,
+    ongoingCosts: { staff: 0, community: 0, business: 0 },
+    dayStart: { coins: 10, reputation: 0, score: 0 },
+    closing: { coins: 10 + net, reputation: 0, score: 0 },
+    netCoinChange: net,
+    netRepChange: 0,
+    netScoreChange: 0,
+    incidentCoinChange: 0,
+    incidentRepChange: 0,
+    oneOffDeltas: { coins: 0, reputation: 0 },
+  });
+  return { turn: 7, seats: [seat(0, 10), seat(1, 20), seat(2, 30), seat(3, 40)] };
+}
+
+describe('Turn Summary — Summary tab (MS-0MWBWRITL0089GGJ, browser)', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  it('renders the Summary tab first and default, with actions → events → metrics', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const state = singlePlayerState();
+    pushSummaryAction(state, 7, 'place-business', 'Placed Bakery in slot 0');
+    pushSummaryAction(state, 7, 'hire-staff', 'Hired a Clerk');
+    const summary = makeSinglePlayerSummary(state);
+
+    // The panel reads the closed turn's activity log from the scene's state.
+    s.state = state;
+    s.showTurnSummaryDialog(summary, () => {}, buildTurnSummaryLoanDescriptor(s.state));
+
+    // ── The Summary tab is first and bold; the You tab follows ──
+    const summaryTab = overlayText(s, '[ Summary ]');
+    const youTab = overlayText(s, '[ You ]');
+    expect(summaryTab).toBeDefined();
+    expect(youTab).toBeDefined();
+    expect(summaryTab!.depth).toBe(201);
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(youTab!.style.fontStyle).not.toBe('bold');
+    expect(centreOf(summaryTab!).x).toBeLessThan(centreOf(youTab!).x);
+    expect(summaryTab!.input?.enabled).toBe(true);
+
+    // ── Sections in the confirmed order: actions → events → metrics ──
+    const headings = overlayTexts(s).filter((t) =>
+      ['Major actions', 'Events', 'Income / Reputation / Score'].includes(t.text));
+    expect(headings.map((t) => t.text)).toEqual([
+      'Major actions',
+      'Events',
+      'Income / Reputation / Score',
+    ]);
+    expect(headings[0].y).toBeLessThan(headings[1].y);
+    expect(headings[1].y).toBeLessThan(headings[2].y);
+
+    // ── Major actions: player- and AI-initiated only ────────────
+    expect(overlayText(s, 'You: Placed Bakery in slot 0')).toBeDefined();
+    expect(overlayText(s, 'You: Hired a Clerk')).toBeDefined();
+
+    // ── Events: the resolved incident and its effect ────────────
+    expect(overlayText(s, 'Test Incident: You -40 coins / -2 rep')).toBeDefined();
+
+    // ── Income / Reputation / Score: one row per metric ─────────
+    expect(overlayText(s, 'Income:')).toBeDefined();
+    expect(overlayText(s, 'Reputation:')).toBeDefined();
+    expect(overlayText(s, 'Score:')).toBeDefined();
+    expect(overlayText(s, 'You -10 (990)')).toBeDefined();
+    expect(overlayText(s, 'You +2 (12)')).toBeDefined();
+    expect(overlayText(s, 'You +14 (34)')).toBeDefined();
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  it('renders every seat on the Summary tab in competitive play', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const state = twoSeatState();
+    pushSummaryAction(state, 7, 'place-business', 'Placed Bakery in slot 0', 0);
+    pushSummaryAction(state, 7, 'sell', 'Sold Cafe from slot 1', 1);
+    const summary = makeCompetitiveSummary(state);
+
+    // The panel reads the closed turn's activity log from the scene's state.
+    s.state = state;
+    s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+    // Actions attributed per seat.
+    expect(overlayText(s, 'You: Placed Bakery in slot 0')).toBeDefined();
+    expect(overlayText(s, 'AI 1: Sold Cafe from slot 1')).toBeDefined();
+    // One row per metric, every seat's figure on it.
+    expect(overlayText(s, 'You +9 (49)')).toBeDefined();
+    expect(overlayText(s, 'AI 1 +5 (23)')).toBeDefined();
+    expect(overlayText(s, 'You +1 (3)')).toBeDefined();
+    expect(overlayText(s, 'AI 1 0 (0)')).toBeDefined();
+    expect(overlayText(s, 'You +3 (13)')).toBeDefined();
+    expect(overlayText(s, 'AI 1 +5 (5)')).toBeDefined();
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  it('shows a per-seat breakdown tooltip on hovering a metric figure', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const summary = makeSinglePlayerSummary(singlePlayerState());
+    const show = vi.spyOn(s.tooltipManager!, 'show');
+
+    s.showTurnSummaryDialog(summary, () => {}, buildTurnSummaryLoanDescriptor(s.state));
+
+    // The income figure's tooltip carries the full P&L breakdown.
+    const incomeFigure = overlayText(s, 'You -10 (990)')!;
+    expect(incomeFigure.listenerCount('pointerover')).toBeGreaterThan(0);
+    incomeFigure.emit('pointerover');
+    const shown = String(show.mock.calls[show.mock.calls.length - 1]?.[0] ?? '');
+    expect(shown).toContain('Total income: +140');
+    expect(shown).toContain('Total operating expenses: -80');
+    expect(shown).toContain('Net =');
+    incomeFigure.emit('pointerout');
+
+    overlayText(s, 'You +2 (12)')!.emit('pointerover');
+    expect(String(show.mock.calls[show.mock.calls.length - 1]?.[0] ?? '')).toContain('Reputation');
+    overlayText(s, 'You +14 (34)')!.emit('pointerover');
+    expect(String(show.mock.calls[show.mock.calls.length - 1]?.[0] ?? '')).toContain('Score change');
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  it('switches away to a player tab and back to the Summary tab (real pointer)', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const summary = makeSinglePlayerSummary(singlePlayerState());
+
+    s.showTurnSummaryDialog(summary, () => {}, buildTurnSummaryLoanDescriptor(s.state));
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+
+    await clickOverlayText(s, overlayText(s, '[ You ]')!);
+    await waitForSelectedTab(s, '[ You ]');
+    expect(overlayText(s, 'Total income: +140')).toBeDefined();
+    expect(overlayText(s, 'Major actions')).toBeUndefined();
+
+    await clickOverlayText(s, overlayText(s, '[ Summary ]')!);
+    await waitForSelectedTab(s, '[ Summary ]');
+    expect(overlayText(s, 'Major actions')).toBeDefined();
+    expect(overlayText(s, 'Total income: +140')).toBeUndefined();
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  it('preserves the selected Summary tab across the re-render after a loan take', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const liveState = twoSeatState(true);
+    const summary = makeCompetitiveSummary(liveState);
+    expect(summary.loanDescriptor.enabled).toBe(true);
+
+    s.state = liveState;
+    s.state.phase = 'IncidentPhase';
+    const result = { playerRoundLedger: makeCompetitiveLedger() } as any;
+
+    let nextTurnCalls = 0;
+    s.showCompetitiveTurnSummaryDialog(summary, () => { nextTurnCalls += 1; }, undefined, result);
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+
+    overlayText(s, '[ Bank Loan ]')!.emit('pointerdown');
+    expect(overlayText(s, LOAN_SELECTOR_TITLE)).toBeDefined();
+    const model = buildLoanSelectorModel(s.state);
+    expect(model.rows.length).toBeGreaterThan(0);
+    overlayText(s, model.rows[0].label)!.emit('pointerdown');
+
+    // Re-rendered in place, still on the Summary tab, with the obligation.
+    expect(overlayText(s, 'Turn Summary')).toBeDefined();
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Major actions')).toBeDefined();
+    expect(overlayText(s, '[ Bank Loan ]')!.input?.enabled).toBeFalsy();
+    expect(overlayText(s, formatLoanObligation(s.state.loans![0]))).toBeDefined();
+    expect(nextTurnCalls).toBe(0);
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+    expect(nextTurnCalls).toBe(1);
+  }, 30_000);
+
+  it('keeps a maximum four-seat roster within the fixed panel', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    const state = createCompetitiveState({
+      seed: 'turn-summary-pl-overlay-four',
+      playerCount: 4,
+      difficulty: 'Easy',
+    });
+    state.turn = 7;
+    state.activityLog = [];
+    for (let i = 0; i < 6; i++) {
+      pushSummaryAction(state, 7, 'place-business', `Placed business ${i} in slot ${i}`, i % 4);
+    }
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: fourSeatLedger(),
+      incident: null,
+    })!;
+
+    // The panel reads the closed turn's activity log from the scene's state.
+    s.state = state;
+    s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    // Every element stays within the 680-wide panel…
+    const panelLeft = GAME_W / 2 - 680 / 2;
+    const panelRight = panelLeft + 680;
+    const btnY = GAME_H / 2 - 640 / 2 + 640 - 62;
+    for (const text of overlayTexts(s)) {
+      if (text.depth !== 201) continue;
+      const { x } = centreOf(text);
+      expect(x).toBeGreaterThanOrEqual(panelLeft);
+      expect(x).toBeLessThanOrEqual(panelRight);
+    }
+    // …and the last metric row sits above the action row (no overflow).
+    expect(overlayText(s, 'Score:')!.y).toBeLessThan(btnY);
+    for (const label of ['You +10 (20)', 'AI 1 +20 (30)', 'AI 2 +30 (40)', 'AI 3 +40 (50)']) {
+      expect(overlayText(s, label)!.y).toBeLessThan(btnY);
+    }
+    for (const label of ['You', 'AI 1', 'AI 2', 'AI 3']) {
+      expect(overlayTexts(s).some((t) => t.text.startsWith(`${label} `))).toBe(true);
+    }
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
+  }, 30_000);
+
+  /**
+   * Regression (audit rejection, MS-0MWBWRITL0089GGJ): the tab strip drew each
+   * seat's raw palette colour as *text* on the black panel, so a seat assigned
+   * the Okabe–Ito black (`#000000`) had an invisible label — the producer saw
+   * the `AI n` tabs but no `You` tab at all. The strip must be
+   * `[ Summary ] [ You ] [ AI 1 ] …`, with every seat label legible.
+   */
+  it('keeps the You (and every AI) tab visible when a seat colour is the palette black', async () => {
+    game = await bootGame();
+    const s = game.scene.getScene('MainStreetScene') as SceneWithHud;
+    // This seed hands the human seat (seat 0) the palette black.
+    const state = createCompetitiveState({
+      seed: 'turn-summary-pl-overlay-black-2-6',
+      playerCount: 2,
+      difficulty: 'Easy',
+      loansEnabled: false,
+    });
+    expect(state.players![0].colour).toBe('#000000');
+    pushSummaryAction(state, 7, 'place-business', 'Placed Bakery in slot 0', 0);
+    const summary = makeCompetitiveSummary(state);
+
+    s.state = state;
+    s.showCompetitiveTurnSummaryDialog(summary, () => {});
+
+    // ── The tab strip is Summary → You → AI 1, the Summary default ──
+    const summaryTab = overlayText(s, '[ Summary ]');
+    const youTab = overlayText(s, '[ You ]');
+    const aiTab = overlayText(s, '[ AI 1 ]');
+    expect(summaryTab).toBeDefined();
+    expect(youTab).toBeDefined();
+    expect(aiTab).toBeDefined();
+    expect(summaryTab!.style.fontStyle).toBe('bold');
+    expect(centreOf(summaryTab!).x).toBeLessThan(centreOf(youTab!).x);
+    expect(centreOf(youTab!).x).toBeLessThan(centreOf(aiTab!).x);
+    expect(youTab!.input?.enabled).toBe(true);
+
+    // ── Every seat label clears WCAG AA against the black panel ──
+    const panel = parseHexColour(DIALOG_PANEL_BACKGROUND)!;
+    for (const tab of [youTab!, aiTab!]) {
+      expect(contrastRatio(parseHexColour(tab.style.color)!, panel))
+        .toBeGreaterThanOrEqual(MIN_SEAT_TEXT_CONTRAST);
+    }
+    // The black seat is lightened, never rendered as black-on-black.
+    expect(youTab!.style.color).not.toBe('#000000');
+    expect(youTab!.style.color).toBe(ensureReadableSeatColour('#000000'));
+    // A legible seat keeps its own hue exactly (seat 1 is sky blue here).
+    expect(aiTab!.style.color).toBe(state.players![1].colour);
+
+    // ── The You tab is a real target showing the human's statement ──
+    youTab!.emit('pointerdown');
+    expect(overlayText(s, '[ You ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Businesses owned: 3')).toBeDefined();
+    expect(overlayText(s, 'Total income: +17')).toBeDefined();
+    expect(overlayText(s, 'Net profit/loss: +9')).toBeDefined();
+    // …and the lightened label survives the redraw.
+    expect(overlayText(s, '[ You ]')!.style.color).not.toBe('#000000');
+
+    // ── Back to the Summary tab, then dismiss ──────────────────
+    overlayText(s, '[ Summary ]')!.emit('pointerdown');
+    expect(overlayText(s, '[ Summary ]')!.style.fontStyle).toBe('bold');
+    expect(overlayText(s, 'Major actions')).toBeDefined();
+    expect(overlayText(s, 'You: Placed Bakery in slot 0')).toBeDefined();
+
+    overlayText(s, '[ Next Turn ]')!.emit('pointerdown');
   }, 30_000);
 });

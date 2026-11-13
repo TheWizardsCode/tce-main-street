@@ -182,7 +182,7 @@ describe('GDD staff consistency — roster agreement (AC2)', () => {
   it('flags two roles that state the same benefit', () => {
     const docs = readConsistencyDocs(PROJECT_ROOT);
     docs.gdd = docs.gdd.replace(
-      '**+20% coin income** to **its own business** (applied after synergy, before market saturation)',
+      '**+20% coin income** to **its own business** (applied after synergy and after the duplicate-business market-saturation reduction)',
       '**+20 coins/turn** to **each adjacent Food business** (flat synergy coin)',
     );
     expectViolation(run(docs), 'benefit-uniqueness');

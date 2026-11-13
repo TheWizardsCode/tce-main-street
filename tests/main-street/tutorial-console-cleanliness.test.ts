@@ -9,9 +9,9 @@
  *    only 12 of the 16 mapped factories (engine contract
  *    CG-0MUU9PSWC009CW76); it now ships all 16 (MS-0MV8PDNDT0033TH8), so this
  *    assertion is a regression guard rather than an expected warning.
- *  - `Zone collision for "<hand|endTurnButton|incidentQueue>" while composing
- *    "main-street-canonical" with "main-street-tutorial"` for the zones the
- *    tutorial layout deliberately overrides under `sceneWins`.
+ *  - `Zone collision for "<hand|endTurnButton|incidentQueue|staffPile>" while
+ *    composing "main-street-canonical" with "main-street-tutorial"` for the
+ *    zones the tutorial layout deliberately overrides under `sceneWins`.
  *
  * These tests pin both paths as quiet while asserting the underlying
  * behaviour still happens (every mapped key resolves to a factory, tutorial
@@ -48,7 +48,7 @@ import {
 const VIEWPORT: LayoutViewport = { width: 1280, height: 720 };
 
 /** Zone names the tutorial overrides — the ones that used to warn on resolve. */
-const OVERRIDE_ZONES = ['hand', 'endTurnButton', 'incidentQueue'] as const;
+const OVERRIDE_ZONES = ['hand', 'endTurnButton', 'incidentQueue', 'staffPile'] as const;
 
 /** Recorder WAV player so the fallback path is observable. */
 function createRecordingWavPlayer(): { player: SoundPlayer; played: string[] } {

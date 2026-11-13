@@ -140,8 +140,8 @@ export function resolveSeatColour(
 }
 
 /**
- * Access-control predicate for mutating a street slot (sell / close / upgrade
- * and any future cross-owner action).
+ * Access-control predicate for mutating a street slot (sell / close / upgrade,
+ * staff employment / relocation and any future cross-owner action).
  *
  * In competitive mode (`ownerTaggedGrid` present) the acting seat
  * (`state.activePlayerId`) may mutate a slot only when it owns it
@@ -149,8 +149,10 @@ export function resolveSeatColour(
  * gate is a no-op and behaviour is unchanged.
  *
  * This is the single source of truth for the ownership gate: the market
- * legality helpers, the execution paths and the scene feedback all call it,
- * so UI, AI and headless flows can never diverge.
+ * legality helpers, the staff placement/relocation gate
+ * (`canPlaceStaffOnBusiness`, inherited by `canMoveStaffOnBusiness`), the
+ * employment write paths and the scene feedback all call it, so UI, AI and
+ * headless flows can never diverge.
  *
  * @param state     Current game state (read-only).
  * @param slotIndex Street grid slot index being acted upon.

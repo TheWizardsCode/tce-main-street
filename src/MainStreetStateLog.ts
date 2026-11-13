@@ -36,8 +36,15 @@
  * @module
  */
 
-import type { MainStreetState, LogEntry, LogEntryType } from './MainStreetStateTypes';
+import type { MainStreetState, LogEntry, LogEntryType, LogEntryActionType } from './MainStreetStateTypes';
 import { getSeatDisplayLabel } from './MainStreetAdjacencyOwner';
+import {
+  contrastRatio,
+  mixTowardWhite,
+  parseHexColour,
+  rgbDistance,
+  toHexColour,
+} from './MainStreetSeatColours';
 import { getActivityLogEmitter } from './MainStreetGameEvents';
 import type { GameEventEmitter } from '@core-engine/GameEventEmitter';
 
@@ -56,57 +63,6 @@ const MIN_SEAT_PREFIX_LINE_DISTANCE = 60;
 
 /** Mixing steps used when lightening a seat colour toward white. */
 const SEAT_PREFIX_LIGHTEN_STEPS = 20;
-
-/** A parsed RGB colour with channels in `[0, 255]`. */
-type RGB = [number, number, number];
-
-/** Parses a `#rrggbb` (or `#rgb`) hex colour, or `null` when malformed. */
-function parseHexColour(hex: string): RGB | null {
-  const value = hex.trim().replace(/^#/, '');
-  if (value.length === 3) {
-    return [
-      parseInt(value[0] + value[0], 16),
-      parseInt(value[1] + value[1], 16),
-      parseInt(value[2] + value[2], 16),
-    ];
-  }
-  if (value.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(value)) return null;
-  return [
-    parseInt(value.slice(0, 2), 16),
-    parseInt(value.slice(2, 4), 16),
-    parseInt(value.slice(4, 6), 16),
-  ];
-}
-
-/** Formats an RGB colour as a lowercase `#rrggbb` string. */
-function toHexColour(rgb: RGB): string {
-  const channel = (value: number): string =>
-    Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
-  return `#${channel(rgb[0])}${channel(rgb[1])}${channel(rgb[2])}`;
-}
-
-/** WCAG relative luminance of an RGB colour (0 = black, 1 = white). */
-function relativeLuminance([r, g, b]: RGB): number {
-  const linear = (channel: number): number => {
-    const c = channel / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-}
-
-/** WCAG contrast ratio between two RGB colours (1 = identical, 21 = max). */
-function contrastRatio(a: RGB, b: RGB): number {
-  const la = relativeLuminance(a);
-  const lb = relativeLuminance(b);
-  const lighter = Math.max(la, lb);
-  const darker = Math.min(la, lb);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-/** Euclidean distance between two RGB colours in the 0–441 range. */
-function rgbDistance(a: RGB, b: RGB): number {
-  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
-}
 
 /**
  * Resolves the colour used to draw a seat's activity-log prefix.
@@ -136,12 +92,7 @@ export function resolveLogSeatColour(seatColour: string, lineColour: string): st
   if (!seat || !line || !panel) return seatColour;
 
   for (let step = 0; step <= SEAT_PREFIX_LIGHTEN_STEPS; step++) {
-    const t = step / SEAT_PREFIX_LIGHTEN_STEPS;
-    const candidate: RGB = [
-      seat[0] + (255 - seat[0]) * t,
-      seat[1] + (255 - seat[1]) * t,
-      seat[2] + (255 - seat[2]) * t,
-    ];
+    const candidate = mixTowardWhite(seat, step / SEAT_PREFIX_LIGHTEN_STEPS);
     if (
       contrastRatio(candidate, panel) >= MIN_SEAT_PREFIX_CONTRAST &&
       rgbDistance(candidate, line) >= MIN_SEAT_PREFIX_LINE_DISTANCE
@@ -228,21 +179,31 @@ function resolveActingSeatId(state: MainStreetState): number | null {
  *    ambient acting seat is not the entry's seat. Same single-player rules.
  *  - `addLogShared(state, text, type)` — the named opt-out for genuinely
  *    shared / turn-level entries; never stamps seat fields.
+ *
+ * Optional `actionType` — set on every player- or AI-initiated action
+ * so the Summary tab can filter by category (MS-0MWBWRITL0089GGJ).
  */
-export function addLog(state: MainStreetState, text: string, type: LogEntryType): void;
+export function addLog(
+  state: MainStreetState,
+  text: string,
+  type: LogEntryType,
+  actionType?: LogEntryActionType,
+): void;
 export function addLog(
   state: MainStreetState,
   seatId: number,
   text: string,
   type: LogEntryType,
+  actionType?: LogEntryActionType,
 ): void;
 export function addLog(
   state: MainStreetState,
   seatIdOrText: number | string,
   textOrType: string | LogEntryType,
-  maybeType?: LogEntryType,
+  maybeType?: LogEntryType | LogEntryActionType,
+  maybeActionType?: LogEntryActionType,
 ): void {
-  // Explicit-seat overload: `addLog(state, seatId, text, type)`.
+  // Explicit-seat overload: `addLog(state, seatId, text, type, actionType?)`.
   if (typeof seatIdOrText === 'number') {
     const seatId = seatIdOrText;
     const entry: LogEntry = {
@@ -250,6 +211,7 @@ export function addLog(
       text: textOrType as string,
       type: maybeType as LogEntryType,
     };
+    if (maybeActionType) entry.actionType = maybeActionType;
     const seat = state.players?.find((player) => player.playerId === seatId);
     // Only competitive multi-seat games get a prefix: single-player (no roster
     // or one seat) and legacy seats without a persisted colour stay unchanged.
@@ -262,13 +224,16 @@ export function addLog(
     return;
   }
 
-  // Default overload `addLog(state, text, type)`: attribute to the acting
-  // seat derived from the engine source, opt out via `addLogShared`.
+  // Default overload `addLog(state, text, type, actionType?)`: attribute to
+  // the acting seat derived from the engine source, opt out via `addLogShared`.
   const entry: LogEntry = {
     turn: state.turn,
     text: seatIdOrText,
     type: textOrType as LogEntryType,
   };
+  // In this overload the 4th positional argument (`maybeType`) is the action
+  // marker; the 5th is unused.
+  if (maybeType) entry.actionType = maybeType as LogEntryActionType;
   const actingSeatId = resolveActingSeatId(state);
   if (actingSeatId != null) {
     entry.seatId = actingSeatId;
@@ -286,8 +251,15 @@ export function addLog(
  * market refresh/deal-in, week start, game over and tutorial/help lines use
  * this form so a You/AI filter never mislabels them as a seat's action.
  */
-export function addLogShared(state: MainStreetState, text: string, type: LogEntryType): void {
-  publishActivityLogEntry(state, { turn: state.turn, text, type });
+export function addLogShared(
+  state: MainStreetState,
+  text: string,
+  type: LogEntryType,
+  actionType?: LogEntryActionType,
+): void {
+  const entry: LogEntry = { turn: state.turn, text, type };
+  if (actionType) entry.actionType = actionType;
+  publishActivityLogEntry(state, entry);
 }
 
 // ── Single write path / Game Events feed ────────────────────

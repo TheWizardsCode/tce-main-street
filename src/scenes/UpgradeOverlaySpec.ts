@@ -31,6 +31,7 @@
  */
 
 import type { BusinessCard, CommunitySpaceCard } from '../MainStreetCards';
+import type { EffectiveCardValues } from '../MainStreetAdjacencyScoring';
 
 // ---------------------------------------------------------------------------
 // Colour constants
@@ -335,16 +336,31 @@ export function shouldAnimateShaderEffect(options: {
  * @param biz - The BusinessCard to generate overlays for.
  * @param width - Card display width in pixels.
  * @param height - Card display height in pixels.
+ * @param effective - The instance's effective income/reputation values (from
+ *   `computeEffectiveCardValues`). When supplied, the card face shows the
+ *   TOTAL the engine credits for that instance (base + upgrade + synergy +
+ *   duplicate factor + staff) rather than the static base + upgrade figures;
+ *   every production call site passes it. Omitting it is a test-only seam
+ *   that falls back to `baseIncome + incomeBonus` /
+ *   `reputationPerTurn + reputationBonus` (MS-0MW6H9A47001B1QT).
  * @returns An UpgradeOverlaySpec describing all overlays to render.
  */
 export function buildUpgradeOverlaySpec(
   biz: BusinessCard | CommunitySpaceCard,
   width: number,
   height: number,
+  effective?: EffectiveCardValues,
 ): UpgradeOverlaySpec {
   const isUpgraded = biz.level > 0;
-  const totalIncome = biz.baseIncome + biz.incomeBonus;
-  const totalReputation = (biz.reputationPerTurn ?? 0) + (biz.reputationBonus ?? 0);
+  // Show the instance's effective totals when the caller supplies them. The
+  // base + upgrade fallback exists only as a test seam and is never used on a
+  // production call path (MS-0MW6H9A47001B1QT).
+  const totalIncome = effective
+    ? effective.income.total
+    : biz.baseIncome + biz.incomeBonus;
+  const totalReputation = effective
+    ? effective.reputation.total
+    : (biz.reputationPerTurn ?? 0) + (biz.reputationBonus ?? 0);
 
   // Level badge: top-left corner, only for upgraded cards
   // Container origin is at card centre, so subtract width/2 and height/2

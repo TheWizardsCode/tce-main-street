@@ -11,6 +11,7 @@
 import Phaser from 'phaser';
 import type { HandView } from '@ui';
 import type { BusinessCard, CommunitySpaceCard, EventCard, UpgradeCard, StaffCard } from '../MainStreetCards';
+import type { EffectiveCardValues } from '../MainStreetAdjacencyScoring';
 import type { MapSlotNode, RoadBand } from '../MainStreetMapView';
 import type { SceneLayout } from './MainStreetConstants';
 
@@ -26,6 +27,19 @@ export interface MainStreetRendererContext {
   createContainers(): void;
   /** Draw the persistent opaque panel behind the player hand (AC3). */
   drawHandPanel(): void;
+  /**
+   * Draw (or clear) the management-company Staff Pile — stacked card faces,
+   * count badge, portrait row and hover tooltip (MS-0MWBWKZ1G006IBH2).
+   * Rebuilt from `state.staffCards` on every call; hidden when the company
+   * employs no management-company staff.
+   */
+  drawStaffPile(): void;
+  /**
+   * Staff Pile click hand-off (MS-0MWC9PDQY003O0XQ): invoked when the pile's
+   * hit area is pressed, so the scene can open the Company Roster. The pile
+   * carries no roster logic; this is the only coupling point.
+   */
+  onOpenCompanyRoster?: () => void;
   refreshAll(): void;
   refreshAllExceptStreet(): void;
   refreshHud(): void;
@@ -73,6 +87,7 @@ export interface MainStreetRendererContext {
     biz: BusinessCard | CommunitySpaceCard,
     width: number,
     height: number,
+    effective?: EffectiveCardValues,
   ): void;
   updateBusinessHandSelection(index: number | null): void;
   drawEmptySlot(x: number, y: number, index: number): void;

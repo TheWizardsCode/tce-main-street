@@ -23,6 +23,7 @@ import {
 } from './MainStreetStaffBuffs';
 import type { MainStreetState, PlayerRecord, PendingPiggybackDecision } from './MainStreetState';
 import { addLog, addLogShared, syncResourceBankToLedger, describeEventEffects, classifyEffect } from './MainStreetState';
+import { recordOneOffAttribution } from './MainStreetOneOffAttribution';
 import { recordMainStreetEvent } from './MainStreetTranscript';
 import { eventSynergyTargets, matchesEventSynergyTargets } from './MainStreetEventSynergy';
 
@@ -301,11 +302,19 @@ export function playHeldEvent(state: MainStreetState, handIndex?: number): void 
   raisePiggybackDecisions(state, event, state.activePlayerId ?? 0, event.cost);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): an Investment event played
+  // during the MarketPhase is a one-off — its NET coin/reputation effect is
+  // attributed to the Event play source.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinChange,
+    eventPlayRepEffect: repChange,
+  });
   addLog(
     state,
     state.activePlayerId ?? 0,
     `Investment: ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
+    'play-event',
   );
   hand.splice(index, 1);
 }
@@ -331,11 +340,18 @@ export function resolveHeldInvestment(state: MainStreetState): EventCard | null 
   resolveEvent(state, event);
   const coinChange = state.resourceBank.coins - coinsBefore;
   const repChange = state.resourceBank.reputation - repBefore;
+  // One-off attribution (MS-0MWBZDNH3006DXV7): same Event play source as the
+  // live play paths, so a legacy auto-resolve still reconciles.
+  recordOneOffAttribution(state, {
+    eventPlayCoinEffect: coinChange,
+    eventPlayRepEffect: repChange,
+  });
   addLog(
     state,
     state.activePlayerId ?? 0,
     `Investment (auto): ${event.name} (${describeEventEffects(coinChange, repChange)})`,
     classifyEffect(coinChange, repChange),
+    'play-event',
   );
   hand.splice(index, 1);
   return event;
@@ -863,6 +879,7 @@ export function applyPiggybackJoinFully(
     piggybackerOwnerId,
     `Piggyback: joined ${event.name} fully (${describeEventEffects(reward.coins - charge, reward.reputation)})`,
     classifyEffect(reward.coins - charge, reward.reputation),
+    'play-event',
   );
   return { applied: true, charge, reward };
 }
@@ -894,6 +911,7 @@ export function applyPiggybackFreeRide(
     piggybackerOwnerId,
     `Piggyback: ${event.name} free-ride (${describeEventEffects(reward.coins, reward.reputation)})`,
     classifyEffect(reward.coins, reward.reputation),
+    'play-event',
   );
   return reward;
 }
