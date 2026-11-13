@@ -1860,6 +1860,44 @@ owner-keyed, so the whole panel is testable without a browser.
   formatting, and each seat's tab renders those three rows (in the
   single-player expense colour) under `Less: Operating expenses`, summing to
   that seat's `Total operating expenses`.
+- **Per-card expense tooltips (MS-0MWEGDNAD009QDRO).** Each seat's staff,
+  community-space and business expense rows are not blind category totals:
+  hovering/tapping an expense row shows the shared renderer
+  `buildExpenseLineTooltip` (`src/scenes/MainStreetTurnSummaryTooltips.ts`, the
+  same builder the single-player panel uses, wired into the per-seat tabs by
+  `src/scenes/MainStreetTurnSummaryOverlay.ts`) with **one contributing card
+  per line** — each staff member, community space or business on its own
+  `Name: +N / -N` line in the row's signed expense convention. A staff item
+  that carries a named modifier also explains its charge inline: an indented
+  `Base:` line (the card's `ongoingCost`) plus one indented modifier line per
+  named discount (e.g. the Operations Manager salary discount), so the
+  invariant `base + sum(modifiers)` equals the item's charged coins. The item
+  lines then reconcile to the committed category total: a street-wide Cost
+  Cutter reduction appears as its own `Street-wide reduction` line, an
+  available-coins shortfall (the engine clamps each family to the coins
+  available) as a `Limited by available coins` line, and the block closes with
+  the `Total` line — `sum(items) + reduction + clamp` always equals the row's
+  committed figure.
+- **Expense tooltip derivation (MS-0MWEGDNAD009QDRO).** The per-card detail
+  is derived read-only in `expenseLineBreakdownForOwner`
+  (`src/scenes/MainStreetTurnSummary.ts`) from the owner's own committed
+  cards, mirroring the engine's charge helpers so the figures are the engine's
+  per-card charges, never UI-invented: staff come from
+  `players[ownerId].staffCards` (a roster-less / hand-built single-player
+  state falls back to the shared `state.staffCards`, so the owner-0
+  derivation is the single-player one); community spaces and businesses come
+  from the owner-filtered `state.streetGrid` via `getSlotOwnerId`, with sold
+  slots excluded (a sold business no longer runs on the street). The
+  street-wide reduction mirrors `applyCompetitiveOngoingCosts` per category:
+  staff salaries reduce with the OWNER's street skills
+  (`getStreetScopeSkills(players[ownerId].staffCards)`), community/business
+  with the shared host staff set, so the breakdown reconciles to the same
+  skill set the engine charged it with. Absent-safe: a legacy or hand-built
+  ledger, an unknown owner, or an empty source yields no detail and the
+  tooltip falls back to the committed total plus a generic explanatory note
+  — nothing is invented. All copy reuses the existing `t()` / `registerLocale`
+  keys (`LEDGER_TOOLTIP_*`) with English defaults registered at module load;
+  the breakdown introduces no new localisable strings.
 - **Gate.** `shouldGateCompetitiveTurnSummary()` /
   `presentCompetitiveTurnSummaryGate()` in
   `src/scenes/MainStreetTurnControllerCompetitive.ts` slot into
