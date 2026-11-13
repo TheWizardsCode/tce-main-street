@@ -1178,7 +1178,7 @@ describe('Staff Pile (MS-0MWBWKZ1G006IBH2)', () => {
     expect(pileCount(pile)).toBe('2');
   });
 
-  it('draws the pile inside its SLL zone, left of the capacity row and behind the hand panel', async () => {
+  it('draws the pile inside its SLL zone, right of the capacity row and behind the hand panel', async () => {
     const { scene, pile } = await bootWithStaff([staffCard('Manager')]);
 
     const layout = scene.layout;
@@ -1190,18 +1190,23 @@ describe('Staff Pile (MS-0MWBWKZ1G006IBH2)', () => {
     // Placement comes from the SLL `staffPile` zone (no hard-coded offsets).
     expect(layout.staffPileW).toBeGreaterThan(0);
     expect(layout.staffPileH).toBeGreaterThan(0);
-    expect(layout.staffPileX).toBeLessThan(layout.handCenterX);
+    expect(layout.staffPileX).toBeGreaterThan(layout.handCenterX);
 
     // Behind the hand panel (so a wide capacity row covers the pile, never the
     // reverse) and behind every hand card.
     expect(pile!.depth).toBeLessThan(scene.handPanelGraphics?.depth ?? -100);
 
-    // At the starting hand size the whole pile sits in the free band left of
+    // The pile sits in the bottom-right column, above the action row: its
+    // bottom edge stays at/before the row's top edge (no overlap with the
+    // End Turn / action buttons).
+    expect(layout.staffPileY + layout.staffPileH).toBeLessThanOrEqual(layout.actionY + 4);
+
+    // At the starting hand size the whole pile sits in the free band right of
     // the capacity row.
-    const capacityRowLeft =
-      layout.handCenterX -
+    const capacityRowRight =
+      layout.handCenterX +
       (scene.state.maxHandSize * (layout.handCardW + 8)) / 2;
-    expect(layout.staffPileX + layout.staffPileW).toBeLessThanOrEqual(capacityRowLeft);
+    expect(layout.staffPileX).toBeGreaterThanOrEqual(capacityRowRight);
   });
 
   it('shows the management-company summary on hover and hides it on leave', async () => {
@@ -1264,21 +1269,22 @@ describe('Staff Pile (MS-0MWBWKZ1G006IBH2)', () => {
     expect(pileCount(scene.staffPileContainer as Phaser.GameObjects.Container)).toBe('2');
 
     // Max-capacity case: widen the hand, then re-render. The pile keeps its
-    // zone; the hover hit area shrinks to the free band so it can never cover
-    // a capacity slot and swallow a hand-card click.
+    // zone; the hover hit area narrows from the left to the free band right of
+    // the capacity row so it can never cover a capacity slot and swallow a
+    // hand-card click (MS-0MWE6AULW004EATJ).
     scene.state.maxHandSize = 4;
     scene.refreshPlayerHand();
     const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
     expect(hit).toBeDefined();
-    const capacityRowLeft =
-      scene.layout.handCenterX -
+    const capacityRowRight =
+      scene.layout.handCenterX +
       (4 * (scene.layout.handCardW + 8)) / 2;
-    expect(hit.x + hit.width / 2).toBeLessThanOrEqual(capacityRowLeft + 1);
+    expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(capacityRowRight - 1);
 
     // Beyond the free band (a hand wider than the band) the pile still renders
     // but carries no hit area at all — nothing of the pile can intercept the
     // hand row.
-    scene.state.maxHandSize = 8;
+    scene.state.maxHandSize = 12;
     scene.refreshPlayerHand();
     expect(scene.staffPileContainer).toBeDefined();
     expect(scene.staffPileHitArea).toBeUndefined();

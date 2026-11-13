@@ -38,17 +38,18 @@ treatment shared by the market box, the player hand and the HUD strip:
   `marketLeft`..`marketRight` with the same treatment (the old `BOX_FILL` @ 0.3
   wash was replaced).
 - `MainStreetRendererStaffPile.drawStaffPile()` — the **Staff Pile**
-  (MS-0MWBWKZ1G006IBH2): a stacked card-face fan (newest hire on top, capped at
-  `STAFF_PILE_STACK_SIZE`), a count badge reporting the whole management-company
-  roster and a portrait row beneath, positioned from the SLL `staffPile` zone
-  (`SceneLayout.staffPileX/Y/W/H`) at `STAFF_PILE_DEPTH` −200 — behind the hand
-  panel so a wide hand covers the pile, never the reverse. Its only interaction
-  is a hover hit area clamped to the free band left of the hand capacity row
-  (`staffPileHitBounds()`), which shows `buildStaffPileTooltip()`; it has no
-  click action (lay-off belongs to the company roster,
-  MS-0MWC1T8K2000DWZA). Rebuilt from `state.staffCards` on every
-  `refreshPlayerHand()`; hidden entirely when no management-company staff are
-  employed.
+  (MS-0MWBWKZ1G006IBH2): a compact horizontal fan of card faces (newest hire
+  at the top/right, capped at `STAFF_PILE_STACK_SIZE`) plus a count badge
+  reporting the whole management-company roster, positioned from the SLL
+  `staffPile` zone (`SceneLayout.staffPileX/Y/W/H`) in the bottom-right column
+  above the End Turn row (MS-0MWE6AULW004EATJ) at `STAFF_PILE_DEPTH` −200 —
+  behind the hand panel so a wide hand covers the pile, never the reverse. Its
+  only interaction is a hover hit area clamped to the free band right of the
+  hand capacity row (`staffPileHitBounds()`), which shows
+  `buildStaffPileTooltip()`; it has no click action (lay-off belongs to the
+  company roster, MS-0MWC1T8K2000DWZA). Rebuilt from `state.staffCards` on
+  every `refreshPlayerHand()`; hidden entirely when no management-company
+  staff are employed.
 
 ## Transient pop-text feedback channel (MS-0MVPWQK3U003DIR6, MS-0MVRDBD3P0026CXH)
 

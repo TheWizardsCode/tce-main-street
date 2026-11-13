@@ -274,23 +274,24 @@ The management company's own staff (no `employedAtSlot` link) are surfaced on a
 
 - **Layout zone** — `staffPile` in `src/layouts/main-street.layout.json`
   (tutorial parity in `main-street-tutorial.layout.json`), resolved by
-  `MainStreetLayoutAdapter` into `SceneLayout.staffPileX/Y/W/H`
+  `MainStreetLayoutAdapter` into `SceneLayout.staffPileX/Y/W/H`. In the
+  bottom-right column above the End Turn row (MS-0MWE6AULW004EATJ).
   (`src/scenes/MainStreetConstants.ts` also holds the presentation constants:
-  `STAFF_PILE_STACK_SIZE`, `STAFF_PILE_CARD_W/H`, `STAFF_PILE_PORTRAIT_W/H`,
+  `STAFF_PILE_STACK_SIZE`, `STAFF_PILE_CARD_W/H`,
   `STAFF_PILE_*_OFFSET_*`, `STAFF_PILE_PANEL_PAD`, `STAFF_PILE_DEPTH`).
-- **Contents** — a fanned card-face stack (newest hire on top, capped), a count
-  badge reporting the whole roster and a portrait row beneath, all rendered
-  with `mainStreetRenderCardSvg`.
+- **Contents** — a compact horizontal fan of small card faces (newest hire at
+  the top/right, capped) and a count badge reporting the whole roster, all
+  rendered with `mainStreetRenderCardSvg`.
 - **Membership** — `selectManagementCompanyStaff()` in
   `src/MainStreetStaffBuffs.ts` (card type via `staffCardScope`), derived from
   `state.staffCards` on every refresh. Hidden entirely when the roster has no
   management-company members.
 - **Depth and input** — `STAFF_PILE_DEPTH` (−200) sits below `HAND_PANEL_DEPTH`
   (−100), so a wide hand covers the pile rather than the pile covering a card;
-  the hit area is clamped to the free band left of the capacity row so it
+  the hit area is clamped to the free band right of the capacity row so it
   never intercepts a hand-card click or drag.
-- **Click hand-off** — pointer-down on the pile (card-face stack or portrait
-  row) calls `renderer.onOpenCompanyRoster`, wired by the scene composition
+- **Click hand-off** — pointer-down on the pile (the compact fan)
+  calls `renderer.onOpenCompanyRoster`, wired by the scene composition
   root to `MainStreetScene.showCompanyRoster()`; the pile carries no roster
   logic. Opening the Company Roster (below) is the pile's only click action.
 - **Tooltip** — `buildStaffPileTooltip()` in

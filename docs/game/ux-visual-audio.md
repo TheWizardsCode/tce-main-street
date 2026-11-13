@@ -152,20 +152,21 @@ and action counts. The **Staff Pile** gives it one.
 - **Position — SLL-first.** The pile is drawn from the `staffPile` zone in
   `src/layouts/main-street.layout.json` (tutorial parity in
   `main-street-tutorial.layout.json`), resolved by `MainStreetLayoutAdapter`
-  into `SceneLayout.staffPileX/Y/W/H` — 20,565 → 240,667 at the 1280×720 base
-  viewport, i.e. against the left edge in the band left of the hand capacity
-  row. No pixel offset is hard-coded in the renderer. The tutorial layout
-  declares the same zone so tutorial highlights cannot drift; `staffPile` is a
-  documented intentional tutorial override zone
-  (`src/scenes/tutorialLayoutIssues.ts`), keeping the tutorial composition
-  console-clean.
-- **Contents.** A fanned stack of small card faces (56×80) capped at
-  `STAFF_PILE_STACK_SIZE` (3), oldest of the shown slice first and the
-  **newest hire on top**; a count badge (top-right of the stack) reporting the
-  **whole** roster even when the stack is capped; and a portrait row (40×56)
-  beneath the stack showing one portrait per member that fits the zone width.
-  Card faces and portraits both come from the shared SVG renderer
-  (`mainStreetRenderCardSvg`), so no new art assets exist for this surface.
+  into `SceneLayout.staffPileX/Y/W/H` — 960,620 → 1070,652 at the 1280×720 base
+  viewport, i.e. the **bottom-right column slot above the End Turn row**,
+  below the incident queue zone (MS-0MWE6AULW004EATJ). No pixel offset is
+  hard-coded in the renderer. The tutorial layout declares the same zone so
+  tutorial highlights cannot drift; `staffPile` is a documented intentional
+  tutorial override zone (`src/scenes/tutorialLayoutIssues.ts`), keeping the
+  tutorial composition console-clean.
+- **Contents.** A compact **horizontal fan** of small card faces (20×24)
+  capped at `STAFF_PILE_STACK_SIZE` (3), oldest of the shown slice first and
+  the **newest hire on top** (right-most); plus a count badge (top-right of
+  the fan) reporting the **whole** roster even when the fan is capped. The
+  strip is deliberately compact (MS-0MWE6AULW004EATJ): the full card face is
+  not required and the original bottom-left portrait row does not transfer.
+  Card faces come from the shared SVG renderer (`mainStreetRenderCardSvg`), so
+  no new art assets exist for this surface.
 - **Membership is derived, never persisted.** The pile is rebuilt from
   `state.staffCards` on every hand refresh
   (`refreshPlayerHand()` → `drawStaffPile()`), filtered by **card type**
@@ -175,7 +176,7 @@ and action counts. The **Staff Pile** gives it one.
   Roster's explicit group instead (MS-0MWEWIJGU005FWYI). There is no save
   field, engine command or gameplay rule behind it: hiring, laying off or
   changing `maxHandSize` is reflected on the next refresh.
-- **Hover tooltip.** Hovering the pile — its stack or its portrait row — shows
+- **Hover tooltip.** Hovering the pile — its compact fan — shows
   a management-company-only summary built by `buildStaffPileTooltip()`: a title,
   the member count, one line per member (name, served business types, effect,
   salary) reusing `formatStaffMemberLine()` — the same per-member formatter the
@@ -186,17 +187,18 @@ and action counts. The **Staff Pile** gives it one.
   tile, no hit area).
 - **Overlap budget and z-order.** The pile sits at `STAFF_PILE_DEPTH` (-200),
   **below** the hand panel (`HAND_PANEL_DEPTH` -100) and every hand card, so a
-  hand wider than the free band covers the pile's right edge rather than the
-  pile covering a playable card. The free band left of the capacity row is
-  245 px at the starting hand (3 slots), 171 px at 4, 97 px at 5 and gone from
-  7 slots — so the pile (220 px wide) fits the band at the starting hand and is
-  progressively covered as `maxHandSize` grows. The pile's **hover hit area is
-  additionally clamped** to the free band (`staffPileHitBounds()`), so it can
-  never sit over a capacity slot: at 8 slots it is dropped entirely while the
-  pile itself still renders. Hand-card clicks, hand→street drags and
-  market→hand drops are unaffected.
-- **Click → Company Roster.** Pointer-down on the pile — its card-face stack
-  or its portrait row — opens the **Company Roster** overlay (see below). The
+  hand wider than the free band covers the pile's left edge rather than the
+  pile covering a playable card. The pile lives in the bottom-right column
+  above the End Turn row (MS-0MWE6AULW004EATJ), clear of the incident queue
+  (zone bottom 0.8611 → 620 px) and of the End Turn / action row (top
+  `actionY + 4` → 652 px); its 110×32 px zone fits that band at the 1280×720
+  base viewport. The pile's **hover hit area is additionally clamped** to the
+  free band *right of* the hand capacity row (`staffPileHitBounds()`), so it
+  can never sit over a capacity slot: as `maxHandSize` grows past 8 slots the
+  hit area is dropped entirely while the pile itself still renders. Hand-card
+  clicks, hand→street drags and market→hand drops are unaffected.
+- **Click → Company Roster.** Pointer-down on the pile — its compact fan —
+  opens the **Company Roster** overlay (see below). The
   pile hands the click off through `renderer.onOpenCompanyRoster` to
   `MainStreetScene.showCompanyRoster()`; it carries **no** roster, salary or
   lay-off logic of its own. Hovering still shows the tooltip, and the hit area
@@ -206,7 +208,7 @@ and action counts. The **Staff Pile** gives it one.
   content), `tests/main-street/staff-pile-renderer.test.ts` (stub-scene render
   contract) and the `Staff Pile` cases in
   `tests/main-street/MainStreetScene.browser.test.ts` (placement, count badge,
-  hover tooltip, empty state, refresh and the capacity case at 4 and 8 slots).
+  hover tooltip, empty state, refresh and the capacity case).
 
 ## Company Roster overlay (MS-0MWC1T8K2000DWZA)
 
@@ -215,8 +217,8 @@ every management-company staff member with their role, effective per-turn
 salary and the exact cost of letting them go, and it is the only place a
 management-company member can be dismissed.
 
-- **Entry point — the Staff Pile.** Clicking the pile — its card-face stack or
-  its portrait row — opens the roster (see the Staff Pile section above). The
+- **Entry point — the Staff Pile.** Clicking the pile — its compact fan —
+  opens the roster (see the Staff Pile section above). The
   pile hands the click off to `MainStreetScene.showCompanyRoster()`; the roster
   and all lay-off wiring live in `src/MainStreetRoster.ts` and
   `MainStreetOverlayContent.showCompanyRosterDialog()`.

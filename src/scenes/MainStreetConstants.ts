@@ -189,38 +189,31 @@ export const HAND_PANEL_PAD = 6;
 
 // ── Staff Pile presentation constants ──────────────────────────
 // Layout authority drives position; these constants control the internal
-// layout of the staff pile (card stack + portrait row) once the zone bounds
-// are known.
+// layout of the staff pile (a compact horizontal fan of card faces plus a
+// count badge) once the zone bounds are known. The pile lives in the
+// bottom-right column slot above the End Turn row (MS-0MWE6AULW004EATJ), so
+// the strip is short and the representation is deliberately compact.
 
 /** Display depth of the staff pile panel (below hand panel's −100). */
 export const STAFF_PILE_DEPTH = -200;
 
-/** Number of card slots in the stacked card display of the staff pile. */
+/** Number of card slots in the fanned card display of the staff pile. */
 export const STAFF_PILE_STACK_SIZE = 3;
 
 /** Card width (px) inside the staff pile stack display. */
-export const STAFF_PILE_CARD_W = 56;
+export const STAFF_PILE_CARD_W = 20;
 
 /** Card height (px) inside the staff pile stack display. */
-export const STAFF_PILE_CARD_H = 80;
+export const STAFF_PILE_CARD_H = 24;
 
-/** Horizontal offset (px) between stacked cards in the staff pile. */
-export const STAFF_PILE_STACK_OFFSET_X = 8;
+/** Horizontal offset (px) between fanned cards in the staff pile. */
+export const STAFF_PILE_STACK_OFFSET_X = 10;
 
 /** Vertical offset (px) between stacked cards in the staff pile. */
-export const STAFF_PILE_STACK_OFFSET_Y = 4;
-
-/** Portrait display width (px) in the staff pile's portrait row. */
-export const STAFF_PILE_PORTRAIT_W = 40;
-
-/** Portrait display height (px) in the staff pile's portrait row. */
-export const STAFF_PILE_PORTRAIT_H = 56;
+export const STAFF_PILE_STACK_OFFSET_Y = 0;
 
 /** Horizontal padding (px) inside the staff pile panel edges. */
-export const STAFF_PILE_PANEL_PAD = 6;
-
-/** Gap (px) between the card stack and the portrait row. */
-export const STAFF_PILE_GAP_PX = 8;
+export const STAFF_PILE_PANEL_PAD = 4;
 
 /**
  * Display depth of the persistent hand panel (MS-0MVPWQIPZ002PHPD AC3).

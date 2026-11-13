@@ -6,10 +6,10 @@
  *
  *  - empty state — no management-company staff ⇒ nothing drawn (no placeholder);
  *  - membership — only management-company staff reach the pile;
- *  - stack — the newest hire is drawn last (on top) and the stack is capped;
- *  - count badge and portrait row content;
+ *  - compact fan — the newest hire is drawn last (on top) and the fan is capped;
+ *  - count badge content;
  *  - the pile's depth keeps it behind the hand layer;
- *  - the single hover hit area is clamped to the free band left of the hand
+ *  - the single hover hit area is clamped to the free band right of the hand
  *    capacity row, and hovering it shows/hides the tooltip;
  *  - repeated refreshes destroy the previous pile (no object accumulation).
  *
@@ -44,6 +44,7 @@ import {
 } from '../../src/scenes/MainStreetRendererStaffPile';
 import {
   HAND_SLOT_PITCH_PAD,
+  STAFF_PILE_CARD_H,
   STAFF_PILE_DEPTH,
   STAFF_PILE_STACK_SIZE,
 } from '../../src/scenes/MainStreetConstants';
@@ -166,10 +167,10 @@ function makeScene(options: {
     layout: {
       gameW: 1280,
       gameH: 720,
-      staffPileX: 20,
-      staffPileY: 565,
-      staffPileW: 220,
-      staffPileH: 102,
+      staffPileX: 960,
+      staffPileY: 620,
+      staffPileW: 110,
+      staffPileH: 32,
       handCenterX: 467,
       handCardW: 140,
     },
@@ -223,10 +224,10 @@ describe('drawStaffPile — empty state', () => {
   });
 });
 
-describe('drawStaffPile — stack, badge and portrait row', () => {
+describe('drawStaffPile — compact fan, badge', () => {
   beforeEach(() => renderCardSvg.mockClear());
 
-  it('stacks card faces with the newest hire on top and shows the full count', () => {
+  it('fans card faces with the newest hire on top and shows the full count', () => {
     const roster = [
       staff('Manager', 120),
       staff('Accountant', 60),
@@ -244,7 +245,7 @@ describe('drawStaffPile — stack, badge and portrait row', () => {
 
     // Card faces: capped at STAFF_PILE_STACK_SIZE, drawn oldest → newest.
     const stackedIds = renderCardSvg.mock.calls
-      .filter(call => call[3] !== undefined && call[4] === 80)
+      .filter(call => call[3] !== undefined && call[4] === STAFF_PILE_CARD_H)
       .map(call => call[2] as string);
     expect(stackedIds).toEqual([
       'staff-accountant',
@@ -253,24 +254,30 @@ describe('drawStaffPile — stack, badge and portrait row', () => {
     ]);
     expect(stackedIds.length).toBe(STAFF_PILE_STACK_SIZE);
 
-    // Count badge reports the whole roster, not just the visible stack.
+    // Count badge reports the whole roster, not just the visible fan.
     const counts = container.children
       .filter(child => child.text !== undefined)
       .map(child => child.text);
     expect(counts).toContain('4');
   });
 
-  it('renders a portrait row beneath the stack for every member that fits', () => {
+  it('draws a single compact fan — no separate portrait row (MS-0MWE6AULW004EATJ)', () => {
     const { renderer } = makeScene({
       staffCards: [staff('Manager', 120), staff('Accountant', 60)],
     });
 
     drawStaffPile(renderer);
 
-    const portraitIds = renderCardSvg.mock.calls
-      .filter(call => call[4] === 56)
+    // All SVG renders are compact card faces (STAFF_PILE_CARD_H); the
+    // old 56 px portrait-row renders are gone entirely.
+    const cardIds = renderCardSvg.mock.calls
+      .filter(call => call[4] === STAFF_PILE_CARD_H)
       .map(call => call[2] as string);
-    expect(portraitIds).toEqual(['staff-manager', 'staff-accountant']);
+    expect(cardIds).toEqual(['staff-manager', 'staff-accountant']);
+    const otherSizes = renderCardSvg.mock.calls.filter(
+      call => call[4] !== STAFF_PILE_CARD_H,
+    );
+    expect(otherSizes).toHaveLength(0);
   });
 
   it('keeps the pile behind the hand layer', () => {
@@ -348,34 +355,36 @@ describe('drawStaffPile — hover tooltip', () => {
   });
 });
 
-describe('staffPileHitBounds — clamped to the free band left of the hand', () => {
-  it('spans the pile zone at the starting hand size', () => {
+describe('staffPileHitBounds — clamped to the free band right of the hand (MS-0MWE6AULW004EATJ)', () => {
+  it('spans the pile zone while the capacity row stays left of it', () => {
     const { renderer } = makeScene({ maxHandSize: 3 });
 
     const bounds = staffPileHitBounds(renderer)!;
 
-    // capacity row left edge = 467 - 3 * (140 + 8) / 2 = 245 → the whole
-    // 220 px pile zone is inside the free band.
-    expect(bounds).toEqual({ x: 20, y: 565, w: 220, h: 102 });
+    // capacity row right edge = 467 + 3 * (140 + 8) / 2 = 689, which stays
+    // left of the bottom-right pile zone x: 960 — the whole zone is free.
+    expect(bounds).toEqual({ x: 960, y: 620, w: 110, h: 32 });
   });
 
-  it('shrinks the hit area as the capacity row grows', () => {
-    const { renderer } = makeScene({ maxHandSize: 4 });
+  it('narrows the hit area from the left as the capacity row sweeps right', () => {
+    const { renderer } = makeScene({ maxHandSize: 8 });
 
     const bounds = staffPileHitBounds(renderer)!;
 
-    expect(bounds.x).toBe(20);
-    expect(bounds.x + bounds.w).toBeCloseTo(171, 0);
-    expect(bounds.w).toBeLessThan(220);
-    // Never over the hand's slots: the capacity row starts at its own left edge.
-    expect(bounds.x + bounds.w).toBeLessThanOrEqual(
-      467 - (4 * (140 + HAND_SLOT_PITCH_PAD)) / 2,
-    );
+    // capacity row right edge = 467 + 8 * (140 + 8) / 2 = 1059; the free band
+    // starts there, so the 960-edged zone loses its left edge.
+    const capacityRowRight = 467 + (8 * (140 + HAND_SLOT_PITCH_PAD)) / 2;
+    expect(bounds.x).toBe(capacityRowRight);
+    expect(bounds.x + bounds.w).toBe(960 + 110);
+    expect(bounds.w).toBeLessThan(110);
+    // Never over the hand's slots: the hit area starts at the row's right edge.
+    expect(bounds.x).toBeGreaterThanOrEqual(capacityRowRight);
   });
 
-  it('returns null once the capacity row has swept past the pile zone', () => {
-    const { renderer } = makeScene({ maxHandSize: 8 });
+  it('returns null once the capacity row has swept past the whole pile zone', () => {
+    const { renderer } = makeScene({ maxHandSize: 12 });
 
+    // row right edge = 467 + 12 * (140 + 8) / 2 = 1355 ≥ zone right edge 1070.
     expect(staffPileHitBounds(renderer)).toBeNull();
   });
 });

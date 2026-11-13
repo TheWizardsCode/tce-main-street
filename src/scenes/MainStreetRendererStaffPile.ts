@@ -1,9 +1,10 @@
 /**
  * Main Street: Staff Pile rendering
  *
- * Draws the management company's own staff as a **Staff Pile**: a fanned stack
- * of small card faces (newest hire on top) with a count badge, and a small
- * portrait row beneath the stack. Hovering the pile shows the
+ * Draws the management company's own staff as a **Staff Pile**: a compact
+ * horizontal fan of small card faces (newest hire at the fan's top/right) with
+ * a count badge, in the bottom-right column slot above the End Turn row
+ * (MS-0MWE6AULW004EATJ). Hovering the pile shows the
  * management-company-only summary tooltip (`buildStaffPileTooltip`).
  *
  * ## Contract (MS-0MWBWKZ1G006IBH2)
@@ -17,15 +18,19 @@
  * - **Empty state.** No management-company staff ⇒ nothing is drawn at all (no
  *   placeholder tile) — the pile simply does not exist.
  * - **Behind the hand.** {@link STAFF_PILE_DEPTH} sits below the hand panel
- *   ({@link HAND_PANEL_DEPTH}) and every hand card, so at a wide hand the panel
- *   covers the pile's right edge rather than the pile covering a playable card
- *   — and hand-card input is never intercepted.
- * - **One hit area, confined to the free band.** The only interactive object is
- *   a hover hit area clamped to the pile zone *and* to the left of the hand
- *   capacity row, so hand-card clicks, hand→street drags and market→hand drops
- *   are untouched. It carries the hover tooltip **and** a pointer-down hand-off
- *   that calls `renderer.onOpenCompanyRoster` — the pile itself carries no
- *   roster logic (MS-0MWC9PDQY003O0XQ).
+ *   ({@link HAND_PANEL_DEPTH}) and every hand card, so at a wide hand the
+ *   capacity row covers the pile's left edge rather than the pile covering a
+ *   playable card — and hand-card input is never intercepted.
+ * - **Compact fit.** The pile's strip in the right column is short, so the
+ *   full card face is not required (intake MS-0MWE6AULW004EATJ): a fan of up
+ *   to {@link STAFF_PILE_STACK_SIZE} small faces plus the count badge. The
+ *   portrait row of the original bottom-left layout does not transfer.
+ * - **One hit area, confined to the free band.** The only interactive object
+ *   is a hover hit area clamped to the pile zone *and* to the right of the
+ *   hand capacity row, so hand-card clicks, hand→street drags and market→hand
+ *   drops are untouched. It carries the hover tooltip **and** a pointer-down
+ *   hand-off that calls `renderer.onOpenCompanyRoster` — the pile itself
+ *   carries no roster logic (MS-0MWC9PDQY003O0XQ).
  * - **Rebuilt, not accumulated.** Like `drawHandPanel()`, every call destroys
  *   the previous pile container before drawing, so repeated refreshes cannot
  *   leak game objects.
@@ -51,10 +56,7 @@ import {
   STAFF_PILE_CARD_H,
   STAFF_PILE_CARD_W,
   STAFF_PILE_DEPTH,
-  STAFF_PILE_GAP_PX,
   STAFF_PILE_PANEL_PAD,
-  STAFF_PILE_PORTRAIT_H,
-  STAFF_PILE_PORTRAIT_W,
   STAFF_PILE_STACK_OFFSET_X,
   STAFF_PILE_STACK_OFFSET_Y,
   STAFF_PILE_STACK_SIZE,
@@ -67,9 +69,6 @@ export const STAFF_PILE_NAME = 'ms-staff-pile';
 
 /** Name of the pile's hover hit area. */
 export const STAFF_PILE_HIT_NAME = 'ms-staff-pile-hit';
-
-/** Gap (px) between portraits in the portrait row. */
-const PORTRAIT_GAP = 4;
 
 /** Count-badge diameter (px). */
 const BADGE_SIZE = 20;
@@ -94,16 +93,18 @@ export function destroyStaffPile(renderer: MainStreetRendererContext): void {
 }
 
 /**
- * The pile zone clamped to the free band left of the hand capacity row.
+ * The pile zone clamped to the free band right of the hand capacity row.
  *
- * The pile zone is anchored against the left edge and is sized for the
- * starting hand; once `maxHandSize` grows the capacity row sweeps left beneath
- * it (the pile is drawn behind the hand panel, so the row stays visible). The
- * hover hit area is clamped to the free band so it can never sit over a hand
- * card slot.
+ * The pile now sits at the bottom-right, above the End Turn row. The hand
+ * capacity row grows outward from `handCenterX`; once `maxHandSize` gets large
+ * enough, its right edge sweeps beneath the pile zone. The hover hit area is
+ * clamped to the free band *right* of that right edge so it can never sit over
+ * a hand card slot (mirror of the original left-band clamp,
+ * MS-0MWE6AULW004EATJ).
  *
  * @returns The clamps resolved from layout + live capacity; `null` when the
- *          pile zone has no area (legacy layout without the zone).
+ *          pile zone has no area (legacy layout without the zone) or the
+ *          capacity row has swept the whole zone.
  */
 export function staffPileHitBounds(renderer: MainStreetRendererContext): {
   x: number;
@@ -116,12 +117,12 @@ export function staffPileHitBounds(renderer: MainStreetRendererContext): {
   if (!(Number(staffPileW) > 0) || !(Number(staffPileH) > 0)) return null;
 
   const maxSlots = Math.max(0, Number(s.state?.maxHandSize) || 0);
-  const capacityRowLeft = handCenterX - (maxSlots * (handCardW + HAND_SLOT_PITCH_PAD)) / 2;
-  const right = Math.min(staffPileX + staffPileW, capacityRowLeft);
-  const width = Math.max(0, right - staffPileX);
+  const capacityRowRight = handCenterX + (maxSlots * (handCardW + HAND_SLOT_PITCH_PAD)) / 2;
+  const left = Math.max(staffPileX, capacityRowRight);
+  const width = Math.max(0, staffPileX + staffPileW - left);
   if (width <= 0) return null;
 
-  return { x: staffPileX, y: staffPileY, w: width, h: staffPileH };
+  return { x: left, y: staffPileY, w: width, h: staffPileH };
 }
 
 /**
@@ -157,7 +158,7 @@ export function drawStaffPile(renderer: MainStreetRendererContext): void {
   panel.setName(`${STAFF_PILE_NAME}-panel`);
   container.add(panel);
 
-  // ── Card-face stack: oldest of the shown slice first, newest on top ──
+  // ── Card-face fan: oldest of the shown slice first, newest on top ──
   // `state.staffCards` keeps hire order, so the tail is the newest hire and
   // drawing it last puts it on top of the fan.
   const shownStack = members.slice(-STAFF_PILE_STACK_SIZE);
@@ -173,7 +174,7 @@ export function drawStaffPile(renderer: MainStreetRendererContext): void {
     container.add(cardContainer);
   });
 
-  // ── Count badge over the top-right corner of the stack ─────────
+  // ── Count badge over the top-right corner of the fan ────────────
   const topCardIndex = Math.max(0, shownStack.length - 1);
   const badgeX =
     stackLeft + STAFF_PILE_CARD_W + topCardIndex * STAFF_PILE_STACK_OFFSET_X - BADGE_SIZE / 4;
@@ -192,25 +193,6 @@ export function drawStaffPile(renderer: MainStreetRendererContext): void {
     .setOrigin(0.5);
   badgeText.setData('staffPileCount', members.length);
   container.add(badgeText);
-
-  // ── Portrait row beneath the stack ─────────────────────────────
-  // One portrait per member that fits the zone width; the count badge still
-  // reports the full roster when the row cannot show everyone.
-  const rowTop = stackTop + STAFF_PILE_CARD_H + STAFF_PILE_GAP_PX + STAFF_PILE_PORTRAIT_H / 2;
-  const zoneInnerW = staffPileW - STAFF_PILE_PANEL_PAD * 2;
-  const perRow = Math.max(
-    1,
-    Math.floor((zoneInnerW + PORTRAIT_GAP) / (STAFF_PILE_PORTRAIT_W + PORTRAIT_GAP)),
-  );
-  members.slice(0, perRow).forEach((member, index) => {
-    const portrait = s.add.container(
-      stackLeft + STAFF_PILE_PORTRAIT_W / 2 + index * (STAFF_PILE_PORTRAIT_W + PORTRAIT_GAP),
-      rowTop,
-    );
-    mainStreetRenderCardSvg(s, portrait, member.id, STAFF_PILE_PORTRAIT_W, STAFF_PILE_PORTRAIT_H);
-    portrait.setData('staffPilePortraitId', member.id);
-    container.add(portrait);
-  });
 
   // ── Hover tooltip + click hand-off: the pile's interactions ─────
   // Skipped in replay mode, matching the hand/business card tooltips, so

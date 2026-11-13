@@ -119,9 +119,9 @@ function deriveFavourButtons(
 /**
  * Derive the staff pile zone geometry.
  *
- * The staff pile sits to the left of the hand row, against the left edge
- * of the viewport. Its bounds come directly from the layout adapter's
- * resolved `staffPileX/Y/W/H` fields.
+ * The staff pile sits in the bottom-right column slot above the End Turn row
+ * (MS-0MWE6AULW004EATJ), below the incident queue zone. Its bounds come
+ * directly from the layout adapter's resolved `staffPileX/Y/W/H` fields.
  */
 function deriveStaffPile(layout: ReturnType<typeof computeMainStreetLayoutWithSll>): Rect {
   return {

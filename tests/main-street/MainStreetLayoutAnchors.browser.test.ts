@@ -93,26 +93,24 @@ describe('Main Street layout anchor bounds', () => {
       expect(endTurnRect.x + endTurnRect.w).toBeLessThanOrEqual(layout.gameW);
       expect(endTurnRect.y + endTurnRect.h).toBeLessThanOrEqual(layout.gameH);
 
-      // Staff Pile: sits in the free band left of the hand capacity row —
-      // anchored against the left edge, left of the capacity row's own left
-      // edge at the hand size in play, and inside the lower viewport region.
-      // The band is derived from layout geometry (hand centre + slot pitch ×
-      // capacity), never from hard-coded pixel offsets.
-      const { HAND_SLOT_PITCH_PAD } = await import('../../src/scenes/MainStreetConstants');
+      // Staff Pile: bottom-right column slot above the End Turn row
+      // (MS-0MWE6AULW004EATJ) — anchored in the right column, below the
+      // incident queue zone, and its bottom edge sits at/above the action
+      // row's top. No overlap with the queue, challenge panel, actions or
+      // the hand capacity row.
       const staffPileRect = {
         x: layout.staffPileX,
         y: layout.staffPileY,
         w: layout.staffPileW,
         h: layout.staffPileH,
       };
-      const capacityRowLeft =
-        layout.handCenterX -
-        ((scene.state?.maxHandSize ?? 3) * (layout.handCardW + HAND_SLOT_PITCH_PAD)) / 2;
-      expect(staffPileRect.x).toBeGreaterThanOrEqual(0);
-      expect(staffPileRect.x + staffPileRect.w).toBeLessThanOrEqual(capacityRowLeft);
+      expect(staffPileRect.x).toBeGreaterThanOrEqual(layout.gameW * 0.7);
       expect(staffPileRect.x + staffPileRect.w).toBeLessThanOrEqual(layout.gameW);
-      expect(staffPileRect.y).toBeGreaterThanOrEqual(layout.gameH * 0.5);
-      expect(staffPileRect.y + staffPileRect.h).toBeLessThanOrEqual(layout.gameH);
+      expect(staffPileRect.y).toBeGreaterThanOrEqual(layout.gameH * 0.8);
+      expect(staffPileRect.y + staffPileRect.h).toBeLessThanOrEqual(layout.actionY + 4);
+      expect(staffPileRect.x + staffPileRect.w).toBeLessThanOrEqual(
+        layout.challengeX + layout.challengeW,
+      );
 
       // Explicit pass/fail bound: End Turn stays below Activity Log.
       expect(endTurnRect.y).toBeGreaterThan(logRect.y + logRect.h);

@@ -152,10 +152,10 @@ export function computeMainStreetLayoutWithSll(): SceneLayout {
     applicantCenterY = Math.round(ac.y);
   } catch { /* fallback to defaults */ }
 
-  // ── Staff Pile zone (MS-0MWBWKZ1G006IBH2) ───────────────────────
-  // Top-left anchored in the free band left of the hand capacity row, so the
-  // renderer draws the pile from layout authority data (no hard-coded pixel
-  // offsets). Resolved from the staffPile zone's topLeft/bottomRight anchors;
+  // ── Staff Pile zone (MS-0MWBWKZ1G006IBH2, relocated MS-0MWE6AULW004EATJ) ──
+  // Bottom-right column slot above the End Turn row, so the renderer draws the
+  // pile from layout authority data (no hard-coded pixel offsets). Resolved
+  // from the staffPile zone's topLeft/bottomRight anchors;
   // falls back to an empty rect when the zone is absent (legacy layouts) so
   // the renderer hides the pile rather than mispositioning it.
   let staffPileX = 0;

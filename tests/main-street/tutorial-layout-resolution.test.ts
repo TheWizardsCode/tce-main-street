@@ -155,8 +155,9 @@ function computeExpectedZoneBounds(
       };
     }
     case 'staffPile': {
-      // Staff Pile: left edge of viewport, y inside the hand band region,
-      // above the hand row. Derived from the staffPile SLL zone.
+      // Staff Pile (MS-0MWE6AULW004EATJ): bottom-right column slot above the
+      // End Turn row, below the incident queue zone. Derived from the
+      // staffPile SLL zone.
       const g = computeMainStreetLayoutGeometry();
       return {
         x: g.staffPile.x,

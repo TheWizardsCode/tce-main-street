@@ -322,15 +322,15 @@ describe('Company Roster overlay — Staff Pile entry point', () => {
     expect(overlayTexts(scene).map((o) => o.text)).toContain('Company Roster');
   });
 
-  it('the hit area spans both the card-face stack and the portrait row', async () => {
+  it('the hit area spans the whole compact pile zone', async () => {
     const scene = await bootWithPile();
     const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
     const { staffPileY, staffPileH } = scene.layout as { staffPileY: number; staffPileH: number };
     const top = hit.y - hit.height / 2;
     const bottom = hit.y + hit.height / 2;
 
-    // The catcher covers the whole pile zone top-to-bottom (stack above,
-    // portrait row below), so a press on either region opens the roster.
+    // The catcher covers the whole pile zone top-to-bottom, so a press
+    // anywhere on the compact fan opens the roster.
     expect(top).toBeLessThanOrEqual(staffPileY + 1);
     expect(bottom).toBeGreaterThanOrEqual(staffPileY + staffPileH - 1);
   });
@@ -349,19 +349,20 @@ describe('Company Roster overlay — Staff Pile entry point', () => {
     expect(overlayTexts(scene).map((o) => o.text)).toContain('Company Roster');
   });
 
-  it('does not cover the hand row: the hit area stays left of the capacity slots', async () => {
+  it('does not cover the hand row: the hit area stays right of the capacity slots', async () => {
     const scene = await bootWithPile();
-    // Widen the hand so the capacity row sweeps left beneath the pile.
-    scene.state.maxHandSize = 4;
+    // Widen the hand so the capacity row sweeps right beneath the pile.
+    scene.state.maxHandSize = 8;
     scene.refreshPlayerHand();
 
     const hit = scene.staffPileHitArea as Phaser.GameObjects.Rectangle;
     expect(hit).toBeDefined();
-    const capacityRowLeft =
-      scene.layout.handCenterX - (4 * (scene.layout.handCardW + 8)) / 2;
-    // The pile's clickable region never reaches a hand slot, so a hand-card
-    // click/drag beside it is delivered to the hand, not swallowed here.
-    expect(hit.x + hit.width / 2).toBeLessThanOrEqual(capacityRowLeft + 1);
+    const capacityRowRight =
+      scene.layout.handCenterX + (8 * (scene.layout.handCardW + 8)) / 2;
+    // The pile's clickable region starts at the capacity row's right edge, so
+    // a hand-card click/drag beside it is delivered to the hand, not swallowed
+    // here.
+    expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(capacityRowRight - 1);
   });
 });
 
