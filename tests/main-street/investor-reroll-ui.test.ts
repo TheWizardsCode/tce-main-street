@@ -31,6 +31,7 @@ import {
 } from '../../src/MainStreetCards';
 import {
   executeWeekStart,
+  getEmployedStaffCountAt,
   placeStaffOnBusiness,
 } from '../../src/MainStreetEngine';
 import { useFreeMarketReroll } from '../../src/MainStreetMarket';
@@ -380,5 +381,70 @@ describe('move-staff handlers (AC2)', () => {
     expect(scene.uiPhase).toBe('market');
     expect(scene.pendingStaffMoveId).toBeNull();
     expect(scene.lastFeedback?.text).toContain('No actions remaining');
+  });
+});
+
+// ── Assign-staff handlers (MS-0MWEWIFNT001PUY0) ────────────
+
+describe('assign-staff handlers (MS-0MWEWIFNT001PUY0)', () => {
+  it('begins the assign flow for an unassigned member and completes an action-free placement', () => {
+    const state = marketPhaseState('handler-assign-free');
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    const baker = hire(state, 'staff-baker');
+    expect(baker.employedAtSlot).toBeUndefined();
+    state.actionsRemaining = 0; // a free initial assignment must not need an action
+    const scene = createMockScene(state);
+
+    onMoveStaffClick({ scene } as any, baker.id);
+    expect(scene.uiPhase).toBe('moving-staff');
+    expect(scene.pendingStaffMoveId).toBe(baker.id);
+
+    onMoveStaffDestinationClick({ scene } as any, 0);
+
+    expect(scene.uiPhase).toBe('market');
+    expect(scene.pendingStaffMoveId).toBeNull();
+    expect(state.staffCards.find(c => c.id === baker.id)!.employedAtSlot).toBe(0);
+    expect(getEmployedStaffCountAt(state, 0)).toBe(1);
+    expect(state.actionsRemaining).toBe(0); // action-free initial placement
+    expect(scene.undoManager.canUndo()).toBe(true);
+
+    // Undo restores the unassigned state (assign is undoable).
+    scene.undoManager.undo();
+    expect(state.staffCards.find(c => c.id === baker.id)!.employedAtSlot).toBeUndefined();
+    expect(getEmployedStaffCountAt(state, 0)).toBe(0);
+  });
+
+  it('an assignment to an illegal destination keeps the phase, spends nothing and reports the reason', () => {
+    const state = marketPhaseState('handler-assign-illegal');
+    placeBusinessAt(state, 0, 'Bakery', ['Food']); // legal destination
+    placeBusinessAt(state, 1, 'Hardware Store', ['Service']); // illegal
+    const baker = hire(state, 'staff-baker');
+    state.actionsRemaining = 2;
+    const scene = createMockScene(state);
+
+    onMoveStaffClick({ scene } as any, baker.id);
+    onMoveStaffDestinationClick({ scene } as any, 1);
+
+    expect(scene.uiPhase).toBe('moving-staff');
+    expect(state.staffCards.find(c => c.id === baker.id)!.employedAtSlot).toBeUndefined();
+    expect(getEmployedStaffCountAt(state, 1)).toBe(0);
+    expect(state.actionsRemaining).toBe(2);
+    expect(scene.lastFeedback?.text).toMatch(/cannot work/);
+  });
+
+  it('without a legal destination the assign flow never begins and nothing is spent (Q2-B)', () => {
+    const state = marketPhaseState('handler-assign-none');
+    placeBusinessAt(state, 0, 'Hardware Store', ['Service']);
+    const barista = hire(state, 'staff-barista');
+    state.actionsRemaining = 1;
+    const scene = createMockScene(state);
+
+    onMoveStaffClick({ scene } as any, barista.id);
+
+    expect(scene.uiPhase).toBe('market');
+    expect(scene.pendingStaffMoveId).toBeNull();
+    expect(state.staffCards.find(c => c.id === barista.id)!.employedAtSlot).toBeUndefined();
+    expect(state.actionsRemaining).toBe(1);
+    expect(scene.lastFeedback?.text).toMatch(/no matching business/i);
   });
 });

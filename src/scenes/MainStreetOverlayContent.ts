@@ -52,6 +52,7 @@ import { showLoanPayoffDialog as renderLoanPayoffDialog } from './MainStreetLoan
 import type { LoanPayoff } from '../MainStreetLoans';
 import { formatCompetitiveScoreboardBadge } from './MainStreetCompetitiveScoreboard';
 import { buildMoveStaffAffordance, HUD_TOOLTIP_I18N_KEYS } from './MainStreetHudTooltips';
+import { staffCardScope } from '../MainStreetStaffSkills';
 import { buildBusinessStaffRows, type BusinessStaffRow } from '../MainStreetBusinessStaff';
 import { buildCompanyRoster, buildLayOffConfirmContent, type CompanyRosterRow } from '../MainStreetRoster';
 import { formatCoins } from './MainStreetLoanRowModel';
@@ -2047,6 +2048,12 @@ export class MainStreetOverlayContent {
       } else {
         roster.rows.slice(0, MAX_ROWS).forEach((row, index) => {
           const y = panelY + 64 + index * ROW_H;
+          // *Assign to business* affordance (MS-0MWEWIFNT001PUY0): a roster
+          // row whose member is an unassigned business-staff member (business
+          // card type, never placed) gets the Assign action next to Lay off.
+          const member = s.state.staffCards[row.staffIndex];
+          const isUnassignedBusinessStaff =
+            !!member && member.employedAtSlot == null && staffCardScope(member) === 'business';
 
           const nameText = s.add.text(panelLeft + 20, y, row.name, {
             fontSize: '14px', fontStyle: 'bold', color: '#ffdd99', fontFamily: FONT_FAMILY,
@@ -2057,16 +2064,44 @@ export class MainStreetOverlayContent {
 
           const roleText = s.add.text(panelLeft + 146, y, row.roleSummary, {
             fontSize: '11px', color: '#ddccbb', fontFamily: FONT_FAMILY,
-            wordWrap: { width: 190 },
+            // Rows with both buttons get a narrower role field (mirrors the
+            // Manage-Card row layout).
+            wordWrap: { width: isUnassignedBusinessStaff ? 100 : 190 },
           }).setOrigin(0, 0).setDepth(201);
           if (s.hudContainer) s.hudContainer.add(roleText);
           addDynamic(roleText);
 
-          const salaryText = s.add.text(panelRight - 118, y, `${formatCoins(row.salary)}/turn`, {
-            fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
-          }).setOrigin(1, 0).setDepth(201);
+          const salaryText = s.add.text(
+            (isUnassignedBusinessStaff ? panelRight - 204 : panelRight - 118),
+            y,
+            `${formatCoins(row.salary)}/turn`,
+            {
+              fontSize: '13px', color: '#ffe08a', fontFamily: FONT_FAMILY, align: 'right',
+            },
+          ).setOrigin(1, 0).setDepth(201);
           if (s.hudContainer) s.hudContainer.add(salaryText);
           addDynamic(salaryText);
+
+          // Per-row [ Assign ] (MS-0MWEWIFNT001PUY0): begins the free
+          // initial placement of THIS unassigned member. The hover tooltip
+          // lists the member's legal destinations from the shared affordance
+          // builder.
+          if (isUnassignedBusinessStaff) {
+            const assignBtn = createOverlayButton(s, panelRight - 130, y + 8, '[ Assign ]', 201);
+            if (s.hudContainer) s.hudContainer.add(assignBtn);
+            addDynamic(assignBtn);
+            assignBtn.on('pointerover', () => {
+              const affordance = buildMoveStaffAffordance(s.state, row.memberId);
+              s.tooltipManager?.show(affordance.tooltip, assignBtn.x, assignBtn.y);
+            });
+            assignBtn.on('pointerout', () => s.tooltipManager?.hide());
+            assignBtn.on('pointerdown', () => {
+              safePlaySound(s, COMMON_SFX_KEYS.UI_CLICK);
+              dismissOverlay(s.overlayObjects);
+              s.overlayObjects = [];
+              s.beginStaffMove(row.memberId);
+            });
+          }
 
           const layOffBtn = createOverlayButton(s, panelRight - 56, y + 8, '[ Lay off ]', 201);
           if (s.hudContainer) s.hudContainer.add(layOffBtn);

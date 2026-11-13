@@ -96,6 +96,12 @@ function businessMember(id: string, name: string, ongoingCost: number): StaffCar
   return { ...managementMember(id, name, ongoingCost), employedAtSlot: 0 };
 }
 
+/** An unassigned business-staff member (hired, never placed). */
+function unassignedBusinessMember(id: string, name: string, ongoingCost: number): StaffCard {
+  const chef = createStaffDeck(1).find(c => c.id.startsWith('staff-chef'))!;
+  return { ...chef, id, name, specializationSkillIds: [], ongoingCost };
+}
+
 describe('Company Roster overlay', () => {
   let game: Phaser.Game | null = null;
 
@@ -412,5 +418,54 @@ describe('Company Roster overlay — pile → roster → lay-off end-to-end', ()
     );
     expect(scene.staffPileContainer).toBeUndefined();
     expect(scene.staffPileHitArea).toBeUndefined();
+  });
+});
+
+describe('Company Roster overlay — assign affordance for unassigned business staff (MS-0MWEWIFNT001PUY0)', () => {
+  let game: Phaser.Game | null = null;
+
+  afterEach(() => {
+    destroyGame(game);
+    game = null;
+  });
+
+  it('offers [ Assign ] next to [ Lay off ] for an unassigned business-staff member', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as RosterScene;
+    scene.state.staffCards = [unassignedBusinessMember('staff-chef-u', 'Chef Cole', 150)];
+
+    scene.showCompanyRoster();
+
+    const texts = overlayTexts(scene).map((o) => o.text);
+    expect(texts).toContain('Chef Cole');
+    expect(texts).toContain('[ Assign ]');
+    expect(texts).toContain('[ Lay off ]');
+  });
+
+  it('never offers [ Assign ] for a management-company member', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as RosterScene;
+    scene.state.staffCards = [managementMember('mgmt-a', 'Ada Assistant', 100)];
+
+    scene.showCompanyRoster();
+
+    const texts = overlayTexts(scene).map((o) => o.text);
+    expect(texts).toContain('Ada Assistant');
+    expect(texts).toContain('[ Lay off ]');
+    expect(texts).not.toContain('[ Assign ]');
+  });
+
+  it('[ Assign ] dismisses the overlay and begins the assign flow for that member', async () => {
+    game = await bootGame();
+    const scene = game.scene.getScene('MainStreetScene') as RosterScene & { beginStaffMove: (id: string) => void };
+    scene.state.staffCards = [unassignedBusinessMember('staff-chef-u', 'Chef Cole', 150)];
+    scene.showCompanyRoster();
+
+    const beginSpy = vi.spyOn(scene, 'beginStaffMove');
+    findOverlayButton(scene, '[ Assign ]').emit('pointerdown');
+
+    expect(beginSpy).toHaveBeenCalledWith('staff-chef-u');
+    // The roster overlay is dismissed so the player can pick a destination.
+    expect(scene.overlayObjects).toHaveLength(0);
   });
 });

@@ -57,9 +57,10 @@ import {
   type PlayerAction,
 } from '../../src/MainStreetEngine';
 import { purchaseStaffCard } from '../../src/MainStreetMarket';
-import { placeStaffOnBusinessCommand } from '../../src/MainStreetCommands';
+import { letGoStaffCommand, placeStaffOnBusinessCommand } from '../../src/MainStreetCommands';
 import { createStaffDeck, type StaffCard, type BusinessCard } from '../../src/MainStreetCards';
 import { buildMoveStaffAffordance } from '../../src/scenes/MainStreetHudTooltips';
+import { buildCompanyRoster } from '../../src/MainStreetRoster';
 import { staffCardScope } from '../../src/MainStreetStaffSkills';
 import {
   enumerateLegalActions,
@@ -294,7 +295,7 @@ describe('assign action economy via placeStaffOnBusinessCommand', () => {
 // ── The assign affordance (red-phase: MS-0MWEWIFNT001PUY0) ──
 
 describe('the assign affordance for unassigned business staff (MS-0MWEWIFNT001PUY0)', () => {
-  it.fails('offers an unassigned member with a legal destination as a place/assign target', () => {
+  it('offers an unassigned member with a legal destination as a place/assign target', () => {
     const state = freshState('assign-affordance-legal');
     businessAt(state, 0, 'Bakery', ['Food']);
     const baker = hire(state, 'staff-baker');
@@ -350,6 +351,37 @@ describe('assign is undoable and redoable', () => {
     expect(state.staffCards.find(c => c.id === baker.id)!.employedAtSlot).toBe(0);
     expect(getEmployedStaffCountAt(state, 0)).toBe(1);
     expect(state.actionsRemaining).toBe(1);
+  });
+});
+
+// ── Lay-off stays available (AC3) ──────────────────────────
+
+describe('lay-off stays available for unassigned business staff (MS-0MWEWIFNT001PUY0)', () => {
+  it('dismisses an unassigned member from the roster surface with the same quoted cost as other doors', () => {
+    const state = freshState('assign-layoff-unassigned');
+    const baker = hire(state, 'staff-baker');
+
+    // Today the roster classifies by runtime assignment, so the unassigned
+    // member appears as a row; the row quotes the shared salary-scaled cost.
+    const row = buildCompanyRoster(state).rows.find(r => r.memberId === baker.id)!;
+    expect(row).toBeDefined();
+    const coinsBefore = state.resourceBank.coins;
+    const reputationBefore = state.resourceBank.reputation;
+
+    const mgr = new UndoRedoManager();
+    mgr.execute(letGoStaffCommand(state, row.staffIndex));
+
+    expect(state.staffCards.some(c => c.id === baker.id)).toBe(false);
+    expect(state.resourceBank.coins).toBe(Math.max(0, coinsBefore - row.layOffCoins));
+    expect(state.resourceBank.reputation).toBe(Math.max(0, reputationBefore - row.layOffReputation));
+
+    // Undo restores the member and the quoted costs.
+    mgr.undo();
+    expect(state.staffCards.some(c => c.id === baker.id)).toBe(true);
+    expect(state.resourceBank.coins).toBe(coinsBefore);
+    expect(state.resourceBank.reputation).toBe(reputationBefore);
+    // The member remains unassigned (never placed by the lay-off round-trip).
+    expect(state.staffCards.find(c => c.id === baker.id)!.employedAtSlot).toBeUndefined();
   });
 });
 

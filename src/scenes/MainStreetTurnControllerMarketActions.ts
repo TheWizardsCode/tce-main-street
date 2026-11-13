@@ -14,7 +14,7 @@ import { COMMON_SFX_KEYS, safePlaySound } from '@core-engine/SoundManager';
 import { FONT_FAMILY } from '@ui/constants';
 import { popTextOrIcon } from '@ui/popTextOrIcon';
 import type { BusinessCard, EventCard, StaffCard, UpgradeCard } from '../MainStreetCards';
-import { discardFromHandCommand, freeMarketRerollCommand, hireStaffCardCommand, moveEventToHandCommand, moveStaffCommand, moveToHandCommand, peekIncidentDeckCommand, refreshMarketCommand } from '../MainStreetCommands';
+import { discardFromHandCommand, freeMarketRerollCommand, hireStaffCardCommand, moveEventToHandCommand, moveStaffCommand, moveToHandCommand, peekIncidentDeckCommand, placeStaffOnBusinessCommand, refreshMarketCommand } from '../MainStreetCommands';
 import { SFX_KEYS } from './MainStreetConstants';
 // Import the concrete module (not the `src/ui` barrel) so Node unit tests that
 // import this controller module do not pull in browser-only UI modules.
@@ -23,7 +23,7 @@ import { executeAction } from '../MainStreetEngine';
 import { turnLabel } from '../MainStreetFormatting';
 import { canAddToHand, canPurchaseEvent, canPurchaseStaff, canRefreshMarket, canUseFreeMarketReroll } from '../MainStreetMarket';
 import { hasPeekCapableStaff } from '../MainStreetStaffSkills';
-import { canMoveStaffOnBusiness } from '../MainStreetEngineCommands';
+import { canMoveStaffOnBusiness, canPlaceStaffOnBusiness } from '../MainStreetEngineCommands';
 import { buildMoveStaffAffordance } from './MainStreetHudTooltips';
 import { addLogShared } from '../MainStreetState';
 import { recordMainStreetEvent } from '../MainStreetTranscript';
@@ -352,12 +352,13 @@ export function onFreeMarketRerollClick(tcCtx: MainStreetTurnControllerContext):
 }
 
 /**
- * Move-staff affordance (MS-0MUOSULQ700186PP AC2): begin a relocation by
- * entering the `moving-staff` phase. The label/tooltip and the 1-action-point
- * cost are produced by the pure {@link buildMoveStaffAffordance} builder so
- * the UI and the tests share one source of truth. Illegal starts (no actions,
- * no employed member, no legal destination) surface feedback and mutate
- * nothing.
+ * Move/assign-staff affordance (MS-0MUOSULQ700186PP AC2,
+ * MS-0MWEWIFNT001PUY0): begin a relocation or an *Assign to business*
+ * placement by entering the `moving-staff` phase. The label/tooltip and the
+ * action-point cost are produced by the pure {@link buildMoveStaffAffordance}
+ * builder so the UI and the tests share one source of truth. Illegal starts
+ * (no actions, no movable/assignable member, no legal destination) surface
+ * feedback and mutate nothing.
  */
 export function onMoveStaffClick(tcCtx: MainStreetTurnControllerContext, staffId: string): void {
 
@@ -378,10 +379,20 @@ export function onMoveStaffClick(tcCtx: MainStreetTurnControllerContext, staffId
 }
 
 /**
- * Completes a pending move-staff relocation (MS-0MUOSULQ700186PP AC2) via
- * `moveStaffCommand` (exactly 1 action point, undoable). An illegal
- * destination keeps the `moving-staff` phase so the player can retry, with
- * no action spent and no state mutation.
+ * Completes a pending `moving-staff` destination pick
+ * (MS-0MUOSULQ700186PP AC2, MS-0MWEWIFNT001PUY0).
+ *
+ * Two flows share the `moving-staff` phase:
+ * - **Relocation** of an employed member is validated by
+ *   `canMoveStaffOnBusiness` and executed via `moveStaffCommand` (exactly 1
+ *   action point, undoable).
+ * - **Assignment** of an unassigned business-staff member is validated by
+ *   the shared placement predicate `canPlaceStaffOnBusiness` and executed
+ *   via `placeStaffOnBusinessCommand` — the initial placement of an
+ *   unassigned member is action-free.
+ *
+ * An illegal destination keeps the `moving-staff` phase so the player can
+ * retry, with no action spent and no state mutation.
  */
 export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerContext, slotIndex: number): void {
 
@@ -390,23 +401,35 @@ export function onMoveStaffDestinationClick(tcCtx: MainStreetTurnControllerConte
     const staffId = s.pendingStaffMoveId as string | null;
     if (!staffId) return;
 
-    const legality = canMoveStaffOnBusiness(s.state, staffId, slotIndex);
+    // An unassigned business-staff member is being *assigned* (free initial
+    // placement); an employed member is being relocated (1 action).
+    const member = (s.state.staffCards ?? []).find(
+      (m: { id: string }) => m.id === staffId,
+    );
+    const isAssignment = !!member && member.employedAtSlot == null;
+    const legality = isAssignment
+      ? canPlaceStaffOnBusiness(s.state, staffId, slotIndex)
+      : canMoveStaffOnBusiness(s.state, staffId, slotIndex);
     if (!legality.legal) {
-      flashError(s, legality.reason ?? 'Cannot move staff there.');
+      flashError(s, legality.reason ?? 'Cannot place staff there.');
       playIllegalFeedback(s.actionContainer, s);
       return;
     }
 
     let moved = false;
     try {
-      const cmd = moveStaffCommand(s.state, staffId, slotIndex);
+      const cmd = isAssignment
+        ? placeStaffOnBusinessCommand(s.state, staffId, slotIndex)
+        : moveStaffCommand(s.state, staffId, slotIndex);
       s.undoManager.execute(cmd);
       s.refreshUndoRedoButtons(s.undoManager.canUndo(), s.undoManager.canRedo());
-      try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: 'move-staff', staffId, slotIndex }, description: cmd.description }); } catch (_) {}
-      flashConfirmation(s, `Staff moved to slot ${slotIndex} (-1 action).`);
+      try { recordMainStreetEvent({ type: 'action', turn: s.state.turn, action: { type: isAssignment ? 'assign-staff' : 'move-staff', staffId, slotIndex }, description: cmd.description }); } catch (_) {}
+      flashConfirmation(s, isAssignment
+        ? `Assigned staff to slot ${slotIndex} (free).`
+        : `Staff moved to slot ${slotIndex} (-1 action).`);
       moved = true;
     } catch (e) {
-      console.error('[MS] MoveStaff failed', e);
+      console.error('[MS] StaffPlacement failed', e);
       flashError(s, `Error: ${(e as Error).message}`);
     }
 

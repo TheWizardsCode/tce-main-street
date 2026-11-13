@@ -21,7 +21,7 @@
 import { type IncomeResult, type SlotIncome } from '../MainStreetAdjacency';
 import { reputationCoinMultiplier, applyReputationMultiplier } from '../MainStreetDifficulty';
 import { ORDERED_TIER_DEFINITIONS } from '../MainStreetTiers';
-import { computeScore, effectiveWinThreshold, canMoveStaffOnBusiness } from '../MainStreetEngine';
+import { computeScore, effectiveWinThreshold, canMoveStaffOnBusiness, canPlaceStaffOnBusiness } from '../MainStreetEngine';
 import { countChallengesCreditedToHumanSeat } from '../MainStreetChallenges';
 import {
   canUseFreeMarketReroll,
@@ -31,6 +31,7 @@ import {
 } from '../MainStreetMarket';
 import type { MainStreetState, MainStreetCampaignProgress } from '../MainStreetState';
 import { selectManagementCompanyStaff } from '../MainStreetStaffBuffs';
+import { staffCardScope } from '../MainStreetStaffSkills';
 import { formatStaffMemberLine } from '../MainStreetFormatting';
 import { t, registerLocale } from '@core-engine/I18n';
 
@@ -90,6 +91,13 @@ export const HUD_TOOLTIP_I18N_KEYS = {
   moveStaffNoDestination: 'hud.tooltip.moveStaff.noDestination',
   moveStaffNoStaff: 'hud.tooltip.moveStaff.noStaff',
   moveStaffNoActions: 'hud.tooltip.moveStaff.noActions',
+  // *Assign to business* affordance for unassigned business staff
+  // (MS-0MWEWIFNT001PUY0): initial placement is action-free.
+  assignStaffTitle: 'hud.tooltip.assignStaff.title',
+  assignStaffLabel: 'hud.tooltip.assignStaff.label',
+  assignStaffBody: 'hud.tooltip.assignStaff.body',
+  assignStaffDestinations: 'hud.tooltip.assignStaff.destinations',
+  assignStaffNoDestination: 'hud.tooltip.assignStaff.noDestination',
   // Staff Pile (MS-0MWBWKZ1G006IBH2): management-company team summary.
   staffPileTitle: 'hud.tooltip.staffPile.title',
   staffPileCount: 'hud.tooltip.staffPile.count',
@@ -177,6 +185,11 @@ export const HUD_TOOLTIP_STRINGS = {
   moveStaffNoDestination: 'No matching business has a free employment slot.',
   moveStaffNoStaff: 'No employed staff member can be moved.',
   moveStaffNoActions: 'No actions remaining this week — end your turn first.',
+  assignStaffTitle: 'Assign to Business',
+  assignStaffLabel: 'Assign to business (free)',
+  assignStaffBody: 'Assigning an unassigned staff member to a matching business is free.',
+  assignStaffDestinations: 'Assign to: {names}.',
+  assignStaffNoDestination: 'No matching business has a free employment slot.',
   staffPileTitle: 'Management Company Staff',
   staffPileCount: '{count} on the company payroll',
   staffPileSalarySuffix: 'salary {salary}',
@@ -598,36 +611,46 @@ export function buildMarketRerollControl(state: MainStreetState): MarketRerollCo
  * destination, and a remaining action.
  */
 export interface MoveStaffAffordance {
-  /** Button label, e.g. `Move staff (1 action)`. */
+  /** Button label, e.g. `Move staff (1 action)` or `Assign to business (free)`. */
   readonly label: string;
   /** Full hover tooltip text (cost + legal destinations). */
   readonly tooltip: string;
-  /** Action points charged for the relocation (always 1). */
+  /** Action points charged (always 1 for a relocation; 0 for a free initial assignment). */
   readonly actionCost: number;
-  /** True when the targeted member can be relocated right now. */
+  /** True when the targeted member can be moved/assigned right now. */
   readonly enabled: boolean;
-  /** The targeted employed staff id, or null when none can move. */
+  /** The targeted staff member id, or null when none can move/be assigned. */
   readonly staffId: string | null;
   /** Legal destination street-grid slots for the targeted member. */
   readonly destinationSlots: readonly number[];
 }
 
 /**
- * Builds the move-staff affordance spec (MS-0MUOSULQ700186PP AC2).
+ * Builds the staff move/assign affordance spec (MS-0MUOSULQ700186PP AC2,
+ * MS-0MWEWIFNT001PUY0).
  *
- * Relocation costs exactly 1 action point for every staff member; this helper
- * exposes that cost alongside the legal destination businesses so the UI can
- * present the affordance without re-deriving the rule. When `staffId` is
- * omitted the first employed member is targeted (the Manage-Card dialog
- * passes the member the player chose).
+ * Two flows share this one derivation:
+ * - **Relocation** of an employed member costs exactly 1 action point for
+ *   every staff member; this helper exposes that cost alongside the legal
+ *   destination businesses so the Manage-Card UI can present the affordance
+ *   without re-deriving the rule.
+ * - **Assignment** of an unassigned business-staff member (hired, never
+ *   placed) is the *Assign to business* action: free, validated through the
+ *   shared `canPlaceStaffOnBusiness` predicate (card-type match, free
+ *   employment slot, competitive ownership gate).
  *
- * Destinations are derived from `canMoveStaffOnBusiness`, which inherits the
- * shared competitive ownership gate, so an opponent-owned business is never
- * offered as a relocation destination — no extra UI logic is required
- * (MS-0MWBCWLZY001EA3W).
+ * When `staffId` is omitted the first movable/assignable member is targeted
+ * (the Manage-Card dialog passes the member the player chose).
+ *
+ * Destinations for an employed member come from `canMoveStaffOnBusiness`,
+ * which inherits the shared competitive ownership gate, so an opponent-owned
+ * business is never offered as a relocation destination — no extra UI logic
+ * is required (MS-0MWBCWLZY001EA3W). An unassigned member's destinations
+ * come from `canPlaceStaffOnBusiness` (same shared ownership gate).
  *
  * @param state   Current game state (read-only).
- * @param staffId Optional employed member to target; defaults to the first.
+ * @param staffId Optional member to target; defaults to the first
+ *                movable/assignable member.
  */
 export function buildMoveStaffAffordance(
   state: MainStreetState,
@@ -637,22 +660,47 @@ export function buildMoveStaffAffordance(
   const employed = (state.staffCards ?? []).filter(
     m => m.employedAtSlot !== undefined && m.employedAtSlot !== null,
   );
-  const targetId = staffId ?? (employed.length > 0 ? employed[0].id : null);
-  const target = targetId ? employed.find(m => m.id === targetId) ?? null : null;
+  // *Assign to business* (MS-0MWEWIFNT001PUY0): a hired business-staff member
+  // that has never been placed is a valid assign target, classified by card
+  // type (`staffCardScope`) — never as management-company staff.
+  const unassignedBusiness = (state.staffCards ?? []).filter(
+    m =>
+      (m.employedAtSlot === undefined || m.employedAtSlot === null) &&
+      staffCardScope(m) === 'business',
+  );
+  const pool = [...employed, ...unassignedBusiness];
+  const targetId = staffId ?? (pool.length > 0 ? pool[0].id : null);
+  const target = targetId ? pool.find(m => m.id === targetId) ?? null : null;
+  // A member with no employment is being *assigned* (free initial placement);
+  // an employed member is being relocated (1 action).
+  const isAssignment = !!target && target.employedAtSlot == null;
+  const effectiveCost = isAssignment ? 0 : actionCost;
 
   const destinationSlots: number[] = [];
   if (target) {
     for (let slot = 0; slot < state.streetGrid.length; slot++) {
       if (!state.streetGrid[slot]) continue;
       if ((state.soldSlots ?? [])[slot]) continue;
-      if (canMoveStaffOnBusiness(state, target.id, slot).legal) destinationSlots.push(slot);
+      const legality = isAssignment
+        ? canPlaceStaffOnBusiness(state, target.id, slot)
+        : canMoveStaffOnBusiness(state, target.id, slot);
+      if (legality.legal) destinationSlots.push(slot);
     }
   }
 
   const noActions = state.actionsRemaining <= 0;
   const lines = [
-    t(HUD_TOOLTIP_I18N_KEYS.moveStaffTitle),
-    t(HUD_TOOLTIP_I18N_KEYS.moveStaffBody, { cost: actionCost }),
+    t(
+      isAssignment
+        ? HUD_TOOLTIP_I18N_KEYS.assignStaffTitle
+        : HUD_TOOLTIP_I18N_KEYS.moveStaffTitle,
+    ),
+    t(
+      isAssignment
+        ? HUD_TOOLTIP_I18N_KEYS.assignStaffBody
+        : HUD_TOOLTIP_I18N_KEYS.moveStaffBody,
+      isAssignment ? undefined : { cost: actionCost },
+    ),
   ];
   if (target) {
     const names = destinationSlots
@@ -660,19 +708,37 @@ export function buildMoveStaffAffordance(
       .filter((name): name is string => typeof name === 'string' && name.length > 0);
     lines.push(
       names.length > 0
-        ? t(HUD_TOOLTIP_I18N_KEYS.moveStaffDestinations, { names: names.join(', ') })
-        : t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoDestination),
+        ? t(
+            isAssignment
+              ? HUD_TOOLTIP_I18N_KEYS.assignStaffDestinations
+              : HUD_TOOLTIP_I18N_KEYS.moveStaffDestinations,
+            { names: names.join(', ') },
+          )
+        : t(
+            isAssignment
+              ? HUD_TOOLTIP_I18N_KEYS.assignStaffNoDestination
+              : HUD_TOOLTIP_I18N_KEYS.moveStaffNoDestination,
+          ),
     );
   } else {
     lines.push(t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoStaff));
   }
-  if (noActions) lines.push(t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoActions));
+  // A free initial assignment doesn't need an action point.
+  if (!isAssignment && noActions) lines.push(t(HUD_TOOLTIP_I18N_KEYS.moveStaffNoActions));
 
   return {
-    label: t(HUD_TOOLTIP_I18N_KEYS.moveStaffLabel, { cost: actionCost }),
+    label: t(
+      isAssignment
+        ? HUD_TOOLTIP_I18N_KEYS.assignStaffLabel
+        : HUD_TOOLTIP_I18N_KEYS.moveStaffLabel,
+      isAssignment ? undefined : { cost: actionCost },
+    ),
     tooltip: lines.join('\n'),
-    actionCost,
-    enabled: !!target && !noActions && destinationSlots.length > 0,
+    actionCost: effectiveCost,
+    enabled:
+      !!target &&
+      destinationSlots.length > 0 &&
+      (isAssignment || !noActions),
     staffId: target?.id ?? null,
     destinationSlots,
   };
