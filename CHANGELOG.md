@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.26 (2026-11-13)
+> **Release focus:** This release focuses on making the game's numbers transparent and trustworthy, with cards showing their real income and reputation, detailed end-of-turn ledger breakdowns, and clearer turn summaries. It also adds a visible staff pile with the ability to review and lay off team members, plus a range of bug fixes and a new Serial Seller achievement.
+### Features
+- Cards now show the income and reputation they actually earn, so your placement and staffing choices are based on real numbers. (MS-0MW6H9A47001B1QT)
+- Hover over any end-of-turn ledger line to see exactly how each figure was calculated. (MS-0MW6GZKZZ006PLLO)
+- Your management-company staff now appear in a visible pile beside your hand, with a hover summary of your team. (MS-0MWBWKZ1G006IBH2)
+- End-of-turn tooltips now show exactly how every figure was calculated. (MS-0MWBCACHZ006RTQ9)
+- The end-of-turn summary now opens on a clear overview of what everyone did and how their income, reputation and score changed. (MS-0MWBWRITL0089GGJ)
+- Click the Staff Pile to view your management team and finally let go of bad hires. (MS-0MWC1T8K2000DWZA)
+- Pick exactly which staff member to lay off, with the full cost shown before you confirm. (MS-0MWC952QU000HQ11)
+- Upgrade cards now have clearly credited art, keeping the game's licensing accurate. (MS-0MW5DRGVF001AWZ8)
+- Earn a new achievement for the Serial Seller challenge, tracked alongside the others. (MS-0MUOLL8W2004A3D7)
+- The Turn Summary now shows exactly what caused each one-off gain or loss. (MS-0MWBZDNH3006DXV7)
+### Bug Fixes
+- Closing the end-of-turn ledger no longer accidentally selects a card in your hand. (MS-0MW6GPRL6001DFCF)
+- Pressing Play Again now fully clears the game-over screen so your new run starts clean. (MS-0MW6H5R340033GJJ)
+- Hired staff now always work at your own businesses, never an opponent's. (MS-0MWBB146L005SU31)
+- Failing browser tests now report the actual failing test, not a config error. (MS-0MW3UR8SX009YZWS)
+- You'll now always see your debt-free congratulations after a paused turn resolves. (MS-0MW4887R4007XPGJ)
+- Competitive players now see their debt-free congratulation after accepting a bailout. (MS-0MW8FXE3D0041KEG)
+- Cleans up stale work item data so validation checks run without false warnings. (MS-0MW22TQS8008021W)
+### Other
+- Reduced-motion players now see the Turn Summary dialog correctly at the end of their turn. (MS-0MW2RU488005P7Q8)
+- Staff rules are now clearer: only management-company staff expand your hand, not all staff. (MS-0MW3N93B000677DA)
+> [Play the alpha release](https://thewizardscode.github.io/tce-main-street/). Provide feedback in [Discord](https://discord.gg/gUKQTFkzQ4)
+
 ## v0.1.25 (2026-11-07)
 > **Release focus:** This release focuses on deepening the hiring and financial strategy: staff are split into business specialists and company-wide management roles with clearer, correctly scoped skills, and competitive players can now take bank loans and compare every player in a new per-player profit/loss turn summary. It also adds quality-of-life improvements like Activity Log filters, auto-end turn options, and turn-over-turn tracking of cash, reputation, businesses, and staff, alongside behind-the-scenes build and tooling fixes.
 ### Features
