@@ -71,11 +71,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { MainStreetState } from '../../src/MainStreetState';
 import { createCompetitiveState, setupMainStreetGame } from '../../src/MainStreetState';
-import type {
-  BusinessCard,
-  CommunitySpaceCard,
-  EventCard,
-  StaffCard,
+import {
+  getStaffCardTemplates,
+  type BusinessCard,
+  type CommunitySpaceCard,
+  type EventCard,
+  type StaffCard,
 } from '../../src/MainStreetCards';
 import { applyCompetitiveOngoingCosts } from '../../src/MainStreetEngineCommands';
 import type {
@@ -90,6 +91,7 @@ import {
   buildPLFromCompetitiveRow,
   buildPLProjection,
   buildTurnSummary,
+  type PLStatementLine,
   type PLStatementSection,
 } from '../../src/scenes/MainStreetTurnSummary';
 import {
@@ -251,6 +253,60 @@ function plInput(
     turnLedger: ledger,
     incident: { name: 'Flu Outbreak' } as EventCard,
     income,
+  };
+}
+
+// ── Bookkeeper-reduced business (MS-0MWEQLYCH006NQ4M) ──────
+
+/**
+ * Employs the shipped Bookkeeper card at one street slot via the per-business
+ * `employedStaff` source of truth (plus the single-player roster link), so
+ * `computeBusinessOngoingCostReductionPct` sees the −20% it tests. The
+ * instance carries no salary, so it never adds a staff-wages item to the
+ * fixtures below.
+ */
+function employBookkeeper(state: MainStreetState, slot: number): StaffCard {
+  const template = getStaffCardTemplates().find((card) => card.id === 'staff-bookkeeper');
+  if (!template) throw new Error('staff-bookkeeper template not found');
+  const member = { ...template, id: `${template.id}-${slot}`, ongoingCost: 0 } as StaffCard;
+  member.employedAtSlot = slot;
+  const business = state.streetGrid[slot]!;
+  if (!Array.isArray(business.employedStaff)) business.employedStaff = [];
+  business.employedStaff.push(member);
+  state.staffCards.push(member);
+  return member;
+}
+
+/**
+ * A `tooltipState()` variant with the Bookkeeper employed at the Bakery
+ * (slot 0), reducing that business's ongoing cost by 20%. The engine charges
+ * the same reduction (`applyBusinessOngoingCosts` → `effectiveBusinessOngoingCost`
+ * → `roundInt(cost × 0.8)`), so the committed business total is −21:
+ *
+ *  business: Bakery (20 → Bookkeeper −20% ⇒ 16) + Cafe (5) = 21
+ *  community: Park (20) = 20
+ *  staff: Clerk (100) + Manager (50) = 150
+ */
+function bookkeeperState(): MainStreetState {
+  const state = tooltipState();
+  state.streetGrid[0] = makeBusiness('Bakery', 20);
+  employBookkeeper(state, 0);
+  return state;
+}
+
+/**
+ * The ledger {@link bookkeeperState} reconciles to exactly: Bakery 16
+ * (Bookkeeper-reduced) + Cafe 5 = business −21. No Cost Cutter is employed,
+ * so the nominal per-card sum (−25) exceeds the committed −21 by exactly the
+ * Bookkeeper reduction (+4) — the residual the tooltip must expose as a named
+ * modifier rather than a coin clamp.
+ */
+function bookkeeperLedger(): TurnLedger {
+  return {
+    ...tooltipLedger(),
+    ongoingCosts: { staff: -150, community: -20, business: -21 },
+    // income 89 + expenses −191 + incident −20 + one-off −4 = −126
+    netCoinChange: -126,
   };
 }
 
@@ -640,6 +696,40 @@ function seatIncome(ownerId: number, businessName: string, base: number): {
       },
     },
   };
+}
+
+/**
+ * A two-seat competitive state whose human seat (0) owns the Bookkeeper-
+ * reduced Bakery at slot 0 — the state the owner-filtered expense derivation
+ * (MS-0MWEGDNAD009QDRO) reads to produce the seat's per-business items.
+ */
+function bookkeeperCompetitiveState(): MainStreetState {
+  const state = twoSeatState();
+  state.streetGrid = state.streetGrid.map(() => null);
+  state.soldSlots = state.soldSlots.map(() => false);
+  const bakery = makeBusiness('Bakery', 20);
+  state.streetGrid[0] = bakery;
+  state.ownerTaggedGrid![0] = { card: bakery, ownerId: 0 };
+  employBookkeeper(state, 0);
+  return state;
+}
+
+/**
+ * The competitive round ledger for {@link bookkeeperCompetitiveState}: seat 0
+ * commits business −16 (Bakery 20 − 20% Bookkeeper) against income +10, so
+ * the seat's net change is −6 and its closing balance 4.
+ */
+function bookkeeperCompetitiveLedger(): CompetitiveRoundLedger {
+  const ledger = competitiveLedger();
+  ledger.seats[0] = {
+    ...ledger.seats[0],
+    incomeByPhase: { base: 10, synergy: 0, reputation: 0, events: 0 },
+    incomeTotal: 10,
+    ongoingCosts: { staff: 0, community: 0, business: -16 },
+    netCoinChange: -6,
+    closing: { coins: 4, reputation: 0, score: 0 },
+  };
+  return ledger;
 }
 
 describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
@@ -1446,5 +1536,89 @@ describe('ledger tooltip enhanced content contract (MS-0MWC90T19000JEA4)', () =>
     expect(buildContextLineTooltip('businessesOwned', legacyContext)).toBe(
       'Businesses owned\nBusinesses standing on the street at closing (sold slots excluded).',
     );
+  });
+});
+
+// ── Bookkeeper-reduced business expense breakdown (MS-0MWEQLYCH006NQ4M) ──
+
+/**
+ * The engine charges `effectiveBusinessOngoingCost` (Bookkeeper −20% per
+ * business, GDD D.4.3) while `expenseLineBreakdown`'s business branch shows
+ * the card's raw `ongoingCost`, so today the residual is mislabelled "limited
+ * to the coins available". These cases pin the corrected contract (parent
+ * MS-0MWEGF4V6007ZGRP) and are authored **red-phase** with `it.fails` per the
+ * repo's test-first tracer-bullet convention (see `turn-summary-pl-model.test.ts`
+ * and `competitive-per-seat-hand-capacity.test.ts`): each body asserts the exact
+ * contract and is expected to fail until the implementing child
+ * (MS-0MWEQN2R2007GQG0 — and MS-0MWEGDNAD009QDRO for the competitive seat's
+ * per-item detail) flips it to a plain `it`. Leaving any as `it.fails` once it
+ * passes is itself a failure, so the suite cannot go stale.
+ *
+ * The expected post-fix breakdown for the Bookkeeper-reduced Bakery:
+ *
+ *  Bakery: base −20, coins −16, modifier `Bookkeeper: +4`
+ *  Cafe:   base −5,  coins −5,  (no modifier)
+ *  sum(items) + streetReduction === line.coins (−21) — no clamp line.
+ */
+describe('Bookkeeper-reduced business expense breakdown (MS-0MWEQLYCH006NQ4M)', () => {
+  /** The single-player business-costs line for the Bookkeeper fixture. */
+  const businessLine = (): PLStatementLine =>
+    buildPLProjection(bookkeeperState(), plInput(bookkeeperLedger()))!
+      .expenses.lines.find((line) => line.key === 'business')!;
+
+  it.fails('exposes the Bookkeeper reduction as a named modifier with base + modifier === coins', () => {
+    const items = businessLine().breakdown!.items;
+    expect(items).toHaveLength(2);
+    const bakery = items.find((item) => item.name === 'Bakery')!;
+    expect(bakery.base).toBe(-20);
+    expect(bakery.coins).toBe(-16);
+    expect(bakery.modifiers).toEqual([{ name: 'Bookkeeper', coins: 4 }]);
+    // base + sum(modifiers) === coins holds for every business item.
+    for (const item of items) {
+      const modifierSum = (item.modifiers ?? [])
+        .reduce((total, modifier) => total + modifier.coins, 0);
+      expect(item.base! + modifierSum).toBe(item.coins);
+    }
+  });
+
+  it.fails('reconciles exactly to the committed total with no spurious clamp line', () => {
+    const line = businessLine();
+    const streetReduction = line.breakdown?.streetReduction ?? 0;
+    const itemSum = line.breakdown!.items.reduce((total, item) => total + item.coins, 0);
+    expect(itemSum + streetReduction).toBe(line.coins);
+  });
+
+  it.fails('the tooltip names the Bookkeeper discount and omits the limited-by-coins line', () => {
+    const line = businessLine();
+    const tooltip = buildExpenseLineTooltip(line);
+    expect(tooltip).toContain('Bakery: -16');
+    expect(tooltip).toContain('Bookkeeper: +4');
+    expect(tooltip).not.toContain('Limited by available coins');
+    expect(tooltip).toContain('Total: -21');
+  });
+
+  it.fails('a competitive seat shows the same Bookkeeper modifier on its business line', () => {
+    const state = bookkeeperCompetitiveState();
+    const summary = buildCompetitiveTurnSummary(state, {
+      playerRoundLedger: bookkeeperCompetitiveLedger(),
+    });
+    expect(summary).not.toBeNull();
+    const human = summary!.rows.find((row) => row.ownerId === 0)!;
+    const business = buildPLFromCompetitiveRow(human).expenses.lines
+      .find((line) => line.key === 'business')!;
+    const items = business.breakdown!.items;
+    expect(items).toHaveLength(1);
+    const bakery = items[0];
+    expect(bakery.name).toBe('Bakery');
+    expect(bakery.base).toBe(-20);
+    expect(bakery.coins).toBe(-16);
+    expect(bakery.modifiers).toEqual([{ name: 'Bookkeeper', coins: 4 }]);
+    const streetReduction = business.breakdown?.streetReduction ?? 0;
+    const itemSum = items.reduce((total, item) => total + item.coins, 0);
+    expect(itemSum + streetReduction).toBe(business.coins);
+    const tooltip = buildExpenseLineTooltip(business);
+    expect(tooltip).toContain('Bookkeeper: +4');
+    expect(tooltip).not.toContain('Limited by available coins');
+    expect(tooltip).toContain('Total: -16');
   });
 });
