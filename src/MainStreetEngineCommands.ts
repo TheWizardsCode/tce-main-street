@@ -1125,12 +1125,12 @@ export function canPlaceStaffCardOnBusiness(
  * moving a member that is already employed at a different business
  * (MS-0MUOSUNYR0073SI1).
  *
- * The distinction drives the action economy: the initial placement of a
- * newly-hired member is part of the hire action and stays free, whereas
- * relocating an employed member to another business costs exactly 1 action
- * point. `placeStaffOnBusiness` itself stays action-free and reusable — the
- * player-facing `placeStaffOnBusinessCommand` consults this predicate to
- * decide whether to charge the action.
+ * The distinction drives the action economy: the initial placement of an
+ * **unassigned** member (the *Assign to business* action, MS-0MWE64C6B002V3SO)
+ * stays free, whereas relocating an employed member to another business costs
+ * exactly 1 action point. `placeStaffOnBusiness` itself stays action-free and
+ * reusable — the player-facing `placeStaffOnBusinessCommand` consults this
+ * predicate to decide whether to charge the action.
  *
  * @param state     Current game state.
  * @param staffId   ID of the hired staff card.
@@ -1153,8 +1153,8 @@ export function isStaffRelocation(
  * A move is a specific case of placement: the member must already be
  * employed at a *different* business, and the target must satisfy the normal
  * placement rules (business-type match + free employment capacity) via
- * `canPlaceStaffOnBusiness`. The initial placement of a newly-hired member
- * is not a move — use `canPlaceStaffOnBusiness` for that path.
+ * `canPlaceStaffOnBusiness`. The initial placement of an unassigned member
+ * (the *Assign to business* action) is not a move — use `canPlaceStaffOnBusiness` for that path.
  *
  * Relocation therefore inherits the competitive ownership gate from
  * `canPlaceStaffOnBusiness` with no duplicate check: an opponent-owned

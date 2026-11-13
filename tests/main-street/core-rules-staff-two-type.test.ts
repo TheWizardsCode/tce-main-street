@@ -135,11 +135,14 @@ describe('core-rules-and-mechanics.md staff two-type model', () => {
     expect(note).toContain('max(1, level + 1)');
   });
 
-  it('states the runtime determinant is assignment', () => {
+  it('states classification follows card type and effect scope keys on assignment', () => {
     const economy = actionEconomy();
     expect(economy).toContain('employedAtSlot');
     expect(economy).toMatch(/carrying an `employedAtSlot` is business staff/);
-    expect(economy).toMatch(/no `employedAtSlot` is management-company staff/);
+    // Assign-later model (MS-0MWE64C6B002V3SO): a business-type member with no
+    // employedAtSlot is *unassigned business staff*, never management-company staff.
+    expect(economy).toMatch(/unassigned business staff/);
+    expect(economy).toMatch(/never management-company staff/);
   });
 
   it('drops the superseded three-tier hand-capacity framing', () => {

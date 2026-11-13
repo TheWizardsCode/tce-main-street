@@ -143,8 +143,7 @@ hand's capacity up front with `maxSlots: state.maxHandSize`.
 
 ## Staff Pile (management-company staff, MS-0MWBWKZ1G006IBH2)
 
-Hired staff come in two types: **business staff** (an `employedAtSlot` link,
-buffed onto one business and surfaced by that slot's corner count badge) and
+Hired staff come in two types: **business staff** (an `employedAtSlot` link when assigned, buffed onto one business and surfaced by that slot's corner count badge; a hired-but-unassigned business-staff member is *unassigned business staff* on the Company Roster's explicit group, MS-0MWE64C6B002V3SO) and
 **management-company staff** (no slot; hand-slot, action, market and incident
 effects scoped to the player). Until this feature the management-company half
 of the roster had no surface of its own — it was only inferable from hand size

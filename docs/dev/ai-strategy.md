@@ -406,6 +406,22 @@ predicate is the exact check the engine enforces, so policy and application
 cannot diverge; joining never spends an action point; decisions for N > 2
 resolve independently per seat in seat order.
 
+## Staff hire-and-place composite (Q3-A, MS-0MWEWIP02006VNFO)
+
+A single-player AI / Monte-Carlo **business-staff** hire is a **hire-and-place
+composite**: `enumerateLegalActions` offers `hire-staff` for a business-staff
+card only with a carried legal destination (`slotIndex`, the first legal slot
+per `firstLegalStaffPlacement` — no extra RNG draw, so seeded outcomes stay
+deterministic), and `hireStaffCardAndPlace` hires the member and places it at
+that business as one action. When no legal destination exists (no matching
+business with a free employment slot, subject to the competitive ownership
+gate) the hire is **not taken at all** — an AI hire of business staff is never
+silently inert, so a Monte-Carlo run stops wasting salaries on unassigned
+members (the human player still hires unassigned and assigns later from the
+staff surface; the AI is the one path that places at hire). Management-company
+staff hires are unchanged (plain hire, no destination step). The competitive
+AI remains staff-free (unchanged).
+
 ## Expected Output
 
 A formal GDD section covering The Build's AI design with enough detail for an engineer to implement the strategy classes using the engine's existing AI abstractions.

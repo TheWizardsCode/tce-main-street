@@ -34,9 +34,10 @@ which type can realise it, because the two staff types have different scopes of 
   economy. They never touch an individual business's income or reputation.
 
 So **per-business skills are business-staff specialization effects**, and **street-wide or
-player-scope skills are management-company staff effects**. The runtime determinant is
-**assignment**, not a skill flag: a member carrying an `employedAtSlot` is business staff, and a
-member with no `employedAtSlot` is management-company staff (GDD D.4.2 and D.4.8).
+player-scope skills are management-company staff effects**. A member's card type decides its
+scope; effect resolution keys on assignment — a member carrying an `employedAtSlot` is business staff,
+and a business-type member with no `employedAtSlot` (hired but not yet assigned) is *unassigned business
+staff*, never management-company staff (GDD D.4.2 and D.4.8; MS-0MWE64C6B002V3SO).
 
 ## The 16 skills by staff type
 

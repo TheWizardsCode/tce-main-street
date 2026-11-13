@@ -911,9 +911,10 @@ export function letGoStaffCommand(state: MainStreetState, idx: number) {
 }
 
 /**
- * Command: Place a hired staff member on a business slot
- * (CG-0MU3BTSQ8006ZRCU AC1-AC3). The initial placement of a newly-hired
- * member is free (no action/coins — the member is already hired);
+ * Command: Place a staff member on a business slot
+ * (CG-0MU3BTSQ8006ZRCU AC1-AC3, MS-0MWE64C6B002V3SO). The initial
+ * placement of an **unassigned** member (the *Assign to business* action) is
+ * free (no action/coins — the member is already hired);
  * **relocating** an already-employed member to another business costs exactly
  * 1 action point (MS-0MUOSUNYR0073SI1, parent AC4). Validated by
  * `canPlaceStaffOnBusiness` (business-type match + employment capacity).
@@ -928,7 +929,8 @@ export function placeStaffOnBusinessCommand(
     state,
     snapshotAction(
       (s) => {
-        // Relocation is a player action; hire-time placement stays free.
+        // Relocation is a player action; assignment (initial placement of an
+        // unassigned member) stays free.
         if (isStaffRelocation(s, staffId, slotIndex)) {
           consumeAction(s);
         }
@@ -950,7 +952,7 @@ export function placeStaffOnBusinessCommand(
  * previous employment and the spent action.
  *
  * Distinct from `placeStaffOnBusinessCommand`, which covers the action-free
- * initial placement at hire time; callers that move an already-employed member
+ * initial placement of an unassigned member; callers that move an already-employed member
  * should prefer this command so the intent (and the action cost) is explicit.
  */
 export function moveStaffCommand(
