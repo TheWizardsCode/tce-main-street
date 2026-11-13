@@ -19,6 +19,8 @@
  *    system with English defaults registered at module load;
  *  - competitive per-seat income uses each seat's own breakdown and degrades
  *    gracefully when absent;
+ *  - competitive per-seat expense breakdowns list each seat's own staff,
+ *    community spaces and businesses (tracers, MS-0MWEGDMVZ005DQ32);
  *  - every addition is absent-safe (legacy/hand-built ledgers render) and
  *    touches no state and no RNG.
  *
@@ -75,8 +77,10 @@ import type {
   EventCard,
   StaffCard,
 } from '../../src/MainStreetCards';
+import { applyCompetitiveOngoingCosts } from '../../src/MainStreetEngineCommands';
 import type {
   CompetitiveRoundLedger,
+  OwnerRoundLedger,
   TurnLedger,
   TurnResult,
 } from '../../src/MainStreetEngineTypes';
@@ -693,18 +697,6 @@ describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
     expect(tooltip).not.toContain('Per business');
   });
 
-  it('competitive expense lines stay category-total only (no invented per-item costs)', () => {
-    const state = twoSeatState();
-    const summary = buildCompetitiveTurnSummary(state, {
-      playerRoundLedger: competitiveLedger(),
-      playerIncome: [seatIncome(0, 'Human Bakery', 10)],
-    });
-    const human = summary!.rows.find((row) => row.ownerId === 0)!;
-    for (const line of human.expenses) {
-      expect(line.breakdown).toBeUndefined();
-    }
-  });
-
   it('a seat’s one-off row carries its own per-source attribution (competitive parity)', () => {
     const ledger = competitiveLedger();
     // Seat 0's residual (net 10 − income 10 = 0) is explained by a purchase
@@ -733,6 +725,412 @@ describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
     const aiTooltip = buildOneOffLineTooltip(buildPLFromCompetitiveRow(ai));
     expect(aiTooltip).not.toContain('Market purchase');
     expect(aiTooltip).toContain('One-off =');
+  });
+});
+
+// ── Competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32) ──────────
+//
+// Test-first tracer for the parent epic **MS-0MWBZDVCH008P8X5** ("Per-card
+// expense breakdowns on competitive Turn Summary seats"). The contract cases
+// below are authored **red-phase** with `it.fails` (the repo's test-first
+// convention — see `competitive-per-seat-hand-capacity.test.ts`): each one
+// fails against today's code, where competitive expense rows stay
+// category-total only (`buildExpenseRows(seat.ongoingCosts)` carries no
+// breakdown). The implementing children (MS-0MWEGDNAD009QDRO — owner-filtered
+// derivation; MS-0MWEGDNP300007WC — threading into competitive rows) flip them
+// to plain `it` once the contract lands. This block replaces the previous
+// "competitive expense lines stay category-total only" assertion (parent AC5).
+// Guards that already hold today — the fixture-ledger reconciliation and the
+// absent-safe degradation of a legacy ledger — stay plain `it` so they keep
+// protecting the contract.
+
+/**
+ * A two-seat competitive state whose per-seat staff and owner-tagged street
+ * slots reconcile exactly with the engine's own `applyCompetitiveOngoingCosts`:
+ *
+ *  seat 0  staff: Pat the Manager (100, Operations Manager ⇒ −50),
+ *                 Sam the Clerk (30)                     ⇒ −80
+ *          community: Human Park (20)                     ⇒ −20
+ *          business:  Human Bakery (10) + Human Cafe (5)  ⇒ −15
+ *  seat 1  staff: Moe the Manager (90, Operations Manager ⇒ −40),
+ *                 Ann the Accountant (30)                 ⇒ −70
+ *          community: AI Museum (8)                       ⇒ −8
+ *          business:  AI Arcade (15) + AI Gym (12)        ⇒ −27
+ *
+ * Sold slot 3 (Sold Emporium, cost 999) never incurs a running cost. No Cost
+ * Cutter is employed, so no street-wide reduction or coins-clamp applies and
+ * every item's charge sums exactly to its committed category total.
+ *
+ * @param hostStaff The shared (host) staff roster; drives the community /
+ *                  business street-wide Cost Cutter reduction via
+ *                  `getEmployedSpecializationSkills` (default: none).
+ */
+function competitiveExpenseState(hostStaff: StaffCard[] = []): MainStreetState {
+  const state = createCompetitiveState({
+    seed: 'turn-summary-competitive-expense-breakdowns',
+    playerCount: 2,
+    difficulty: 'Easy',
+    loansEnabled: false,
+  });
+  // Competitive staff live per-seat (`players[i].staffCards`); the shared
+  // roster only drives the host community/business reduction.
+  state.staffCards = hostStaff;
+  state.streetGrid = state.streetGrid.map(() => null);
+  state.soldSlots = state.soldSlots.map(() => false);
+  state.ownerTaggedGrid = state.ownerTaggedGrid!.map(() => ({ card: null, ownerId: null }));
+  // Plenty of coins so `applyCompetitiveOngoingCosts` never clamps.
+  state.players!.forEach((seat) => { seat.coins = 1000; });
+
+  const place = (slotIndex: number, card: BusinessCard | CommunitySpaceCard, ownerId: number) => {
+    state.streetGrid[slotIndex] = card;
+    state.ownerTaggedGrid![slotIndex] = { card, ownerId };
+  };
+  place(0, makeBusiness('Human Bakery', 10), 0);
+  place(1, makeCommunitySpace('Human Park', 20), 0);
+  place(3, makeBusiness('Sold Emporium', 999), 0);
+  state.soldSlots[3] = true;
+  place(5, makeBusiness('Human Cafe', 5), 0);
+  place(6, makeBusiness('AI Arcade', 15), 1);
+  place(7, makeCommunitySpace('AI Museum', 8), 1);
+  place(8, makeBusiness('AI Gym', 12), 1);
+
+  state.players![0].staffCards = [
+    makeStaff('Pat the Manager', 100, ['skill-operations-manager'], 0),
+    makeStaff('Sam the Clerk', 30),
+  ];
+  state.players![1].staffCards = [
+    makeStaff('Moe the Manager', 90, ['skill-operations-manager'], 8),
+    makeStaff('Ann the Accountant', 30),
+  ];
+  return state;
+}
+
+/**
+ * The committed round ledger for {@link competitiveExpenseState}, built from
+ * the engine's own `applyCompetitiveOngoingCosts` so every seat's committed
+ * category totals reconcile exactly with the fixture's staff and street grid.
+ * The engine also deducts each seat's wallet in place (post-closing state).
+ */
+function competitiveExpenseLedger(state: MainStreetState): CompetitiveRoundLedger {
+  const costs = applyCompetitiveOngoingCosts(state);
+  const seat = (ownerId: number): OwnerRoundLedger => {
+    const ongoing = costs.get(ownerId)!;
+    const net = 10 + ongoing.staff + ongoing.community + ongoing.business;
+    return {
+      ownerId,
+      // Two standing businesses per seat (sold slots excluded).
+      businessesOwned: 2,
+      incomeByPhase: { base: 10, synergy: 0, reputation: 0, events: 0 },
+      incomeTotal: 10,
+      ongoingCosts: { ...ongoing },
+      dayStart: { coins: 1000, reputation: 0, score: 0 },
+      closing: { coins: 1000 + net, reputation: 0, score: 0 },
+      netCoinChange: net,
+      netRepChange: 0,
+      netScoreChange: 0,
+      incidentCoinChange: 0,
+      incidentRepChange: 0,
+      oneOffDeltas: { coins: 0, reputation: 0 },
+    };
+  };
+  return { turn: 7, seats: [seat(0), seat(1)] };
+}
+
+/** The base two-seat expense fixture (no reductions, no clamp). */
+function competitiveExpenseFixture(): { state: MainStreetState; ledger: CompetitiveRoundLedger } {
+  const state = competitiveExpenseState();
+  const ledger = competitiveExpenseLedger(state);
+  return { state, ledger };
+}
+
+/**
+ * {@link competitiveExpenseState} extended with Cost Cutter staff so the
+ * street-wide reduction (and later clamp) reconciliation lines apply:
+ *
+ *  - seat 0 employs Courtney the Cutter (management-company cost-cutter, zero
+ *    salary ⇒ never listed): owner-scoped staff reduction 15%
+ *    (`roundInt(80 × 0.85) = 68` ⇒ committed staff −68, reduction +12);
+ *  - the host roster gains a Cost Cutter: community/business reduction 15%
+ *    (Park 20 ⇒ −17/+3; Bakery 10 + Cafe 5 ⇒ −13/+2);
+ *  - seat 1's staff carry no management-company skill ⇒ **no** staff reduction
+ *    (the host Cost Cutter never reduces staff — owner scope only), while its
+ *    community/business DO reduce (Museum 8 ⇒ −7/+1; Arcade 15 + Gym 12
+ *    ⇒ −23/+4).
+ */
+function competitiveReductionFixture(): { state: MainStreetState; ledger: CompetitiveRoundLedger } {
+  const state = competitiveExpenseState([
+    makeStaff('Host Cutter', 0, ['skill-cost-cutter']),
+  ]);
+  state.players![0].staffCards.push(makeStaff('Courtney the Cutter', 0, ['skill-cost-cutter']));
+  const ledger = competitiveExpenseLedger(state);
+  return { state, ledger };
+}
+
+/** The same seat shape with NO derivable per-card detail (empty roster/grid). */
+function competitiveAbsentSafeFixture(): { state: MainStreetState; ledger: CompetitiveRoundLedger } {
+  const state = competitiveExpenseState();
+  state.streetGrid = state.streetGrid.map(() => null);
+  state.ownerTaggedGrid = state.ownerTaggedGrid!.map(() => ({ card: null, ownerId: null }));
+  state.players!.forEach((seat) => { seat.staffCards = []; });
+  // A legacy/hand-built ledger predates per-card detail yet still commits
+  // category totals that must render (absent-safe degradation).
+  const ledger: CompetitiveRoundLedger = {
+    turn: 7,
+    seats: [
+      {
+        ownerId: 0, businessesOwned: 0,
+        incomeByPhase: { base: 10, synergy: 0, reputation: 0, events: 0 }, incomeTotal: 10,
+        ongoingCosts: { staff: -100, community: -20, business: -15 },
+        dayStart: { coins: 1000, reputation: 0, score: 0 },
+        closing: { coins: 875, reputation: 0, score: 0 },
+        netCoinChange: -125, netRepChange: 0, netScoreChange: 0,
+        incidentCoinChange: 0, incidentRepChange: 0,
+        oneOffDeltas: { coins: 0, reputation: 0 },
+      },
+      {
+        ownerId: 1, businessesOwned: 0,
+        incomeByPhase: { base: 10, synergy: 0, reputation: 0, events: 0 }, incomeTotal: 10,
+        ongoingCosts: { staff: -80, community: -5, business: -10 },
+        dayStart: { coins: 1000, reputation: 0, score: 0 },
+        closing: { coins: 915, reputation: 0, score: 0 },
+        netCoinChange: -85, netRepChange: 0, netScoreChange: 0,
+        incidentCoinChange: 0, incidentRepChange: 0,
+        oneOffDeltas: { coins: 0, reputation: 0 },
+      },
+    ],
+  };
+  return { state, ledger };
+}
+
+/** Renders a seat's expense tooltip for one category through the PL projection. */
+function competitiveExpenseTooltip(
+  summary: NonNullable<ReturnType<typeof buildCompetitiveTurnSummary>>,
+  ownerId: number,
+  category: 'staff' | 'community' | 'business',
+): string {
+  const row = summary.rows.find((candidate) => candidate.ownerId === ownerId)!;
+  const line = buildPLFromCompetitiveRow(row).expenses.lines
+    .find((candidate) => candidate.key === category)!;
+  return buildExpenseLineTooltip(line);
+}
+
+describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => {
+  // The fixture-level guards below hold today: they pin the committed totals
+  // the engine derives from the fixture, so the `it.fails` tracers below
+  // assert against numbers verified to match `applyCompetitiveOngoingCosts`.
+
+  it('the fixture ledger reconciles with the engine’s own attribution', () => {
+    const { ledger } = competitiveExpenseFixture();
+    expect(ledger.seats[0].ongoingCosts).toEqual({ staff: -80, community: -20, business: -15 });
+    expect(ledger.seats[1].ongoingCosts).toEqual({ staff: -70, community: -8, business: -27 });
+  });
+
+  it('the reduction fixture ledger reconciles with the engine’s attribution', () => {
+    const { ledger } = competitiveReductionFixture();
+    // Seat 0's staff reduce via its own Cost Cutter (80 ⇒ 68); both seats'
+    // community/business reduce via the host Cost Cutter.
+    expect(ledger.seats[0].ongoingCosts).toEqual({ staff: -68, community: -17, business: -13 });
+    expect(ledger.seats[1].ongoingCosts).toEqual({ staff: -70, community: -7, business: -23 });
+  });
+
+  // ── Model: per-seat per-card derivation ──
+
+  it.fails('lists each seat’s own staff cards with base salary and named modifiers', () => {
+    const { state, ledger } = competitiveExpenseFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const staff = (ownerId: number) =>
+      summary.rows.find((row) => row.ownerId === ownerId)!.expenses
+        .find((line) => line.category === 'staff')!;
+
+    expect(staff(0).breakdown).toEqual({
+      items: [
+        { name: 'Pat the Manager', coins: -50, base: -100, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+        { name: 'Sam the Clerk', coins: -30, base: -30, modifiers: [] },
+      ],
+    });
+    expect(staff(1).breakdown).toEqual({
+      items: [
+        { name: 'Moe the Manager', coins: -40, base: -90, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+        { name: 'Ann the Accountant', coins: -30, base: -30, modifiers: [] },
+      ],
+    });
+  });
+
+  it.fails('lists each seat’s owned community spaces and businesses with base ongoing costs', () => {
+    const { state, ledger } = competitiveExpenseFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const expenses = (ownerId: number) =>
+      summary.rows.find((row) => row.ownerId === ownerId)!.expenses;
+
+    expect(expenses(0).find((line) => line.category === 'community')!.breakdown).toEqual({
+      items: [{ name: 'Human Park', coins: -20, base: -20 }],
+    });
+    expect(expenses(0).find((line) => line.category === 'business')!.breakdown).toEqual({
+      items: [
+        { name: 'Human Bakery', coins: -10, base: -10 },
+        { name: 'Human Cafe', coins: -5, base: -5 },
+      ],
+    });
+    expect(expenses(1).find((line) => line.category === 'community')!.breakdown).toEqual({
+      items: [{ name: 'AI Museum', coins: -8, base: -8 }],
+    });
+    expect(expenses(1).find((line) => line.category === 'business')!.breakdown).toEqual({
+      items: [
+        { name: 'AI Arcade', coins: -15, base: -15 },
+        { name: 'AI Gym', coins: -12, base: -12 },
+      ],
+    });
+  });
+
+  it.fails('never lists another seat’s staff, spaces or businesses (no cross-seat leakage)', () => {
+    const { state, ledger } = competitiveExpenseFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const names = (ownerId: number) =>
+      summary.rows
+        .find((row) => row.ownerId === ownerId)!
+        .expenses.flatMap((line) => line.breakdown?.items.map((item) => item.name) ?? []);
+
+    const seat0 = names(0);
+    const seat1 = names(1);
+    expect(seat0).toEqual(['Pat the Manager', 'Sam the Clerk', 'Human Park', 'Human Bakery', 'Human Cafe']);
+    expect(seat1).toEqual(['Moe the Manager', 'Ann the Accountant', 'AI Museum', 'AI Arcade', 'AI Gym']);
+    expect(seat0).not.toContain('Moe the Manager');
+    expect(seat0).not.toContain('AI Museum');
+    expect(seat1).not.toContain('Pat the Manager');
+    expect(seat1).not.toContain('Human Bakery');
+    // Sold slots incur no running cost and never appear in a breakdown.
+    expect([...seat0, ...seat1]).not.toContain('Sold Emporium');
+  });
+
+  it.fails('threads each seat’s expense breakdown through the PL projection', () => {
+    const { state, ledger } = competitiveExpenseFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const projection = buildPLFromCompetitiveRow(summary.rows.find((row) => row.ownerId === 0)!);
+    expect(projection.expenses.lines.find((line) => line.key === 'staff')!.breakdown).toEqual({
+      items: [
+        { name: 'Pat the Manager', coins: -50, base: -100, modifiers: [{ name: 'Operations Manager', coins: 50 }] },
+        { name: 'Sam the Clerk', coins: -30, base: -30, modifiers: [] },
+      ],
+    });
+    expect(projection.expenses.lines.find((line) => line.key === 'community')!.breakdown).toEqual({
+      items: [{ name: 'Human Park', coins: -20, base: -20 }],
+    });
+    expect(projection.expenses.lines.find((line) => line.key === 'business')!.breakdown).toEqual({
+      items: [
+        { name: 'Human Bakery', coins: -10, base: -10 },
+        { name: 'Human Cafe', coins: -5, base: -5 },
+      ],
+    });
+  });
+
+  // ── Tooltip: rendered per-card text ──
+
+  it.fails('renders the per-card detail in the expense tooltip, one card per line', () => {
+    const { state, ledger } = competitiveExpenseFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    expect(competitiveExpenseTooltip(summary, 0, 'staff')).toBe(
+      'Staff wages: -80\n'
+      + 'Pat the Manager: -50\n'
+      + '  Base: -100\n'
+      + '  Operations Manager: +50\n'
+      + 'Sam the Clerk: -30\n'
+      + 'Total: -80',
+    );
+    expect(competitiveExpenseTooltip(summary, 0, 'community')).toBe(
+      'Community spaces: -20\nHuman Park: -20\nTotal: -20',
+    );
+    expect(competitiveExpenseTooltip(summary, 0, 'business')).toBe(
+      'Business costs: -15\nHuman Bakery: -10\nHuman Cafe: -5\nTotal: -15',
+    );
+    expect(competitiveExpenseTooltip(summary, 1, 'staff')).toBe(
+      'Staff wages: -70\n'
+      + 'Moe the Manager: -40\n'
+      + '  Base: -90\n'
+      + '  Operations Manager: +50\n'
+      + 'Ann the Accountant: -30\n'
+      + 'Total: -70',
+    );
+  });
+
+  // ── Reconciliation: Cost Cutter reduction and coins clamp ──
+
+  it.fails('reconciles the breakdowns through the Cost Cutter reduction lines', () => {
+    const { state, ledger } = competitiveReductionFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+
+    // Staff: the owner-scoped reduction (seat 0's own Courtney the Cutter).
+    expect(competitiveExpenseTooltip(summary, 0, 'staff')).toBe(
+      'Staff wages: -68\n'
+      + 'Pat the Manager: -50\n'
+      + '  Base: -100\n'
+      + '  Operations Manager: +50\n'
+      + 'Sam the Clerk: -30\n'
+      + 'Street-wide reduction: +12\n'
+      + 'Total: -68',
+    );
+    // Community/business: the host-scoped reduction.
+    expect(competitiveExpenseTooltip(summary, 0, 'community')).toBe(
+      'Community spaces: -17\nHuman Park: -20\nStreet-wide reduction: +3\nTotal: -17',
+    );
+    expect(competitiveExpenseTooltip(summary, 0, 'business')).toBe(
+      'Business costs: -13\nHuman Bakery: -10\nHuman Cafe: -5\nStreet-wide reduction: +2\nTotal: -13',
+    );
+    // Seat 1's staff carry no management-company skill: the host Cost Cutter
+    // reduces community/business but NEVER staff (owner scope only).
+    expect(competitiveExpenseTooltip(summary, 1, 'staff')).toBe(
+      'Staff wages: -70\n'
+      + 'Moe the Manager: -40\n'
+      + '  Base: -90\n'
+      + '  Operations Manager: +50\n'
+      + 'Ann the Accountant: -30\n'
+      + 'Total: -70',
+    );
+    expect(competitiveExpenseTooltip(summary, 1, 'community')).toBe(
+      'Community spaces: -7\nAI Museum: -8\nStreet-wide reduction: +1\nTotal: -7',
+    );
+    expect(competitiveExpenseTooltip(summary, 1, 'business')).toBe(
+      'Business costs: -23\nAI Arcade: -15\nAI Gym: -12\nStreet-wide reduction: +4\nTotal: -23',
+    );
+  });
+
+  it.fails('renders the coins-clamp line when the committed total sits below the reduced cost', () => {
+    const { state, ledger } = competitiveReductionFixture();
+    // The engine clamps each family to the coins available: a seat with only
+    // −40 coins available for staff is charged 40 despite owing the reduced 68,
+    // and the tooltip reconciles the derivable −80/+12 to that committed −40.
+    ledger.seats[0].ongoingCosts!.staff = -40;
+    ledger.seats[0].netCoinChange = 10 - 40 - 17 - 13;
+    ledger.seats[0].closing = { coins: 1000 + ledger.seats[0].netCoinChange, reputation: 0, score: 0 };
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    expect(competitiveExpenseTooltip(summary, 0, 'staff')).toBe(
+      'Staff wages: -40\n'
+      + 'Pat the Manager: -50\n'
+      + '  Base: -100\n'
+      + '  Operations Manager: +50\n'
+      + 'Sam the Clerk: -30\n'
+      + 'Street-wide reduction: +12\n'
+      + 'Limited by available coins: +28\n'
+      + 'Total: -40',
+    );
+  });
+
+  // ── Absent-safe degradation (holds today, plain `it`) ──
+
+  it('a legacy ledger with no derivable detail degrades to the committed totals plus the note', () => {
+    const { state, ledger } = competitiveAbsentSafeFixture();
+    const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
+    const human = summary.rows.find((row) => row.ownerId === 0)!;
+    for (const line of human.expenses) {
+      expect(line.breakdown).toBeUndefined();
+      const tooltip = buildExpenseLineTooltip(
+        buildPLFromCompetitiveRow(human).expenses.lines
+          .find((candidate) => candidate.key === line.category)!,
+      );
+      expect(tooltip).toContain(`${line.label}: ${line.coins}`);
+      expect(tooltip).toContain('Operating expenses');
+    }
+    // The committed category totals themselves are unchanged by the missing detail.
+    expect(human.expenses.map((line) => line.coins)).toEqual([-100, -20, -15]);
   });
 });
 
