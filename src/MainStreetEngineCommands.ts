@@ -927,6 +927,45 @@ export function hireStaffCard(state: MainStreetState, cardId: string): PurchaseR
 }
 
 /**
+ * Hires a staff card from the general market row and immediately places the
+ * member at the carried destination — the single-player AI's hire-and-place
+ * composite (Q3-A, MS-0MWEWIP02006VNFO).
+ *
+ * Validates the destination FIRST against the market-row card through the
+ * shared placement predicate {@link canPlaceStaffCardOnBusiness}, so an
+ * invalid/stale destination throws before anything mutates (no half-state:
+ * the member is never hired-but-unplaced). On success the member is hired
+ * via {@link hireStaffCard} and placed via {@link placeStaffOnBusiness} —
+ * the same shared placement path a player's *Assign to business* uses — in
+ * the same action (the placement itself stays action-free).
+ *
+ * @param state     Current game state (mutated in-place).
+ * @param cardId    ID of the business-staff card in the general market row.
+ * @param slotIndex Destination street-grid slot index.
+ * @returns PurchaseResult describing the hire.
+ * @throws Error when the card is not found, unaffordable, not business staff,
+ *         or the destination is not a legal placement.
+ */
+export function hireStaffCardAndPlace(
+  state: MainStreetState,
+  cardId: string,
+  slotIndex: number,
+): PurchaseResult {
+  const marketIndex = state.market.cards.findIndex(c => c.id === cardId);
+  const card = marketIndex !== -1 ? state.market.cards[marketIndex] : undefined;
+  if (!card || card.family !== 'staff') {
+    throw new Error(`Staff card ${cardId} not found in the market row.`);
+  }
+  const placement = canPlaceStaffCardOnBusiness(state, card, slotIndex);
+  if (!placement.legal) {
+    throw new Error(placement.reason);
+  }
+  const result = hireStaffCard(state, cardId);
+  placeStaffOnBusiness(state, cardId, slotIndex);
+  return result;
+}
+
+/**
  * Returns the maximum number of staff members that may be employed at the
  * given street-grid slot (business level 0 → 1 slot, +1 per level).
  *
@@ -1015,6 +1054,33 @@ export function canPlaceStaffOnBusiness(
   if (staffIndex === -1) {
     return { legal: false, reason: `Staff card ${staffId} is not hired.` };
   }
+  return canPlaceStaffCardOnBusiness(state, state.staffCards[staffIndex]!, slotIndex);
+}
+
+/**
+ * Validates whether the given staff card may be placed at the given
+ * street-grid slot, without any "already hired" gate.
+ *
+ * This is the shared placement predicate behind
+ * {@link canPlaceStaffOnBusiness}: every legality check (management-company
+ * scope, business present, competitive ownership, business-type match, free
+ * employment slot) lives here and is applied identically to a hired member
+ * and to a **market-row card** by the single-player AI's hire-and-place
+ * enumeration (MS-0MWEWIP02006VNFO, Q3-A). The only thing the caller decides
+ * is whether the card must already be a member of `state.staffCards`.
+ *
+ * @param state     Current game state.
+ * @param card      Staff card (hired member or market-row template) to place.
+ * @param slotIndex Street-grid slot index.
+ * @returns LegalityResult — legal when the placement may proceed. In
+ *          competitive mode an opponent-owned destination is rejected with
+ *          the shared ownership reason (`That business belongs to <seat>.`).
+ */
+export function canPlaceStaffCardOnBusiness(
+  state: MainStreetState,
+  card: import('./MainStreetCardsTypes').StaffCard,
+  slotIndex: number,
+): import('@rule-engine').LegalityResult {
   if (slotIndex < 0 || slotIndex >= state.streetGrid.length) {
     return { legal: false, reason: `Invalid slot index: ${slotIndex}.` };
   }
@@ -1023,11 +1089,10 @@ export function canPlaceStaffOnBusiness(
   // attempt to place one is rejected (MS-0MW3JXF6U00753LB). The type comes
   // from the card's shipped marker (`handSlotsAdded` / `actionsPerTurn`) for
   // an unplaced member, and from its existing assignment otherwise.
-  const member = state.staffCards[staffIndex]!;
-  if (staffCardScope(member) === 'management-company') {
+  if (staffCardScope(card) === 'management-company') {
     return {
       legal: false,
-      reason: `${member.name} is management-company staff and cannot be employed at a business.`,
+      reason: `${card.name} is management-company staff and cannot be employed at a business.`,
     };
   }
   const business = state.streetGrid[slotIndex];
@@ -1043,10 +1108,10 @@ export function canPlaceStaffOnBusiness(
   if (!ownership.legal) {
     return ownership;
   }
-  if (!staffMatchesBusiness(state.staffCards[staffIndex]!, business)) {
+  if (!staffMatchesBusiness(card, business)) {
     return {
       legal: false,
-      reason: `${state.staffCards[staffIndex]!.name} cannot work at ${business.name} — business type does not match.`,
+      reason: `${card.name} cannot work at ${business.name} — business type does not match.`,
     };
   }
   if (!hasFreeEmploymentSlot(state, slotIndex)) {

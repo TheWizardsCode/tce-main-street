@@ -462,7 +462,7 @@ describe('single-player AI hire-and-place for business staff (MS-0MWEWIP02006VNF
     return state;
   }
 
-  it.fails('a business-staff hire places the member at a legal destination as part of the hire', () => {
+  it('a business-staff hire places the member at a legal destination as part of the hire', () => {
     const state = aiHireState('ai-hire-place', 'staff-barista', true);
     const hireAction = enumerateLegalActions(state).find(
       (a): a is PlayerAction =>
@@ -472,20 +472,21 @@ describe('single-player AI hire-and-place for business staff (MS-0MWEWIP02006VNF
 
     executeAction(state, hireAction!);
 
-    // The member ends up EMPLOYED at the (only) legal destination — today it
-    // is hired unassigned and the salary is silently wasted (Q3-A).
+    // The member ends up EMPLOYED at the (only) legal destination — the hire
+    // is taken only when a legal destination exists and places in the same
+    // action (Q3-A, MS-0MWEWIP02006VNFO).
     const member = state.staffCards.find(c => c.id === 'staff-barista-0')!;
     expect(member.employedAtSlot).toBe(0);
     expect(getEmployedStaffCountAt(state, 0)).toBe(1);
     expect(state.actionsRemaining).toBe(0); // one hire action, placement included
   });
 
-  it.fails('a business-staff hire is not taken when no legal destination exists', () => {
+  it('a business-staff hire is not taken when no legal destination exists', () => {
     const state = aiHireState('ai-hire-skip', 'staff-barista', false);
 
     // Barista (Cafe/Food) cannot work anywhere on this board — the hire must
-    // be skipped so an AI hire is never silently inert. Today the hire-staff
-    // action is offered unconditionally.
+    // be skipped so an AI hire is never silently inert (Q3-A,
+    // MS-0MWEWIP02006VNFO).
     const hireAction = enumerateLegalActions(state).find(
       (a): a is PlayerAction =>
         a.type === 'hire-staff' && (a as { cardId?: string }).cardId === 'staff-barista-0',

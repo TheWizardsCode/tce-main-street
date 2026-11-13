@@ -116,6 +116,13 @@ export interface BuyAndPlaceUpgradeAction {
 export interface HireStaffAction {
   type: 'hire-staff';
   cardId: string;
+  /**
+   * Q3-A hire-and-place composite destination (MS-0MWEWIP02006VNFO): for a
+   * **business-staff** hire the action carries the street-grid slot the member
+   * is placed at as part of the same action. Absent for management-company
+   * staff hires (no destination step, unchanged).
+   */
+  slotIndex?: number;
 }
 
 /** End the current market/action phase. */

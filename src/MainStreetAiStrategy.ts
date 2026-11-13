@@ -19,7 +19,7 @@
 import type { AiStrategyBase } from '@ai';
 import { AiPlayer as AiPlayerBase, pickRandom, pickBest } from '@ai';
 import { recordMainStreetEvent } from './MainStreetTranscript';
-import { hasPeekCapableStaff } from './MainStreetStaffSkills';
+import { hasPeekCapableStaff, staffCardScope } from './MainStreetStaffSkills';
 import { computePurchaseCostDiscount, computeEffectiveBusinessPurchaseCost } from './MainStreetStaffBuffs';
 import { syncResourceBankToLedger, type MainStreetState, type PlayerRecord } from './MainStreetState';
 import { BASE_HAND_CAPACITY } from './MainStreetStateSetup';
@@ -40,6 +40,7 @@ import {
   type PlayEventFromHandAction,
   type CommunityFavourAction,
   type CloseBusinessAction,
+  canPlaceStaffCardOnBusiness,
 } from './MainStreetEngine';
 import {
   canPurchaseBusiness,
@@ -830,6 +831,15 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   // Staff cards are hired straight from the general market row
   // (CG-0MT3KZOBZ005IRYE); never moved to the hand. Skip staff already
   // employed (same template) — one employee per role.
+  //
+  // Q3-A hire-and-place composite (MS-0MWEWIP02006VNFO): a BUSINESS-staff
+  // hire carries its chosen legal destination (`slotIndex`) so the member is
+  // placed at a business in the same action; when no legal destination exists
+  // the hire is not taken at all, so an AI hire is never silently inert (a
+  // Delivery Driver parked in the management company, wasting its salary).
+  // The destination is chosen deterministically (first legal slot) and no rng
+  // is drawn here, so seeded Monte-Carlo outcomes stay deterministic.
+  // Management-company staff hires stay as today (no destination step).
   const employedStaffTemplates = new Set(
     state.staffCards.map(s => s.id.replace(/-\d+$/, '')),
   );
@@ -839,7 +849,12 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   for (const card of staffCards) {
     if (employedStaffTemplates.has(card.id.replace(/-\d+$/, ''))) continue;
     const result = canPurchaseStaff(state, card.id);
-    if (result.legal) {
+    if (!result.legal) continue;
+    if (staffCardScope(card) === 'business') {
+      const destination = firstLegalStaffPlacement(state, card);
+      if (destination === undefined) continue; // no legal destination — skip
+      actions.push({ type: 'hire-staff', cardId: card.id, slotIndex: destination });
+    } else {
       actions.push({ type: 'hire-staff', cardId: card.id });
     }
   }
@@ -927,6 +942,35 @@ export function enumerateLegalActions(state: MainStreetState): PlayerAction[] {
   actions.push({ type: 'end-turn' });
 
   return actions;
+}
+
+/**
+ * Returns the first street-grid slot at which the given business-staff
+ * market card could legally be placed once hired (Q3-A hire-and-place,
+ * MS-0MWEWIP02006VNFO).
+ *
+ * Reuses the single shared placement predicate
+ * {@link canPlaceStaffCardOnBusiness} (business-type match, free employment
+ * slot, competitive ownership gate) so no second business-type or ownership
+ * check is introduced. The choice is deterministic — the lowest-index legal
+ * slot — and draws no `state.rng`, so seeded Monte-Carlo outcomes stay
+ * deterministic (baseline deltas are only the intended Q3-A consequence).
+ *
+ * @param state Current game state (read-only by convention).
+ * @param card  A business-staff card from the general market row.
+ * @returns The chosen destination slot, or `undefined` when no legal
+ *          destination exists (the hire is skipped).
+ */
+export function firstLegalStaffPlacement(
+  state: MainStreetState,
+  card: StaffCard,
+): number | undefined {
+  for (let slot = 0; slot < state.streetGrid.length; slot++) {
+    if (canPlaceStaffCardOnBusiness(state, card, slot).legal) {
+      return slot;
+    }
+  }
+  return undefined;
 }
 
 // ── RandomStrategy ──────────────────────────────────────────

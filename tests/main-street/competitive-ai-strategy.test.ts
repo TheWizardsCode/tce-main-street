@@ -371,7 +371,12 @@ describe('AC2 — Competitive enumeration excludes staff actions', () => {
     const single = setupMainStreetGame({ seed: 'ac2-single-staff' });
     executeWeekStart(single);
     single.resourceBank.coins = 1000;
-    single.market.cards.push(makeStaff({ id: 'staff-market', cost: 20 }));
+    // A management-company staff card (handSlotsAdded > 0): no legal
+    // destination is required for the hire, so it stays enumerated on an
+    // empty board. (Business-staff hires now require a legal destination
+    // under Q3-A, MS-0MWEWIP02006VNFO — covered in
+    // ai-hire-and-place.test.ts / staff-assign-affordance.test.ts.)
+    single.market.cards.push(makeStaff({ id: 'staff-market', cost: 20, handSlotsAdded: 2 }));
 
     const actions = enumerateLegalActions(single);
     expect(actions.some(a => a.type === 'hire-staff')).toBe(true);

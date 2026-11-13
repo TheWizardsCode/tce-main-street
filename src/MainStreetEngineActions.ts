@@ -7,7 +7,7 @@
  * @module
  */
 
-import { buyAndPlaceBusiness, hireStaffCard, takeLoan } from './MainStreetEngineCommands';
+import { buyAndPlaceBusiness, hireStaffCard, hireStaffCardAndPlace, takeLoan } from './MainStreetEngineCommands';
 import { evaluateChallengesAfterAction } from './MainStreetChallenges';
 import { applyCompetitiveEventEffects } from './MainStreetEngineEvents';
 import { PlayerAction } from './MainStreetEngineTypes';
@@ -131,6 +131,14 @@ function dispatchPlayerAction(
       const hadBanked = (state.bankedActions ?? 0) > 0;
       consumeAction(state);
       try {
+        // Q3-A hire-and-place composite (MS-0MWEWIP02006VNFO): a business-
+        // staff hire carries the destination slot, so the member is hired and
+        // placed at it in the same action/turn. The composite path validates
+        // the destination first so a stale/invalid slot can never leave a
+        // half-hired member.
+        if (action.slotIndex !== undefined && action.slotIndex !== null) {
+          return hireStaffCardAndPlace(state, action.cardId, action.slotIndex);
+        }
         return hireStaffCard(state, action.cardId);
       } catch (e) {
         state.actionsRemaining += 1;
