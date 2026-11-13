@@ -42,7 +42,7 @@
 
 import type { SynergyType, StaffCard } from './MainStreetCards';
 import type { SpecializationSkill } from './MainStreetStaffSkills';
-import { deserializeSkillIds } from './MainStreetStaffSkills';
+import { deserializeSkillIds, staffCardScope } from './MainStreetStaffSkills';
 import { roundInt } from './MainStreetDifficulty';
 import type { MainStreetState } from './MainStreetState';
 import type { GridDims } from './MainStreetAdjacencyGeometry';
@@ -244,6 +244,12 @@ function resolveCardSkills(card: StaffCard): SpecializationSkill[] {
  * True when a staff card is business staff: it carries an `employedAtSlot`
  * link. Management-company staff have no slot (the two-type model's runtime
  * determinant — GDD D.4.2/D.4.8; no persisted type field).
+ *
+ * This is the **effect-side** test — buff aggregation and salary scope stay
+ * keyed on the employment link (MS-0MWEWIJGU005FWYI AC4). Display surfaces
+ * (roster, Staff Pile) classify by card type via {@link staffCardScope}, so a
+ * hired-but-unassigned business-staff member is never shown as
+ * management-company staff even though this test has no slot to see.
  */
 export function isBusinessStaffCard(card: StaffCard): boolean {
   return card.employedAtSlot !== undefined;
@@ -252,16 +258,20 @@ export function isBusinessStaffCard(card: StaffCard): boolean {
 /**
  * The management-company staff among the given members, in card order.
  *
- * Membership is the two-type model's own test — `!isBusinessStaffCard(card)`
- * — so nothing else (a persisted flag, a card-name list) can disagree with
- * the engine about who belongs to the management company
- * (MS-0MWBWKZ1G006IBH2).
+ * Display membership is the **card-type rule** (`staffCardScope`, the card
+ * template's `handSlotsAdded`/`actionsPerTurn` marker): a member held under
+ * game rules as business staff is classified by its template even before it
+ * is assigned, so a hired-but-unassigned business-staff member (business
+ * template, **no** `employedAtSlot`) is never surfaced as management-company
+ * staff (MS-0MWEWIJGU005FWYI). Effect aggregation stays on the
+ * employment-keyed `isBusinessStaffCard` test
+ * ({@link getStreetScopeSkills}, {@link getSalaryScopeSkills}).
  *
  * @param cards Staff members to filter (e.g. `state.staffCards`).
- * @returns Members with no `employedAtSlot`, in card order.
+ * @returns Members whose card type is management-company, in card order.
  */
 export function selectManagementCompanyStaff(cards: readonly StaffCard[]): StaffCard[] {
-  return cards.filter(card => !isBusinessStaffCard(card));
+  return cards.filter(card => staffCardScope(card) === 'management-company');
 }
 
 /**

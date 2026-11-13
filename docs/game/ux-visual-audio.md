@@ -169,11 +169,13 @@ and action counts. The **Staff Pile** gives it one.
   (`mainStreetRenderCardSvg`), so no new art assets exist for this surface.
 - **Membership is derived, never persisted.** The pile is rebuilt from
   `state.staffCards` on every hand refresh
-  (`refreshPlayerHand()` → `drawStaffPile()`), filtered by the two-type
-  model's own test (`!isBusinessStaffCard`, via `selectManagementCompanyStaff`).
-  Business staff never appear on the pile. There is no save field, engine
-  command or gameplay rule behind it: hiring, laying off or changing
-  `maxHandSize` is reflected on the next refresh.
+  (`refreshPlayerHand()` → `drawStaffPile()`), filtered by **card type**
+  (`staffCardScope`, via `selectManagementCompanyStaff`).
+  Management-company staff appear; business staff never appear on the pile —
+  including hired-but-unassigned business staff, who surface on the Company
+  Roster's explicit group instead (MS-0MWEWIJGU005FWYI). There is no save
+  field, engine command or gameplay rule behind it: hiring, laying off or
+  changing `maxHandSize` is reflected on the next refresh.
 - **Hover tooltip.** Hovering the pile — its stack or its portrait row — shows
   a management-company-only summary built by `buildStaffPileTooltip()`: a title,
   the member count, one line per member (name, served business types, effect,
@@ -219,13 +221,20 @@ management-company member can be dismissed.
   pile hands the click off to `MainStreetScene.showCompanyRoster()`; the roster
   and all lay-off wiring live in `src/MainStreetRoster.ts` and
   `MainStreetOverlayContent.showCompanyRosterDialog()`.
-- **Rows.** One row per management-company member (`!isBusinessStaffCard`,
-  staff-hire order, oldest first): the member's name, its role/benefit summary
+- **Rows.** One row per management-company member (card type via
+  `staffCardScope`, staff-hire order, oldest first): the member's name, its
+  role/benefit summary
   (the shared `formatStaffRoleSummary()` text the tooltips also use), its
   effective per-turn salary resolved through
   `computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost)`, and
   a `[ Lay off ]` button. Business staff never appear. Rows are capped at 10 with
   an "…and N more" overflow line; the footer always reports the whole team.
+- **Explicit *unassigned business staff* group.** Hired business-staff members
+  never assigned (no `employedAtSlot`) are listed under their own header in the
+  same overlay — never as management-company staff (MS-0MWEWIJGU005FWYI). Each
+  row quotes the same salary/lay-off figures and offers `[ Assign ]` (the free
+  initial placement, destinations from the shared `buildMoveStaffAffordance`)
+  next to `[ Lay off ]`.
 - **Footer.** States the member count and the team's total per-turn salary, both
   from `buildCompanyRoster()`, and both update in place after a lay-off.
 - **Lay-off confirm step.** `[ Lay off ]` opens a confirm step quoting the

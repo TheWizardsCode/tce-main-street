@@ -10,8 +10,10 @@
  *
  * - **Derived, never persisted.** The pile is rebuilt from
  *   `state.staffCards`' management-company members on every hand refresh
- *   (`selectManagementCompanyStaff` → `!isBusinessStaffCard`). There is no
- *   layout state, save field or engine command behind it.
+ *   (`selectManagementCompanyStaff` → card type via `staffCardScope`, so a
+ *   hired-but-unassigned business-staff member never reaches the pile —
+ *   MS-0MWEWIJGU005FWYI). There is no layout state, save field or engine
+ *   command behind it.
  * - **Empty state.** No management-company staff ⇒ nothing is drawn at all (no
  *   placeholder tile) — the pile simply does not exist.
  * - **Behind the hand.** {@link STAFF_PILE_DEPTH} sits below the hand panel

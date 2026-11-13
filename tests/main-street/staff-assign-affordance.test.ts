@@ -361,9 +361,13 @@ describe('lay-off stays available for unassigned business staff (MS-0MWEWIFNT001
     const state = freshState('assign-layoff-unassigned');
     const baker = hire(state, 'staff-baker');
 
-    // Today the roster classifies by runtime assignment, so the unassigned
-    // member appears as a row; the row quotes the shared salary-scaled cost.
-    const row = buildCompanyRoster(state).rows.find(r => r.memberId === baker.id)!;
+    // The roster classifies by card type: an unassigned business-staff member
+    // is surfaced in the explicit *unassigned business staff* group — never
+    // as a management-company row (MS-0MWEWIJGU005FWYI) — and the group row
+    // quotes the shared salary-scaled cost.
+    const roster = buildCompanyRoster(state);
+    expect(roster.rows.map(r => r.memberId)).not.toContain(baker.id);
+    const row = roster.unassignedBusinessStaff.find(r => r.memberId === baker.id)!;
     expect(row).toBeDefined();
     const coinsBefore = state.resourceBank.coins;
     const reputationBefore = state.resourceBank.reputation;

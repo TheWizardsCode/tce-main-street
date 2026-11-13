@@ -107,6 +107,8 @@ export const HUD_TOOLTIP_I18N_KEYS = {
   companyRosterTitle: 'hud.tooltip.companyRoster.title',
   companyRosterFooter: 'hud.tooltip.companyRoster.footer',
   companyRosterEmpty: 'hud.tooltip.companyRoster.empty',
+  // Explicit *unassigned business staff* group (MS-0MWEWIJGU005FWYI).
+  companyRosterUnassignedTitle: 'hud.tooltip.companyRoster.unassignedTitle',
 } as const;
 
 /** ARIA label i18n keys (for screen-reader accessibility). */
@@ -198,6 +200,10 @@ export const HUD_TOOLTIP_STRINGS = {
   companyRosterTitle: 'Company Roster',
   companyRosterFooter: '{count} management-company staff · total salary {total} per turn',
   companyRosterEmpty: 'No management-company staff employed.',
+  // Explicit *unassigned business staff* group (MS-0MWEWIJGU005FWYI): hired
+  // business staff who were never assigned are surfaced here, separate from
+  // the management-company roster, with the assign affordance and a lay-off.
+  companyRosterUnassignedTitle: 'Unassigned business staff',
 } as const;
 
 /** ARIA label default English strings. Registered as the `en` locale bundle. */
@@ -749,12 +755,13 @@ export function buildMoveStaffAffordance(
  * line per member (name, served business types, effect, salary) plus the
  * member count and the team's total weekly salary.
  *
- * Membership comes from the two-type model's runtime test
- * (`selectManagementCompanyStaff` → `!isBusinessStaffCard`), so business
- * staff never appear here — they are surfaced on their business slots
- * (MS-0MWBWKZ1G006IBH2). Per-member lines reuse `formatStaffMemberLine`, the
- * formatter the business-slot tooltip uses, so both surfaces describe a
- * member identically.
+ * Membership comes from the **card-type rule** (`selectManagementCompanyStaff`
+ * → `staffCardScope`): a hired-but-unassigned business-staff member (business
+ * template, no `employedAtSlot`) is never counted or listed here — business
+ * staff surface on their business slots, and unassigned business staff on the
+ * Company Roster's explicit group (MS-0MWEWIJGU005FWYI). Per-member lines
+ * reuse `formatStaffMemberLine`, the formatter the business-slot tooltip
+ * uses, so both surfaces describe a member identically.
  *
  * Salary is the card's `ongoingCost` (per turn). Management-company salary is
  * never discounted — `getSalaryScopeSkills` is empty for these members — so

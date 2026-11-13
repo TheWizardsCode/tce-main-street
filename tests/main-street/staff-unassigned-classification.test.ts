@@ -16,17 +16,15 @@
  * ## Red → green phase (repo tracer-bullet convention)
  *
  * See `income-owner-flight-routing.test.ts` / `hud-total-counting.test.ts`.
- * Today `isBusinessStaffCard` keys off `employedAtSlot`, so an unassigned
- * business-staff member is classified as management-company by every roster /
- * pile surface (`buildCompanyRoster`, `selectManagementCompanyStaff`,
- * `buildStaffPileTooltip`, `companyRosterIsEmpty`). The cases pinning the
- * corrected classification are authored **red-phase** with `it.fails` — they
- * fail now and the implementing child MS-0MWEWIJGU005FWYI flips them to a
- * plain `it` as its classification slice lands; leaving an `it.fails` after
- * the implementation ships is itself a failure, so this suite cannot go
- * stale. Guards that already hold (the card-type rule, the unassigned group
- * contract, the employment-keyed Manage Card, the Q2-B effect pins and the
- * backward-compatible load) stay plain `it`.
+ * `isBusinessStaffCard` remains keyed on `employedAtSlot` for **effect**
+ * aggregation, but every display surface (roster, Staff Pile, tooltip) now
+ * classifies by **card type** (`staffCardScope`) — the flip this child
+ * (MS-0MWEWIJGU005FWYI) landed, turning the formerly-red classification
+ * cases below into plain guards. The management-company roster and Staff
+ * Pile list management-company staff only, unassigned business staff surface
+ * in the roster's explicit group, employed business staff stay on their
+ * business, and leaving one of these guards red (or removing it) fails the
+ * suite.
  *
  * @module tests/main-street/staff-unassigned-classification
  */
@@ -135,15 +133,12 @@ describe('card type is the classification rule (staffCardScope)', () => {
 // ── Management-company surfaces never present unassigned business staff (red-phase) ──
 
 describe('management-company surfaces list management-company staff only (MS-0MWEWIJGU005FWYI)', () => {
-  it.fails('selectManagementCompanyStaff excludes an unassigned business-staff member', () => {
-    // Today the member (no `employedAtSlot`) passes `!isBusinessStaffCard` and
-    // is returned; the corrected surface classifies by card type and excludes
-    // it.
+  it('selectManagementCompanyStaff excludes an unassigned business-staff member', () => {
     const chef = member('staff-chef');
     expect(selectManagementCompanyStaff([chef])).toEqual([]);
   });
 
-  it.fails('buildCompanyRoster lists management-company staff only', () => {
+  it('buildCompanyRoster lists management-company staff only', () => {
     const chef = member('staff-chef'); // unassigned business staff
     const assistant = member('staff-assistant'); // management-company
 
@@ -153,11 +148,11 @@ describe('management-company surfaces list management-company staff only (MS-0MW
     expect(roster.count).toBe(1);
   });
 
-  it.fails('buildStaffPileTooltip shows no payroll when only unassigned business staff are hired', () => {
+  it('buildStaffPileTooltip shows no payroll when only unassigned business staff are hired', () => {
     expect(buildStaffPileTooltip(stateWith(member('staff-chef')))).toBeNull();
   });
 
-  it.fails('buildStaffPileTooltip counts management-company staff only', () => {
+  it('buildStaffPileTooltip counts management-company staff only', () => {
     const chef = member('staff-chef');
     const assistant = member('staff-assistant');
 
@@ -167,8 +162,23 @@ describe('management-company surfaces list management-company staff only (MS-0MW
     expect(tooltip).not.toContain('Chef');
   });
 
-  it.fails('companyRosterIsEmpty is true when only unassigned business staff are hired', () => {
+  it('companyRosterIsEmpty is true when only unassigned business staff are hired', () => {
     expect(companyRosterIsEmpty(stateWith(member('staff-chef')))).toBe(true);
+  });
+
+  it('an unassigned Investor (business card type, GDD D.4.2) never reaches the management-company surfaces', () => {
+    // The Investor is one of the 17 business-staff cards (handSlotsAdded = 0);
+    // hired but never placed, it must not appear on the company roster or the
+    // Staff Pile — the format-level re-roll note is a business-slot concern.
+    const investor = member('staff-investor');
+    const assistant = member('staff-assistant');
+
+    expect(staffCardScope(investor)).toBe('business');
+    expect(selectManagementCompanyStaff([investor, assistant]).map(c => c.id)).toEqual([assistant.id]);
+    const roster = buildCompanyRoster(stateWith(investor, assistant));
+    expect(roster.rows.map(r => r.memberId)).toEqual([assistant.id]);
+    expect(roster.unassignedBusinessStaff.map(r => r.memberId)).toEqual([investor.id]);
+    expect(buildStaffPileTooltip(stateWith(investor))).toBeNull();
   });
 });
 
@@ -185,6 +195,44 @@ describe('the explicit *unassigned business staff* group', () => {
     );
 
     expect(group.map(c => c.id)).toEqual([chef.id]);
+  });
+
+  it('buildCompanyRoster surfaces the group, disjoint from the management-company rows', () => {
+    const state = freshState('classify-model-group');
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    const chef = member('staff-chef'); // business, unassigned
+    const baker = member('staff-baker', { employedAtSlot: 0 }); // business, employed
+    const assistant = member('staff-assistant'); // management-company
+    state.staffCards = [chef, baker, assistant];
+
+    const roster = buildCompanyRoster(state);
+
+    // The group is exactly the unassigned business staff; the management-company
+    // rows hold exactly the management-company member.
+    expect(roster.rows.map(r => r.memberId)).toEqual([assistant.id]);
+    expect(roster.unassignedBusinessStaff.map(r => r.memberId)).toEqual([chef.id]);
+    // The group rows carry the lay-off / role data the assign affordance needs.
+    const [row] = roster.unassignedBusinessStaff;
+    expect(row.staffIndex).toBe(0);
+    expect(row.name).toBe(chef.name);
+    expect(row.layOffCoins).toBe(row.salary);
+    expect(row.salary).toBeGreaterThan(0);
+    expect(row.roleSummary.length).toBeGreaterThan(0);
+    // The management-company footer totals stay management-company only.
+    expect(roster.count).toBe(1);
+    expect(roster.totalSalary).toBe(roster.rows[0].salary);
+  });
+
+  it('an employed business member never appears in the group', () => {
+    const state = freshState('classify-model-employed');
+    placeBusinessAt(state, 0, 'Bakery', ['Food']);
+    const baker = member('staff-baker', { employedAtSlot: 0 });
+    state.staffCards = [baker];
+
+    const roster = buildCompanyRoster(state);
+
+    expect(roster.unassignedBusinessStaff).toEqual([]);
+    expect(roster.rows).toEqual([]);
   });
 
   it('every unassigned member in the group is assignable through the shared predicate', () => {
@@ -244,7 +292,7 @@ describe('an unassigned business-staff member: no benefits, salary still charged
 // ── Backward-compatible loads (red-phase surface half) ──────
 
 describe('legacy saves with unassigned business staff (backward compatibility)', () => {
-  it.fails('load unchanged, stay assignable, and are never reclassified as management-company', () => {
+  it('load unchanged, stay assignable, and are never reclassified as management-company', () => {
     const state = freshState('classify-legacy-load');
     placeBusinessAt(state, 0, 'Bakery', ['Food']);
     const chef = member('staff-chef');
@@ -267,8 +315,8 @@ describe('legacy saves with unassigned business staff (backward compatibility)',
     // …stays assignable…
     expect(canPlaceStaffOnBusiness(restored, loaded.id, 0).legal).toBe(true);
     // …and is never reclassified: the roster must not list it as
-    // management-company staff (today it does — this is the red assertion the
-    // classification child greens).
+    // management-company staff, and the explicit group must carry it instead.
     expect(buildCompanyRoster(restored).rows.map(r => r.memberId)).not.toContain(loaded.id);
+    expect(buildCompanyRoster(restored).unassignedBusinessStaff.map(r => r.memberId)).toEqual([loaded.id]);
   });
 });

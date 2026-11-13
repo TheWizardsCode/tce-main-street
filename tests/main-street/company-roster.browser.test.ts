@@ -437,6 +437,9 @@ describe('Company Roster overlay — assign affordance for unassigned business s
     scene.showCompanyRoster();
 
     const texts = overlayTexts(scene).map((o) => o.text);
+    // The member is surfaced under the explicit *unassigned business staff*
+    // group (MS-0MWEWIJGU005FWYI), with the assign affordance and a lay-off.
+    expect(texts).toContain('Unassigned business staff');
     expect(texts).toContain('Chef Cole');
     expect(texts).toContain('[ Assign ]');
     expect(texts).toContain('[ Lay off ]');

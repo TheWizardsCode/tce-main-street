@@ -5,9 +5,10 @@
  * Unit coverage for the two halves of the Staff Pile's derived state:
  *
  *  - **Membership** — `selectManagementCompanyStaff()` is the pile's only
- *    membership rule, and it must agree with the two-type model's canonical
- *    test (`!isBusinessStaffCard`): business staff (an `employedAtSlot` link)
- *    never reach the pile.
+ *    membership rule, classifying by **card type** (`staffCardScope`):
+ *    management-company members reach the pile, and a hired-but-unassigned
+ *    business-staff member (business template, no `employedAtSlot`) never
+ *    does (MS-0MWEWIJGU005FWYI).
  *  - **Tooltip content** — `buildStaffPileTooltip()` summarises the
  *    management company (name, served types, effect, salary) with a member
  *    count and a total weekly salary, and returns `null` so the caller hides
@@ -140,15 +141,20 @@ describe('buildStaffPileTooltip (management-company summary)', () => {
   });
 
   it('reuses the shared member formatter, including the Investor re-roll note', () => {
-    const investorBase = createStaffDeck(1).find(
-      (card): card is StaffCard => card.name === 'Investor',
-    );
-    if (!investorBase) return; // deck without an Investor — nothing to assert
+    // The formatter reads the re-roll flags directly, but the PILE only lists
+    // management-company staff — and the shipped Investor template is
+    // *business* staff (GDD D.4.2: `handSlotsAdded = 0`, one of the 17
+    // business cards), so an unassigned Investor never reaches the pile
+    // (MS-0MWEWIJGU005FWYI). Build a management-company-typed member that
+    // carries the re-roll fields to pin the shared-formatting contract.
+    const base = createStaffDeck(1)[0]!; // staff-assistant: management-company markers
     const investor: StaffCard = {
-      ...investorBase,
+      ...base,
       id: 'staff-investor-0',
+      name: 'Investor',
       ongoingCost: 150,
       freeMarketRerollPerTurn: true,
+      marketRelevanceBias: 0.75,
     };
 
     const tooltip = buildStaffPileTooltip(stateWith([investor]))!;

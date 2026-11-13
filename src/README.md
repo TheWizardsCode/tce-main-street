@@ -282,7 +282,7 @@ The management company's own staff (no `employedAtSlot` link) are surfaced on a
   badge reporting the whole roster and a portrait row beneath, all rendered
   with `mainStreetRenderCardSvg`.
 - **Membership** — `selectManagementCompanyStaff()` in
-  `src/MainStreetStaffBuffs.ts` (`!isBusinessStaffCard`), derived from
+  `src/MainStreetStaffBuffs.ts` (card type via `staffCardScope`), derived from
   `state.staffCards` on every refresh. Hidden entirely when the roster has no
   management-company members.
 - **Depth and input** — `STAFF_PILE_DEPTH` (−200) sits below `HAND_PANEL_DEPTH`
@@ -304,7 +304,7 @@ The management company's own staff (no `employedAtSlot` link) are surfaced on a
 ### Company Roster overlay — management-company team (MS-0MWC1T8K2000DWZA)
 
 `src/MainStreetRoster.ts` is a pure, Phaser-free model. `buildCompanyRoster(state)`
-returns the management-company rows (`!isBusinessStaffCard`, staff-hire order)
+returns the management-company rows (card type via `staffCardScope`, staff-hire order)
 with the member's name, a shared role/benefit summary (`formatStaffRoleSummary` in
 `src/MainStreetFormatting.ts`), the effective salary resolved through
 `computeStaffSalaryCost(getSalaryScopeSkills(member), member.ongoingCost)`, and
