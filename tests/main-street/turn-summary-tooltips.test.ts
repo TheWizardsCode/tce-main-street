@@ -821,15 +821,16 @@ describe('competitive per-seat tooltip parity (MS-0MW7QQ65P006N3KA)', () => {
 
 // ── Competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32) ──────────
 //
-// Test-first tracer for the parent epic **MS-0MWBZDVCH008P8X5** ("Per-card
-// expense breakdowns on competitive Turn Summary seats"). The contract cases
-// below are authored **red-phase** with `it.fails` (the repo's test-first
-// convention — see `competitive-per-seat-hand-capacity.test.ts`): each one
-// fails against today's code, where competitive expense rows stay
-// category-total only (`buildExpenseRows(seat.ongoingCosts)` carries no
-// breakdown). The implementing children (MS-0MWEGDNAD009QDRO — owner-filtered
-// derivation; MS-0MWEGDNP300007WC — threading into competitive rows) flip them
-// to plain `it` once the contract lands. This block replaces the previous
+// The parent epic **MS-0MWBZDVCH008P8X5** ("Per-card expense breakdowns on
+// competitive Turn Summary seats") contract, green end-to-end: the
+// owner-filtered derivation child (MS-0MWEGDNAD009QDRO) supplies per-card
+// detail via `expenseLineBreakdownForOwner`, and this child
+// (MS-0MWEGDNP300007WC) threads it into the competitive expense rows
+// (`buildExpenseRows(seat.ongoingCosts, state, seat.ownerId)`), so each seat's
+// rows carry its own staff, community-space and business cards. The cases
+// below were authored red-phase with `it.fails` (the repo's test-first
+// convention — see `competitive-per-seat-hand-capacity.test.ts`) and are now
+// plain `it` since the threading landed. This block replaces the previous
 // "competitive expense lines stay category-total only" assertion (parent AC5).
 // Guards that already hold today — the fixture-ledger reconciliation and the
 // absent-safe degradation of a legacy ledger — stay plain `it` so they keep
@@ -1026,7 +1027,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
 
   // ── Model: per-seat per-card derivation ──
 
-  it.fails('lists each seat’s own staff cards with base salary and named modifiers', () => {
+  it('lists each seat’s own staff cards with base salary and named modifiers', () => {
     const { state, ledger } = competitiveExpenseFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
     const staff = (ownerId: number) =>
@@ -1047,7 +1048,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
     });
   });
 
-  it.fails('lists each seat’s owned community spaces and businesses with base ongoing costs', () => {
+  it('lists each seat’s owned community spaces and businesses with base ongoing costs', () => {
     const { state, ledger } = competitiveExpenseFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
     const expenses = (ownerId: number) =>
@@ -1073,7 +1074,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
     });
   });
 
-  it.fails('never lists another seat’s staff, spaces or businesses (no cross-seat leakage)', () => {
+  it('never lists another seat’s staff, spaces or businesses (no cross-seat leakage)', () => {
     const { state, ledger } = competitiveExpenseFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
     const names = (ownerId: number) =>
@@ -1093,7 +1094,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
     expect([...seat0, ...seat1]).not.toContain('Sold Emporium');
   });
 
-  it.fails('threads each seat’s expense breakdown through the PL projection', () => {
+  it('threads each seat’s expense breakdown through the PL projection', () => {
     const { state, ledger } = competitiveExpenseFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
     const projection = buildPLFromCompetitiveRow(summary.rows.find((row) => row.ownerId === 0)!);
@@ -1116,7 +1117,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
 
   // ── Tooltip: rendered per-card text ──
 
-  it.fails('renders the per-card detail in the expense tooltip, one card per line', () => {
+  it('renders the per-card detail in the expense tooltip, one card per line', () => {
     const { state, ledger } = competitiveExpenseFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
     expect(competitiveExpenseTooltip(summary, 0, 'staff')).toBe(
@@ -1145,7 +1146,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
 
   // ── Reconciliation: Cost Cutter reduction and coins clamp ──
 
-  it.fails('reconciles the breakdowns through the Cost Cutter reduction lines', () => {
+  it('reconciles the breakdowns through the Cost Cutter reduction lines', () => {
     const { state, ledger } = competitiveReductionFixture();
     const summary = buildCompetitiveTurnSummary(state, { playerRoundLedger: ledger })!;
 
@@ -1184,7 +1185,7 @@ describe('competitive per-card expense breakdowns (MS-0MWEGDMVZ005DQ32)', () => 
     );
   });
 
-  it.fails('renders the coins-clamp line when the committed total sits below the reduced cost', () => {
+  it('renders the coins-clamp line when the committed total sits below the reduced cost', () => {
     const { state, ledger } = competitiveReductionFixture();
     // The engine clamps each family to the coins available: a seat with only
     // −40 coins available for staff is charged 40 despite owing the reduced 68,

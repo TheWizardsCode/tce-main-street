@@ -21,6 +21,13 @@
  * order and signed formatting as the single-player builder, so a competitive
  * seat row reads exactly like the single-player panel's rows.
  *
+ * Competitive per-card parity (MS-0MWEGDNP300007WC):
+ * {@link expenseLineBreakdownForOwner} also feeds each competitive seat's
+ * expense rows, so a seat's staff / community / business rows carry the same
+ * per-card {@link PLLineBreakdown} the single-player builder spreads — both
+ * panels' expense tooltips list the cards behind each category total, with
+ * the same labels, order and committed coins.
+ *
  * Per-seat standing (MS-0MVRNW26W0070CP0): each competitive row also carries
  * the day's net coin/reputation/score change, the closing coin / reputation /
  * score balances and the seat's share of the resolved incident and one-off
@@ -506,15 +513,29 @@ export interface CompetitiveTurnSummary {
  * breakdown (a hand-built or older ledger) is rendered as three zero rows: the
  * seat is still shown, with "nothing spent" rather than a missing section.
  *
- * @param costs The seat's ongoing-cost breakdown, if the ledger carries one.
+ * Each row additionally carries the seat's per-card breakdown
+ * (MS-0MWEGDNP300007WC), spread from
+ * {@link expenseLineBreakdownForOwner} exactly as the single-player builder
+ * does — the same owner-filtered derivation, so a competitive seat's expense
+ * tooltips list the cards behind each category total. Absent-safe: a
+ * legacy/hand-built ledger whose state yields no per-card detail simply leaves
+ * `breakdown` undefined and the tooltip keeps the committed total plus its
+ * explanatory note.
+ *
+ * @param costs    The seat's ongoing-cost breakdown, if the ledger carries one.
+ * @param state    Committed game state (read-only), for per-card derivation.
+ * @param ownerId  The seat to derive the per-card breakdown for.
  */
 function buildExpenseRows(
   costs: OwnerOngoingCosts | undefined,
+  state: MainStreetState,
+  ownerId: number,
 ): TurnSummaryExpenseRow[] {
   return EXPENSE_CATEGORIES.map((category) => ({
     category,
     label: EXPENSE_LABELS[category],
     coins: costs?.[category] ?? 0,
+    ...expenseLineBreakdownForOwner(state, ownerId, category),
   }));
 }
 
@@ -623,7 +644,7 @@ export function buildCompetitiveTurnSummary(
     rows: seats.map((seat) => {
       const ownerId = seat.ownerId;
       const rosterSeat = seatsById.get(String(ownerId));
-      const expenses = buildExpenseRows(seat.ongoingCosts);
+      const expenses = buildExpenseRows(seat.ongoingCosts, state, ownerId);
       const net = {
         coins: seat.netCoinChange,
         reputation: seat.netRepChange ?? 0,
